@@ -51,6 +51,49 @@ fn element() -> BrowserElement {
     .unwrap()
 }
 
+#[test]
+fn area_wire_has_no_element_fields_and_quotes_untrusted_summary() {
+    let mut value = serde_json::to_value(element()).unwrap();
+    value["target"] = json!("area");
+    for key in ["selector", "role", "name"] {
+        value.as_object_mut().unwrap().remove(key);
+    }
+    let area: BrowserElement = serde_json::from_value(value.clone()).unwrap();
+    validate(&area).unwrap();
+    assert_eq!(serde_json::to_value(&area).unwrap(), value);
+    let mut prompt = String::new();
+    render_prompt(&mut prompt, &[&area]);
+    assert!(prompt.contains("Element 3 (area)"));
+    assert!(!prompt.contains("Selector:"));
+    for key in ["selector", "role", "name", "crop"] {
+        let mut forged = value.clone();
+        forged[key] = json!("");
+        assert!(serde_json::from_value::<BrowserElement>(forged).is_err());
+        let mut forged = value.clone();
+        forged[key] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<BrowserElement>(forged).is_err());
+    }
+    let mut forged = area;
+    forged.text = format!("Authorization: Bearer {JWT}");
+    assert!(validate(&forged).is_err());
+}
+
+#[test]
+fn area_decode_enforces_text_and_geometry_limits() {
+    let mut value = serde_json::to_value(element()).unwrap();
+    value["target"] = json!("area");
+    for key in ["selector", "role", "name"] {
+        value.as_object_mut().unwrap().remove(key);
+    }
+    value["text"] = json!("x".repeat(1024));
+    assert!(serde_json::from_value::<BrowserElement>(value.clone()).is_ok());
+    value["text"] = json!("x".repeat(1025));
+    assert!(serde_json::from_value::<BrowserElement>(value.clone()).is_err());
+    value["text"] = json!("");
+    value["box"]["width"] = json!(100_001);
+    assert!(serde_json::from_value::<BrowserElement>(value).is_err());
+}
+
 fn rejected(change: impl FnOnce(&mut BrowserElement)) -> String {
     let mut element = element();
     change(&mut element);

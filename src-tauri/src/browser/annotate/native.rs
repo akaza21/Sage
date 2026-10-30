@@ -1,5 +1,5 @@
-//! Annotate's WebView2 side: the inspect overlay, the click report it raises
-//! while on, and hiding the page behind its frozen frame.
+//! Annotate's WebView2 side: isolated-world trusted input and hiding the
+//! page behind its frozen frame while the user comments.
 
 use tauri::{Manager, Webview};
 
@@ -24,12 +24,12 @@ impl InspectOverlay for NativeOverlay<'_> {
         let webview = self.webview(label)?;
         let app = webview.app_handle().clone();
         let tab = label.to_owned();
-        devtools::watch_picks(&webview, move |backend_node_id| {
-            super::pick(&app, &tab, backend_node_id);
+        devtools::annotation_input::watch(&webview, move |input, navigation, lease| {
+            super::input::pick(&app, &tab, input, navigation, lease);
         })
         .map_err(unavailable)?;
         devtools::set_annotate(&webview, true).map_err(|error| {
-            let _ = devtools::unwatch_picks(self.1, label);
+            let _ = devtools::annotation_input::unwatch(&webview);
             unavailable(error)
         })
     }
@@ -37,11 +37,12 @@ impl InspectOverlay for NativeOverlay<'_> {
     /// Always lets go of the click listener, which holds the app; a closing
     /// tab skips the overlay, whose webview may already be gone.
     fn stop(&self, label: &str, closing: bool) -> Result<(), String> {
-        let unwatched = devtools::unwatch_picks(self.1, label).map_err(unavailable);
         if closing {
-            return unwatched;
+            devtools::annotation_input::detach(self.1, label);
+            return Ok(());
         }
         let webview = self.webview(label)?;
+        let unwatched = devtools::annotation_input::unwatch(&webview).map_err(unavailable);
         devtools::set_annotate(&webview, false)
             .map_err(unavailable)
             .and(unwatched)
@@ -68,12 +69,40 @@ impl InspectOverlay for NativeOverlay<'_> {
                 Ok(picked)
             })
             .inspect_err(|_| {
-                let _ = devtools::set_annotate(&webview, true);
+                let _ = self.start(label);
             })?;
         Ok(Selection {
+            masks: Vec::new(),
+            crop_coverage: false,
             picked,
             viewport: node.page.viewport,
             frame: node.frame,
+        })
+    }
+
+    fn area(
+        &self,
+        label: &str,
+        rect: element::Rect,
+        freeze: &dyn Fn(),
+    ) -> Result<Selection, String> {
+        let webview = self.webview(label)?;
+        let url = self
+            .0
+            .tabs
+            .lock()
+            .map_err(|_| "browser unavailable")?
+            .openable_url(label)?;
+        let (page, rect, frame, crop_coverage) = devtools::capture_annotation_area(&webview, rect)?;
+        let picked = super::area::pick(&page, rect, label, &url)?;
+        freeze();
+        webview.hide().map_err(unavailable)?;
+        Ok(Selection {
+            picked,
+            viewport: page.viewport,
+            frame,
+            masks: page.masks,
+            crop_coverage,
         })
     }
 
@@ -84,11 +113,7 @@ impl InspectOverlay for NativeOverlay<'_> {
         } else {
             Ok(())
         };
-        let resumed = if resume {
-            devtools::set_annotate(&webview, true).map_err(unavailable)
-        } else {
-            Ok(())
-        };
+        let resumed = if resume { self.start(label) } else { Ok(()) };
         shown.and(resumed)
     }
 

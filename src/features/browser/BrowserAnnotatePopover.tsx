@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { utf8ByteLength } from "../../domain/text";
 import {
   browserElementSink,
   handOffBrowserElement,
+  parseBrowserElement,
 } from "../../app/browserAnnotations";
 import {
   browserControl,
@@ -12,7 +19,10 @@ import {
   browserAnnotateConfirm,
   browserAnnotateFrame,
   type BrowserAnnotateFrame,
+  type BrowserAnnotateCrop,
 } from "../../ports/nativeBrowserAnnotatePort";
+import { BrowserAreaPicture } from "./BrowserAreaPicture";
+import { rememberBrowserCrop } from "./browserCropPreview";
 
 const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
@@ -30,6 +40,7 @@ export function BrowserAnnotatePopover({
   error,
   onConfirm,
   onCancel,
+  picture,
 }: {
   selection: BrowserAnnotateSelection;
   frame: BrowserAnnotateFrame | null;
@@ -38,12 +49,14 @@ export function BrowserAnnotatePopover({
   error: string | null;
   onConfirm: (comment: string) => void;
   onCancel: () => void;
+  picture?: ReactNode;
 }) {
   const [comment, setComment] = useState("");
   const { box, viewport } = selection;
   const left = box.x - viewport.x;
   const top = box.y - viewport.y;
   const bottom = top + box.height;
+  const area = selection.target === "area";
   const tooLong = utf8ByteLength(comment) > 4096;
   const reason = blocked ?? (tooLong ? "Comments hold up to 4 KB" : null);
   const outline: CSSProperties = {
@@ -53,10 +66,16 @@ export function BrowserAnnotatePopover({
     height: pct(box.height, viewport.height),
   };
   const pill: CSSProperties = {
-    left: `clamp(8px, ${pct(left, viewport.width)}, calc(100% - 304px))`,
-    ...(bottom / viewport.height > 0.8
-      ? { bottom: `calc(${pct(viewport.height - top, viewport.height)} + 8px)` }
-      : { top: `calc(${pct(bottom, viewport.height)} + 8px)` }),
+    left: `clamp(8px, calc(${pct(left, viewport.width)} + ${area ? 24 : 0}px), calc(100% - 304px))`,
+    ...(area
+      ? {
+          top: `clamp(8px, calc(${pct(bottom, viewport.height)} - 44px), calc(100% - 52px))`,
+        }
+      : bottom / viewport.height > 0.8
+        ? {
+            bottom: `calc(${pct(viewport.height - top, viewport.height)} + 8px)`,
+          }
+        : { top: `calc(${pct(bottom, viewport.height)} + 8px)` }),
   };
   return (
     <div
@@ -81,18 +100,27 @@ export function BrowserAnnotatePopover({
         {frame ? (
           <img
             className="browser-annotate__frame"
-            src={`data:image/jpeg;base64,${frame.jpegBase64}`}
+            src={
+              frame.pngBase64
+                ? `data:image/png;base64,${frame.pngBase64}`
+                : `data:image/jpeg;base64,${frame.jpegBase64}`
+            }
             alt=""
             onClick={onCancel}
           />
         ) : null}
-        <div className="browser-annotate__outline" style={outline} />
-        <span
-          className="browser-annotate__badge"
-          style={{ left: outline.left, top: outline.top }}
-        >
-          {ordinal ?? 1}
-        </span>
+        <div
+          className={`browser-annotate__outline${selection.target === "area" ? " browser-annotate__outline--area" : ""}`}
+          style={outline}
+        />
+        {!area ? (
+          <span
+            className="browser-annotate__badge"
+            style={{ left: outline.left, top: outline.top }}
+          >
+            {ordinal ?? 1}
+          </span>
+        ) : null}
         <form
           className="browser-annotate__pill"
           style={pill}
@@ -101,6 +129,11 @@ export function BrowserAnnotatePopover({
             if (!reason) onConfirm(comment);
           }}
         >
+          {area ? (
+            <span className="browser-annotate__badge browser-annotate__badge--area">
+              {ordinal ?? 1}
+            </span>
+          ) : null}
           <button
             type="button"
             className="browser-annotate__adjust"
@@ -128,6 +161,7 @@ export function BrowserAnnotatePopover({
               {error}
             </p>
           ) : null}
+          {picture}
         </form>
       </div>
     </div>
@@ -151,6 +185,8 @@ export default function BrowserAnnotateComment({
 }) {
   const [frame, setFrame] = useState<BrowserAnnotateFrame | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [crop, setCrop] = useState<BrowserAnnotateCrop | null>(null);
+  const [pictureBlocked, setPictureBlocked] = useState(false);
   const confirming = useRef(false);
   const sink = browserElementSink();
   const ordinal = sink?.nextOrdinal() ?? null;
@@ -169,17 +205,38 @@ export default function BrowserAnnotateComment({
       selection={selection}
       frame={frame}
       ordinal={ordinal}
-      blocked={!sink ? NO_SINK : ordinal === null ? FULL : null}
+      blocked={
+        !sink
+          ? NO_SINK
+          : ordinal === null
+            ? FULL
+            : pictureBlocked
+              ? "Wait for the masked picture, or remove it"
+              : null
+      }
+      picture={
+        selection.target === "area" ? (
+          <BrowserAreaPicture
+            tabId={tabId}
+            onChange={(next, blocked) => {
+              setCrop(next);
+              setPictureBlocked(blocked);
+            }}
+          />
+        ) : undefined
+      }
       error={error}
       onConfirm={(comment) => {
         if (confirming.current) return;
         confirming.current = true;
         void browserAnnotateConfirm(tabId, ordinal!, comment)
-          .then((item) =>
-            handOffBrowserElement(item)
-              ? browserControl(tabId, "annotateCancel")
-              : setError("The page element could not be attached"),
-          )
+          .then((item) => {
+            if (!handOffBrowserElement(item))
+              return setError("The page element could not be attached");
+            const context = parseBrowserElement(item);
+            if (context && crop) rememberBrowserCrop(context, crop);
+            return browserControl(tabId, "annotateCancel");
+          })
           .catch(fail)
           .finally(() => (confirming.current = false));
       }}

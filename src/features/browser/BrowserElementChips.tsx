@@ -17,6 +17,7 @@ import {
 } from "../../domain/attachedContext";
 import { Globe2, MessageSquare, Trash2, X } from "../../ui/leanIcons";
 import "./browser-element-chips.css";
+import { BrowserCropThumbnail } from "./BrowserAreaPicture";
 
 const HIDE_MS = 150;
 const CARD_WIDTH = 347;
@@ -27,8 +28,14 @@ export function browserElementLabel({
   ordinal,
   role,
   name,
+  target,
+  url,
 }: BrowserElementContext) {
-  const label = [...`Element ${ordinal} · ${role}${name ? ` "${name}"` : ""}`];
+  const label = [
+    ...(target === "area"
+      ? `Area ${ordinal} · ${new URL(url).host}`
+      : `Element ${ordinal} · ${role}${name ? ` "${name}"` : ""}`),
+  ];
   return label.length > LABEL_CHARS
     ? `${label.slice(0, LABEL_CHARS - 1).join("")}…`
     : label.join("");
@@ -36,7 +43,7 @@ export function browserElementLabel({
 
 /** Contract §4: the tooltip names the page and the selector. */
 const elementTip = ({ url, selector }: BrowserElementContext) =>
-  `${url}\n${selector}`;
+  selector === undefined ? url : `${url}\n${selector}`;
 
 /**
  * Annotate's elements (Codex ref 63): one chip per element until there are
@@ -256,8 +263,14 @@ function ElementChip({
                   className="browser-element-card__entry"
                 >
                   <header title={elementTip(element)}>
-                    <code>{element.role}</code>
-                    <span>{element.name || `Element ${element.ordinal}`}</span>
+                    <code>
+                      {element.target === "area" ? "area" : element.role}
+                    </code>
+                    <span>
+                      {element.target === "area"
+                        ? `Area ${element.ordinal}`
+                        : element.name || `Element ${element.ordinal}`}
+                    </span>
                     {onRemove ? (
                       <button
                         type="button"
@@ -270,6 +283,7 @@ function ElementChip({
                     ) : null}
                   </header>
                   <p>{element.comment || "No comment"}</p>
+                  {onRemove ? <BrowserCropThumbnail context={element} /> : null}
                   <p
                     className="browser-element-card__page"
                     title={elementTip(element)}

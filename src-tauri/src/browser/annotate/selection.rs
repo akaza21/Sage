@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use super::{
     AnnotateChange, AnnotateMode, BrowserState, Exit, InspectOverlay, NativeOverlay, change,
-    element::{self, BrowserElement, ElementBox, Picked, Viewport},
+    element::{self, BrowserElement, ElementBox, Picked, Rect, Viewport},
     emit,
 };
 
@@ -17,6 +17,8 @@ use super::{
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Frame {
     pub jpeg_base64: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub png_base64: Option<String>,
     pub width: u32,
     pub height: u32,
 }
@@ -27,12 +29,15 @@ pub(crate) struct Selection {
     pub picked: Picked,
     pub viewport: Viewport,
     pub frame: Frame,
+    pub masks: Vec<Rect>,
+    pub crop_coverage: bool,
 }
 
 /// What the chrome needs to draw the badge and place the comment box.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SelectionView {
+    target: &'static str,
     /// What the comment box calls the element: its accessible name, or a
     /// plain word for its role.
     label: String,
@@ -44,7 +49,16 @@ pub(crate) struct SelectionView {
 impl Selection {
     fn view(&self) -> SelectionView {
         SelectionView {
-            label: label(&self.picked.role, &self.picked.name),
+            target: if self.picked.selector.is_empty() {
+                "area"
+            } else {
+                "element"
+            },
+            label: if self.picked.selector.is_empty() {
+                "area".into()
+            } else {
+                label(&self.picked.role, &self.picked.name)
+            },
             bounds: self.picked.outline,
             viewport: self.viewport,
         }
@@ -113,6 +127,7 @@ impl AnnotateMode {
     /// Picks the element Chromium reported for a click on `label`. A click
     /// while another element waits, or after Annotate ended, is ignored. A
     /// failed pick keeps Annotate on and tells the chrome why.
+    #[cfg(test)]
     pub(super) fn pick(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -120,11 +135,22 @@ impl AnnotateMode {
         backend_node_id: u64,
         freeze: &dyn Fn(),
     ) -> (Vec<AnnotateChange>, Result<(), String>) {
+        self.select_with(overlay, label, || {
+            overlay.pick(label, backend_node_id, freeze)
+        })
+    }
+
+    pub(super) fn select_with(
+        &mut self,
+        overlay: &impl InspectOverlay,
+        label: &str,
+        capture: impl FnOnce() -> Result<Selection, String>,
+    ) -> (Vec<AnnotateChange>, Result<(), String>) {
         if self.tab.as_deref() != Some(label) || self.pending.is_some() {
             return (Vec::new(), Ok(()));
         }
         let mut announced = change(label.to_owned(), true);
-        match overlay.pick(label, backend_node_id, freeze) {
+        match capture() {
             Ok(selection) => {
                 announced.selection = Some(selection.view());
                 self.pending = Some(selection);
@@ -180,6 +206,18 @@ impl AnnotateMode {
             .filter(|_| self.tab.as_deref() == Some(label))
             .map(|selection| selection.frame.clone())
             .ok_or("no browser element is waiting".into())
+    }
+
+    pub(super) fn crop(&self, label: &str) -> Result<super::crop::CropPreview, String> {
+        let selection = self
+            .pending
+            .as_ref()
+            .filter(|_| self.tab.as_deref() == Some(label))
+            .ok_or("no browser area is waiting")?;
+        if !selection.picked.selector.is_empty() {
+            return Err("only area crops are available".into());
+        }
+        super::crop::preview(selection)
     }
 
     fn resumed(&self, label: &str, released: &Result<(), String>) -> AnnotateChange {

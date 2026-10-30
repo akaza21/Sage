@@ -30,6 +30,8 @@ const UI_RULE_MEASURES = {
   width: "number",
   "background-color": "string",
   "border-radius": "string",
+  "border-top-style": "string",
+  "border-top-width": "string",
   "text-align": "string",
   placeholder: "string",
   "left-of": "other",

@@ -10,6 +10,7 @@ import {
 import { registerBrowserElementSink } from "../../app/browserAnnotations";
 import { browserElementChatSink } from "../../app/browserElementChatSink";
 import BrowserAnnotateComment from "./BrowserAnnotatePopover";
+import { useBrowserDraftBadges } from "./useBrowserDraftBadges";
 
 // Stateless: it reads the pinned Agent Chat at each pick, so one
 // registration serves every browser tab.
@@ -31,6 +32,7 @@ export function BrowserAnnotateControl({
   onError: (message: string) => void;
 }) {
   const tabId = navigation?.tabId;
+  useBrowserDraftBadges(tabId, navigation?.url);
   const [frame, setFrame] = useState<Element | null>(null);
   const findFrame = useCallback(
     (button: HTMLButtonElement | null) =>

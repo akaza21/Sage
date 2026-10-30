@@ -1,20 +1,8 @@
-//! The user's Annotate mode: Chromium's own inspect overlay tracks the
-//! element under the pointer and Sage outlines it in that overlay. Nothing
-//! runs in the page; every step is a permitless read outside any Agent
-//! dispatch.
-//!
-//! The inspect highlight cannot draw a thin outline. `HighlightConfig` only
-//! fills the content, padding, border and margin boxes, and its one line
-//! (`containerQueryContainerHighlightConfig.containerBorder`) traces the
-//! content box and takes the renderer down on an inline element such as a
-//! link (Chromium 153). So the highlight stays transparent, and Sage draws a
-//! 2 px outline with the overlay's hinge: a plain rectangle the overlay
-//! paints beside the inspect tool, in the page's viewport. Chromium raises
-//! `Overlay.nodeHighlightRequested` when the hovered element changes, not on
-//! every mouse move, and each one costs a `DOM.getBoxModel` and an
-//! `Overlay.setShowHinge`. The rectangle does not follow a scroll until the
-//! pointer reaches another element.
+//! Legacy Chromium inspect primitives retained for the CDP lane, plus the
+//! production cleanup that leaves no native highlight behind. Annotate
+//! now tracks trusted hover and drag input locally in the isolated world.
 
+#[cfg(test)]
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -25,9 +13,11 @@ use super::{CdpPort, CdpTransport};
 const STEP_TIMEOUT: Duration = Duration::from_secs(2);
 const RESULT_BYTES: usize = 4096;
 /// A box model is six quads and two sizes; a shape-outside adds a path.
+#[cfg(test)]
 const BOX_MODEL_BYTES: usize = 16_384;
 
 /// The Annotate blue (`--chat-annotation-accent`, #3a83f7).
+#[cfg(test)]
 const BLUE: (u8, u8, u8) = (58, 131, 247);
 
 /// Removes the hover outline.
@@ -52,6 +42,7 @@ impl<T: CdpTransport> CdpPort<T> {
     /// Turns on hover highlighting. The DOM agent gets the document node
     /// first, without which Chromium cannot name the hovered element. A
     /// failed step leaves inspect mode again.
+    #[cfg(test)]
     pub(crate) fn start_inspect(&self) -> Result<(), BrowserFailure> {
         let started = [
             ("DOM.enable", "{}"),
@@ -101,12 +92,14 @@ impl<T: CdpTransport> CdpPort<T> {
     }
 }
 
+#[cfg(test)]
 fn rgba((r, g, b): (u8, u8, u8), a: f64) -> Value {
     json!({"r": r, "g": g, "b": b, "a": a})
 }
 
 /// `searchForNode` drawing nothing itself: no box fills, info tooltip,
 /// rulers or styles. It still takes the click and names the hovered element.
+#[cfg(test)]
 pub(super) fn inspect_params() -> String {
     let clear = rgba((0, 0, 0), 0.0);
     json!({
@@ -127,6 +120,7 @@ pub(super) fn inspect_params() -> String {
 }
 
 /// The element an `Overlay.nodeHighlightRequested` event names.
+#[cfg(test)]
 pub(crate) fn hovered_node(payload: &str) -> Option<u64> {
     if payload.len() > RESULT_BYTES {
         return None;
@@ -136,6 +130,7 @@ pub(crate) fn hovered_node(payload: &str) -> Option<u64> {
         .filter(|id| *id > 0)
 }
 
+#[cfg(test)]
 pub(crate) fn box_model_params(node_id: u64) -> String {
     json!({"nodeId": node_id}).to_string()
 }
@@ -145,6 +140,7 @@ pub(crate) fn box_model_params(node_id: u64) -> String {
 /// is drawn in unzoomed px, so the rectangle is scaled by the page `zoom`
 /// (1.0 at 100%). An inline element over several lines gets its bounding
 /// rectangle.
+#[cfg(test)]
 pub(crate) fn outline_params(box_model: &str, zoom: f64) -> Option<String> {
     if box_model.len() > BOX_MODEL_BYTES || !zoom.is_finite() || !(0.25..=5.0).contains(&zoom) {
         return None;

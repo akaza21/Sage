@@ -162,3 +162,8 @@
   padding: 0;
   list-style: none;
 }
+.browser-element-card__picture img {
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+}

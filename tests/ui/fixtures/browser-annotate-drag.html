@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Trusted annotate drag fixture</title>
+  </head>
+  <body>
+    <h1>Cart</h1>
+    <p>Drag across this page.</p>
+    <input type="password" value="FORM_SECRET" />
+    <button id="normal-click">Normal page click</button>
+    <script type="module">
+      import install from "/src/features/browser/annotateDrag.js";
+      window.reports = [];
+      window.pageClicks = 0;
+      document.querySelector("#normal-click").addEventListener("click", () => {
+        window.pageClicks += 1;
+      });
+      window.stopAnnotate = install((payload) =>
+        window.reports.push(JSON.parse(payload)),
+      );
+    </script>
+  </body>
+</html>

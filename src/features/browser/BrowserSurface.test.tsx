@@ -58,7 +58,12 @@ const browserAgentControl = vi.fn(async (_tabId: string, action: string) => {
   return rustAgentControl && { ...rustAgentControl };
 });
 
-vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
+vi.mock("../../ports/nativeInvoke", () => ({
+  isTauriRuntime: () => true,
+  invokeNative: vi.fn(async (command: string) =>
+    command === "browser_downloads" ? [] : null,
+  ),
+}));
 vi.mock("../../ports/nativeBrowserPort", () => ({
   openBrowser: (url?: string) => openBrowser(url),
   closeBrowser: vi.fn(async () => undefined),

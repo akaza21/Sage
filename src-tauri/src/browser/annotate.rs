@@ -1,8 +1,7 @@
-//! Annotate mode: the user's hover highlight over one browser tab (M1a) and
-//! picking an element to comment on (M1b). Rust owns which tab annotates and
-//! which element waits for a comment, and tells the chrome over
-//! `browser:annotate`; the highlight is Chromium's own inspect overlay and the
-//! element is read in the isolated Agent world, so nothing enters the page's
+//! Annotate mode: hover, element picks and local rectangle drags. Rust owns
+//! which tab annotates and which selection waits for a comment, and tells
+//! the chrome over `browser:annotate`. Trusted input and the highlight run
+//! in the isolated Agent world, so nothing enters the page's
 //! main world. These are user chrome commands from the main webview, not
 //! Agent tools.
 //!
@@ -22,7 +21,14 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::{BrowserSnapshot, BrowserState, BrowserTabs, page_context::valid_page_context_tab_id};
 
 #[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) mod area;
+pub(crate) mod badges;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod crop;
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) mod element;
+#[cfg(windows)]
+mod input;
 #[cfg(windows)]
 mod native;
 pub(crate) mod selection;
@@ -55,6 +61,7 @@ pub(crate) enum Action {
     Confirm,
     /// The frozen page the user comments on.
     Frame,
+    Crop,
 }
 
 pub(crate) fn action(name: &str) -> Option<Action> {
@@ -64,6 +71,7 @@ pub(crate) fn action(name: &str) -> Option<Action> {
         "annotateCancel" => Some(Action::Cancel),
         "annotateConfirm" => Some(Action::Confirm),
         "annotateFrame" => Some(Action::Frame),
+        "annotateCrop" => Some(Action::Crop),
         _ => None,
     }
 }
@@ -81,6 +89,7 @@ pub(crate) enum Exit {
 }
 
 /// Drives the native inspect overlay of one tab.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) trait InspectOverlay {
     fn start(&self, label: &str) -> Result<(), String>;
     /// Stops listening for clicks, and turns the overlay off unless the tab
@@ -95,6 +104,9 @@ pub(crate) trait InspectOverlay {
         backend_node_id: u64,
         freeze: &dyn Fn(),
     ) -> Result<Selection, String>;
+    fn area(&self, _: &str, _: element::Rect, _: &dyn Fn()) -> Result<Selection, String> {
+        Err("browser area unavailable".into())
+    }
     /// Shows the frozen page again when `reveal`, and resumes hover
     /// highlighting when `resume`.
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String>;
@@ -162,6 +174,7 @@ impl Annotate {
     }
 
     /// Picks the element Chromium reported for a click on `label`.
+    #[cfg(test)]
     fn pick(
         &self,
         overlay: &impl InspectOverlay,
@@ -318,6 +331,12 @@ pub(crate) async fn set(
             Action::Cancel => state
                 .annotate
                 .run(announce, |mode| mode.cancel(&overlay, &tab_id)),
+            Action::Crop => {
+                return state
+                    .annotate
+                    .run(announce, |mode| (Vec::new(), value(mode.crop(&tab_id))))
+                    .map(Some);
+            }
             Action::Confirm => {
                 let comment = comment.unwrap_or_default();
                 let ordinal = ordinal.ok_or("browser element ordinal rejected")?;
@@ -341,23 +360,6 @@ pub(crate) async fn set(
     })
     .await
     .map_err(|_| "browser annotate unavailable".to_owned())?
-}
-
-/// Picks the element Chromium reported for a click in inspect mode. Runs on
-/// its own thread: the report arrives on the main thread, which the pick's
-/// CDP calls need free.
-pub(crate) fn pick(app: &AppHandle, label: &str, backend_node_id: u64) {
-    let app = app.clone();
-    let label = label.to_owned();
-    std::thread::spawn(move || {
-        let state = app.state::<BrowserState>();
-        let overlay = NativeOverlay(&state, &app);
-        let _ = state
-            .annotate
-            .pick(&overlay, &label, backend_node_id, |change| {
-                emit(&app, change)
-            });
-    });
 }
 
 /// Leaves Annotate on `label` after a navigation starts, the tab is hidden or

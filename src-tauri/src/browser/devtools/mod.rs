@@ -32,9 +32,13 @@ pub(crate) use native::pick_element;
 #[cfg(windows)]
 pub(crate) use native::set_annotate;
 #[cfg(windows)]
-mod picks;
+pub(crate) use native::set_annotation_badges;
 #[cfg(windows)]
-pub(crate) use picks::{unwatch_picks, watch_picks};
+pub(crate) use native::{annotation_node, capture_annotation_area};
+#[cfg(windows)]
+pub(crate) mod annotation_input;
+#[cfg(windows)]
+mod picks;
 mod screenshot;
 mod snapshot;
 #[cfg(any(windows, test))]

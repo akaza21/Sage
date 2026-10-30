@@ -14,8 +14,10 @@ use super::{
 };
 
 mod act;
+pub(super) mod annotate_input;
 pub(super) mod highlight;
 pub(super) mod inspect;
+mod mask_coverage;
 pub(super) mod outcome;
 pub(super) mod page_context;
 pub(super) mod select;

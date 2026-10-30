@@ -366,6 +366,37 @@
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+
+.browser-annotate__outline--area {
+  border-style: dashed;
+  border-width: 1px;
+}
+.browser-annotate__badge--area {
+  left: -12px;
+  top: 50%;
+  border-radius: var(--radius-annotation-badge);
+}
+.browser-annotate__picture {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 300px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--browser-bright-text);
+  background: var(--browser-address-fill);
+  font-size: 12px;
+}
+.browser-annotate__picture label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.browser-annotate__picture img {
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+}
 .browser-annotate__pill {
   position: absolute;
   box-sizing: border-box;

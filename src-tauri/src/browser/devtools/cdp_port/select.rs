@@ -102,11 +102,11 @@ pub(crate) struct PickedNode {
 impl<T: CdpTransport> CdpPort<T> {
     /// Reads the element behind `backend_node_id`, pauses hover highlighting
     /// and captures the viewport, only while the page keeps one document.
-    /// Hover highlighting resumes if any step fails.
+    /// The native Annotate owner reinstalls trusted input if a step fails.
     pub(crate) fn pick_element(&self, backend_node_id: u64) -> Result<PickedNode, BrowserFailure> {
         let before = self.stamp()?;
         let picked = self.read_element(backend_node_id, before.navigation_id);
-        let picked = picked.and_then(|(page, role, name)| {
+        picked.and_then(|(page, role, name)| {
             self.pause_inspect()?;
             let frame = self.capture_frame()?;
             if self.stamp()? != before {
@@ -118,11 +118,7 @@ impl<T: CdpTransport> CdpPort<T> {
                 name,
                 frame,
             })
-        });
-        if picked.is_err() {
-            let _ = self.start_inspect();
-        }
-        picked
+        })
     }
 
     fn read_element(
@@ -189,7 +185,7 @@ impl<T: CdpTransport> CdpPort<T> {
     /// no CSS px to device px conversion can apply page zoom, display
     /// scaling or pinch zoom twice. A larger image is retried at lower
     /// quality.
-    fn capture_frame(&self) -> Result<Frame, BrowserFailure> {
+    pub(super) fn capture_frame(&self) -> Result<Frame, BrowserFailure> {
         let deadline = Instant::now() + READ_TIMEOUT;
         for quality in [85, 60, 40] {
             let params = json!({
@@ -216,6 +212,7 @@ impl<T: CdpTransport> CdpPort<T> {
             let (width, height) = jpeg_size(data).ok_or(BrowserFailure::Unavailable)?;
             return Ok(Frame {
                 jpeg_base64: data.to_owned(),
+                png_base64: None,
                 width,
                 height,
             });
@@ -237,6 +234,7 @@ impl<T: CdpTransport> CdpPort<T> {
 }
 
 /// The node an `Overlay.inspectNodeRequested` event names.
+#[cfg(test)]
 pub(crate) fn inspected_node(payload: &str) -> Option<u64> {
     if payload.len() > 4096 {
         return None;

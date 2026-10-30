@@ -13,6 +13,8 @@ type Rule = {
     | "width"
     | "background-color"
     | "border-radius"
+    | "border-top-style"
+    | "border-top-width"
     | "text-align"
     | "placeholder"
     | "left-of"
@@ -81,6 +83,8 @@ async function check(page: Page, rule: Rule) {
     }
     case "background-color":
     case "border-radius":
+    case "border-top-style":
+    case "border-top-width":
     case "text-align":
       expect(await style(page, rule.selector, rule.measure)).toBe(
         rule.expected,

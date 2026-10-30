@@ -165,6 +165,7 @@ export type BrowserControlAction =
 
 /** Where the picked element sits in the viewport it was picked in (page CSS px). */
 export interface BrowserAnnotateSelection {
+  target?: "element" | "area";
   /** The accessible name, or a plain word for the role. */
   label: string;
   box: { x: number; y: number; width: number; height: number };

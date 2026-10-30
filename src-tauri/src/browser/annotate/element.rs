@@ -7,7 +7,10 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde::{Deserialize, Deserializer, Serialize, de};
+use serde::{Deserialize, Serialize};
+
+#[path = "element_wire.rs"]
+mod wire;
 
 use crate::acp::{
     attached_context::has_unsafe_display_character,
@@ -131,11 +134,12 @@ enum Kind {
 enum Target {
     #[serde(rename = "element")]
     Element,
+    #[serde(rename = "area")]
+    Area,
 }
 
 /// The wire item, exactly as the contract names its fields.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserElement {
     kind: Kind,
     target: Target,
@@ -147,52 +151,8 @@ pub struct BrowserElement {
     pub role: String,
     pub name: String,
     pub text: String,
-    #[serde(rename = "box")]
     pub bounds: ElementBox,
     pub comment: String,
-}
-
-/// Decoding checks the bounds only. Stored turns and queued prompts decode
-/// through here too, and a later, stricter redaction rule must not make them
-/// unreadable; the redaction fixpoints run where a prompt is admitted
-/// (`attached_context::admit_browser_elements`).
-impl<'de> Deserialize<'de> for BrowserElement {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase", deny_unknown_fields)]
-        struct Wire {
-            kind: Kind,
-            target: Target,
-            ordinal: u8,
-            tab_id: String,
-            url: String,
-            title: String,
-            selector: String,
-            role: String,
-            name: String,
-            text: String,
-            #[serde(rename = "box")]
-            bounds: ElementBox,
-            comment: String,
-        }
-        let wire = Wire::deserialize(deserializer)?;
-        let element = BrowserElement {
-            kind: wire.kind,
-            target: wire.target,
-            ordinal: wire.ordinal,
-            tab_id: wire.tab_id,
-            url: wire.url,
-            title: wire.title,
-            selector: wire.selector,
-            role: wire.role,
-            name: wire.name,
-            text: wire.text,
-            bounds: wire.bounds,
-            comment: wire.comment,
-        };
-        validate_bounds(&element).map_err(de::Error::custom)?;
-        Ok(element)
-    }
 }
 
 /// Bounds and redacts what the page reported. `role` and `name` come from
@@ -236,7 +196,11 @@ pub(crate) fn confirm(
 ) -> Result<BrowserElement, String> {
     let element = BrowserElement {
         kind: Kind::BrowserElement,
-        target: Target::Element,
+        target: if picked.selector.is_empty() {
+            Target::Area
+        } else {
+            Target::Element
+        },
         ordinal,
         tab_id: picked.tab_id.clone(),
         url: picked.url.clone(),
@@ -294,10 +258,17 @@ pub(crate) fn validate_bounds(element: &BrowserElement) -> Result<(), String> {
     if !clean(&element.title, TITLE_BYTES, false) {
         return reject("title");
     }
-    if element.selector.is_empty() || !clean(&element.selector, SELECTOR_BYTES, false) {
+    if element.target == Target::Area
+        && (!element.selector.is_empty() || !element.role.is_empty() || !element.name.is_empty())
+    {
+        return reject("target");
+    }
+    if element.target == Target::Element
+        && (element.selector.is_empty() || !clean(&element.selector, SELECTOR_BYTES, false))
+    {
         return reject("selector");
     }
-    if !valid_role(&element.role) {
+    if element.target == Target::Element && !valid_role(&element.role) {
         return reject("role");
     }
     if !clean(&element.name, NAME_BYTES, false) {
@@ -347,6 +318,14 @@ pub(crate) fn render_prompt(rendered: &mut String, elements: &[&BrowserElement])
         } else {
             json(&element.comment)
         };
+        if element.target == Target::Area {
+            rendered.push_str(&format!(
+                "\n- Element {} (area)\n  Page URL: {}\n  Page title: {}\n  Text excerpt: {}\n  Box (CSS px, page coordinates): x={} y={} width={} height={}\n  User comment: {comment}",
+                element.ordinal, json(&element.url), json(&element.title), json(&element.text),
+                bounds.x, bounds.y, bounds.width, bounds.height,
+            ));
+            continue;
+        }
         rendered.push_str(&format!(
             "\n- Element {} (element)\n  Page URL: {}\n  Page title: {}\n  Selector: {}\n  Role and name: {}, {}\n  Text excerpt: {}\n  Box (CSS px, page coordinates): x={} y={} width={} height={}\n  User comment: {comment}",
             element.ordinal,
@@ -385,7 +364,7 @@ fn clean(value: &str, limit: usize, multiline: bool) -> bool {
 /// Redacts, filters and cuts `value` until another pass changes nothing, so
 /// the send-time checks accept it. A cut falls between words where it can,
 /// so it never leaves half a secret for the next pass to grow back.
-fn settled(value: &str, limit: usize, multiline: bool) -> String {
+pub(super) fn settled(value: &str, limit: usize, multiline: bool) -> String {
     let mut current = value.to_owned();
     for _ in 0..4 {
         let next = clip_words(
@@ -432,7 +411,7 @@ fn selector(candidate: &str) -> Option<String> {
 
 /// The contract box: the part of the element inside the document, whose
 /// origin cannot be negative, at least 1 px each way.
-fn element_box(rect: Rect) -> Result<ElementBox, String> {
+pub(super) fn element_box(rect: Rect) -> Result<ElementBox, String> {
     let whole = outline(rect)?;
     let inside = |start: i64, extent: i64| {
         let from = start.clamp(0, COORDINATE_MAX);

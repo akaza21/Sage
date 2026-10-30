@@ -82,6 +82,13 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
           { ...rule, id: "below", measure: "below", other: ".outline" },
           { ...rule, id: "hint", measure: "placeholder", expected: "Add" },
           { ...rule, id: "round", measure: "border-radius", expected: "22px" },
+          {
+            ...rule,
+            id: "dashed",
+            measure: "border-top-style",
+            expected: "dashed",
+          },
+          { ...rule, id: "thin", measure: "border-top-width", expected: "1px" },
         ],
       },
       references,

@@ -630,6 +630,32 @@ describe("ACP action controller", () => {
     );
   });
 
+  it("sends an Annotate area with the user's prompt without image egress", async () => {
+    const test = harness(page("5", session("hot", "1", null)));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("6", session("hot", "1", null)),
+    });
+    const attachedContext = [
+      {
+        kind: "browserElement" as const,
+        target: "area" as const,
+        ordinal: 1,
+        tabId: "browser-1",
+        url: "https://example.com/",
+        title: "Example",
+        text: "heading: Example",
+        box: { x: 10, y: 20, width: 300, height: 200 },
+        comment: "Simplify this area",
+      },
+    ];
+    await expect(
+      test.controller.submit("Fix", attachedContext, bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "Fix", attachedContext }),
+    );
+  });
+
   it("activates a cold durable session at nextRuntimeEpoch before sending", async () => {
     const test = harness(page("5", session("cold", null, "4")));
     const active = page("6", session("hot", "4", null));

@@ -231,6 +231,7 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                         tabs.source_changed(&source_label, &source.to_string())
                                     },
                                 ) {
+                                    super::annotate::badges::clear(&source_app, &source_label);
                                     if let Ok((url, revision)) = source_app
                                         .state::<BrowserState>()
                                         .settled_tab(&source_label)

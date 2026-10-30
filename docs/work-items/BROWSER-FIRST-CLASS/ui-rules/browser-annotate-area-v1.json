@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-annotate.html?area=1",
+  "viewport": { "width": 1872, "height": 1080 },
+  "rules": [
+    {
+      "id": "area-badge-beside-comment",
+      "ref": "reference/64",
+      "source": "Reference/64 places the area badge just left of the comment pill at the lower edge of the selection",
+      "selector": ".browser-annotate__badge",
+      "measure": "left-of",
+      "other": ".browser-annotate__pill"
+    },
+    {
+      "id": "area-comment-at-lower-edge",
+      "ref": "reference/64",
+      "source": "Reference/64 comment pill y988-1032 aligns with the selection's lower edge near y1031",
+      "selector": ".browser-annotate__pill",
+      "measure": "gap-below",
+      "other": ".browser-annotate__outline--area",
+      "expected": -44,
+      "tolerancePx": 2
+    },
+    {
+      "id": "area-outline-dashed",
+      "ref": "reference/64",
+      "source": "M1d reference/64 outlines the dragged area with a dashed blue rectangle, unlike the solid element outline",
+      "selector": ".browser-annotate__outline--area",
+      "measure": "border-top-style",
+      "expected": "dashed"
+    },
+    {
+      "id": "area-outline-thin",
+      "ref": "reference/64",
+      "source": "M1d reference/64 area edge at x1371 is one CSS pixel at the captured scale",
+      "selector": ".browser-annotate__outline--area",
+      "measure": "border-top-width",
+      "expected": "1px"
+    },
+    {
+      "id": "area-badge-size",
+      "ref": "reference/64",
+      "source": "M1d reference/64 uses the same numbered blue comment badge as the existing element pick",
+      "selector": ".browser-annotate__badge",
+      "measure": "height",
+      "expected": 24,
+      "tolerancePx": 2
+    },
+    {
+      "id": "area-comment-pill-height",
+      "ref": "reference/64",
+      "source": "M1d reference/64 comment pill y988-1032 retains the existing 44px pill",
+      "selector": ".browser-annotate__pill",
+      "measure": "height",
+      "expected": 44,
+      "tolerancePx": 1
+    },
+    {
+      "id": "area-comment-pill-fill",
+      "ref": "reference/64",
+      "source": "M1d reference/64 retains the element-pick dark comment pill",
+      "selector": ".browser-annotate__pill",
+      "measure": "background-color",
+      "expected": "rgb(45, 45, 45)"
+    }
+  ]
+}

@@ -26,6 +26,37 @@ fn contexts(values: Vec<serde_json::Value>) -> AttachedContexts {
 }
 
 #[test]
+fn browser_area_uses_shared_admission_and_keeps_the_user_prompt_durable() {
+    let mut area = element(1);
+    area["target"] = serde_json::json!("area");
+    for key in ["selector", "role", "name"] {
+        area.as_object_mut().unwrap().remove(key);
+    }
+    area["text"] = serde_json::json!("heading: Cart\nbutton: Place order");
+    let prompt = Prompt::new("prompt", "Simplify this area").unwrap();
+    let rendered = effective_prompt(&prompt, &contexts(vec![area.clone()])).unwrap();
+    assert!(
+        rendered
+            .as_str()
+            .starts_with("Simplify this area\n\nBrowser elements")
+    );
+    assert!(rendered.as_str().contains("Element 1 (area)"));
+    assert!(
+        rendered
+            .as_str()
+            .contains("heading: Cart\\nbutton: Place order")
+    );
+    assert!(!rendered.as_str().contains("Selector:"));
+    area["text"] = serde_json::json!("Bearer sk-abcdefghijklmnopqrstuvwxyz0123456789");
+    let forged: AttachedContext = serde_json::from_value(area).unwrap();
+    let forged = AttachedContexts::new("attachedContext", vec![forged]).unwrap();
+    assert_eq!(
+        admit_browser_elements(&forged),
+        Err(BrowserElementRefusal::Unredacted)
+    );
+}
+
+#[test]
 fn browser_element_renders_the_contract_block_and_keeps_the_user_text_durable() {
     let mut second = element(2);
     second["comment"] = serde_json::json!("");

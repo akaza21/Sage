@@ -27,6 +27,17 @@ use super::{
 };
 use crate::browser::BrowserState;
 
+pub(crate) fn set_annotation_badges(
+    webview: &Webview,
+    annotations: &[crate::browser::annotate::element::BrowserElement],
+    url: &str,
+    paused: bool,
+) -> Result<(), String> {
+    user_port(webview)
+        .annotation_badges(annotations, url, paused)
+        .map_err(|error| format!("{error:?}"))
+}
+
 pub(crate) fn capture_user_png(
     state: &BrowserState,
     tab_id: &str,
@@ -90,10 +101,52 @@ pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFai
         issued: Arc::new(AtomicBool::new(false)),
     });
     if on {
-        port.start_inspect()
+        port.stop_inspect()?;
+        port.annotation_input_state("resume")
     } else {
-        port.stop_inspect()
+        port.annotation_input_state("stop").and(port.stop_inspect())
     }
+}
+
+pub(super) fn user_port(webview: &Webview) -> NativePort {
+    NativePort::new(NativeTransport {
+        webview: webview.clone(),
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    })
+}
+
+pub(crate) fn annotation_node(
+    webview: &Webview,
+    input: super::annotation_input::AnnotationInput,
+) -> Result<u64, String> {
+    user_port(webview)
+        .annotation_node(input)
+        .map_err(|_| "browser element unavailable".into())
+}
+
+pub(crate) fn capture_annotation_area(
+    webview: &Webview,
+    rect: crate::browser::annotate::element::Rect,
+) -> Result<
+    (
+        crate::browser::annotate::area::AreaPage,
+        crate::browser::annotate::element::Rect,
+        crate::browser::annotate::selection::Frame,
+        bool,
+    ),
+    String,
+> {
+    use super::annotation_input::{AnnotationInput, InputTarget};
+    user_port(webview)
+        .capture_area(AnnotationInput {
+            target: InputTarget::Area,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        })
+        .map_err(|_| "browser area unavailable".into())
 }
 
 /// Reads the element the user clicked in Annotate and freezes its frame.

@@ -19,7 +19,13 @@ pub(crate) async fn browser_control(
     action: String,
     comment: Option<String>,
     ordinal: Option<u8>,
+    annotations: Option<Vec<super::super::annotate::element::BrowserElement>>,
 ) -> Result<Option<serde_json::Value>, String> {
+    if action == "annotateBadges" {
+        return super::super::annotate::badges::set(app, tab_id, annotations.unwrap_or_default())
+            .await
+            .map(|()| None);
+    }
     if let Some(change) = match action.as_str() {
         "agentControl" => Some(None),
         "agentTakeOver" => Some(Some(true)),

@@ -38,6 +38,11 @@
           scale: 1,
         },
       };
+      if (new URLSearchParams(location.search).has("area")) {
+        selection.target = "area";
+        selection.label = "area";
+        selection.box = { x: 541, y: 1645, width: 258, height: 256 };
+      }
       createRoot(document.querySelector(".browser-surface__frame")).render(
         React.createElement(BrowserAnnotatePopover, {
           selection,

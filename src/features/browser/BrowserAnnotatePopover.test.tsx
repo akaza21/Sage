@@ -157,6 +157,66 @@ it("numbers the badge even when no composer gives the number", () => {
   );
 });
 
+it("uses a dashed area outline and only requests a masked picture after opt-in", async () => {
+  const attach = vi.fn(() => true);
+  unregister = registerBrowserElementSink({ nextOrdinal: () => 2, attach });
+  const area = {
+    kind: "browserElement",
+    target: "area",
+    ordinal: 2,
+    tabId: "browser-1",
+    url: item.url,
+    title: item.title,
+    text: item.text,
+    box: item.box,
+    comment: "Simplify",
+  };
+  invokeNative.mockImplementation(
+    async (_: string, args: { action: string }) =>
+      args.action === "annotateFrame"
+        ? frame
+        : args.action === "annotateCrop"
+          ? { width: 256, height: 36, pngBase64: "iVBORw0KGgo=" }
+          : area,
+  );
+  const { container } = render(
+    <BrowserAnnotateComment
+      tabId="browser-1"
+      selection={{ ...selection, target: "area", label: "area" }}
+    />,
+  );
+  expect(
+    container.querySelector(".browser-annotate__outline--area"),
+  ).not.toBeNull();
+  expect(
+    container.querySelector("form .browser-annotate__badge--area"),
+  ).toHaveTextContent("2");
+  await act(async () => undefined);
+  expect(invokeNative).not.toHaveBeenCalledWith(
+    "browser_control",
+    expect.objectContaining({ action: "annotateCrop" }),
+  );
+  const picture = screen.getByRole("checkbox", {
+    name: "Include a picture of this area",
+  });
+  expect(picture).not.toBeChecked();
+  fireEvent.click(picture);
+  expect(
+    await screen.findByRole("img", { name: "Masked area preview" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Pictures can include secrets shown on the page"),
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), {
+    target: { value: "Simplify" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+  await waitFor(() => expect(attach).toHaveBeenCalledWith(area));
+  expect(attach).toHaveBeenCalledWith(
+    expect.not.objectContaining({ crop: expect.anything() }),
+  );
+});
+
 it("will not confirm when blocked or over 4 KB, and says why", () => {
   const { unmount } = popover({ blocked: "No composer" });
   const tick = screen.getByRole("button", { name: "Add comment" });

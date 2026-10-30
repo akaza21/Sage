@@ -36,14 +36,14 @@ export interface BrowserPageContext {
 /** Contract browser-element-context-v1; Rust built and redacted it. */
 export interface BrowserElementContext {
   kind: "browserElement";
-  target: "element";
+  target: "element" | "area";
   ordinal: number;
   tabId: string;
   url: string;
   title: string;
-  selector: string;
-  role: string;
-  name: string;
+  selector?: string;
+  role?: string;
+  name?: string;
   text: string;
   box: { x: number; y: number; width: number; height: number };
   comment: string;
@@ -95,6 +95,7 @@ export function parseBrowserPageContext(
 
 const ELEMENT_KEYS =
   "box,comment,kind,name,ordinal,role,selector,tabId,target,text,title,url";
+const AREA_KEYS = "box,comment,kind,ordinal,tabId,target,text,title,url";
 
 const between = (value: unknown, low: number, high: number) =>
   Number.isInteger(value) && Number(value) >= low && Number(value) <= high;
@@ -106,8 +107,14 @@ export function parseBrowserElementContext(
   if (!isRecord(value) || value.kind !== "browserElement") return null;
   const { box, url, tabId, title } = value;
   const valid =
-    Object.keys(value).sort().join() === ELEMENT_KEYS &&
-    value.target === "element" &&
+    (value.target === "area"
+      ? Object.keys(value).sort().join() === AREA_KEYS
+      : value.target === "element" &&
+        Object.keys(value).sort().join() === ELEMENT_KEYS &&
+        boundedText(value.selector, 512) &&
+        value.selector !== "" &&
+        /^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(String(value.role)) &&
+        boundedText(value.name, 256)) &&
     between(value.ordinal, 1, MAX_ELEMENT_ORDINAL) &&
     parseBrowserPageContext({
       kind: "browserPage",
@@ -116,10 +123,6 @@ export function parseBrowserElementContext(
       title,
       text: "",
     }) &&
-    boundedText(value.selector, 512) &&
-    value.selector !== "" &&
-    /^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(String(value.role)) &&
-    boundedText(value.name, 256) &&
     boundedText(value.text, 1024, "\n") &&
     boundedText(value.comment, MAX_ELEMENT_COMMENT_BYTES, "\n\t") &&
     isRecord(box) &&

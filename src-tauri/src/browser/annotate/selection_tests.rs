@@ -41,10 +41,13 @@ fn selection_of(label: &str, rect: Rect) -> Selection {
         viewport,
     };
     Selection {
+        masks: Vec::new(),
+        crop_coverage: true,
         picked: element::pick(&page, "button", "Press me", label, "https://example.com/").unwrap(),
         viewport,
         frame: Frame {
             jpeg_base64: "/9j/AAAA".into(),
+            png_base64: None,
             width: 1265,
             height: 720,
         },
@@ -64,6 +67,28 @@ fn picked(overlay: &Overlay, label: &str) -> AnnotateMode {
 }
 
 #[test]
+fn area_selection_confirms_through_the_same_comment_and_escape_flow() {
+    let overlay = Overlay::default();
+    let mut mode = annotating(&overlay, "browser-1");
+    let mut area = selection("browser-1");
+    area.picked.selector.clear();
+    area.picked.role.clear();
+    area.picked.name.clear();
+    let (changes, result) = mode.select_with(&overlay, "browser-1", || Ok(area));
+    result.unwrap();
+    let change = serde_json::to_value(&changes[0]).unwrap();
+    assert_eq!(change["selection"]["target"], "area");
+    let (_, item) = mode.confirm("browser-1", 3, "Simplify this area");
+    assert_eq!(
+        serde_json::to_value(item.unwrap()).unwrap()["target"],
+        "area"
+    );
+    mode.escape(&overlay, "browser-1").1.unwrap();
+    assert!(mode.pending.is_none());
+    assert_eq!(mode.tab.as_deref(), Some("browser-1"));
+}
+
+#[test]
 fn a_click_while_annotating_picks_the_element_and_announces_where_it_is() {
     let overlay = Overlay::default();
     let mut mode = annotating(&overlay, "browser-1");
@@ -75,6 +100,7 @@ fn a_click_while_annotating_picks_the_element_and_announces_where_it_is() {
             "tabId": "browser-1",
             "active": true,
             "selection": {
+                "target": "element",
                 "label": "Press me",
                 "box": {"x": 8, "y": 140, "width": 80, "height": 24},
                 "viewport": {

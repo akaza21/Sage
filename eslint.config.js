@@ -48,6 +48,9 @@ export default tseslint.config(
     files: [
       "tools/footprint-control/dist/**/*.js",
       "tools/footprint-control/frontend/**/*.js",
+      "src/features/browser/annotateDrag.js",
+      "src/features/browser/annotationBadges.js",
+      "src/features/browser/readAnnotateArea.js",
     ],
     languageOptions: {
       globals: globals.browser,
