@@ -573,11 +573,13 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await openScenario(page, "agent-single", "agent");
     const header = page.locator(".agent-task-header");
 
-    // C1 — different. Sage draws `Project / Task`; the target draws three
-    // segments. Pinned at two so adding a truthful third fails here first.
-    await expect(header.locator('[aria-label="Chat location"]')).toHaveCount(1);
+    // C1 — CP-48 (Codex 67): a folder icon and the task title, with no
+    // `Project /` segment; the project name lives in the header "…" menu.
+    const location = header.locator('[aria-label="Chat location"]');
+    await expect(location).toHaveCount(1);
+    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
-      1,
+      0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
@@ -608,9 +610,15 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     ).toHaveCount(0);
     const actions = header.getByRole("button", { name: /^Chat actions for / });
     await actions.click();
+    const projectActions = page.getByRole("menuitem", {
+      name: /^More chat actions in /,
+    });
+    await projectActions.click();
     await expect(
       page.getByRole("menuitem", { name: "Hand off chat", exact: true }),
     ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(projectActions).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(actions).toBeFocused();
     await expect(page.getByRole("tablist", { name: "Chat tabs" })).toHaveCount(

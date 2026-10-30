@@ -10,6 +10,8 @@ export function AgentTaskStatus({
 }) {
   const label = snapshot?.statusLabel ?? "Idle";
   const tone = snapshot?.statusTone ?? "idle";
+  const StatusIcon =
+    tone === "waiting" ? AlertTriangle : tone === "failed" ? CircleAlert : null;
   return (
     <>
       <span
@@ -22,15 +24,8 @@ export function AgentTaskStatus({
         {tone === "working" ? (
           <span className="agent-chat-chip__spinner" aria-hidden="true" />
         ) : null}
-        {tone === "waiting" ? (
-          <AlertTriangle
-            className="agent-task-header__status-icon"
-            size={12}
-            aria-hidden="true"
-          />
-        ) : null}
-        {tone === "failed" ? (
-          <CircleAlert
+        {StatusIcon ? (
+          <StatusIcon
             className="agent-task-header__status-icon"
             size={12}
             aria-hidden="true"
@@ -58,3 +53,5 @@ export function AgentTaskStatus({
     </>
   );
 }
+
+// The header's inline rename, opened by its pencil or the chat actions.

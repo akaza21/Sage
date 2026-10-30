@@ -109,7 +109,6 @@ export function ChatHandoffDialog({
         <label className="handoff-dialog__field">
           <span>Handoff prompt</span>
           <textarea
-            aria-label="Handoff prompt"
             autoFocus
             disabled={locked}
             maxLength={MAX_HANDOFF_DRAFT_BYTES}

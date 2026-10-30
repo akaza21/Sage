@@ -177,11 +177,13 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
     );
   });
   const pane = page.locator(".agent-chat-pane");
+  // Codex s4/f0244: one run keeps one row, still working while any child is.
   await expect(
     pane.getByText("Reviewer, Builder and Tester started working"),
   ).toBeVisible();
-  await expect(pane.getByText("Builder and Tester finished")).toBeVisible();
-  await expect(pane.locator(".acp-subagent-row__glyph")).toHaveCount(5);
+  await expect(pane.getByText("Builder and Tester finished")).toHaveCount(0);
+  await expect(pane.locator(".acp-subagent-row")).toHaveCount(1);
+  await expect(pane.locator(".acp-subagent-row__glyph")).toHaveCount(3);
   await expect(pane.locator(".chat-transcript-work__groups")).toHaveScreenshot(
     "cp16-subagent-rows.png",
   );

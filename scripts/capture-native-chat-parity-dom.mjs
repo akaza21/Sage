@@ -16,8 +16,10 @@ export const PARITY_PANE_SELECTORS = Object.freeze({
   findBar: '.chat-find[role="search"]',
   toolResult: ".acp-tool-result .acp-code-block",
   toolError: '.acp-tool-error[role="alert"]',
-  webSearch: '[data-activity-kind="webSearch"]',
-  mixedGroup: '.acp-tool-rollup[data-activity-kind="mixed"]',
+  // Captured opened, as s5/f0405 and s2/f0015 show them.
+  webSearch: '.acp-tool-rollup[data-activity-kind="webSearch"][open]',
+  mixedGroup:
+    '.acp-tool-rollup[data-activity-kind="mixed"][open] > .acp-tool-rollup__items',
   approvalPrompt: '.acp-permission-prompt[aria-label="Permission request"]',
   composerInput: 'textarea[aria-label="Message agent"]',
   subagentName: ".acp-subagent-row .acp-subagent-name",
@@ -285,8 +287,14 @@ export function parityStepsFor(state) {
       { op: "open", selector: WORKED },
       { op: "open", selector: LAST + ".acp-tool-rollup > summary" },
     ],
-    "tool-web-search": [{ op: "open", selector: WORKED }],
-    "tool-mixed-group": [{ op: "open", selector: WORKED }],
+    "tool-web-search": [
+      { op: "open", selector: WORKED },
+      { op: "open", selector: LAST + ".acp-tool-rollup > summary" },
+    ],
+    "tool-mixed-group": [
+      { op: "open", selector: WORKED },
+      { op: "open", selector: LAST + ".acp-tool-rollup > summary" },
+    ],
     "subagents-name-hover": [
       { op: "open", selector: WORKED },
       {
@@ -295,10 +303,11 @@ export function parityStepsFor(state) {
       },
     ],
     "subagents-tab-active-done": [
+      // One row names both children while one still works (s4/f0244); a
+      // click admits one match, so open the first named child.
       {
         op: "click",
-        selector:
-          LAST + '.acp-subagent-row[data-state="finished"] .acp-subagent-name',
+        selector: LAST + ".acp-subagent-row .acp-subagent-name:first-of-type",
       },
       {
         op: "click",

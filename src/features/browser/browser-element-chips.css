@@ -1,0 +1,164 @@
+/* Annotate's composer chips and their hover card (Codex ref 63). */
+.browser-element-chip {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--color-status-foreground);
+}
+
+/* Ref 63: 28 px tall, 8 px corners, a 1 px ring a step above the composer. */
+.browser-element-chip__trigger {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--color-panel-raised-hover);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.browser-element-chip__trigger svg {
+  flex: none;
+  color: var(--chat-annotation-muted);
+}
+
+.browser-element-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hover or focus reveals the trailing ✕ over a fade of the label. */
+.browser-element-chip__remove {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-circle);
+  background: var(--color-panel-raised-hover);
+  color: inherit;
+  opacity: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.browser-element-chip:is(:hover, :focus-within) .browser-element-chip__remove {
+  opacity: 1;
+}
+
+.browser-element-chip:is(:hover, :focus-within) .browser-element-chip__label {
+  mask-image: linear-gradient(
+    to right,
+    currentColor calc(100% - 24px),
+    transparent calc(100% - 12px)
+  );
+}
+
+.browser-element-card {
+  position: fixed;
+  z-index: 85;
+  max-height: 50vh;
+  padding: 12px 16px;
+  overflow: auto;
+  border-radius: var(--radius-annotation-card);
+  background: var(--color-panel-raised);
+  box-shadow: var(--chat-annotation-shadow);
+  color: var(--color-status-foreground);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.browser-element-card__entry + .browser-element-card__entry {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-panel-raised-hover);
+}
+
+.browser-element-card__entry header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browser-element-card__entry header span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The element's role in a tag, like Codex's `img` pill. */
+.browser-element-card code {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--color-panel-raised-hover);
+  border-radius: var(--radius-sm);
+  color: var(--chat-annotation-muted);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.browser-element-card button {
+  display: grid;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--chat-annotation-icon);
+  cursor: pointer;
+}
+
+.browser-element-card button:hover,
+.browser-element-chip__remove:hover {
+  color: var(--color-status-foreground);
+}
+
+.browser-element-chip button:focus-visible,
+.browser-element-card button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline-offset: -1px;
+}
+
+.browser-element-card p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+.browser-element-card .browser-element-card__page {
+  overflow: hidden;
+  color: var(--chat-annotation-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Above a sent turn: read-only, at the bubble's right edge like the sent
+   annotation chip. */
+.browser-sent-context {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: end;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 0 0 calc(8px - var(--space-3));
+  padding: 0;
+  list-style: none;
+}

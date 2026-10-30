@@ -165,6 +165,33 @@ test("Codex s4/f0244: the Subagents tab lists Active · 1 and Done · 1", async 
     ],
     [],
   );
+  // Codex s4/f0244: one row names both children while one still works.
+  const row = page.locator(".acp-subagent-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toHaveText("Count math and Count readme started working");
+  // Each child is its 14 px coloured shape, 8 px apart (f0485), not a letter.
+  const glyphs = await row
+    .locator(".acp-subagent-row__glyph")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        return {
+          text: node.textContent,
+          width: box.width,
+          height: box.height,
+          left: box.left,
+          right: box.right,
+          clip: getComputedStyle(node).clipPath,
+        };
+      }),
+    );
+  expect(glyphs).toHaveLength(2);
+  for (const glyph of glyphs) {
+    expect([glyph.text, glyph.width, glyph.height]).toEqual(["", 14, 14]);
+    expect(glyph.clip).toMatch(/^polygon\(/);
+  }
+  expect(glyphs[1].left - glyphs[0].right).toBe(8);
+  expect(glyphs[0].clip).not.toBe(glyphs[1].clip);
   // Codex s4: the list is reached from a child view's back arrow; the tab
   // exists only once a child has been opened.
   await page
@@ -189,11 +216,13 @@ test("Codex s4/f0244: the Subagents tab lists Active · 1 and Done · 1", async 
   const chat = await page.locator(".agent-chat-panes").boundingBox();
   const pane = await rightPane.boundingBox();
   expect(pane!.width / (pane!.width + chat!.width)).toBeCloseTo(0.57, 1);
-  // The label's text, not its stretched box, starts just after the icon.
+  // The label's text, not its stretched box, starts just after the person
+  // icon (f0244), which is drawn in CSS rather than shipped as an SVG.
   const gap = await rightPane
     .getByRole("tab", { name: "Subagents" })
     .evaluate((tab) => {
-      const icon = tab.querySelector("svg")!.getBoundingClientRect();
+      if (tab.querySelector("svg")) return Number.NaN;
+      const icon = tab.querySelector(".tab__person")!.getBoundingClientRect();
       const range = document.createRange();
       range.selectNodeContents(tab.querySelector(".tab__basename")!);
       return range.getBoundingClientRect().left - icon.right;
@@ -236,6 +265,22 @@ test("Codex s4/f0487: clicking a grouped name opens that child's header", async 
   // The browser fixture serves no child transcript, so the body shows the
   // unavailable notice; capture only the Codex s4/f0487 header row.
   await expect(header).toHaveScreenshot("subagent-child-header.png");
+  // A child transcript has no author row (f0485): its meta header is hidden.
+  const meta = await rightPane
+    .locator(".subagent-surface")
+    .evaluate((surface) => {
+      const transcript = document.createElement("div");
+      transcript.className = "subagent-surface__transcript";
+      transcript.innerHTML =
+        '<article class="acp-message acp-message--assistant"><header class="acp-message__meta">Agent</header></article>';
+      surface.append(transcript);
+      const display = getComputedStyle(
+        transcript.querySelector(".acp-message__meta")!,
+      ).display;
+      transcript.remove();
+      return display;
+    });
+  expect(meta).toBe("none");
   await header.getByRole("button", { name: "Back to subagents" }).click();
   await expect(
     rightPane.getByRole("region", { name: "Done subagents" }),

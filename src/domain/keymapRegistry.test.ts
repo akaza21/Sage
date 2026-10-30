@@ -8,6 +8,24 @@ import {
 } from "./keymapRegistry";
 import { EDITOR_EDITING_BINDINGS } from "./settingsNavigation";
 
+it.each([
+  ["agent.changes", "g", true, false],
+  ["agent.terminal", "`", false, false],
+  ["agent.files", "p", false, false],
+  ["agent.sideChat", "s", false, true],
+])(
+  "binds %s without an overlapping Agent or global chord",
+  (id, key, shiftKey, altKey) => {
+    const event = { key, shiftKey, altKey, ctrlKey: true, metaKey: false };
+    expect(
+      KEYMAP_BINDINGS.filter(
+        (binding) =>
+          binding.scope !== "Editor" && matchesKeymapChord(binding, event),
+      ).map((binding) => binding.id),
+    ).toEqual([id]);
+  },
+);
+
 it("keeps chat and editor find as distinct scoped bindings", () => {
   const event = {
     key: "f",
@@ -33,7 +51,7 @@ it("keeps chat and editor find as distinct scoped bindings", () => {
   );
 });
 
-it("reserves Quick Open for EP-08 on a chord no live binding uses", () => {
+it("reserves Quick Open for EP-08 on a chord no live Editor or Global binding uses", () => {
   const quickOpen = keymapBinding("quickOpen");
   expect(quickOpen.reservedFor).toBe("EP-08");
   const event = {
@@ -43,11 +61,20 @@ it("reserves Quick Open for EP-08 on a chord no live binding uses", () => {
     shiftKey: false,
     altKey: false,
   };
+  const matches = KEYMAP_BINDINGS.filter((binding) =>
+    matchesKeymapChord(binding, event),
+  );
   expect(
-    KEYMAP_BINDINGS.filter((binding) => matchesKeymapChord(binding, event)).map(
-      (binding) => binding.id,
-    ),
+    matches
+      .filter((binding) => binding.scope !== "Agent")
+      .map((binding) => binding.id),
   ).toEqual(["quickOpen"]);
+  // CP-48: in Agent mode only, Ctrl+P opens this Chat's Files picker (Codex 67).
+  expect(
+    matches
+      .filter((binding) => binding.scope === "Agent")
+      .map((binding) => binding.id),
+  ).toEqual(["agent.files"]);
 });
 
 it("names Option on macOS and follows a binding's macOS modifiers", () => {

@@ -74,6 +74,12 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // The browser downloads popover body loads on its first open.
+  "src/features/browser/BrowserDownloadsPanel.tsx",
+  // Annotate's composer chips and hover card load with the first element.
+  "src/features/browser/BrowserElementChips.tsx",
+  // The Agent New tab page and its chat resource picker load on first use.
+  "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
@@ -84,6 +90,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  // The stream-fade run tracker loads beside the transcript, off its path.
+  "src/features/chat/acp/streamTail.ts",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
@@ -101,6 +109,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/search/SearchSurface.tsx",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
+  "src/workbench/AgentTaskResources.tsx",
   "src/workbench/SettingsSurface.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
@@ -143,6 +152,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentRailSections.tsx",
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
+  "src/workbench/agentTaskHeaderLazy.ts",
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/agentChatRail.ts",
   "src/workbench/agentRailStatusView.ts",
@@ -550,6 +560,18 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    const resources = "src/workbench/AgentTaskResources.tsx";
+    const resourcesFile = groupedGraph.moduleFiles.get(resources);
+    expect(groupedGraph.chunkNames.get(resourcesFile!)).toBe(
+      "AgentTaskResources",
+    );
+    expect(resourcesFile).not.toBe(agentFile);
+    expect(resourcesFile).not.toBe(sharedFile);
+    for (const facade of [workbench, agent]) {
+      expect(closureForModule(groupedGraph, facade)).not.toContain(
+        path.join(root, resources).split(path.sep).join("/"),
+      );
+    }
     // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",
@@ -771,6 +793,7 @@ describe("desktop-native chunk topology", () => {
       "/src/app/agentDiffLoad.ts",
       "/src/features/diff/snapshotDiff.ts",
       "/src/workbench/AgentWorkbenchBody.tsx",
+      "/src/workbench/AgentTaskResources.tsx",
       "/src/workbench/SettingsSurface.tsx",
       "/src/workbench/SourceControlView.tsx",
       "/src/workbench/Workbench.tsx",

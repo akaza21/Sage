@@ -44,7 +44,15 @@ pub(crate) enum StoreMutation {
     ActivateSession(ActivateSessionCommand),
     AbortActivation(AbortActivationCommand),
     CompleteActivation(CompleteActivationCommand),
+    #[cfg_attr(
+        not(all(windows, feature = "acp-fixture")),
+        allow(
+            dead_code,
+            reason = "only the Windows fixture lane fails activations so far"
+        )
+    )]
     FailActivation(FailActivationCommand),
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     TurnTerminal {
         command: TurnMutationCommand,
         terminal: TurnState,
@@ -58,7 +66,9 @@ pub(crate) enum StoreMutation {
         now_millis: i64,
     },
     RequestState(RequestStateCommand),
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     ItemIngress(ItemIngressCommand),
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     ActivityIngress(ActivityIngressCommand),
     AdapterInboundBatch(AdapterInboundBatchCommand),
     RecoverAfterRestart {

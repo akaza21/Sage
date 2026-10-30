@@ -14,7 +14,6 @@ use crate::acp::runtime::process_driver::{
     activation_parts::{
         ActivationDriverHandoff, ActivationProjectionRecoveryHandoff, ActivationRebindFailure,
         ActivationZeroProcessHandoff, CompletedActivationDriverParts,
-        RecoveryActivationDriverParts,
     },
 };
 
@@ -79,52 +78,7 @@ where
         }
     }
 
-    pub(crate) fn try_into_recovery_parts(
-        self,
-    ) -> ActivationDriverHandoff<RecoveryActivationDriverParts<A, J, R, T, C>, Self> {
-        if self.state != State::ProjectionRecovery {
-            return Err(Box::new(ActivationRebindFailure {
-                driver: self,
-                error: ActivationDriverError::NotReusable,
-            }));
-        }
-        let Self {
-            pump,
-            transport,
-            control,
-            owner,
-            clock,
-            first_delivery_unknown,
-            ..
-        } = self;
-        match pump.try_into_recovery_parts() {
-            Ok(parts) => Ok(RecoveryActivationDriverParts {
-                parts,
-                transport,
-                control,
-                owner,
-                clock,
-                first_delivery_unknown,
-            }),
-            Err(error) => {
-                let (pump, _) = *error;
-                Err(Box::new(ActivationRebindFailure {
-                    driver: Self {
-                        pump,
-                        transport,
-                        control,
-                        owner,
-                        clock,
-                        state: State::ProjectionRecovery,
-                        first_delivery_unknown,
-                        pending_exit: None,
-                    },
-                    error: ActivationDriverError::NotReusable,
-                }))
-            }
-        }
-    }
-
+    #[cfg(test)]
     pub(crate) fn take_zero_process_handoff(
         self,
     ) -> ActivationDriverHandoff<ActivationZeroProcessHandoff<A, J, R, C::ZeroProof>, Self> {

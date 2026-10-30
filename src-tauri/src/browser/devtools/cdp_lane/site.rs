@@ -95,6 +95,7 @@ fn respond(mut stream: TcpStream, stop: &AtomicBool) {
 fn page(path: &str) -> Option<String> {
     let body = match path {
         "/form.html" => include_str!("../../../../testdata/browser-site/form.html"),
+        "/annotate.html" => include_str!("../../../../testdata/browser-site/annotate.html"),
         "/injection.html" => include_str!("../../../../testdata/browser-site/injection.html"),
         "/shared-old.html" => include_str!("../../../../testdata/browser-site/shared-old.html"),
         "/shared-new.html" => include_str!("../../../../testdata/browser-site/shared-new.html"),

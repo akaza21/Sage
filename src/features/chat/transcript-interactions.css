@@ -16,16 +16,43 @@
   z-index: 81;
 }
 
+.chat-selection-popover,
+.annotation-comment,
+.annotation-card,
+.transcript-selection-status {
+  background: var(--color-panel-raised);
+  color: var(--color-status-foreground);
+}
+
+.annotation-comment,
+.annotation-card {
+  box-shadow: var(--chat-annotation-shadow);
+}
+
+.transcript-annotation-badge,
+.annotation-comment button,
+.annotation-chip__remove,
+.annotation-card__actions button,
+.side-chat-tab__close {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.annotation-comment button,
+.annotation-chip__remove,
+.side-chat-tab__icon,
+.side-chat-tab__close {
+  display: grid;
+  place-items: center;
+}
+
 .chat-selection-popover {
   display: flex;
   height: 28px;
-  box-sizing: border-box;
-  padding: 0;
   overflow: hidden;
   border: 1px solid var(--chat-selection-border);
   border-radius: var(--radius-md);
-  background: var(--color-panel-raised);
-  color: var(--color-status-foreground);
 }
 
 .chat-selection-popover button {
@@ -34,8 +61,6 @@
   padding: 0 7px;
   border: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
   font-size: 13px;
   white-space: nowrap;
   cursor: pointer;
@@ -62,19 +87,15 @@
 .transcript-annotation-badge {
   width: 24px;
   height: 24px;
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-annotation-badge);
   background: var(--chat-annotation-accent);
   color: var(--color-status-foreground);
-  font: inherit;
   font-size: 12px;
   font-weight: 600;
   line-height: 24px;
   box-shadow:
     inset 0 0 0 1px var(--chat-annotation-badge-rim),
     0 0 0 1px var(--color-canvas);
-  cursor: pointer;
 }
 
 .annotation-comment {
@@ -82,11 +103,8 @@
   align-items: center;
   gap: 8px;
   height: 44px;
-  box-sizing: border-box;
   padding: 0 8px 0 16px;
   border-radius: var(--radius-annotation-comment);
-  background: var(--color-panel-raised);
-  box-shadow: var(--chat-annotation-shadow);
 }
 
 .annotation-comment input {
@@ -96,8 +114,6 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--color-status-foreground);
-  font: inherit;
   font-size: 13px;
 }
 
@@ -106,27 +122,12 @@
 }
 
 .annotation-comment button {
-  display: grid;
   flex: 0 0 auto;
-  place-items: center;
   width: 24px;
   height: 24px;
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-circle);
   background: var(--color-status-foreground);
   color: var(--color-panel-raised);
-  cursor: pointer;
-}
-
-.annotation-comment svg,
-.annotation-chip__remove svg,
-.side-chat-tab__close svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .annotation-comment__error {
@@ -151,18 +152,9 @@
 }
 
 .annotation-chip__trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  box-sizing: border-box;
-  padding: 0 8px;
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-md);
   background: var(--color-panel-raised);
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: default;
@@ -173,27 +165,19 @@
   position: absolute;
   top: 50%;
   right: 6px;
-  display: grid;
-  place-items: center;
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-circle);
   background: var(--color-panel-raised-hover);
-  color: var(--color-status-foreground);
   opacity: 0;
   transform: translateY(-50%);
-  cursor: pointer;
 }
 
-.annotation-chip--draft:hover .annotation-chip__remove,
-.annotation-chip--draft:focus-within .annotation-chip__remove {
+.annotation-chip--draft:is(:hover, :focus-within) .annotation-chip__remove {
   opacity: 1;
 }
 
-.annotation-chip--draft:hover .annotation-chip__label,
-.annotation-chip--draft:focus-within .annotation-chip__label {
+.annotation-chip--draft:is(:hover, :focus-within) .annotation-chip__label {
   mask-image: linear-gradient(
     to right,
     currentColor calc(100% - 24px),
@@ -212,10 +196,11 @@
   margin-bottom: calc(8px - var(--space-3));
 }
 
+/* Codex s2/f0149: 30 px overall, a 28 px fill inside a 1 px #3e3e3e ring. */
 .annotation-chip--sent .annotation-chip__trigger {
-  height: 28px;
   padding: 0 12px;
   border: 0;
+  outline: 1px solid var(--chat-annotation-sent-edge);
   border-radius: var(--radius-annotation-sent);
 }
 
@@ -223,13 +208,9 @@
   position: fixed;
   z-index: 85;
   max-height: 50vh;
-  box-sizing: border-box;
   padding: 12px 16px;
   overflow: auto;
   border-radius: var(--radius-annotation-card);
-  background: var(--color-panel-raised);
-  box-shadow: var(--chat-annotation-shadow);
-  color: var(--color-status-foreground);
   overflow-wrap: anywhere;
 }
 
@@ -254,7 +235,6 @@
 
 .annotation-card dl {
   grid-column: 2;
-  grid-row: 1;
   margin: 0;
   padding-right: 48px;
 }
@@ -280,14 +260,12 @@
 .annotation-card__actions button {
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: 0;
   background: none;
   color: var(--chat-annotation-icon);
-  cursor: pointer;
 }
 
-.annotation-card__actions button:hover {
+.annotation-card__actions button:hover,
+.side-chat-tab__close:hover {
   color: var(--color-status-foreground);
 }
 
@@ -295,8 +273,6 @@
   margin: 0;
   padding: 8px 12px;
   border-radius: var(--radius-md);
-  background: var(--color-panel-raised);
-  color: var(--color-status-foreground);
   font-size: 12px;
   transform: translate(-50%, calc(-100% - 12px));
 }
@@ -304,9 +280,7 @@
 .side-chat-tab {
   flex: 0 1 213px;
   height: 28px;
-  box-sizing: border-box;
   padding: 0 4px 0 8px;
-  gap: 4px;
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-sm);
   background: var(--color-plane-raised);
@@ -320,29 +294,18 @@
 }
 
 .side-chat-tab__icon {
-  display: inline-grid;
   flex: 0 0 auto;
-  place-items: center;
   width: 16px;
   height: 16px;
 }
 
 .side-chat-tab__close {
-  display: grid;
   flex: 0 0 auto;
-  place-items: center;
   width: 20px;
   height: 20px;
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.side-chat-tab__close:hover {
-  color: var(--color-status-foreground);
 }
 
 .side-chat-tab__error {
@@ -374,31 +337,25 @@
 
 .side-chat-home p {
   margin: 0;
-  color: var(--color-text-primary);
   font-size: 12px;
 }
 
 .close-side-chat-dialog {
-  width: min(378px, calc(100vw - 32px));
-  box-sizing: border-box;
   padding: 16px;
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-side-chat-dialog);
-  background: var(--color-plane-raised);
   color: var(--color-status-foreground);
+  font-size: 13px;
 }
 
 /* Codex s2/f0352 rhythm: about 170 px tall with a two-line body. */
 .close-side-chat-dialog h2 {
   margin: 0 0 4px;
-  font-size: 18px;
-  font-weight: 600;
 }
 
 .close-side-chat-dialog p {
   margin: 0 0 12px;
   color: var(--color-text-muted);
-  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -406,21 +363,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
 }
 
 .close-side-chat-dialog input[type="checkbox"] {
-  /* A 14 px glyph-sized box (B4), the small icon size. */
+  /* Codex s2/f0352: a 14 px outline box, no fill, at the small icon size;
+     checked, it holds a white square. */
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
   margin: 0;
+  border: 1px solid var(--chat-dialog-checkbox-edge);
   border-radius: var(--radius-annotation-checkbox);
+  appearance: none;
+  forced-color-adjust: none;
+}
+
+.close-side-chat-dialog input:checked {
+  padding: 2px;
+  background: currentColor content-box;
 }
 
 .close-side-chat-dialog .dirty-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
   margin-top: 12px;
 }
 
@@ -430,7 +392,6 @@
   border-radius: var(--radius-md);
   background: var(--chat-dialog-cancel-fill);
   color: var(--color-status-foreground);
-  font-size: 13px;
 }
 
 .close-side-chat-dialog .dirty-dialog__actions .button--danger {
@@ -438,8 +399,7 @@
   color: var(--chat-annotation-danger);
 }
 
-.close-side-chat-dialog .button--danger:focus-visible,
-.close-side-chat-dialog .button--danger:focus {
+.close-side-chat-dialog .button--danger:is(:focus-visible, :focus) {
   /* Codex draws a 2 px accent ring on the default (focused) danger action. */
   outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
   outline-offset: 0;

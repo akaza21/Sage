@@ -30,6 +30,7 @@ export function ComposerModelControls({
   effortOption,
   disabled,
   pending,
+  readOnlyLabel,
   onSelectModel,
   onSetOption,
 }: {
@@ -49,6 +50,7 @@ export function ComposerModelControls({
   effortOption: AcpConfigOption | undefined;
   disabled: boolean;
   pending: boolean;
+  readOnlyLabel?: boolean;
   onSelectModel: (modelId: string) => void;
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
@@ -79,6 +81,7 @@ export function ComposerModelControls({
           aria-label="Model"
           aria-description={modelDescription}
           title={modelDescription}
+          data-readonly-label={(readOnlyLabel && !pending) || undefined}
           aria-controls={panelId}
           aria-haspopup="listbox"
           aria-expanded={open && available}

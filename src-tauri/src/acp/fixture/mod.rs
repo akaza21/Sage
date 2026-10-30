@@ -1,5 +1,6 @@
 #![cfg(feature = "acp-fixture")]
 
+#[cfg(any(windows, test))]
 mod adapter;
 mod cases;
 #[cfg(all(test, windows))]

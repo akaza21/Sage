@@ -262,6 +262,9 @@ export function events(harness, state) {
           status: finished ? "completed" : "inProgress",
           senderThreadId: "$SESSION",
           receiverThreadIds: [child],
+          ...(state === "child-opened"
+            ? { model: "fixture-model", reasoningEffort: "medium" }
+            : {}),
           agentsStates: {
             [child]: {
               status: finished ? "completed" : "running",
@@ -280,6 +283,7 @@ export function events(harness, state) {
               id: "fixture-child-activity-" + index,
               type: "subAgentActivity",
               agentThreadId: child,
+              ...(state === "child-opened" ? { agentPath: "Count math" } : {}),
               kind: finished ? "completed" : "started",
             },
           });

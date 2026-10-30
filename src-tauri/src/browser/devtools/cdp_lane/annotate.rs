@@ -1,17 +1,21 @@
-//! Annotate mode (M1a): Chromium's own inspect overlay outlines the element
-//! under the pointer, leaving inspect mode clears it, and the page's main
-//! world sees neither.
+//! Annotate mode (M1a, BP-H2): Chromium's own inspect overlay names the
+//! element under the pointer, Sage outlines it in thin blue in the overlay
+//! without tinting it, leaving inspect mode clears both, and the page's main
+//! world sees none of it.
 
 use std::time::{Duration, Instant};
 
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
 use super::{CdpTransport, Lane};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+/// The outline's blue, #3a83f7.
+const BLUE: [u8; 3] = [58, 131, 247];
 
 /// A test-side CDP call outside the Agent transcript.
-fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
+pub(super) fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
     let result = lane
         .capability
         .port_mut()
@@ -22,13 +26,13 @@ fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
 }
 
 /// Counts every DOM mutation and fixes the global count from here on.
-fn watch_main_world(lane: &mut Lane) {
+pub(super) fn watch_main_world(lane: &mut Lane) {
     lane.evaluate(
         "window.__mutations = 0; new MutationObserver((records) => { window.__mutations += records.length; }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true }); window.__globalsAtLoad = Object.getOwnPropertyNames(window).length; true",
     );
 }
 
-fn assert_main_world_untouched(lane: &mut Lane) {
+pub(super) fn assert_main_world_untouched(lane: &mut Lane) {
     assert_eq!(lane.evaluate("window.__mutations"), json!(0));
     assert_eq!(
         lane.evaluate("Object.getOwnPropertyNames(window).length - window.__globalsAtLoad"),
@@ -38,7 +42,7 @@ fn assert_main_world_untouched(lane: &mut Lane) {
 }
 
 /// The button's node ids and centre, read natively with DOM enabled.
-fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
+pub(super) fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
     let root = cdp(lane, "DOM.getDocument", json!({"depth": 0}));
     let node = cdp(
         lane,
@@ -59,7 +63,7 @@ fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
     )
 }
 
-fn mouse(lane: &mut Lane, kind: &str, x: f64, y: f64) {
+pub(super) fn mouse(lane: &mut Lane, kind: &str, x: f64, y: f64) {
     let mut params = json!({"type": kind, "x": x, "y": y});
     if kind != "mouseMoved" {
         params["button"] = "left".into();
@@ -77,8 +81,100 @@ fn capture(lane: &mut Lane) -> String {
         .to_owned()
 }
 
+/// A capture's RGB pixels, `width` wide.
+struct Pixels {
+    width: usize,
+    rgb: Vec<[u8; 3]>,
+}
+
+impl Pixels {
+    fn of(capture: &str) -> Self {
+        let bytes = STANDARD.decode(capture).expect("capture base64");
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+        let mut reader = decoder.read_info().expect("capture is a PNG");
+        let mut buffer = vec![0; reader.output_buffer_size()];
+        let frame = reader.next_frame(&mut buffer).expect("capture frame");
+        let stride = match frame.color_type {
+            png::ColorType::Rgb => 3,
+            png::ColorType::Rgba => 4,
+            other => panic!("unexpected capture colour type {other:?}"),
+        };
+        let rgb = buffer[..frame.buffer_size()]
+            .chunks_exact(stride)
+            .map(|pixel| [pixel[0], pixel[1], pixel[2]])
+            .collect();
+        Self {
+            width: frame.width as usize,
+            rgb,
+        }
+    }
+
+    fn at(&self, x: f64, y: f64) -> [u8; 3] {
+        self.rgb[y.floor() as usize * self.width + x.floor() as usize]
+    }
+
+    fn is_blue(&self, x: f64, y: f64) -> bool {
+        let pixel = self.at(x, y);
+        pixel
+            .iter()
+            .zip(BLUE)
+            .all(|(channel, blue)| channel.abs_diff(blue) <= 24)
+    }
+}
+
+/// The capture's pixels per CSS px.
+fn capture_scale(lane: &mut Lane, pixels: &Pixels) -> f64 {
+    let metrics = cdp(lane, "Page.getLayoutMetrics", json!({}));
+    let width = metrics["cssVisualViewport"]["clientWidth"]
+        .as_f64()
+        .expect("viewport width");
+    pixels.width as f64 / width
+}
+
+/// Asserts a thin blue outline on the edges of `border` (CSS px: left, top,
+/// right, bottom) and no tint inside it or just outside it, against `plain`.
+fn assert_outlined(hovered: &Pixels, plain: &Pixels, scale: f64, border: [f64; 4]) {
+    let [left, top, right, bottom] = border.map(|edge| edge * scale);
+    let (middle_x, middle_y) = ((left + right) / 2.0, (top + bottom) / 2.0);
+    // Each edge has blue within a device px of it, and the line is thin.
+    let edges = [
+        ("left", (left, middle_y), (1.0, 0.0)),
+        ("right", (right, middle_y), (1.0, 0.0)),
+        ("top", (middle_x, top), (0.0, 1.0)),
+        ("bottom", (middle_x, bottom), (0.0, 1.0)),
+    ];
+    for (name, (x, y), (dx, dy)) in edges {
+        let blue = (-6..=6)
+            .map(f64::from)
+            .filter(|step| hovered.is_blue(x + step * dx, y + step * dy))
+            .collect::<Vec<_>>();
+        assert!(
+            blue.iter().any(|step| step.abs() <= 1.0),
+            "{name} edge has blue on it: {blue:?}"
+        );
+        let thickness = blue.len() as f64 / scale;
+        assert!(
+            (1.0..=3.0).contains(&thickness),
+            "{name} edge is a 1-3 px line, got {thickness} px"
+        );
+    }
+    // Inside the border and a few px outside it, the page shows untinted.
+    let inset = 4.0 * scale;
+    for (x, y) in [
+        (left + inset, middle_y),
+        (right - inset, middle_y),
+        (middle_x, top + inset),
+        (middle_x, bottom - inset),
+        (left - inset, middle_y),
+        (middle_x, bottom + inset),
+    ] {
+        assert_eq!(hovered.at(x, y), plain.at(x, y), "untinted at ({x}, {y})");
+    }
+}
+
 /// Waits for an `Overlay.*` event named `method`; other events are dropped.
-fn overlay_event(lane: &mut Lane, method: &str) -> Option<Value> {
+pub(super) fn overlay_event(lane: &mut Lane, method: &str) -> Option<Value> {
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
         let events = lane.capability.port_mut().transport.take_overlay_events();
@@ -108,10 +204,31 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
     let hovered = overlay_event(&mut lane, "Overlay.nodeHighlightRequested")
         .expect("hover asks for a highlight");
     assert_eq!(hovered["nodeId"].as_u64(), Some(node));
-    assert_ne!(
-        capture(&mut lane),
-        plain,
-        "the inspect overlay draws over the hovered button"
+    // The inspect highlight itself draws nothing.
+    assert_eq!(capture(&mut lane), plain, "the inspect highlight is clear");
+    // Moving within the button raises no second event: one outline per
+    // element, not per mouse move.
+    mouse(&mut lane, "mouseMoved", x + 3.0, y);
+    assert!(overlay_event(&mut lane, "Overlay.nodeHighlightRequested").is_none());
+
+    // What `devtools/picks.rs` does with the event on WebView2.
+    let named = crate::browser::devtools::cdp_port::inspect::hovered_node(&hovered.to_string())
+        .expect("the event names the node");
+    lane.capability
+        .port_mut()
+        .outline_hovered(named)
+        .expect("outline the hovered button");
+    let quad =
+        cdp(&mut lane, "DOM.getBoxModel", json!({"nodeId": node}))["model"]["border"].clone();
+    let corner = |index: usize| quad[index].as_f64().unwrap();
+    let outlined = Pixels::of(&capture(&mut lane));
+    let unmarked = Pixels::of(&plain);
+    let scale = capture_scale(&mut lane, &unmarked);
+    assert_outlined(
+        &outlined,
+        &unmarked,
+        scale,
+        [corner(0), corner(1), corner(4), corner(5)],
     );
 
     // Inspect mode takes the click: Chromium reports the node and the page
@@ -152,6 +269,51 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
             .take_overlay_events()
             .is_empty()
     );
+}
+
+/// An inline element, such as a link in running text, gets the same outline:
+/// the case where the inspect highlight's own container outline takes the
+/// renderer down.
+#[test]
+fn an_inline_element_gets_the_outline_too() {
+    let mut lane = Lane::open("/hostile.html");
+    watch_main_world(&mut lane);
+    let plain = Pixels::of(&capture(&mut lane));
+    lane.capability.port_mut().start_inspect().unwrap();
+    lane.capability.port_mut().transport.take_overlay_events();
+    let root = cdp(&mut lane, "DOM.getDocument", json!({"depth": 0}));
+    let span = cdp(
+        &mut lane,
+        "DOM.querySelector",
+        json!({"nodeId": root["root"]["nodeId"], "selector": "#picked"}),
+    )["nodeId"]
+        .as_u64()
+        .expect("inline span");
+    let quad =
+        cdp(&mut lane, "DOM.getBoxModel", json!({"nodeId": span}))["model"]["border"].clone();
+    let corner = |index: usize| quad[index].as_f64().unwrap();
+    let border = [corner(0), corner(1), corner(4), corner(5)];
+    mouse(
+        &mut lane,
+        "mouseMoved",
+        border[0] + 2.0,
+        (border[1] + border[3]) / 2.0,
+    );
+    let hovered = overlay_event(&mut lane, "Overlay.nodeHighlightRequested")
+        .expect("hover asks for a highlight");
+    assert_eq!(hovered["nodeId"].as_u64(), Some(span));
+    lane.capability.port_mut().outline_hovered(span).unwrap();
+    let outlined = Pixels::of(&capture(&mut lane));
+    let scale = capture_scale(&mut lane, &plain);
+    assert_outlined(&outlined, &plain, scale, border);
+
+    lane.capability.port_mut().stop_inspect().unwrap();
+    assert_eq!(
+        Pixels::of(&capture(&mut lane)).rgb,
+        plain.rgb,
+        "leaving clears the outline"
+    );
+    assert_main_world_untouched(&mut lane);
 }
 
 /// Annotate and the Agent's act highlight share Chromium's one overlay. An

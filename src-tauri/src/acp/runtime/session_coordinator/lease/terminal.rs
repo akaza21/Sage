@@ -27,6 +27,7 @@ impl SessionTreeLease {
         Ok(mutation)
     }
 
+    #[cfg(test)]
     pub(crate) async fn finalize_close_after_zero_process(
         &mut self,
         command: FinalizeCloseCommand,

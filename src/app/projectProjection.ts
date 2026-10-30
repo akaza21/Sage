@@ -104,3 +104,5 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     sending: false,
   };
 }
+
+export { errorMessage as projectErrorMessage } from "../domain/errors";

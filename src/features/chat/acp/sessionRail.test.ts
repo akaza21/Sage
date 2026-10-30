@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  ackChatUnread,
+  clearUnreadAcks,
+  seenChatUnreadFingerprint,
+} from "./chatUnread";
 
 import {
   MAX_SESSION_RAIL_ACK_SLOTS,
   ackSessionRailUnread,
   clearSessionRailAcks,
-  noteSessionRailActivity,
   pinSessionRailIds,
   seenSessionRailFingerprint,
-  sessionRailActivityAt,
-  sessionRailCalendarLabel,
-  sessionRailCardTime,
-  sessionRailDisplayTime,
   sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
@@ -21,6 +21,7 @@ import {
 
 afterEach(() => {
   clearSessionRailAcks();
+  clearUnreadAcks();
 });
 
 describe("sessionRailStatusLabel", () => {
@@ -130,37 +131,6 @@ describe("sessionRailGitLabel", () => {
   });
 });
 
-describe("sessionRailCardTime", () => {
-  it("uses a UTC calendar stamp or live now", () => {
-    expect(sessionRailCalendarLabel(Date.UTC(2026, 7, 26, 12, 0, 0))).toBe(
-      "Aug 26",
-    );
-    expect(
-      sessionRailCardTime({
-        updatedAt: Date.UTC(2026, 7, 26, 12, 0, 0),
-        live: false,
-      }),
-    ).toBe("Aug 26");
-    expect(sessionRailCardTime({ live: true })).toBe("now");
-    expect(sessionRailCardTime({ live: false })).toBe("");
-  });
-});
-
-describe("session rail activity clock", () => {
-  it("prefers a durable updatedAt over the session-local stamp", () => {
-    const now = 1_700_000_000_000;
-    noteSessionRailActivity("chat-a", "Working…", now);
-    expect(sessionRailActivityAt("chat-a")).toBe(now);
-    expect(sessionRailDisplayTime("chat-a", now - 2 * 60_000, now)).toBe("2m");
-    expect(sessionRailDisplayTime("chat-a", undefined, now)).toBe("now");
-  });
-
-  it("does not stamp idle sessions", () => {
-    noteSessionRailActivity("chat-idle", "", 1_700_000_000_000);
-    expect(sessionRailActivityAt("chat-idle")).toBeUndefined();
-  });
-});
-
 describe("session rail ack slots", () => {
   it("caps rail acks at the attached-chat bound", () => {
     expect(MAX_SESSION_RAIL_ACK_SLOTS).toBe(64);
@@ -172,4 +142,19 @@ describe("session rail ack slots", () => {
     expect(seenSessionRailFingerprint("chat-a")).toBeUndefined();
     expect(seenSessionRailFingerprint("chat-b")).toBe("Done");
   });
+});
+
+it("keeps the 64-slot rail registry independent from the two-pane registry", () => {
+  const ids = Array.from({ length: 64 }, (_, index) => `chat-${index}`);
+  pinSessionRailIds(ids);
+  for (const id of ids) ackSessionRailUnread(id, "Done");
+  ackChatUnread(ids[0], "Pane seen");
+  ackSessionRailUnread("overflow", "Waiting");
+  expect(seenSessionRailFingerprint(ids[0])).toBeUndefined();
+  expect(seenSessionRailFingerprint(ids[1])).toBe("Done");
+  expect(seenSessionRailFingerprint(ids[63])).toBe("Done");
+  expect(seenSessionRailFingerprint("overflow")).toBe("Waiting");
+  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
+  clearSessionRailAcks();
+  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
 });

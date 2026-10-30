@@ -86,6 +86,10 @@ impl WorkerResponder {
 
 // Worker envelopes are bounded by the single reserved mailbox; keeping them
 // inline avoids a heap allocation on every control-lane handoff.
+#[allow(
+    dead_code,
+    reason = "the app acts on the worker envelope; only tests read the progress"
+)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum DriverStep {
     Progress(DriverProgress),
@@ -104,6 +108,7 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
+    #[cfg(test)]
     pub(crate) fn new(
         pump: AdapterPump<A, J, R>,
         transport: T,

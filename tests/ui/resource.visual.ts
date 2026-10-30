@@ -1424,13 +1424,22 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     });
     await expect(newBrowser).toBeFocused();
     await expect(
-      resources.getByRole("button", { name: "Pop out active tab" }),
-    ).toBeDisabled();
+      resources.getByRole("button", { name: "Expand resource pane" }),
+    ).toBeEnabled();
+    await page.keyboard.press("Tab");
+    await expect(
+      resources.getByRole("button", { name: "Expand resource pane" }),
+    ).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(collapse).toBeFocused();
     await expect(collapse).toBeEnabled();
     await page.keyboard.press("Shift+Tab");
+    await expect(
+      resources.getByRole("button", { name: "Expand resource pane" }),
+    ).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
     await expect(newBrowser).toBeFocused();
+    await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
     await expect(collapse).toBeFocused();
     await page.keyboard.press("Tab");

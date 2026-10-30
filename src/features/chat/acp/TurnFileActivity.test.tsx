@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { snapshotPage } from "../../../app/agentDiff.testFixture";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import type { AcpItem } from "../../../domain/acp";
 

@@ -13,7 +13,10 @@
   --chat-annotation-danger-bg: #403030;
   --chat-annotation-scrim: rgb(0 0 0 / 12%);
   --chat-annotation-badge-rim: rgb(255 255 255 / 75%);
+  --chat-annotation-sent-edge: #3e3e3e;
   --chat-dialog-cancel-fill: #353535;
+  --chat-dialog-option-hover: #353535;
+  --chat-dialog-checkbox-edge: #858585;
   --chat-annotation-shadow: 0 4px 18px #0004;
   --radius-annotation-badge: 12px 12px 12px 3px;
   --radius-annotation-comment: 22px;
@@ -35,6 +38,8 @@
   --color-border-strong: #2a2a2a;
   --color-text-primary: #c5c5c5;
   --color-text-secondary: #adadad;
+  /* Codex draws its brightest chrome white: shimmer core, "…", jump arrow. */
+  --color-text-emphasis: #fff;
   --color-text-muted: #858585;
   --color-text-disabled: #656565;
   --color-text-inverse: #07111c;
@@ -166,6 +171,9 @@
   --browser-popover-shadow: 0 12px 28px #0009;
   --browser-start-fill: #181818;
   --browser-bright-text: #f4f4f4;
+  --browser-annotate-blue: #339cff;
+  --browser-annotate-tick: #808080;
+  --browser-annotate-placeholder: #8c8c8c;
 
   /* File/Diff document authority (AV-03). Single source for the shared
      document palette; consumers alias their generic roles to these tokens.
@@ -689,6 +697,10 @@ textarea:disabled,
 
 @media (forced-colors: active) {
   :root {
+    --chat-dialog-option-hover: Highlight;
+    --chat-dialog-checkbox-edge: CanvasText;
+    --chat-annotation-sent-edge: CanvasText;
+    --color-status-foreground: CanvasText;
     --color-canvas: Canvas;
     --color-panel: Canvas;
     --color-surface: Canvas;
@@ -700,6 +712,7 @@ textarea:disabled,
     --color-border-strong: CanvasText;
     --color-text-primary: CanvasText;
     --color-text-secondary: CanvasText;
+    --color-text-emphasis: CanvasText;
     --color-text-muted: GrayText;
     --color-text-disabled: GrayText;
     --color-text-inverse: HighlightText;

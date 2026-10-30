@@ -10,19 +10,22 @@ export function MarkdownBlocks({
   document,
   renderLink = (index) => document.fileLinks[index].label,
   renderCode,
-  streamTail,
+  streamRuns,
 }: {
   document: MarkdownPreviewDocument;
   renderLink?: (index: number) => ReactNode;
   renderCode?: (
     block: Extract<MarkdownPreviewBlock, { kind: "code" }>,
   ) => ReactNode;
-  /** A streamed answer's newest run, wrapped so only it fades. */
-  streamTail?: {
+  /**
+   * A streamed answer's still-fading runs: the lengths of a contiguous
+   * suffix of one block, item or cell, oldest first. Each is wrapped, keyed
+   * by where it starts, so it keeps its own fade while newer runs land.
+   */
+  streamRuns?: {
     blockIndex: number;
     itemIndex: number | undefined;
-    chars: number;
-    key: number;
+    runs: readonly number[];
   } | null;
 }) {
   const formatsByLocation = new Map(
@@ -34,23 +37,36 @@ export function MarkdownBlocks({
   const inline = (text: string, blockIndex: number, itemIndex?: number) => {
     const content = formatted(text, blockIndex, itemIndex);
     if (
-      streamTail?.blockIndex !== blockIndex ||
-      streamTail.itemIndex !== itemIndex
+      streamRuns?.blockIndex !== blockIndex ||
+      streamRuns.itemIndex !== itemIndex
     )
       return content;
     // Only a trailing plain-text run is split; formatted ends stay whole.
     const nodes = Array.isArray(content) ? [...content] : [content];
     const last = nodes.at(-1);
     if (typeof last !== "string" || !last) return content;
-    let split = Math.max(0, last.length - streamTail.chars);
-    // Never split a surrogate pair: its whole character joins the run.
-    if (split > 0 && /[\uDC00-\uDFFF]/.test(last[split])) split -= 1;
+    let runs = streamRuns.runs;
+    let total = runs.reduce((sum, chars) => sum + chars, 0);
+    if (last !== text || total > last.length) {
+      total = Math.min(last.length, runs.at(-1) ?? 0);
+      runs = [total];
+    }
+    const boundary = (offset: number) =>
+      offset > 0 && /[\uDC00-\uDFFF]/.test(last[offset]) ? offset - 1 : offset;
+    let offset = last.length - total;
+    let split = boundary(offset);
     nodes[nodes.length - 1] = last.slice(0, split);
-    nodes.push(
-      <span className="acp-stream-new" key={`tail:${streamTail.key}`}>
-        {last.slice(split)}
-      </span>,
-    );
+    runs.forEach((chars) => {
+      const start = split;
+      offset += chars;
+      split = boundary(offset);
+      if (split > start)
+        nodes.push(
+          <span className="acp-stream-new" key={"tail:" + start}>
+            {last.slice(start, split)}
+          </span>,
+        );
+    });
     return nodes;
   };
   const formatted = (text: string, blockIndex: number, itemIndex?: number) => {

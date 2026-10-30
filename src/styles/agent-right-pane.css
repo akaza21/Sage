@@ -177,6 +177,40 @@
   text-align: left;
 }
 
+/*
+ * Codex s4/f0244: a person outline marks the Subagents tab. It is drawn here,
+ * so the Agent chunk carries no icon for it: a head ring over a shoulder arc.
+ */
+.tab__person {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  overflow: hidden;
+}
+
+.tab__person::before,
+.tab__person::after {
+  position: absolute;
+  left: 50%;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-circle);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.tab__person::before {
+  top: 2px;
+  width: 7px;
+  aspect-ratio: 1;
+}
+
+.tab__person::after {
+  top: 10px;
+  width: 12px;
+  aspect-ratio: 1;
+}
+
 .agent-artifact-pane .tab--pending:not(.tab--active) {
   box-shadow: inset 0 2px 0 var(--color-warning);
 }

@@ -1,3 +1,4 @@
+import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import type {
@@ -31,34 +32,6 @@ export interface RepositoryCheckoutSlice {
     to: string,
   ) => Promise<boolean>;
   clearRepositoryCheckoutError: (rootId: string) => void;
-}
-
-function rejectedCheckout(
-  error: unknown,
-): Omit<RepositoryCheckoutError, "rootId" | "branch"> {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    "message" in error &&
-    (error.kind === "failed" || error.kind === "containment") &&
-    typeof error.message === "string"
-  ) {
-    if (
-      error.kind === "containment" &&
-      "processState" in error &&
-      (error.processState === "terminatedUnreaped" ||
-        error.processState === "potentiallyRunning")
-    ) {
-      return {
-        kind: error.kind,
-        message: error.message,
-        processState: error.processState,
-      };
-    }
-    return { kind: error.kind, message: error.message };
-  }
-  return { kind: "failed", message: errorMessage(error) };
 }
 
 async function runLocalBranchCommand(
@@ -128,7 +101,7 @@ async function runLocalBranchCommand(
         repositoryCheckoutError: {
           rootId,
           branch,
-          ...rejectedCheckout(error),
+          ...rejectedGitCommand(error),
         },
       });
     } else if (get().repositoryCheckout === checkout) {
@@ -170,4 +143,3 @@ export const createRepositoryCheckoutSlice: StateCreator<
           desktop.renameGitLocalBranch({ projectId, rootId, from, to }, epoch),
         ),
 });
-import { errorMessage } from "../domain/errors";

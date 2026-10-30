@@ -10,7 +10,7 @@ import {
   seedSnapshotOwner,
   snapshotRef as ref,
   snapshotResource as resource,
-} from "./agentDiff.testFixture";
+} from "./agentDiff.fixture";
 
 const initial = useWorkbenchStore.getState();
 const get = useWorkbenchStore.getState;

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-downloads.html",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "rules": [
+    {
+      "id": "downloads-button-height",
+      "ref": "reference/02",
+      "source": "AP-H5 measured the ⬇ control's pill y101-129 at x1868 (28 px)",
+      "selector": ".browser-downloads__trigger",
+      "measure": "height",
+      "expected": 28,
+      "tolerancePx": 1
+    },
+    {
+      "id": "downloads-before-menu",
+      "ref": "reference/02",
+      "source": "AP-H5 measured the ⬇ pill ending x1884 left of the round … at x1888",
+      "selector": ".browser-downloads__trigger",
+      "measure": "left-of",
+      "other": "button[aria-label='More options']"
+    },
+    {
+      "id": "downloads-popover-hangs-below-controls",
+      "ref": "reference/38",
+      "source": "AP-H5 measured the toolbar controls ending y129 and the popover starting y131 over the page, not a bar in the page's flow",
+      "selector": ".browser-downloads__popover",
+      "measure": "below",
+      "other": ".browser-surface__right-group"
+    },
+    {
+      "id": "downloads-popover-right-edge",
+      "ref": "reference/38",
+      "source": "AP-H5 toolbar popovers end flush with the round … button, 8 px inside the toolbar",
+      "selector": ".browser-downloads__popover",
+      "measure": "right-inset",
+      "within": ".browser-surface__toolbar",
+      "expected": 8,
+      "tolerancePx": 4
+    },
+    {
+      "id": "downloads-popover-round",
+      "ref": "reference/38",
+      "source": "AP-H5 toolbar popovers share the … menu's 12 px corners",
+      "selector": ".browser-downloads__popover",
+      "measure": "border-radius",
+      "expected": "12px"
+    }
+  ]
+}

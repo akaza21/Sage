@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(dead_code, reason = "P-02 sealed egress encoder is adapter-deferred")]
 impl ClaudeRuntime {
     /// Deferred-only P-02 request branch. It shares Claude's concrete frame
     /// decoder, including duplicate-key/depth/node limits, but is not exposed

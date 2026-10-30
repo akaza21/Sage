@@ -11,6 +11,7 @@ use super::{
     terminal_reason,
 };
 
+#[cfg(test)]
 pub(crate) fn begin_send(
     connection: &mut rusqlite::Connection,
     command: TurnMutationCommand,
@@ -36,6 +37,7 @@ pub(super) fn begin_send_in(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn record_send_observation(
     connection: &mut rusqlite::Connection,
     command: TurnMutationCommand,

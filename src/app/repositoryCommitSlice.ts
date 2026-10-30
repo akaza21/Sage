@@ -1,3 +1,4 @@
+import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import {
@@ -36,32 +37,6 @@ export interface RepositoryCommitSlice {
   continueRebase: (rootId: string) => Promise<boolean>;
   continueRevert: (rootId: string) => Promise<boolean>;
   clearRepositoryCommitError: (rootId: string) => void;
-}
-
-function rejectedCommit(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    "message" in error &&
-    (error.kind === "failed" || error.kind === "containment") &&
-    typeof error.message === "string"
-  ) {
-    if (
-      error.kind === "containment" &&
-      "processState" in error &&
-      (error.processState === "terminatedUnreaped" ||
-        error.processState === "potentiallyRunning")
-    ) {
-      return {
-        kind: error.kind,
-        message: error.message,
-        processState: error.processState,
-      } as const;
-    }
-    return { kind: error.kind, message: error.message } as const;
-  }
-  return { kind: "failed", message: errorMessage(error) } as const;
 }
 
 async function runLockedSequenceCommand(
@@ -130,7 +105,7 @@ async function runLockedSequenceCommand(
     ) {
       set({
         repositoryCommit: null,
-        repositoryCommitError: { rootId, ...rejectedCommit(error) },
+        repositoryCommitError: { rootId, ...rejectedGitCommand(error) },
       });
     } else if (get().repositoryCommit === commit) {
       set({ repositoryCommit: null });
@@ -233,7 +208,7 @@ export const createRepositoryCommitSlice: StateCreator<
       ) {
         set({
           repositoryCommit: null,
-          repositoryCommitError: { rootId, ...rejectedCommit(error) },
+          repositoryCommitError: { rootId, ...rejectedGitCommand(error) },
         });
       } else if (get().repositoryCommit === commit) {
         set({ repositoryCommit: null });

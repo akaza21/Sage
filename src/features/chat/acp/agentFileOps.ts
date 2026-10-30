@@ -2,6 +2,7 @@ import type {
   ProjectLayoutRequest,
   ResourceRef,
 } from "../../../domain/workbench";
+import { parentResource } from "../../../domain/resourceIdentity";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 
 export type AgentFileOperation = "created" | "updated" | "renamed" | "deleted";
@@ -17,7 +18,10 @@ export interface AgentFileIntent {
   expectedTransitionEpoch: number;
 }
 
-function requiredIntentText(value: string | undefined, label: string): string {
+function requiredIntentValue<Value>(
+  value: Value | undefined,
+  label: string,
+): Value {
   if (!value) throw new Error(`Agent file ${label} is required`);
   return value;
 }
@@ -25,15 +29,6 @@ function requiredIntentText(value: string | undefined, label: string): string {
 function requiredIntentContent(value: string | undefined): string {
   if (value === undefined) throw new Error("Agent file content is required");
   return value;
-}
-
-function parentResource(resource: ResourceRef): ResourceRef {
-  const separator = resource.relativePath.lastIndexOf("/");
-  return {
-    rootId: resource.rootId,
-    relativePath:
-      separator === -1 ? "" : resource.relativePath.slice(0, separator),
-  };
 }
 
 async function currentProjectLayout(
@@ -58,7 +53,7 @@ export async function applyAgentFileIntent(
   const { project, editor } = getWorkbenchPorts();
   switch (intent.operation) {
     case "created": {
-      const basename = requiredIntentText(intent.basename, "basename");
+      const basename = requiredIntentValue(intent.basename, "basename");
       const parent = parentResource(intent.resource);
       const target: ResourceRef = {
         rootId: parent.rootId,
@@ -98,8 +93,8 @@ export async function applyAgentFileIntent(
         projectId: intent.projectId,
         projectGeneration: intent.projectGeneration,
         expectedTransitionEpoch: intent.expectedTransitionEpoch,
-        source: requiredIntentResource(intent.source, "source"),
-        basename: requiredIntentText(intent.basename, "basename"),
+        source: requiredIntentValue(intent.source, "source"),
+        basename: requiredIntentValue(intent.basename, "basename"),
         currentLayout: await currentProjectLayout(intent.projectId),
       });
       return;
@@ -113,12 +108,4 @@ export async function applyAgentFileIntent(
         currentLayout: await currentProjectLayout(intent.projectId),
       });
   }
-}
-
-function requiredIntentResource(
-  value: ResourceRef | undefined,
-  label: string,
-): ResourceRef {
-  if (!value) throw new Error(`Agent file ${label} is required`);
-  return value;
 }

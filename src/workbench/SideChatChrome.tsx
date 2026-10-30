@@ -4,6 +4,7 @@ import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../app/store";
 import { ModalDialog } from "../ui/ModalDialog";
 import { leanIcon } from "../ui/leanIconCore";
+import { X } from "../ui/leanIcons";
 import { acpDesktop } from "../services/acpDesktop";
 import {
   cancelCloseSideChat,
@@ -33,7 +34,6 @@ const MessageCirclePlus = leanIcon("lucide lucide-message-circle-plus", [
 /** Focus the side composer once, when it first becomes enabled after open. */
 const FOCUS_WAIT_MS = 5000;
 
-/** The side pane's tab: icon (spinner while running), first prompt or "Side chat", close. */
 export function SideChatHeader({
   chatId,
   running,
@@ -50,7 +50,7 @@ export function SideChatHeader({
     return item?.kind === "text" ? item.payload.text.slice(0, 128) : null;
   });
   useEffect(() => {
-    // The tab sits in the center header row, outside its pane.
+    // Tab lives outside its pane, in the center header.
     const pane = document.querySelector(
       `.agent-chat-pane[data-chat-id="${CSS.escape(chatId)}"]`,
     );
@@ -82,7 +82,7 @@ export function SideChatHeader({
     <div className="agent-chat-pane__identity side-chat-tab">
       <span className="side-chat-tab__icon" aria-hidden="true">
         {running ? (
-          // The shared 12px status spinner; `.spinner` alone has no style.
+          // Use the shared 12px spinner; .spinner alone is unstyled.
           <span className="spinner agent-chat-chip__spinner" />
         ) : (
           <MessageCirclePlus size={14} />
@@ -107,9 +107,7 @@ export function SideChatHeader({
           );
         }}
       >
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-          <path d="m4 4 8 8m0-8-8 8" />
-        </svg>
+        <X size={12} strokeWidth={2.625} aria-hidden="true" />
       </button>
       {error ? (
         <span className="side-chat-tab__error" role="alert">
@@ -120,7 +118,7 @@ export function SideChatHeader({
   );
 }
 
-/** Close confirmation plus registry/running sync; mounted while any side chat exists. */
+/** Mount registry/running sync while any side chat exists. */
 export function SideChatDialogs() {
   useSideChatRegistry();
   const pending = useSideChatState((state) => state.pendingClose);
@@ -133,7 +131,7 @@ export function SideChatDialogs() {
   );
   const snapshot = useAcpChatLiveSnapshot(current?.id ?? "", Boolean(current));
   useEffect(() => {
-    // Native rows carry Rust's running flag; fixtures derive it from the snapshot.
+    // Trust Rust's running flag; fixtures derive it.
     if (isTauriRuntime() || !current || current.running === snapshot.working)
       return;
     useSideChatState.setState((state) => ({
@@ -153,18 +151,18 @@ export function SideChatDialogs() {
   ) : null;
 }
 
-/** Empty state; strings match Codex exactly. */
+/** Empty-state copy matches Codex. */
 export function SideChatHome() {
   return (
     <div className="side-chat-home">
-      <MessageCirclePlus size={20} aria-hidden="true" />
+      <MessageCirclePlus size={24} aria-hidden="true" />
       <strong>Side chat</strong>
       <p>Side chats are temporary and disappear when you close the app.</p>
     </div>
   );
 }
 
-/** Codex close confirmation; the danger action has initial focus. */
+/** Close dialog initially focuses the danger action. */
 export function CloseSideChatDialog({
   onCancel,
   onClose,
@@ -251,7 +249,7 @@ export function CloseSideChatDialog({
   );
 }
 
-/** Mirrors Rust's temporary Chat registry, refreshed on side-chat projection changes. */
+/** Refresh Rust's temporary Chat mirror on side-chat projection changes. */
 function useSideChatRegistry() {
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   useEffect(() => {

@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::harness_discovery::{KnownHarnessSignIn, known_harness_spec};
 
 use super::surface::UnmappedUpdate;
@@ -205,6 +206,7 @@ impl StandardAcpVersionShape {
 }
 
 impl StandardAcpProfile {
+    #[cfg(test)]
     pub(crate) fn auth_hint(self) -> Option<KnownHarnessSignIn> {
         known_harness_spec(self.harness_id).and_then(|spec| spec.sign_in)
     }

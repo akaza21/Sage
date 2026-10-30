@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useContext, useEffect, useRef, useState } from "react";
+import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useWorkbenchStore } from "../../app/store";
 import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -23,7 +24,8 @@ import {
   suggestedSitesWithTitles,
 } from "./browserAddress";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
-import { BrowserDownloads } from "./BrowserDownloads";
+import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
+import { copyPngToClipboard } from "./browserClipboard";
 import { BrowserDrawers } from "./BrowserSitePermissions";
 import { BrowserClearData } from "./BrowserClearData";
 import {
@@ -31,7 +33,6 @@ import {
   BrowserFindControls,
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
-import { BrowserNewTab } from "./BrowserNewTab";
 import {
   performBrowserShortcut,
   useBrowserShortcuts,
@@ -39,16 +40,18 @@ import {
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
+const BrowserNewTab = lazy(() =>
+  import("./BrowserNewTab").then((module) => ({
+    default: module.BrowserNewTab,
+  })),
+);
+
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
-  store.updateBrowserTabFavicon(tabId, status.favicon, status.revision);
-  if (!status.loading && !status.error && status.url)
-    store.updateBrowserTabTitle(
-      tabId,
-      status.url,
-      status.title,
-      status.revision,
-    );
+  const { favicon, url, title, revision, loading, error } = status;
+  store.updateBrowserTabFavicon(tabId, favicon, revision);
+  if (!loading && !error && url)
+    store.updateBrowserTabTitle(tabId, url, title, revision);
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -58,6 +61,7 @@ export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
+  const tools = useContext(AgentToolsContext);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const chats = tabs
@@ -79,6 +83,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
@@ -108,7 +113,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           .getState()
           .tabs.filter(
             (item) => item.kind === "browser" && item.status !== "closed",
-          );
+          )
+          .slice(0, 8);
         const statuses = await Promise.allSettled(
           openTabs.map((item) => browserStatus(item.id)),
         );
@@ -169,7 +175,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  useBrowserPlacement(tab.id, frame, surface, setError);
+  const covered = downloadsOpen || menuOpen;
+  useBrowserPlacement(tab.id, frame, surface, setError, covered);
   async function navigate() {
     try {
       setError(null);
@@ -215,23 +222,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     try {
       const screenshot = await browserCaptureScreenshot(tab.id, revision);
       if (epoch !== screenshotEpoch.current) return;
-      if (
-        !screenshot.pngBase64.startsWith("iVBORw0KGgo") ||
-        screenshot.pngBase64.length > 2_000_000
-      ) {
-        throw new Error("invalid screenshot result");
-      }
-      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        throw new Error("image clipboard unavailable");
-      }
-      const bytes = Uint8Array.from(atob(screenshot.pngBase64), (char) =>
-        char.charCodeAt(0),
-      );
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "image/png": new Blob([bytes], { type: "image/png" }),
-        }),
-      ]);
+      await copyPngToClipboard(screenshot.pngBase64);
       if (epoch !== screenshotEpoch.current) return;
       setScreenshotStatus("Screenshot copied to clipboard");
     } catch (cause) {
@@ -307,6 +298,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onAddressChange={setAddress}
           onNavigate={() => void navigate()}
           onControl={(action) => void control(action)}
+          onError={setError}
           onFind={() => setFindOpen(true)}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
           onScreenshot={() => void copyScreenshot()}
@@ -320,6 +312,14 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
           onExternal={() => void pageAction(() => browserOpenExternal(tab.id))}
           clearDataControl={<BrowserClearData menuItem />}
+          onMenuOpenChange={setMenuOpen}
+          downloadsControl={
+            <BrowserDownloadsControl
+              tabId={tab.id}
+              open={downloadsOpen}
+              onOpenChange={setDownloadsOpen}
+            />
+          }
           pageControls={
             <BrowserToolbarPageActions
               projectId={projectId}
@@ -373,20 +373,19 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           void pageAction(() => browserNavigate(tab.id, url))
         }
       />
-      <BrowserDownloads
-        tabId={tab.id}
-        open={downloadsOpen}
-        onClose={() => setDownloadsOpen(false)}
-      />
       {newTab ? (
-        <BrowserNewTab
-          suggestions={suggestions}
-          onNavigate={(url) =>
-            void pageAction(() => browserNavigate(tab.id, url))
-          }
-          onAddress={() => addressField.current?.focus()}
-          onNewTab={() => void openBrowser()}
-        />
+        <Suspense fallback={<p role="status">Loading new tab…</p>}>
+          <BrowserNewTab
+            suggestions={suggestions}
+            onNavigate={(url) =>
+              void pageAction(() => browserNavigate(tab.id, url))
+            }
+            onNewTab={() => void openBrowser()}
+            onTool={tools.launch}
+            chatAvailable={tools.chatAvailable}
+            terminalAvailable={tools.terminalAvailable}
+          />
+        </Suspense>
       ) : null}
       <div
         ref={frame}

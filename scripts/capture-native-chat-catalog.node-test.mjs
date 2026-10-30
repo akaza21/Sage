@@ -15,6 +15,8 @@ import { JSDOM } from "jsdom";
 import { waitForComposerIdle } from "./capture-native-chat-drive.mjs";
 
 test("capture accessible selectors stay anchored to product controls", () => {
+  const source = (file) =>
+    readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const effort = readFileSync(
     new URL("../src/features/chat/ComposerEffortControl.tsx", import.meta.url),
     "utf8",
@@ -26,16 +28,19 @@ test("capture accessible selectors stay anchored to product controls", () => {
     "utf8",
   );
   assert.ok(header.includes('aria-label="Show chat resources"'));
-  assert.ok(header.includes('ariaLabel="Chat resources"'));
+  assert.ok(header.includes('from "./agentTaskHeaderLazy"'));
+  assert.ok(header.includes('part="AgentTaskResources"'));
+  const headerLazy = source("workbench/agentTaskHeaderLazy.ts");
+  assert.ok(headerLazy.includes('() => import("./AgentTaskResources")'));
+  const resources = source("workbench/AgentTaskResources.tsx");
+  assert.ok(resources.includes('ariaLabel="Chat resources"'));
   const subagentSummary = readFileSync(
     new URL("../src/workbench/AgentTaskSubagentSummary.tsx", import.meta.url),
     "utf8",
   );
-  assert.ok(header.includes("<AgentTaskSubagentSummary"));
-  assert.ok(header.includes("aria-label={`Recent subagents working:"));
+  assert.ok(resources.includes("<AgentTaskSubagentSummary"));
+  assert.ok(resources.includes("aria-label={`Recent subagents working:"));
   assert.ok(subagentSummary.includes('aria-label="Subagents"'));
-  const source = (file) =>
-    readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
   const composer = source("features/chat/ChatHarnessControls.tsx");
   assert.ok(composer.includes('aria-label="Composer options"'));
   assert.ok(composer.includes('ariaLabel="Composer options menu"'));
@@ -121,6 +126,16 @@ test("CP-29d/e composer menus: access is its own menu, plan is a named Session m
 });
 
 test("CP-32c header resources popover is owned by the focused chat", async () => {
+  const options = { harness: "claude", state: "subagents-popover" };
+  assert.deepEqual(actionsFor(options.state, options.harness), [
+    'button[aria-label="Show chat resources"]',
+  ]);
+  const pending = await observeMarkup(
+    "",
+    '<header><button aria-label="Show chat resources" aria-controls="resources" aria-expanded="true"></button></header>',
+  );
+  assert.equal(pending.visible.popover, false);
+  assert.equal(namedState(options, pending).namedState, false);
   const popover = await observeMarkup(
     "",
     '<header><button aria-label="Show chat resources" aria-controls="resources"></button></header><div id="resources" class="menu-popover" role="dialog" aria-label="Chat resources"><section aria-label="Subagents"><span aria-label="Recent subagents working: 0">0 working</span><div class="agent-task-header__agent-list"><p class="agent-task-header__agent">Subagent done</p></div></section></div>',
@@ -128,6 +143,7 @@ test("CP-32c header resources popover is owned by the focused chat", async () =>
   assert.equal(popover.visible.popover, true);
   assert.equal(popover.visible.subagentCounts, true);
   assert.equal(popover.visible.subagentEntries, true);
+  assert.equal(namedState(options, popover).namedState, true);
 });
 
 test("file-hunk and file-diff-tab use the chat-wide summary and the named Diff tab", async () => {
@@ -345,6 +361,8 @@ test("observation distinguishes CP-32c header counts and loaded rows from the ch
   assert.equal(pending.visible.popover, true);
   assert.equal(pending.visible.subagentCounts, true);
   assert.equal(pending.visible.subagentEntries, false);
+  const options = { harness: "claude", state: "subagents-popover" };
+  assert.equal(namedState(options, pending).namedState, false);
   const loaded = await observeMarkup(
     loading.replace(
       '<p role="status">Loading subagents</p>',
@@ -352,6 +370,7 @@ test("observation distinguishes CP-32c header counts and loaded rows from the ch
     ),
   );
   assert.equal(loaded.visible.subagentEntries, true);
+  assert.equal(namedState(options, loaded).namedState, true);
 });
 
 test("file captures distinguish live Editing files from the composer-adjacent completed pill", async () => {

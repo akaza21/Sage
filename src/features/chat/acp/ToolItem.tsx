@@ -10,7 +10,7 @@ import {
   Image,
   Command,
   Search,
-  Terminal,
+  TerminalSquare,
   Trash2,
   Wrench,
 } from "../../../ui/leanIcons";
@@ -38,7 +38,7 @@ const toolKindIcons: Record<ToolKind, typeof FileText> = {
   delete: Trash2,
   move: FileSymlink,
   search: Search,
-  execute: Terminal,
+  execute: TerminalSquare,
   fetch: Globe,
   webSearch: Command,
   imageView: Image,

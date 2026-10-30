@@ -1,24 +1,26 @@
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::Transaction;
+#[cfg(test)]
+use rusqlite::{OptionalExtension, params};
 
-use crate::acp::{
-    contract::{EntityRevision, ProjectionRevision},
-    lifecycle::classify_terminal,
+use crate::acp::contract::{EntityRevision, ProjectionRevision};
+#[cfg(test)]
+use crate::acp::lifecycle::classify_terminal;
+
+#[cfg(test)]
+use super::facts::{next_projection_revision, publish_projection};
+#[cfg(test)]
+use super::state::{
+    activity_lifecycle_text, item_lifecycle_text, parse_activity_lifecycle, parse_item_lifecycle,
+    parse_session_state, parse_tool_state, session_state_text, tool_state_text,
 };
-
+#[cfg(test)]
+use super::{ActivityTerminalCommand, ItemTerminalCommand, SessionTerminalCommand};
 use super::{
-    ActivityTerminalCommand, EntityMutation, FactPayload, ItemTerminalCommand, MutationDisposition,
-    SessionTerminalCommand, StoreError, TurnMutationCommand,
-    facts::{
-        append_fact_payload, entity_revision_from_i64, next_projection_revision,
-        projection_from_i64, publish_projection,
-    },
-    state::{
-        activity_lifecycle_text, item_lifecycle_text, parse_activity_lifecycle,
-        parse_item_lifecycle, parse_session_state, parse_tool_state, session_state_text,
-        tool_state_text,
-    },
+    EntityMutation, FactPayload, MutationDisposition, StoreError, TurnMutationCommand,
+    facts::{append_fact_payload, entity_revision_from_i64, projection_from_i64},
 };
 
+#[cfg(test)]
 pub(crate) fn apply_session_terminal(
     connection: &mut rusqlite::Connection,
     command: SessionTerminalCommand,
@@ -113,6 +115,7 @@ pub(crate) fn apply_turn_terminal(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn apply_item_terminal(
     connection: &mut rusqlite::Connection,
     command: ItemTerminalCommand,
@@ -186,6 +189,7 @@ pub(crate) fn apply_item_terminal(
     Ok(applied(revision, projection))
 }
 
+#[cfg(test)]
 pub(crate) fn apply_activity_terminal(
     connection: &mut rusqlite::Connection,
     command: ActivityTerminalCommand,
@@ -312,6 +316,7 @@ pub(super) fn applied(
         disposition: MutationDisposition::Applied,
     }
 }
+#[cfg(test)]
 fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value

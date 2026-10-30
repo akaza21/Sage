@@ -6,6 +6,7 @@ export function useBrowserPlacement(
   frame: RefObject<HTMLDivElement | null>,
   surface: RefObject<HTMLElement | null>,
   onError: (message: string) => void,
+  covered = false,
 ) {
   useEffect(() => {
     const element = frame.current;
@@ -19,7 +20,9 @@ export function useBrowserPlacement(
     };
     const place = () => {
       cancelAnimationFrame(frameId);
-      if (center?.getAttribute("aria-hidden") === "true") {
+      // The page is a native window above Sage's DOM, so it hides while a
+      // toolbar popover covers it, and a resize must not show it again.
+      if (covered || center?.getAttribute("aria-hidden") === "true") {
         void hideBrowser(tabId).catch(reportError);
         return;
       }
@@ -76,5 +79,5 @@ export function useBrowserPlacement(
       window.removeEventListener("resize", place);
       void hideBrowser(tabId).catch(() => undefined);
     };
-  }, [tabId, frame, surface, onError]);
+  }, [tabId, frame, surface, onError, covered]);
 }

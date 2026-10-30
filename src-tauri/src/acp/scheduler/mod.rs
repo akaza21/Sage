@@ -1,5 +1,3 @@
-#![allow(dead_code)] // Removed when the isolated packet receives central wiring.
-
 use std::sync::{Arc, Mutex};
 
 use crate::acp::contract::{
@@ -172,13 +170,6 @@ impl Scheduler {
         // Turn and its tree retain both global slots in the background.
     }
 
-    pub(crate) fn is_cold(&self, owner: &RuntimeOwner) -> bool {
-        self.lock()
-            .tree
-            .as_ref()
-            .is_none_or(|tree| &tree.owner != owner)
-    }
-
     /// Releases the exact scheduler tree after durable terminalization and a
     /// native zero-process proof. This is the only recovery path allowed to
     /// clear an active Turn together with its failed runtime tree.
@@ -293,6 +284,7 @@ impl Drop for TreeLease {
 }
 
 impl TurnReservation {
+    #[cfg(test)]
     pub(crate) fn bind(self, turn_id: SageTurnId) -> Result<RunningTurnLease, SchedulerError> {
         match self.bind_retained(turn_id) {
             Ok(lease) => Ok(lease),
@@ -345,10 +337,6 @@ impl Drop for TurnReservation {
 }
 
 impl RunningTurnLease {
-    pub(crate) fn turn_id(&self) -> &SageTurnId {
-        &self.turn_id
-    }
-
     pub(crate) fn terminal_committed(mut self) -> Result<(), SchedulerError> {
         let mut state = lock(&self.inner);
         let tree = state.tree.as_ref().ok_or(SchedulerError::StaleToken)?;

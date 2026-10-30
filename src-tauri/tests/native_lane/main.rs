@@ -9,6 +9,8 @@ mod report;
 #[cfg(windows)]
 mod s10_tls;
 #[cfg(windows)]
+mod s11_downloads;
+#[cfg(windows)]
 mod s1_javascript;
 #[cfg(windows)]
 mod s1_popups;
@@ -46,7 +48,9 @@ mod lane {
 
     use sage_lib::native_lane::{self, Lane};
 
-    use crate::{report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, site::Site};
+    use crate::{
+        report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads, site::Site,
+    };
 
     /// The whole lane, Tauri start to exit; a hang past it fails the run.
     const LANE_BUDGET: Duration = Duration::from_secs(300);
@@ -59,6 +63,7 @@ mod lane {
         ("s10", s10_tls::run),
         ("s8", s8_devtools::run),
         ("s1", s1_popups::run),
+        ("s11", s11_downloads::run),
     ];
 
     pub fn run() -> i32 {

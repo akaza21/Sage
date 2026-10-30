@@ -262,7 +262,6 @@ fn valid_text(value: &str) -> bool {
     !value.is_empty() && value.len() <= 256 && !value.contains('\0')
 }
 
-#[allow(dead_code)]
 pub(crate) fn sha256_file(path: &Path) -> Option<String> {
     #[cfg(windows)]
     let mut file = {

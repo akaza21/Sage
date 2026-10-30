@@ -1,92 +1,71 @@
 /* Fork chunk (ForkChat.tsx); geometry from the Codex s2 fork frames. */
 
 .answer-more-menu.menu-popover {
-  display: flex;
   width: max-content;
   min-width: 148px;
-  flex-direction: column;
-  padding: 4px;
+  background: var(--color-panel-raised);
   border-radius: var(--radius-lg);
 }
 
 .answer-more-menu__item {
-  display: flex;
   height: 32px;
-  align-items: center;
-  /* About 8 px visible beside the glyph's own inset (s2/f0053). */
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.answer-more-menu__item,
+.fork-chat-dialog button {
   border: 0;
   border-radius: var(--radius-md);
-  color: var(--color-text-primary);
   background: transparent;
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
   cursor: pointer;
+  color: var(--color-status-foreground);
 }
 
 .answer-more-menu__item:hover,
 .answer-more-menu__item:focus-visible {
   background: var(--color-surface-hover);
-  outline: none;
 }
 
-.fork-chat-dialog.dirty-dialog {
-  width: min(378px, calc(100vw - 32px));
+.fork-chat-dialog {
   padding: var(--space-4) var(--space-3) var(--space-3);
-  border-radius: var(--radius-lg);
 }
 
 .fork-chat-dialog h2 {
-  margin: 0 var(--space-1) var(--space-2);
-  font-size: 18px;
-  font-weight: 600;
+  margin: 0 var(--space-1) calc(var(--space-4) + var(--space-1));
 }
 
-.fork-chat-dialog__options {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.fork-chat-dialog__options > button {
-  display: flex;
+.fork-chat-dialog button {
+  width: 100%;
   min-height: 48px;
-  align-items: center;
   gap: var(--space-3);
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--color-status-foreground);
-  background: transparent;
   text-align: left;
-  cursor: pointer;
 }
 
-.fork-chat-dialog__options > button:hover:not(:disabled),
-.fork-chat-dialog__options > button:not([data-fresh]):focus-visible {
-  background: var(--color-surface-hover);
-  outline: none;
+/* A pointer open shows neither fill nor ring until hover or a key press
+   (Codex s2/f0055); keyboard focus shows as the fill. */
+.fork-chat-dialog button:hover:not(:disabled),
+.fork-chat-dialog button:not([data-fresh]):focus-visible {
+  background: var(--chat-dialog-option-hover);
 }
 
-.fork-chat-dialog__options[aria-busy="true"] > button {
+.fork-chat-dialog button:disabled {
   opacity: 0.6;
   cursor: progress;
 }
 
-.fork-chat-dialog__options strong {
+.fork-chat-dialog strong {
   display: block;
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
-.fork-chat-dialog__options small {
+.fork-chat-dialog small {
   display: block;
   color: var(--color-text-muted);
   font-size: 11px;
 }
 
-.fork-chat-dialog .fork-chat-dialog__error {
+.fork-chat-dialog [role="alert"] {
   margin: var(--space-2) var(--space-1) 0;
   color: var(--color-danger);
 }
@@ -114,22 +93,20 @@
   color: var(--color-accent);
   background: none;
   cursor: pointer;
+  border-radius: var(--radius-sm);
 }
 
 .chat-fork-divider__link:hover {
   text-decoration: underline;
 }
 
-/* The ring itself is global.css's :focus-visible rule. */
-.chat-fork-divider__link:focus-visible {
-  border-radius: var(--radius-sm);
-}
-
 /* Inherited parent Turns keep the transcript turn rhythm (acp-chat.css). */
 .chat-fork-inherited {
   display: grid;
-  width: 100%;
-  min-width: 0;
   gap: var(--space-6);
   overflow-wrap: anywhere;
+}
+
+.chat-fork-turn {
+  min-width: 0;
 }

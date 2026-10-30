@@ -55,9 +55,6 @@ pub(crate) struct FixtureAdapter {
 }
 
 impl FixtureAdapter {
-    // The constructor is consumed by the external feature-only runner; the
-    // default library build deliberately has no admitted fixture binding.
-    #[allow(dead_code)]
     pub(crate) fn new(
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,

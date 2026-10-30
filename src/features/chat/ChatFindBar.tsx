@@ -52,7 +52,7 @@ export function ChatFindBar({
     >
       <div className="chat-find__input">
         <Icon
-          size={14}
+          size={pending ? 14 : 10}
           aria-hidden="true"
           className={pending ? "chat-find__spinner" : "chat-find__icon"}
         />

@@ -73,13 +73,12 @@ export function agentRailTrailingState(input: {
   unread: boolean;
   stamp: string;
 }): AgentRailTrailingState | null {
-  if (input.status === "failed" || input.status === "waiting") {
-    return {
-      kind: input.status,
-      label: sessionRailStatusLabel(input.status),
-    };
-  }
-  if (input.status === "working" || input.status === "recovering") {
+  if (
+    input.status === "failed" ||
+    input.status === "waiting" ||
+    input.status === "working" ||
+    input.status === "recovering"
+  ) {
     return {
       kind: input.status,
       label: sessionRailStatusLabel(input.status),

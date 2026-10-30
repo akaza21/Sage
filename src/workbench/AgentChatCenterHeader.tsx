@@ -6,12 +6,7 @@ import { TranscriptPart } from "../features/chat/transcriptLazy";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { isSideChatId } from "./sideChatState";
 
-/**
- * The Agent center's header row. Ordinarily it names the focused Chat. While
- * a side chat is shown, each displayed pane owns its own cell, aligned to the
- * pane columns (Codex s2/f0244): the parent keeps its task header, and the
- * side pane's tab sits in the same row rather than under a shared breadcrumb.
- */
+/** Name the focused Chat; side-chat panes each own a column-aligned header cell (s2/f0244). */
 export function AgentChatCenterHeader({
   tabs,
   paneIds,
@@ -23,12 +18,11 @@ export function AgentChatCenterHeader({
   onArtifactHeaderMount,
 }: {
   tabs: readonly WorkbenchTab[];
-  /** The displayed panes when a side chat is among them; otherwise null. */
+  /** Displayed panes if any is a side chat, else null. */
   paneIds: readonly string[] | null;
   focusedId: string | null;
   focusedSnapshot: ChatLiveSnapshot;
   chatCount: number;
-  /** Each displayed Chat's own published session chrome. */
   sessionChromeById: Readonly<Record<string, AgentSessionChrome>>;
   splitPercent: number;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
@@ -75,14 +69,12 @@ export function AgentChatCenterHeader({
         const tab = tabs.find((candidate) => candidate.id === id) ?? null;
         return (
           <AgentTaskHeader
-            // One stable task header: switching Chats must not remount it,
-            // or focus returning to its actions trigger is lost.
+            // Keep the task header mounted across Chat switches to restore trigger focus.
             key="task"
             tab={tab}
             chatCount={chatCount}
             snapshot={id === focusedId ? focusedSnapshot : parentSnapshot}
-            // The parent keeps its own live status and session actions
-            // while its side chat holds focus; never another Chat's.
+            // Parent status/actions remain its own while the side chat is focused.
             sessionChrome={sessionChromeById[id ?? ""]}
           />
         );

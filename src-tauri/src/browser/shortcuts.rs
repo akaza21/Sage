@@ -131,7 +131,7 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                 args.SetHandled(true)?;
                             }
                             if action == BrowserShortcut::LeaveAnnotate {
-                                super::annotate::leave(&app, &label, true);
+                                super::annotate::selection::escape(&app, &label);
                                 return Ok(());
                             }
                             let _ = app.emit_to(

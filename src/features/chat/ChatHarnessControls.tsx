@@ -165,13 +165,18 @@ export function ChatHarnessControls({
   // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
-    !knownModelLabel && !selectedSessionConfig ? inherited : undefined;
+    !knownModelLabel &&
+    !selectedSessionConfig?.removed &&
+    (!inherited?.id || inherited.id === selectedModelId)
+      ? inherited
+      : undefined;
   const modelLabel = knownModelLabel ?? inheriting?.model ?? "Model";
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
-  const effortLabel = inheriting
-    ? inheriting.effort
-    : (composerOptionLabel(effortOption) ??
-      (confirmedEffort ? capitalizeLabel(confirmedEffort) : null));
+  const effortLabel =
+    composerOptionLabel(effortOption) ??
+    (confirmedEffort
+      ? capitalizeLabel(confirmedEffort)
+      : (inheriting?.effort ?? null));
   const modelChoices = hasSessionModel
     ? flattenChoices(modelOption).map((choice) => ({
         id: choice.value,
@@ -327,6 +332,10 @@ export function ChatHarnessControls({
         effortOption={effortOption}
         disabled={turnBusy || projectTransitioning || !canPrompt}
         pending={modePending}
+        readOnlyLabel={
+          !projectTransitioning &&
+          (!!inheriting || (turnBusy && modelChoices.length > 0))
+        }
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />

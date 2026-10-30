@@ -72,6 +72,10 @@ pub(crate) enum DurableAdapterEvent {
     },
     /// Legacy paired-denial input retained for recovery characterization.
     /// New ingress normalizes to PermissionRequest and waits for a decision.
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     PermissionDeny {
         intent: PermissionIntent,
         now_millis: i64,

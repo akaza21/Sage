@@ -1,4 +1,4 @@
-import { ExternalLink, Files, PanelRightClose, Plus } from "../ui/leanIcons";
+import { Files } from "../ui/leanIcons";
 import {
   lazy,
   Suspense,
@@ -36,7 +36,10 @@ import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
-import { AgentArtifactHeader } from "./AgentArtifactHeader";
+import {
+  AgentArtifactHeader,
+  AgentArtifactPaneControls,
+} from "./AgentArtifactHeader";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { useAgentArtifactFollowLifecycle } from "./useAgentArtifactFollowLifecycle";
@@ -88,6 +91,7 @@ export function AgentArtifactPane({
   const availableResourceKeys = useRef(new Set<string>());
   const paneRef = useRef<HTMLElement | null>(null);
   const [canvasNode, setCanvasNode] = useState<HTMLElement | null>(null);
+  const [maximized, setMaximized] = useState(false);
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const onPaneKeyDown = useAgentArtifactPaneFocus({
     expanded,
@@ -285,7 +289,7 @@ export function AgentArtifactPane({
         aria-modal={modal || undefined}
         className={`agent-artifact-pane${
           hasResources ? "" : " agent-artifact-pane--empty"
-        }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}`}
+        }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
         aria-label="Agent artifacts"
         data-owner-project-id={focusedOwner?.projectId}
         data-owner-chat-id={focusedOwner?.chatId}
@@ -317,42 +321,16 @@ export function AgentArtifactPane({
           ) : (
             <strong>Files, changes, and preview</strong>
           )}
-          <button
-            className="agent-artifact-pane__collapse"
-            type="button"
-            aria-label="New browser tab"
-            title="New browser tab"
-            disabled={!project}
-            onClick={() => void openBrowser()}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </button>
-          <button
-            className="agent-artifact-pane__collapse"
-            type="button"
-            aria-label="Pop out active tab"
-            title="Open active tab in Editor"
-            disabled={
-              !activeArtifact ||
-              activeArtifact.kind === "browser" ||
-              !onOpenInEditor
-            }
-            onClick={() => {
-              if (activeArtifact && activeArtifact.kind !== "browser")
-                onOpenInEditor?.(activeArtifact.id);
+          <AgentArtifactPaneControls
+            maximized={maximized}
+            onMaximizedChange={setMaximized}
+            disabled={!project || projectTransitioning}
+            onNewTab={() => void openBrowser()}
+            onCollapse={() => {
+              setMaximized(false);
+              onExpandedChange?.(false);
             }}
-          >
-            <ExternalLink size={16} aria-hidden="true" />
-          </button>
-          <button
-            className="agent-artifact-pane__collapse"
-            type="button"
-            aria-label="Collapse files, changes, and preview"
-            title="Collapse resources"
-            onClick={() => onExpandedChange?.(false)}
-          >
-            <PanelRightClose size={16} aria-hidden="true" />
-          </button>
+          />
         </header>
         {activeArtifact && activeArtifact.kind !== "browser" ? (
           <AgentArtifactHeader

@@ -29,8 +29,9 @@ test("CP-41: create, comment, inspect, edit, send and retain read-only annotatio
   expect(
     Math.abs(badge.x + badge.width / 2 - selected.x - selected.width),
   ).toBeLessThanOrEqual(4);
-  expect(selected.y - badge.y).toBeGreaterThanOrEqual(22);
-  expect(selected.y - badge.y).toBeLessThanOrEqual(30);
+  // Codex s2/f0095, f0113: the badge sits above the range end, its bottom
+  // on the highlight top, so it never covers the annotated text.
+  expect(Math.abs(badge.y + badge.height - selected.y)).toBeLessThanOrEqual(2);
   await expect(workbench).toHaveScreenshot("annotation-field.png");
   await comment.fill("Is this true for null?");
   await comment.press("Enter");
@@ -75,6 +76,33 @@ test("CP-41: create, comment, inspect, edit, send and retain read-only annotatio
   await expect(workbench).toHaveScreenshot("annotation-sent.png");
 });
 
+for (const width of [720, 480]) {
+  test(`CP-41: the comment field opens above the line, clear of the badge, at ${width}`, async ({
+    page,
+  }) => {
+    await openSelectionScenario(page);
+    await page.setViewportSize({ width, height: 1080 });
+    const selected = await dragAnswerPhrase(page);
+    await page
+      .getByRole("button", { name: "Add to chat", exact: true })
+      .click();
+    const field = (await page.locator(".annotation-comment").boundingBox())!;
+    const badge = (await page
+      .getByRole("button", { name: "Annotation 1", exact: true })
+      .boundingBox())!;
+    // Codex s2/f0095: above the selection, so the rest of the answer and
+    // its action row stay visible; below is only a fallback.
+    expect(field.y + field.height).toBeLessThanOrEqual(selected.y - 4);
+    const overlaps =
+      field.x < badge.x + badge.width &&
+      field.x + field.width > badge.x &&
+      field.y < badge.y + badge.height &&
+      field.y + field.height > badge.y;
+    expect(overlaps).toBe(false);
+    expect(field.x + field.width).toBeLessThanOrEqual(width);
+  });
+}
+
 test("CP-41: Escape keeps no-comment annotation; deletion clears the source badge", async ({
   page,
 }) => {
@@ -96,15 +124,17 @@ test("CP-41: cap is visible, deletion renumbers and annotations alone can send",
   page,
 }) => {
   await openSelectionScenario(page);
+  // Each badge sits above its range end (Codex s2/f0113), so
+  // the phrases skip a word to leave the next one's start uncovered.
   for (const phrase of [
     "The",
-    "preceding",
     "explanation",
-    "introduces",
+    "second",
+    "provides",
     "selected phrase",
-    "and",
-    "its",
+    "selection",
     "behavior",
+    "review",
   ]) {
     await dragAnswerPhrase(page, phrase);
     await page

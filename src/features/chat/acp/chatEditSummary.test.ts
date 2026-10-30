@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { snapshotPage } from "../../../app/agentDiff.testFixture";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { createAcpProjectionStore } from "../../../app/acpProjectionStore";
 import type { AcpItem } from "../../../domain/acp";
 import * as agentSummary from "./agentEditSummary";

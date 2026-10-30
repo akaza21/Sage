@@ -1,62 +1,67 @@
-import type {
-  MarkdownPreviewBlock,
-  MarkdownPreviewDocument,
-} from "../../files/markdownPreview";
+import type { MarkdownPreviewDocument } from "../../files/markdownPreview";
 
-/** Where a streamed answer's newest appended run sits, and how long it is. */
-export type StreamTail = {
+/** Oldest-first lengths of appended runs forming a contiguous suffix of a block/item/cell. */
+export type StreamRuns = {
   blockIndex: number;
   itemIndex: number | undefined;
-  chars: number;
-  /** Changes with every chunk, so each new run mounts (and fades) afresh. */
-  key: number;
+  runs: number[];
 };
 
-/** The rendered text a block ends in: its last item or last cell. */
-const tailText = (block: MarkdownPreviewBlock) =>
-  (block.kind === "list"
-    ? block.items.at(-1)
-    : block.kind === "table"
-      ? block.rows.at(-1)?.at(-1)
-      : // Code never reaches here (streamTailTarget refuses it first).
-        block.text) ?? "";
+/** Retain spans for 16 chunks: at >19 ms/chunk this outlasts the 300 ms fade, so unwrapped runs are solid. */
+export const MAX_STREAM_RUNS = 16;
 
-/**
- * The run to fade when the answer's last text grew (Codex s5/f0309: only the
- * newest words trail). It is measured in rendered text, never raw markdown:
- * stripped markers and collapsed whitespace don't count, and a chunk that
- * re-renders earlier text (a marker closing) has no run. A new block, list
- * item or table row fades whole on mount instead; code blocks never trail.
- */
-export function streamTailTarget(
+/** Trail only appended rendered text, not raw Markdown or rewritten text. New blocks/items/rows fade whole; code never trails (s5/f0309). */
+export default function nextStreamRuns(
+  current: StreamRuns | null | undefined,
   previous: MarkdownPreviewDocument | null,
   next: MarkdownPreviewDocument,
-  key: number,
-): StreamTail | null {
+): StreamRuns | null {
   const blockIndex = next.blocks.length - 1;
   const block = next.blocks[blockIndex];
   const before = previous?.blocks[blockIndex];
   if (
-    !block ||
     !before ||
-    previous.blocks.length !== next.blocks.length ||
+    previous.blocks.length !== blockIndex + 1 ||
     before.kind !== block.kind ||
     block.kind === "code"
   )
     return null;
   let itemIndex: number | undefined;
-  if (block.kind === "list" && before.kind === "list") {
-    if (before.items.length !== block.items.length) return null;
+  let prior: string;
+  let text: string;
+  if (block.kind === "list") {
+    if ((before as typeof block).items.length !== block.items.length)
+      return null;
     itemIndex = block.items.length - 1;
-  } else if (block.kind === "table" && before.kind === "table") {
+    prior = (before as typeof block).items[itemIndex] ?? "";
+    text = block.items[itemIndex] ?? "";
+  } else if (block.kind === "table") {
     const row = block.rows.length - 1;
-    if (before.rows.length !== block.rows.length || row < 1) return null;
+    if ((before as typeof block).rows.length - 1 !== row || row < 1)
+      return null;
     itemIndex = row * block.align.length + block.rows[row].length - 1;
+    prior = (before as typeof block).rows[row].at(-1) ?? "";
+    text = block.rows[row].at(-1) ?? "";
+  } else {
+    prior = (before as typeof block).text;
+    text = block.text;
   }
-  const prior = tailText(before);
-  const text = tailText(block);
+  if (text === prior || !text.startsWith(prior)) return null;
   const chars = text.length - prior.length;
-  return chars > 0 && text.startsWith(prior)
-    ? { blockIndex, itemIndex, chars, key }
-    : null;
+  return {
+    blockIndex,
+    itemIndex,
+    runs:
+      current?.blockIndex === blockIndex &&
+      current.itemIndex === itemIndex &&
+      (next.formats
+        .find(
+          (format) =>
+            format.blockIndex === blockIndex && format.itemIndex === itemIndex,
+        )
+        ?.spans.at(-1) ?? text) === text &&
+      current.runs.reduce((sum, length) => sum + length, 0) <= prior.length
+        ? [...current.runs.slice(1 - MAX_STREAM_RUNS), chars]
+        : [chars],
+  };
 }

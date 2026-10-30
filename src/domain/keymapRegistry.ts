@@ -45,6 +45,23 @@ export interface KeymapChordEvent {
 }
 
 export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
+  ...(
+    [
+      ["agent.changes", "Changes", "g", "required", "forbidden"],
+      ["agent.terminal", "Terminal", "`", "forbidden", "forbidden"],
+      ["agent.files", "Files", "p", "forbidden", "forbidden"],
+      ["agent.sideChat", "Side chat", "s", "forbidden", "required"],
+    ] as const
+  ).map(([id, label, key, shift, alt]) => ({
+    id,
+    label,
+    key,
+    shift,
+    alt,
+    description: `Open ${label.toLowerCase()} for the focused chat.`,
+    scope: "Agent" as const,
+    ctrlOrMeta: "required" as const,
+  })),
   {
     id: "newTask",
     label: "New task",

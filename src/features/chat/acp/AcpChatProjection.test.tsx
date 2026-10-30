@@ -149,6 +149,43 @@ function activityItem(
   } as AcpItem;
 }
 
+it.each(["running", "completed", "streaming"])(
+  "shows Thinking only after a running idle subagent row: %s (R3-10)",
+  async (state) => {
+    const next = page(state === "completed" ? "completed" : "running");
+    next.turns[0].items = [
+      activityItem("spawn", "", {
+        origin: "primary",
+        kind: "collaboration",
+        payload: {
+          activityId: null,
+          summary: "Count math",
+          operation: "spawnAgent",
+          label: "Count math",
+          receiverLabels: ["Count math"],
+          agentKeys: ["math"],
+          agentStates: [["math", "running"]],
+        },
+      } as Partial<AcpItem>),
+    ];
+    if (state === "streaming")
+      next.turns[0].items = [
+        ...next.turns[0].items,
+        { ...textItem(), lifecycle: "streaming" },
+      ];
+    const { container } = await renderProjection(
+      <AcpChatProjection page={next} active />,
+    );
+    if (state === "running") {
+      const thinking = screen.getByText("Thinking");
+      expect(thinking).toHaveClass("acp-live-shimmer");
+      expect(thinking.previousElementSibling?.textContent).toContain(
+        "Count math",
+      );
+    } else expect(container.querySelector(".acp-thought")).toBeNull();
+  },
+);
+
 function editItem(
   id: string,
   ordinal: number,

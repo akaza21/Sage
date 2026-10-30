@@ -34,12 +34,14 @@ pub(crate) use admission::{
 };
 pub(crate) use handshake::{StandardAcpHandshake, StandardAcpHandshakeError};
 pub(crate) use launch::{AcpLaunchAuthority, ClaudeLaunch};
+#[cfg(test)]
 pub(crate) use opencode::candidate_from_global_npm_shim;
 pub(crate) use opencode::{
     OPENCODE_BINDING_ID, OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
     OpenCodeRuntimeFactory,
 };
+#[cfg(test)]
+pub(crate) use profile::PROFILES;
 pub(crate) use profile::{
-    NpmPackageManifestRequirement, PROFILES, StandardAcpClientCapabilities, StandardAcpLaunch,
-    StandardAcpProfile, StandardAcpVersionShape, profile_for,
+    NpmPackageManifestRequirement, StandardAcpLaunch, StandardAcpProfile, profile_for,
 };

@@ -860,3 +860,60 @@ describe("MenuPopover", () => {
     ]);
   });
 });
+
+function NestedMenus() {
+  const parentTrigger = useRef<HTMLButtonElement>(null);
+  const childTrigger = useRef<HTMLButtonElement>(null);
+  const [parent, setParent] = useState(false);
+  const [child, setChild] = useState(false);
+  return (
+    <>
+      <button ref={parentTrigger} onClick={() => setParent(true)}>
+        Parent
+      </button>
+      <MenuPopover
+        id="parent-menu"
+        open={parent}
+        ariaLabel="Parent menu"
+        triggerRef={parentTrigger}
+        onDismiss={() => setParent(false)}
+      >
+        <button
+          ref={childTrigger}
+          role="menuitem"
+          onClick={() => setChild(true)}
+        >
+          Nested trigger
+        </button>
+        <MenuPopover
+          id="child-menu"
+          open={child}
+          ariaLabel="Child menu"
+          triggerRef={childTrigger}
+          portalTarget="closest-popover"
+          onDismiss={() => setChild(false)}
+        >
+          <button role="menuitem">Child item</button>
+        </MenuPopover>
+      </MenuPopover>
+    </>
+  );
+}
+
+it("focuses a nested menu's first item after it moves into its parent popover", async () => {
+  render(<NestedMenus />);
+  fireEvent.click(screen.getByRole("button", { name: "Parent" }));
+  await act(async () => undefined);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Nested trigger" }));
+  await act(async () => undefined);
+  const item = screen.getByRole("menuitem", { name: "Child item" });
+  expect(screen.getByRole("menu", { name: "Parent menu" }).contains(item)).toBe(
+    true,
+  );
+  expect(item).toHaveFocus();
+  fireEvent.keyDown(item, { key: "Escape" });
+  expect(
+    screen.getByRole("menuitem", { name: "Nested trigger" }),
+  ).toHaveFocus();
+  expect(screen.getByRole("menu", { name: "Parent menu" })).toBeVisible();
+});

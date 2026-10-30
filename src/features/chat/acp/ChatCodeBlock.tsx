@@ -17,10 +17,12 @@ export function ChatCodeBlock({
   language,
   source,
   streaming = false,
+  wrapInitially = false,
 }: {
   language: string;
   source: string;
   streaming?: boolean;
+  wrapInitially?: boolean;
 }) {
   const normalized = language.trim().toLowerCase();
   const path = `f.${LANGUAGE_ALIASES[normalized] ?? normalized}`;
@@ -36,7 +38,7 @@ export function ChatCodeBlock({
   } | null>(null);
   const status = copyState?.identity === identity ? copyState.status : "";
   const CopyIcon = status === "Copied" ? Check : Copy;
-  const [wrap, setWrap] = useState(false);
+  const [wrap, setWrap] = useState(wrapInitially);
   const [highlight, setHighlight] = useState<{
     identity: typeof identity;
     spans: CodeSpan[];

@@ -1,7 +1,5 @@
-use crate::acp::{
-    contract::{BoundedVec, ContractError, SafeText},
-    intent::{NormalizedPayload, SafeResourceRef, ToolCategory},
-};
+use crate::acp::contract::{BoundedVec, ContractError, SafeText};
+use crate::acp::intent::{NormalizedPayload, SafeResourceRef, ToolCategory};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NormalizerInput {

@@ -2184,7 +2184,6 @@ fn injected_replacement_write_failure_preserves_legacy_and_retry_converges() {
 }
 
 #[cfg(windows)]
-#[allow(dead_code)]
 pub(crate) struct FixtureBackupFailpointObservation {
     pub(crate) old_schema_readable: bool,
     pub(crate) new_schema_visible: bool,
@@ -2193,7 +2192,6 @@ pub(crate) struct FixtureBackupFailpointObservation {
 }
 
 #[cfg(windows)]
-#[allow(dead_code)]
 pub(crate) fn fixture_backup_failpoint_observation() -> FixtureBackupFailpointObservation {
     let directory = TestDir::new();
     create_v4(&directory.database(), "fixture-backup-failpoint", true);
@@ -2309,7 +2307,6 @@ fn insufficient_space_preflight_preserves_v4_sqlite_and_creates_no_backup() {
 }
 
 #[cfg(windows)]
-#[allow(dead_code)]
 pub(crate) struct FixtureRetirementObservation {
     pub(crate) verified_source_or_v5: bool,
     pub(crate) permanent_blocker_for_valid_prefix: bool,
@@ -2318,7 +2315,6 @@ pub(crate) struct FixtureRetirementObservation {
 }
 
 #[cfg(windows)]
-#[allow(dead_code)]
 pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
     "replacement-manifest-fsync",
     "replacement-build-intent-remove-or-parent-fsync",
@@ -2334,7 +2330,6 @@ pub(crate) const FIXTURE_RETIREMENT_FAILPOINTS: &[&str] = &[
 ];
 
 #[cfg(windows)]
-#[allow(dead_code)]
 pub(crate) fn fixture_retirement_observation() -> FixtureRetirementObservation {
     for failpoint in FIXTURE_RETIREMENT_FAILPOINTS {
         let directory = TestDir::new();

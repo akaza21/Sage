@@ -284,7 +284,7 @@ for (const height of [320, 400]) {
     await page.evaluate(() => window.popoverWorkbench.subagents("children"));
     for (const [name, role, label] of [
       ["Show chat resources", "dialog", "Chat resources"],
-      ["Chat actions for", "menu", "Actions for"],
+      ["Chat actions for", "menu", "Chat tools"],
     ] as const) {
       const trigger = page
         .getByRole("button", { name: new RegExp(name) })

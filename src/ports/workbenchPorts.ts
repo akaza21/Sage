@@ -234,7 +234,7 @@ export interface ChatPort {
     request: PinChatRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
-  /** Browser fixtures only; the desktop forks through the Rust `fork_chat`. */
+  /** Rust's native fork; browser fixtures may provide an adapter. */
   forkChat?(request: ForkChatRequest): Promise<ProjectTransitionResult>;
 }
 

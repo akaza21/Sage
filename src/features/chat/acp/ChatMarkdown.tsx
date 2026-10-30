@@ -12,13 +12,31 @@ import {
 import { useWorkbenchStore } from "../../../app/store";
 import { MermaidFigureBoundary } from "./MermaidFigureBoundary";
 import { ChatCodeBlock } from "./ChatCodeBlock";
-import { streamTailTarget, type StreamTail } from "./streamTail";
+import type { StreamRuns } from "./streamTail";
+import type nextStreamRuns from "./streamTail";
 
-/**
- * The stream fade (chat-markdown.css) belongs to blocks appended after this
- * answer mounted. A remount (pane switch, scroll restore) finishes the fade
- * of every block already present, so settled text never flashes again.
- */
+/** Load streamTail lazily with this module, outside first-Chat; text streams undecorated until ready (s5/f0309). */
+let tracker: typeof nextStreamRuns | null = null;
+let loading: Promise<void> | null = null;
+
+export const streamRunTracker = () => tracker;
+
+export function loadStreamRuns(): Promise<void> {
+  loading ??= import("./streamTail").then(
+    (module) => {
+      tracker = module.default;
+    },
+    () => {
+      // A failed import is retried by the next streamed answer.
+      loading = null;
+    },
+  );
+  return loading;
+}
+
+void loadStreamRuns();
+
+/** Fade only blocks appended after mount; settle existing blocks on remount to prevent flashing. */
 function settleMountedStream(element: HTMLDivElement | null) {
   for (const animation of element?.getAnimations?.({ subtree: true }) ?? [])
     if ((animation as CSSAnimation).animationName === "acp-stream-in")
@@ -35,23 +53,23 @@ export function ChatMarkdown({
   fileReferenceOwner?: AgentArtifactOwner;
 }) {
   const document = useMemo(() => renderMarkdownPreview(text), [text]);
-  // One record per answer, replaced per chunk: the newest appended run
-  // fades while earlier text stays solid (Codex s5/f0309).
+  // One record per answer/chunk; retain appended spans so older fades finish while new words trail.
   const [stream, setStream] = useState<{
     text: string;
     document: typeof document;
-    tail: StreamTail | null;
-  }>(() => ({ text, document, tail: null }));
+    runs?: StreamRuns | null;
+  }>(() => ({ text, document }));
+  const trackRuns = streaming ? streamRunTracker() : null;
   if (stream.text !== text)
     setStream({
       text,
       document,
-      // The run is the rendered text this chunk appended (streamTail.ts).
-      tail: streaming
-        ? streamTailTarget(stream.document, document, text.length)
-        : null,
+      runs: trackRuns?.(stream.runs, stream.document, document),
     });
-  const streamTail = streaming && stream.text === text ? stream.tail : null;
+  const streamRuns = streaming && stream.text === text ? stream.runs : null;
+  useEffect(() => {
+    if (streaming) void loadStreamRuns();
+  }, [streaming]);
   const listMarkerWidth = useMemo(
     () =>
       document.blocks.reduce(
@@ -163,7 +181,7 @@ export function ChatMarkdown({
     >
       <MarkdownBlocks
         document={document}
-        streamTail={streamTail}
+        streamRuns={streamRuns}
         renderLink={renderLink}
         renderCode={(block) =>
           block.language.toLowerCase() === "mermaid" &&

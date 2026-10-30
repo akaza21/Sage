@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 
-use serde_json::{Value, json};
+#[cfg(test)]
+use serde_json::Value;
+use serde_json::json;
 
 use crate::acp::bindings::adapter::AdapterRuntimeError;
 

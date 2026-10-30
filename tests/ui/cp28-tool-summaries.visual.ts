@@ -7,7 +7,7 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
-test("CP-28 regular tool summary computes to muted 400 text", async ({
+test("CP-28 regular tool summary computes to Codex's a3a3a3 400 text", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 720, height: 880 });
@@ -32,7 +32,15 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
     return { color, muted, fontWeight };
   });
   expect(typography.fontWeight).toBe("400");
-  expect(typography.color).toBe(typography.muted);
+  // Round 3 (verdict s5/f0378, f0405): group labels read Codex's #a3a3a3,
+  // lighter than the muted token, and the summary copy inherits it.
+  expect(typography.color).not.toBe(typography.muted);
+  const channels = (color: string) =>
+    (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+  const [red, green, blue] = channels(typography.color);
+  const scale = typography.color.startsWith("color(") ? 255 : 1;
+  for (const channel of [red, green, blue])
+    expect(Math.round(channel * scale)).toBe(163);
   const summaryTypography = await row
     .locator(":scope > summary .acp-tool-rollup__summary-copy")
     .evaluate((node) => {
@@ -40,7 +48,7 @@ test("CP-28 regular tool summary computes to muted 400 text", async ({
       return { color: style.color, fontWeight: style.fontWeight };
     });
   expect(summaryTypography.fontWeight).toBe("400");
-  expect(summaryTypography.color).toBe(typography.muted);
+  expect(summaryTypography.color).toBe(typography.color);
 });
 
 for (const layout of [

@@ -41,6 +41,14 @@
   text-overflow: ellipsis;
 }
 
+.composer__model-trigger[data-readonly-label]:disabled {
+  opacity: 1;
+}
+
+.composer__model-group .composer__model-trigger:has(> .composer__model-effort) {
+  max-width: 240px;
+}
+
 .composer__model-group .composer__effort-picker {
   min-width: 28px;
   overflow: hidden;

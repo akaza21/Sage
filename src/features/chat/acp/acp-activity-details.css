@@ -24,6 +24,11 @@
   overflow: auto;
 }
 
+/* Codex labels a tool result by its bare, lowercase id: "json" (s5/f0390). */
+.acp-tool-result .acp-code-block__language {
+  text-transform: lowercase;
+}
+
 .acp-tool-error {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-danger-border);
@@ -110,25 +115,31 @@
 }
 
 /*
- * Codex s8/f0123-f0128: a bright band crosses the label left to right in
- * about 600 ms, then the label idles until the next 4 s period. The band is
- * a 300% image moved from 100% to 0. Cost: background-position is not
- * compositable, so the running animation is ticked on the main thread for
- * the whole period and each ~600 ms sweep repaints the label's text every
- * frame; during the idle 85% the value is constant, so there is style work
- * but nothing to repaint. A composited variant (transform on a masked
- * overlay) needs a second, text-clipped copy of every live label that stays
- * aligned under ellipsis, which costs more DOM and layout than the few short
- * labels this paints, so the background sweep stays.
+ * Codex s8/f0123-f0128, f0174-f0177: a white band crosses the label left to
+ * right at about 0.6 px/ms, then the label idles until the next 4 s period.
+ * The band has a fixed size, a 56 px white core between 60 px soft edges, so
+ * a short label shimmers as brightly as a long one (a percentage band only
+ * grazes a short label). It travels 840 px, from just off the left edge to
+ * past the widest (660 px) label, over 35% of the period: 1.4 s at 0.6 px/ms.
+ * Cost: background-position is not compositable, so the running animation
+ * is ticked on the main thread for the whole period and each sweep repaints
+ * the label's text every frame; while idle the value is constant, so there
+ * is style work but nothing to repaint. A composited variant (transform on a
+ * masked overlay) needs a second, text-clipped copy of every live label that
+ * stays aligned under ellipsis, which costs more DOM and layout than the few
+ * short labels this paints, so the background sweep stays.
  */
 .acp-live-shimmer {
-  background: linear-gradient(
-      90deg,
-      var(--color-text-muted) 44%,
-      var(--color-text-primary) 50%,
-      var(--color-text-muted) 56%
-    )
-    100% 0 / 300% 100%;
+  background:
+    linear-gradient(
+        90deg,
+        transparent,
+        var(--color-text-emphasis) 34%,
+        var(--color-text-emphasis) 66%,
+        transparent
+      ) -176px
+      0 / 176px 100% no-repeat,
+    linear-gradient(var(--color-text-muted), var(--color-text-muted));
   background-clip: text;
   color: transparent;
   animation: acp-live-shimmer var(--motion-duration-shimmer) linear infinite;
@@ -136,17 +147,23 @@
 
 @keyframes acp-live-shimmer {
   0% {
-    background-position: 100% 0;
+    background-position:
+      -176px 0,
+      0 0;
   }
 
-  15%,
+  35%,
   100% {
-    background-position: 0 0;
+    background-position:
+      664px 0,
+      0 0;
   }
 }
 
+/* Codex's row glyphs are thin strokes (s5/f0405: ⌘, terminal-square). */
 .acp-tool-rollup__summary-copy > svg:first-child {
   color: var(--color-text-muted);
+  stroke-width: 1.5;
 }
 
 .acp-tool-rollup__meta {

@@ -41,12 +41,12 @@ pub(crate) mod session_config;
 
 pub(crate) use activity::DurableActivityItem;
 pub(crate) use batch_journal::{AdapterBatchJournal, JournalReceipt, PumpJournalError};
-pub(crate) use coalescer::DeferredIngressState;
 use coalescer::PendingIngress;
-#[allow(unused_imports)]
 pub(crate) use completion::CompletedPumpParts;
 pub(crate) use error::{AdapterPumpError, NonfatalRefusal};
 use payload::hex;
+
+#[cfg(test)]
 pub(crate) use payload::normalized_payload_bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,6 +171,7 @@ pub(crate) struct AdapterPumpAdmission {
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    #[cfg(test)]
     pub(crate) fn new(
         adapter: A,
         journal: J,
@@ -227,6 +228,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
     }
 
+    #[cfg(test)]
     fn with_queue(
         adapter: A,
         journal: J,
@@ -251,6 +253,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         ))
     }
 
+    #[cfg(test)]
     pub(crate) fn teardown_required(&self) -> bool {
         self.teardown
     }
@@ -260,10 +263,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     /// release the exact Turn lease before it tears the process tree down.
     pub(crate) fn latest_durable_turn_cursor(&self) -> Option<&AdapterTurnCursor> {
         self.durable_turn_cursor.as_ref()
-    }
-
-    pub(crate) fn deferred_ingress_state(&self, now_millis: i64) -> DeferredIngressState {
-        self.pending.state(now_millis)
     }
 
     pub(crate) fn next_deferred_flush_deadline_millis(&self) -> Option<i64> {

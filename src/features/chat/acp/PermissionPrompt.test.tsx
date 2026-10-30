@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { PermissionPrompt } from "./PermissionPrompt";
-import { clearApprovalDecisions } from "../useApprovalSlot";
+import { clearApprovalDecisions, resolveApproval } from "../useApprovalSlot";
 
 afterEach(() => {
   cleanup();
@@ -76,6 +76,40 @@ function accepted(decision: string) {
 }
 
 describe("PermissionPrompt", () => {
+  it("shares the fallback's exact approval identity for every decision (R3-09)", async () => {
+    const resolve = accepted("allowAlways");
+    const item = permission();
+    await resolveApproval(item, "allowAlways");
+    expect(resolve).toHaveBeenCalledWith({
+      projectId: item.projectId,
+      chatId: item.chatId,
+      sessionId: item.sessionId,
+      turnId: item.turnId,
+      runtimeEpoch: item.runtimeEpoch,
+      requestId: item.payload.requestId,
+      decision: "allowAlways",
+    });
+  });
+
+  it("marks the safe initial Allow focus and clears it when focus leaves (R3-09)", () => {
+    render(<PermissionPrompt items={[permission()]} />);
+    const allow = screen.getByRole("button", { name: /Allow once/ });
+    expect(allow).toHaveFocus();
+    expect(allow).toHaveAttribute("data-initial-focus", "true");
+    fireEvent.focus(screen.getByRole("button", { name: /Deny/ }));
+    fireEvent.blur(allow);
+    expect(allow).not.toHaveAttribute("data-initial-focus");
+  });
+
+  it.each([{ focused: false }, { canTakeFocus: () => false }])(
+    "does not mark unsafe initial focus (R3-09)",
+    (props) => {
+      render(<PermissionPrompt items={[permission()]} {...props} />);
+      expect(
+        screen.getByRole("button", { name: /Allow once/ }),
+      ).not.toHaveAttribute("data-initial-focus");
+    },
+  );
   it("keeps Sage's question as the headline and the agent's reason secondary", () => {
     render(<PermissionPrompt items={[permission()]} />);
     const prompt = screen.getByRole("group", { name: "Permission request" });

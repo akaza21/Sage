@@ -18,77 +18,63 @@ import type * as QueuedChunk from "./ComposerQueuedPrompts";
 type AnyComponent = ComponentType<any>;
 type Components = Record<string, AnyComponent>;
 
-/**
- * One tiny core loader per lazy feature chunk. `<Part part="Name" … />`
- * renders that named component of the chunk, and `fallback` (nothing by
- * default) until it loads. Once the chunk has loaded, every part renders
- * synchronously: a part first used later never suspends, so it appears in
- * the same frame as the state that asked for it.
- */
+/** One loader per chunk; all named parts render synchronously once loaded. */
 export function lazyParts<Chunk extends Components>(
   load: () => Promise<Chunk>,
 ) {
-  const parts: Partial<Record<keyof Chunk, AnyComponent>> = {};
+  let parts: Partial<Record<keyof Chunk, AnyComponent>> = {};
   let loaded: Chunk | null = null;
+  let pending: Promise<Chunk> | null = null;
   const loadOnce = () =>
-    load().then((chunk) => {
-      loaded = chunk;
-      return chunk;
-    });
-  return function Part<K extends keyof Chunk & string>({
+    (pending ??= load().then(
+      (chunk) => (loaded = chunk),
+      (error: unknown) => {
+        pending = null;
+        parts = {};
+        throw error;
+      },
+    ));
+  function Part<K extends keyof Chunk & string>({
     fallback = null,
     ...props
   }: { part: K; fallback?: ReactNode } & ComponentProps<Chunk[K]>) {
     const part: K = props.part;
-    // Decided once per mount, so a mounted part never swaps its subtree.
+    // Fix the subtree per mount.
     const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
     if (Ready) return <Ready {...props} />;
     const Loaded: AnyComponent = (parts[part] ??= lazy(() =>
-      loadOnce().then(
-        (chunk) => ({ default: chunk[part]! }),
-        (error: unknown) => {
-          // A failed import is not cached: the next mount (reopening the
-          // Chat) imports again instead of rethrowing the old failure.
-          delete parts[part];
-          throw error;
-        },
-      ),
+      loadOnce().then((chunk) => ({ default: chunk[part]! })),
     ));
     return (
       <Suspense fallback={fallback}>
         <Loaded {...props} />
       </Suspense>
     );
-  };
+  }
+  Part.preload = loadOnce;
+  return Part;
 }
 
-/** Transcript selection, annotations and side chats (TranscriptInteractions.tsx). */
-export const TranscriptPart = lazyParts<typeof TranscriptChunk>(
-  () => import("./TranscriptInteractions"),
-);
-/** Turn navigator and find in chat (ChatNavigation.tsx). */
+export const TranscriptPart = lazyParts<
+  Omit<typeof TranscriptChunk, "openSideChat" | "readTranscriptQuote">
+>(() => import("./TranscriptInteractions"));
 export const NavigationPart = lazyParts<typeof ChatNavigationChunk>(
   () => import("./ChatNavigation"),
 );
-/** The composer-slot approval card (PermissionPrompt.tsx). */
 export const ApprovalPart = lazyParts<typeof PermissionPromptChunk>(
   () => import("./acp/PermissionPrompt"),
 );
-/** The Chat search dialog (chatSearch/ChatSearchControl.tsx). */
 export const ChatSearchPart = lazyParts<typeof ChatSearchChunk>(
   () => import("../chatSearch/ChatSearchControl"),
 );
-/** Answer "…" menu, fork dialog and "Continued from chat" (ForkChat.tsx). */
 export const ForkPart = lazyParts<typeof ForkChunk>(() => import("./ForkChat"));
-/** The "Hand off this Chat" dialog (ChatHandoffDialog.tsx). */
 export const HandoffPart = lazyParts<typeof HandoffChunk>(
   () => import("./ChatHandoffDialog"),
 );
-/** The queued-message rows above the composer (ComposerQueuedPrompts.tsx). */
 export const QueuedPart = lazyParts<typeof QueuedChunk>(
   () => import("./ComposerQueuedPrompts"),
 );
-/** Queued rows, loaded with the first queued message (nothing before). */
+/** Load only with the first queued message. */
 export function QueuedRows(
   props: ComponentProps<typeof QueuedChunk.ComposerQueuedPrompts>,
 ) {

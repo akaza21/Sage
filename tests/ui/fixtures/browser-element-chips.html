@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser element chips visual fixture</title>
+  </head>
+  <body>
+    <div style="position: absolute; left: 120px; top: 480px; width: 640px">
+      <form class="composer" id="composer">
+        <div class="composer__body">
+          <div class="composer__input-area">
+            <textarea aria-label="Message" placeholder="Do anything"></textarea>
+          </div>
+          <div class="composer__attachment-row" id="row"></div>
+        </div>
+      </form>
+    </div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { ComposerAttachments } from "/src/features/chat/ComposerAttachments.tsx";
+      import "/src/styles/global.css";
+      import "/src/styles/chat-surface.css";
+      import "/src/styles/composer-surface.css";
+
+      const element = (ordinal, name, comment) => ({
+        kind: "browserElement",
+        target: "element",
+        ordinal,
+        tabId: "browser-1",
+        url: "https://en.wikipedia.org/wiki/Lighthouse",
+        title: "Lighthouse - Wikipedia",
+        selector: "main > :nth-child(2 of figure) > img",
+        role: "img",
+        name,
+        text: "",
+        box: { x: 1380, y: 360, width: 230, height: 330 },
+        comment,
+      });
+      const contexts = [
+        element(1, "Barnegat Lighthouse", "Make this photo wider"),
+        element(2, "Roter Sand Lighthouse", "Add a caption credit"),
+      ];
+      createRoot(document.getElementById("row")).render(
+        React.createElement(ComposerAttachments, {
+          contexts,
+          disabled: false,
+          onRemove: () => {},
+        }),
+      );
+      // Ref 63 shows the hover card open; focus opens it once the chunk loads.
+      const open = setInterval(() => {
+        const chip = document.querySelector(".browser-element-chip__trigger");
+        if (!chip) return;
+        clearInterval(open);
+        chip.focus();
+      }, 20);
+    </script>
+  </body>
+</html>

@@ -130,14 +130,7 @@ impl DownloadRegistry {
             .map_err(str::to_owned)?
             .origin()
             .ascii_serialization();
-        if file_name.is_empty()
-            || file_name.len() > 255
-            || file_name
-                .chars()
-                .any(|character| character.is_control() || matches!(character, '/' | '\\' | ':'))
-        {
-            return Err("invalid download name".into());
-        }
+        let file_name = admitted_file_name(file_name).ok_or("invalid download name")?;
         if self
             .entries
             .values()
@@ -155,7 +148,7 @@ impl DownloadRegistry {
                 tab_id: tab_id.to_owned(),
                 id,
                 source,
-                file_name: file_name.to_owned(),
+                file_name,
                 state: "choosingDestination",
                 received_bytes: 0,
                 total_bytes: None,
@@ -196,7 +189,28 @@ impl DownloadRegistry {
         {
             return false;
         }
+        self.saved_as(id, &path);
         self.destinations.insert(id, path);
+        true
+    }
+
+    /// Shows the name the file is (or was) actually saved under, which can
+    /// differ from the server's suggestion (user rename, ` (1)` suffix).
+    pub(super) fn saved_as(&mut self, id: u64, path: &std::path::Path) -> bool {
+        let Some(name) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(admitted_file_name)
+        else {
+            return false;
+        };
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return false;
+        };
+        if entry.file_name == name {
+            return false;
+        }
+        entry.file_name = name;
         true
     }
 
@@ -295,6 +309,23 @@ impl DownloadRegistry {
         self.destinations.remove(&id);
         true
     }
+}
+
+/// The row name: bidi override and format characters are dropped (as for
+/// page titles) so a name cannot disguise its extension; then bounded.
+fn admitted_file_name(name: &str) -> Option<String> {
+    let name = name
+        .chars()
+        .filter(|character| {
+            !matches!(character, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        })
+        .collect::<String>();
+    (!name.is_empty()
+        && name.len() <= 255
+        && !name
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '\\' | ':')))
+    .then_some(name)
 }
 
 fn is_active(state: &str) -> bool {

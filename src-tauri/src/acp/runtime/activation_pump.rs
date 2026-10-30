@@ -44,9 +44,8 @@ pub(crate) enum ActivationMode {
         native_root: String,
         model: Option<ModelId>,
     },
-    Load {
-        external_session_id: ExternalId,
-    },
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
+    Load { external_session_id: ExternalId },
 }
 
 #[derive(Clone)]
@@ -142,6 +141,10 @@ pub(crate) enum ActivationPumpError {
     Backpressure,
     #[error("activation stdout is malformed")]
     Frame,
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     #[error("activation delivery may have written bytes and cannot be replayed")]
     DeliveryUnknown,
     #[error("activation zero-byte retry is exhausted")]
@@ -183,6 +186,7 @@ pub(crate) type RetainedActivationConstruction<A, J, R> =
     Result<ActivationPump<A, J, R>, Box<(A, J, R, ActivationPumpError)>>;
 
 impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<A, J, R> {
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn new(
         adapter: A,
         journal: J,
@@ -260,6 +264,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         self.phase == Phase::Teardown
     }
 
+    #[cfg(test)]
     pub(crate) fn projection_recovery_required(&self) -> bool {
         self.phase == Phase::RecoveryRequired
     }

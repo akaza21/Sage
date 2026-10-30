@@ -1,9 +1,8 @@
 use crate::acp::intent::ProjectionChangedV1;
 
-use super::{
-    MailboxError, NotificationRecovery, ProjectionMailbox, ProjectionNotifier, PublishDisposition,
-    PublishError, PublishOutcome,
-};
+#[cfg(test)]
+use super::{MailboxError, ProjectionMailbox, PublishDisposition};
+use super::{NotificationRecovery, ProjectionNotifier, PublishError, PublishOutcome};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProjectionPublishStatus {
@@ -26,6 +25,7 @@ pub(crate) trait ProjectionPublisher: Send + Sync {
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError>;
 }
 
+#[cfg(test)]
 impl ProjectionPublisher for ProjectionMailbox {
     fn publish_committed(
         &self,
@@ -48,6 +48,7 @@ impl ProjectionPublisher for ProjectionNotifier {
     }
 }
 
+#[cfg(test)]
 fn mailbox_status(status: PublishDisposition) -> ProjectionPublishStatus {
     match status {
         PublishDisposition::Published => ProjectionPublishStatus::Published,
@@ -70,6 +71,7 @@ fn notifier_status(status: PublishOutcome) -> ProjectionPublishStatus {
     }
 }
 
+#[cfg(test)]
 fn mailbox_error(_: MailboxError) -> ProjectionPublishError {
     ProjectionPublishError::InvalidRevision
 }

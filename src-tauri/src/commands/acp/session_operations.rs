@@ -1,6 +1,8 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+/// Context a prompt cannot carry: images (until CP-26) and page elements that
+/// fail admission.
 fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
     if contexts.as_slice().iter().any(|context| {
         matches!(
@@ -13,7 +15,11 @@ fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
             message: safe_message("This harness cannot accept image attachments yet."),
         });
     }
-    Ok(())
+    crate::acp::attached_context::admit_browser_elements(contexts).map_err(|refusal| {
+        AcpIpcError::InvalidRequest {
+            message: safe_message(refusal.message()),
+        }
+    })
 }
 
 pub(crate) async fn send_acp_turn_inner(

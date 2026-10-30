@@ -64,7 +64,8 @@ test("CP-17(c) refs 15/17: Jump to latest floats over a 560 px pane column", asy
       transcriptBox.y + transcriptBox.height - 16,
     );
     expect(buttonBox.y + buttonBox.height).toBeLessThan(composerBox.y);
-    const column = await alpha.locator(".message-list__content").boundingBox();
+    // The reading column is the Turn's first grid track (s2/f0046).
+    const column = await alpha.locator(".acp-turn__items").last().boundingBox();
     expect(
       Math.abs(
         buttonBox.x + buttonBox.width / 2 - (column!.x + column!.width / 2),

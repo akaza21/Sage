@@ -74,6 +74,21 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
     [],
   );
   assert.deepEqual(
+    uiRuleErrors(
+      "rules.json",
+      {
+        rules: [
+          { ...rule, id: "width", measure: "width" },
+          { ...rule, id: "below", measure: "below", other: ".outline" },
+          { ...rule, id: "hint", measure: "placeholder", expected: "Add" },
+          { ...rule, id: "round", measure: "border-radius", expected: "22px" },
+        ],
+      },
+      references,
+    ),
+    [],
+  );
+  assert.deepEqual(
     uiRuleErrors("rules.json", { rules: [{ ...rule, ref: "reference/59a" }] }, [
       "59a-browser-annotate-hover-link.png",
     ]),
@@ -88,7 +103,11 @@ test("UI rules cite a reference, a source, a known measure and a tight tolerance
     { ...rule, measure: "Height" },
     { ...rule, expected: "44" },
     { ...rule, measure: "left-of" },
+    { ...rule, measure: "below" },
+    { ...rule, measure: "placeholder" },
     { ...rule, measure: "right-inset" },
+    { ...rule, measure: "left-inset" },
+    { ...rule, measure: "gap-below" },
     { ...rule, tolerancePx: UI_RULE_MAX_TOLERANCE_PX + 1 },
     { ...rule, tolerancePx: -1 },
     { ...rule, tolerancePx: Number.NaN },

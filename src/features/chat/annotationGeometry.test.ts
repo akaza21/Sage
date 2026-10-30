@@ -52,14 +52,48 @@ describe("annotation comment field (Codex s2/f0095)", () => {
     expect(field.width).toBe(186);
     expect(field.left).toBeGreaterThanOrEqual(scrollport.left);
     expect(field.left + field.width).toBeLessThanOrEqual(scrollport.right);
-    // No room left of the badge here, so the field drops below the line.
-    expect(field.top).toBe(300 + 21 + 6);
+    // There is room above, so the field stays above the line (s2/f0095)
+    // and never covers the rest of the answer or its action row.
+    expect(field.top).toBe(228);
     expect(
       intersects(
         { ...field, height: 44 },
         { ...annotationBadgeOrigin(selected), width: 24, height: 24 },
       ),
     ).toBe(false);
+  });
+
+  it("opens above at 720 and ends before the badge", () => {
+    const selected = line(500, 700, 300);
+    const scrollport = { left: 332, top: 92, right: 720, bottom: 900 };
+    const field = annotationFieldBox(
+      { first: selected, last: selected },
+      356,
+      scrollport,
+    );
+    expect(field.top).toBe(300 - 44 - 6);
+    expect(field.left + field.width).toBeLessThanOrEqual(
+      annotationBadgeOrigin(selected).left - 4,
+    );
+  });
+
+  it("drops below the line only when there is no room above", () => {
+    const selected = line(400, 560, 110);
+    const field = annotationFieldBox({ first: selected, last: selected }, 356, {
+      left: 332,
+      top: 92,
+      right: 720,
+      bottom: 900,
+    });
+    expect(field.top).toBe(110 + 21 + 6);
+  });
+});
+
+describe("annotation badge (Codex s2/f0113)", () => {
+  it("places the badge above the range end in field and chip states (R3-01)", () => {
+    expect(
+      annotationBadgeOrigin({ right: 938, top: 310, bottom: 331 }),
+    ).toEqual({ left: 926, top: 286 });
   });
 
   it("never exceeds 270 px or a narrow scrollport", () => {

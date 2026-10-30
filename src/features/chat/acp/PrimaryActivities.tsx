@@ -10,17 +10,24 @@ import { withSubagentNames } from "./subagentIdentities";
 
 export function PrimaryActivities({
   items,
+  running = false,
   interactive,
   onOpenResource,
   renderItem,
 }: {
   items: readonly AcpItem[];
+  running?: boolean;
   interactive: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
   renderItem: (item: AcpItem) => ReactNode;
 }) {
   const visible = useContext(WorkedActivityVisibility);
   const grouped = groupPrimaryActivities(withSubagentNames(items));
+  const last = grouped.at(-1);
+  const thinking =
+    running &&
+    (last?.kind === "collaborationRollup" ||
+      (last?.kind === "toolRollup" && last.rollup.kind === "subagent"));
   return (
     <>
       {grouped.map((activity) =>
@@ -41,6 +48,14 @@ export function PrimaryActivities({
           renderItem(activity.item)
         ),
       )}
+      {thinking ? (
+        <p
+          className="acp-thought acp-live-shimmer"
+          data-activity-kind="thought"
+        >
+          Thinking
+        </p>
+      ) : null}
     </>
   );
 }

@@ -155,7 +155,36 @@ export function browserNavigate(tabId: string, url: string): Promise<void> {
 }
 
 export type BrowserControlAction =
-  "back" | "forward" | "reload" | "stop" | "annotateOn" | "annotateOff";
+  | "back"
+  | "forward"
+  | "reload"
+  | "stop"
+  | "annotateOn"
+  | "annotateOff"
+  | "annotateCancel";
+
+/** Where the picked element sits in the viewport it was picked in (page CSS px). */
+export interface BrowserAnnotateSelection {
+  /** The accessible name, or a plain word for the role. */
+  label: string;
+  box: { x: number; y: number; width: number; height: number };
+  viewport: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    clientWidth: number;
+    clientHeight: number;
+    scale: number;
+  };
+}
+
+export interface BrowserAnnotateChange {
+  tabId: string;
+  active: boolean;
+  selection?: BrowserAnnotateSelection;
+  error?: string;
+}
 
 export function browserControl(
   tabId: string,
@@ -198,40 +227,6 @@ export function browserCaptureScreenshot(
     tabId,
     expectedRevision,
   });
-}
-
-export interface BrowserDownload {
-  tabId: string;
-  id: number;
-  source: string;
-  fileName: string;
-  state:
-    | "choosingDestination"
-    | "downloading"
-    | "completed"
-    | "interrupted"
-    | "canceled"
-    | "error";
-  receivedBytes: number;
-  totalBytes: number | null;
-}
-
-export function browserDownloads(tabId: string): Promise<BrowserDownload[]> {
-  return invokeNative("browser_downloads", { tabId });
-}
-
-export function browserCancelDownload(
-  tabId: string,
-  id: number,
-): Promise<void> {
-  return invokeNative("browser_cancel_download", { tabId, id });
-}
-
-export function browserShowDownloadInFolder(
-  tabId: string,
-  id: number,
-): Promise<void> {
-  return invokeNative("browser_show_download_in_folder", { tabId, id });
 }
 
 export type BrowserPermissionKind =

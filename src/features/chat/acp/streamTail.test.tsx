@@ -2,69 +2,147 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
-import { streamTailTarget } from "./streamTail";
+import nextStreamRuns, { MAX_STREAM_RUNS } from "./streamTail";
+import { loadStreamRuns, streamRunTracker } from "./ChatMarkdown";
 
+// The run tracker is a lazy chunk that starts loading with ChatMarkdown.
+beforeAll(() => loadStreamRuns());
 afterEach(cleanup);
 
-const doc = renderMarkdownPreview;
+it("loads the run tracker as its own chunk, off the first-Chat path", async () => {
+  await loadStreamRuns();
+  expect(streamRunTracker()).toBeTypeOf("function");
+  const markdown = readFileSync(
+    resolve("src/features/chat/acp/ChatMarkdown.tsx"),
+    "utf8",
+  );
+  expect(markdown).toMatch(/import\("\.\/streamTail"\)/);
+  expect(markdown).not.toMatch(/import \{[^}]*\} from "\.\/streamTail"/);
+});
 
-describe("streamTailTarget", () => {
-  it("targets the growing last paragraph by the appended length", () => {
+const doc = renderMarkdownPreview;
+const newestRuns = (
+  previous: ReturnType<typeof doc> | null,
+  next: ReturnType<typeof doc>,
+) => nextStreamRuns(null, previous, next);
+const tails = (container: HTMLElement) =>
+  [...container.querySelectorAll(".acp-stream-new")].map(
+    (node) => node.textContent,
+  );
+
+it.each([
+  ["plain", "plain text", [100]],
+  ["Hi **bold** tail", "Hi **bold** tail more", [5]],
+])(
+  "resets stale runs at the rendered inline boundary: %s",
+  (before, after, runs) => {
     expect(
-      streamTailTarget(doc("Top hit:"), doc("Top hit: Streaming API"), 22),
-    ).toEqual({ blockIndex: 0, itemIndex: undefined, chars: 14, key: 22 });
+      nextStreamRuns(
+        { blockIndex: 0, itemIndex: undefined, runs },
+        doc(before),
+        doc(after),
+      )?.runs,
+    ).toEqual([5]);
+  },
+);
+
+it("resets oversized rendered runs rather than adding empty or duplicated spans", () => {
+  const { container } = render(
+    <MarkdownBlocks
+      document={doc("hello world")}
+      streamRuns={{ blockIndex: 0, itemIndex: undefined, runs: [20, 3] }}
+    />,
+  );
+  expect(tails(container)).toEqual(["rld"]);
+  expect(container.querySelector("p")).toHaveTextContent("hello world");
+});
+
+it("adjusts every surrogate boundary against the original offsets", () => {
+  const { container } = render(
+    <MarkdownBlocks
+      document={doc("Hi 😀😀x")}
+      streamRuns={{ blockIndex: 0, itemIndex: undefined, runs: [1, 1, 1] }}
+    />,
+  );
+  expect(tails(container)).toEqual(["😀", "x"]);
+  expect(container.querySelector("p")).toHaveTextContent("Hi 😀😀x");
+});
+
+it.each(["**bold** tail more", "[file](src/main.ts) tail more"])(
+  "resets runs that no longer cover the whole formatted tail: %s",
+  (text) => {
+    const { container } = render(
+      <MarkdownBlocks
+        document={doc(text)}
+        streamRuns={{ blockIndex: 0, itemIndex: undefined, runs: [5, 4] }}
+      />,
+    );
+    expect(tails(container)).toEqual(["more"]);
+    expect(container.querySelectorAll(".acp-stream-new")).toHaveLength(1);
+  },
+);
+
+describe("nextStreamRuns target", () => {
+  it("resets empty, shortened, retyped and structurally new targets", () => {
+    expect(newestRuns(doc(""), doc(""))).toBeNull();
+    expect(newestRuns(doc("long text"), doc("long"))).toBeNull();
+    expect(newestRuns(doc("title"), doc("# title more"))).toBeNull();
+    expect(
+      newestRuns(doc("| a |\n| - |"), doc("| a |\n| - |\n| b |")),
+    ).toBeNull();
+    expect(
+      newestRuns(doc("| a |\n| - |\n| b |"), doc("| a |\n| - |\n| b |\n| c |")),
+    ).toBeNull();
+  });
+
+  it("targets the growing last paragraph by the appended length", () => {
+    expect(newestRuns(doc("Top hit:"), doc("Top hit: Streaming API"))).toEqual({
+      blockIndex: 0,
+      itemIndex: undefined,
+      runs: [14],
+    });
   });
 
   it("targets the last item of a growing list and the last cell of a growing table row", () => {
     expect(
-      streamTailTarget(doc("- one\n- tw"), doc("- one\n- two words"), 17),
-    ).toMatchObject({ blockIndex: 0, itemIndex: 1, chars: 7 });
+      newestRuns(doc("- one\n- tw"), doc("- one\n- two words")),
+    ).toMatchObject({ blockIndex: 0, itemIndex: 1, runs: [7] });
     expect(
-      streamTailTarget(
+      newestRuns(
         doc("| a | b |\n| - | - |\n| 1 | tw |"),
         doc("| a | b |\n| - | - |\n| 1 | two |"),
-        31,
       ),
-    ).toMatchObject({ blockIndex: 0, itemIndex: 3, chars: 1 });
+    ).toMatchObject({ blockIndex: 0, itemIndex: 3, runs: [1] });
   });
 
   it("measures the run in rendered text, not raw markdown", () => {
     // Collapsed whitespace and stripped markers are not rendered characters.
     expect(
-      streamTailTarget(doc("Top hit:"), doc("Top hit:   lots\n  more"), 22),
-    ).toMatchObject({ chars: 10 });
+      newestRuns(doc("Top hit:"), doc("Top hit:   lots\n  more")),
+    ).toMatchObject({ runs: [10] });
     expect(
-      streamTailTarget(doc("Say **hi**"), doc("Say **hi** there **you**"), 24),
-    ).toMatchObject({ chars: 10 });
+      newestRuns(doc("Say **hi**"), doc("Say **hi** there **you**")),
+    ).toMatchObject({ runs: [10] });
     // A chunk that re-renders earlier text (a marker closing) has no run.
-    expect(
-      streamTailTarget(doc("Say **hi"), doc("Say **hi** there"), 16),
-    ).toBeNull();
+    expect(newestRuns(doc("Say **hi"), doc("Say **hi** there"))).toBeNull();
   });
 
   it("leaves a new block, item or row to its own whole-element fade", () => {
-    expect(streamTailTarget(doc("One."), doc("One.\n\nTwo"), 9)).toBeNull();
-    expect(streamTailTarget(doc("- one"), doc("- one\n- two"), 11)).toBeNull();
-    expect(streamTailTarget(null, doc("One."), 4)).toBeNull();
-    expect(streamTailTarget(doc("One."), doc("One."), 4)).toBeNull();
-    expect(
-      streamTailTarget(doc("```js\nlet"), doc("```js\nlet a"), 11),
-    ).toBeNull();
+    expect(newestRuns(doc("One."), doc("One.\n\nTwo"))).toBeNull();
+    expect(newestRuns(doc("- one"), doc("- one\n- two"))).toBeNull();
+    expect(newestRuns(null, doc("One."))).toBeNull();
+    expect(newestRuns(doc("One."), doc("One."))).toBeNull();
+    expect(newestRuns(doc("```js\nlet"), doc("```js\nlet a"))).toBeNull();
   });
 });
 
 describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
-  const tails = (container: HTMLElement) =>
-    [...container.querySelectorAll(".acp-stream-new")].map(
-      (node) => node.textContent,
-    );
-
-  it("marks only the newest appended run of a growing paragraph", () => {
+  it("marks only appended runs of a growing paragraph and keeps each through the next chunks (f0309)", () => {
     const { container, rerender } = render(
       <ChatMarkdown text="Top hit:" streaming />,
     );
@@ -74,17 +152,61 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(container.querySelector("p")).toHaveTextContent(
       "Top hit: Streaming API",
     );
+    const first = container.querySelector(".acp-stream-new")!;
     rerender(
       <ChatMarkdown
         text="Top hit: Streaming API responses explain"
         streaming
       />,
     );
-    // The earlier run is now plain, solid text.
-    expect(tails(container)).toEqual([" responses explain"]);
+    // The next chunk does not cut the earlier run's fade short: the same
+    // node keeps its class, so its animation runs its full 300 ms.
+    expect(tails(container)).toEqual([" Streaming API", " responses explain"]);
+    expect(container.querySelector(".acp-stream-new")).toBe(first);
     expect(container.querySelector("p")?.firstChild?.textContent).toBe(
-      "Top hit: Streaming API",
+      "Top hit:",
     );
+    expect(container.querySelector("p")).toHaveTextContent(
+      "Top hit: Streaming API responses explain",
+    );
+  });
+
+  it("starts afresh in a new block, which fades whole", () => {
+    const { container, rerender } = render(<ChatMarkdown text="A" streaming />);
+    rerender(<ChatMarkdown text="A b" streaming />);
+    rerender(<ChatMarkdown text="A b c" streaming />);
+    expect(tails(container)).toEqual([" b", " c"]);
+    rerender(<ChatMarkdown text={"A b c\n\nD"} streaming />);
+    expect(tails(container)).toEqual([]);
+    rerender(<ChatMarkdown text={"A b c\n\nD e"} streaming />);
+    expect(tails(container)).toEqual([" e"]);
+  });
+
+  it("keeps a run for 16 chunks, longer than its 300 ms fade at any cadence slower than 19 ms", async () => {
+    const css = readFileSync(resolve("src/styles/global.css"), "utf8");
+    expect(css).toMatch(/--motion-duration-stream:\s*300ms;/);
+    expect(MAX_STREAM_RUNS).toBe(16);
+    expect(300 / MAX_STREAM_RUNS).toBeLessThan(19);
+  });
+
+  it("drops a run whose text re-rendered and bounds the runs that fade at once", () => {
+    const { container, rerender } = render(
+      <ChatMarkdown text="Say **hi" streaming />,
+    );
+    rerender(<ChatMarkdown text="Say **hi there" streaming />);
+    expect(tails(container)).toEqual([" there"]);
+    // Closing the marker re-renders the earlier text: the run goes.
+    rerender(<ChatMarkdown text="Say **hi there**" streaming />);
+    expect(tails(container)).toEqual([]);
+    let text = "Go";
+    rerender(<ChatMarkdown text={text} streaming />);
+    for (let chunk = 0; chunk < MAX_STREAM_RUNS + 4; chunk++) {
+      text += ` w${chunk}`;
+      rerender(<ChatMarkdown text={text} streaming />);
+    }
+    expect(tails(container)).toHaveLength(MAX_STREAM_RUNS);
+    expect(tails(container).at(-1)).toBe(` w${MAX_STREAM_RUNS + 3}`);
+    expect(container.querySelector("p")).toHaveTextContent(text);
   });
 
   it("trails exactly the rendered newest run when the chunk carries collapsed whitespace", () => {
@@ -99,7 +221,11 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     const { container } = render(
       <MarkdownBlocks
         document={doc("Hi \u{1F600}x")}
-        streamTail={{ blockIndex: 0, itemIndex: undefined, chars: 2, key: 1 }}
+        streamRuns={{
+          blockIndex: 0,
+          itemIndex: undefined,
+          runs: [2],
+        }}
       />,
     );
     expect(tails(container)).toEqual(["\u{1F600}x"]);

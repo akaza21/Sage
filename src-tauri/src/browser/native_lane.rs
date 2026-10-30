@@ -257,6 +257,25 @@ impl Lane {
         })
     }
 
+    /// The tab's bounded native navigation trace (ids, flags, WebView2
+    /// statuses; no URLs), for the lane's evidence.
+    pub fn navigation_trace(&self, tab: &str) -> Vec<String> {
+        self.state()
+            .tabs
+            .lock()
+            .map(|tabs| tabs.navigation_trace(tab))
+            .unwrap_or_default()
+    }
+
+    /// The chrome's Stop (`CoreWebView2::Stop`).
+    pub fn stop(&self, tab: &str) -> Result<(), String> {
+        let webview = self
+            .state()
+            .webview_for_tab(tab)
+            .ok_or("browser tab unavailable")?;
+        tauri::async_runtime::block_on(super::navigation::control::native_stop(webview))
+    }
+
     /// The URL the tab has settled on, as the Agent's attachment reads it.
     pub fn settled_url(&self, tab: &str) -> Option<String> {
         self.state().settled_tab(tab).ok().map(|(url, _)| url)

@@ -171,7 +171,8 @@
 .workbench--agent .agent-artifact-pane .tab {
   height: 28px;
   min-width: 96px;
-  flex: 1 1 0;
+  /* Codex 67: a ~208 px tab that shrinks when many share the strip. */
+  flex: 0 1 208px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;

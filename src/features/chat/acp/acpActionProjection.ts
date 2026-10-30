@@ -8,7 +8,7 @@ import type { AcpActionContext } from "./acpActionController";
 export function sameScope(
   context: AcpActionContext | null,
   expected: AcpActionContext,
-): boolean {
+): context is AcpActionContext {
   return (
     context?.scope.projectId === expected.scope.projectId &&
     context.scope.projectGeneration === expected.scope.projectGeneration &&
@@ -31,7 +31,7 @@ export function createActionProjectionCommit(dependencies: {
   ): AcpChatPage | null => {
     const current = dependencies.getContext();
     if (!sameScope(current, captured)) return null;
-    const previous = current!.page;
+    const previous = current.page;
     const incoming = result.projection;
     const previousEpoch = previous.sessions.find(
       (session) => session.id === previous.currentSessionId,

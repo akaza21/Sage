@@ -6,7 +6,7 @@ import {
   Image,
   Command,
   Search,
-  Terminal,
+  TerminalSquare,
   Workflow,
   ChevronRight,
 } from "../../../ui/leanIcons";
@@ -27,7 +27,7 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
   edit: FilePenLine,
   delete: FilePenLine,
   move: FilePenLine,
-  execute: Terminal,
+  execute: TerminalSquare,
   read: FileText,
   imageView: Image,
   search: Search,

@@ -6,9 +6,15 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { CloseSideChatDialog } from "./SideChatChrome";
+import { CloseSideChatDialog, SideChatHome } from "./SideChatChrome";
 
 afterEach(cleanup);
+
+it("uses the 24px empty side-chat icon (R3-12b)", () => {
+  const { container } = render(<SideChatHome />);
+  expect(container.querySelector("svg")).toHaveAttribute("width", "24");
+  expect(container.querySelector("svg")).toHaveAttribute("height", "24");
+});
 
 it("focuses the destructive confirmation and sends the persisted preference intent", async () => {
   const close = vi.fn().mockResolvedValue(undefined);

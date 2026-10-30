@@ -10,6 +10,7 @@ mod teardown;
 use shape::IngestMode;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    #[cfg(test)]
     pub(crate) async fn push_stdout_chunk(
         &mut self,
         chunk: &[u8],
@@ -24,6 +25,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn drain_stdout(&mut self, now_millis: i64) -> Result<bool, AdapterPumpError> {
         let frame = match self.decode_pending() {
             Ok(frame) => frame,
@@ -34,6 +36,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn finish_stdout(
         &mut self,
         now_millis: i64,

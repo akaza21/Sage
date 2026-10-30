@@ -1,6 +1,7 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
-use crate::acp::{contract::SageAgentSessionId, limits::LIMITS};
+use crate::acp::contract::SageAgentSessionId;
+use crate::acp::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CapacityScope {
@@ -34,21 +35,7 @@ pub(crate) struct LiveCapacityPool {
 }
 
 impl LiveCapacityPool {
-    pub(crate) fn rpc_global() -> Arc<Self> {
-        static POOL: OnceLock<Arc<LiveCapacityPool>> = OnceLock::new();
-        Arc::clone(POOL.get_or_init(|| Self::new(CapacityKind::Rpc)))
-    }
-
-    pub(crate) fn server_request_global() -> Arc<Self> {
-        static POOL: OnceLock<Arc<LiveCapacityPool>> = OnceLock::new();
-        Arc::clone(POOL.get_or_init(|| Self::new(CapacityKind::ServerRequest)))
-    }
-
-    pub(crate) fn runtime_task_global() -> Arc<Self> {
-        static POOL: OnceLock<Arc<LiveCapacityPool>> = OnceLock::new();
-        Arc::clone(POOL.get_or_init(|| Self::new(CapacityKind::RuntimeTask)))
-    }
-
+    #[cfg(test)]
     fn new(kind: CapacityKind) -> Arc<Self> {
         let (per_session, global) = match kind {
             CapacityKind::Rpc => (
@@ -89,6 +76,7 @@ impl LiveCapacityPool {
         Self::new(CapacityKind::RuntimeTask)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_reserve(
         self: &Arc<Self>,
         owner: SageAgentSessionId,
@@ -146,6 +134,7 @@ impl LiveCapacityPool {
         })
     }
 
+    #[cfg(test)]
     fn release(&self, owner: &SageAgentSessionId, count: u64) -> Result<(), LiveCapacityError> {
         let mut state = self.state.lock().map_err(|_| LiveCapacityError::State)?;
         let index = state
@@ -176,14 +165,6 @@ pub(crate) struct LiveCapacityLease {
     owner: SageAgentSessionId,
     count: u64,
     retained: bool,
-}
-
-impl LiveCapacityLease {
-    pub(crate) fn release(mut self) -> Result<(), LiveCapacityError> {
-        self.pool.release(&self.owner, self.count)?;
-        self.retained = false;
-        Ok(())
-    }
 }
 
 impl Drop for LiveCapacityLease {

@@ -343,6 +343,7 @@ fn validate_attached_context(
         matches!(
             context,
             crate::acp::attached_context::AttachedContext::BrowserPage(_)
+                | crate::acp::attached_context::AttachedContext::BrowserElement(_)
         )
     }) {
         return Ok(());

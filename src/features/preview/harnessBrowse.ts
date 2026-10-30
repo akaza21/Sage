@@ -1,4 +1,8 @@
-import type { PreviewProjectionOwner } from "../../domain/previewProjection";
+import {
+  type PreviewProjectionOwner,
+  samePreviewOwner as sameOwner,
+  previewOwnerKey as ownerKey,
+} from "../../domain/previewProjection";
 
 export const MAX_HARNESS_BROWSE_URL_BYTES = 2048;
 export const MAX_HARNESS_BROWSE_SESSIONS = 2;
@@ -131,34 +135,6 @@ function recordHistory(key: string, href: string): void {
   const overflow = next.length - MAX_HARNESS_BROWSE_HISTORY;
   existing.hrefs = overflow > 0 ? next.slice(overflow) : next;
   existing.index = existing.hrefs.length - 1;
-}
-
-function ownerKey(owner: HarnessBrowseOwner | null | undefined): string | null {
-  if (!owner) return null;
-  return JSON.stringify([
-    owner.projectId,
-    owner.projectGeneration,
-    owner.transitionEpoch,
-    owner.chatId,
-    owner.sessionId,
-    owner.runtimeEpoch,
-  ]);
-}
-
-function sameOwner(
-  left: HarnessBrowseOwner | null | undefined,
-  right: HarnessBrowseOwner | null | undefined,
-): boolean {
-  return Boolean(
-    left &&
-    right &&
-    left.projectId === right.projectId &&
-    left.projectGeneration === right.projectGeneration &&
-    left.transitionEpoch === right.transitionEpoch &&
-    left.chatId === right.chatId &&
-    left.sessionId === right.sessionId &&
-    left.runtimeEpoch === right.runtimeEpoch,
-  );
 }
 
 function moveHistory(

@@ -73,6 +73,7 @@ pub(super) fn spawn_workspace_root_watch(
         .map_err(|_| reject("notify-substituted"))
 }
 
+#[cfg(test)]
 fn run_workspace_root_watch(
     cancelled: &AtomicBool,
     directory: &Path,

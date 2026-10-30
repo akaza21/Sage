@@ -8,6 +8,10 @@
   margin-inline: auto;
 }
 
+.message-list__content .acp-turn__items > .chat-transcript-actions {
+  margin-top: calc(var(--space-2) - var(--space-3));
+}
+
 .message-list__content > .chat-transcript-day,
 .message-list__content > .chat-transcript-work,
 .message-list__content > .chat-transcript-actions {
@@ -55,12 +59,24 @@
   margin-block: 0;
 }
 
-.message-list__content:has(> .acp-chat-projection) > .chat-transcript-actions {
+/*
+ * Rows on the reading column: the Turn's first grid track (its column gap
+ * sits right of it). A fork's "Continued from chat" rules span it exactly
+ * (s2/f0066), as do inherited answers' rows.
+ */
+.message-list__content:has(> .acp-chat-projection) > .chat-transcript-actions,
+.message-list__content > .chat-fork-divider,
+.chat-fork-inherited > .chat-transcript-actions {
   width: min(calc(100% - var(--space-3)), var(--reading-measure));
   margin-inline-start: max(
     0px,
     calc((100% - var(--space-3) - var(--reading-measure)) / 2)
   );
+}
+
+/* An inherited answer's row follows its inert Turn at the answer gap. */
+.chat-fork-inherited > .chat-transcript-actions {
+  margin-top: calc(var(--space-2) - var(--space-6));
 }
 
 .message-list__content > .message--user,
@@ -220,10 +236,15 @@
 
 .chat-transcript-work__groups .acp-tool-rollup > summary {
   display: flex;
+  gap: var(--space-2);
   justify-content: flex-start;
   min-height: 28px;
   color: inherit;
   font-weight: inherit;
+}
+
+.chat-transcript-work__groups .acp-tool-rollup__items {
+  margin-top: 0;
 }
 
 .chat-transcript-work__groups .acp-tool-rollup__items .acp-tool-card {
@@ -271,7 +292,7 @@
 .chat-transcript-work__groups .acp-tool-rollup > summary:hover,
 .chat-transcript-work__groups .acp-tool-rollup > summary:focus-visible,
 .chat-transcript-work__groups .acp-tool-rollup[open] > summary {
-  color: var(--color-text-primary);
+  color: var(--color-text-emphasis);
 }
 
 .chat-transcript-work__groups
@@ -323,9 +344,9 @@
   background: var(--color-surface-hover);
 }
 
-/* The open "…" keeps a pressed fill under its menu (s2/f0053). */
+/* The open "…" keeps a pressed fill and white dots under its menu (s2/f0053). */
 .chat-transcript-actions > button[aria-expanded="true"] {
-  color: var(--color-text-primary);
+  color: var(--color-text-emphasis);
   background: var(--color-surface-hover);
 }
 
@@ -341,6 +362,27 @@
 
 .chat-transcript-actions:hover > .chat-transcript-actions__time,
 .chat-transcript-actions:focus-within > .chat-transcript-actions__time {
+  opacity: 1;
+}
+
+/*
+ * Hovering the answer itself shows its time too (s2/f0093: the pointer is
+ * on the answer text, not the row). An earlier or inherited answer's row is
+ * inside its Turn; the latest answer's row is the footer after the last one.
+ */
+.chat-fork-turn:hover .chat-transcript-actions__time,
+.message-list__content:has(
+    > .acp-chat-projection > .acp-virtual-turns > [data-last-turn]:hover
+  )
+  > .chat-transcript-actions
+  > .chat-transcript-actions__time,
+.acp-turn:hover .chat-transcript-actions__time,
+.acp-turn:hover + .chat-transcript-actions > .chat-transcript-actions__time,
+.message-list__content:has(
+    > .acp-chat-projection > .acp-turn:last-of-type:hover
+  )
+  > .chat-transcript-actions
+  > .chat-transcript-actions__time {
   opacity: 1;
 }
 

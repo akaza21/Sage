@@ -5,6 +5,7 @@ import type {
   SageTurnId,
   TurnProjection,
 } from "../../../domain/acp";
+import { terminalItemLifecycles } from "./statusSemantics";
 
 export function promptAttachmentItems(
   items: readonly AcpItem[],
@@ -39,7 +40,9 @@ const cancellableStates = new Set<TurnProjection["state"]>([
   "waitingUser",
 ]);
 
-function currentSession(page: AcpChatPage): AgentSessionProjection | null {
+export function currentSession(
+  page: AcpChatPage,
+): AgentSessionProjection | null {
   if (!page.currentSessionId) return null;
   return (
     page.sessions.find((session) => session.id === page.currentSessionId) ??
@@ -74,13 +77,52 @@ export function latestRetryPrompt(page: AcpChatPage): {
 export function cancellableTurnId(page: AcpChatPage): SageTurnId | null {
   const session = currentSession(page);
   if (!session?.runtimeEpoch || !session.capabilities.cancel) return null;
-  const active = page.turns
-    .filter(
-      (turn) =>
-        turn.sessionId === session.id &&
-        turn.runtimeEpoch === session.runtimeEpoch &&
-        cancellableStates.has(turn.state),
-    )
-    .sort((left, right) => right.ordinal - left.ordinal);
+  const active = page.turns.filter(
+    (turn) =>
+      turn.sessionId === session.id &&
+      turn.runtimeEpoch === session.runtimeEpoch &&
+      cancellableStates.has(turn.state),
+  );
   return active.length === 1 ? active[0].id : null;
+}
+
+/** A Turn's top-level harness activities: no admitted parent in this Turn. */
+export function rootActivities(turn: TurnProjection) {
+  const activityIds = new Set(turn.activities.map((activity) => activity.id));
+  const itemActivities = new Map(
+    turn.items.map((item) => [item.id, item.activityId] as const),
+  );
+  return turn.activities.filter(
+    (activity) =>
+      !activity.parentActivityId ||
+      !activityIds.has(activity.parentActivityId) ||
+      itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
+  );
+}
+
+/**
+ * A Turn's working and answer items in wire order: prompts, attachments,
+ * settled thoughts and (once terminal) empty text are left out.
+ */
+export function chronologicalTurnItems(
+  primary: readonly AcpItem[],
+  attachmentIds: ReadonlySet<string>,
+  terminal: boolean,
+) {
+  return primary
+    .filter(
+      (item) =>
+        !attachmentIds.has(item.id) &&
+        !(
+          item.kind === "thoughtSummary" &&
+          terminalItemLifecycles.has(item.lifecycle)
+        ) &&
+        !(item.kind === "text" && item.payload.role === "user") &&
+        !(terminal && item.kind === "text" && !item.payload.text.trim()),
+    )
+    .sort(
+      (left, right) =>
+        (Number.isFinite(left.ordinal) ? left.ordinal : Infinity) -
+        (Number.isFinite(right.ordinal) ? right.ordinal : Infinity),
+    );
 }

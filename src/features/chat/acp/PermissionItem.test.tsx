@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { PermissionItem } from "./PermissionItem";
+import { getPermissionStatus } from "./statusSemantics";
 
 afterEach(() => {
   cleanup();
@@ -50,6 +51,33 @@ function permission(
 }
 
 describe("PermissionItem", () => {
+  it.each([
+    ["received", "Waiting for approval", "Waiting for approval", false],
+    ["asked", "Asking again", "Asking again", false],
+    ["allowPending", "Allowing", "Allowing", false],
+    ["allowCommitted", "Allowing", "Allowing", false],
+    ["declinePending", "Declining", "Declining", false],
+    ["declineCommitted", "Declined", "Declined", false],
+    ["responseQueued", "Responding", "Responding", false],
+    ["resolvedAllowed", "Allowed", "Permission allowed", true],
+    ["resolvedDeclined", "Declined", "Permission declined", true],
+    ["cancelled", "Cancelled", "Permission cancelled", true],
+  ] as const)(
+    "preserves the %s status and accessibility",
+    (state, visual, accessible, terminal) => {
+      expect(getPermissionStatus(permission(state))).toEqual({
+        visual,
+        accessible,
+        terminal,
+      });
+      expect(getPermissionStatus(permission(state, true))).toEqual({
+        visual: "Failed closed",
+        accessible: "Permission failed closed",
+        terminal: true,
+      });
+    },
+  );
+
   it("leaves an awaited decision to the composer-slot prompt", () => {
     for (const state of ["received", "asked"] as const) {
       const { container, unmount } = render(

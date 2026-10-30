@@ -25,6 +25,15 @@ export const PARITY_BASE = Object.freeze({
   "motion-jump-pill": "jump-to-latest",
 });
 
+/**
+ * Based states a harness replays with its own first-Turn events instead: the
+ * drive and witnesses stay the base's, only the wire shapes differ.
+ */
+const OWN_OVER_BASE = Object.freeze({ codex: ["motion-worked-expand"] });
+export function parityOwnsBase(harness, state) {
+  return OWN_OVER_BASE[harness]?.includes(state) === true;
+}
+
 /** Parity states whose Turn stays live until Stop or teardown. */
 export const PARITY_LIVE = Object.freeze([
   "motion-thinking-shimmer",
@@ -191,7 +200,11 @@ function claudeCommand(id) {
   ];
 }
 
-function codexChild(index, finished) {
+/**
+ * One spawned child and its own activity, named by `agentPath` as Codex
+ * names it (s4/f0244 "Count math and Count readme started working").
+ */
+function codexChild(index, finished, agentPath) {
   const child = "fixture-child-" + index;
   return [
     codexFrame(finished ? "item/completed" : "item/started", {
@@ -217,8 +230,35 @@ function codexChild(index, finished) {
         id: "fixture-child-activity-" + index,
         type: "subAgentActivity",
         agentThreadId: child,
+        agentPath,
         kind: finished ? "completed" : "started",
       },
+    }),
+  ];
+}
+
+/**
+ * Three command rows, each after its own commentary message, so the opened
+ * Worked group has sibling rows whose 60 ms stagger a capture can measure
+ * (s2/f0015 shows three rows). Codex names each message by `itemId`; Claude
+ * and Pi merge a Turn's prose into one message, so they keep the shared
+ * worked-expanded replay.
+ */
+function codexWorkedRows() {
+  return [
+    ...[1, 2, 3].flatMap((index) => [
+      codexFrame("item/agentMessage/delta", {
+        itemId: "fixture-commentary-" + index,
+        delta: "Inspecting synthetic example " + index + ".",
+      }),
+      ...codexCommand(
+        "fixture-tool-" + index,
+        "Inspect synthetic example " + index,
+      ),
+    ]),
+    codexFrame("item/agentMessage/delta", {
+      itemId: "fixture-answer",
+      delta: "The synthetic example is available for native replay review.",
     }),
   ];
 }
@@ -308,7 +348,11 @@ export function parityOwnEvents(harness, state) {
         }),
       ];
     if (state === "subagents-tab-active-done")
-      return [...codexChild(1, true), ...codexChild(2, false)];
+      return [
+        ...codexChild(1, true, "Count math"),
+        ...codexChild(2, false, "Count readme"),
+      ];
+    if (state === "motion-worked-expand") return codexWorkedRows();
   }
   throw new Error("parity-events-unsupported: " + harness + "-" + state);
 }

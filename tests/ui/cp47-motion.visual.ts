@@ -81,7 +81,7 @@ async function sampleAt(
 test.describe("CP-47 motion", () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
-  test("shimmer sweeps left to right in 600 ms, then idles, on a 4 s period", async ({
+  test("shimmer sweeps a fixed band left to right at 0.6 px/ms, then idles, on a 4 s period (s8/f0174-f0177)", async ({
     page,
   }) => {
     await openActivity(page, "running");
@@ -90,15 +90,16 @@ test.describe("CP-47 motion", () => {
     const [start, mid, end, idle] = await sampleAt(
       label,
       "acp-live-shimmer",
-      [0, 300, 600, 1000],
+      [0, 700, 1400, 2000],
       "background-position-x",
     );
-    const percent = (value: string) => Number.parseFloat(value);
-    expect(percent(start)).toBeCloseTo(100, 0);
-    expect(percent(mid)).toBeCloseTo(50, 0);
-    // A falling position on a 300% image moves the band rightwards.
-    expect(percent(mid)).toBeLessThan(percent(start));
-    expect(percent(end)).toBeCloseTo(0, 0);
+    // The first layer is the moving 176 px band; the muted base stays at 0.
+    const band = (value: string) => Number.parseFloat(value.split(",")[0]);
+    expect(band(start)).toBeCloseTo(-176, 0);
+    expect(band(mid)).toBeCloseTo(244, 0);
+    expect(band(end)).toBeCloseTo(664, 0);
+    // 840 px in 1400 ms is 0.6 px/ms, rising, so the band moves rightwards.
+    expect((band(end) - band(start)) / 1400).toBeCloseTo(0.6, 2);
     expect(idle).toBe(end);
     // The live header never shimmers (Codex s8 header stays #8b8b8b).
     await expect(page.locator(".chat-transcript-work__heading")).toHaveCSS(
@@ -205,7 +206,8 @@ test.describe("CP-47 chat motion", () => {
     await expect(button).toBeVisible();
     const [buttonBox, columnBox, composerBox] = await Promise.all([
       button.boundingBox(),
-      alpha.locator(".message-list__content").boundingBox(),
+      // The reading column, the Turn's first grid track (s2/f0046).
+      alpha.locator(".acp-turn__items").last().boundingBox(),
       alpha.locator("form.composer").boundingBox(),
     ]);
     expect(buttonBox!.width).toBe(28);
@@ -284,7 +286,7 @@ test.describe("CP-47 chat motion", () => {
     expect(arrived.at).toBeLessThanOrEqual(450);
   });
 
-  test("a multi-chunk replay fades only the newest appended run (s5/f0309)", async ({
+  test("a multi-chunk replay fades each appended run on its own, so the newest words trail (s5/f0309)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -319,12 +321,15 @@ test.describe("CP-47 chat motion", () => {
         await expect(tail).toHaveCount(0);
         continue;
       }
-      // Only the newest run is marked, and it fades on the stream curve.
-      await expect(tail).toHaveCount(1);
-      await expect(tail).toHaveText(streamDelta);
-      await expect(tail).toHaveCSS("animation-name", "acp-stream-in");
+      // Every appended run keeps its own span, so the next chunk never cuts
+      // an earlier run's fade short; the newest fades on the stream curve.
+      await expect(tail).toHaveCount(index);
+      await expect(tail.first()).toHaveText(chunks[1]);
+      const newest = tail.last();
+      await expect(newest).toHaveText(streamDelta);
+      await expect(newest).toHaveCSS("animation-name", "acp-stream-in");
       const [first, done] = await sampleAt(
-        tail,
+        newest,
         "acp-stream-in",
         [0, 300],
         "opacity",

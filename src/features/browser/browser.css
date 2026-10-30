@@ -14,6 +14,7 @@
 }
 .browser-surface__toolbar {
   display: flex;
+  container-type: inline-size;
   height: 44px;
   flex: 0 0 44px;
   align-items: center;
@@ -73,6 +74,15 @@
 }
 .browser-surface__toolbar .browser-surface__annotate:disabled {
   opacity: 0.5;
+}
+/* A narrow pane keeps the address legible: the pill drops its label. */
+@container (max-width: 640px) {
+  .browser-surface__toolbar .browser-surface__annotate {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
 }
 .browser-surface__address {
   position: relative;
@@ -301,8 +311,127 @@
   background: var(--bg);
 }
 .browser-surface__frame {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+/* Annotate's comment box over the frozen page (Codex ref 60). */
+.browser-annotate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--browser-start-fill);
+  container-type: size;
+  outline: none;
+}
+/* The picture's proportions, anchored top left, while the window resizes. */
+.browser-annotate__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(100cqw, calc(100cqh * var(--browser-annotate-ratio)));
+  aspect-ratio: var(--browser-annotate-ratio);
+}
+.browser-annotate__frame {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.browser-annotate__outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--browser-annotate-blue);
+  pointer-events: none;
+}
+.browser-annotate__badge {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-circle);
+  color: var(--browser-bright-text);
+  background: var(--browser-annotate-blue);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.browser-annotate__pill {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 296px;
+  height: 44px;
+  padding: 0 8px 0 12px;
+  border-radius: var(--radius-annotation-comment);
+  background: var(--browser-address-fill);
+  box-shadow: var(--browser-popover-shadow);
+}
+.browser-annotate__pill button {
+  flex: none;
+  padding: 0;
+  border: 0;
+}
+.browser-annotate__adjust {
+  width: 16px;
+  height: 16px;
+  background: var(--browser-muted-text);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 7h10M18 7h2M4 17h4M12 17h8'/%3E%3Ccircle cx='16' cy='7' r='2'/%3E%3Ccircle cx='10' cy='17' r='2'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  opacity: 0.6;
+}
+.browser-annotate__comment {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: var(--browser-bright-text);
+  background: transparent;
+  font-size: 13px;
+}
+.browser-annotate__comment::placeholder {
+  color: var(--browser-annotate-placeholder);
+}
+.browser-annotate__confirm {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-circle);
+  background: var(--browser-annotate-tick);
+}
+.browser-annotate__confirm::before {
+  width: 12px;
+  height: 12px;
+  background: var(--browser-address-fill);
+  content: "";
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.browser-annotate__confirm:disabled {
+  cursor: not-allowed;
+}
+.browser-annotate__confirm:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.browser-annotate__error {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger-surface-text);
+  background: var(--color-danger-surface);
+  border: 1px solid var(--color-danger-border);
+  font-size: 12px;
 }
 .browser-surface__frame--new-tab {
   display: none;
@@ -314,28 +443,15 @@
 }
 .browser-clear-data [role="alert"],
 .browser-site-permissions p[role="alert"],
-.browser-downloads p[role="alert"] {
+.browser-downloads__error {
   color: var(--color-danger);
 }
 
-.browser-downloads,
 .browser-site-permissions {
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
   font-size: 12px;
 }
-.browser-downloads__toggle {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  text-align: left;
-}
-.browser-downloads__toggle span:last-child {
-  margin-left: auto;
-}
-.browser-downloads__list,
 .browser-site-permissions ul {
   display: grid;
   gap: 4px;
@@ -344,29 +460,118 @@
   margin: 0;
   list-style: none;
 }
-.browser-downloads__list {
-  padding: 0 8px 8px;
+/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
+   popover hangs from the right group like the … menu does. */
+.browser-downloads__trigger {
+  position: relative;
 }
-
-.browser-downloads__list li {
+.browser-downloads[data-active] .browser-downloads__trigger::after {
+  position: absolute;
+  inset: 1px;
+  border-radius: var(--radius-pill);
+  background: conic-gradient(
+    var(--color-accent) var(--browser-download-progress, 25%),
+    var(--browser-control-hover) 0
+  );
+  content: "";
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2px),
+    currentColor calc(100% - 2px)
+  );
+  pointer-events: none;
+}
+.browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
+  animation: browser-download-spin 1s linear infinite;
+}
+@keyframes browser-download-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
+    animation: none;
+  }
+}
+.browser-downloads__popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 4px 8px;
+  gap: 4px;
+  width: 320px;
+  max-width: calc(100cqi - 16px);
+  border: 1px solid var(--browser-control-hover);
+  border-radius: var(--radius-lg);
+  background: var(--browser-control-fill);
+  padding: 8px;
+  box-shadow: var(--browser-popover-shadow);
+  color: var(--browser-control-text);
+  font-size: 12px;
+}
+.browser-downloads__popover:focus {
+  outline: none;
+}
+.browser-downloads__title {
+  margin: 0;
+  padding: 2px 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.browser-downloads__empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--browser-muted-text);
+}
+.browser-downloads__error {
+  margin: 0;
+  padding: 0 8px;
+}
+.browser-downloads__list {
+  display: grid;
+  gap: 2px;
+  max-height: 288px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-downloads__item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 8px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+.browser-downloads__item:hover {
+  background: var(--browser-control-hover);
+}
+.browser-downloads__item > svg {
+  grid-row: 1 / span 2;
+  color: var(--browser-muted-text);
 }
 .browser-downloads__name,
-.browser-downloads__source {
+.browser-downloads__status {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browser-downloads__source {
-  grid-column: 1 / -1;
-  color: var(--color-text-muted);
+.browser-downloads__status {
+  grid-column: 2;
+  color: var(--browser-muted-text);
 }
-.browser-downloads__list progress {
-  grid-column: 1 / -1;
+.browser-downloads__item > button {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.browser-downloads__item > progress {
+  grid-column: 2 / -1;
   width: 100%;
   height: 4px;
+  accent-color: var(--color-accent);
 }
 .browser-site-permissions {
   display: grid;

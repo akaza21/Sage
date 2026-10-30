@@ -19,6 +19,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("uses a 10px find search icon (R3-12c)", () => {
+  render(<Pane name="Chat" />);
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Chat composer" }), {
+    key: "f",
+    ctrlKey: true,
+  });
+  expect(
+    screen.getByRole("search").querySelector(".chat-find__icon"),
+  ).toHaveAttribute("width", "10");
+});
+
 function turnsWith(text: string): TurnProjection[] {
   return [
     {

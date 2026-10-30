@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
+import { AnswerActions } from "../features/chat/AnswerActions";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
@@ -19,6 +20,7 @@ import {
   childRefresh,
   useChildEpoch,
   scheduleChildRefresh,
+  childActivityLabel,
   choiceName,
   invocationOf,
   SubagentAvatar,
@@ -41,15 +43,6 @@ type ReadState = {
   good?: ChildRead;
   stale: number;
 };
-
-function childActivityLabel(item: AcpItem): string {
-  if (item.kind === "toolCall") return item.payload.presentation.label;
-  if (item.kind === "collaboration") return item.payload.label;
-  if (item.kind === "thoughtSummary") return "Thought summary";
-  if (item.kind === "plan") return "Plan";
-  if (item.kind === "error") return item.payload.code;
-  return item.kind === "text" ? "Message" : "Activity";
-}
 
 /** One deduplicated run of child items without the spawn prompt bubble. */
 function childRows(read: ChildRead | undefined) {
@@ -297,6 +290,14 @@ function SubagentChild({
   const state = good ?? (current ? current.value : "loading");
   const rows = childRows(good);
   const visible = rows.slice(0, MAX_VISIBLE_CHILD_ITEMS);
+  const last =
+    settled && !good?.retentionLimited && rows.length === visible.length
+      ? rows.at(-1)
+      : undefined;
+  const answer =
+    last?.kind === "text" &&
+    last.payload.role === "assistant" &&
+    last.payload.text;
   return (
     <section className="subagent-surface" aria-label="Subagent activity">
       <header>
@@ -308,7 +309,7 @@ function SubagentChild({
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </button>
-          <SubagentAvatar agentKey={agentKey ?? itemId} label={label} />
+          <SubagentAvatar agentKey={agentKey ?? itemId} />
           <h1>{label}</h1>
           {model ? (
             <span className="subagent-surface__model">{model}</span>
@@ -380,6 +381,8 @@ function SubagentChild({
                   ))}
                 </div>
               )}
+              {/* Codex s4/f0485: a settled child's answer keeps Copy only. */}
+              {answer ? <AnswerActions text={answer} /> : null}
             </>
           ) : null}
         </div>

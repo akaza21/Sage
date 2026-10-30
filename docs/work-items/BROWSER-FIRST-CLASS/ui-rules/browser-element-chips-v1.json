@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-element-chips.html",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "rules": [
+    {
+      "id": "element-chip-height",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the '2 annotations' chip ring y948-976 at x140 (28 px plus antialiasing)",
+      "selector": ".browser-element-chip__trigger",
+      "measure": "height",
+      "expected": 28,
+      "tolerancePx": 1
+    },
+    {
+      "id": "element-chip-round",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the chip's corner curve over 8 px (x118-125, y948-955)",
+      "selector": ".browser-element-chip__trigger",
+      "measure": "border-radius",
+      "expected": "8px"
+    },
+    {
+      "id": "element-chip-inset",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the composer card's edge at x107 and the chip ring at x118 (11 px)",
+      "selector": ".browser-element-chip__trigger",
+      "measure": "left-inset",
+      "within": "#composer",
+      "expected": 11,
+      "tolerancePx": 3
+    },
+    {
+      "id": "element-card-gap",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the hover card ending at y943 and the chip starting at y948 (about 5 px)",
+      "selector": ".browser-element-chip__trigger",
+      "measure": "gap-below",
+      "other": ".browser-element-card",
+      "expected": 5,
+      "tolerancePx": 1
+    },
+    {
+      "id": "element-card-aligned",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the card's left edge at x117 and the chip's at x118",
+      "selector": ".browser-element-card",
+      "measure": "left-inset",
+      "within": ".browser-element-chip",
+      "expected": 0,
+      "tolerancePx": 2
+    },
+    {
+      "id": "element-card-width",
+      "ref": "reference/63",
+      "source": "AP-H1 measured the card at x117-464 (347 px)",
+      "selector": ".browser-element-card",
+      "measure": "width",
+      "expected": 347,
+      "tolerancePx": 1
+    },
+    {
+      "id": "element-card-round",
+      "ref": "reference/63",
+      "source": "AP-H1 the card's corner curve spans about 10 px, the transcript annotation card's radius",
+      "selector": ".browser-element-card",
+      "measure": "border-radius",
+      "expected": "10px"
+    },
+    {
+      "id": "element-card-fill",
+      "ref": "reference/63",
+      "source": "AP-H1 sampled the card fill rgb(45, 45, 45) at x300 y860",
+      "selector": ".browser-element-card",
+      "measure": "background-color",
+      "expected": "rgb(45, 45, 45)"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import {
   Archive,
   ArrowLeft,
   ArrowRightLeft,
+  FileDiff,
   Folder,
   FolderInput,
   Laptop,
@@ -10,46 +11,56 @@ import {
   Pin,
   PinOff,
 } from "../ui/leanIcons";
-import { useId, useRef, useState } from "react";
+import { useContext, useId, useRef, useState, type ReactNode } from "react";
+import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 
 import { MenuPopover } from "../ui/MenuPopover";
 import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
-import type { AgentChatMoveDestination } from "./agentChatRail";
+import { agentChatMoveDestinations } from "./agentChatRail";
+import { useWorkbenchStore } from "../app/store";
 
 export function ProjectChatActionMenu({
+  chatId,
   chatTitle,
   pinned,
   open,
   disabled,
   archiveDisabled,
-  destinations,
+  projectId,
   onOpenChange,
-  onPin,
   onRename,
-  onMove,
-  onArchive,
   triggerRef,
   sessionChrome,
+  triggerLabel,
+  triggerRole,
 }: {
+  chatId: string;
   chatTitle: string;
   pinned: boolean;
   open: boolean;
   disabled: boolean;
   archiveDisabled: boolean;
-  destinations: readonly AgentChatMoveDestination[];
+  projectId: string;
   onOpenChange: (open: boolean) => void;
-  onPin: () => void;
   onRename: () => void;
-  onMove: (projectId: string) => void;
-  onArchive: () => void;
-  triggerRef: (node: HTMLButtonElement | null) => void;
+  triggerRef?: (node: HTMLButtonElement | null) => void;
   sessionChrome?: AgentSessionChrome | null;
+  triggerLabel?: string;
+  triggerRole?: "menuitem";
 }) {
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const headerMenu = useContext(AgentHeaderMenuContext);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
   const [moving, setMoving] = useState(false);
+  const projects = useWorkbenchStore((state) =>
+    moving ? state.projects : null,
+  );
+  const destinations = projects
+    ? agentChatMoveDestinations(projects, projectId)
+    : [];
   const menuId = useId();
+  const PinIcon = pinned ? PinOff : Pin;
 
   const closeAndRestoreFocus = () => {
     setMoving(false);
@@ -59,6 +70,8 @@ export function ProjectChatActionMenu({
 
   const completeAction = (action: () => void) => {
     closeAndRestoreFocus();
+    headerMenu?.close();
+    headerMenu?.returnFocus();
     action();
   };
 
@@ -67,11 +80,12 @@ export function ProjectChatActionMenu({
       <button
         ref={(node) => {
           localTriggerRef.current = node;
-          triggerRef(node);
+          triggerRef?.(node);
         }}
         className="project-chat__actions"
+        role={triggerRole}
         type="button"
-        aria-label={`Chat actions for ${chatTitle}`}
+        aria-label={triggerLabel ?? `Chat actions for ${chatTitle}`}
         aria-controls={menuId}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -99,6 +113,7 @@ export function ProjectChatActionMenu({
         focusKey={moving}
         initialFocus={openingFocus}
         triggerRef={localTriggerRef}
+        portalTarget={triggerRole ? "closest-popover" : "document"}
         keepMounted={Boolean(sessionChrome)}
         onDismiss={() => {
           setMoving(false);
@@ -127,7 +142,13 @@ export function ProjectChatActionMenu({
                   type="button"
                   role="menuitem"
                   aria-label={`Move chat to ${destination.name}`}
-                  onClick={() => completeAction(() => onMove(destination.id))}
+                  onClick={() =>
+                    completeAction(() => {
+                      void useWorkbenchStore
+                        .getState()
+                        .moveChat(chatId, destination.id, projectId);
+                    })
+                  }
                 >
                   {destination.kind === "local" ? (
                     <Laptop size={14} aria-hidden="true" />
@@ -152,7 +173,11 @@ export function ProjectChatActionMenu({
                   }
                   menuItem
                   returnFocusRef={localTriggerRef}
-                  onOpen={() => onOpenChange(false)}
+                  onReturnFocus={headerMenu?.returnFocus}
+                  onOpen={() => {
+                    onOpenChange(false);
+                    headerMenu?.close();
+                  }}
                 />
                 {sessionChrome.canCloseSession ? (
                   <button
@@ -192,13 +217,13 @@ export function ProjectChatActionMenu({
               className="menu-item"
               type="button"
               role="menuitem"
-              onClick={() => completeAction(onPin)}
+              onClick={() =>
+                completeAction(() => {
+                  void useWorkbenchStore.getState().pinChat(chatId, projectId);
+                })
+              }
             >
-              {pinned ? (
-                <PinOff size={14} aria-hidden="true" />
-              ) : (
-                <Pin size={14} aria-hidden="true" />
-              )}
+              <PinIcon size={14} aria-hidden="true" />
               <span>{pinned ? "Unpin chat" : "Pin chat"}</span>
             </button>
             <button
@@ -227,13 +252,114 @@ export function ProjectChatActionMenu({
               type="button"
               role="menuitem"
               disabled={archiveDisabled}
-              onClick={() => completeAction(onArchive)}
+              onClick={() =>
+                completeAction(() => {
+                  void useWorkbenchStore
+                    .getState()
+                    .archiveChat(chatId, projectId);
+                })
+              }
             >
               <Archive size={14} aria-hidden="true" />
               <span>Archive chat</span>
             </button>
           </>
         )}
+      </MenuPopover>
+    </div>
+  );
+}
+
+// The Agent header "…" (Codex 68): the project row hosts the chat actions
+// above as a nested menu, then Changes opens this Chat's diff picker.
+export function AgentHeaderMore({
+  scope,
+  title,
+  projectName,
+  disabled,
+  onChanges,
+  onDismiss,
+  children,
+}: {
+  scope: string;
+  title: string;
+  projectName: string;
+  disabled: boolean;
+  onChanges: () => void;
+  onDismiss?: () => void;
+  children: ReactNode;
+}) {
+  // Open state belongs to one Chat scope: a Chat switch closes the menu
+  // without remounting the trigger, so focus can still return to it.
+  const [openScope, setOpenScope] = useState<string | null>(null);
+  const open = openScope === scope;
+  const setOpen = (next: boolean) => setOpenScope(next ? scope : null);
+  const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
+  const close = () => {
+    setOpen(false);
+    onDismiss?.();
+  };
+  if (disabled && open) setOpen(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  return (
+    <div className="agent-header-more">
+      <button
+        ref={trigger}
+        className="project-chat__actions"
+        type="button"
+        aria-label={`Chat actions for ${title} task`}
+        aria-controls={menuId}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => {
+          setOpeningFocus("first");
+          if (open) close();
+          else setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
+            setOpen(true);
+          }
+        }}
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
+      <MenuPopover
+        id={menuId}
+        open={open}
+        triggerRef={trigger}
+        ariaLabel="Chat tools"
+        className="agent-header-more__menu"
+        gap={16}
+        initialFocus={openingFocus}
+        keepMounted
+        onDismiss={close}
+      >
+        <div className="agent-header-more__project">
+          <span title={projectName}>{projectName}</span>
+          <AgentHeaderMenuContext
+            value={{ close, returnFocus: () => trigger.current?.focus() }}
+          >
+            {children}
+          </AgentHeaderMenuContext>
+        </div>
+        <button
+          type="button"
+          className="menu-item"
+          role="menuitem"
+          onClick={() => {
+            close();
+            trigger.current?.focus();
+            onChanges();
+          }}
+        >
+          <FileDiff size={14} aria-hidden="true" />
+          <span>Changes</span>
+        </button>
       </MenuPopover>
     </div>
   );

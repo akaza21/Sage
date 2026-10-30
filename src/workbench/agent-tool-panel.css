@@ -1,0 +1,29 @@
+.agent-tool-panel {
+  width: min(560px, 90vw);
+}
+.agent-tool-panel > input {
+  width: 100%;
+}
+.agent-tool-panel__list {
+  display: grid;
+  max-height: min(400px, 50vh);
+  overflow: auto;
+  margin-block: 12px;
+}
+.agent-tool-panel__list button {
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.agent-tool-panel :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+@media (forced-colors: active) {
+  .agent-tool-panel :focus-visible {
+    outline-color: Highlight;
+  }
+}

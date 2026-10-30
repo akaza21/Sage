@@ -4385,8 +4385,10 @@ describe("workbench resource and project navigation", () => {
       expect(switchProject).toHaveBeenCalledOnce();
       expect(useWorkbenchStore.getState().project?.id).toBe("project-b");
     } finally {
-      releaseAcpProjectionStore("chat:a");
+      // Unpin first, as the panes re-render before an unmount cleanup runs:
+      // R3-13 keeps a store that is released while still pinned.
       pinAcpProjectionIds([]);
+      releaseAcpProjectionStore("chat:a");
     }
   });
 

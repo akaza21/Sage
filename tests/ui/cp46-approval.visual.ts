@@ -95,6 +95,11 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
   await expect(prompt).toBeVisible();
   await expect(composer).toBeHidden();
   await expect(prompt.getByRole("button", { name: /Deny/ })).toBeVisible();
+  // Codex s6/f0526: Deny reads in primary white, not muted.
+  await expect(prompt.getByRole("button", { name: /Deny/ })).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
   const allow = prompt.getByRole("button", { name: /Allow once/ });
   await expect(allow).toBeVisible();
   await expect(allow).toBeFocused();
@@ -196,5 +201,16 @@ for (const width of [720, 480]) {
         Math.abs(deny.x + deny.width - (actions.x + actions.width)),
       ).toBeLessThanOrEqual(1);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
+    // The rail's "Awaiting approval" pill keeps a gap before its spinner;
+    // the title truncates first (s6/f0526).
+    const spinner = page.locator(".project-chat__approval-spinner").first();
+    if (await spinner.isVisible()) {
+      const pill = (await page
+        .locator(".rail-pill--approval")
+        .first()
+        .boundingBox())!;
+      const glyph = (await spinner.boundingBox())!;
+      expect(pill.x + pill.width).toBeLessThanOrEqual(glyph.x - 4);
+    }
   });
 }

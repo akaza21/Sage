@@ -188,8 +188,11 @@ it("falls back when a suggested favicon cannot decode and retries a changed URL"
   const next = "data:image/png;base64,iVBORw0KGgoAAA=";
   const props = {
     onNavigate: vi.fn(),
-    onAddress: vi.fn(),
     onNewTab: vi.fn(),
+    onTool: vi.fn(),
+    chatAvailable: true,
+    sideChatAvailable: false,
+    terminalAvailable: false,
   };
   const view = render(
     <BrowserNewTab

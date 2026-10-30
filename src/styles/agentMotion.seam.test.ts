@@ -148,25 +148,35 @@ function blocks(source: string, condition: string) {
 const fallbacks = ["prefers-reduced-motion: reduce", "forced-colors: active"];
 
 describe("Codex live motion (parity spec section 10)", () => {
-  it("sweeps the live shimmer left to right in 600 ms, then idles for the rest of a 4 s period", async () => {
+  it("sweeps a fixed 56 px white-core band left to right at 0.6 px/ms, then idles for the rest of a 4 s period (s8/f0174-f0177)", async () => {
     const [global, activity] = await Promise.all([
       css("src/styles/global.css"),
       css("src/features/chat/acp/acp-activity-details.css"),
     ]);
     expect(global).toMatch(/--motion-duration-shimmer:\s*4s;/);
-    const rule = activity.match(/\.acp-live-shimmer\s*\{([^}]+)\}/)![1];
+    expect(global).toMatch(/--color-text-emphasis:\s*#fff;/);
+    const rule = activity.match(/\.acp-live-shimmer\s*\{([\s\S]*?)\n\}/)![1];
     expect(rule).toMatch(
       /animation:\s*acp-live-shimmer var\(--motion-duration-shimmer\) linear\s+infinite;/,
     );
-    expect(rule).toMatch(/\/\s*300% 100%/);
+    // A fixed-pixel band (not a percentage of the label) with a white core
+    // from 34% to 66% of 176 px: 56 px, between 60 px soft edges.
+    expect(rule).toMatch(
+      /transparent,\s*var\(--color-text-emphasis\) 34%,\s*var\(--color-text-emphasis\) 66%,\s*transparent\s*\)\s*-176px\s+0 \/ 176px 100% no-repeat,/,
+    );
+    expect(rule).not.toMatch(/300%/);
     const frames = activity.match(
       /@keyframes acp-live-shimmer\s*\{([\s\S]*?)\n\}/,
     )![1];
-    // 100% → 0 slides a 300% image rightwards: the band enters at the left.
-    expect(frames).toMatch(/0%\s*\{\s*background-position:\s*100% 0;\s*\}/);
+    // -176 px to 664 px is 840 px over 35% of 4 s (1400 ms): 0.6 px/ms,
+    // entering at the left; the muted base layer never moves.
     expect(frames).toMatch(
-      /15%,\s*100%\s*\{\s*background-position:\s*0 0;\s*\}/,
+      /0%\s*\{\s*background-position:\s*-176px 0,\s*0 0;\s*\}/,
     );
+    expect(frames).toMatch(
+      /35%,\s*100%\s*\{\s*background-position:\s*664px 0,\s*0 0;\s*\}/,
+    );
+    expect((664 + 176) / (0.35 * 4000)).toBeCloseTo(0.6, 2);
   });
 
   it("never shimmers the Working-for header", async () => {
@@ -283,9 +293,21 @@ describe("Codex live motion (parity spec section 10)", () => {
     expect(overlay).toMatch(/grid-area:\s*transcript;/);
     expect(overlay).toMatch(/align-self:\s*end;/);
     expect(overlay).toMatch(/justify-self:\s*center;/);
-    // The column centre ignores the stable scrollbar gutter on the right.
+    // Centred on the reading column (s2/f0046): the scrollbar gutter and the
+    // Turn's column gap sit right of it, and compact panes zero both.
     expect(overlay).toMatch(
-      /margin:\s*0 var\(--scrollbar-size\) var\(--space-6\) 0;/,
+      /margin:\s*0 var\(--chat-column-trailing\) var\(--space-6\) 0;/,
+    );
+    expect(surface).toMatch(
+      /--chat-column-trailing:\s*calc\(var\(--scrollbar-size\) \+ var\(--space-3\)\);/,
+    );
+    const compact = await css("src/workbench/workbench-window-mode.css");
+    expect(compact).toMatch(
+      /\.workbench--agent \.chat-follow-end,[^{]*\{\s*--chat-column-trailing:\s*0px;/,
+    );
+    // A white, thin 14 px arrow (s2/f0046); the activity dots keep theirs.
+    expect(follow).toMatch(
+      /\.chat-follow-end:not\(\[data-mode="activity"\]\) > svg\s*\{\s*color:\s*var\(--color-text-emphasis\);\s*stroke-width:\s*1;\s*\}/,
     );
     const jump = follow.match(/\.chat-follow-end\s*\{([^}]+)\}/)![1];
     expect(jump).toMatch(/width:\s*var\(--control-height-compact\);/);

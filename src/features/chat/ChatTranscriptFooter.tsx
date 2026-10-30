@@ -6,7 +6,6 @@ import type { ChatMessage } from "../../domain/chat";
 import { terminalTurnStates } from "./acp/statusSemantics";
 import { AnswerActions } from "./AnswerActions";
 import { TurnDaySeparator } from "./acp/AcpTurnDates";
-import { ForkPart } from "./lazyParts";
 import {
   WorkedActivityVisibility,
   WorkedTurnTerminal,
@@ -140,17 +139,10 @@ export function ChatTranscriptFooter({
     ? (acpAssistant?.payload.text ?? "")
     : (legacyAssistant?.text ?? "");
   const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
-  const hasText = !!text.trim();
-  const latestTurn = page?.turns.at(-1);
-  const retryAction = (
-    page
-      ? latestTurn && terminalTurnStates.has(latestTurn.state)
-      : !useNativeAcp && hasText
-  )
-    ? onRetry
-    : undefined;
-
-  if (!hasText) return null;
+  if (!text.trim()) return null;
+  // A native answer here is the latest Turn's, which is terminal
+  // (lastAssistantItem); a legacy one retries only off native ACP.
+  const retryAction = page || !useNativeAcp ? onRetry : undefined;
 
   return (
     <>
@@ -162,10 +154,12 @@ export function ChatTranscriptFooter({
         }
       />
       {/* Text is guaranteed here: the footer returns early without it. */}
-      <AnswerActions text={text} createdAt={page ? timestamp : undefined}>
-        {page && latestTurn?.state === "completed" ? (
-          <ForkPart part="AnswerMoreActions" page={page} />
-        ) : null}
+      <AnswerActions
+        text={text}
+        createdAt={page ? timestamp : undefined}
+        page={page}
+        forkable
+      >
         {retryAction ? (
           <button
             type="button"

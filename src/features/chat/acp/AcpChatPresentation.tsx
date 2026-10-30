@@ -21,7 +21,11 @@ import { TurnEditSummary } from "./TurnEditSummary";
 import { TurnFileActivity } from "./TurnFileActivity";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
-import { promptAttachmentItems } from "./acpTurnState";
+import {
+  chronologicalTurnItems,
+  promptAttachmentItems,
+  rootActivities,
+} from "./acpTurnState";
 import type { OpenResourceTarget } from "./ToolItem";
 import { PrimaryActivities } from "./PrimaryActivities";
 import { ToolRunningIndicator } from "./ToolRunningIndicator";
@@ -29,7 +33,7 @@ import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
 import { TurnFailure } from "./TurnFailure";
 import { BrowserOperations } from "./BrowserOperations";
-import { terminalItemLifecycles, terminalTurnStates } from "./statusSemantics";
+import { terminalTurnStates } from "./statusSemantics";
 import { VirtualTurnList } from "./VirtualTurnList";
 import type { TurnListHost } from "../chatScroll";
 import { NavigationPart, TranscriptPart } from "../lazyParts";
@@ -63,7 +67,7 @@ const Turn = memo(
     turn: TurnProjection;
     /** A fork's read-only parent Turn: never interactive or quotable. */
     inherited?: boolean;
-    /** An earlier or inherited answer keeps its own Copy row (s2/f0066). */
+    /** Earlier/inherited answers retain Copy (s2/f0066). */
     answerActions?: boolean;
     hasProjectRoot: boolean;
     onOpenResource?: AcpChatPresentationProps["onOpenResource"];
@@ -72,16 +76,7 @@ const Turn = memo(
     const primary = turn.items.filter(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );
-    const activityIds = new Set(turn.activities.map((activity) => activity.id));
-    const itemActivities = new Map(
-      turn.items.map((item) => [item.id, item.activityId] as const),
-    );
-    const roots = turn.activities.filter(
-      (activity) =>
-        !activity.parentActivityId ||
-        !activityIds.has(activity.parentActivityId) ||
-        itemActivities.get(activity.parentItemId) !== activity.parentActivityId,
-    );
+    const roots = rootActivities(turn);
     const interactive = !inherited && turn.sessionId === page.currentSessionId;
     const fileReferenceOwner: AgentArtifactOwner | undefined =
       hasProjectRoot && page.projectId && page.chatId && page.currentSessionId
@@ -114,22 +109,11 @@ const Turn = memo(
     );
     const attachmentItems = promptAttachmentItems(primary);
     const attachmentIds = new Set(attachmentItems.map((item) => item.id));
-    const chronologicalItems = primary
-      .filter(
-        (item) =>
-          !attachmentIds.has(item.id) &&
-          !(
-            item.kind === "thoughtSummary" &&
-            terminalItemLifecycles.has(item.lifecycle)
-          ) &&
-          !(item.kind === "text" && item.payload.role === "user") &&
-          !(terminal && item.kind === "text" && !item.payload.text.trim()),
-      )
-      .sort(
-        (left, right) =>
-          (Number.isFinite(left.ordinal) ? left.ordinal : Infinity) -
-          (Number.isFinite(right.ordinal) ? right.ordinal : Infinity),
-      );
+    const chronologicalItems = chronologicalTurnItems(
+      primary,
+      attachmentIds,
+      terminal,
+    );
     const finalAnswer = terminal
       ? [...chronologicalItems]
           .reverse()
@@ -145,125 +129,149 @@ const Turn = memo(
         item.id !== finalAnswer?.id &&
         (item.kind !== "thoughtSummary" || item.id === liveThought?.id),
     );
-    return (
-      <section
-        className="acp-turn"
-        data-turn-state={turn.state}
-        aria-label={`Turn ${turn.ordinal}`}
-        data-turn-id={turn.id}
-        data-session-id={turn.sessionId}
-        data-runtime-epoch={turn.runtimeEpoch}
-        data-turn-ordinal={turn.ordinal}
-      >
-        {!stopped ? <TurnHeader turn={turn} /> : null}
-        <div className="acp-turn__items">
-          {turn.attachedContext ? (
-            <TranscriptPart
-              part="SentAnnotations"
-              contexts={turn.attachedContext}
-              chatId={page.chatId}
-            />
-          ) : null}
-          {attachmentItems.length > 0 ? (
-            <div
-              className="acp-turn__attachments"
-              aria-label="Prompt attachments"
-            >
-              {attachmentItems.map((item) => (
-                <ItemView key={item.id} item={item} interactive={interactive} />
-              ))}
-            </div>
-          ) : null}
-          {promptItems.map((item) => (
-            <ItemView key={item.id} item={item} interactive={interactive} />
-          ))}
-          <ChatTranscriptTurnSummary
-            turn={turn}
-            thinkingPlaceholder={isSideChatId(page.chatId)}
-            hasActivities={
-              workingItems.length > 0 ||
-              (turn.browserOperations?.length ?? 0) > 0 ||
-              (turn.browserOperationsCollapsed ?? 0) > 0
-            }
-          >
-            {workingItems.length > 0 ? (
-              <PrimaryActivities
-                items={workingItems}
-                interactive={interactive}
-                onOpenResource={openForTurn}
-                renderItem={(item) => (
+    // Earlier/inherited answer menus never fork: Rust forks only the latest Turn (footer).
+    const text = finalAnswer?.kind === "text" && finalAnswer.payload.text;
+    const actions =
+      answerActions && text ? (
+        <AnswerActions
+          text={text}
+          createdAt={finalAnswer.createdAt}
+          page={page}
+        />
+      ) : null;
+    // An inherited Turn is inert, all but its answer's own row (s2/f0066).
+    const content = (
+      <>
+        <section
+          className="acp-turn"
+          inert={inherited}
+          data-turn-state={turn.state}
+          aria-label={inherited ? undefined : `Turn ${turn.ordinal}`}
+          data-turn-id={turn.id}
+          data-session-id={turn.sessionId}
+          data-runtime-epoch={turn.runtimeEpoch}
+          data-turn-ordinal={turn.ordinal}
+        >
+          {!stopped ? <TurnHeader turn={turn} /> : null}
+          <div className="acp-turn__items">
+            {turn.attachedContext ? (
+              <TranscriptPart
+                part="SentAnnotations"
+                contexts={turn.attachedContext}
+                chatId={page.chatId}
+              />
+            ) : null}
+            {attachmentItems.length > 0 ? (
+              <div
+                className="acp-turn__attachments"
+                aria-label="Prompt attachments"
+              >
+                {attachmentItems.map((item) => (
                   <ItemView
                     key={item.id}
                     item={item}
-                    workingItems={turn.items}
+                    interactive={interactive}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {promptItems.map((item) => (
+              <ItemView key={item.id} item={item} interactive={interactive} />
+            ))}
+            <ChatTranscriptTurnSummary
+              turn={turn}
+              thinkingPlaceholder={isSideChatId(page.chatId)}
+              hasActivities={
+                workingItems.length > 0 ||
+                (turn.browserOperations?.length ?? 0) > 0 ||
+                (turn.browserOperationsCollapsed ?? 0) > 0
+              }
+            >
+              {workingItems.length > 0 ? (
+                <PrimaryActivities
+                  items={workingItems}
+                  running={
+                    turn.state === "running" || turn.state === "waitingModel"
+                  }
+                  interactive={interactive}
+                  onOpenResource={openForTurn}
+                  renderItem={(item) => (
+                    <ItemView
+                      key={item.id}
+                      item={item}
+                      workingItems={turn.items}
+                      interactive={interactive}
+                      fileReferenceOwner={fileReferenceOwner}
+                      onOpenResource={openForTurn}
+                    />
+                  )}
+                />
+              ) : null}
+              <BrowserOperations
+                operations={turn.browserOperations ?? []}
+                collapsed={turn.browserOperationsCollapsed ?? 0}
+              />
+            </ChatTranscriptTurnSummary>
+            {finalAnswer ? (
+              <ItemView
+                key={finalAnswer.id}
+                item={finalAnswer}
+                selectableTurnId={inherited ? undefined : turn.id}
+                turnState={turn.state}
+                interactive={interactive}
+                fileReferenceOwner={fileReferenceOwner}
+              />
+            ) : null}
+            {!inherited && actions}
+            {roots.map((activity) => (
+              <HarnessActivity
+                key={activity.id}
+                activity={activity}
+                activities={turn.activities}
+                items={turn.items}
+                renderItem={(item) => (
+                  <ItemView
+                    item={item}
+                    turnState={turn.state}
                     interactive={interactive}
                     fileReferenceOwner={fileReferenceOwner}
                     onOpenResource={openForTurn}
                   />
                 )}
               />
+            ))}
+            {/* docs/work-items/CHAT-WAVE-2/plan.md:28: live edits precede file data. */}
+            {isEditingFiles(page, turn) &&
+            !turn.items.some(
+              (item) =>
+                item.kind === "toolCall" &&
+                item.toolState === "inProgress" &&
+                item.payload.presentation.kind === "edit",
+            ) ? (
+              <div className="acp-editing-files acp-tool-rollup__summary-copy">
+                <ToolRunningIndicator />
+                <span className="acp-live-shimmer">Editing files</span>
+              </div>
             ) : null}
-            <BrowserOperations
-              operations={turn.browserOperations ?? []}
-              collapsed={turn.browserOperationsCollapsed ?? 0}
-            />
-          </ChatTranscriptTurnSummary>
-          {finalAnswer ? (
-            <ItemView
-              key={finalAnswer.id}
-              item={finalAnswer}
-              selectableTurnId={inherited ? undefined : turn.id}
-              turnState={turn.state}
-              interactive={interactive}
-              fileReferenceOwner={fileReferenceOwner}
-            />
-          ) : null}
-          {answerActions && finalAnswer?.kind === "text" ? (
-            <AnswerActions
-              text={finalAnswer.payload.text}
-              createdAt={finalAnswer.createdAt}
-            />
-          ) : null}
-          {roots.map((activity) => (
-            <HarnessActivity
-              key={activity.id}
-              activity={activity}
-              activities={turn.activities}
-              items={turn.items}
-              renderItem={(item) => (
-                <ItemView
-                  item={item}
-                  turnState={turn.state}
-                  interactive={interactive}
-                  fileReferenceOwner={fileReferenceOwner}
-                  onOpenResource={openForTurn}
-                />
-              )}
-            />
-          ))}
-          {/* docs/work-items/CHAT-WAVE-2/plan.md:28: live edits precede file data. */}
-          {isEditingFiles(page, turn) &&
-          !turn.items.some(
-            (item) =>
-              item.kind === "toolCall" &&
-              item.toolState === "inProgress" &&
-              item.payload.presentation.kind === "edit",
-          ) ? (
-            <div className="acp-editing-files acp-tool-rollup__summary-copy">
-              <ToolRunningIndicator />
-              <span className="acp-live-shimmer">Editing files</span>
-            </div>
-          ) : null}
-          {terminal ? <TurnFileActivity page={page} turn={turn} /> : null}
-          {stopped ? <TurnHeader turn={turn} /> : null}
-          {stopped && !finalAnswer && onRetry ? (
-            <button type="button" onClick={onRetry}>
-              Retry
-            </button>
-          ) : null}
-          <TurnFailure turn={turn} onRetry={onRetry} />
-        </div>
+            {terminal ? <TurnFileActivity page={page} turn={turn} /> : null}
+            {stopped ? <TurnHeader turn={turn} /> : null}
+            {stopped && !finalAnswer && onRetry ? (
+              <button type="button" onClick={onRetry}>
+                Retry
+              </button>
+            ) : null}
+            <TurnFailure turn={turn} onRetry={onRetry} />
+          </div>
+        </section>
+        {inherited && actions}
+      </>
+    );
+    return inherited ? (
+      <section className="chat-fork-turn" aria-label={`Turn ${turn.ordinal}`}>
+        {content}
       </section>
+    ) : (
+      content
     );
   },
   (left, right) =>
@@ -354,8 +362,7 @@ export function AcpChatPresentation({
     <>
       <NavigationPart
         part="ChatNavigation"
-        // Distinct from the VirtualTurnList sibling's key: a shared key makes
-        // React drop one of them and remount the other (closing find).
+        // Use a distinct sibling key to avoid remounting and closing find.
         key={`navigation:${page.projectId}:${page.chatId}`}
         turns={page.turns}
         chatId={page.chatId}
@@ -363,7 +370,7 @@ export function AcpChatPresentation({
         incomplete={hasEarlier || countIncomplete}
       />
       {hasEarlier || historyError || countIncomplete ? (
-        // Rare history notices ride the navigation chunk (ChatNavigation.tsx).
+        // History notices stay in the navigation chunk.
         <NavigationPart
           part="AcpHistoryNotices"
           hasEarlier={hasEarlier}
@@ -391,11 +398,7 @@ export function AcpChatPresentation({
   );
 }
 
-/**
- * A fork's inherited parent history: turns only. It mounts no navigator,
- * find controller, virtual list or edit summary, so the fork's own
- * transcript keeps the only ones on its message list.
- */
+/** Inherited Turns mount no navigator/find/virtual list/edit summary; the fork transcript owns those. */
 export function InheritedTurns({ page }: { page: AcpChatPage }) {
   const dayTimestamps = useTurnDayTimestamps(page.turns);
   return page.turns.map((turn, index) => (

@@ -86,7 +86,10 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         &tls,
         "s10.user-navigate",
         &tab,
-        &format!("navigate -> {navigated:?}; {status:?}"),
+        &format!(
+            "navigate -> {navigated:?}; {status:?}; native events: {:?}",
+            lane.navigation_trace(&tab)
+        ),
         before,
     );
     // The Agent's Navigate on a tab that is back on an admitted page.

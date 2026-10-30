@@ -20,6 +20,7 @@ interface ChatHandoffControlProps {
   menuItem?: boolean;
   onOpen?: () => void;
   returnFocusRef?: RefObject<HTMLButtonElement | null>;
+  onReturnFocus?: () => void;
 }
 
 function sourceContext(
@@ -50,6 +51,7 @@ export function ChatHandoffControl({
   menuItem = false,
   onOpen,
   returnFocusRef,
+  onReturnFocus,
 }: ChatHandoffControlProps) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
@@ -85,7 +87,9 @@ export function ChatHandoffControl({
       : null;
   const restoreFocus = () =>
     queueMicrotask(() =>
-      (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+      onReturnFocus
+        ? onReturnFocus()
+        : (returnFocusRef?.current ?? triggerRef.current)?.focus(),
     );
   useEffect(() => {
     if (!intent) return;
@@ -100,11 +104,13 @@ export function ChatHandoffControl({
         setIntent(null);
         setHandoffError(null);
         queueMicrotask(() =>
-          (returnFocusRef?.current ?? triggerRef.current)?.focus(),
+          onReturnFocus
+            ? onReturnFocus()
+            : (returnFocusRef?.current ?? triggerRef.current)?.focus(),
         );
       }
     });
-  }, [intent, returnFocusRef]);
+  }, [intent, returnFocusRef, onReturnFocus]);
 
   const close = () => {
     setIntent(null);

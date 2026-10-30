@@ -567,6 +567,9 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
     const tab = screen.getByRole("tab", { name: "Subagents" });
     expect(tab).toHaveAttribute("aria-selected", "false");
+    // Codex s4/f0244: a person outline, not sparkles, marks the tab.
+    expect(tab.querySelector(".tab__person")).not.toBeNull();
+    expect(tab.querySelector(".lucide-sparkles")).toBeNull();
     fireEvent.click(tab);
     expect(tab).toHaveAttribute("aria-selected", "true");
     // The plural tab opens on its Active / Done list.
@@ -1997,8 +2000,8 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
     expect(openBrowser).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: "Pop out active tab" }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: "Expand resource pane" }),
+    ).toBeEnabled();
     expect(onOpenInEditor).not.toHaveBeenCalled();
   });
 
