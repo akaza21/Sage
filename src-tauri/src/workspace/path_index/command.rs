@@ -15,7 +15,6 @@ use crate::{
 use super::{
     IndexInputs,
     query::{Outcome, QuickOpenQuery, run},
-    watched,
 };
 
 pub const MAX_QUICK_OPEN_RESULTS: u32 = 50;
@@ -30,8 +29,12 @@ pub struct QuickOpenRequest {
     pub expected_transition_epoch: u64,
     pub query: String,
     pub limit: u32,
-    /// Increases with each query; a newer one stops older ones.
+    /// Increases with each query; a newer one stops older ones. It must keep
+    /// increasing across webview reloads, so the UI derives it from a clock.
     pub generation: u64,
+    /// Identifies one opening of Quick Open. The first query of a new session
+    /// refreshes the index in the background.
+    pub session: u64,
     /// Recently opened Files, most recent first, ranked higher.
     #[serde(default)]
     pub recent: Vec<ResourceRef>,
@@ -60,8 +63,10 @@ pub struct QuickOpenResponse {
     pub indexed_files: usize,
     /// The index stopped at its File limit, so some Files can't be found.
     pub truncated: bool,
-    /// Whether this query had to walk the project (or a root) first.
+    /// Whether this query had to walk the Project first.
     pub built: bool,
+    /// A fresh index is being built; asking again shortly sees it.
+    pub refreshing: bool,
     pub index_bytes: usize,
     pub ready_ms: u64,
 }
@@ -88,9 +93,10 @@ async fn execute(state: &AppState, request: QuickOpenRequest) -> AppResult<Quick
             text: &request.query,
             limit: request.limit as usize,
             generation: request.generation,
+            session: request.session,
             recent: &request.recent,
         };
-        respond(run(&inputs, &query, watched))
+        respond(run(&inputs, &query))
     })
     .await
     .map_err(|_| AppError::InvalidRequest("Quick Open stopped unexpectedly".into()))?;
@@ -172,6 +178,7 @@ fn respond(outcome: Outcome) -> QuickOpenResponse {
             indexed_files: 0,
             truncated: false,
             built: false,
+            refreshing: false,
             index_bytes: 0,
             ready_ms: 0,
         },
@@ -194,6 +201,7 @@ fn respond(outcome: Outcome) -> QuickOpenResponse {
             indexed_files: files,
             truncated,
             built: readied.built,
+            refreshing: readied.refreshing,
             index_bytes: heap_bytes,
             ready_ms: readied.took.as_millis() as u64,
         },

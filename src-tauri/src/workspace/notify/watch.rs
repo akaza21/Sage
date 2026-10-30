@@ -62,14 +62,10 @@ pub fn deliver_workspace_notify_action(
     if watch.generation != generation || watch.cancelled.load(Ordering::Acquire) {
         return Ok(None);
     }
-    let notice = watch.session.classify(root_id, relative, action)?;
-    if let Some(notice) = &notice {
-        crate::workspace::path_index::note_change(notice);
-    }
-    Ok(notice)
+    watch.session.classify(root_id, relative, action)
 }
 
-pub(crate) fn workspace_notify_bound_roots(project_id: &str) -> Option<BTreeSet<String>> {
+pub(super) fn workspace_notify_bound_roots(project_id: &str) -> Option<BTreeSet<String>> {
     registry()
         .watches
         .get(project_id)

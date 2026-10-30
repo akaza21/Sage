@@ -5,14 +5,15 @@ use std::{
         Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    time::{Duration, Instant},
 };
 
-use crate::{domain::ResourceRef, workspace::notify::WorkspaceNotifyNotice};
+use crate::{domain::ResourceRef, workspace::search::MAX_SEARCH_DEPTH};
 
 use super::{
-    IgnoreRules, IndexInputs, IndexedRoot, LATEST_GENERATION, PathGlobs, ProjectIndex,
+    INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex,
     arena::PathArena,
-    forget_project, note_change,
+    build_index_within, forget_project, lock,
     query::{Outcome, QuickOpenQuery, Ranked, rank_in_shares, run},
     score::{Query, positions, score},
 };
@@ -60,17 +61,6 @@ impl Fixture {
             global_excludes: None,
         }
     }
-
-    fn notice(&self, relative: &str, kind: &str) {
-        note_change(&WorkspaceNotifyNotice {
-            project_id: self.project_id.clone(),
-            project_generation: 1,
-            transition_epoch: 1,
-            root_id: "root-a".into(),
-            relative_path: relative.into(),
-            kind: kind.into(),
-        });
-    }
 }
 
 impl Drop for Fixture {
@@ -85,24 +75,23 @@ struct Answer {
     results: Vec<Ranked>,
     files: usize,
     built: bool,
+    refreshing: bool,
 }
 
-/// Fixture projects have no file watcher; the tests deliver events
-/// themselves, so they answer as if every root were watched.
 fn ask(inputs: &IndexInputs, text: &str, recent: &[ResourceRef]) -> Answer {
-    ask_watched(inputs, text, recent, true)
+    ask_in(inputs, 1, text, recent)
 }
 
-fn ask_watched(inputs: &IndexInputs, text: &str, recent: &[ResourceRef], watched: bool) -> Answer {
+fn ask_in(inputs: &IndexInputs, session: u64, text: &str, recent: &[ResourceRef]) -> Answer {
     let outcome = run(
         inputs,
         &QuickOpenQuery {
             text,
             limit: 50,
             generation: generation(),
+            session,
             recent,
         },
-        |_| watched,
     );
     let Outcome::Ready {
         results,
@@ -113,20 +102,47 @@ fn ask_watched(inputs: &IndexInputs, text: &str, recent: &[ResourceRef], watched
     else {
         panic!("query was superseded");
     };
+    let mut paths = results
+        .iter()
+        .map(|result| result.relative_path.clone())
+        .collect::<Vec<_>>();
+    if text.trim().is_empty() {
+        paths.sort();
+    }
     Answer {
-        paths: results
-            .iter()
-            .map(|result| result.relative_path.clone())
-            .collect(),
+        paths,
         results,
         files,
         built: readied.built,
+        refreshing: readied.refreshing,
     }
+}
+
+/// Asks until the background refresh has been swapped in.
+fn ask_refreshed(inputs: &IndexInputs, session: u64, text: &str) -> Answer {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let answer = ask_in(inputs, session, text, &[]);
+        if !answer.refreshing {
+            return answer;
+        }
+        assert!(Instant::now() < deadline, "the refresh never finished");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn sorted(mut paths: Vec<String>) -> Vec<String> {
+    paths.sort();
+    paths
 }
 
 #[test]
 fn indexes_what_search_would_scan() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let deep = (0..=MAX_SEARCH_DEPTH)
+        .map(|level| format!("d{level}"))
+        .collect::<Vec<_>>()
+        .join("/");
     let fixture = Fixture::new(&[
         "src/main.rs",
         "src/lib.rs",
@@ -135,18 +151,20 @@ fn indexes_what_search_would_scan() {
         "node_modules/pkg/index.js",
         ".git/config",
         "docs/notes.log",
+        &format!("{deep}/too-deep.rs"),
     ]);
     fs::write(fixture.root.join(".gitignore"), "build/\n").unwrap();
     let inputs = fixture.inputs(&["**/*.log"]);
-    let mut all = ask(&inputs, "", &[]).files;
-    assert_eq!(all, 3, "src/main.rs, src/lib.rs and .gitignore");
+    let all = ask(&inputs, "", &[]);
+    assert!(all.built);
+    assert_eq!(all.files, 3, "src/main.rs, src/lib.rs and .gitignore");
     let answer = ask(&inputs, "rs", &[]);
     assert!(!answer.built, "the second query reuses the index");
-    let mut paths = answer.paths.clone();
-    paths.sort();
-    assert_eq!(paths, ["src/lib.rs", "src/main.rs"]);
-    all = ask(&fixture.inputs(&[]), "", &[]).files;
-    assert_eq!(all, 4, "new files.exclude rebuilds, now with the .log file");
+    assert!(!answer.refreshing, "the same session doesn't refresh");
+    assert_eq!(sorted(answer.paths), ["src/lib.rs", "src/main.rs"]);
+    let rebuilt = ask(&fixture.inputs(&[]), "", &[]);
+    assert!(rebuilt.built, "a new files.exclude rebuilds at once");
+    assert_eq!(rebuilt.files, 4, "now with the .log file");
 }
 
 #[test]
@@ -173,56 +191,33 @@ fn ranks_basename_word_start_and_recent_matches_first() {
     let empty = ask(&inputs, "  ", &recent);
     assert_eq!(empty.paths, ["src/app/remain.ts"]);
     assert!(ask(&inputs, "zzz", &[]).paths.is_empty());
+    let pieces = ask(&inputs, "main src", &[]);
+    assert_eq!(pieces.paths[0], "src/main.ts", "pieces match in any order");
+    assert!(!pieces.paths.contains(&"mains/other.ts".to_owned()));
 }
 
 #[test]
-fn file_events_update_the_index_without_a_rebuild() {
+fn a_new_session_sees_changes_made_since_the_last() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
-    let fixture = Fixture::new(&["src/old.rs", "src/keep.rs"]);
+    let fixture = Fixture::new(&["src/old.rs", "src/keep.rs", "tmp/scratch.rs"]);
     let inputs = fixture.inputs(&[]);
-    assert_eq!(ask(&inputs, "", &[]).files, 2);
+    assert_eq!(ask_in(&inputs, 1, "", &[]).files, 3);
 
     fs::remove_file(fixture.root.join("src/old.rs")).unwrap();
-    fixture.write("src/new.rs");
     fixture.write("lib/deep/added.rs");
-    fixture.notice("src/old.rs", "deleted");
-    fixture.notice("src/new.rs", "created");
-    fixture.notice("lib", "created");
-    fixture.notice("src/keep.rs", "changed");
-    fixture.notice(".git/index", "created");
-    let answer = ask(&inputs, "rs", &[]);
-    assert!(!answer.built);
-    let mut paths = answer.paths;
-    paths.sort();
-    assert_eq!(paths, ["lib/deep/added.rs", "src/keep.rs", "src/new.rs"]);
-
-    // A renamed folder arrives as its old name deleted and its new one created.
-    fs::rename(fixture.root.join("lib"), fixture.root.join("pkg")).unwrap();
-    fixture.notice("lib", "deleted");
-    fixture.notice("pkg", "created");
-    let mut paths = ask(&inputs, "added", &[]).paths;
-    paths.sort();
-    assert_eq!(paths, ["pkg/deep/added.rs"]);
-}
-
-#[test]
-fn lost_events_and_ignore_file_changes_rebuild() {
-    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
-    let fixture = Fixture::new(&["a.rs", "tmp/b.rs"]);
-    let inputs = fixture.inputs(&[]);
-    assert_eq!(ask(&inputs, "", &[]).files, 2);
-
+    fs::rename(fixture.root.join("src"), fixture.root.join("pkg")).unwrap();
     fs::write(fixture.root.join(".gitignore"), "tmp/\n").unwrap();
-    fixture.notice(".gitignore", "created");
-    let answer = ask(&inputs, "rs", &[]);
-    assert!(answer.built);
-    assert_eq!(answer.paths, ["a.rs"]);
+    // The session that built the index keeps answering from it.
+    let same = ask_in(&inputs, 1, "rs", &[]);
+    assert!(!same.built && !same.refreshing);
+    assert_eq!(same.paths.len(), 3);
 
-    fixture.write("c.rs");
-    fixture.notice("lost-notices", "resync");
-    let answer = ask(&inputs, "rs", &[]);
-    assert!(answer.built);
-    assert_eq!(answer.files, 3);
+    // A new session answers at once from what it has, then sees the changes.
+    let first = ask_in(&inputs, 2, "rs", &[]);
+    assert!(!first.built);
+    let fresh = ask_refreshed(&inputs, 2, "rs");
+    assert_eq!(sorted(fresh.paths), ["lib/deep/added.rs", "pkg/keep.rs"]);
+    assert!(!ask_in(&inputs, 2, "rs", &[]).refreshing);
 }
 
 #[test]
@@ -239,9 +234,9 @@ fn a_newer_query_supersedes_an_older_one() {
                 text: "a",
                 limit: 5,
                 generation,
+                session: 1,
                 recent: &[],
             },
-            |_| true,
         )
     };
     assert!(matches!(ran(newer), Outcome::Ready { .. }));
@@ -249,30 +244,49 @@ fn a_newer_query_supersedes_an_older_one() {
 }
 
 #[test]
-fn forgetting_the_project_frees_the_index() {
+fn forgetting_the_project_frees_the_index_without_waiting() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
     let fixture = Fixture::new(&["a.rs"]);
     let inputs = fixture.inputs(&[]);
     assert!(ask(&inputs, "a", &[]).built);
     assert!(!ask(&inputs, "a", &[]).built);
+    forget_project("another-project");
+    assert!(
+        !ask(&inputs, "a", &[]).built,
+        "only its own Project's index"
+    );
     forget_project(&fixture.project_id);
     assert!(ask(&inputs, "a", &[]).built);
+
+    // While a build holds the index, forgetting returns at once and the
+    // index goes once the build is done.
+    let held = lock(&INDEX);
+    let started = Instant::now();
+    forget_project(&fixture.project_id);
+    assert!(started.elapsed() < Duration::from_millis(500));
+    drop(held);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while lock(&INDEX).index.is_some() {
+        assert!(Instant::now() < deadline, "the index was never dropped");
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 #[test]
-fn an_index_without_a_watcher_is_rebuilt_until_watched() {
+fn roots_share_the_file_limit() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
-    let fixture = Fixture::new(&["a.rs"]);
-    let inputs = fixture.inputs(&[]);
-    assert!(ask_watched(&inputs, "rs", &[], false).built);
-    // No event will say so, but the next query still sees the new File.
-    fixture.write("b.rs");
-    let unwatched = ask_watched(&inputs, "rs", &[], false);
-    assert!(unwatched.built);
-    assert_eq!(unwatched.files, 2);
-    // Built unwatched, so the first watched query builds once more.
-    assert!(ask(&inputs, "rs", &[]).built);
-    assert!(!ask(&inputs, "rs", &[]).built);
+    let large = Fixture::new(&["a1.rs", "a2.rs", "a3.rs", "a4.rs", "a5.rs", "a6.rs"]);
+    let small = Fixture::new(&["b1.rs", "b2.rs"]);
+    let mut inputs = large.inputs(&[]);
+    inputs.roots.push(("root-b".into(), small.root.clone()));
+    let index = build_index_within(&inputs, 1, None, 5);
+    let counts = index
+        .roots
+        .iter()
+        .map(|root| (root.arena.len(), root.truncated))
+        .collect::<Vec<_>>();
+    assert_eq!(counts, [(2, true), (2, false)]);
+    assert!(index.truncated());
 }
 
 #[test]
@@ -293,15 +307,21 @@ fn scores_tight_word_start_matches_above_scattered_ones() {
 }
 
 #[test]
-fn matches_without_case_and_reports_character_positions() {
+fn matches_without_case_and_reports_utf16_positions() {
     let query = Query::new("ÉtUde").unwrap();
     assert_eq!(positions(&query, "dossier/étude.md", 8), [8, 9, 10, 11, 12]);
+    // The emoji is two UTF-16 units, so the matches after it shift by one.
+    let query = Query::new("ab").unwrap();
+    let path = "x/😀ab.md";
+    assert_eq!(positions(&query, path, 2), [4, 5]);
     let query = Query::new("src\\Main").unwrap();
     assert_eq!(
         positions(&query, "src/main.rs", 4),
         [0, 1, 2, 3, 4, 5, 6, 7]
     );
     assert!(score(&query, "src/main.rs", 4, true).is_some());
+    let query = Query::new("rs main").unwrap();
+    assert_eq!(positions(&query, "src/main.rs", 4), [4, 5, 6, 7, 9, 10]);
 }
 
 #[test]
@@ -313,12 +333,9 @@ fn ranking_split_across_threads_matches_one_thread() {
             for index in 0..6000 {
                 arena.push(&format!("src/mod{}/item_{index}.rs", index % 37));
             }
-            arena.remove_under(&["src/mod3"]);
             IndexedRoot {
                 root_id: root_id.into(),
-                root: PathBuf::new(),
                 arena,
-                rules: IgnoreRules::load(&std::env::temp_dir(), false, None),
                 truncated: false,
             }
         })
@@ -331,15 +348,14 @@ fn ranking_split_across_threads_matches_one_thread() {
             files_exclude: Vec::new(),
             global_excludes: None,
         },
-        excluded: PathGlobs::new(&[]),
         roots,
-        watched: true,
+        session: 1,
     };
     let recent = [ResourceRef {
         root_id: "root-b".into(),
         relative_path: "src/mod5/item_5.rs".into(),
     }];
-    for text in ["item5", "m1i2", "", "zz"] {
+    for text in ["item5", "m1i2", "item mod3", "", "zz"] {
         let ranked = |shares| {
             rank_in_shares(
                 &index,
@@ -347,6 +363,7 @@ fn ranking_split_across_threads_matches_one_thread() {
                     text,
                     limit: 20,
                     generation: u64::MAX,
+                    session: 1,
                     recent: &recent,
                 },
                 shares,

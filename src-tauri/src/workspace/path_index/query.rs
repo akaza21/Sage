@@ -8,9 +8,9 @@ use std::{
 use crate::domain::ResourceRef;
 
 use super::{
-    INDEX, IndexInputs, ProjectIndex, Readied,
+    IndexInputs, ProjectIndex, Readied,
     build::build_threads,
-    claim_generation, lock, ready,
+    claim_generation, ready,
     score::{Query, positions, score},
     superseded,
 };
@@ -28,6 +28,9 @@ pub(crate) struct QuickOpenQuery<'a> {
     pub(crate) text: &'a str,
     pub(crate) limit: usize,
     pub(crate) generation: u64,
+    /// Which Quick Open session asks; the first query of a new one refreshes
+    /// the index.
+    pub(crate) session: u64,
     /// Recently opened Files, most recent first.
     pub(crate) recent: &'a [ResourceRef],
 }
@@ -36,7 +39,7 @@ pub(crate) struct QuickOpenQuery<'a> {
 pub(crate) struct Ranked {
     pub(crate) root_id: String,
     pub(crate) relative_path: String,
-    /// Matched characters, as character offsets into `relative_path`.
+    /// Matched characters, as UTF-16 offsets into `relative_path`.
     pub(crate) positions: Vec<u32>,
 }
 
@@ -52,23 +55,15 @@ pub(crate) enum Outcome {
     Superseded,
 }
 
-/// Answers `query`. `watched` says whether every root has a file watcher;
-/// it is asked while the index is locked.
-pub(crate) fn run(
-    inputs: &IndexInputs,
-    query: &QuickOpenQuery<'_>,
-    watched: impl FnOnce(&IndexInputs) -> bool,
-) -> Outcome {
+pub(crate) fn run(inputs: &IndexInputs, query: &QuickOpenQuery<'_>) -> Outcome {
     if !claim_generation(query.generation) {
         return Outcome::Superseded;
     }
-    let mut slot = lock(&INDEX);
+    let (index, readied) = ready(inputs, query.session);
     if superseded(query.generation) {
         return Outcome::Superseded;
     }
-    let readied = ready(&mut slot, inputs, watched(inputs));
-    let index = slot.as_ref().expect("readied above");
-    let Some(results) = rank(index, query) else {
+    let Some(results) = rank(&index, query) else {
         return Outcome::Superseded;
     };
     Outcome::Ready {
@@ -149,7 +144,7 @@ impl<'a> Ranking<'a> {
         let mut kept = BinaryHeap::with_capacity(self.limit + 1);
         let mut seen = 0;
         for (position, root) in index.roots.iter().enumerate() {
-            let slots = root.arena.slots();
+            let slots = root.arena.len();
             let from = slots * share / shares;
             let to = slots * (share + 1) / shares;
             for stored in root.arena.range(from..to) {

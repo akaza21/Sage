@@ -1,8 +1,8 @@
-//! Quick Open's fuzzy match. The query's characters must appear in order,
-//! ignoring case. Among the places they could match, the tightest window
-//! wins, and the score rewards matches in the basename, at word starts and in
-//! runs, as VS Code's ranking does. Each candidate costs a linear scan, with
-//! no allocation for ASCII paths.
+//! Quick Open's fuzzy match. The characters of each space-separated piece of
+//! the query must appear in order, ignoring case. Among the places they could
+//! match, the tightest window wins, and the score rewards matches in the
+//! basename, at word starts and in runs, as VS Code's ranking does. Each
+//! candidate costs a linear scan, with no allocation for ASCII paths.
 
 const MATCH: i32 = 16;
 const SEGMENT_START: i32 = 30;
@@ -19,37 +19,48 @@ const BASENAME_START: i32 = 20;
 /// The longest query scored; longer input is cut here.
 pub(super) const MAX_QUERY_CHARS: usize = 256;
 
+/// A query split at spaces, as VS Code does: every piece must match, in any
+/// order, and their scores add up.
 pub(super) struct Query {
+    pieces: Vec<Piece>,
+}
+
+struct Piece {
     lower: Vec<char>,
     raw: Vec<char>,
-    /// The lowercase query as bytes, when it is all ASCII.
+    /// The lowercase piece as bytes, when it is all ASCII.
     ascii: Option<Vec<u8>>,
 }
 
 impl Query {
-    /// The query without spaces, with `\` read as `/`. `None` when empty.
+    /// The query's pieces, with `\` read as `/`. `None` when it is empty.
     pub(super) fn new(text: &str) -> Option<Self> {
-        let raw = text
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .map(|character| if character == '\\' { '/' } else { character })
-            .take(MAX_QUERY_CHARS)
-            .collect::<Vec<_>>();
-        if raw.is_empty() {
-            return None;
-        }
-        let lower = raw
-            .iter()
-            .map(|character| lower(*character))
-            .collect::<Vec<_>>();
-        Some(Self {
-            ascii: lower
+        let mut budget = MAX_QUERY_CHARS;
+        let mut pieces = Vec::new();
+        for word in text.split_whitespace() {
+            let raw = word
+                .chars()
+                .map(|character| if character == '\\' { '/' } else { character })
+                .take(budget)
+                .collect::<Vec<_>>();
+            if raw.is_empty() {
+                break;
+            }
+            budget -= raw.len();
+            let lower = raw
                 .iter()
-                .all(char::is_ascii)
-                .then(|| lower.iter().map(|character| *character as u8).collect()),
-            lower,
-            raw,
-        })
+                .map(|character| lower(*character))
+                .collect::<Vec<_>>();
+            pieces.push(Piece {
+                ascii: lower
+                    .iter()
+                    .all(char::is_ascii)
+                    .then(|| lower.iter().map(|character| *character as u8).collect()),
+                lower,
+                raw,
+            });
+        }
+        (!pieces.is_empty()).then_some(Self { pieces })
     }
 }
 
@@ -81,36 +92,57 @@ fn lower(character: char) -> char {
 /// the query doesn't match. Higher is better. `ascii` says whether the path
 /// is all ASCII, which the index already knows.
 pub(super) fn score(query: &Query, path: &str, base: usize, ascii: bool) -> Option<i32> {
-    best(query, path, base, ascii, None)
+    let mut total = 0;
+    for piece in &query.pieces {
+        total += best(piece, path, base, ascii, None)?;
+    }
+    Some(total)
 }
 
-/// The matched characters of `path`, as character (not byte) offsets, for
-/// highlighting.
+/// The matched characters of `path`, as UTF-16 offsets (what JavaScript
+/// strings index by), for highlighting.
 pub(super) fn positions(query: &Query, path: &str, base: usize) -> Vec<u32> {
-    let mut out = Vec::with_capacity(query.lower.len());
-    best(query, path, base, path.is_ascii(), Some(&mut out));
-    out.into_iter().map(|index| index as u32).collect()
+    let ascii = path.is_ascii();
+    let mut out = Vec::new();
+    for piece in &query.pieces {
+        let mut matched = Vec::with_capacity(piece.lower.len());
+        best(piece, path, base, ascii, Some(&mut matched));
+        out.extend(matched);
+    }
+    out.sort_unstable();
+    out.dedup();
+    if ascii {
+        return out.into_iter().map(|index| index as u32).collect();
+    }
+    let mut utf16 = Vec::with_capacity(path.len());
+    let mut offset = 0;
+    for character in path.chars() {
+        utf16.push(offset);
+        offset += character.len_utf16() as u32;
+    }
+    out.into_iter().map(|index| utf16[index]).collect()
 }
 
+/// One piece's score, with its matched character offsets in `out`.
 fn best(
-    query: &Query,
+    piece: &Piece,
     path: &str,
     base: usize,
     ascii: bool,
     out: Option<&mut Vec<usize>>,
 ) -> Option<i32> {
     if ascii {
-        // Most paths don't hold the query's characters in order; this byte
+        // Most paths don't hold the piece's characters in order; this byte
         // scan turns them away before any scoring.
-        let wanted = query.ascii.as_deref()?;
+        let wanted = piece.ascii.as_deref()?;
         if !in_order(wanted, path.as_bytes()) {
             return None;
         }
-        return best_in(query, path.as_bytes(), base, out);
+        return best_in(piece, path.as_bytes(), base, out);
     }
     let characters = path.chars().collect::<Vec<_>>();
     let base = path[..base].chars().count();
-    best_in(query, &characters, base, out)
+    best_in(piece, &characters, base, out)
 }
 
 /// Whether `hay` holds the lowercase bytes of `wanted` in order, in either
@@ -133,7 +165,7 @@ fn in_order(wanted: &[u8], hay: &[u8]) -> bool {
 }
 
 fn best_in<U: Unit>(
-    query: &Query,
+    query: &Piece,
     hay: &[U],
     base: usize,
     mut out: Option<&mut Vec<usize>>,
@@ -153,7 +185,7 @@ fn best_in<U: Unit>(
 /// ends, walks back to the latest start that still matches, and scores that
 /// window.
 fn align<U: Unit>(
-    query: &Query,
+    query: &Piece,
     hay: &[U],
     from: usize,
     out: Option<&mut Vec<usize>>,
@@ -186,7 +218,7 @@ fn align<U: Unit>(
 }
 
 fn score_window<U: Unit>(
-    query: &Query,
+    query: &Piece,
     hay: &[U],
     base: usize,
     start: usize,

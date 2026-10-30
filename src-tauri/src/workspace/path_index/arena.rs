@@ -1,6 +1,8 @@
 //! One root's relative File paths, packed into a single string. Each entry
 //! is an offset, a length, where its basename starts and whether it is all
 //! ASCII, so 200k paths cost one allocation for the text plus 12 bytes each.
+//! An arena is filled by one walk and never changes after; a refresh builds
+//! a new one.
 
 use std::ops::Range;
 
@@ -13,7 +15,6 @@ struct Entry {
     start: u32,
     len: u16,
     base: u16,
-    live: bool,
     ascii: bool,
 }
 
@@ -29,18 +30,9 @@ pub(super) struct Stored<'a> {
 pub(super) struct PathArena {
     text: String,
     entries: Vec<Entry>,
-    live: usize,
 }
 
 impl PathArena {
-    pub(super) fn with_capacity(paths: usize, bytes: usize) -> Self {
-        Self {
-            text: String::with_capacity(bytes),
-            entries: Vec::with_capacity(paths),
-            live: 0,
-        }
-    }
-
     /// Adds `path`, a relative path with `/` separators. Returns false when
     /// it is too long or the text would outgrow 32-bit offsets.
     pub(super) fn push(&mut self, path: &str) -> bool {
@@ -55,96 +47,65 @@ impl PathArena {
             start: self.text.len() as u32,
             len: path.len() as u16,
             base: base as u16,
-            live: true,
             ascii: path.is_ascii(),
         });
         self.text.push_str(path);
-        self.live += 1;
         true
     }
 
-    /// Makes room for `paths` more paths of `bytes` in total, exactly, so a
-    /// full build doesn't leave growth slack behind.
-    pub(super) fn reserve(&mut self, paths: usize, bytes: usize) {
-        self.text.reserve_exact(bytes);
-        self.entries.reserve_exact(paths);
+    /// An empty arena with room for `paths` paths of `bytes` in total.
+    pub(super) fn with_capacity(paths: usize, bytes: usize) -> Self {
+        Self {
+            text: String::with_capacity(bytes),
+            entries: Vec::with_capacity(paths),
+        }
     }
 
-    pub(super) fn live(&self) -> usize {
-        self.live
+    /// Moves every path of `batch` to the end of this arena, leaving `batch`
+    /// empty with its room kept.
+    pub(super) fn take_from(&mut self, batch: &mut PathArena) {
+        for stored in batch.range(0..batch.len()) {
+            self.push(stored.path);
+        }
+        batch.text.clear();
+        batch.entries.clear();
     }
 
-    /// Slots, live or removed; `range` takes a share of them.
-    pub(super) fn slots(&self) -> usize {
+    /// Gives back room beyond an eighth more than the paths need.
+    pub(super) fn trim_slack(&mut self) {
+        if self.text.capacity() > self.text.len() + self.text.len() / 8 {
+            self.text.shrink_to_fit();
+        }
+        if self.entries.capacity() > self.entries.len() + self.entries.len() / 8 {
+            self.entries.shrink_to_fit();
+        }
+    }
+
+    pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// The live paths among `slots`.
+    /// Bytes of path text held.
+    pub(super) fn text_len(&self) -> usize {
+        self.text.len()
+    }
+
+    /// The paths in `slots`; ranking splits an arena into such shares.
     pub(super) fn range(&self, slots: Range<usize>) -> impl Iterator<Item = Stored<'_>> {
-        self.entries[slots]
-            .iter()
-            .filter(|entry| entry.live)
-            .map(|entry| {
-                let start = entry.start as usize;
-                Stored {
-                    path: &self.text[start..start + entry.len as usize],
-                    base: entry.base as usize,
-                    ascii: entry.ascii,
-                }
-            })
-    }
-
-    /// Live paths with their basename offsets.
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&str, usize)> {
-        self.range(0..self.slots())
-            .map(|stored| (stored.path, stored.base))
-    }
-
-    #[cfg(test)]
-    pub(super) fn contains(&self, path: &str) -> bool {
-        self.iter().any(|(candidate, _)| candidate == path)
-    }
-
-    /// Removes `path` and everything below it, in one pass however many
-    /// prefixes are given. Returns how many entries were removed.
-    pub(super) fn remove_under(&mut self, prefixes: &[&str]) -> usize {
-        let mut removed = 0;
-        for entry in &mut self.entries {
-            if !entry.live {
-                continue;
-            }
+        self.entries[slots].iter().map(|entry| {
             let start = entry.start as usize;
-            let path = &self.text[start..start + entry.len as usize];
-            if prefixes.iter().any(|prefix| covers(prefix, path)) {
-                entry.live = false;
-                removed += 1;
+            Stored {
+                path: &self.text[start..start + entry.len as usize],
+                base: entry.base as usize,
+                ascii: entry.ascii,
             }
-        }
-        self.live -= removed;
-        if self.entries.len() > 1024 && self.live < self.entries.len() / 2 {
-            self.compact();
-        }
-        removed
+        })
     }
 
     /// Bytes held, for the memory budget.
     pub(super) fn heap_bytes(&self) -> usize {
         self.text.capacity() + self.entries.capacity() * std::mem::size_of::<Entry>()
     }
-
-    fn compact(&mut self) {
-        let mut next = Self::with_capacity(self.live, self.text.len());
-        for (path, _) in self.iter() {
-            next.push(path);
-        }
-        *self = next;
-    }
-}
-
-/// Whether `prefix` names `path` itself or a folder above it.
-fn covers(prefix: &str, path: &str) -> bool {
-    path.strip_prefix(prefix)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 #[cfg(test)]
@@ -152,40 +113,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stores_paths_with_basename_offsets() {
-        let mut arena = PathArena::default();
-        assert!(arena.push("src/app/main.ts"));
-        assert!(arena.push("README.md"));
-        assert!(!arena.push(""));
-        assert!(!arena.push(&"a".repeat(MAX_INDEXED_PATH_BYTES + 1)));
-        let entries = arena.iter().collect::<Vec<_>>();
-        assert_eq!(entries, [("src/app/main.ts", 8), ("README.md", 0)]);
-        assert!(arena.contains("README.md"));
-        assert!(!arena.contains("src/app"));
-    }
-
-    #[test]
-    fn removes_a_path_and_everything_below_a_folder() {
-        let mut arena = PathArena::default();
-        for path in ["src/a.ts", "src/ab.ts", "src/lib/b.ts", "srcx/c.ts", "d.ts"] {
-            arena.push(path);
-        }
-        assert_eq!(arena.remove_under(&["src/lib", "d.ts", "src/a"]), 2);
-        let left = arena.iter().map(|(path, _)| path).collect::<Vec<_>>();
-        assert_eq!(left, ["src/a.ts", "src/ab.ts", "srcx/c.ts"]);
-        assert_eq!(arena.live(), 3);
-    }
-
-    #[test]
-    fn compacts_once_most_entries_are_removed() {
-        let mut arena = PathArena::default();
-        for index in 0..2000 {
-            arena.push(&format!("dir{}/file{index}.rs", index % 2));
-        }
-        assert_eq!(arena.remove_under(&["dir0"]), 1000);
-        assert_eq!(arena.remove_under(&["dir1/file1.rs"]), 1);
-        assert_eq!(arena.entries.len(), 999);
-        assert_eq!(arena.live(), 999);
-        assert!(arena.contains("dir1/file3.rs"));
+    fn stores_paths_with_basename_offsets_and_trims_slack() {
+        let mut whole = PathArena::with_capacity(64, 4096);
+        assert!(whole.push("src/app/main.ts"));
+        assert!(!whole.push(""));
+        assert!(!whole.push(&"a".repeat(MAX_INDEXED_PATH_BYTES + 1)));
+        let mut batch = PathArena::default();
+        assert!(batch.push("README.md"));
+        assert!(batch.push("docs/étude.md"));
+        whole.take_from(&mut batch);
+        assert_eq!(batch.len(), 0);
+        whole.trim_slack();
+        let stored = whole
+            .range(0..whole.len())
+            .map(|stored| (stored.path, stored.base, stored.ascii))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stored,
+            [
+                ("src/app/main.ts", 8, true),
+                ("README.md", 0, true),
+                ("docs/étude.md", 5, false),
+            ]
+        );
+        let text_bytes = "src/app/main.tsREADME.mddocs/étude.md".len();
+        assert_eq!(
+            whole.heap_bytes(),
+            text_bytes + 3 * std::mem::size_of::<Entry>()
+        );
     }
 }

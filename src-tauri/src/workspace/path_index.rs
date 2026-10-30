@@ -1,46 +1,46 @@
 //! Quick Open's in-memory path index (EDIT-0005 AD-4). It holds the active
-//! project's File paths, built on the first query from the same rules Search
-//! uses, then kept current from file events. One index exists at a time and
-//! it is dropped when its project stops being watched. An index built while
-//! a root had no watcher can't be kept current, so it is rebuilt each query
-//! until every root is watched.
+//! Project's File paths, gathered with the same rules Search uses.
+//!
+//! The first query builds it. After that, each new Quick Open session walks
+//! the Project again in the background while queries keep answering from the
+//! current index, as VS Code lists the workspace afresh for each Quick Open
+//! session. File events aren't used: on macOS and Linux the watcher covers at
+//! most 64 folders and doesn't say which folder an event is in, so it can't
+//! keep a list of every File current. One index exists at a time, and it is
+//! dropped when its Project closes or is switched away from.
 
 mod arena;
 mod build;
 pub(crate) mod command;
 mod query;
-mod refresh;
 mod score;
 #[cfg(test)]
 mod tests;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::{
-        Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, TryLockError,
         atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use crate::workspace::{
-    file_walk::MAX_WORKSPACE_FILES, ignore_rules::IgnoreRules, notify::WorkspaceNotifyNotice,
-    path_glob::PathGlobs,
+    file_walk::MAX_WORKSPACE_FILES, ignore_rules::IgnoreRules, path_glob::PathGlobs,
 };
 
 use arena::PathArena;
-use build::{Walk, build_root, build_threads};
-use refresh::{MAX_REFRESH_PATHS, Refresh};
+use build::{Walk, build_threads};
 
-/// At most this many Files are indexed across a project's roots.
+/// At most this many Files are indexed across a Project's roots.
 const MAX_INDEXED_FILES: usize = MAX_WORKSPACE_FILES as usize;
 
 /// What an index was built from. A query with different inputs rebuilds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct IndexInputs {
     pub(crate) project_id: String,
-    /// Root IDs with their canonical paths, in project order.
+    /// Root IDs with their canonical paths, in Project order.
     pub(crate) roots: Vec<(String, PathBuf)>,
     pub(crate) use_ignore_files: bool,
     pub(crate) files_exclude: Vec<String>,
@@ -49,23 +49,20 @@ pub(crate) struct IndexInputs {
 
 struct IndexedRoot {
     root_id: String,
-    root: PathBuf,
     arena: PathArena,
-    rules: IgnoreRules,
     truncated: bool,
 }
 
 struct ProjectIndex {
     inputs: IndexInputs,
-    excluded: PathGlobs,
     roots: Vec<IndexedRoot>,
-    /// Every root had a watcher when it was built, so events keep it current.
-    watched: bool,
+    /// The Quick Open session it was built for.
+    session: u64,
 }
 
 impl ProjectIndex {
     fn files(&self) -> usize {
-        self.roots.iter().map(|root| root.arena.live()).sum()
+        self.roots.iter().map(|root| root.arena.len()).sum()
     }
 
     fn heap_bytes(&self) -> usize {
@@ -77,81 +74,46 @@ impl ProjectIndex {
     }
 }
 
-/// Changed paths reported since the last query, per root.
-#[derive(Default)]
-struct Pending {
-    project_id: Option<String>,
-    paths: BTreeMap<String, BTreeSet<String>>,
-    /// Roots that lost events or changed too much: walk them again.
-    rebuild: BTreeSet<String>,
+struct Slot {
+    /// Queries rank a shared handle, so the lock is held only to swap it.
+    index: Option<Arc<ProjectIndex>>,
+    /// A background walk is building the next index.
+    refreshing: bool,
 }
 
-static INDEX: Mutex<Option<ProjectIndex>> = Mutex::new(None);
-static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+static INDEX: Mutex<Slot> = Mutex::new(Slot {
+    index: None,
+    refreshing: false,
+});
 static LATEST_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
-/// Notes a file event for the index. Cheap: the path is looked at when Quick
-/// Open next queries.
-pub(crate) fn note_change(notice: &WorkspaceNotifyNotice) {
-    if notice.kind == "changed"
-        || (notice.kind != "resync" && !refresh::relevant(&notice.relative_path))
-    {
-        return;
-    }
-    let mut guard = lock(&PENDING);
-    let pending = guard.get_or_insert_with(Pending::default);
-    if pending.project_id.as_deref() != Some(&notice.project_id) {
-        *pending = Pending {
-            project_id: Some(notice.project_id.clone()),
-            ..Pending::default()
-        };
-    }
-    if notice.kind == "resync" || pending.rebuild.contains(&notice.root_id) {
-        pending.paths.remove(&notice.root_id);
-        pending.rebuild.insert(notice.root_id.clone());
-        return;
-    }
-    let paths = pending.paths.entry(notice.root_id.clone()).or_default();
-    paths.insert(notice.relative_path.clone());
-    if paths.len() > MAX_REFRESH_PATHS {
-        pending.paths.remove(&notice.root_id);
-        pending.rebuild.insert(notice.root_id.clone());
-    }
-}
-
-/// Drops the index of a project that is no longer watched, freeing its memory.
+/// Drops the index of a Project that is closing, freeing its memory. It
+/// never waits: it runs on the command thread, so while a first build holds
+/// the lock, the drop is left to a short-lived thread.
 pub(crate) fn forget_project(project_id: &str) {
-    let mut index = lock(&INDEX);
-    if index
-        .as_ref()
-        .is_some_and(|index| index.inputs.project_id == project_id)
-    {
-        *index = None;
+    fn forget(slot: &mut Slot, project_id: &str) {
+        if slot
+            .index
+            .as_ref()
+            .is_some_and(|index| index.inputs.project_id == project_id)
+        {
+            slot.index = None;
+        }
     }
-    drop(index);
-    let mut pending = lock(&PENDING);
-    if pending
-        .as_ref()
-        .is_some_and(|pending| pending.project_id.as_deref() == Some(project_id))
-    {
-        *pending = None;
+    match INDEX.try_lock() {
+        Ok(mut slot) => forget(&mut slot, project_id),
+        Err(TryLockError::Poisoned(poison)) => forget(&mut poison.into_inner(), project_id),
+        Err(TryLockError::WouldBlock) => {
+            let project_id = project_id.to_owned();
+            let _ = std::thread::Builder::new()
+                .name("quick-open-forget".into())
+                .spawn(move || forget(&mut lock(&INDEX), &project_id));
+        }
     }
-}
-
-/// Whether the project's file watcher covers every root in `inputs`.
-fn watched(inputs: &IndexInputs) -> bool {
-    crate::workspace::notify::workspace_notify_bound_roots(&inputs.project_id).is_some_and(
-        |watched| {
-            inputs
-                .roots
-                .iter()
-                .all(|(root_id, _)| watched.contains(root_id))
-        },
-    )
 }
 
 /// Records `generation` as the newest query and says whether it still is.
@@ -165,121 +127,119 @@ fn superseded(generation: u64) -> bool {
 
 /// How the index was readied for a query.
 pub(crate) struct Readied {
+    /// This query walked the Project first.
     pub(crate) built: bool,
+    /// A newer index is being built; asking again shortly sees it.
+    pub(crate) refreshing: bool,
     pub(crate) took: Duration,
 }
 
-/// Brings the index up to date for `inputs`: builds it when there is none,
-/// its inputs changed or it wasn't watched, and otherwise applies the changes
-/// noted since. `watched` says whether every root has a watcher now; it must
-/// be read while the index is locked, so an unwatch that forgets the index
-/// can't slip between the read and the build.
-fn ready(slot: &mut Option<ProjectIndex>, inputs: &IndexInputs, watched: bool) -> Readied {
+/// The index to answer `inputs` from. Without one for these inputs, it is
+/// built now, under the lock, so a burst of first queries builds it once.
+/// With one from an earlier Quick Open session, it answers at once and a
+/// fresh one is walked in the background.
+fn ready(inputs: &IndexInputs, session: u64) -> (Arc<ProjectIndex>, Readied) {
     let started = Instant::now();
-    let stale = slot
-        .as_ref()
-        .is_none_or(|index| &index.inputs != inputs || !index.watched);
-    if stale {
-        // Free the old index before building the new one.
-        *slot = None;
-        take_pending(&inputs.project_id);
-        *slot = Some(build_index(inputs, watched));
-        return Readied {
+    let mut slot = lock(&INDEX);
+    if let Some(index) = slot.index.clone().filter(|index| &index.inputs == inputs) {
+        if index.session != session && !slot.refreshing {
+            slot.refreshing = refresh_in_background(Arc::clone(&index), session);
+        }
+        let refreshing = slot.refreshing;
+        return (
+            index,
+            Readied {
+                built: false,
+                refreshing,
+                took: started.elapsed(),
+            },
+        );
+    }
+    // Free the old index before building the new one.
+    slot.index = None;
+    let index = Arc::new(build_index(inputs, session, None));
+    slot.index = Some(Arc::clone(&index));
+    (
+        index,
+        Readied {
             built: true,
+            refreshing: false,
             took: started.elapsed(),
-        };
-    }
-    let index = slot.as_mut().expect("index checked above");
-    let Some(pending) = take_pending(&inputs.project_id) else {
-        return Readied {
-            built: false,
-            took: started.elapsed(),
-        };
-    };
-    let mut built = false;
-    for position in 0..index.roots.len() {
-        let root_id = index.roots[position].root_id.clone();
-        let changed = pending
-            .paths
-            .get(&root_id)
-            .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        let mut rebuild = pending.rebuild.contains(&root_id);
-        if !rebuild && !changed.is_empty() {
-            let others = index.files() - index.roots[position].arena.live();
-            let ProjectIndex {
-                excluded, roots, ..
-            } = index;
-            let root = &mut roots[position];
-            let walk = Walk {
-                rules: &root.rules,
-                excluded,
-                room: MAX_INDEXED_FILES.saturating_sub(others + root.arena.live()),
-                threads: 1,
-            };
-            rebuild =
-                refresh::apply(&root.root, &mut root.arena, &changed, &walk) == Refresh::Rebuild;
-        }
-        if rebuild {
-            rebuild_root(index, position);
-            built = true;
-        }
-    }
-    Readied {
-        built,
-        took: started.elapsed(),
-    }
-}
-
-fn take_pending(project_id: &str) -> Option<Pending> {
-    let mut guard = lock(&PENDING);
-    let pending = guard.take()?;
-    (pending.project_id.as_deref() == Some(project_id)).then_some(pending)
-}
-
-fn build_index(inputs: &IndexInputs, watched: bool) -> ProjectIndex {
-    let mut index = ProjectIndex {
-        watched,
-        inputs: inputs.clone(),
-        excluded: PathGlobs::new(&inputs.files_exclude),
-        roots: inputs
-            .roots
-            .iter()
-            .map(|(root_id, root)| IndexedRoot {
-                root_id: root_id.clone(),
-                root: root.clone(),
-                arena: PathArena::default(),
-                rules: IgnoreRules::load(
-                    root,
-                    inputs.use_ignore_files,
-                    inputs.global_excludes.as_deref(),
-                ),
-                truncated: false,
-            })
-            .collect(),
-    };
-    for position in 0..index.roots.len() {
-        rebuild_root(&mut index, position);
-    }
-    index
-}
-
-fn rebuild_root(index: &mut ProjectIndex, position: usize) {
-    index.roots[position].arena = PathArena::default();
-    let room = MAX_INDEXED_FILES.saturating_sub(index.files());
-    let ProjectIndex {
-        excluded, roots, ..
-    } = index;
-    let root = &mut roots[position];
-    let walked = build_root(
-        &root.root,
-        &Walk {
-            rules: &root.rules,
-            excluded,
-            room,
-            threads: build_threads(),
         },
-    );
-    root.arena = walked.arena;
-    root.truncated = walked.truncated;
+    )
+}
+
+/// Walks the Project on another thread and swaps the result in, unless the
+/// index was dropped or rebuilt for other inputs meanwhile. Returns whether
+/// the thread started.
+fn refresh_in_background(current: Arc<ProjectIndex>, session: u64) -> bool {
+    std::thread::Builder::new()
+        .name("quick-open-refresh".into())
+        .spawn(move || {
+            let inputs = current.inputs.clone();
+            let fresh = build_index(&inputs, session, Some(&current));
+            drop(current);
+            let mut slot = lock(&INDEX);
+            slot.refreshing = false;
+            if slot
+                .index
+                .as_ref()
+                .is_some_and(|index| index.inputs == inputs)
+            {
+                slot.index = Some(Arc::new(fresh));
+            }
+        })
+        .is_ok()
+}
+
+fn build_index(
+    inputs: &IndexInputs,
+    session: u64,
+    previous: Option<&ProjectIndex>,
+) -> ProjectIndex {
+    build_index_within(inputs, session, previous, MAX_INDEXED_FILES)
+}
+
+/// Walks every root. Each may fill an even share of the `limit` Files still
+/// allowed, so one large root can't leave the others out. A root's arena is
+/// sized from what `previous` held for it.
+fn build_index_within(
+    inputs: &IndexInputs,
+    session: u64,
+    previous: Option<&ProjectIndex>,
+    limit: usize,
+) -> ProjectIndex {
+    let excluded = PathGlobs::new(&inputs.files_exclude);
+    let threads = build_threads();
+    let count = inputs.roots.len();
+    let mut used = 0;
+    let mut roots = Vec::with_capacity(count);
+    for (position, (root_id, root)) in inputs.roots.iter().enumerate() {
+        let rules = IgnoreRules::load(
+            root,
+            inputs.use_ignore_files,
+            inputs.global_excludes.as_deref(),
+        );
+        let walked = Walk {
+            rules: &rules,
+            excluded: &excluded,
+            room: (limit - used) / (count - position),
+            threads,
+            expect: previous
+                .and_then(|index| index.roots.iter().find(|old| &old.root_id == root_id))
+                .map_or((0, 0), |old| (old.arena.len(), old.arena.text_len())),
+        }
+        .run(root);
+        used += walked.arena.len();
+        roots.push(IndexedRoot {
+            root_id: root_id.clone(),
+            arena: walked.arena,
+            truncated: walked.truncated,
+        });
+    }
+    ProjectIndex {
+        inputs: inputs.clone(),
+        roots,
+        session,
+    }
 }
