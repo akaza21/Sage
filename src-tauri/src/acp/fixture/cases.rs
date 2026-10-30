@@ -5,7 +5,11 @@ use crate::acp::limits::LIMITS;
 use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase, JOURNEY_CASES};
 
-const CHARACTERIZATION_CASES: [(&str, &str); 9] = [
+const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
+    (
+        "characterization-browser-bootstrap",
+        r#"[{"op":"awaitClient","kind":"codexInitialize"},{"op":"emitKnownFrame","shape":"codexInitializeResult"},{"op":"awaitClient","kind":"codexStart"},{"op":"emitKnownFrame","shape":"codexThreadResult"},{"op":"awaitClient","kind":"codexModelList"},{"op":"emitKnownFrame","shape":"codexModelListResult"},{"op":"awaitClient","kind":"codexGoalGet"},{"op":"emitKnownFrame","shape":"codexGoalMethodNotFound"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"emitKnownFrame","shape":"codexDelta"},{"op":"emitKnownFrame","shape":"codexCompleted"},{"op":"awaitClient","kind":"codexTurnStart"},{"op":"emitKnownFrame","shape":"codexTurnResult"},{"op":"emitKnownFrame","shape":"codexStarted"},{"op":"awaitClient","kind":"codexInterrupt"},{"op":"emitKnownFrame","shape":"codexAck"},{"op":"emitKnownFrame","shape":"codexInterrupted"},{"op":"awaitClient","kind":"codexUnsubscribe"},{"op":"emitKnownFrame","shape":"codexAck"}]"#,
+    ),
     (
         "characterization-turn-success",
         r#"[{"op":"awaitClient","kind":"initialize"},{"op":"emitKnownFrame","shape":"initializeSuccess","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"newSession"},{"op":"emitKnownFrame","shape":"newSessionSuccess","externalSessionId":"fixture-persisted-session-1","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"prompt"},{"op":"emitKnownFrame","shape":"textStart","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textDelta","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"textComplete","delimiter":"lf","split":"none"},{"op":"emitKnownFrame","shape":"turnComplete","delimiter":"lf","split":"none"},{"op":"awaitClient","kind":"close"}]"#,

@@ -28,6 +28,16 @@ use crate::{
     project_registry::ProjectRootAuthority,
 };
 
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/bootstrap_pause.rs"]
+mod bootstrap_pause;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/bootstrap_support.rs"]
+mod bootstrap_support;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/bootstrap_tests.rs"]
+mod bootstrap_tests;
+
 #[test]
 #[cfg(windows)]
 fn unavailable_binding_cannot_start_a_live_codex_session() {

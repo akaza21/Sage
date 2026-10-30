@@ -15,6 +15,7 @@ impl PopupRequests {
             return false;
         }
         self.entries.remove(&id);
+        self.native_deadlines.remove(&id);
         true
     }
 }

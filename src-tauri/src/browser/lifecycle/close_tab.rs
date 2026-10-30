@@ -20,14 +20,11 @@ pub(crate) async fn close_browser_tab(
         .map_err(|error| error.to_string())?
         .take_for_opener(&tab_id);
     for (intent_id, child_id) in children {
-        Box::pin(close_browser_tab(app, state, child_id.clone()))
-            .await
-            .map_err(|error| format!("popup native close is unresolved: {error}"))?;
-        state
-            .popups
-            .lock()
-            .map_err(|error| error.to_string())?
-            .finish_cleanup(intent_id, &child_id);
+        Box::pin(popups::cleanup::close_popup(
+            app, state, intent_id, &child_id,
+        ))
+        .await
+        .map_err(|error| format!("popup native close is unresolved: {error}"))?;
     }
     let pending_permissions = state
         .permissions

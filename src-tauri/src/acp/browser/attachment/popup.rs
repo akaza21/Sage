@@ -268,6 +268,32 @@ mod tests {
 
     const PAGE: Option<(&str, u64)> = Some(("https://example.com/next", 3));
 
+    #[test]
+    fn failed_join_keeps_the_child_plain_and_the_opener_permission_live() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        let opener = registry.resolve(&project, &chat).unwrap();
+        let authority = opener.authority_for(&scope(7)).unwrap();
+        let prompt = crate::acp::browser::permission::BrowserPermissionPrompt {
+            scope: scope(7),
+            origin: "https://example.com".into(),
+            operation: "snapshotPage",
+        };
+        let live = authority.liveness_for(&prompt).unwrap();
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
+        assert!(registry.adopt_popup("browser-7", "browser-10", PAGE, &running));
+        assert!(!registry.adopt_popup("browser-7", "browser-11", PAGE, &running));
+        assert_eq!(registry.agent_control("browser-11"), None);
+        assert!(live());
+        assert!(opener.is_live());
+        assert!(
+            registry
+                .resolve(&project, &chat)
+                .unwrap()
+                .same_attachment(&opener)
+        );
+    }
+
     /// The user attached `browser-7` and the Agent has used it.
     fn driven_opener() -> BrowserAttachments {
         let registry = BrowserAttachments::default();

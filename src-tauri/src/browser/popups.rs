@@ -6,13 +6,14 @@ use url::Url;
 
 use super::{BrowserState, BrowserTabs, MAX_BROWSER_TABS, admit_url};
 
-const MAX_PENDING_POPUPS: usize = 8;
+const MAX_PENDING_POPUPS: usize = 16;
 
 #[cfg(windows)]
 mod native;
 #[cfg(windows)]
 pub(super) use native::register_native;
 mod agent;
+pub(super) mod cleanup;
 mod opener;
 mod settle;
 #[cfg(all(windows, feature = "native-lane"))]
@@ -53,6 +54,7 @@ pub(super) struct PopupRequests {
     entries: BTreeMap<u64, (PopupIntent, PopupState)>,
     initial_blank: BTreeSet<String>,
     native_deadlines: BTreeMap<u64, std::time::Instant>,
+    cleanup_scheduled: bool,
 }
 
 impl PopupRequests {
@@ -139,6 +141,11 @@ impl PopupRequests {
             return false;
         }
         *state = PopupState::Opened(tab_id.to_owned());
+        let entries = &self.entries;
+        self.native_deadlines
+            .retain(|id, _| entries.contains_key(id));
+        self.native_deadlines
+            .insert(id, std::time::Instant::now() + opener::NATIVE_ACK_DEADLINE);
         true
     }
 
@@ -150,6 +157,7 @@ impl PopupRequests {
 
     fn failed_clean(&mut self, id: u64) {
         self.entries.remove(&id);
+        self.native_deadlines.remove(&id);
     }
 
     pub(super) fn take_for_opener(&mut self, opener: &str) -> Vec<(u64, String)> {
@@ -160,7 +168,9 @@ impl PopupRequests {
             .collect::<Vec<_>>();
         let mut children = Vec::new();
         for id in ids {
-            if let Some((_, PopupState::Opened(tab_id))) = self.entries.get_mut(&id) {
+            if let Some((_, PopupState::Opened(tab_id) | PopupState::Quarantined(Some(tab_id)))) =
+                self.entries.get_mut(&id)
+            {
                 let tab_id = tab_id.clone();
                 children.push((id, tab_id.clone()));
                 self.quarantine(id, Some(tab_id));
@@ -176,36 +186,14 @@ impl PopupRequests {
         children
     }
 
-    fn cleanup_target(&mut self, id: u64, opener: &str, tab_id: &str) -> bool {
-        let Some((intent, state)) = self.entries.get_mut(&id) else {
-            return false;
-        };
-        if intent.opener_tab_id != opener {
-            return false;
-        }
-        match state {
-            PopupState::Opened(opened) if opened == tab_id => {
-                *state = PopupState::Quarantined(Some(tab_id.to_owned()));
-                true
-            }
-            PopupState::Quarantined(Some(opened)) if opened == tab_id => true,
-            _ => false,
-        }
-    }
-
-    pub(super) fn finish_cleanup(&mut self, id: u64, tab_id: &str) {
-        if self.entries.get(&id).is_some_and(
-            |(_, state)| matches!(state, PopupState::Quarantined(Some(opened)) if opened == tab_id),
-        ) {
-            self.entries.remove(&id);
-        }
-    }
-
     pub(super) fn forget_child(&mut self, tab_id: &str) {
         self.initial_blank.remove(tab_id);
         self.entries.retain(
-            |_, (_, state)| !matches!(state, PopupState::Opened(opened) if opened == tab_id),
+            |_, (_, state)| !matches!(state, PopupState::Opened(opened) | PopupState::Quarantined(Some(opened)) if opened == tab_id),
         );
+        let entries = &self.entries;
+        self.native_deadlines
+            .retain(|id, _| entries.contains_key(id));
     }
 }
 
@@ -257,11 +245,7 @@ pub(crate) async fn browser_open_popup(
                 .entries
                 .contains_key(&tab_id)
             {
-                state
-                    .popups
-                    .lock()
-                    .map_err(|error| error.to_string())?
-                    .quarantine(intent_id, Some(tab_id));
+                cleanup::close_popup(&app, &state, intent_id, &tab_id).await?;
                 return Err("popup tab unavailable".into());
             }
             let url = state
@@ -300,11 +284,22 @@ async fn finish_popup_open(
     url: String,
 ) -> Result<PopupOpenResult, String> {
     let state = app.state::<BrowserState>();
-    let opened =
-        super::lifecycle::open_browser_tab(app.clone(), &state, Some(url.clone()), false).await;
+    let mut created = None;
+    let opened = super::lifecycle::open_browser_tab_tracked(
+        app.clone(),
+        &state,
+        Some(url.clone()),
+        false,
+        |label| created = Some(label.to_owned()),
+    )
+    .await;
     let tab_id = match opened {
         Ok(tab_id) => tab_id,
         Err(error) => {
+            if let Some(label) = created {
+                cleanup::close_popup(app, &state, intent_id, &label).await?;
+                return Err(error);
+            }
             let tabs = state.tabs.lock().map_err(|cause| cause.to_string())?;
             let mut popups = state.popups.lock().map_err(|cause| cause.to_string())?;
             if tabs.teardown.blocked_message().is_none() {
@@ -316,24 +311,20 @@ async fn finish_popup_open(
         }
     };
     let retained = {
-        let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
-        let mut popups = state.popups.lock().map_err(|error| error.to_string())?;
-        tabs.entries.contains_key(&opener_tab_id) && popups.opened(intent_id, &tab_id)
+        state.tabs.lock().is_ok_and(|tabs| {
+            state.popups.lock().is_ok_and(|mut popups| {
+                tabs.entries.contains_key(&opener_tab_id) && popups.opened(intent_id, &tab_id)
+            })
+        })
     };
     if !retained {
-        let close = super::lifecycle::close_browser_tab(app, &state, tab_id.clone()).await;
-        if close.is_err() {
-            state
-                .popups
-                .lock()
-                .map_err(|error| error.to_string())?
-                .quarantine(intent_id, Some(tab_id));
-        }
+        let close = cleanup::close_popup(app, &state, intent_id, &tab_id).await;
         return Err(close
             .err()
             .unwrap_or_else(|| "popup opener closed during open".into()));
     }
     emit_popup_intent(app, intent_id);
+    cleanup::expire_unacknowledged(app);
     Ok(PopupOpenResult {
         tab_id,
         opener_tab_id,
@@ -382,6 +373,7 @@ pub(crate) async fn browser_popup_abandon(
     opener_tab_id: String,
     tab_id: String,
 ) -> Result<(), String> {
+    cleanup::wait_for_closing(&state.tabs, &tab_id).await?;
     let exists = {
         let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
         if !state
@@ -390,30 +382,25 @@ pub(crate) async fn browser_popup_abandon(
             .map_err(|error| error.to_string())?
             .cleanup_target(intent_id, &opener_tab_id, &tab_id)
         {
+            if cleanup::confirmed_closed(&tabs, &tab_id) {
+                return Ok(());
+            }
             return Err("popup cleanup unavailable".into());
         }
         tabs.entries.contains_key(&tab_id)
     };
-    if exists {
-        super::lifecycle::close_browser_tab(&app, &state, tab_id.clone())
-            .await
-            .map_err(|error| format!("popup native close is unresolved: {error}"))?;
-    } else if state
-        .tabs
-        .lock()
-        .map_err(|error| error.to_string())?
-        .teardown
-        .blocked_message()
-        .is_some()
+    if !exists
+        && state
+            .tabs
+            .lock()
+            .map_err(|error| error.to_string())?
+            .teardown
+            .blocked_message()
+            .is_some()
     {
         return Err("popup native close is unresolved".into());
     }
-    state
-        .popups
-        .lock()
-        .map_err(|error| error.to_string())?
-        .finish_cleanup(intent_id, &tab_id);
-    Ok(())
+    cleanup::close_popup(&app, &state, intent_id, &tab_id).await
 }
 
 #[cfg(test)]

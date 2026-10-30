@@ -17,8 +17,33 @@ export async function abandonNativePopup(intent: BrowserPopupIntent) {
     await browserPopupAbandon(intent.id, intent.openerTabId, child);
 }
 
-export function abandonOpenedPopup(id: number, opened: BrowserPopupOpen) {
-  return browserPopupAbandon(id, opened.openerTabId, opened.tabId);
+async function abandonOpenedPopup(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  id: number,
+  opened: BrowserPopupOpen,
+  inserted: boolean,
+) {
+  await browserPopupAbandon(id, opened.openerTabId, opened.tabId);
+  if (inserted) reconcileNativeClosedBrowserTabs(set, get, [opened.tabId]);
+}
+
+export function popupAdoption(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  intent: BrowserPopupIntent,
+) {
+  return {
+    opened: null as BrowserPopupOpen | null,
+    inserted: false,
+    cleanupAttempted: false,
+    async abandon() {
+      this.cleanupAttempted = true;
+      const opened = this.opened;
+      if (!opened) return abandonNativePopup(intent);
+      await abandonOpenedPopup(set, get, intent.id, opened, this.inserted);
+    },
+  };
 }
 
 /** Acknowledges an adopted popup. If the ack fails for a tab this call just
@@ -34,7 +59,7 @@ export async function ackPopup(
   try {
     await browserPopupAck(id, opened.openerTabId, opened.tabId);
   } catch (error) {
-    if (inserted) reconcileNativeClosedBrowserTabs(set, get, [opened.tabId]);
+    await abandonOpenedPopup(set, get, id, opened, inserted);
     throw error;
   }
 }

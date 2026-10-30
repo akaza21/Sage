@@ -1,6 +1,109 @@
 use super::*;
 
 #[test]
+fn closing_an_opener_retains_quarantined_children_until_confirmed_cleanup() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, false);
+    let mut requests = PopupRequests::default();
+    let intent = requests
+        .enqueue(
+            &tabs,
+            "browser-1",
+            &Url::parse("https://example.com/").unwrap(),
+        )
+        .unwrap();
+    requests.begin(&tabs, intent.id, "browser-1").unwrap();
+    assert!(requests.opened(intent.id, "browser-2"));
+    for _ in 0..2 {
+        assert_eq!(
+            requests.take_for_opener("browser-1"),
+            vec![(intent.id, "browser-2".into())]
+        );
+        assert!(requests.pending().is_empty());
+    }
+    requests.finish_cleanup(intent.id, "browser-2");
+    assert!(requests.take_for_opener("browser-1").is_empty());
+}
+
+#[test]
+fn failed_preparation_retains_cleanup_identity_before_the_popup_is_opened() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, false);
+    let mut requests = PopupRequests::default();
+    let intent = requests
+        .enqueue(
+            &tabs,
+            "browser-1",
+            &Url::parse("https://example.com/").unwrap(),
+        )
+        .unwrap();
+    requests.begin(&tabs, intent.id, "browser-1").unwrap();
+    requests.quarantine(intent.id, Some("browser-2".into()));
+    assert!(requests.cleanup_target(intent.id, "browser-1", "browser-2"));
+    assert!(requests.pending().is_empty());
+    requests.finish_cleanup(intent.id, "browser-2");
+    assert!(requests.entries.is_empty());
+}
+
+#[test]
+fn failed_popup_close_keeps_the_exact_child_quarantined_until_cleanup_succeeds() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, false);
+    let mut requests = PopupRequests::default();
+    let intent = requests
+        .enqueue(
+            &tabs,
+            "browser-1",
+            &Url::parse("https://example.com/").unwrap(),
+        )
+        .unwrap();
+    requests.begin(&tabs, intent.id, "browser-1").unwrap();
+    assert!(requests.opened(intent.id, "browser-2"));
+    assert!(requests.cleanup_target(intent.id, "browser-1", "browser-2"));
+    assert!(requests.cleanup_target(intent.id, "browser-1", "browser-2"));
+    assert!(!requests.cleanup_target(intent.id, "browser-1", "browser-3"));
+    assert!(!requests.ack(intent.id, "browser-1", "browser-2"));
+    assert!(requests.pending().is_empty());
+    requests.forget_child("browser-2");
+    assert!(requests.entries.is_empty());
+    assert!(requests.native_deadlines.is_empty());
+}
+
+#[test]
+fn fallback_popup_without_an_ack_expires_and_closed_children_leave_no_deadlines() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, false);
+    let mut requests = PopupRequests::default();
+    let intent = requests
+        .enqueue(
+            &tabs,
+            "browser-1",
+            &Url::parse("https://example.com/").unwrap(),
+        )
+        .unwrap();
+    requests.begin(&tabs, intent.id, "browser-1").unwrap();
+    assert!(requests.opened(intent.id, "browser-2"));
+    assert_eq!(
+        requests.take_expired_native(std::time::Instant::now() + opener::NATIVE_ACK_DEADLINE),
+        vec![(intent.id, "browser-2".into())]
+    );
+    requests.finish_cleanup(intent.id, "browser-2");
+    for _ in 0..32 {
+        let intent = requests
+            .enqueue(
+                &tabs,
+                "browser-1",
+                &Url::parse("https://example.com/").unwrap(),
+            )
+            .unwrap();
+        requests.begin(&tabs, intent.id, "browser-1").unwrap();
+        assert!(requests.opened(intent.id, "browser-2"));
+        requests.forget_child("browser-2");
+        assert!(requests.native_deadlines.is_empty());
+    }
+}
+
+#[test]
 fn one_native_popup_intent_replays_and_acks_only_its_opened_tab() {
     let mut tabs = BrowserTabs::<usize>::new();
     tabs.insert("browser-1".into(), 1, false);
