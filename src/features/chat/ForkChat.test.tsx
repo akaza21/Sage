@@ -162,22 +162,17 @@ describe("answer More actions", () => {
       } as AcpChatPage,
     ],
   ])(
-    "still opens, offering only Copy, when %s (no action that can't be done)",
+    "offers standalone Copy without a redundant menu when %s",
     async (_, acpPage) => {
       const writeText = vi.fn().mockResolvedValue(undefined);
       vi.stubGlobal("navigator", { clipboard: { writeText } });
       await renderFooter(acpPage);
-      const more = screen.getByRole("button", { name: "More actions" });
-      fireEvent.click(more);
-      const menu = await screen.findByRole("menu", { name: "Answer actions" });
-      const items = within(menu).getAllByRole("menuitem");
-      expect(items.map((item) => item.textContent)).toEqual(["Copy"]);
+      expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
       await act(async () => {
-        fireEvent.click(items[0]);
+        fireEvent.click(screen.getByRole("button", { name: "Copy" }));
       });
       expect(writeText).toHaveBeenCalledWith("Normalized answer");
       expect(screen.queryByRole("menu", { name: "Answer actions" })).toBeNull();
-      expect(more).toHaveFocus();
       vi.unstubAllGlobals();
     },
   );

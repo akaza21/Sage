@@ -163,6 +163,7 @@ export function AnswerMoreActions({
         session.residency === "hot" &&
         session.capabilities.nativeSessionFork,
     );
+  if (!canFork) return null;
   return (
     <>
       <AnswerMoreMenu

@@ -543,7 +543,9 @@ describe("ChatTranscript Retry", () => {
       next.turns[0].state = state;
       await renderTranscript(next);
       expect(latestRetryPrompt).toHaveBeenCalledOnce();
-      expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+      if (state === "completed")
+        expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      else expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
     },
   );
 
@@ -576,10 +578,10 @@ describe("ChatTranscript Retry", () => {
     },
   );
 
-  it("offers a working footer Retry for the latest current-session prompt", async () => {
+  it("offers no recovery Retry for a successful current-session prompt", async () => {
     const { onRetry } = await renderTranscript(retryPage());
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(onRetry).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it("keeps failed-turn Retry in the failure group, not the footer", async () => {

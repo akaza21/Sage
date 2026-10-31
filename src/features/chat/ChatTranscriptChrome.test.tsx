@@ -138,7 +138,7 @@ describe("CP-28 answer chrome", () => {
     },
   );
 
-  it("keeps Copy and Retry icon-only with accessible names, title hints and copy icon feedback", async () => {
+  it("keeps successful answer Copy compact and omits recovery Retry", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     const onRetry = vi.fn();
@@ -151,8 +151,8 @@ describe("CP-28 answer chrome", () => {
       />,
     );
     const copy = screen.getByRole("button", { name: "Copy" });
-    const retry = screen.getByRole("button", { name: "Retry" });
-    for (const button of [copy, retry]) {
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    for (const button of [copy]) {
       expect(button.textContent).toBe("");
       expect(button).toHaveAttribute(
         "title",
@@ -167,7 +167,6 @@ describe("CP-28 answer chrome", () => {
     await waitFor(() => expect(copy).toHaveAccessibleName("Copied"));
     expect(copy).toHaveAttribute("title", "Copied");
     expect(writeText).toHaveBeenCalledExactlyOnceWith(textItem().payload.text);
-    fireEvent.click(retry);
-    expect(onRetry).toHaveBeenCalledOnce();
+    expect(onRetry).not.toHaveBeenCalled();
   });
 });

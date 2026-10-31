@@ -142,7 +142,14 @@ export function ChatTranscriptFooter({
   if (!text.trim()) return null;
   // A native answer here is the latest Turn's, which is terminal
   // (lastAssistantItem); a legacy one retries only off native ACP.
-  const retryAction = page || !useNativeAcp ? onRetry : undefined;
+  const retryAction = page
+    ? page.turns.at(-1)?.state === "cancelled" ||
+      page.turns.at(-1)?.state === "interrupted"
+      ? onRetry
+      : undefined
+    : !useNativeAcp
+      ? onRetry
+      : undefined;
 
   return (
     <>

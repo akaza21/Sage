@@ -135,7 +135,8 @@ export function ChatTranscript({
       useNativeAcp &&
       page &&
       !isSideChatId(page.chatId) &&
-      latestRetryPrompt(page)
+      latestRetryPrompt(page) &&
+      page.turns.at(-1)?.state !== "completed"
         ? onRetry
         : undefined,
     [useNativeAcp, page, onRetry],
