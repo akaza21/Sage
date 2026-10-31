@@ -20,24 +20,42 @@ const native = vi.hoisted(() => ({
 const xterm = vi.hoisted(() => ({
   refresh: vi.fn(),
   data: null as ((data: string) => void) | null,
+  options: null as Record<string, unknown> | null,
 }));
 let resizeCallback: (() => void) | null = null;
 
-vi.mock("../services/userTerminalDesktop", () => ({
+vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
+  ...(await importOriginal()),
   createUserTerminal: native.create,
   readUserTerminal: native.read,
   closeUserTerminal: native.close,
   resizeUserTerminal: native.resize,
   writeUserTerminal: native.write,
-  terminalErrorLabel: (error: { code?: string }) =>
-    error.code === "ended" ? "Session ended" : "Terminal operation failed.",
+  terminalErrorLabel: (error: unknown) =>
+    (error as { code?: string }).code === "ended"
+      ? "Session ended"
+      : "Terminal operation failed.",
 }));
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 1;
     rows = 1;
-    open() {}
+    constructor(options: Record<string, unknown>) {
+      xterm.options = options;
+    }
+    open(parent: HTMLElement) {
+      // xterm's screen is exactly cols by rows cells of 8 by 16 px.
+      const screen = document.createElement("div");
+      screen.className = "xterm-screen";
+      Object.defineProperty(screen, "offsetWidth", {
+        get: () => this.cols * 8,
+      });
+      Object.defineProperty(screen, "offsetHeight", {
+        get: () => this.rows * 16,
+      });
+      parent.append(screen);
+    }
     resize(columns: number, rows: number) {
       this.cols = columns;
       this.rows = rows;
@@ -58,6 +76,19 @@ vi.mock("@xterm/xterm", () => ({
 }));
 
 import { TerminalDock } from "./TerminalDock";
+
+function setScreenSize(width: number, height: number) {
+  const screen = document.querySelector(".terminal-dock__screen");
+  expect(screen).not.toBeNull();
+  Object.defineProperty(screen, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  Object.defineProperty(screen, "clientHeight", {
+    configurable: true,
+    value: height,
+  });
+}
 import { TerminalDockForWorkbench } from "./TerminalDockShell";
 
 const initialWorkbenchState = useWorkbenchStore.getState();
@@ -230,16 +261,7 @@ it("resizes the active terminal after a pane or DPI change", async () => {
       onStatus={() => undefined}
     />,
   );
-  const viewport = document.querySelector(".terminal-dock__viewport");
-  expect(viewport).not.toBeNull();
-  Object.defineProperty(viewport, "clientWidth", {
-    configurable: true,
-    value: 730,
-  });
-  Object.defineProperty(viewport, "clientHeight", {
-    configurable: true,
-    value: 160,
-  });
+  setScreenSize(800, 160);
   resizeCallback?.();
   await waitFor(() =>
     expect(native.resize).toHaveBeenCalledWith(scope, handle, 100, 10),
@@ -255,6 +277,22 @@ it("resizes the active terminal after a pane or DPI change", async () => {
     configurable: true,
     value: before,
   });
+});
+
+it("keeps a measured grid inside the native size limits", async () => {
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={() => undefined}
+    />,
+  );
+  setScreenSize(8 * 900, 15);
+  resizeCallback?.();
+  await waitFor(() =>
+    expect(native.resize).toHaveBeenCalledWith(scope, handle, 500, 1),
+  );
 });
 
 it("closes every owned session when the focused chat changes", async () => {

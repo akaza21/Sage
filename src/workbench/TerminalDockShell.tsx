@@ -10,6 +10,7 @@ import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
   createUserTerminal,
+  TERMINAL_MAX_PER_CHAT,
   terminalErrorLabel,
   type UserTerminalScope,
   type UserTerminalSession,
@@ -17,6 +18,10 @@ import {
 import { firstChatTabId } from "./workbenchWindowMode";
 import type { TerminalDockProps } from "./TerminalDock";
 import "./terminal-dock.css";
+
+/** The VT100 grid a shell starts with until the dock measures its screen. */
+const INITIAL_COLUMNS = 80;
+const INITIAL_ROWS = 24;
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -132,13 +137,22 @@ export function TerminalDockShell({
 
   const create = useCallback(async () => {
     const owner = ownerRef.current;
-    if (owner.creating || owner.disposed || owner.entries.length >= 4) return;
+    if (
+      owner.creating ||
+      owner.disposed ||
+      owner.entries.length >= TERMINAL_MAX_PER_CHAT
+    )
+      return;
     const lifecycle = owner.lifecycle;
     owner.creating = true;
     setCreating(true);
     setMessage(null);
     try {
-      const session = await createUserTerminal(scope, 80, 24);
+      const session = await createUserTerminal(
+        scope,
+        INITIAL_COLUMNS,
+        INITIAL_ROWS,
+      );
       if (owner.disposed || owner.lifecycle !== lifecycle) {
         await closeUserTerminal(scope, session).catch(() => undefined);
         return;
@@ -280,7 +294,7 @@ export function TerminalDockShell({
             type="button"
             aria-label="New terminal"
             title="New terminal"
-            disabled={creating || entries.length >= 4}
+            disabled={creating || entries.length >= TERMINAL_MAX_PER_CHAT}
             onClick={() => void create()}
           >
             +

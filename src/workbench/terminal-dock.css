@@ -120,6 +120,8 @@
   overflow: hidden;
 }
 
+/* The grid is sized from this box, which carries no padding. */
+.terminal-dock__screen,
 .terminal-dock__viewport .xterm {
   height: 100%;
 }

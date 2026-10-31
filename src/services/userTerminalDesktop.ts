@@ -1,6 +1,23 @@
 import { invokeNative } from "../ports/nativeInvoke";
 import { utf8ByteLength } from "../domain/text";
 
+/** Native limits, mirrored from `src-tauri/src/user_terminal.rs` (parity-tested). */
+export const TERMINAL_MAX_COLUMNS = 500;
+export const TERMINAL_MAX_ROWS = 300;
+export const TERMINAL_INPUT_BYTES = 4_096;
+export const TERMINAL_MAX_PER_CHAT = 4;
+
+function validDimensions(columns: number, rows: number): boolean {
+  return (
+    Number.isInteger(columns) &&
+    columns >= 1 &&
+    columns <= TERMINAL_MAX_COLUMNS &&
+    Number.isInteger(rows) &&
+    rows >= 1 &&
+    rows <= TERMINAL_MAX_ROWS
+  );
+}
+
 export interface UserTerminalScope {
   projectId: string;
   projectGeneration: string;
@@ -23,19 +40,24 @@ export interface UserTerminalPage {
   truncated: boolean;
 }
 
+/** The native error's `code`, when it carries one. */
+export function terminalErrorCode(error: unknown): unknown {
+  return error && typeof error === "object" && "code" in error
+    ? (error as { code?: unknown }).code
+    : undefined;
+}
+
 export function terminalErrorLabel(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "unavailable")
-      return "Terminal is unavailable on this platform.";
-    if (code === "capacity")
-      return "Terminal limit reached for this chat or project.";
-    if (code === "invalid_scope" || code === "unknown_session")
-      return "This terminal is no longer attached to the current chat.";
-    if (code === "ended") return "Session ended";
-    if (code === "busy")
-      return "Input was not sent: the program in the terminal is not reading it.";
-  }
+  const code = terminalErrorCode(error);
+  if (code === "unavailable")
+    return "Terminal is unavailable on this platform.";
+  if (code === "capacity")
+    return "Terminal limit reached for this chat or project.";
+  if (code === "invalid_scope" || code === "unknown_session")
+    return "This terminal is no longer attached to the current chat.";
+  if (code === "ended") return "Session ended";
+  if (code === "busy")
+    return "Input was not sent: the program in the terminal is not reading it.";
   return "Terminal operation failed. The native session may need cleanup.";
 }
 
@@ -78,14 +100,7 @@ export async function createUserTerminal(
   columns: number,
   rows: number,
 ): Promise<UserTerminalSession> {
-  if (
-    !Number.isInteger(columns) ||
-    columns < 1 ||
-    columns > 500 ||
-    !Number.isInteger(rows) ||
-    rows < 1 ||
-    rows > 300
-  ) {
+  if (!validDimensions(columns, rows)) {
     throw new Error("Invalid terminal dimensions");
   }
   const response = record(
@@ -112,8 +127,8 @@ export async function writeUserTerminal(
 ): Promise<void> {
   const exactHandle = wireHandle(handle);
   const byteLength = utf8ByteLength(text);
-  if (byteLength < 1 || byteLength > 4_096) {
-    throw new Error("Terminal input must be 1–4096 UTF-8 bytes");
+  if (byteLength < 1 || byteLength > TERMINAL_INPUT_BYTES) {
+    throw new Error("Terminal input is empty or over the native limit");
   }
   await invokeNative<void>("terminal_write", {
     request: { scope, handle: exactHandle, text },
@@ -127,14 +142,7 @@ export async function resizeUserTerminal(
   rows: number,
 ): Promise<void> {
   const exactHandle = wireHandle(handle);
-  if (
-    !Number.isInteger(columns) ||
-    columns < 1 ||
-    columns > 500 ||
-    !Number.isInteger(rows) ||
-    rows < 1 ||
-    rows > 300
-  ) {
+  if (!validDimensions(columns, rows)) {
     throw new Error("Invalid terminal dimensions");
   }
   await invokeNative<void>("terminal_resize", {

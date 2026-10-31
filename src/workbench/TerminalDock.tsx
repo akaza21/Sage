@@ -5,6 +5,10 @@ import "@xterm/xterm/css/xterm.css";
 import {
   readUserTerminal,
   resizeUserTerminal,
+  TERMINAL_INPUT_BYTES,
+  TERMINAL_MAX_COLUMNS,
+  TERMINAL_MAX_ROWS,
+  terminalErrorCode,
   terminalErrorLabel,
   writeUserTerminal,
   type UserTerminalScope,
@@ -14,22 +18,47 @@ import { utf8ByteLength } from "../domain/text";
 
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
-
-function errorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
-    ? (error as { code?: unknown }).code
-    : undefined;
-}
+/** Backoff between offers of input the native side refused as busy. */
+const INPUT_RETRY_FIRST_DELAY_MS = 50;
+const INPUT_RETRY_MAX_DELAY_MS = 500;
+/** Pause before reading again after another reader held the output. */
+const READ_RETRY_DELAY_MS = 100;
+const SCROLLBACK_LINES = 1_000;
 
 interface Dimensions {
   columns: number;
   rows: number;
 }
 
-function dimensionsFor(element: HTMLElement): Dimensions {
+/**
+ * The grid that fits `element`, from the cell size xterm rendered: its screen
+ * is exactly `cols` by `rows` cells. xterm's vertical scrollbar overlays the
+ * right edge, so its width stays free. Before xterm lays out, nothing changes.
+ */
+function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
+  const size = (selector: string) =>
+    element.querySelector<HTMLElement>(selector) ?? {
+      offsetWidth: 0,
+      offsetHeight: 0,
+    };
+  const screen = size(".xterm-screen");
+  const fit = (space: number, cells: number, cell: number, max: number) =>
+    cell > 0
+      ? Math.max(1, Math.min(max, Math.floor((space * cells) / cell)))
+      : cells;
   return {
-    columns: Math.max(1, Math.min(500, Math.floor(element.clientWidth / 7.3))),
-    rows: Math.max(1, Math.min(300, Math.floor(element.clientHeight / 16))),
+    columns: fit(
+      element.clientWidth - size(".scrollbar.vertical").offsetWidth,
+      terminal.cols,
+      screen.offsetWidth,
+      TERMINAL_MAX_COLUMNS,
+    ),
+    rows: fit(
+      element.clientHeight,
+      terminal.rows,
+      screen.offsetHeight,
+      TERMINAL_MAX_ROWS,
+    ),
   };
 }
 
@@ -46,7 +75,7 @@ export function TerminalDock({
   ended,
   onStatus,
 }: TerminalDockProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
   useEffect(() => {
     onStatusRef.current = onStatus;
@@ -61,7 +90,7 @@ export function TerminalDock({
   );
 
   useEffect(() => {
-    const element = viewportRef.current;
+    const element = screenRef.current;
     if (!element) return;
     let stopped = false;
     let sessionEnded = ended;
@@ -72,14 +101,12 @@ export function TerminalDock({
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = window.devicePixelRatio;
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
       cursorBlink: true,
+      scrollback: SCROLLBACK_LINES,
       // xterm measures a concrete face; Menlo keeps macOS off Courier.
       fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
       lineHeight: 1.3,
-      scrollback: 1_000,
       theme: {
         background: "#141414",
         foreground: "#dedede",
@@ -88,7 +115,7 @@ export function TerminalDock({
       },
     });
     terminal.open(element);
-    const initial = dimensionsFor(element);
+    const initial = dimensionsFor(element, terminal);
     terminal.resize(initial.columns, initial.rows);
 
     async function pollOutput(): Promise<void> {
@@ -99,8 +126,10 @@ export function TerminalDock({
           try {
             page = await readUserTerminal(ownerScope, session, cursor);
           } catch (error) {
-            if (errorCode(error) === "busy") {
-              await new Promise((resolve) => setTimeout(resolve, 100));
+            if (terminalErrorCode(error) === "busy") {
+              await new Promise((resolve) =>
+                setTimeout(resolve, READ_RETRY_DELAY_MS),
+              );
               continue;
             }
             throw error;
@@ -146,13 +175,18 @@ export function TerminalDock({
     // again after a growing pause, for up to INPUT_RETRY_MS.
     async function writeWhenAccepted(chunk: string): Promise<void> {
       const started = Date.now();
-      for (let delay = 50; ; delay = Math.min(delay * 2, 500)) {
+      for (
+        let delay = INPUT_RETRY_FIRST_DELAY_MS;
+        ;
+        delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
+      ) {
+        if (stopped) return;
         try {
           await writeUserTerminal(ownerScope, session, chunk);
           return;
         } catch (error) {
           if (
-            errorCode(error) !== "busy" ||
+            terminalErrorCode(error) !== "busy" ||
             stopped ||
             Date.now() - started >= INPUT_RETRY_MS
           )
@@ -175,7 +209,7 @@ export function TerminalDock({
           } catch (error) {
             pendingInput = "";
             pendingInputBytes = 0;
-            sessionEnded = errorCode(error) === "ended";
+            sessionEnded = terminalErrorCode(error) === "ended";
             if (!stopped)
               onStatusRef.current(terminalErrorLabel(error), sessionEnded);
             break;
@@ -190,7 +224,7 @@ export function TerminalDock({
       if (stopped || sessionEnded) return;
       const byteLength = utf8ByteLength(data);
       if (byteLength === 0) return;
-      if (byteLength > 4_096 || pendingInputBytes + byteLength > 4_096) {
+      if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
         onStatusRef.current(
           "Input was not sent: terminal input buffer limit reached.",
         );
@@ -206,7 +240,7 @@ export function TerminalDock({
         observedPixelRatio = window.devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
       }
-      const next = dimensionsFor(element);
+      const next = dimensionsFor(element, terminal);
       if (terminal.cols === next.columns && terminal.rows === next.rows) return;
       terminal.resize(next.columns, next.rows);
       latestResize = next;
@@ -234,5 +268,9 @@ export function TerminalDock({
     };
   }, [ended, ownerScope, session]);
 
-  return <div className="terminal-dock__viewport" ref={viewportRef} />;
+  return (
+    <div className="terminal-dock__viewport">
+      <div className="terminal-dock__screen" ref={screenRef} />
+    </div>
+  );
 }

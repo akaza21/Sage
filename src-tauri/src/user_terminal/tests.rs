@@ -205,26 +205,38 @@ fn input_and_resize_accept_exact_bounds_and_reject_plus_one_without_effect() {
         );
         fixture
             .port
-            .resize(&fixture.authority(), &fixture.scope, handle, 500, 300)
+            .resize(
+                &fixture.authority(),
+                &fixture.scope,
+                handle,
+                MAX_COLUMNS,
+                MAX_ROWS,
+            )
             .await
             .unwrap();
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 501, 300)
+                .resize(
+                    &fixture.authority(),
+                    &fixture.scope,
+                    handle,
+                    MAX_COLUMNS + 1,
+                    MAX_ROWS
+                )
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 500, 0)
+                .resize(&fixture.authority(), &fixture.scope, handle, MAX_COLUMNS, 0)
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         let record = fixture.record.lock().unwrap();
         assert_eq!(record.writes, vec![exact.into_bytes()]);
-        assert_eq!(record.sizes, vec![(500, 300)]);
+        assert_eq!(record.sizes, vec![(MAX_COLUMNS, MAX_ROWS)]);
     });
 }
 
