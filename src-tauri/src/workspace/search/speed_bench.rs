@@ -101,3 +101,30 @@ fn speed_bench() {
         );
     }
 }
+
+/// Manual timing of the worst inputs for case-insensitive matching: long
+/// single-line Files of one repeated character.
+/// `cargo test --release --lib repetitive_bench -- --ignored --nocapture`
+#[test]
+#[ignore = "manual benchmark"]
+fn repetitive_bench() {
+    let path =
+        std::env::temp_dir().join(format!("sage-search-repetitive-{}", uuid::Uuid::new_v4()));
+    for (folder, character) in [("ascii", "a"), ("accented", "é")] {
+        std::fs::create_dir_all(path.join(folder)).unwrap();
+        let line = character.repeat(2 * 1024 * 1024 / character.len());
+        for file in 0..8 {
+            std::fs::write(path.join(folder).join(format!("{file}.txt")), &line).unwrap();
+        }
+    }
+    let limits = SearchLimits {
+        max_duration: std::time::Duration::from_secs(600),
+        ..SearchLimits::default()
+    };
+    let near_miss = format!("{}b", "a".repeat(511));
+    time("repetitive near-miss", &limits, &near_miss, false, &path);
+    time("repetitive accented", &limits, "É", false, &path);
+    // Matches nothing, so every File goes through non-ASCII case folding.
+    time("repetitive folding miss", &limits, "Ë", false, &path);
+    std::fs::remove_dir_all(path).unwrap();
+}

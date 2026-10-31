@@ -5,7 +5,7 @@ use crate::{domain::ResourceRef, workspace::Workspace};
 use super::{
     contained_file::{ContainedFile, open_contained_file},
     engine::{RootCounters, SearchBudget, SearchEngine},
-    literal_match::{file_may_match, literal_matches},
+    literal_match::LiteralQuery,
     types::{SearchLimitReason, WorkspaceSearchMatch, push_reason},
 };
 
@@ -15,8 +15,7 @@ pub(super) const BINARY_SNIFF_BYTES: u64 = 8_192;
 /// What one Search query asks of every File.
 #[derive(Clone, Copy)]
 pub(super) struct ScanQuery<'a> {
-    pub(super) text: &'a str,
-    pub(super) case_sensitive: bool,
+    pub(super) literal: &'a LiteralQuery,
     pub(super) whole_word: bool,
 }
 
@@ -182,26 +181,76 @@ impl SearchEngine {
         let mut matches = Vec::new();
         // Most Files hold no match: one pass over the bytes settles that
         // before any line is split out.
-        if !file_may_match(content, query.text, query.case_sensitive) {
+        if !query.literal.file_may_match(content) {
             return matches;
         }
         for (line_index, raw_line) in content.split('\n').enumerate() {
             let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-            for (start, _) in
-                literal_matches(line, query.text, query.case_sensitive, query.whole_word)
-            {
-                matches.push(WorkspaceSearchMatch {
-                    resource: resource.clone(),
-                    line_number: one_based(line_index),
-                    column_number: column_number(line, start),
-                    preview: bounded_preview(line, self.limits.max_preview_chars),
+            let mut found = LineMatches::new(line, self.limits.max_preview_chars);
+            query
+                .literal
+                .for_each_match(line, query.whole_word, |(start, _)| {
+                    matches.push(found.at(&resource, one_based(line_index), start));
+                    matches.len() < self.limits.max_results
                 });
-                if matches.len() == self.limits.max_results {
-                    return matches;
-                }
+            if matches.len() == self.limits.max_results {
+                break;
             }
         }
         matches
+    }
+}
+
+/// Builds the matches of one line. Columns are counted on from the last
+/// match and the preview is made once, so a long line with many matches
+/// costs one pass, not one per match.
+pub(super) struct LineMatches<'a> {
+    line: &'a str,
+    max_preview_chars: usize,
+    preview: Option<String>,
+    counted_to: usize,
+    column: u32,
+}
+
+impl<'a> LineMatches<'a> {
+    pub(super) fn new(line: &'a str, max_preview_chars: usize) -> Self {
+        Self {
+            line,
+            max_preview_chars,
+            preview: None,
+            counted_to: 0,
+            column: 1,
+        }
+    }
+
+    /// The 1-based column of the match at byte `start`, which must not be
+    /// before the last one asked for.
+    pub(super) fn column(&mut self, start: usize) -> u32 {
+        let characters = self.line[self.counted_to..start].chars().count();
+        self.column = self
+            .column
+            .saturating_add(u32::try_from(characters).unwrap_or(u32::MAX));
+        self.counted_to = start;
+        self.column
+    }
+
+    pub(super) fn at(
+        &mut self,
+        resource: &ResourceRef,
+        line_number: u32,
+        start: usize,
+    ) -> WorkspaceSearchMatch {
+        let column_number = self.column(start);
+        let (line, max_chars) = (self.line, self.max_preview_chars);
+        WorkspaceSearchMatch {
+            resource: resource.clone(),
+            line_number,
+            column_number,
+            preview: self
+                .preview
+                .get_or_insert_with(|| bounded_preview(line, max_chars))
+                .clone(),
+        }
     }
 }
 
@@ -218,13 +267,8 @@ fn bounded_preview(line: &str, max_chars: usize) -> String {
     preview
 }
 
-fn one_based(zero_based: usize) -> u32 {
+pub(super) fn one_based(zero_based: usize) -> u32 {
     u32::try_from(zero_based.saturating_add(1)).unwrap_or(u32::MAX)
-}
-
-fn column_number(line: &str, byte_offset: usize) -> u32 {
-    let characters = line[..byte_offset].chars().count().saturating_add(1);
-    u32::try_from(characters).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]
@@ -233,7 +277,7 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::{FileBody, FileScan, ScanQuery, TextScan};
+    use super::{FileBody, FileScan, LiteralQuery, ScanQuery, TextScan};
     use crate::workspace::{
         Workspace,
         search::{engine::SearchEngine, types::SearchLimits},
@@ -244,9 +288,9 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("file.bin"), contents).unwrap();
         let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let literal = LiteralQuery::new("needle", false);
         let query = ScanQuery {
-            text: "needle",
-            case_sensitive: false,
+            literal: &literal,
             whole_word: false,
         };
         let scan = SearchEngine::new(SearchLimits::default()).scan_file(

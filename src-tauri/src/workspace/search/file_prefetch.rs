@@ -1,6 +1,7 @@
 use std::{
+    cell::Cell,
+    cmp::Ordering as NameOrder,
     collections::{HashMap, VecDeque},
-    ffi::OsString,
     fs::{self, DirEntry},
     io,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -50,9 +51,46 @@ pub(super) struct Listing {
     pub(super) entries: Vec<io::Result<DirEntry>>,
     /// The rules in force inside the folder, from the complete listing.
     pub(super) folder_rules: FolderChain,
-    /// The folder's Files that were read, by root-relative path. Any other
-    /// File the walk reads itself.
-    pub(super) scans: HashMap<String, FileScan>,
+    /// The folder's Files as a worker reads them, so the walk can go on as
+    /// soon as each one is done. Any other File the walk reads itself.
+    pub(super) scans: FolderScans,
+}
+
+/// Scans of one folder's Files, arriving in the walk's order (by name).
+pub(super) struct FolderScans {
+    arriving: Option<mpsc::Receiver<(String, FileScan)>>,
+    /// The first scan past the File last asked for.
+    next: Option<(String, FileScan)>,
+}
+
+impl FolderScans {
+    pub(super) fn none() -> Self {
+        Self {
+            arriving: None,
+            next: None,
+        }
+    }
+
+    /// The scan of the File named `name`, waiting while a worker reads it;
+    /// None if the worker passed it over or stopped first. The walk asks in
+    /// name order, the order the worker reads in.
+    pub(super) fn take(&mut self, name: &str) -> Option<FileScan> {
+        loop {
+            let (scanned, scan) = match self.next.take() {
+                Some(next) => next,
+                None => self.arriving.as_ref()?.recv().ok()?,
+            };
+            match scanned.as_str().cmp(name) {
+                // A File the walk did not read, so the scan is not needed.
+                NameOrder::Less => continue,
+                NameOrder::Equal => return Some(scan),
+                NameOrder::Greater => {
+                    self.next = Some((scanned, scan));
+                    return None;
+                }
+            }
+        }
+    }
 }
 
 struct Job {
@@ -137,12 +175,17 @@ impl Prefetch {
                         break;
                     };
                     let id = job.id;
-                    // A panic leaves the folder to the walk, which then fails
-                    // the same way, instead of waiting forever for it.
-                    let listing =
-                        catch_unwind(AssertUnwindSafe(|| list_folder(context, job, &stop)))
-                            .unwrap_or(None);
-                    if sender.send((id, listing)).is_err() {
+                    let delivered = Cell::new(false);
+                    let deliver = |listing| {
+                        delivered.set(true);
+                        sender.send((id, Some(listing))).is_ok()
+                    };
+                    // A panic leaves the rest of the folder to the walk, which
+                    // then fails the same way, instead of waiting forever.
+                    let _ = catch_unwind(AssertUnwindSafe(|| {
+                        read_folder(context, job, &stop, deliver);
+                    }));
+                    if !delivered.get() && sender.send((id, None)).is_err() {
                         break;
                     }
                 }
@@ -214,12 +257,23 @@ impl Drop for Prefetch {
     }
 }
 
-fn list_folder(context: WalkContext<'_>, job: Job, stop: &AtomicBool) -> Option<Listing> {
+/// Lists the folder, hands the listing to `deliver` and then reads its
+/// Files one by one, each handed over as soon as it is read. Returns early,
+/// without delivering, for a folder the walk should list itself.
+fn read_folder(
+    context: WalkContext<'_>,
+    job: Job,
+    stop: &AtomicBool,
+    deliver: impl FnOnce(Listing) -> bool,
+) {
+    let Ok(listed) = fs::read_dir(&job.directory) else {
+        return;
+    };
     let mut entries = Vec::new();
     let mut rule_files = RuleFiles::default();
-    for entry in fs::read_dir(&job.directory).ok()? {
+    for entry in listed {
         if entries.len() == MAX_LISTED_ENTRIES || stop.load(Ordering::Relaxed) {
-            return None;
+            return;
         }
         if let Ok(entry) = &entry {
             rule_files.note(&entry.file_name());
@@ -229,69 +283,81 @@ fn list_folder(context: WalkContext<'_>, job: Job, stop: &AtomicBool) -> Option<
     let folder_rules = context
         .rules
         .enter(&job.parent_rules, &job.relative, rule_files);
-    let mut scans = HashMap::new();
-    if let Some(reads) = job.reads {
-        let mut files = entries
-            .iter()
-            .filter_map(|entry| entry.as_ref().ok())
-            .filter_map(|entry| {
-                let relative = searchable_file(entry, &job.relative, &context, &folder_rules)?;
-                Some((entry.file_name(), relative))
-            })
-            .collect::<Vec<(OsString, String)>>();
-        // In walk order, so the reads stop where a page would.
-        files.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-        let max_results = context.engine.limits.max_results;
-        let (mut found, mut bytes) = (0_usize, 0_u64);
-        for (_, relative) in files {
-            if stop.load(Ordering::Relaxed) {
-                return None;
-            }
-            if found >= max_results
-                || bytes > reads.bytes_left
-                || reads
-                    .deadline
-                    .is_some_and(|deadline| Instant::now() >= deadline)
-            {
-                break;
-            }
-            // Only the whole budget left is safe to pass: the walk may not
-            // charge every byte counted here (an oversized File is skipped).
-            let scan = context.engine.scan_file(
-                context.workspace,
-                &relative,
-                context.query,
-                reads.bytes_left,
-            );
-            if let FileScan::Opened { byte_len, body } = &scan {
-                bytes = bytes.saturating_add(*byte_len);
-                found += body.match_count();
-            }
-            scans.insert(relative, scan);
-        }
-    }
-    Some(Listing {
+    let Some(reads) = job.reads else {
+        deliver(Listing {
+            entries,
+            folder_rules,
+            scans: FolderScans::none(),
+        });
+        return;
+    };
+    let mut files = entries
+        .iter()
+        .filter_map(|entry| entry.as_ref().ok())
+        .filter_map(|entry| searchable_file(entry, &job.relative, &context, &folder_rules))
+        .collect::<Vec<(String, String)>>();
+    // In walk order: the walk takes them in turn, and the reads stop where
+    // a page would.
+    files.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    let (scanned, arriving) = mpsc::channel();
+    let listing = Listing {
         entries,
         folder_rules,
-        scans,
-    })
+        scans: FolderScans {
+            arriving: Some(arriving),
+            next: None,
+        },
+    };
+    if !deliver(listing) {
+        return;
+    }
+    let max_results = context.engine.limits.max_results;
+    let (mut found, mut bytes) = (0_usize, 0_u64);
+    for (name, relative) in files {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        if found >= max_results
+            || bytes > reads.bytes_left
+            || reads
+                .deadline
+                .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            break;
+        }
+        // Only the whole budget left is safe to pass: the walk may not
+        // charge every byte counted here (an oversized File is skipped).
+        let scan = context.engine.scan_file(
+            context.workspace,
+            &relative,
+            context.query,
+            reads.bytes_left,
+        );
+        if let FileScan::Opened { byte_len, body } = &scan {
+            bytes = bytes.saturating_add(*byte_len);
+            found += body.match_count();
+        }
+        // The walk dropping the folder's scans means it needs no more.
+        if scanned.send((name, scan)).is_err() {
+            return;
+        }
+    }
 }
 
-/// The root-relative path of an entry the walk will read as a File, by the
-/// walk's own tests; None for anything else. Getting this wrong costs only
-/// speed: the walk reads any File that was not read ahead itself.
+/// The name and root-relative path of an entry the walk will read as a
+/// File, by the walk's own tests; None for anything else. Getting this wrong
+/// costs only speed: the walk reads any File that was not read ahead itself.
 fn searchable_file(
     entry: &DirEntry,
     folder: &str,
     context: &WalkContext<'_>,
     folder_rules: &FolderChain,
-) -> Option<String> {
-    let name = entry.file_name();
-    let name = name.to_str()?;
+) -> Option<(String, String)> {
+    let name = entry.file_name().into_string().ok()?;
     if name.contains('\\') || name.contains('/') {
         return None;
     }
-    let relative = contract_join(folder, name);
+    let relative = contract_join(folder, &name);
     let file_type = entry.file_type().ok()?;
     let admitted = relative.len() <= MAX_RESOURCE_PATH_BYTES
         && file_type.is_file()
@@ -302,5 +368,5 @@ fn searchable_file(
             context.include_patterns,
             context.exclude_patterns,
         );
-    admitted.then_some(relative)
+    admitted.then_some((name, relative))
 }

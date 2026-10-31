@@ -9,7 +9,9 @@ use uuid::Uuid;
 use super::{
     engine::SearchEngine,
     tests::request,
-    types::{SearchLimits, SearchRoot, SearchRootSource, WorkspaceSearchResponse},
+    types::{
+        SearchLimitReason, SearchLimits, SearchRoot, SearchRootSource, WorkspaceSearchResponse,
+    },
 };
 use crate::workspace::Workspace;
 
@@ -46,8 +48,20 @@ fn search(
     query: &str,
     token: Option<String>,
 ) -> Result<WorkspaceSearchResponse, String> {
+    search_with(path, threads, limits, query, token, None)
+}
+
+fn search_with(
+    path: &Path,
+    threads: usize,
+    limits: SearchLimits,
+    query: &str,
+    token: Option<String>,
+    time_checks: Option<u64>,
+) -> Result<WorkspaceSearchResponse, String> {
     let mut engine = SearchEngine::new(limits);
     engine.threads = threads;
+    engine.time_checks_left = time_checks.map(std::sync::atomic::AtomicU64::new);
     let mut request = request(query);
     request.continuation_token = token;
     let mut response = engine
@@ -152,6 +166,32 @@ fn large_folders_answer_exactly_as_one_does() {
     fs::remove_dir_all(path).unwrap();
 }
 
+/// Time running out partway: the walk stops at the same entry with the same
+/// matches whether or not Files were read ahead, however far ahead they were.
+#[test]
+fn a_time_limit_stops_four_threads_where_it_stops_one() {
+    let path = tree();
+    let limits = SearchLimits {
+        max_duration: crate::test_wait::BUDGET,
+        max_results: 100_000,
+        ..SearchLimits::default()
+    };
+    let mut stopped_with_matches = 0;
+    // About 320 checks finish this tree, so this lands everywhere in it.
+    for checks in 0..340 {
+        let one = search_with(&path, 1, limits, "needle", None, Some(checks));
+        let four = search_with(&path, 4, limits, "needle", None, Some(checks));
+        assert_eq!(one, four, "time runs out after {checks} checks");
+        let one = one.unwrap();
+        if one.limit_reasons.contains(&SearchLimitReason::Time) && !one.matches.is_empty() {
+            stopped_with_matches += 1;
+        }
+    }
+    // The limit has to land partway through, with some matches found.
+    assert!(stopped_with_matches > 200, "{stopped_with_matches}");
+    fs::remove_dir_all(path).unwrap();
+}
+
 fn assert_same_answers(path: &Path, cases: &[(&str, SearchLimits)]) {
     for (label, limits) in cases {
         for query in ["needle", "NEEDLE", "absent"] {
@@ -172,4 +212,44 @@ fn assert_same_answers(path: &Path, cases: &[(&str, SearchLimits)]) {
             }
         }
     }
+}
+
+/// One line with more matches than a page holds: every page continues on
+/// the same line, with no match repeated or missed.
+#[test]
+fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
+    let path = std::env::temp_dir().join(format!("sage-search-dense-{}", Uuid::new_v4()));
+    fs::create_dir_all(&path).unwrap();
+    fs::write(
+        path.join("dense.txt"),
+        format!("{}\nNeedle\n", "é needle ".repeat(1_200)),
+    )
+    .unwrap();
+    let limits = SearchLimits {
+        max_duration: crate::test_wait::BUDGET,
+        ..SearchLimits::default()
+    };
+    for threads in [1, 4] {
+        let (mut columns, mut token, mut pages) = (Vec::new(), None, 0);
+        loop {
+            let page = search(&path, threads, limits, "NEEDLE", token).unwrap();
+            pages += 1;
+            columns.extend(
+                page.matches
+                    .iter()
+                    .map(|found| (found.line_number, found.column_number)),
+            );
+            token = page.continuation_token;
+            if token.is_none() {
+                break;
+            }
+        }
+        let expected = (0..1_200)
+            .map(|index| (1, 3 + 9 * index))
+            .chain([(2, 1)])
+            .collect::<Vec<_>>();
+        assert_eq!(columns, expected);
+        assert_eq!(pages, 3);
+    }
+    fs::remove_dir_all(path).unwrap();
 }

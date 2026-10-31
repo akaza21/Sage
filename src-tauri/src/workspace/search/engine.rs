@@ -7,6 +7,8 @@ use crate::{
 
 use super::{
     engine_continue::ContinuationSeek,
+    file_scan::ScanQuery,
+    literal_match::LiteralQuery,
     types::{
         ContinuationCursor, SearchLimitReason, SearchLimits, SearchRoot, SearchRootSource,
         SearchRootState, WorkspaceSearchRequest, WorkspaceSearchResponse,
@@ -21,6 +23,10 @@ pub struct SearchEngine {
     pub(super) global_excludes: Option<PathBuf>,
     /// Threads a root's search may use, the walk's included.
     pub(super) threads: usize,
+    /// Tests make time run out after this many checks, so a time limit
+    /// lands at the same place on every run.
+    #[cfg(test)]
+    pub(super) time_checks_left: Option<std::sync::atomic::AtomicU64>,
 }
 
 pub(super) struct SearchBudget {
@@ -46,6 +52,8 @@ impl SearchEngine {
             limits,
             global_excludes: None,
             threads: super::file_prefetch::search_threads(),
+            #[cfg(test)]
+            time_checks_left: None,
         }
     }
 
@@ -61,6 +69,7 @@ impl SearchEngine {
     ) -> AppResult<WorkspaceSearchResponse> {
         validate_search_request(&request)?;
         let query = request.query.trim();
+        let literal = LiteralQuery::new(query, request.case_sensitive);
         let mut seek = request
             .continuation_token
             .as_deref()
@@ -108,9 +117,10 @@ impl SearchEngine {
                     &root_id,
                     root_name,
                     &workspace,
-                    query,
-                    request.case_sensitive,
-                    request.whole_word,
+                    ScanQuery {
+                        literal: &literal,
+                        whole_word: request.whole_word,
+                    },
                     &request.include_patterns,
                     &request.exclude_patterns,
                     request.use_ignore_files,
@@ -176,11 +186,24 @@ impl SearchEngine {
             push_reason(&mut budget.reasons, SearchLimitReason::Entries);
             return true;
         }
-        if budget.started_at.elapsed() >= self.limits.max_duration {
+        if self.out_of_time(budget.started_at) {
             push_reason(&mut budget.reasons, SearchLimitReason::Time);
             return true;
         }
         false
+    }
+
+    fn out_of_time(&self, started_at: Instant) -> bool {
+        #[cfg(test)]
+        if let Some(left) = &self.time_checks_left {
+            use std::sync::atomic::Ordering;
+            return left
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+                    left.checked_sub(1)
+                })
+                .is_err();
+        }
+        started_at.elapsed() >= self.limits.max_duration
     }
 }
 

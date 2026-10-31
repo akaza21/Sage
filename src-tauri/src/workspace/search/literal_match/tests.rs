@@ -1,4 +1,18 @@
-use super::{ASCII_FOLDING_SPECIALS, file_may_match, literal_matches};
+use memchr::memmem::Finder;
+
+use super::{
+    ASCII_FOLDING_SPECIALS, LiteralQuery, ascii_folded_matches, has_word_boundaries,
+    unicode_folded_matches,
+};
+
+fn literal_matches(
+    line: &str,
+    query: &str,
+    case_sensitive: bool,
+    whole_word: bool,
+) -> Vec<(usize, usize)> {
+    LiteralQuery::new(query, case_sensitive).line_matches(line, whole_word)
+}
 
 #[test]
 fn whole_word_uses_unicode_word_boundaries() {
@@ -23,12 +37,37 @@ fn ascii_queries_still_match_characters_that_fold_into_ascii() {
         vec![(0, 5)]
     );
     let dotted = "\u{0130}stanbul";
-    assert!(file_may_match(dotted, "istanbul", false));
+    assert!(LiteralQuery::new("istanbul", false).file_may_match(dotted));
     assert_eq!(literal_matches(dotted, "i", false, false), vec![(0, 2)]);
 }
 
-/// The matcher before the ASCII fast path, kept as the oracle: every
-/// insensitive search lowercased a copy of each line.
+/// The first match of the matcher before EP-09, kept as the oracle: it
+/// lowercased the rest of the line, one character at a time, and searched it.
+fn reference_find(line: &str, query: &str, case_sensitive: bool) -> Option<(usize, usize)> {
+    if case_sensitive {
+        return line.find(query).map(|start| (start, start + query.len()));
+    }
+    let needle = query.to_lowercase();
+    let mut folded = String::with_capacity(line.len());
+    let mut origin = Vec::with_capacity(line.len());
+    for (start, character) in line.char_indices() {
+        let end = start + character.len_utf8();
+        for folded_character in character.to_lowercase() {
+            let mut encoded = [0; 4];
+            let encoded = folded_character.encode_utf8(&mut encoded);
+            folded.push_str(encoded);
+            origin.extend(std::iter::repeat_n((start, end), encoded.len()));
+        }
+    }
+    let folded_start = folded.find(&needle)?;
+    let folded_end = folded_start + needle.len();
+    Some((
+        origin.get(folded_start)?.0,
+        origin.get(folded_end.checked_sub(1)?)?.1,
+    ))
+}
+
+/// Every match of the matcher before EP-09.
 fn reference_matches(
     line: &str,
     query: &str,
@@ -38,11 +77,11 @@ fn reference_matches(
     let mut matches = Vec::new();
     let mut offset = 0;
     while offset < line.len() {
-        let Some((start, end)) = super::find_literal(&line[offset..], query, case_sensitive) else {
+        let Some((start, end)) = reference_find(&line[offset..], query, case_sensitive) else {
             break;
         };
         let (start, end) = (offset + start, offset + end);
-        if !whole_word || super::has_word_boundaries(line, start, end) {
+        if !whole_word || has_word_boundaries(line, start, end) {
             matches.push((start, end));
         }
         offset = end;
@@ -93,6 +132,42 @@ fn matches_the_reference_matcher_on_mixed_text() {
     }
 }
 
+/// Windows of a few bytes put window edges inside and between matches.
+#[test]
+fn folding_window_by_window_matches_folding_whole_lines() {
+    let mut pieces = Pieces(0x2545_F491_4F6C_DD1D);
+    for round in 0..20_000 {
+        let ascii = round % 2 == 0;
+        let line = pieces.text(40, ascii);
+        let query = pieces.text(4, ascii);
+        let folded = query.to_lowercase();
+        let finder = Finder::new(&folded);
+        let expected = reference_matches(&line, &query, false, false);
+        for window in 1..=9 {
+            let mut found = Vec::new();
+            unicode_folded_matches(&line, &finder, window, |range| {
+                found.push(range);
+                true
+            });
+            assert_eq!(
+                found, expected,
+                "line {line:?}, query {query:?}, window {window}"
+            );
+            if ascii {
+                let mut found = Vec::new();
+                ascii_folded_matches(line.as_bytes(), &finder, window, |range| {
+                    found.push(range);
+                    true
+                });
+                assert_eq!(
+                    found, expected,
+                    "line {line:?}, query {query:?}, window {window}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn the_file_check_never_passes_over_a_file_with_a_match() {
     let mut pieces = Pieces(0xD1B5_4A32_D192_ED03);
@@ -107,7 +182,7 @@ fn the_file_check_never_passes_over_a_file_with_a_match() {
             let any_line_matches = content
                 .split('\n')
                 .any(|line| !reference_matches(line, &query, case_sensitive, false).is_empty());
-            if !file_may_match(&content, &query, case_sensitive) {
+            if !LiteralQuery::new(&query, case_sensitive).file_may_match(&content) {
                 skipped += 1;
                 assert!(
                     !any_line_matches,
@@ -127,9 +202,26 @@ fn only_the_listed_characters_fold_into_ascii() {
         .filter(|character| character.to_lowercase().any(|folded| folded.is_ascii()))
         .map(|character| character.to_string())
         .collect::<Vec<_>>();
-    let listed = ASCII_FOLDING_SPECIALS
-        .iter()
-        .map(|bytes| std::str::from_utf8(bytes).unwrap().to_owned())
-        .collect::<Vec<_>>();
-    assert_eq!(folding_into_ascii, listed);
+    assert_eq!(folding_into_ascii, ASCII_FOLDING_SPECIALS);
+}
+
+/// The worst case for a naive search: a near miss at every position.
+#[test]
+fn near_misses_cost_linear_time() {
+    let content = "a".repeat(2 * 1024 * 1024);
+    let query = format!("{}b", "a".repeat(511));
+    let started = std::time::Instant::now();
+    for case_sensitive in [false, true] {
+        let literal = LiteralQuery::new(&query, case_sensitive);
+        assert!(!literal.file_may_match(&content));
+        assert!(literal.line_matches(&content, false).is_empty());
+    }
+    let unicode = LiteralQuery::new(&format!("{}é", "a".repeat(511)), false);
+    assert!(unicode.line_matches(&content, false).is_empty());
+    // A quadratic search takes about 10^9 comparisons per call here.
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        started.elapsed()
+    );
 }

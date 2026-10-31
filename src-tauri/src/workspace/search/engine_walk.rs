@@ -13,7 +13,7 @@ use crate::workspace::{
 use super::{
     engine::{RootCounters, SearchBudget, SearchEngine},
     engine_continue::{ContinuationSeek, stale_report},
-    file_prefetch::{Prefetch, QueuedFolder, ReadBudget, WalkContext},
+    file_prefetch::{FolderScans, Prefetch, QueuedFolder, ReadBudget, WalkContext},
     file_scan::ScanQuery,
     path_filter::path_is_admitted,
     types::{
@@ -29,9 +29,7 @@ impl SearchEngine {
         root_id: &str,
         root_name: String,
         workspace: &Workspace,
-        query: &str,
-        case_sensitive: bool,
-        whole_word: bool,
+        query: ScanQuery<'_>,
         include_patterns: &[String],
         exclude_patterns: &[String],
         use_ignore_files: bool,
@@ -66,11 +64,6 @@ impl SearchEngine {
             use_ignore_files,
             self.global_excludes.as_deref(),
         );
-        let scan_query = ScanQuery {
-            text: query,
-            case_sensitive,
-            whole_word,
-        };
         let context = WalkContext {
             engine: self,
             workspace,
@@ -78,7 +71,7 @@ impl SearchEngine {
             excluded,
             include_patterns,
             exclude_patterns,
-            query: scan_query,
+            query,
         };
         let stopped = std::thread::scope(|scope| {
             let mut prefetch = Prefetch::start(scope, context);
@@ -191,7 +184,7 @@ impl SearchEngine {
                     Some((folder_rules, scans)) => (folder_rules, scans),
                     None => (
                         rules.enter(&parent_rules, &relative, rule_files),
-                        Default::default(),
+                        FolderScans::none(),
                     ),
                 };
 
@@ -291,8 +284,6 @@ impl SearchEngine {
                             workspace,
                             &child_relative,
                             query,
-                            case_sensitive,
-                            whole_word,
                             &active_seek.cursor,
                         ) {
                             continue;
@@ -305,8 +296,6 @@ impl SearchEngine {
                             workspace,
                             child_relative,
                             query,
-                            case_sensitive,
-                            whole_word,
                             &cursor,
                             matches,
                             budget,
@@ -314,12 +303,12 @@ impl SearchEngine {
                         );
                     } else {
                         budget.files_seen += 1;
-                        let scan = scans.remove(&child_relative).unwrap_or_else(|| {
+                        let scan = scans.take(&name).unwrap_or_else(|| {
                             let bytes_left = self
                                 .limits
                                 .max_total_bytes
                                 .saturating_sub(budget.bytes_scanned);
-                            self.scan_file(workspace, &child_relative, scan_query, bytes_left)
+                            self.scan_file(workspace, &child_relative, query, bytes_left)
                         });
                         self.apply_scan(scan, matches, budget, &mut counters);
                     }
