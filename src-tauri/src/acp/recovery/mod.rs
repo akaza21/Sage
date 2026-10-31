@@ -1,10 +1,10 @@
-#![allow(dead_code)] // Removed when the isolated packet receives central wiring.
-
 use rusqlite::{OptionalExtension, params};
 
+#[cfg(test)]
+use crate::acp::lifecycle::DeliveryState;
 use crate::acp::{
     contract::{ProjectionRevision, SageTurnId},
-    lifecycle::{DeliveryState, SessionState, TurnState},
+    lifecycle::{SessionState, TurnState},
     store::{
         RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
         next_projection_revision, terminalize_recovery_epoch,
@@ -194,6 +194,7 @@ fn recover_candidate(
     })
 }
 
+#[cfg(test)]
 fn recovery_turn_state(
     state: TurnState,
     delivery: DeliveryState,

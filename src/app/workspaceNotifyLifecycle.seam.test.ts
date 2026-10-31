@@ -132,6 +132,47 @@ describe("live Project workspace notify bind", () => {
     expect(refreshed).toHaveLength(2);
   });
 
+  it("refreshes the root's cached listings when an ignore file changes", async () => {
+    await useWorkbenchStore.getState().initialize();
+    const root = childResource("root-a");
+    const src = { rootId: "root-a", relativePath: "src" };
+    const deep = { rootId: "root-a", relativePath: "src/deep" };
+    useWorkbenchStore.setState({
+      directoryListings: Object.fromEntries(
+        [root, src, deep].map((resource) => [
+          resourceKey(resource),
+          {
+            phase: "ready" as const,
+            value: { resource, entries: [], truncated: false },
+          },
+        ]),
+      ),
+      expandedDirectories: {},
+    });
+    const listDirectory = vi.mocked(projectPort.listDirectory);
+    const hooks = createWorkspaceNotifyHooks(() =>
+      useWorkbenchStore.getState(),
+    );
+    const notice = (relativePath: string) => ({
+      projectId: "project-a",
+      projectGeneration: 1,
+      transitionEpoch: 7,
+      rootId: "root-a",
+      relativePath,
+      kind: "modify",
+    });
+    listDirectory.mockClear();
+    await hooks.invalidate(notice("src/.gitignore"), src);
+    expect(listDirectory.mock.calls.map(([resource]) => resource)).toEqual(
+      expect.arrayContaining([root, src, deep]),
+    );
+    listDirectory.mockClear();
+    await hooks.invalidate(notice("src/notes.gitignore.txt"), src);
+    expect(listDirectory.mock.calls.map(([resource]) => resource)).toEqual([
+      src,
+    ]);
+  });
+
   it("refreshes more than eight cached listings for one resync in batches", async () => {
     await useWorkbenchStore.getState().initialize();
     const listings = Array.from({ length: 8 }, (_, index) => ({

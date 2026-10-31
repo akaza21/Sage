@@ -161,9 +161,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     ) -> bool {
         self.adapter.defer_fork_release(fork, committed)
     }
-    pub(crate) fn goal_pending(&self) -> bool {
-        self.adapter.goal_pending()
-    }
     pub(crate) fn native_rpc_pending(&self) -> bool {
         self.adapter.native_rpc_pending()
     }
@@ -217,9 +214,6 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     }
     pub(crate) fn config_pending(&self) -> bool {
         self.adapter.config_pending()
-    }
-    pub(crate) fn goal_pending(&self) -> bool {
-        self.adapter.goal_pending()
     }
     pub(crate) fn native_rpc_pending(&self) -> bool {
         self.adapter.native_rpc_pending()

@@ -1,5 +1,7 @@
 import type { ResourceRef } from "../../domain/workbench";
 import { isRecord } from "../../domain/guards";
+import { MAX_GLOBS } from "../../domain/editorSettingsCatalogue";
+import { validPathGlob } from "../../domain/pathGlob";
 import { utf8ByteLength } from "../../domain/text";
 import { WORKSPACE_SEARCH_LIMITS } from "./workspaceSearchLimits";
 import {
@@ -38,6 +40,10 @@ export interface WorkspaceSearchRequest {
   wholeWord: boolean;
   includePatterns: string[];
   excludePatterns: string[];
+  /** `search.useIgnoreFiles`; the native default is true. */
+  useIgnoreFiles?: boolean;
+  /** `files.exclude`; absent means the native default. */
+  filesExclude?: string[];
 }
 
 export interface WorkspaceSearchMatch {
@@ -116,28 +122,11 @@ function safeCount(value: unknown, minimum = 0): value is number {
   return Number.isSafeInteger(value) && (value as number) >= minimum;
 }
 
-function validFilterPattern(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    utf8ByteLength(value) <= WORKSPACE_SEARCH_LIMITS.filterPatternBytes &&
-    !value.startsWith("/") &&
-    !value.startsWith("~") &&
-    !value.includes("\\") &&
-    !value.includes(":") &&
-    !value.includes("\0") &&
-    ![...value].some((character) => /[\p{Cc}]/u.test(character)) &&
-    value
-      .split("/")
-      .every((segment) => segment !== "" && segment !== "." && segment !== "..")
-  );
-}
-
 function validFilterPatterns(value: unknown): value is string[] {
   return (
     Array.isArray(value) &&
     value.length <= WORKSPACE_SEARCH_LIMITS.filterPatterns &&
-    value.every(validFilterPattern) &&
+    value.every(validPathGlob) &&
     utf8ByteLength(value.join("")) <= WORKSPACE_SEARCH_LIMITS.filterBytes
   );
 }
@@ -234,6 +223,20 @@ export function validateWorkspaceSearchRequest(
   }
   if (typeof request.wholeWord !== "boolean") {
     throw new Error("workspace Search whole-word mode must be a boolean");
+  }
+  if (
+    request.useIgnoreFiles !== undefined &&
+    typeof request.useIgnoreFiles !== "boolean"
+  ) {
+    throw new Error("workspace Search ignore-file choice must be a boolean");
+  }
+  if (
+    request.filesExclude !== undefined &&
+    (!Array.isArray(request.filesExclude) ||
+      request.filesExclude.length > MAX_GLOBS ||
+      !request.filesExclude.every(validPathGlob))
+  ) {
+    throw new Error("workspace Search files.exclude patterns are invalid");
   }
   if (
     !validFilterPatterns(request.includePatterns) ||

@@ -110,6 +110,7 @@ pub(crate) struct ProjectionNotifier {
 }
 
 impl ProjectionNotifier {
+    #[cfg(test)]
     pub(crate) fn start(sink: Arc<dyn NotificationSink>) -> Self {
         Self::start_with(sink, tokio::spawn)
     }
@@ -226,6 +227,7 @@ impl ProjectionNotifier {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn recovery(&self) -> Option<NotificationRecovery> {
         match lock(&self.inner.state).lifecycle {
             Lifecycle::RecoveryRequired(reason) => Some(reason),
@@ -243,6 +245,7 @@ impl ProjectionNotifier {
     /// Returns an actionable recovery reason, or `None` when an in-flight
     /// recovery is acknowledged and settles before becoming actionable (and
     /// on shutdown).
+    #[cfg(test)]
     pub(crate) async fn wait_for_recovery(&self) -> Option<NotificationRecovery> {
         let mut observed_recovery = false;
         loop {
@@ -280,6 +283,7 @@ impl ProjectionNotifier {
         true
     }
 
+    #[cfg(test)]
     pub(crate) async fn shutdown(&self) -> bool {
         self.shutdown_with_timeout(Duration::from_millis(
             crate::acp::limits::LIMITS.deadlines_ms.explicit_close,

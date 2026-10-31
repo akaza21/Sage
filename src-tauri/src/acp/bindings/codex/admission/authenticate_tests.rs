@@ -84,9 +84,11 @@ fn admitted_observed_steer_journey_fixture_from(
     source: &std::path::Path,
 ) -> AdmittedCodexBinding {
     let (entrypoint, cleanup) = journey_fixture_entrypoint(source);
-    let mut binding =
-        AdmittedCodexBinding::admit_observed(entrypoint.path.clone(), "codex 0.146.0".into())
-            .expect("observed fixture admission");
+    let mut binding = AdmittedCodexBinding::admit_observed_for_test(
+        entrypoint.path.clone(),
+        "codex 0.146.0".into(),
+    )
+    .expect("observed fixture admission");
     binding.journey_test_entrypoint = Some(entrypoint);
     binding.journey_test_cases = Some(Mutex::new(case_ids.iter().copied().collect()));
     binding._cleanup = Some(cleanup);

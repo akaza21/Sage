@@ -11,7 +11,7 @@ mod access;
 mod editor_settings;
 mod side_chat;
 pub use access::SessionAccessModes;
-pub use editor_settings::EditorSettings;
+pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

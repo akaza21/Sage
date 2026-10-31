@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
+import { watchEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { EditorAdapterHandle } from "./EditorAdapter";
+import {
+  subscribeEditorFocusRequest,
+  takeEditorFocusRequest,
+} from "./editorFocusRequest";
 import { contentText, sameContent } from "./editorContent";
 import {
   FileSurfaceContent,
@@ -15,11 +20,18 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import {
+  registerFileSurfaceCommands,
+  type FileSurfaceCommands,
+} from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+
+const LIMIT_EXCEEDED_STATUS =
+  "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
 
 export function FileSurface({
   tab,
@@ -59,14 +71,58 @@ export function FileSurface({
     : previewSessionKey === activeResourceKey;
   const goToOpen = goToSessionKey === activeResourceKey;
 
-  const [languageNavigationStatus, setLanguageNavigationStatus] = useState("");
+  // A status belongs to the File it was written for and is dropped on switch.
+  const [status, setStatus] = useState({ key: "", text: "" });
+  const languageNavigationStatus =
+    status.key === activeResourceKey ? status.text : "";
+  const setLanguageNavigationStatus = useCallback(
+    (text: string) => setStatus({ key: activeResourceKey, text }),
+    [activeResourceKey],
+  );
   const reviewReadOnly = readOnly && !projectTransitioning;
   const onCaretOffset = useEditorCaretPublisher(
     !previewing &&
       editor?.phase === "ready" &&
       !!resource &&
       sameResource(editor.resource, resource),
+    !readOnly,
   );
+
+  const reportLimitExceeded = useCallback(
+    () => setLanguageNavigationStatus(LIMIT_EXCEEDED_STATUS),
+    [setLanguageNavigationStatus],
+  );
+  // The next edit that lands shows the refusal no longer applies.
+  const editorChanged = useCallback<typeof updateEditorContent>(
+    (...change) => {
+      setStatus((current) =>
+        current.text === LIMIT_EXCEEDED_STATUS
+          ? { key: "", text: "" }
+          : current,
+      );
+      return updateEditorContent(...change);
+    },
+    [updateEditorContent],
+  );
+
+  // A pending "focus the opened File" request (New File > Create) is taken
+  // once this File's editor is on screen, after the render that shows it.
+  const editorShown =
+    !readOnly &&
+    !previewing &&
+    editor?.phase === "ready" &&
+    !!resource &&
+    sameResource(editor.resource, resource);
+  const [focusRequests, setFocusRequests] = useState(0);
+  useEffect(
+    () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
+    [],
+  );
+  useEffect(() => {
+    if (editorShown && takeEditorFocusRequest(resource)) {
+      editorInputRef.current?.focus();
+    }
+  }, [resource, editorShown, focusRequests]);
 
   useEffect(() => {
     if (goToOpen) {
@@ -125,6 +181,39 @@ export function FileSurface({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
+
+  // Go back and Go forward (ED-2b) follow the editable File's caret.
+  useEffect(() => {
+    if (!readOnly) watchEditorHistory();
+  }, [readOnly]);
+
+  // The command palette (ED-2a) runs the same actions as the editor's keys.
+  const commandsRef = useRef<FileSurfaceCommands>({
+    available: () => false,
+    run: () => undefined,
+  });
+  useEffect(() => {
+    commandsRef.current = {
+      // Only what the keys would do now: the editor is showing, and the
+      // Markdown preview has no find or go to.
+      available: (command) =>
+        editor?.phase === "ready" && (command === "save" || !previewing),
+      run: (command) => {
+        if (command === "save") void saveActiveEditor();
+        else if (command === "find") openFindFromSurface();
+        else if (command === "replace") openFindFromSurface(true);
+        else if (command === "goToLine") openGoToLine();
+        else void goToLocalSymbol();
+      },
+    };
+  });
+  useEffect(() => {
+    if (readOnly) return;
+    return registerFileSurfaceCommands({
+      available: (command) => commandsRef.current.available(command),
+      run: (command) => commandsRef.current.run(command),
+    });
+  }, [readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(contentText(findContent), goToQuery);
@@ -209,7 +298,8 @@ export function FileSurface({
       reviewOnly={readOnly}
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
-      onEditorChange={readOnly ? () => undefined : updateEditorContent}
+      onLimitExceeded={reportLimitExceeded}
+      onEditorChange={readOnly ? () => undefined : editorChanged}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {
           previewing,

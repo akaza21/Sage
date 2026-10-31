@@ -30,9 +30,10 @@ pub(crate) use manifest::{
     ManifestError, validate_research_candidate,
 };
 pub(crate) use runtime::ClaudeRuntimeFactory;
+#[cfg(test)]
+pub(crate) use translator::TranslationError;
 pub(crate) use translator::{
     AdapterEvent, PromptTerminal, ResourceMapper, StandardAcpTranslator as ClaudeTranslator,
-    TranslationError,
 };
 
 #[cfg(test)]

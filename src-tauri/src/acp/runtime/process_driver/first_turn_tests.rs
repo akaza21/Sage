@@ -43,6 +43,7 @@ use crate::{
     persistence::Database,
 };
 
+#[cfg(feature = "acp-fixture")]
 use super::worker_command::WorkerDeadlineAbort;
 use super::*;
 
@@ -61,8 +62,6 @@ struct Adapter {
     final_stdout: Option<AdapterIdentity>,
     config_pending: bool,
 }
-
-struct LateFrameAdapter;
 
 struct ConfigThenLateAdapter {
     reject_next: bool,
@@ -176,36 +175,6 @@ impl HarnessAdapter for Adapter {
             OutboundFrame::new(b"{}".to_vec()).unwrap(),
             EgressToken::request(1),
         )))
-    }
-
-    fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
-        Ok(())
-    }
-
-    fn resolve_egress(
-        &mut self,
-        _: EgressToken,
-        _: EgressResolution,
-    ) -> Result<(), AdapterRuntimeError> {
-        Ok(())
-    }
-}
-
-impl HarnessAdapter for LateFrameAdapter {
-    fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        None
-    }
-
-    fn command(&mut self, _: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        Err(AdapterRuntimeError::Operation)
-    }
-
-    fn ingest(
-        &mut self,
-        _: &Frame,
-        _: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![])
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -730,12 +699,14 @@ impl Drop for JournalThreadCleanup {
     }
 }
 
+#[cfg(feature = "acp-fixture")]
 struct TestThreadCleanup {
     thread: Option<BoundedThread>,
     release: Option<mpsc::SyncSender<()>>,
     mailbox: Arc<DriverMailbox>,
 }
 
+#[cfg(feature = "acp-fixture")]
 impl TestThreadCleanup {
     fn release(&mut self) {
         if let Some(release) = self.release.take() {
@@ -750,6 +721,7 @@ impl TestThreadCleanup {
     }
 }
 
+#[cfg(feature = "acp-fixture")]
 impl Drop for TestThreadCleanup {
     fn drop(&mut self) {
         self.mailbox.close();
@@ -781,6 +753,7 @@ fn mailbox_deadline_before(clock: &dyn DriverClock, deadline: Instant) -> i64 {
     mailbox_deadline(clock, timeout_millis)
 }
 
+#[cfg(feature = "acp-fixture")]
 fn wait_for_queued_control(mailbox: &DriverMailbox) {
     let deadline = Instant::now()
         + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch);
@@ -900,6 +873,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
     }
 }
 
+#[cfg(feature = "acp-fixture")]
 pub(crate) struct CancelDispatchObservation {
     pub(crate) cancel_dispatch_ms_maximum: u64,
     pub(crate) control_capacity_borrowed: bool,
@@ -920,6 +894,7 @@ impl StdinTransport for CancelTransport {
     fn close(&mut self) {}
 }
 
+#[cfg(feature = "acp-fixture")]
 #[derive(Debug, PartialEq, Eq)]
 struct CancelSnapshot {
     state: String,
@@ -931,6 +906,7 @@ struct CancelSnapshot {
     cancel_intent_facts: i64,
 }
 
+#[cfg(feature = "acp-fixture")]
 fn cancel_snapshot(
     database: &Database,
     turn_id: &crate::acp::contract::SageTurnId,
@@ -961,6 +937,7 @@ fn cancel_snapshot(
         .unwrap()
 }
 
+#[cfg(feature = "acp-fixture")]
 pub(crate) fn observe_process_live_port_cancel_at_capacity(
     messages: u64,
     bytes: u64,

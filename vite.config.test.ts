@@ -74,6 +74,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // Releasing an open File's tabs for a move (ED-16) loads with that move.
+  "src/app/openFileRelease.ts",
+  // Explorer's files.exclude matcher loads beside the startup bundle.
+  "src/domain/pathGlobMatcher.ts",
   // The browser downloads popover body loads on its first open.
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.
@@ -98,7 +102,11 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/diff/DiffSurface.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
+  // Explorer loads on first show, off the Agent startup path.
+  "src/features/files/ExplorerSurface.tsx",
   "src/features/files/FileSurface.tsx",
+  // New File hands focus to the editor through this, off the startup path.
+  "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
@@ -106,6 +114,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/outline/syntaxOutline.ts",
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
+  // Quick Open (EP-08) loads on its first open, or while idle.
+  "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",

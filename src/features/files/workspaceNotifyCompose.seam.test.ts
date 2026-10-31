@@ -7,6 +7,7 @@ import {
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
   acquireNotifyListingSlot,
+  isIgnoreRuleFile,
   listingResourceForNotify,
   publishWorkspaceNotifySearch,
   releaseNotifyListingSlot,
@@ -207,6 +208,37 @@ describe("workspace notify compose", () => {
     emit(notice);
     expect(invalidate).toHaveBeenCalledTimes(1);
     finish();
+  });
+
+  it("never coalesces an ignore-file change into a running folder refresh", async () => {
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const invalidate = vi.fn(
+      (_notice: WorkspaceNotifyNotice) => new Promise<void>(() => undefined),
+    );
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    });
+    emit({ ...notice, relativePath: "src/.gitignore~" });
+    emit({ ...notice, relativePath: "src/.gitignore" });
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate.mock.calls[1][0]).toMatchObject({
+      relativePath: "src/.gitignore",
+    });
+  });
+
+  it("recognizes ignore files by name only", () => {
+    for (const path of [".gitignore", "src/.ignore", "a/b/.GITIGNORE"]) {
+      expect(isIgnoreRuleFile(path)).toBe(true);
+    }
+    for (const path of ["notes.gitignore.txt", ".gitignore.bak", "gitignore"]) {
+      expect(isIgnoreRuleFile(path)).toBe(false);
+    }
   });
 
   it("drops a ninth distinct in-flight listing refresh", async () => {

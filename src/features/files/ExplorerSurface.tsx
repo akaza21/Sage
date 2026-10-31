@@ -1,5 +1,14 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import {
@@ -7,11 +16,27 @@ import {
   resourceKey,
   sameResource,
 } from "../../domain/resourceIdentity";
-import type { ProjectRootSummary } from "../../domain/workbench";
+import type * as MatcherModule from "../../domain/pathGlobMatcher";
+import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import { ExplorerActions } from "./ExplorerActions";
+import {
+  ExplorerContextMenuContext,
+  createExplorerContextMenu,
+  isContextMenuKey,
+} from "./explorerContextMenu";
 import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
 import { flattenFileTree } from "./fileTree";
+
+// The `files.exclude` matcher loads beside the startup bundle, starting as
+// this module loads, long before the first listing returns.
+let matcherModule: typeof MatcherModule | undefined;
+// A failed load is reported, and Explorer then shows excluded entries.
+const matcherLoaded = import("../../domain/pathGlobMatcher").then(
+  (module) => (matcherModule = module),
+  (error: unknown) =>
+    console.warn("Explorer could not load the files.exclude matcher", error),
+);
 
 const RootTree = memo(function RootTree({
   root,
@@ -26,12 +51,56 @@ const RootTree = memo(function RootTree({
   const selectDirectory = useWorkbenchStore((state) => state.selectDirectory);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
+  const hideIgnored = useEditorSettingsStore(
+    (store) => store.settings["explorer.showIgnored"] === "hidden",
+  );
+  const filesExclude = useEditorSettingsStore(
+    (store) => store.settings["files.exclude"],
+  );
+  const [matcher, setMatcher] = useState(matcherModule);
+  useEffect(() => {
+    if (!matcher) {
+      void matcherLoaded.then((module) => module && setMatcher(module));
+    }
+  }, [matcher]);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
+  const contextMenu = useContext(ExplorerContextMenuContext);
+  // Like VS Code, a right-click selects what it is on (without opening a
+  // File) and opens the actions for it there.
+  const openContextMenu = useCallback(
+    (resource: ResourceRef, row: HTMLElement): void => {
+      const state = useWorkbenchStore.getState();
+      if (!contextMenu || !state.project || state.projectTransitioning) {
+        return;
+      }
+      // The root heading selects as its click does (which also retries a
+      // listing that failed); a row without opening its File.
+      if (resource.relativePath === "") state.selectRoot(resource.rootId);
+      else state.selectDirectory(resource);
+      // Selection is refused while a rename or recycle runs: the menu would
+      // then show the actions of what was selected before.
+      if (
+        !sameResource(useWorkbenchStore.getState().selectedResource, resource)
+      ) {
+        return;
+      }
+      contextMenu.open(row);
+    },
+    [contextMenu],
+  );
   const rootSelected = sameResource(rootResource, selected);
   const tree = useMemo(
-    () => flattenFileTree(rootResource, listings, expanded, 500),
-    [expanded, listings, rootResource],
+    () =>
+      flattenFileTree(
+        rootResource,
+        listings,
+        expanded,
+        500,
+        hideIgnored,
+        matcher?.pathGlobMatcher(filesExclude),
+      ),
+    [expanded, filesExclude, hideIgnored, listings, matcher, rootResource],
   );
   const listing = listings[resourceKey(rootResource)];
   const nestedTruncatedResource = tree.entries.find((entry) => {
@@ -61,6 +130,15 @@ const RootTree = memo(function RootTree({
         aria-current={rootSelected ? "page" : undefined}
         title={root.name}
         onClick={() => selectRoot(root.id)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (!isContextMenuKey(event)) return;
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
+        }}
       >
         <FileKindIcon path={root.name} entryKind="directory" />
         <span>{root.name}</span>
@@ -90,6 +168,7 @@ const RootTree = memo(function RootTree({
             onSelectDirectory={selectDirectory}
             onToggleDirectory={toggleDirectory}
             onOpenFile={openFile}
+            onContextMenu={openContextMenu}
           />
         );
       })}
@@ -118,8 +197,9 @@ export function ExplorerSurface() {
   const resourceTrashNotice = useWorkbenchStore(
     (state) => state.resourceTrashNotice,
   );
+  const [contextMenu] = useState(createExplorerContextMenu);
   return (
-    <>
+    <ExplorerContextMenuContext.Provider value={contextMenu}>
       <div className="sidebar__heading">
         <span>Explorer</span>
         <ExplorerActions />
@@ -151,6 +231,6 @@ export function ExplorerSurface() {
           <p className="sidebar__empty">Open a folder to see files.</p>
         )}
       </div>
-    </>
+    </ExplorerContextMenuContext.Provider>
   );
 }

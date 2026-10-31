@@ -29,10 +29,9 @@ use crate::acp::{
 };
 
 use super::{
-    AdapterEvent, CLAUDE_PROFILE_ID, CandidateManifest, ClaudeAuthState, ClaudeCapabilityOffer,
-    ClaudeTranslator, PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
-    decode_auth_status_update, negotiate_capabilities, validate_research_candidate,
-    wire::decode_frame,
+    AdapterEvent, CLAUDE_PROFILE_ID, ClaudeAuthState, ClaudeCapabilityOffer, ClaudeTranslator,
+    PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
+    decode_auth_status_update, negotiate_capabilities, wire::decode_frame,
 };
 
 mod browse_host;
@@ -134,20 +133,6 @@ enum DeliveryUnknown {
 }
 
 impl ClaudeRuntime {
-    pub(crate) fn from_candidate(
-        candidate: CandidateManifest,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        let candidate = validate_research_candidate(candidate)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        candidate
-            .require_launch_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(Self::new(None, binding_digest, runtime_epoch, session_id))
-    }
-
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedClaudeBinding>,
         runtime_epoch: RuntimeEpoch,
@@ -291,6 +276,7 @@ pub(crate) struct ClaudeRuntimeFactory {
 }
 
 impl ClaudeRuntimeFactory {
+    #[cfg(test)]
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedClaudeBinding>,
         project_root: crate::project_registry::ProjectRootAuthority,

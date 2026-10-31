@@ -36,9 +36,12 @@ export interface FileRenameSlice {
   fileRenameNotice: string | null;
   fileRenameRequestGeneration: number;
   clearFileRenameError: () => void;
+  /** With `releaseOpenFile`, a clean open source File is closed for the
+   * rename and reopened at the new name. */
   renameProjectFile: (
     source: ResourceRef,
     basename: string,
+    releaseOpenFile?: boolean,
   ) => Promise<boolean>;
   renameProjectFolder: (
     source: ResourceRef,
@@ -361,8 +364,32 @@ export const createFileRenameSlice: StateCreator<
 
     clearFileRenameError: () => set({ fileRenameError: null }),
 
-    renameProjectFile: (source, basename) =>
-      renameProjectResource("file", source, basename),
+    renameProjectFile: async (source, basename, releaseOpenFile = false) => {
+      if (!releaseOpenFile) {
+        return renameProjectResource("file", source, basename);
+      }
+      let target: ResourceRef;
+      try {
+        target = renameTargetResource(source, basename);
+      } catch {
+        // The rename itself reports the invalid name.
+        return renameProjectResource("file", source, basename);
+      }
+      const { moveReleasingFile } = await import("./openFileRelease");
+      return moveReleasingFile(
+        get,
+        set,
+        source,
+        () => renameProjectResource("file", source, basename),
+        // The selection moves to the target only when the rename is
+        // confirmed; otherwise where the File is now is unknown.
+        () =>
+          sameResource(get().selectedResource, target)
+            ? { kind: "renamed", target }
+            : { kind: "gone" },
+        (reason) => set({ fileRenameError: reason }),
+      );
+    },
     renameProjectFolder: (source, basename) =>
       renameProjectResource("folder", source, basename),
   };

@@ -1,5 +1,6 @@
 import { editorLanguageForPath } from "./editorLanguage";
 import { utf8Bytes } from "../../domain/text";
+import { readMarkdownList, type MarkdownListBlock } from "./markdownList";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
@@ -11,6 +12,7 @@ import {
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
+export type { ListItemShape } from "./markdownList";
 export {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
@@ -18,6 +20,7 @@ export {
   MAX_MARKDOWN_TABLE_ROWS,
   MAX_MARKDOWN_TABLE_COLUMNS,
   MAX_MARKDOWN_INLINE_FORMATS,
+  MAX_MARKDOWN_LIST_DEPTH,
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
@@ -26,7 +29,7 @@ export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "quote"; text: string }
-  | { kind: "list"; items: readonly string[]; ordered?: true; start?: number }
+  | MarkdownListBlock
   | { kind: "code"; text: string; language: string; fenceClosed: boolean }
   | {
       kind: "table";
@@ -40,7 +43,8 @@ export type InlineFormat =
   | {
       tag: "strong" | "em" | "code";
       children: InlineFormat[];
-    };
+    }
+  | { tag: "a"; href: string; children: InlineFormat[] };
 
 export interface MarkdownPreviewDocument {
   blocks: readonly MarkdownPreviewBlock[];
@@ -163,8 +167,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         const from = text.length;
         if (match[3] !== undefined) {
           const label = append(match[3]);
+          // A web link keeps its address for display; it is never followed.
+          const href = !match[2] && webLink(match[4]);
           if (
             !match[2] &&
+            !href &&
             links.length < MAX_CHAT_FILE_LINKS &&
             text.length - from === match[3].length &&
             fileLinkCandidate(match[4])
@@ -177,7 +184,8 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
               itemIndex,
               offset: from,
             });
-          } else spans.push(label);
+          } else
+            spans.push(href ? { tag: "a", href, children: [label] } : label);
         } else if (depth < 8 && formatCount < MAX_MARKDOWN_INLINE_FORMATS) {
           formatCount++;
           const tag = marker ? (marker.length === 2 ? "strong" : "em") : "code";
@@ -292,24 +300,14 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       blocks.push({ kind: "table", align, rows });
       continue;
     }
-    const item = /^(?:([-*]) |(\d{1,9})[.)] )(.+)$/u.exec(line);
-    if (item) {
-      const ordered = !!item[2];
-      const items: string[] = [];
-      let next = item;
-      do {
-        if (remaining > 0) {
-          const text = inline(next[3], items.length);
-          if (text) items.push(text);
-        } else document.truncated = true;
-        cursor++;
-        next = /^(?:([-*]) |(\d{1,9})[.)] )(.+)$/u.exec(lines[cursor] ?? "")!;
-      } while (next && !!next[2] === ordered);
-      blocks.push({
-        kind: "list",
-        items,
-        ...(ordered ? { ordered: true, start: Number(item[2]) } : {}),
-      });
+    const list = readMarkdownList(lines, cursor, (text, itemIndex) => {
+      if (remaining > 0) return inline(text, itemIndex);
+      document.truncated = true;
+      return "";
+    });
+    if (list) {
+      blocks.push(list.block);
+      cursor = list.cursor;
       continue;
     }
     const quoted = line.startsWith("> ");
@@ -320,7 +318,9 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       lines[cursor].trim() &&
       (quoted
         ? lines[cursor].startsWith("> ")
-        : !/^(?: *```|#{1,6} |[-*] |\d{1,9}[.)] |> |\|)/u.test(lines[cursor]))
+        : !/^(?: *```|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) |> |\|)/u.test(
+            lines[cursor],
+          ))
     ) {
       parts.push(quoted ? lines[cursor].slice(2) : lines[cursor]);
       cursor++;
@@ -329,6 +329,17 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     if (text) blocks.push({ kind: quoted ? "quote" : "paragraph", text });
   }
   return document;
+}
+
+function webLink(destination: string): string | null {
+  const url = destination
+    .trim()
+    .split(/\s/u)[0]
+    .replace(/^<(.*)>$/u, "$1");
+  // Control and format characters could disguise the address shown.
+  return /^(?:https?:\/\/|mailto:)[^\s<>\p{Cc}\p{Cf}]+$/iu.test(url)
+    ? url
+    : null;
 }
 
 function tableCells(line: string): string[] {

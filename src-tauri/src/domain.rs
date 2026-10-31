@@ -7,10 +7,8 @@ mod project;
 mod repository;
 mod resource;
 
-#[allow(unused_imports)]
-pub use beta_evidence::{
-    BetaEvidenceCandidateIdentity, BetaEvidenceDescriptor, BetaEvidenceResult,
-};
+#[cfg(test)]
+pub use beta_evidence::BetaEvidenceResult;
 pub use chat::*;
 pub use editor::*;
 pub use file_operations::*;

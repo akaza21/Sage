@@ -98,9 +98,19 @@ describe("SettingsSurface", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
-    expect(screen.getAllByText("Default: On")).toHaveLength(5);
+    expect(screen.getAllByText("Default: On")).toHaveLength(6);
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
     expect(screen.getByText("Default: Alt")).toBeInTheDocument();
+    expect(screen.getByText("Default: Dimmed")).toBeInTheDocument();
+    const files = screen.getByRole("group", { name: "Files" });
+    const search = screen.getByRole("group", { name: "Search" });
+    expect(within(search).getByLabelText("Use ignore files")).toBeChecked();
+    const ignored = within(files).getByLabelText("Ignored files in Explorer");
+    expect(
+      within(ignored)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Dimmed", "Hidden"]);
     expect(screen.getByRole("searchbox")).toHaveClass("input");
     const display = screen.getByRole("group", { name: "Text" });
     const indentation = screen.getByRole("group", { name: "Editing" });
@@ -152,8 +162,12 @@ describe("SettingsSurface", () => {
     fireEvent.click(screen.getByLabelText("Show whitespace"));
     fireEvent.click(screen.getByLabelText("Code folding"));
     fireEvent.change(modifier, { target: { value: "ctrlCmd" } });
+    fireEvent.click(within(search).getByLabelText("Use ignore files"));
+    fireEvent.change(ignored, { target: { value: "hidden" } });
     expect(useEditorSettingsStore.getState().settings).toEqual({
       ...DEFAULT_EDITOR_SETTINGS,
+      "search.useIgnoreFiles": false,
+      "explorer.showIgnored": "hidden",
       "editor.folding": false,
       "editor.multiCursorModifier": "ctrlCmd",
       "editor.fontSize": 16,
@@ -172,6 +186,100 @@ describe("SettingsSurface", () => {
     await waitFor(() =>
       expect(useEditorSettingsStore.getState().persistencePhase).toBe("idle"),
     );
+  });
+
+  it("edits the files.exclude pattern list and refuses patterns the store would refuse", async () => {
+    render(<SettingsSurface />);
+    const files = screen.getByRole("group", { name: "Files" });
+    const list = within(files).getByRole("list", { name: "Exclude" });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "**/.git",
+      "**/.svn",
+      "**/.hg",
+      "**/CVS",
+      "**/.DS_Store",
+      "**/Thumbs.db",
+    ]);
+    const input = within(files).getByLabelText("Add to Exclude");
+    const add = within(files).getByRole("button", { name: "Add Pattern" });
+
+    fireEvent.change(input, { target: { value: "  **/dist  " } });
+    fireEvent.click(add);
+    expect(useEditorSettingsStore.getState().settings["files.exclude"]).toEqual(
+      [
+        "**/.git",
+        "**/.svn",
+        "**/.hg",
+        "**/CVS",
+        "**/.DS_Store",
+        "**/Thumbs.db",
+        "**/dist",
+      ],
+    );
+    expect(input).toHaveValue("");
+
+    for (const [pattern, message] of [
+      ["**/dist", "That pattern is already listed."],
+      ["/dist", "Write the pattern relative to the Project"],
+      ["", "Enter a pattern."],
+    ] as const) {
+      fireEvent.change(input, { target: { value: pattern } });
+      fireEvent.submit(input);
+      expect(input).toHaveAccessibleDescription(
+        expect.stringContaining(message),
+      );
+      expect(input).toHaveAttribute("aria-invalid", "true");
+    }
+    expect(
+      useEditorSettingsStore.getState().settings["files.exclude"],
+    ).toHaveLength(7);
+
+    fireEvent.click(
+      within(files).getByRole("button", { name: "Remove **/.git" }),
+    );
+    // Focus moves to the pattern that took the removed one's place.
+    expect(
+      within(files).getByRole("button", { name: "Remove **/.svn" }),
+    ).toHaveFocus();
+    expect(
+      useEditorSettingsStore.getState().settings["files.exclude"],
+    ).not.toContain("**/.git");
+    const reset = screen.getByRole("button", {
+      name: "Reset Editor Appearance",
+    });
+    expect(reset).toBeEnabled();
+    fireEvent.click(reset);
+    expect(useEditorSettingsStore.getState().settings["files.exclude"]).toEqual(
+      DEFAULT_EDITOR_SETTINGS["files.exclude"],
+    );
+    expect(reset).toBeDisabled();
+    await waitFor(() =>
+      expect(useEditorSettingsStore.getState().persistencePhase).toBe("idle"),
+    );
+  });
+
+  it("stops adding patterns at the list's cap", () => {
+    useEditorSettingsStore.setState({
+      settings: {
+        ...useEditorSettingsStore.getState().settings,
+        "files.exclude": Array.from({ length: 50 }, (_, index) => `p${index}`),
+      },
+    });
+    render(<SettingsSurface />);
+    const files = screen.getByRole("group", { name: "Files" });
+    expect(within(files).getByLabelText("Add to Exclude")).toHaveAttribute(
+      "readonly",
+    );
+    expect(
+      within(files).getByRole("button", { name: "Add Pattern" }),
+    ).toBeDisabled();
+    expect(
+      within(files).getByText("The list holds at most 50 patterns."),
+    ).toBeInTheDocument();
   });
 
   it("keeps settings read-only until the durable record has loaded", () => {

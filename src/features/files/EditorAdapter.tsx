@@ -40,6 +40,7 @@ interface EditorAdapterProps {
   maxContentLength: number;
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
+  onLimitExceeded?: () => void;
 }
 
 export const EditorAdapter = forwardRef<
@@ -144,6 +145,7 @@ export const EditorAdapter = forwardRef<
     props.maxContentLength,
     props.onChange,
     props.onCaretOffset,
+    props.onLimitExceeded,
     props.path,
     tabSize,
     showWhitespace,

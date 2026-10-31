@@ -20,6 +20,7 @@ use super::{
     ProcessAdapterDriver, ProcessTreeControl, StdinTransport, TeardownCause,
 };
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct ActivationRebindFailure<D> {
     pub(crate) driver: D,
     pub(crate) error: ActivationDriverError,
@@ -126,6 +127,7 @@ pub(crate) enum PrepareActivationTurnError {
     Identity,
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct PrepareActivationTurnFailure<D> {
     pub(crate) parts: D,
     pub(crate) recovery: Option<PrepareRecovery>,
@@ -138,6 +140,7 @@ pub(crate) struct PreparedActivationTurn<A, R, T, C> {
     pub(crate) active_turn: ActiveTurnIntent,
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) enum FirstTurnBindError {
     Pump(AdapterPumpError),
     ActivationJournal,
@@ -145,6 +148,7 @@ pub(crate) enum FirstTurnBindError {
     Driver(DriverError),
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct FirstTurnRecoveryParts<A, R, T, C> {
     pub(crate) adapter: A,
     pub(crate) resources: R,
@@ -159,6 +163,7 @@ pub(crate) struct FirstTurnRecoveryParts<A, R, T, C> {
     pub(crate) error: FirstTurnBindError,
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) enum FirstTurnBindFailure<A, R, T, C> {
     Retained {
         prepared: PreparedActivationTurn<A, R, T, C>,
@@ -383,15 +388,7 @@ where
     }
 }
 
-pub(crate) struct RecoveryActivationDriverParts<A, J, R, T, C> {
-    pub(crate) parts: RecoveryActivationParts<A, J, R>,
-    pub(crate) transport: T,
-    pub(crate) control: C,
-    pub(crate) owner: RuntimeOwner,
-    pub(crate) clock: Arc<dyn DriverClock>,
-    pub(crate) first_delivery_unknown: Option<FirstDeliveryUnknown>,
-}
-
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct ActivationZeroProcessHandoff<A, J, R, P> {
     pub(crate) parts: TeardownActivationParts<A, J, R>,
     pub(crate) proof: P,
@@ -401,6 +398,7 @@ pub(crate) struct ActivationZeroProcessHandoff<A, J, R, P> {
     pub(crate) first_delivery_unknown: Option<FirstDeliveryUnknown>,
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct ActivationProjectionRecoveryHandoff<A, J, R, P> {
     pub(crate) parts: RecoveryActivationParts<A, J, R>,
     pub(crate) proof: P,

@@ -12,16 +12,13 @@ compile_error!("the cdp-lane feature runs headless Chromium and is unix-only");
 #[cfg(any(windows, test))]
 #[cfg_attr(all(test, not(windows)), allow(dead_code))]
 mod cdp_port;
-#[allow(dead_code)]
 mod diagnostics;
 mod events;
 #[cfg(windows)]
 pub(super) use events::detach;
 #[cfg(windows)]
-#[allow(dead_code)]
 mod native;
 #[cfg(windows)]
-#[allow(unused_imports)]
 pub(crate) use native::NativeDevtools;
 #[cfg(windows)]
 pub(crate) use native::capture_page_context;

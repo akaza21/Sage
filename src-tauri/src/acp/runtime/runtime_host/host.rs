@@ -12,12 +12,14 @@ use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
 
+#[cfg(test)]
+use super::types::HostState;
 use super::{
     actor::Actor,
     mailbox::{Envelope, HostMailbox},
     types::{
         HostCancelIntent, HostCloseIntent, HostCommand, HostError, HostOutcome, HostPromptIntent,
-        HostReply, HostState, RuntimeEngine, RuntimeShutdownRecovery,
+        HostReply, RuntimeEngine, RuntimeShutdownRecovery,
     },
 };
 
@@ -39,6 +41,10 @@ pub(crate) struct RuntimeHost {
 enum TimeoutOverride {
     #[cfg(test)]
     Duration(Duration),
+    #[cfg_attr(
+        not(all(windows, feature = "acp-fixture")),
+        allow(dead_code, reason = "only the Windows fixture lane sets a deadline")
+    )]
     Deadline {
         operation: Instant,
         cleanup: Instant,
@@ -52,6 +58,7 @@ mod host_session_config;
 mod host_dispatch;
 
 impl RuntimeHost {
+    #[cfg(test)]
     pub(crate) fn start<E: RuntimeEngine>(engine: E) -> Result<Self, HostError> {
         Self::start_inner(engine, None, None)
     }
@@ -94,7 +101,7 @@ impl RuntimeHost {
         )
     }
 
-    #[cfg(all(windows, feature = "acp-fixture"))]
+    #[cfg(all(test, windows, feature = "acp-fixture"))]
     pub(crate) fn start_with_deadline<E: RuntimeEngine>(
         engine: E,
         operation: Instant,
@@ -220,6 +227,7 @@ impl RuntimeHost {
         self.outcome(HostCommand::Steer(intent))
     }
 
+    #[cfg(test)]
     pub(crate) fn accept_terminal(
         &self,
         owner: RuntimeOwner,
@@ -228,6 +236,7 @@ impl RuntimeHost {
         self.outcome(HostCommand::Terminal { owner, cursor })
     }
 
+    #[cfg(test)]
     pub(crate) fn project_switched(
         &self,
         project: crate::acp::contract::SageProjectId,
@@ -246,6 +255,7 @@ impl RuntimeHost {
         self.outcome_until(HostCommand::ProjectSwitched(project), deadline)
     }
 
+    #[cfg(test)]
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),
@@ -255,10 +265,12 @@ impl RuntimeHost {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn begin_close(&self, intent: HostCloseIntent) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::BeginClose(intent))
     }
 
+    #[cfg(test)]
     pub(crate) fn finish_close(&self, intent: HostCloseIntent) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::FinishClose(intent))
     }

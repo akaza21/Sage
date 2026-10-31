@@ -1,8 +1,8 @@
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
 
 use crate::{
     error::{AppError, AppResult},
-    workspace::file_walk::walk_over_cap,
+    workspace::{file_walk::walk_over_cap, path_glob::PathGlobs},
 };
 
 use super::{
@@ -17,6 +17,8 @@ use super::{
 
 pub struct SearchEngine {
     pub(super) limits: SearchLimits,
+    /// Git's global excludes file, which the helper cannot resolve itself.
+    pub(super) global_excludes: Option<PathBuf>,
 }
 
 pub(super) struct SearchBudget {
@@ -38,7 +40,15 @@ pub(super) struct RootCounters {
 
 impl SearchEngine {
     pub fn new(limits: SearchLimits) -> Self {
-        Self { limits }
+        Self {
+            limits,
+            global_excludes: None,
+        }
+    }
+
+    pub(super) fn with_global_excludes(mut self, path: Option<PathBuf>) -> Self {
+        self.global_excludes = path;
+        self
     }
 
     pub fn search(
@@ -80,6 +90,7 @@ impl SearchEngine {
             reasons: Vec::new(),
         };
 
+        let excluded = PathGlobs::new(&request.files_exclude());
         for root in roots {
             let SearchRoot {
                 root_id,
@@ -99,6 +110,8 @@ impl SearchEngine {
                     request.whole_word,
                     &request.include_patterns,
                     &request.exclude_patterns,
+                    request.use_ignore_files,
+                    &excluded,
                     &mut matches,
                     &mut budget,
                     &mut seek,

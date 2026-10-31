@@ -19,8 +19,12 @@ pub(crate) struct StandardAcpArtifact {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StandardAcpArtifactProvenance {
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     Direct,
-    NpmGlobal { root: PathBuf, relative: PathBuf },
+    NpmGlobal {
+        root: PathBuf,
+        relative: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -12,11 +12,12 @@ use crate::acp::{
     limits::LIMITS,
 };
 
+#[cfg(test)]
+use super::wire::decode_frame;
 use super::{
     profile::StandardAcpProfile,
     sanitize::normalized_text,
     surface::{SessionUpdateKind, UNKNOWN_NOTIFICATION_REASON, UnmappedUpdate, unmapped_update},
-    wire::decode_frame,
 };
 
 mod decode;
@@ -69,6 +70,10 @@ pub(crate) enum AdapterEvent {
         old_text: String,
         new_text: String,
     },
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     PermissionDecline {
         request_id: ExternalId,
         tool_call_id: ExternalId,
@@ -185,6 +190,7 @@ impl StandardAcpTranslator {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn translate_notification(
         &mut self,
         raw: &[u8],

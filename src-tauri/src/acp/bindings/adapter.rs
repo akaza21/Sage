@@ -23,6 +23,7 @@ pub(crate) use model::{
 /// path or prompt text.
 pub(crate) enum AdapterCommand {
     Initialize,
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     ModelPage {
         cursor: Option<PageCursor>,
     },
@@ -143,6 +144,7 @@ pub(crate) enum AdapterEvent {
         old_text: String,
         new_text: String,
     },
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     ActivityItem(Box<AdapterActivityItem>),
     Usage {
         turn_id: AdapterIdentity,
@@ -346,10 +348,12 @@ impl AdapterBatch {
         Ok(builder.finish())
     }
 
+    #[cfg(test)]
     pub(crate) fn events(&self) -> &[AdapterEvent] {
         &self.events
     }
 
+    #[cfg(test)]
     pub(crate) fn egress(&self) -> &[AdapterEgress] {
         &self.egress
     }

@@ -1,14 +1,16 @@
 use std::sync::Arc;
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 use std::time::Duration;
+
+#[cfg(all(test, windows, feature = "acp-fixture"))]
+use crate::acp::process::ZeroProcessToken;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    process::{LaunchError, TreeExit, ZeroProcessToken},
+    process::{LaunchError, TreeExit},
     runtime::{
         ActiveDispatch, ActiveTurnIntent, AdapterBatchJournal, CompletedPumpParts, PrepareDispatch,
         PrepareRecovery, ProjectIntentAuthority, SendCoordinator, SessionTreeLease,
-        ZeroProcessProof,
     },
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
@@ -114,7 +116,7 @@ where
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, windows, feature = "acp-fixture"))]
 impl<A, J, R, T, L> ProcessAdapterDriver<A, J, R, T, crate::acp::process::TreeControl, L>
 where
     A: HarnessAdapter,
@@ -177,6 +179,7 @@ pub(crate) enum PrepareDriverTurnError {
     Rebind(DriverError),
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct PrepareDriverTurnFailure<P> {
     pub(crate) parts: P,
     pub(crate) recovery: Option<PrepareRecovery>,
@@ -351,34 +354,10 @@ where
     }
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct ZeroProcessHandoff<L, P> {
     pub(crate) lease: L,
     pub(crate) proof: P,
-    pub(crate) exit: TreeExit,
-    pub(crate) cause: TeardownCause,
-    pub(crate) first_delivery_unknown: Option<super::FirstDeliveryUnknown>,
-}
-
-impl ZeroProcessHandoff<SessionTreeLease, ZeroProcessToken> {
-    pub(crate) fn into_coordinator_proof(
-        self,
-    ) -> Result<CoordinatorZeroProcessHandoff, DriverError> {
-        let owner = self.lease.owner().clone();
-        let proof = ZeroProcessProof::from_supervisor(owner, &self.proof)
-            .map_err(|_| DriverError::IdentityMismatch)?;
-        Ok(CoordinatorZeroProcessHandoff {
-            lease: self.lease,
-            proof,
-            exit: self.exit,
-            cause: self.cause,
-            first_delivery_unknown: self.first_delivery_unknown,
-        })
-    }
-}
-
-pub(crate) struct CoordinatorZeroProcessHandoff {
-    pub(crate) lease: SessionTreeLease,
-    pub(crate) proof: ZeroProcessProof,
     pub(crate) exit: TreeExit,
     pub(crate) cause: TeardownCause,
     pub(crate) first_delivery_unknown: Option<super::FirstDeliveryUnknown>,

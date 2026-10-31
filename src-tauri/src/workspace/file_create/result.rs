@@ -95,13 +95,15 @@ fn reconciled_listing(
         resource,
         kind: kind.label().into(),
         byte_len: kind.byte_len(),
+        // Used only when the fresh listing failed; the next listing brings
+        // the ignore state.
+        ignored: false,
     });
     before.entries.sort_unstable_by(|left, right| {
-        let rank = |kind: &str| u8::from(kind != "directory");
-        rank(&left.kind)
-            .cmp(&rank(&right.kind))
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-            .then_with(|| left.name.cmp(&right.name))
+        use crate::workspace::entry_rank;
+        entry_rank(&left.kind)
+            .cmp(&entry_rank(&right.kind))
+            .then_with(|| crate::workspace::name_order::explorer_name_cmp(&left.name, &right.name))
     });
     before
 }

@@ -65,10 +65,8 @@ mod chat_fork;
 mod child_transcript;
 mod goal;
 pub(crate) use child_transcript::{ChildTranscriptRead, ChildTranscriptReadError};
-#[allow(dead_code)] // Fixed production observation boundary; lifecycle wiring is separate.
 mod renderer_recreation;
 mod renderer_recreation_orchestrator;
-#[allow(dead_code)] // Fixed packet schema; no generic observer is exposed.
 mod renderer_recreation_packet;
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 pub(crate) mod runtime_identity;
@@ -381,7 +379,6 @@ impl AcpService {
         }
     }
 
-    #[allow(dead_code)] // Invoked by the fixed, internal renderer-recreation path only.
     pub(crate) fn renderer_recreation_native_snapshot(
         &self,
         project_id: &SageProjectId,

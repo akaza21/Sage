@@ -4,6 +4,7 @@ use crate::{
     domain::{ResourceRef, TrashProjectResourceRequest},
     error::{AppError, AppResult},
     persistence::now_millis,
+    workspace::resource_trash::TRASH_NAME,
 };
 
 pub(super) fn same_or_descendant(candidate: &ResourceRef, source: &ResourceRef) -> bool {
@@ -34,10 +35,9 @@ pub(super) fn ensure_resource_closed(
         |row| row.get(0),
     )?;
     if tab_reference {
-        return Err(AppError::InvalidRequest(
-            "close File and Diff tabs for the resource and its descendants before moving it to the Recycle Bin"
-                .into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "close File and Diff tabs for the resource and its descendants before moving it to the {TRASH_NAME}"
+        )));
     }
     let buffer_reference: bool = transaction.query_row(
         "SELECT EXISTS(
@@ -49,10 +49,9 @@ pub(super) fn ensure_resource_closed(
         |row| row.get(0),
     )?;
     if buffer_reference {
-        return Err(AppError::InvalidRequest(
-            "save or discard and close editor buffers for the resource and its descendants before moving it to the Recycle Bin"
-                .into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "save or discard and close editor buffers for the resource and its descendants before moving it to the {TRASH_NAME}"
+        )));
     }
     Ok(())
 }
@@ -68,10 +67,9 @@ pub(super) fn ensure_request_resource_closed(
                 .is_some_and(|resource| same_or_descendant(resource, &request.source))
     });
     if has_reference {
-        return Err(AppError::InvalidRequest(
-            "close File and Diff tabs for the resource and its descendants before moving it to the Recycle Bin"
-                .into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "close File and Diff tabs for the resource and its descendants before moving it to the {TRASH_NAME}"
+        )));
     }
     Ok(())
 }

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
@@ -16,6 +14,7 @@ use crate::state::AppState;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) mod unix;
+#[cfg(any(not(windows), test))]
 pub(crate) mod unix_events;
 mod watch;
 #[cfg(windows)]
@@ -26,6 +25,7 @@ pub use watch::{deliver_workspace_notify_action, relative_from_notify_name};
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 const MAX_ROOTS: usize = 8;
+#[cfg(test)]
 const MAX_QUEUE: usize = 64;
 const MAX_WATCHES: usize = 8;
 pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
@@ -76,6 +76,7 @@ fn reject(code: &'static str) -> WorkspaceNotifyError {
     WorkspaceNotifyError { code }
 }
 
+#[cfg(test)]
 fn is_object(value: &Value) -> bool {
     value.as_object().is_some()
 }
@@ -141,6 +142,7 @@ fn root_id_value(value: &Value) -> Result<String, WorkspaceNotifyError> {
         .ok_or_else(|| reject("schema-invalid"))
 }
 
+#[cfg(test)]
 fn notice(value: &Value) -> Result<WorkspaceNotifyNotice, WorkspaceNotifyError> {
     if !exact_keys(
         value,
@@ -195,6 +197,7 @@ fn kind_for_action(action: u32) -> Option<&'static str> {
     }
 }
 
+#[cfg(test)]
 pub fn workspace_notify_event_name() -> &'static str {
     WORKSPACE_NOTIFY_EVENT
 }
@@ -288,6 +291,9 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         .as_str()
         .filter(|item| bounded_identifier(item))
         .ok_or_else(|| reject("schema-invalid"))?;
+    // The Project is closing or being switched away from: free Quick Open's
+    // path index with it, even if it was never watched.
+    crate::workspace::path_index::forget_project(project_id);
     let mut registry = registry();
     let Some(watch) = registry.watches.remove(project_id) else {
         return Err(reject("notify-substituted"));
@@ -366,6 +372,9 @@ pub fn watch_workspace_notify(
         let _ = apply_unwatch_if_generation(&project_id, generation);
         return Err(error.code().to_string());
     }
+    // A newly watched Project is the active one: Quick Open's index for any
+    // other is no longer needed.
+    crate::workspace::path_index::focus_project(&project_id);
     emit_queued_workspace_notices(&app, &value);
     Ok(WorkspaceNotifyWatchAck { generation })
 }
@@ -401,6 +410,7 @@ impl WorkspaceNotifySession {
         }))
     }
 
+    #[cfg(test)]
     pub fn push(&mut self, value: &Value) -> Result<(), WorkspaceNotifyError> {
         if !is_object(value) {
             return Err(reject("schema-invalid"));

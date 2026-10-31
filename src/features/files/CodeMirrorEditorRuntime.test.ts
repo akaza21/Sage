@@ -793,3 +793,57 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
     ).toThrow();
   });
 });
+
+describe("CodeMirrorEditorRuntime focus across a save", () => {
+  const props = (disabled: boolean) => ({
+    ariaLabel: "Edit notes.md",
+    path: "notes.md",
+    content: "hello",
+    disabled,
+    maxContentLength: 1024,
+    onChange: vi.fn(),
+  });
+
+  it("gives focus back when a save that disabled the focused editor ends", () => {
+    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
+    view.focus();
+    expect(view.hasFocus).toBe(true);
+    runtime.update(props(true));
+    // The browser drops focus from content that stops being editable.
+    view.contentDOM.blur();
+    expect(view.hasFocus).toBe(false);
+    runtime.update(props(false));
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("leaves focus alone when the user moved it or the editor was not focused", () => {
+    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    view.focus();
+    runtime.update(props(true));
+    elsewhere.focus();
+    runtime.update(props(false));
+    expect(document.activeElement).toBe(elsewhere);
+
+    elsewhere.blur();
+    runtime.update(props(true));
+    runtime.update(props(false));
+    expect(view.hasFocus).toBe(false);
+    elsewhere.remove();
+  });
+
+  it("leaves focus on the page after a click elsewhere that does not take it", () => {
+    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    view.focus();
+    runtime.update(props(true));
+    view.contentDOM.blur();
+    // WKWebView leaves focus on the page when a button is clicked.
+    elsewhere.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    runtime.update(props(false));
+    expect(view.hasFocus).toBe(false);
+    elsewhere.remove();
+  });
+});

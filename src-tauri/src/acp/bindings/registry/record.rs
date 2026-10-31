@@ -245,6 +245,21 @@ pub(crate) struct BindingIdentity<'a> {
 }
 
 impl AdmittedBindingRecord<'_> {
+    #[cfg(windows)]
+    pub(crate) fn browser_mcp_version_notice(&self) -> Option<&'static str> {
+        match &self.binding {
+            AdmittedBinding::Codex(binding) => {
+                let supported = binding.capability_ceiling().is_ok_and(|ceiling| {
+                    crate::acp::bindings::codex::supports_native_0146_protocol(
+                        ceiling.protocol_version.as_str(),
+                    )
+                });
+                (!supported).then_some("Browser tools are unavailable for this Codex version. You can continue chatting without browser tools.")
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn binding_id(&self) -> &'static str {
         self.record.binding_id()
     }

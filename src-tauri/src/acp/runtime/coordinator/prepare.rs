@@ -5,11 +5,13 @@ pub(crate) struct PrepareFailure {
     pub(crate) recovery: Option<PrepareRecovery>,
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) enum PrepareRecovery {
     Ambiguous(AmbiguousTurnReservation),
     Committed(ActiveDispatch),
 }
 
+#[allow(dead_code, reason = "only tests read these fields")]
 pub(crate) struct AmbiguousTurnReservation {
     pub(super) reservation: TurnReservation,
     pub(super) journal: JournalHandle,
@@ -30,6 +32,7 @@ impl std::fmt::Debug for PrepareFailure {
 impl PrepareRecovery {
     // The error owns the exact scheduler reservation/dispatch so callers cannot
     // accidentally release capacity while authoritative recovery is pending.
+    #[cfg(test)]
     #[allow(clippy::result_large_err)]
     pub(crate) fn committed_dispatch(self) -> Result<ActiveDispatch, Self> {
         match self {
@@ -38,6 +41,7 @@ impl PrepareRecovery {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn ambiguous(&self) -> Option<&AmbiguousTurnReservation> {
         match self {
             Self::Ambiguous(reservation) => Some(reservation),
@@ -47,38 +51,9 @@ impl PrepareRecovery {
 }
 
 impl AmbiguousTurnReservation {
+    #[cfg(test)]
     pub(crate) fn command(&self) -> &PrepareTurnCommand {
         &self.command
-    }
-
-    // Preserve the complete reservation on the error path; boxing here would
-    // add an allocation to a state that is already bounded by the scheduler.
-    #[allow(clippy::result_large_err)]
-    pub(crate) fn resolve_committed(
-        self,
-        prepared: PreparedTurn,
-    ) -> Result<ActiveDispatch, (Self, CoordinatorError)> {
-        if prepared.disposition != MutationDisposition::Applied {
-            return Err((self, CoordinatorError::JournalProtocol));
-        }
-        let Self {
-            reservation,
-            journal,
-            publisher,
-            command,
-        } = self;
-        match build_active_dispatch(reservation, &journal, &publisher, command, &prepared) {
-            Ok(dispatch) => Ok(dispatch),
-            Err((reservation, command, error)) => Err((
-                Self {
-                    reservation,
-                    journal,
-                    publisher,
-                    command,
-                },
-                error.into(),
-            )),
-        }
     }
 
     #[cfg(test)]

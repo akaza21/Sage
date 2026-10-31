@@ -10,17 +10,12 @@ use crate::{acp::limits::LIMITS, project_registry::ProjectRootAuthority};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {
     NativeExecutable,
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     WindowsBatchLauncher,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RequiredContainment {
-    EnforcedTree,
-    TrustedCooperativeTree,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActualContainment {
     EnforcedTree,
     TrustedCooperativeTree,
 }
@@ -42,6 +37,7 @@ pub(crate) enum LaunchError {
 }
 
 pub(crate) struct ArtifactExpectation {
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) artifact_id: Uuid,
     pub(crate) canonical_absolute_path: PathBuf,
     pub(crate) sha256: [u8; 32],
@@ -76,6 +72,7 @@ impl ArtifactExpectation {
         self
     }
 
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) fn windows_batch_launcher(
         artifact_id: Uuid,
         canonical_absolute_path: PathBuf,
@@ -208,6 +205,7 @@ impl ProcessDeadlines {
 }
 
 pub(crate) struct LaunchSpec {
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(crate) binding_id: Uuid,
     pub(crate) runtime_epoch: u64,
     pub(crate) artifact: ArtifactExpectation,
@@ -223,20 +221,15 @@ pub(crate) struct LaunchSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TreeState {
-    Starting,
-    Running,
-    Terminating,
-    Exited,
-    ContainmentLost,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TreeExit {
-    Exited { code: Option<i32> },
+    Exited {
+        code: Option<i32>,
+    },
     Cancelled,
     Deadline,
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     IdentityMismatch,
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     ContainmentFailure,
     ProtocolFailure,
     ParentShutdown,
@@ -269,6 +262,7 @@ impl ZeroProcessToken {
 /// zero-process proofs. Native resources remain owned by the platform layer.
 pub(super) struct LaunchFailureTracker {
     runtime_epoch: u64,
+    #[allow(dead_code, reason = "only tests read whether a child was created")]
     child_created: bool,
     zero_confirmed: bool,
     token_minted: bool,
@@ -284,6 +278,7 @@ impl LaunchFailureTracker {
         }
     }
 
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(super) fn child_created(runtime_epoch: u64) -> Self {
         Self {
             runtime_epoch,
@@ -315,6 +310,7 @@ impl LaunchFailureTracker {
         Some(ZeroProcessToken::new(self.runtime_epoch))
     }
 
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows-only"))]
     pub(super) fn runtime_epoch(&self) -> u64 {
         self.runtime_epoch
     }
@@ -322,105 +318,6 @@ impl LaunchFailureTracker {
     #[cfg(test)]
     pub(super) fn child_was_created(&self) -> bool {
         self.child_created
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TeardownAction {
-    CloseStdin,
-    TerminateTree,
-    AwaitChildExit,
-    AwaitZeroProcesses,
-    CloseNativeHandles,
-    ReleaseReservation,
-}
-
-pub(crate) struct SupervisorLifecycle {
-    state: TreeState,
-    requested_exit: Option<TreeExit>,
-    observed_exit: Option<TreeExit>,
-    root_alive: bool,
-    descendants: u32,
-    descendant_limit: u32,
-    reservation_owned: bool,
-}
-
-impl SupervisorLifecycle {
-    pub(crate) fn starting(descendant_limit: u32) -> Self {
-        Self {
-            state: TreeState::Starting,
-            requested_exit: None,
-            observed_exit: None,
-            root_alive: true,
-            descendants: 0,
-            descendant_limit,
-            reservation_owned: true,
-        }
-    }
-
-    pub(crate) fn mark_running(&mut self) -> bool {
-        if self.state != TreeState::Starting {
-            return false;
-        }
-        self.state = TreeState::Running;
-        true
-    }
-
-    pub(crate) fn request_termination(&mut self, reason: TreeExit) -> bool {
-        if !matches!(self.state, TreeState::Starting | TreeState::Running) {
-            return false;
-        }
-        self.requested_exit = Some(reason);
-        self.state = TreeState::Terminating;
-        true
-    }
-
-    pub(crate) fn observe_processes(&mut self, root_alive: bool, descendants: u32) -> TreeState {
-        self.root_alive = root_alive;
-        self.descendants = descendants;
-        if descendants > self.descendant_limit {
-            self.state = TreeState::ContainmentLost;
-        } else if !root_alive && descendants == 0 {
-            self.state = TreeState::Exited;
-            self.observed_exit = Some(
-                self.requested_exit
-                    .unwrap_or(TreeExit::Exited { code: None }),
-            );
-        }
-        self.state
-    }
-
-    pub(crate) fn mark_containment_deadline(&mut self) {
-        if self.root_alive || self.descendants != 0 {
-            self.state = TreeState::ContainmentLost;
-        }
-    }
-
-    pub(crate) fn release_reservation(&mut self) -> bool {
-        if self.state != TreeState::Exited || !self.reservation_owned {
-            return false;
-        }
-        self.reservation_owned = false;
-        true
-    }
-
-    pub(crate) fn state(&self) -> TreeState {
-        self.state
-    }
-
-    pub(crate) fn exit(&self) -> Option<TreeExit> {
-        self.observed_exit
-    }
-
-    pub(crate) fn teardown_plan(&self) -> [TeardownAction; 6] {
-        [
-            TeardownAction::CloseStdin,
-            TeardownAction::TerminateTree,
-            TeardownAction::AwaitChildExit,
-            TeardownAction::AwaitZeroProcesses,
-            TeardownAction::CloseNativeHandles,
-            TeardownAction::ReleaseReservation,
-        ]
     }
 }
 

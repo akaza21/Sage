@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { DirectoryListing, ResourceRef } from "../../domain/workbench";
 import { flattenFileTree } from "./fileTree";
@@ -16,6 +17,13 @@ const rootListing: DirectoryListing = {
       resource: { rootId: "root-a", relativePath: "README.md" },
       kind: "file",
       byteLen: 100,
+    },
+    {
+      name: "debug.log",
+      resource: { rootId: "root-a", relativePath: "debug.log" },
+      kind: "file",
+      byteLen: 10,
+      ignored: true,
     },
   ],
 };
@@ -42,12 +50,62 @@ describe("file tree projection", () => {
       flattenFileTree(root, listings, {}).entries.map(
         (entry) => entry.resource.relativePath,
       ),
-    ).toEqual(["src", "README.md"]);
+    ).toEqual(["src", "README.md", "debug.log"]);
     expect(
       flattenFileTree(root, listings, {
         [resourceKey(srcRef)]: true,
       }).entries.map((entry) => entry.resource.relativePath),
-    ).toEqual(["src", "src/main.ts", "README.md"]);
+    ).toEqual(["src", "src/main.ts", "README.md", "debug.log"]);
+  });
+
+  it("leaves out ignored entries and their children when they are hidden", () => {
+    const ignoredSrc: DirectoryListing = {
+      ...rootListing,
+      entries: rootListing.entries.map((entry) =>
+        entry.name === "src" ? { ...entry, ignored: true } : entry,
+      ),
+    };
+    const listings = {
+      [resourceKey(root)]: { phase: "ready" as const, value: ignoredSrc },
+      [resourceKey(srcRef)]: { phase: "ready" as const, value: srcListing },
+    };
+    const expanded = { [resourceKey(srcRef)]: true };
+    expect(
+      flattenFileTree(root, listings, expanded, 600, true).entries.map(
+        (entry) => entry.resource.relativePath,
+      ),
+    ).toEqual(["README.md"]);
+    expect(
+      flattenFileTree(root, listings, expanded).entries.map(
+        (entry) => entry.resource.relativePath,
+      ),
+    ).toEqual(["src", "src/main.ts", "README.md", "debug.log"]);
+  });
+
+  it("leaves out entries files.exclude names, and everything in an excluded folder", () => {
+    const listings = {
+      [resourceKey(root)]: { phase: "ready" as const, value: rootListing },
+      [resourceKey(srcRef)]: { phase: "ready" as const, value: srcListing },
+    };
+    const expanded = { [resourceKey(srcRef)]: true };
+    const project = (patterns: readonly string[]) =>
+      flattenFileTree(
+        root,
+        listings,
+        expanded,
+        600,
+        false,
+        pathGlobMatcher(patterns),
+      ).entries.map((entry) => entry.resource.relativePath);
+    expect(project(["**/*.log"])).toEqual(["src", "src/main.ts", "README.md"]);
+    expect(project(["src"])).toEqual(["README.md", "debug.log"]);
+    expect(project(["src/*.ts", "README.md"])).toEqual(["src", "debug.log"]);
+    expect(project([])).toEqual([
+      "src",
+      "src/main.ts",
+      "README.md",
+      "debug.log",
+    ]);
   });
 
   it("enforces the visible-node limit", () => {

@@ -71,7 +71,7 @@ impl RuntimeHost {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn last_shutdown_phase(&self) -> &'static str {
         *self
             .last_shutdown_phase

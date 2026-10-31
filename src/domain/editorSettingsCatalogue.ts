@@ -1,49 +1,53 @@
-/** Closed registry; mirror EDITOR_SETTINGS in src-tauri/src/settings_store/editor_settings.rs (parity-tested). Add each setting in both registries plus its control, never a schema change. */
+/**
+ * Closed registry; mirror EDITOR_SETTINGS in
+ * src-tauri/src/settings_store/editor_settings.rs (parity-tested). Add each
+ * setting in both registries, its words in `editorSettingsCopy.ts` and its
+ * control, never a schema change. Only what the store needs lives here, so the
+ * words load with the Settings page instead of at startup.
+ */
 
-export const EDITOR_SETTING_GROUPS = [
-  "Text",
-  "Editing",
-  "Files",
-  "Search",
-  "Git",
-  "Languages",
-] as const;
+import { validPathGlob } from "./pathGlob";
 
-export type EditorSettingGroup = (typeof EDITOR_SETTING_GROUPS)[number];
-
-interface EntryCopy {
-  key: `editor.${string}`;
-  group: EditorSettingGroup;
+interface EntryShape {
+  key: `${"editor" | "explorer" | "files" | "search"}.${string}`;
   ticket: `EP-${number}`;
-  label: string;
-  description: string;
 }
 
-export interface BooleanSettingSpec extends EntryCopy {
+export interface BooleanSettingSpec extends EntryShape {
   kind: "boolean";
   default: boolean;
 }
 
-export interface IntegerSettingSpec extends EntryCopy {
+export interface IntegerSettingSpec extends EntryShape {
   kind: "integer";
   default: number;
   min: number;
   max: number;
   choices: readonly number[];
-  unit: string;
 }
 
-export interface ChoiceSettingSpec extends EntryCopy {
+export interface ChoiceSettingSpec extends EntryShape {
   kind: "choice";
   default: string;
   /** Names in settings-page order. */
   choices: readonly string[];
-  /** Platform-specific display labels. */
-  choiceLabels: Readonly<Record<string, readonly [string, string]>>;
 }
 
+/** Path globs (`pathGlob.ts`), each valid on its own. */
+export interface GlobsSettingSpec extends EntryShape {
+  kind: "globs";
+  default: readonly string[];
+}
+
+export const MAX_GLOBS = 50;
+
 export type EditorSettingSpec =
-  BooleanSettingSpec | IntegerSettingSpec | ChoiceSettingSpec;
+  | BooleanSettingSpec
+  | IntegerSettingSpec
+  | ChoiceSettingSpec
+  | GlobsSettingSpec;
+
+export type EditorSettingValue = boolean | number | string | readonly string[];
 
 export const EDITOR_SETTINGS = [
   {
@@ -53,38 +57,25 @@ export const EDITOR_SETTINGS = [
     min: 12,
     max: 16,
     choices: [12, 13, 14, 16],
-    unit: "px",
-    group: "Text",
     ticket: "EP-02",
-    label: "Font size",
-    description: "Controls the size of text in the code editor.",
   },
   {
     key: "editor.lineNumbers",
     kind: "boolean",
     default: true,
-    group: "Text",
     ticket: "EP-02",
-    label: "Line numbers",
-    description: "Shows a numbered gutter beside each line.",
   },
   {
     key: "editor.wordWrap",
     kind: "boolean",
     default: false,
-    group: "Text",
     ticket: "EP-02",
-    label: "Word wrap",
-    description: "Wraps long lines so they remain inside the Editor window.",
   },
   {
     key: "editor.renderWhitespace",
     kind: "boolean",
     default: false,
-    group: "Text",
     ticket: "EP-02",
-    label: "Show whitespace",
-    description: "Reveals spaces and tabs when indentation is unclear.",
   },
   {
     key: "editor.tabSize",
@@ -93,61 +84,64 @@ export const EDITOR_SETTINGS = [
     min: 2,
     max: 8,
     choices: [2, 4, 8],
-    unit: "spaces",
-    group: "Editing",
     ticket: "EP-02",
-    label: "Tab size",
-    description: "Sets the number of spaces used for indentation.",
   },
   {
     key: "editor.matchBrackets",
     kind: "boolean",
     default: true,
-    group: "Text",
     ticket: "EP-03",
-    label: "Match brackets",
-    description:
-      "Highlights the bracket that pairs with the one at the cursor.",
   },
   {
     key: "editor.autoClosingBrackets",
     kind: "boolean",
     default: true,
-    group: "Editing",
     ticket: "EP-03",
-    label: "Auto-close brackets",
-    description:
-      "Types the closing bracket or quote when you type the opening one.",
   },
   {
     key: "editor.folding",
     kind: "boolean",
     default: true,
-    group: "Text",
     ticket: "EP-03",
-    label: "Code folding",
-    description: "Shows fold arrows in the gutter so blocks can be collapsed.",
   },
   {
     key: "editor.occurrencesHighlight",
     kind: "boolean",
     default: true,
-    group: "Text",
     ticket: "EP-03",
-    label: "Highlight occurrences",
-    description:
-      "Marks other copies of the selected text or the word at the cursor.",
   },
   {
     key: "editor.multiCursorModifier",
     kind: "choice",
     default: "alt",
     choices: ["alt", "ctrlCmd"],
-    choiceLabels: { alt: ["Alt", "Option"], ctrlCmd: ["Ctrl", "Cmd"] },
-    group: "Editing",
     ticket: "EP-03",
-    label: "Multi-cursor modifier",
-    description: "The key to hold while clicking to add another cursor.",
+  },
+  {
+    key: "search.useIgnoreFiles",
+    kind: "boolean",
+    default: true,
+    ticket: "EP-06",
+  },
+  {
+    key: "explorer.showIgnored",
+    kind: "choice",
+    default: "dimmed",
+    choices: ["dimmed", "hidden"],
+    ticket: "EP-06",
+  },
+  {
+    key: "files.exclude",
+    kind: "globs",
+    default: [
+      "**/.git",
+      "**/.svn",
+      "**/.hg",
+      "**/CVS",
+      "**/.DS_Store",
+      "**/Thumbs.db",
+    ],
+    ticket: "EP-06",
   },
 ] as const satisfies readonly EditorSettingSpec[];
 
@@ -158,14 +152,20 @@ export type EditorSettingKey = Entry["key"];
 export type EditorSettings = {
   [E in Entry as E["key"]]: E extends { kind: "boolean" }
     ? boolean
-    : E extends { choices: readonly (infer Choice)[] }
-      ? Choice
-      : never;
+    : E extends { kind: "globs" }
+      ? readonly string[]
+      : E extends { choices: readonly (infer Choice)[] }
+        ? Choice
+        : never;
 };
 
+// Lists are frozen, so admitting a default keeps its identity.
 export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
   Object.fromEntries(
-    EDITOR_SETTINGS.map((spec) => [spec.key, spec.default]),
+    EDITOR_SETTINGS.map((spec): [string, EditorSettingValue] => [
+      spec.key,
+      Array.isArray(spec.default) ? Object.freeze(spec.default) : spec.default,
+    ]),
   ) as EditorSettings,
 );
 
@@ -173,7 +173,7 @@ export const DEFAULT_EDITOR_SETTINGS = Object.freeze(
 export function admitEditorSetting(
   spec: EditorSettingSpec,
   value: unknown,
-): boolean | number | string | undefined {
+): EditorSettingValue | undefined {
   if (spec.kind === "boolean") {
     return typeof value === "boolean" ? value : undefined;
   }
@@ -182,6 +182,7 @@ export function admitEditorSetting(
       ? value
       : undefined;
   }
+  if (spec.kind === "globs") return admitGlobs(value);
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     return undefined;
   }
@@ -198,6 +199,36 @@ export function admitEditorSetting(
   return nearest;
 }
 
+/** Match Rust: at most MAX_GLOBS valid path globs; a repeated pattern keeps its first place. */
+function admitGlobs(value: unknown): readonly string[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_GLOBS ||
+    !value.every(validPathGlob)
+  ) {
+    return undefined;
+  }
+  const patterns = [...new Set(value as string[])];
+  // Already admitted lists keep their identity, so readers do not re-render.
+  return Object.isFrozen(value) && patterns.length === value.length
+    ? (value as readonly string[])
+    : Object.freeze(patterns);
+}
+
+/** Lists compare by their patterns (which never hold NUL), other values by identity. */
+export function sameEditorSettingValue(
+  a: EditorSettingValue,
+  b: EditorSettingValue,
+): boolean {
+  return (
+    a === b ||
+    (Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.join("\0") === b.join("\0"))
+  );
+}
+
 /** Drop unknown keys; default missing/mistyped values. */
 export function admitEditorSettings(input: unknown): EditorSettings {
   const record =
@@ -207,7 +238,8 @@ export function admitEditorSettings(input: unknown): EditorSettings {
   return Object.fromEntries(
     EDITOR_SETTINGS.map((spec) => [
       spec.key,
-      admitEditorSetting(spec, record[spec.key]) ?? spec.default,
+      admitEditorSetting(spec, record[spec.key]) ??
+        DEFAULT_EDITOR_SETTINGS[spec.key],
     ]),
   ) as EditorSettings;
 }

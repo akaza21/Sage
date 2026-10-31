@@ -9,6 +9,7 @@ import {
   type ChatHandoffIntent,
 } from "../../domain/chatHandoff";
 import { chatDisplayTitle } from "../../domain/chatTitle";
+import { errorMessage } from "../../domain/errors";
 import type { ChatMessage } from "../../domain/workbench";
 import { HandoffPart } from "./lazyParts";
 
@@ -135,7 +136,7 @@ export function ChatHandoffControl({
       setHandoffError(null);
       onOpen?.();
     } catch (error) {
-      setHandoffError(error instanceof Error ? error.message : String(error));
+      setHandoffError(errorMessage(error));
     }
   };
 

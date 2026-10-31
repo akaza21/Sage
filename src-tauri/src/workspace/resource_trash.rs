@@ -12,6 +12,13 @@ use super::Workspace;
 
 pub(crate) use platform::ResourceTrashIdentity;
 
+/// What the operating system calls its trash, in every message Explorer shows.
+pub(crate) const TRASH_NAME: &str = if cfg!(windows) {
+    "Recycle Bin"
+} else {
+    "Trash"
+};
+
 pub(crate) fn supported() -> bool {
     platform::SUPPORTED
 }
@@ -108,9 +115,9 @@ impl Workspace {
         };
         let parent_listing = self.list_directory(&parent)?;
         if parent_listing.truncated {
-            return Err(AppError::ResourceLimit(
-                "moving a resource to the Recycle Bin requires a complete parent listing".into(),
-            ));
+            return Err(AppError::ResourceLimit(format!(
+                "moving a resource to the {TRASH_NAME} requires a complete parent listing"
+            )));
         }
         let expected_kind = match kind {
             TrashResourceKind::File => "file",
@@ -120,29 +127,29 @@ impl Workspace {
             entry.name == source_name && entry.resource == *source && entry.kind == expected_kind
         }) {
             return Err(AppError::InvalidRequest(format!(
-                "Recycle Bin source must be one exact {expected_kind}"
+                "{TRASH_NAME} source must be one exact {expected_kind}"
             )));
         }
         if kind == TrashResourceKind::EmptyFolder {
             let source_listing = self.list_directory(source)?;
             if source_listing.truncated {
-                return Err(AppError::ResourceLimit(
-                    "moving a folder to the Recycle Bin requires a complete source listing".into(),
-                ));
+                return Err(AppError::ResourceLimit(format!(
+                    "moving a folder to the {TRASH_NAME} requires a complete source listing"
+                )));
             }
             if !source_listing.entries.is_empty() {
-                return Err(AppError::InvalidRequest(
-                    "only empty folders can be moved to the Recycle Bin".into(),
-                ));
+                return Err(AppError::InvalidRequest(format!(
+                    "only empty folders can be moved to the {TRASH_NAME}"
+                )));
             }
             if std::fs::read_dir(self.root().join(&source_path))?
                 .next()
                 .transpose()?
                 .is_some()
             {
-                return Err(AppError::InvalidRequest(
-                    "only physically empty folders can be moved to the Recycle Bin".into(),
-                ));
+                return Err(AppError::InvalidRequest(format!(
+                    "only physically empty folders can be moved to the {TRASH_NAME}"
+                )));
             }
         }
         Ok(parent)
@@ -158,9 +165,9 @@ impl Workspace {
         let source_path = super::validate_contract_path(&source.relative_path, false)
             .map(|()| source.relative_path.clone())?;
         if source.root_id != self.root_id() {
-            return Err(AppError::InvalidRequest(
-                "Recycle Bin source root does not match the resolved Project root".into(),
-            ));
+            return Err(AppError::InvalidRequest(format!(
+                "{TRASH_NAME} source root does not match the resolved Project root"
+            )));
         }
         let (parent_path, source_name) = source_path
             .rsplit_once('/')
@@ -203,16 +210,15 @@ impl Workspace {
             relative_path: parent_path.into(),
         };
         let authority = marker.authority().ok_or_else(|| {
-            AppError::InvalidRequest("Recycle Bin recovery authority is unavailable".into())
+            AppError::InvalidRequest(format!("{TRASH_NAME} recovery authority is unavailable"))
         })?;
         let observation = platform::observe_recovery(authority, self.root(), parent_path, || {
             self.list_directory(&parent)
         })?;
         let mut commit = commit_from_observation(source, parent, observation);
-        commit.warning = Some(
-            "Recycle Bin outcome was interrupted; Explorer and the durable layout were reconciled from retained filesystem authority."
-                .into(),
-        );
+        commit.warning = Some(format!(
+            "{TRASH_NAME} outcome was interrupted; Explorer and the durable layout were reconciled from retained filesystem authority."
+        ));
         Ok(commit)
     }
 }
@@ -229,11 +235,14 @@ fn commit_from_observation(
                 .iter()
                 .any(|entry| entry.resource == *source)
     });
-    let resource_confirmed = observation.source_absent_confirmed && parent_listing.is_some();
+    // A backend warning means the trashed item could not be proven to be the
+    // source, so the outcome stays unconfirmed even when the name is gone.
+    let resource_confirmed = observation.source_absent_confirmed
+        && parent_listing.is_some()
+        && observation.warning.is_none();
     let warning = observation.warning.or_else(|| {
         (!resource_confirmed).then(|| {
-            "Recycle Bin operation may have changed the filesystem, but source absence could not be confirmed; Explorer is refreshing."
-                .to_owned()
+            format!("{TRASH_NAME} operation may have changed the filesystem, but source absence could not be confirmed; Explorer is refreshing.")
         })
     });
     ResourceTrashCommit {

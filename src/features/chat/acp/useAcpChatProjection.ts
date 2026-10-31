@@ -11,6 +11,7 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../../../domain/acp";
+import { errorMessage } from "../../../domain/errors";
 import { acpDesktop } from "../../../services/acpDesktop";
 import {
   getGoalChatPage,
@@ -104,10 +105,7 @@ export function useAcpChatProjection(
           completePageLoad(intent, projection);
         })
         .catch((error: unknown) => {
-          failPageLoad(
-            intent,
-            error instanceof Error ? error.message : String(error),
-          );
+          failPageLoad(intent, errorMessage(error));
         });
     };
 

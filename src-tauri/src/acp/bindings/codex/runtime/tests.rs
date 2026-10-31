@@ -974,7 +974,7 @@ fn steer_targets_only_the_active_codex_turn() {
         uuid::Uuid::new_v4()
     ));
     fs::write(&path, "@echo off\r\n").unwrap();
-    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         "codex-cli 0.146.0".into(),
     )
@@ -1548,7 +1548,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
         uuid::Uuid::new_v4()
     ));
     fs::write(&path, "@echo off\r\n").unwrap();
-    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         "codex 0.146.0".into(),
     )
@@ -1598,7 +1598,7 @@ fn an_observed_0146_binding_publishes_its_own_identity_not_the_pinned_package() 
         uuid::Uuid::new_v4()
     ));
     fs::write(&path, "@echo off\r\n").unwrap();
-    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         "codex-cli 0.146.0".into(),
     )
@@ -1817,7 +1817,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
     let path =
         std::env::temp_dir().join(format!("sage-observed-goal-{}.cmd", uuid::Uuid::new_v4()));
     fs::write(&path, "@echo off\r\n").unwrap();
-    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed(
+    let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         "codex-cli 0.146.0".into(),
     )

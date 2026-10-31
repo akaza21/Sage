@@ -48,15 +48,6 @@ where
         }
     }
 
-    pub(crate) fn goal_pending(&self) -> bool {
-        match self {
-            Self::Idle(idle) => idle.parts.goal_pending(),
-            Self::Reusable(parts) => parts.completed.goal_pending(),
-            Self::Active(active) => active.turn.driver.goal_pending(),
-            _ => false,
-        }
-    }
-
     pub(crate) fn native_rpc_pending(&self) -> bool {
         match self {
             Self::Idle(idle) => idle.parts.native_rpc_pending(),

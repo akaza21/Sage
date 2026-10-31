@@ -44,8 +44,15 @@ import "./workbench-window-mode.css";
 import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
+import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import {
+  openCommandPalette,
+  openQuickOpen,
+} from "../features/quickOpen/quickOpenState";
 
 registerWorkbenchSurfaces();
 
@@ -202,6 +209,21 @@ export function Workbench() {
         setWindowMode("editor");
         void useWorkbenchStore.getState().openSettings();
       }
+      // In Agent mode the same chord opens the Chat's Files picker (CP-48).
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("quickOpen"), event, apple)
+      ) {
+        event.preventDefault();
+        openQuickOpen();
+      }
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
+      ) {
+        event.preventDefault();
+        openCommandPalette();
+      }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
         setWindowMode("agent");
@@ -210,7 +232,8 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal]);
+  }, [resourceModal, windowMode]);
+  useEditorHistoryKeys(windowMode === "editor");
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -294,7 +317,9 @@ export function Workbench() {
         />
       ) : (
         <div className="workbench__body" style={bodyStyle}>
-          <RightSidebar compact={compact} railFirst />
+          <ExplorerReleasesOpenFiles.Provider value={true}>
+            <RightSidebar compact={compact} railFirst />
+          </ExplorerReleasesOpenFiles.Provider>
           {!compact ? (
             <WorkbenchSidebarSplitter
               ariaLabel="Resize Editor tool rail"
@@ -315,6 +340,7 @@ export function Workbench() {
             </div>
             <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
           </div>
+          <QuickOpenHost />
         </div>
       )}
       {terminalOpen ? (
