@@ -76,6 +76,7 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",

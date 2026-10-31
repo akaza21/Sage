@@ -140,9 +140,21 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
             "[redacted]",
             &["hunter2"][..],
         ),
-        ("env:TOKEN=credential-canary", "[redacted]", &["credential-canary"][..]),
-        ("key[0]=credential-canary", "[redacted]", &["credential-canary"][..]),
-        ("api.key=credential-canary", "[redacted]", &["credential-canary"][..]),
+        (
+            "env:TOKEN=credential-canary",
+            "[redacted]",
+            &["credential-canary"][..],
+        ),
+        (
+            "key[0]=credential-canary",
+            "[redacted]",
+            &["credential-canary"][..],
+        ),
+        (
+            "api.key=credential-canary",
+            "[redacted]",
+            &["credential-canary"][..],
+        ),
         (
             "Authorization :  private-token",
             "Authorization :  [redacted]",
@@ -168,8 +180,16 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
             "password: [redacted]",
             &["hunter2"][..],
         ),
-        ("token:credential-canary", "[redacted]", &["credential-canary"][..]),
-        ("--token:credential-canary", "[redacted]", &["credential-canary"][..]),
+        (
+            "token:credential-canary",
+            "[redacted]",
+            &["credential-canary"][..],
+        ),
+        (
+            "--token:credential-canary",
+            "[redacted]",
+            &["credential-canary"][..],
+        ),
         (
             "--client-secret credential-canary",
             "--client-secret [redacted]",
