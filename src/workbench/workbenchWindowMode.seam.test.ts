@@ -3,6 +3,7 @@ import path from "node:path";
 import { createElement } from "react";
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -12,6 +13,7 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
@@ -46,6 +48,7 @@ afterEach(() => {
   localStorage.clear();
   compactViewport = false;
   useWorkbenchStore.setState(initialState, true);
+  useSettingsPageRequest.setState({ page: null });
 });
 
 async function switchWindowMode(mode: "Agent" | "Editor") {
@@ -59,6 +62,55 @@ async function switchWindowMode(mode: "Agent" | "Editor") {
 }
 
 describe("D0 workbench window mode seam", () => {
+  it("reveals a requested Browser settings page from Agent without restoring the last file over it", async () => {
+    useWorkbenchStore.setState({
+      sidebarOpen: false,
+      tabs: [
+        {
+          id: "file:current",
+          kind: "file",
+          title: "current.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "src/current.ts" },
+        },
+        {
+          id: "chat:current",
+          kind: "chat",
+          title: "Chat",
+          position: 1,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "file:current",
+      loadEditor: vi.fn(async () => undefined),
+    });
+    render(createElement(Workbench));
+    await settleLazyModules();
+    await switchWindowMode("Agent");
+    // The browser menu uses the real store action, without the titlebar's
+    // explicit mode switch. Keep a prior file to exercise editor continuity.
+    await act(() => useWorkbenchStore.getState().openSettings("browser"));
+    await settleLazyModules();
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Editor" },
+      ),
+    ).toBeChecked();
+    const settings = await screen.findByRole("region", { name: "Settings" });
+    expect(
+      within(settings).getByRole("tab", { name: "Browser" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      await within(settings).findByRole("heading", { name: "Browser" }),
+    ).toBeVisible();
+    expect(useWorkbenchStore.getState().activeTabId).toBe(
+      "settings:appearance",
+    );
+  });
   it("offers exactly Agent and Editor with Editor as the default", () => {
     expect([...WORKBENCH_WINDOW_MODES]).toEqual(["agent", "editor"]);
     expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("editor");

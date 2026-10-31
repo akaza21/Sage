@@ -37,11 +37,7 @@ export function dispatchBrowserChromeShortcut(
         } as const
       )[key as "l"];
     }
-    if (
-      key === "+" ||
-      key === "add" ||
-      (event.code === "Equal" && event.shiftKey)
-    ) {
+    if (key === "+" || key === "=" || key === "add" || event.code === "Equal") {
       action = "zoomIn";
     }
   } else if (

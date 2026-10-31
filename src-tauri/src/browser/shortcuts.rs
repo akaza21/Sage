@@ -263,6 +263,26 @@ mod tests {
     }
 
     #[test]
+    fn zoom_in_accepts_ctrl_equals_shift_equals_and_numpad_plus() {
+        for (key, shift) in [(0xBB, false), (0xBB, true), (0x6B, false)] {
+            let zoom = KeyChord {
+                ctrl: true,
+                shift,
+                ..chord(key)
+            };
+            assert_eq!(shortcut_for(zoom), Some(BrowserShortcut::ZoomIn));
+            assert_eq!(shortcut_for(KeyChord { alt: true, ..zoom }), None);
+            assert_eq!(
+                shortcut_for(KeyChord {
+                    ctrl: false,
+                    ..zoom
+                }),
+                None
+            );
+        }
+    }
+
+    #[test]
     fn escape_leaves_annotate_before_it_stops_a_load() {
         let annotating = KeyChord {
             annotating: true,
