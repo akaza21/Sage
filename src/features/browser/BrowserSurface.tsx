@@ -1,4 +1,6 @@
-import { lazy, Suspense, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { ClosedBrowserSurface } from "./ClosedBrowserSurface";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useWorkbenchStore } from "../../app/store";
 import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
@@ -30,7 +32,6 @@ import { BrowserDrawers } from "./BrowserSitePermissions";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
 import {
-  ClosedBrowserSurface,
   BrowserFindControls,
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
@@ -41,11 +42,10 @@ import {
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import "./browser.css";
 
-const BrowserNewTab = lazy(() =>
+const loadBrowserNewTab = () =>
   import("./BrowserNewTab").then((module) => ({
     default: module.BrowserNewTab,
-  })),
-);
+  }));
 
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
@@ -391,18 +391,22 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         }
       />
       {newTab ? (
-        <Suspense fallback={<p role="status">Loading new tab…</p>}>
-          <BrowserNewTab
-            suggestions={suggestions}
-            onNavigate={(url) =>
-              void pageAction(() => browserNavigate(tab.id, url))
-            }
-            onNewTab={() => void openBrowser()}
-            onTool={tools.launch}
-            chatAvailable={tools.chatAvailable}
-            terminalAvailable={tools.terminalAvailable}
-          />
-        </Suspense>
+        <LazyModuleBoundary
+          load={loadBrowserNewTab}
+          label="New tab"
+          render={(BrowserNewTab) => (
+            <BrowserNewTab
+              suggestions={suggestions}
+              onNavigate={(url) =>
+                void pageAction(() => browserNavigate(tab.id, url))
+              }
+              onNewTab={() => void openBrowser()}
+              onTool={tools.launch}
+              chatAvailable={tools.chatAvailable}
+              terminalAvailable={tools.terminalAvailable}
+            />
+          )}
+        />
       ) : null}
       <div
         ref={frame}

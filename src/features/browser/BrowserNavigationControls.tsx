@@ -23,7 +23,6 @@ import type {
   BrowserControlAction,
   BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
-import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
@@ -402,27 +401,5 @@ export function BrowserFindControls({
         <X size={16} aria-hidden="true" />
       </button>
     </form>
-  );
-}
-
-export function ClosedBrowserSurface({ tabId }: { tabId: string }) {
-  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
-  const closeTab = useWorkbenchStore((state) => state.closeTab);
-  return (
-    <section
-      aria-label="Browser page"
-      className="browser-surface browser-surface--closed"
-    >
-      <p>
-        This browser session closed when Sage restarted. Its page was not
-        restored.
-      </p>
-      <button type="button" onClick={() => void openBrowser()}>
-        Open new browser
-      </button>
-      <button type="button" onClick={() => closeTab(tabId)}>
-        Close tab
-      </button>
-    </section>
   );
 }

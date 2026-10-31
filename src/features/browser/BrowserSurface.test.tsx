@@ -119,6 +119,38 @@ it("shows a closed placeholder for a restored browser without contacting native 
   expect(browserStatus).not.toHaveBeenCalled();
 });
 
+it("keeps a failed browser replacement retryable and prevents duplicate pending opens", async () => {
+  const previous = useWorkbenchStore.getState();
+  let finish!: () => void;
+  let opens = 0;
+  useWorkbenchStore.setState({
+    openBrowser: async () => {
+      opens += 1;
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      useWorkbenchStore.setState({ error: "Native browser unavailable" });
+    },
+  });
+  try {
+    render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open new browser" }));
+    const pending = screen.getByRole("button", { name: "Opening browser…" });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
+    await act(async () => finish());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Native browser unavailable",
+    );
+    expect(
+      screen.getByRole("button", { name: "Open new browser" }),
+    ).toBeEnabled();
+    expect(opens).toBe(1);
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   rustAgentControl = null;
