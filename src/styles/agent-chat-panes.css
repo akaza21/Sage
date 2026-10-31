@@ -11,98 +11,6 @@
   background: var(--color-canvas);
 }
 
-.agent-chat-tabs {
-  display: flex;
-  min-width: 0;
-  min-height: var(--tab-height);
-  align-items: stretch;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-panel);
-}
-
-.agent-chat-tabs__scroll {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.agent-chat-tabs__scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.agent-chat-tab {
-  display: flex;
-  min-width: 120px;
-  max-width: 220px;
-  align-items: stretch;
-  border-right: 1px solid var(--color-border-subtle);
-}
-
-.agent-chat-tab--active {
-  box-shadow: inset 0 -2px 0 var(--color-accent);
-}
-
-.agent-chat-tab__select {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  font: inherit;
-  font-size: var(--font-size-md);
-  text-align: left;
-}
-
-.agent-chat-tab--active .agent-chat-tab__select,
-.agent-chat-tab__select:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.agent-chat-tab__title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-chat-tab__close,
-.agent-chat-tabs__new {
-  display: grid;
-  width: var(--control-height-compact);
-  min-width: var(--control-height-compact);
-  height: var(--control-height-compact);
-  place-items: center;
-  align-self: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-}
-
-.agent-chat-tab__close:hover:not(:disabled),
-.agent-chat-tabs__new:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.agent-chat-tab__close:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.agent-chat-tabs__new {
-  flex: 0 0 auto;
-  margin: 0 var(--space-1);
-}
-
 .agent-chat-panes {
   display: grid;
   min-width: 0;
@@ -205,22 +113,6 @@
   padding: var(--space-2) var(--chat-column-gutter) var(--space-6);
 }
 
-.agent-unread-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-circle);
-  background: var(--color-accent);
-  outline: var(--focus-ring-width) solid
-    color-mix(in srgb, var(--color-accent) 18%, transparent);
-  outline-offset: var(--focus-ring-offset);
-}
-
-.agent-unread-dot--attention {
-  background: var(--color-warning);
-  outline-color: color-mix(in srgb, var(--color-warning) 22%, transparent);
-}
-
 .agent-chat-chip {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -276,10 +168,5 @@
     outline: 2px solid Highlight;
     outline-offset: -2px;
     box-shadow: none;
-  }
-
-  .agent-unread-dot {
-    outline: 1px solid CanvasText;
-    outline-offset: 1px;
   }
 }

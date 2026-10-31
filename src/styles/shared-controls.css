@@ -53,12 +53,6 @@
   color: var(--color-text-muted);
 }
 
-.input--compact,
-.select--compact {
-  min-height: var(--control-height-compact);
-  font-size: var(--font-size-xs);
-}
-
 .select {
   color-scheme: dark;
 }
