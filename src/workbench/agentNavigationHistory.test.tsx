@@ -91,3 +91,44 @@ it("evicts old entries and discards removed chats and project transitions", asyn
   act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
   expect(screen.getByRole("button", { name: "Go back" })).toBeDisabled();
 });
+
+it("keeps its position when native activation refuses to change the destination", async () => {
+  seed();
+  act(() =>
+    useWorkbenchStore.setState({
+      activeTabId: "chat-1",
+      activateTab: async () => {},
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Go back" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Go back" })).toBeEnabled(),
+  );
+  expect(useWorkbenchStore.getState().activeTabId).toBe("chat-1");
+  expect(screen.getByRole("button", { name: "Go forward" })).toBeDisabled();
+});
+
+it("discards old-project history when a transition completes during activation", async () => {
+  seed();
+  let complete!: () => void;
+  act(() =>
+    useWorkbenchStore.setState({
+      activeTabId: "chat-1",
+      activateTab: () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Go back" }));
+  await act(async () => {
+    useWorkbenchStore.setState((state) => ({
+      project: { id: "b", name: "B", roots: [] },
+      projectGeneration: state.projectGeneration + 1,
+      activeTabId: "chat-0",
+    }));
+    complete();
+  });
+  expect(screen.getByRole("button", { name: "Go back" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Go forward" })).toBeDisabled();
+});

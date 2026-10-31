@@ -15,6 +15,14 @@ import { SettingsRow } from "./SettingsRow";
 const MODEL_RESULT_LIMIT = 200;
 
 export function AgentChatSettings() {
+  const owner = useWorkbenchStore(
+    (state) =>
+      `${state.projectGeneration}:${state.selectedHarnessId}:${state.harnesses.find((harness) => harness.id === state.selectedHarnessId)?.bindingId}`,
+  );
+  return <ChatSettingsControls key={owner} />;
+}
+
+function ChatSettingsControls() {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const harnessId = useWorkbenchStore((state) => state.selectedHarnessId);
   const models = useWorkbenchStore((state) => state.models);
@@ -75,13 +83,11 @@ export function AgentChatSettings() {
           : labels[index],
     }));
   }, [models]);
-  const visible = choices
-    .filter((model) =>
-      `${model.label} ${model.id}`
-        .toLowerCase()
-        .includes(query.trim().toLowerCase()),
-    )
-    .slice(0, MODEL_RESULT_LIMIT);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matching = choices.filter((model) =>
+    `${model.label} ${model.id}`.toLowerCase().includes(normalizedQuery),
+  );
+  const visible = matching.slice(0, MODEL_RESULT_LIMIT);
   const selected = choices.find((model) => model.id === modelId);
   if (selected && !visible.some((model) => model.id === modelId))
     visible.splice(MODEL_RESULT_LIMIT - 1, 1, selected);
@@ -154,7 +160,7 @@ export function AgentChatSettings() {
               </option>
             ))}
           </select>
-          {!visible.length ? <p role="status">No matching models.</p> : null}
+          {!matching.length ? <p role="status">No matching models.</p> : null}
         </SettingsRow>
         <SettingsRow
           title="Default access"

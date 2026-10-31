@@ -1,5 +1,5 @@
 import { chatDisplayTitle } from "../domain/chatTitle";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkbenchStore } from "../app/store";
 import {
   useAgentSettingsState,
@@ -21,64 +21,67 @@ export function useAgentNavigationHistory(enabled: boolean) {
   const [history, setHistory] = useState(emptyHistory);
   const [busy, setBusy] = useState(false);
   const navigating = useRef(false);
+  const record = useCallback(() => {
+    if (navigating.current) return;
+    const state = useWorkbenchStore.getState();
+    if (!state.project || state.projectTransitioning) {
+      setHistory(emptyHistory);
+      return;
+    }
+    const scope = `${state.project.id}:${state.projectGeneration}:${state.nativeTransitionEpoch}`;
+    const chats = state.tabs.filter(
+      (tab) => tab.kind === "chat" && !tab.id.startsWith("side-"),
+    );
+    const settings = useAgentSettingsState.getState().page;
+    const chat = chats.find((tab) => tab.id === state.activeTabId) ?? chats[0];
+    const destination = settings
+      ? `settings:${settings}`
+      : chat
+        ? `chat:${chat.id}`
+        : null;
+    setHistory((previous) => {
+      const current =
+        previous.scope === scope ? previous : { ...emptyHistory, scope };
+      const valid = (entry: string) =>
+        entry.startsWith("settings:") ||
+        chats.some((tab) => `chat:${tab.id}` === entry);
+      const before = current.entries.slice(0, current.index + 1).filter(valid);
+      const after = current.entries.slice(current.index + 1).filter(valid);
+      if (!destination || before.at(-1) === destination) {
+        if (before.length + after.length === current.entries.length)
+          return current;
+        return {
+          scope,
+          entries: [...before, ...after],
+          index: before.length - 1,
+        };
+      }
+      const entries = [...before, destination].slice(-AGENT_HISTORY_LIMIT);
+      return { scope, entries, index: entries.length - 1 };
+    });
+  }, []);
   useEffect(() => {
     if (!enabled) return;
-    const record = () => {
-      if (navigating.current) return;
-      const state = useWorkbenchStore.getState();
-      if (!state.project || state.projectTransitioning) {
-        setHistory(emptyHistory);
-        return;
-      }
-      const scope = `${state.project.id}:${state.projectGeneration}:${state.nativeTransitionEpoch}`;
-      const chats = state.tabs.filter(
-        (tab) => tab.kind === "chat" && !tab.id.startsWith("side-"),
-      );
-      const settings = useAgentSettingsState.getState().page;
-      const chat = chats.find(
-        (tab) =>
-          tab.id ===
-          titleBarFocusedChatId(
-            chats.map((candidate) => candidate.id),
-            state.activeTabId,
-          ),
-      );
-      const destination = settings
-        ? `settings:${settings}`
-        : chat
-          ? `chat:${chat.id}`
-          : null;
-      setHistory((previous) => {
-        const current =
-          previous.scope === scope ? previous : { ...emptyHistory, scope };
-        const valid = (entry: string) =>
-          entry.startsWith("settings:") ||
-          chats.some((tab) => `chat:${tab.id}` === entry);
-        const before = current.entries
-          .slice(0, current.index + 1)
-          .filter(valid);
-        const after = current.entries.slice(current.index + 1).filter(valid);
-        if (!destination || before.at(-1) === destination) {
-          if (before.length + after.length === current.entries.length)
-            return current;
-          return {
-            scope,
-            entries: [...before, ...after],
-            index: before.length - 1,
-          };
-        }
-        const entries = [...before, destination].slice(-AGENT_HISTORY_LIMIT);
-        return { scope, entries, index: entries.length - 1 };
-      });
-    };
     record();
-    const unsubscribeWorkbench = useWorkbenchStore.subscribe(record);
+    const unsubscribeWorkbench = useWorkbenchStore.subscribe(
+      (state, previous) => {
+        if (
+          state.tabs !== previous.tabs ||
+          state.activeTabId !== previous.activeTabId ||
+          state.project !== previous.project ||
+          state.projectTransitioning !== previous.projectTransitioning ||
+          state.projectGeneration !== previous.projectGeneration ||
+          state.nativeTransitionEpoch !== previous.nativeTransitionEpoch
+        )
+          record();
+      },
+    );
     const unsubscribeSettings = useAgentSettingsState.subscribe(record);
     return () => {
       unsubscribeWorkbench();
       unsubscribeSettings();
     };
-  }, [enabled]);
+  }, [enabled, record]);
   const travel = async (delta: number) => {
     const index = history.index + delta;
     const entry = history.entries[index];
@@ -108,17 +111,21 @@ export function useAgentNavigationHistory(enabled: boolean) {
           .open(entry.slice(9) as AgentSettingsPage);
       else {
         useSideChatState.setState({ pairedId: null });
-        useAgentSettingsState.getState().close();
         await state.activateTab(entry.slice(5));
       }
       const current = useWorkbenchStore.getState();
       if (
         current.projectGeneration !== state.projectGeneration ||
+        current.nativeTransitionEpoch !== state.nativeTransitionEpoch ||
         current.projectTransitioning ||
         current.project?.id !== state.project?.id
       ) {
         setHistory(emptyHistory);
         return;
+      }
+      if (entry.startsWith("chat:")) {
+        if (current.activeTabId !== entry.slice(5)) return;
+        useAgentSettingsState.getState().close();
       }
       setHistory({ ...history, index });
       requestAnimationFrame(() => {
@@ -131,24 +138,13 @@ export function useAgentNavigationHistory(enabled: boolean) {
     } finally {
       navigating.current = false;
       setBusy(false);
+      if (enabled) record();
     }
-  };
-  const label = (index: number) => {
-    const entry = history.entries[index];
-    if (!entry) return undefined;
-    return entry.startsWith("settings:")
-      ? `Settings / ${entry.slice(9)}`
-      : (titleBarSessionTitle(
-          useWorkbenchStore
-            .getState()
-            .tabs.find((tab) => tab.id === entry.slice(5))?.title,
-        ) ?? undefined);
   };
   return {
     canBack: enabled && !busy && history.index > 0,
     canForward: enabled && !busy && history.index + 1 < history.entries.length,
-    backLabel: label(history.index - 1),
-    forwardLabel: label(history.index + 1),
+
     travel,
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { browserLiveTabs } from "../../ports/nativeBrowserPort";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import {
   Archive,
@@ -108,7 +109,25 @@ export function AgentSettingsSurface() {
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
-  const [focusSelector, setFocusSelector] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ selector: string } | null>(
+    null,
+  );
+  const [historyAvailable, setHistoryAvailable] = useState(false);
+  useEffect(() => {
+    if (!isTauriRuntime() || !query.trim()) return;
+    let current = true;
+    void browserLiveTabs().then(
+      (ids) => {
+        if (current) setHistoryAvailable(ids.length > 0);
+      },
+      () => {
+        if (current) setHistoryAvailable(false);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [query]);
   const accessAvailable = useWorkbenchStore((state) =>
     state.harnesses.some(
       (harness) =>
@@ -116,10 +135,10 @@ export function AgentSettingsSurface() {
     ),
   );
   useEffect(() => {
-    if (!focusSelector) return;
+    if (!focusRequest) return;
     const focus = () => {
       const control = document.querySelector<HTMLElement>(
-        `.agent-settings__page ${focusSelector}`,
+        `.agent-settings__page ${focusRequest.selector}`,
       );
       if (!control || control.matches(":disabled")) return false;
       control.focus();
@@ -146,20 +165,31 @@ export function AgentSettingsSurface() {
       observer.disconnect();
       window.clearTimeout(timer);
     };
-  }, [focusSelector, page]);
+  }, [focusRequest, page]);
   useEffect(() => {
     const launcher = useAgentSettingsState.getState().launcher;
     return () => {
-      requestAnimationFrame(() => {
-        if (useAgentSettingsState.getState().page) return;
-        const target =
-          launcher?.isConnected && launcher.getClientRects().length
-            ? launcher
-            : document.querySelector<HTMLElement>(
-                ".agent-chat-pane--focused textarea, .agent-chat-pane--focused, .title-bar input:checked",
-              );
-        target?.focus();
-      });
+      // Activity resumes child effects before resource reconciliation settles.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (useAgentSettingsState.getState().page) return;
+          const target = [
+            launcher,
+            ...[
+              ".agent-chat-pane--focused textarea",
+              ".agent-chat-pane--focused",
+              ".title-bar input:checked",
+            ].map((selector) => document.querySelector<HTMLElement>(selector)),
+          ].find(
+            (element) =>
+              element?.isConnected &&
+              element.getClientRects().length &&
+              !element.matches(":disabled") &&
+              !element.closest("[inert]"),
+          );
+          target?.focus();
+        }),
+      );
     };
   }, []);
   const normalized = query.trim().toLowerCase();
@@ -195,7 +225,11 @@ export function AgentSettingsSurface() {
             !target.closest(
               "dialog, [role=dialog], [role=menu], [role=listbox]",
             ) &&
-            !(target.matches("input[type=search]") && query)
+            !(
+              target instanceof HTMLInputElement &&
+              target.type === "search" &&
+              target.value
+            )
           ) {
             event.preventDefault();
             close();
@@ -224,12 +258,12 @@ export function AgentSettingsSurface() {
               type="button"
               key={control.selector}
               disabled={
-                (control.capability === "browser" && !isTauriRuntime()) ||
+                (control.capability === "browser" && !historyAvailable) ||
                 (control.capability === "access" && !accessAvailable)
               }
               onClick={() => {
                 open(control.page);
-                setFocusSelector(control.selector);
+                setFocusRequest({ selector: control.selector });
               }}
             >
               {control.page}: {control.label}

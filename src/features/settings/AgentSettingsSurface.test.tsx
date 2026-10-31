@@ -348,6 +348,13 @@ it.each([
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: label })).toHaveFocus(),
     );
+    screen.getByRole("button", { name: `Appearance: ${label}` }).focus();
+    fireEvent.click(
+      screen.getByRole("button", { name: `Appearance: ${label}` }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: label })).toHaveFocus(),
+    );
   },
 );
 
@@ -415,6 +422,80 @@ it("discards workspace confirmation when the selected harness changes", async ()
   );
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
+});
+
+it("never offers another harness's failed access save as a retry", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  const modes = [
+    ...harness.accessModes!,
+    {
+      id: "workspaceWrite" as const,
+      label: "Workspace edits",
+      description: "Write files",
+    },
+  ];
+  useWorkbenchStore.setState({
+    harnesses: [
+      { ...harness, accessModes: modes },
+      {
+        ...harness,
+        id: "adapter-b",
+        transport: "acp",
+        installState: "available",
+        bindingId: "binding-b",
+        accessModes: modes,
+      },
+    ],
+  });
+  const settings = getWorkbenchPorts().settings;
+  vi.spyOn(settings, "getSessionAccessModes").mockResolvedValue({});
+  let reject!: (cause: Error) => void;
+  vi.spyOn(settings, "setSessionAccessModes").mockImplementation(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  await useSessionAccessModeStore.getState().restore();
+  render(<AgentSettingsSurface />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
+    target: { value: "workspaceWrite" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
+  const { act } = await import("@testing-library/react");
+  await act(async () => {
+    useWorkbenchStore.setState({ selectedHarnessId: "adapter-b" });
+    reject(new Error("failed A save"));
+    await useSessionAccessModeStore.getState().settle();
+  });
+  expect(
+    screen.queryByRole("button", { name: "Retry access save" }),
+  ).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Default access" })).toHaveValue(
+    "readOnly",
+  );
+  expect(useSessionAccessModeStore.getState().modes).toEqual({});
+});
+
+it("disables native history search when no live tab can expose its control", async () => {
+  vi.spyOn(
+    await import("../../ports/nativeInvoke"),
+    "isTauriRuntime",
+  ).mockReturnValue(true);
+  vi.spyOn(
+    await import("../../ports/nativeBrowserPort"),
+    "browserLiveTabs",
+  ).mockResolvedValue([]);
+  render(<AgentSettingsSurface />);
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    { target: { value: "history" } },
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Browser: Browsing history" }),
+    ).toBeDisabled(),
+  );
 });
 
 it("restores the prior confirmed access after a failed save and offers a confirmed retry", async () => {
@@ -493,6 +574,15 @@ it("keeps failed restores visible and sends foreign project identity to unarchiv
     screen.getByRole("button", { name: "Unarchive Other archived chat" }),
   ).toBeEnabled();
   expect(screen.queryByText("Chat unarchived.")).toBeNull();
+});
+
+it("keeps Escape local to a nonempty model search", () => {
+  render(<AgentSettingsSurface />);
+  const search = screen.getByRole("searchbox", { name: "Search models" });
+  fireEvent.change(search, { target: { value: "Advertised" } });
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(useAgentSettingsState.getState().page).toBe("Chats");
+  expect(search).toHaveValue("Advertised");
 });
 
 it("paginates archived chats without mounting more than fifty rows", () => {

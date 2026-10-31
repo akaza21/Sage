@@ -113,7 +113,7 @@ function ProjectEntry({
         >
           <FolderOpen size={16} aria-hidden="true" />
           <span>{group.name}</span>
-          {selected && branchLabel ? (
+          {selected && prefs.show.branch && branchLabel ? (
             <span className="project-row__branch project-row__branch--chip">
               <GitBranch size={10} aria-hidden="true" />
               {branchLabel}

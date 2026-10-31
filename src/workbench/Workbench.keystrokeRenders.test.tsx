@@ -151,7 +151,12 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
     "RightSidebar",
     "DirtyTabDialog",
   ]) {
-    expect(commits.get(region), `${region} mounted`).toBeGreaterThan(0);
+    if (region === "DirtyTabDialog")
+      expect(
+        commits.get(region),
+        "inactive dirty dialog sleeps",
+      ).toBeUndefined();
+    else expect(commits.get(region), `${region} mounted`).toBeGreaterThan(0);
   }
   commits.clear();
 

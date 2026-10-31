@@ -124,7 +124,6 @@ export function TitleBar({
               className="title-bar__chat-search"
               type="button"
               aria-label="Go back"
-              title={history.backLabel}
               disabled={!history.canBack}
               onClick={() => void history.travel(-1)}
             >
@@ -134,7 +133,6 @@ export function TitleBar({
               className="title-bar__chat-search"
               type="button"
               aria-label="Go forward"
-              title={history.forwardLabel}
               disabled={!history.canForward}
               onClick={() => void history.travel(1)}
             >

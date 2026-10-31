@@ -18,6 +18,21 @@ test("Workspace and Branch preferences reveal available metadata without displac
         ...state.project!,
         name: "Workspace with a deliberately long project name",
       },
+      projects: state.projects.map((project) =>
+        project.id === state.project?.id
+          ? {
+              ...project,
+              name: "Workspace with a deliberately long project name",
+            }
+          : project,
+      ),
+      repositories: {
+        ...state.repositories,
+        roots: state.repositories.roots.map((root) => ({
+          ...root,
+          branch: "feature/a-deliberately-long-branch-name",
+        })),
+      },
       selectedRepositoryStatus: {
         ...state.selectedRepositoryStatus!,
         branch: "feature/a-deliberately-long-branch-name",
@@ -41,5 +56,15 @@ test("Workspace and Branch preferences reveal available metadata without displac
     prefs.setAgentRailShowField("branch", false);
   });
   await expect(row.locator(".project-chat__context")).toHaveCount(0);
+  await page.evaluate(async () => {
+    const prefs = await import("/src/workbench/agentRailViewPrefs.ts");
+    prefs.setAgentRailGrouping("folder");
+  });
+  await expect(page.locator(".project-row__branch")).toHaveCount(0);
+  await page.evaluate(async () => {
+    const prefs = await import("/src/workbench/agentRailViewPrefs.ts");
+    prefs.setAgentRailShowField("branch", true);
+  });
+  await expect(page.locator(".project-row__branch").first()).toBeVisible();
   await expectNoViewportOverflow(page);
 });
