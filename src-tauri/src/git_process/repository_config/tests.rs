@@ -498,25 +498,21 @@ fn a_full_cache_of_active_roots_admits_without_caching() {
 }
 
 #[test]
-fn relative_paths_climb_to_the_shared_ancestor() {
-    let cases = [
-        ("/a/repo", "/a/repo/.git", ".git"),
-        ("/a/repo", "/a/repo", "."),
-        ("/a/repo/sub", "/a/repo/.git", "../.git"),
-        ("/a/repo/sub/deep", "/a/repo", "../.."),
-        (
-            "/a/wt",
-            "/a/main/.git/worktrees/wt",
-            "../main/.git/worktrees/wt",
-        ),
-    ];
-    for (base, target, expected) in cases {
-        assert_eq!(
-            relative_path(Path::new(base), Path::new(target)),
-            Some(PathBuf::from(expected)),
-            "{base} -> {target}"
-        );
-    }
+fn locations_inside_the_root_are_relative_and_outside_absolute() {
+    let scratch = Scratch::new();
+    let root = scratch.directory("repo");
+    let inside = root.join(".git");
+    let outside = scratch.directory("main").join(".git");
+    fs::create_dir_all(&inside).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+
+    let exact = AdmittedRepository::pinned_from(&root, &inside, &root).unwrap();
+    assert_eq!(exact.git_dir(), Path::new(".git"));
+    assert_eq!(exact.work_tree(), Path::new("."));
+
+    let linked = AdmittedRepository::pinned_from(&root, &outside, &root).unwrap();
+    assert_eq!(linked.git_dir(), outside.canonicalize().unwrap());
+    assert_eq!(linked.work_tree(), Path::new("."));
 }
 
 #[test]

@@ -41,6 +41,18 @@ impl GitRootAuthority {
         })
     }
 
+    /// Fails when `root` no longer names the retained directory, so a root
+    /// that was moved or replaced after admission is refused before the spawn.
+    pub(super) fn ensure_names(&self, root: &Path) -> AppResult<()> {
+        if crate::workspace::root_identity_path(root)? == directory_identity(&self.directory)? {
+            Ok(())
+        } else {
+            Err(AppError::InvalidRequest(
+                "workspace root identity changed before Git access".into(),
+            ))
+        }
+    }
+
     pub(super) fn bind_child(&self, command: &mut Command, root: &Path) {
         bind_child(command, root, &self.directory);
     }

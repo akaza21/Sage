@@ -153,6 +153,130 @@ fn pre_spawn_root_rebind_never_runs_the_replacement_repository_config() {
 }
 
 #[test]
+fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
+    let base = std::env::temp_dir().join(format!("sage-git-linked-move-{}", Uuid::new_v4()));
+    let safe = base.join("safe");
+    let attacker = base.join("attacker");
+    for repository in [&safe, &attacker] {
+        let main = repository.join("main");
+        fs::create_dir_all(&main).unwrap();
+        git(&main, &["init", "-q", "-b", "main"]);
+        git(&main, &["config", "user.email", "sage@example.invalid"]);
+        git(&main, &["config", "user.name", "Sage Test"]);
+        fs::write(main.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+        fs::write(main.join("a.txt"), "a\n").unwrap();
+        git(&main, &["add", "--", ".gitattributes", "a.txt"]);
+        git(&main, &["commit", "-q", "-m", "fixture"]);
+    }
+    let base = base.canonicalize().unwrap();
+    let (safe, attacker) = (base.join("safe"), base.join("attacker"));
+    let linked = safe.join("linked");
+    git(
+        &safe.join("main"),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "linked",
+            &linked.to_string_lossy(),
+        ],
+    );
+    // A neighbouring git dir with the same relative shape and a hostile filter.
+    let decoy = attacker.join("decoy").join("linked");
+    git(
+        &attacker.join("main"),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "linked",
+            &decoy.to_string_lossy(),
+        ],
+    );
+    fs::remove_dir_all(attacker.join("decoy")).unwrap();
+    let sentinel = base.join("filter-ran");
+    let filter = format!(
+        "touch \"{}\"; cat",
+        sentinel.to_string_lossy().replace('\\', "/")
+    );
+    git(
+        &attacker.join("main"),
+        &["config", "filter.sentinel.clean", &filter],
+    );
+
+    let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
+    let moved = attacker.join("linked");
+    let swapped = Arc::new(AtomicBool::new(false));
+    let (hook_from, hook_to, hook_swapped) = (linked.clone(), moved.clone(), Arc::clone(&swapped));
+    let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
+        // Runs after admission and the identity check: the race is won.
+        if fs::rename(&hook_from, &hook_to).is_ok() {
+            hook_swapped.store(true, Ordering::SeqCst);
+        }
+    });
+
+    let _ = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(run_git_with_policy(
+            &workspace,
+            &["status", "--porcelain"],
+            64 * 1024,
+            policy,
+        ));
+
+    if swapped.load(Ordering::SeqCst) {
+        assert!(!sentinel.exists(), "the neighbouring git dir's filter ran");
+        // Control: a git dir relative to the moved worktree is the decoy.
+        let control = Command::new("git")
+            .arg("-C")
+            .arg(&moved)
+            .args([
+                "--git-dir=../main/.git/worktrees/linked",
+                "--work-tree=.",
+                "status",
+            ])
+            .output()
+            .unwrap();
+        assert!(control.status.success());
+        assert!(sentinel.exists(), "fixture decoy is not live");
+    }
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn a_root_moved_after_admission_is_refused_before_the_spawn() {
+    let base = std::env::temp_dir().join(format!("sage-git-moved-root-{}", Uuid::new_v4()));
+    let root = base.join("repo");
+    fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "-q"]);
+    let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime
+        .block_on(crate::repository_workspace::run_git(
+            &workspace,
+            &["status"],
+            1024,
+        ))
+        .unwrap();
+    if fs::rename(&root, base.join("moved")).is_ok() {
+        fs::create_dir(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        let result = runtime.block_on(crate::repository_workspace::run_git(
+            &workspace,
+            &["status"],
+            1024,
+        ));
+        assert!(
+            matches!(result, Err(AppError::InvalidRequest(_) | AppError::Io(_))),
+            "a moved root reached Git"
+        );
+    }
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
 fn post_update_ref_rebind_remains_effect_unknown_and_never_targets_replacement() {
     let base = std::env::temp_dir().join(format!("sage-git-root-rebind-{}", Uuid::new_v4()));
     let root = base.join("repo");

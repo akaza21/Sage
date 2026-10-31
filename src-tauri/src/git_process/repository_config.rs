@@ -42,10 +42,15 @@ type AdmissionSlot = Arc<tokio::sync::Mutex<Option<Admission>>>;
 static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::new(Mutex::default);
 
 /// The repository admission inspected. Admitted Git calls run with these
-/// explicit locations, so they open exactly this repository. Both are
-/// relative to the root: the child's working directory is the identity-checked
-/// root handle, so a path swapped in at the root's name after admission cannot
-/// redirect them the way an absolute path could.
+/// explicit locations, so they open exactly this repository.
+///
+/// A location inside the root is relative: the child's working directory is
+/// the identity-checked root handle, so a directory swapped in at the root's
+/// name cannot redirect it. A location outside the root (a linked worktree's
+/// git dir, or the top level above a nested root) is absolute, so moving the
+/// root elsewhere cannot redirect it either. Renaming one of those outside
+/// directories also renames the root's path, which the spawn-time identity
+/// check refuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AdmittedRepository {
     git_dir: PathBuf,
@@ -53,16 +58,21 @@ pub(super) struct AdmittedRepository {
 }
 
 impl AdmittedRepository {
-    fn relative_to(root: &Path, git_dir: &Path, work_tree: &Path) -> AppResult<Self> {
+    fn pinned_from(root: &Path, git_dir: &Path, work_tree: &Path) -> AppResult<Self> {
         let root = root.canonicalize()?;
-        let relative = |target: &Path| -> AppResult<PathBuf> {
-            relative_path(&root, &target.canonicalize()?).ok_or_else(|| {
-                AppError::Git("Git reported a repository Sage cannot reach from the root".into())
+        let pin = |target: &Path| -> AppResult<PathBuf> {
+            let target = target.canonicalize()?;
+            Ok(match target.strip_prefix(&root) {
+                Ok(inside) if inside.as_os_str().is_empty() => {
+                    PathBuf::from(Component::CurDir.as_os_str())
+                }
+                Ok(inside) => inside.to_path_buf(),
+                Err(_) => target,
             })
         };
         Ok(Self {
-            git_dir: relative(git_dir)?,
-            work_tree: relative(work_tree)?,
+            git_dir: pin(git_dir)?,
+            work_tree: pin(work_tree)?,
         })
     }
 
@@ -205,7 +215,7 @@ impl Probe {
             work_tree,
         } = Location::parse(&location)?;
         let (mut watched, cacheable) = discovery_path(ancestors, &git_dir);
-        let repository = AdmittedRepository::relative_to(root, &git_dir, &work_tree)?;
+        let repository = AdmittedRepository::pinned_from(root, &git_dir, &work_tree)?;
         watched.extend(
             [
                 common_dir.join("config"),
@@ -271,26 +281,6 @@ async fn probe_git(
         repository,
     )
     .await
-}
-
-/// `target` as a path relative to `base`, or `None` when they share no root
-/// (another drive on Windows). Both must be canonical.
-fn relative_path(base: &Path, target: &Path) -> Option<PathBuf> {
-    let shared = base
-        .components()
-        .zip(target.components())
-        .take_while(|(base, target)| base == target)
-        .count();
-    if shared == 0 {
-        return None;
-    }
-    let up = base.components().count() - shared;
-    let mut relative = std::iter::repeat_n(Component::ParentDir, up).collect::<PathBuf>();
-    relative.extend(target.components().skip(shared));
-    if relative.as_os_str().is_empty() {
-        relative.push(Component::CurDir);
-    }
-    Some(relative)
 }
 
 fn watch(path: PathBuf) -> (PathBuf, Fingerprint) {

@@ -254,6 +254,9 @@ async fn run_admitted(
     root_authority: Option<GitRootAuthority>,
     repository: Option<&repository_config::AdmittedRepository>,
 ) -> AppResult<GitOutput> {
+    if let Some(root_authority) = &root_authority {
+        root_authority.ensure_names(root)?;
+    }
     #[cfg(test)]
     let registry = policy
         .containment_registry
