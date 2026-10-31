@@ -1,4 +1,5 @@
 .browser-surface__find {
+  --browser-find-query-basis: 120px;
   position: absolute;
   z-index: 6;
   /* Native pages paint above HTML. Float inside the existing toolbar bounds
@@ -18,10 +19,10 @@
 
 .browser-surface__find {
   flex-wrap: nowrap;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 .browser-surface__find input {
-  flex: 1 1 120px;
+  flex: 1 1 var(--browser-find-query-basis);
   min-width: 0;
 }
 .browser-surface__find :is(input, button) {

@@ -1,6 +1,7 @@
 import { useLayoutEffect, type RefObject } from "react";
 import { X } from "../../ui/leanIcons";
 import "./browser-find.css";
+const MAX_FIND_QUERY_CHARS = 256;
 
 export function BrowserFindControls({
   findField,
@@ -38,7 +39,7 @@ export function BrowserFindControls({
         ref={findField}
         aria-label="Find text"
         value={findText}
-        maxLength={256}
+        maxLength={MAX_FIND_QUERY_CHARS}
         onChange={(event) => onFindTextChange(event.target.value)}
       />
       <button type="submit" disabled={!findText}>
