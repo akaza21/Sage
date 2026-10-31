@@ -140,6 +140,8 @@ export interface EditorPort {
 
 export interface RepositoryPort {
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
+  /** Changes when Git state may have changed outside Sage (EP-12). */
+  getRepositoryChangeStamp(): Promise<string>;
   getFileDiff(resource: ResourceRef): Promise<FileDiff>;
   mutateGitFile(
     request: GitFileMutationRequest,
@@ -312,6 +314,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "getFileDiff",
     "getNestedRepositoryFileDiff",
     "getNestedRepositoryStatus",
+    "getRepositoryChangeStamp",
     "getRepositoryStatus",
     "mutateGitFile",
     "pullGitRepository",

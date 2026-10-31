@@ -9,7 +9,7 @@
 import { validPathGlob } from "./pathGlob";
 
 interface EntryShape {
-  key: `${"editor" | "explorer" | "files" | "search"}.${string}`;
+  key: `${"editor" | "explorer" | "files" | "git" | "search"}.${string}`;
   ticket: `EP-${number}`;
 }
 
@@ -142,6 +142,12 @@ export const EDITOR_SETTINGS = [
       "**/Thumbs.db",
     ],
     ticket: "EP-06",
+  },
+  {
+    key: "git.autoRefresh",
+    kind: "boolean",
+    default: true,
+    ticket: "EP-12",
   },
 ] as const satisfies readonly EditorSettingSpec[];
 
