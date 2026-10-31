@@ -95,6 +95,7 @@ mod state;
 mod test_wait;
 pub mod user_terminal;
 mod voice_input;
+mod window_memory;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
