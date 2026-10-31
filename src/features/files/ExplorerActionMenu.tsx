@@ -1,10 +1,18 @@
 import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { explorerSelectionAction } from "./explorerActionDialogController";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { RenameFileControl } from "./RenameFileControl";
 import { RenameFolderControl } from "./RenameFolderControl";
 import { TrashResourceControl } from "./TrashResourceControl";
@@ -29,12 +37,16 @@ export function ExplorerActionMenu() {
   const activeResource = useWorkbenchStore(
     (state) => state.activeEditor?.resource ?? null,
   );
-  const action = explorerSelectionAction({
-    activeEditor: activeResource && { resource: activeResource },
-    directoryListings,
-    selectedResource,
-    tabs,
-  });
+  const releaseOpenFiles = useContext(ExplorerReleasesOpenFiles);
+  const action = explorerSelectionAction(
+    {
+      activeEditor: activeResource && { resource: activeResource },
+      directoryListings,
+      selectedResource,
+      tabs,
+    },
+    releaseOpenFiles,
+  );
   const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);

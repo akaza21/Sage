@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type RefObject } from "react";
+import { useContext, useState, type FormEvent, type RefObject } from "react";
 import { FilePenLine } from "../../ui/leanIcons";
 import { useWorkbenchStore } from "../../app/store";
 import {
@@ -9,6 +9,7 @@ import {
 import type { ResourceRef } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { renameTargetResource } from "./fileRenameContract";
 import { renameFolderTargetResource } from "./folderRenameContract";
 import { errorMessage } from "../../domain/errors";
@@ -40,14 +41,18 @@ export function RenameResourceControl({
     (state) => state.renameProjectFolder,
   );
   const clearError = useWorkbenchStore((state) => state.clearFileRenameError);
-  const sourceOpen = useWorkbenchStore((state) =>
-    state.tabs.some(
-      (tab) =>
-        (tab.kind === "file" || tab.kind === "diff") &&
-        (folder
-          ? source !== null && sameOrDescendantResource(tab.resource, source)
-          : sameResource(tab.resource, source)),
-    ),
+  // In the Editor an open File is closed for the rename and reopened after.
+  const releasesOpenFile = useContext(ExplorerReleasesOpenFiles) && !folder;
+  const sourceOpen = useWorkbenchStore(
+    (state) =>
+      !releasesOpenFile &&
+      state.tabs.some(
+        (tab) =>
+          (tab.kind === "file" || tab.kind === "diff") &&
+          (folder
+            ? source !== null && sameOrDescendantResource(tab.resource, source)
+            : sameResource(tab.resource, source)),
+      ),
   );
   const [basename, setBasename] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -72,7 +77,9 @@ export function RenameResourceControl({
     await dialog.runWithTarget((target) =>
       folder
         ? renameProjectFolder(target.source, basename)
-        : renameProjectFile(target.source, basename),
+        : releasesOpenFile
+          ? renameProjectFile(target.source, basename, true)
+          : renameProjectFile(target.source, basename),
     );
   };
 

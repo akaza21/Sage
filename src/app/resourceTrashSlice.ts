@@ -1,4 +1,4 @@
-import type { StateCreator } from "zustand";
+import type { StateCreator, StoreApi } from "zustand";
 
 import {
   parentResource,
@@ -27,9 +27,12 @@ export interface ResourceTrashSlice {
   resourceTrashNotice: string | null;
   resourceTrashRequestGeneration: number;
   clearResourceTrashError: () => void;
+  /** With `releaseOpenFile`, a clean open File is closed for the move and
+   * reopened if the move fails. */
   trashProjectResource: (
     source: ResourceRef,
     kind: TrashResourceKind,
+    releaseOpenFile?: boolean,
   ) => Promise<boolean>;
 }
 
@@ -127,181 +130,201 @@ export const createResourceTrashSlice: StateCreator<
 
   clearResourceTrashError: () => set({ resourceTrashError: null }),
 
-  trashProjectResource: async (source, kind) => {
-    const state = get();
-    const project = state.project;
-    const projectGeneration = state.projectGeneration;
-    const transitionEpoch = state.nativeTransitionEpoch;
-    const root = project?.roots.find(
-      (candidate) => candidate.id === source.rootId,
+  trashProjectResource: async (source, kind, releaseOpenFile = false) => {
+    if (kind !== "file" || !releaseOpenFile) {
+      return trashResource(set, get, source, kind);
+    }
+    const { moveReleasingFile } = await import("./openFileRelease");
+    return moveReleasingFile(
+      get,
+      set,
+      source,
+      () => trashResource(set, get, source, kind),
+      () => ({ kind: "gone" }),
+      (reason) => set({ resourceTrashError: reason }),
     );
-    const parent = parentResource(source);
-    const parentListing = state.directoryListings[resourceKey(parent)];
-    const sourceEntry =
-      parentListing?.phase === "ready"
-        ? parentListing.value.entries.find((entry) =>
-            sameResource(entry.resource, source),
-          )
-        : undefined;
-    const sourceListing = state.directoryListings[resourceKey(source)];
-    const kindReady =
-      (kind === "file" && sourceEntry?.kind === "file") ||
-      (kind === "emptyFolder" &&
-        sourceEntry?.kind === "directory" &&
-        sourceListing?.phase === "ready" &&
-        !sourceListing.value.truncated &&
-        sourceListing.value.entries.length === 0);
-    if (
-      !project ||
-      !root ||
-      root.availability !== "available" ||
-      source.relativePath === "" ||
-      state.projectTransitioning ||
-      state.fileCreateInFlight ||
-      state.folderCreateInFlight ||
-      state.fileRenameInFlight ||
-      state.resourceTrashInFlight ||
-      state.repositoryRefreshing ||
-      state.repositoryMutation !== null ||
-      state.repositoryCommit !== null ||
-      !sameResource(state.selectedResource, source) ||
-      parentListing?.phase !== "ready" ||
-      parentListing.value.truncated ||
-      !kindReady
-    ) {
-      set({
-        resourceTrashError:
-          "Select one visible closed file or empty folder in an available Project root.",
-      });
-      return false;
-    }
-    if (hasOpenResource(state, source)) {
-      set({
-        resourceTrashError: `Close File and Diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
-      });
-      return false;
-    }
-
-    const requestGeneration = nextProjectGeneration(
-      state.resourceTrashRequestGeneration,
-    );
-    set({
-      resourceTrashInFlight: true,
-      projectTransitioning: true,
-      resourceTrashError: null,
-      resourceTrashNotice: null,
-      resourceTrashRequestGeneration: requestGeneration,
-    });
-    try {
-      await get().flushActiveEditor();
-      if (
-        !intentMatches(
-          get(),
-          projectGeneration,
-          project.id,
-          transitionEpoch,
-          requestGeneration,
-        ) ||
-        hasOpenResource(get(), source)
-      ) {
-        return false;
-      }
-      const currentLayout = currentProjectLayout(get());
-      if (!currentLayout)
-        throw new Error("No active Project layout is available.");
-      await getWorkbenchPorts().project.persistProjectLayout(
-        currentLayout,
-        transitionEpoch,
-      );
-      if (
-        !intentMatches(
-          get(),
-          projectGeneration,
-          project.id,
-          transitionEpoch,
-          requestGeneration,
-        ) ||
-        hasOpenResource(get(), source)
-      ) {
-        return false;
-      }
-      const result = await getWorkbenchPorts().project.trashProjectResource({
-        projectId: project.id,
-        projectGeneration,
-        expectedTransitionEpoch: transitionEpoch,
-        source,
-        kind,
-        currentLayout,
-      });
-      if (
-        !intentMatches(
-          get(),
-          projectGeneration,
-          project.id,
-          transitionEpoch,
-          requestGeneration,
-        )
-      ) {
-        return false;
-      }
-      const validated = validateResourceTrashResult(result, {
-        projectId: project.id,
-        projectGeneration,
-        transitionEpoch,
-        source,
-      });
-      if (validated.outcome === "unsupported") {
-        set({
-          resourceTrashInFlight: false,
-          projectTransitioning: false,
-          resourceTrashError: result.warning,
-        });
-        return false;
-      }
-      set((current) => ({
-        ...trashProjection(current, result),
-        projectGeneration: nextProjectGeneration(projectGeneration),
-        projectTransitioning: false,
-        resourceTrashInFlight: false,
-        resourceTrashError: null,
-        resourceTrashNotice: result.warning,
-      }));
-      if (validated.outcome === "effectUnknown") {
-        await Promise.all([
-          get().loadDirectory(parent),
-          get().refreshRepository(),
-        ]);
-      }
-      return true;
-    } catch (error) {
-      if (
-        intentMatches(
-          get(),
-          projectGeneration,
-          project.id,
-          transitionEpoch,
-          requestGeneration,
-        )
-      ) {
-        set({
-          resourceTrashInFlight: false,
-          projectTransitioning: false,
-          resourceTrashError: boundedError(
-            error,
-            MAX_RESOURCE_TRASH_ERROR_UNITS,
-            "utf16",
-          ),
-        });
-      }
-      return false;
-    } finally {
-      if (
-        get().resourceTrashRequestGeneration === requestGeneration &&
-        matchesProjectIntent(get(), projectGeneration, project.id)
-      ) {
-        set({ resourceTrashInFlight: false, projectTransitioning: false });
-      }
-    }
   },
 });
+
+async function trashResource(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  source: ResourceRef,
+  kind: TrashResourceKind,
+): Promise<boolean> {
+  const state = get();
+  const project = state.project;
+  const projectGeneration = state.projectGeneration;
+  const transitionEpoch = state.nativeTransitionEpoch;
+  const root = project?.roots.find(
+    (candidate) => candidate.id === source.rootId,
+  );
+  const parent = parentResource(source);
+  const parentListing = state.directoryListings[resourceKey(parent)];
+  const sourceEntry =
+    parentListing?.phase === "ready"
+      ? parentListing.value.entries.find((entry) =>
+          sameResource(entry.resource, source),
+        )
+      : undefined;
+  const sourceListing = state.directoryListings[resourceKey(source)];
+  const kindReady =
+    (kind === "file" && sourceEntry?.kind === "file") ||
+    (kind === "emptyFolder" &&
+      sourceEntry?.kind === "directory" &&
+      sourceListing?.phase === "ready" &&
+      !sourceListing.value.truncated &&
+      sourceListing.value.entries.length === 0);
+  if (
+    !project ||
+    !root ||
+    root.availability !== "available" ||
+    source.relativePath === "" ||
+    state.projectTransitioning ||
+    state.fileCreateInFlight ||
+    state.folderCreateInFlight ||
+    state.fileRenameInFlight ||
+    state.resourceTrashInFlight ||
+    state.repositoryRefreshing ||
+    state.repositoryMutation !== null ||
+    state.repositoryCommit !== null ||
+    !sameResource(state.selectedResource, source) ||
+    parentListing?.phase !== "ready" ||
+    parentListing.value.truncated ||
+    !kindReady
+  ) {
+    set({
+      resourceTrashError:
+        "Select one visible closed file or empty folder in an available Project root.",
+    });
+    return false;
+  }
+  if (hasOpenResource(state, source)) {
+    set({
+      resourceTrashError: `Close File and Diff tabs for the resource and its descendants before moving it to the ${trashName()}.`,
+    });
+    return false;
+  }
+
+  const requestGeneration = nextProjectGeneration(
+    state.resourceTrashRequestGeneration,
+  );
+  set({
+    resourceTrashInFlight: true,
+    projectTransitioning: true,
+    resourceTrashError: null,
+    resourceTrashNotice: null,
+    resourceTrashRequestGeneration: requestGeneration,
+  });
+  try {
+    await get().flushActiveEditor();
+    if (
+      !intentMatches(
+        get(),
+        projectGeneration,
+        project.id,
+        transitionEpoch,
+        requestGeneration,
+      ) ||
+      hasOpenResource(get(), source)
+    ) {
+      return false;
+    }
+    const currentLayout = currentProjectLayout(get());
+    if (!currentLayout)
+      throw new Error("No active Project layout is available.");
+    await getWorkbenchPorts().project.persistProjectLayout(
+      currentLayout,
+      transitionEpoch,
+    );
+    if (
+      !intentMatches(
+        get(),
+        projectGeneration,
+        project.id,
+        transitionEpoch,
+        requestGeneration,
+      ) ||
+      hasOpenResource(get(), source)
+    ) {
+      return false;
+    }
+    const result = await getWorkbenchPorts().project.trashProjectResource({
+      projectId: project.id,
+      projectGeneration,
+      expectedTransitionEpoch: transitionEpoch,
+      source,
+      kind,
+      currentLayout,
+    });
+    if (
+      !intentMatches(
+        get(),
+        projectGeneration,
+        project.id,
+        transitionEpoch,
+        requestGeneration,
+      )
+    ) {
+      return false;
+    }
+    const validated = validateResourceTrashResult(result, {
+      projectId: project.id,
+      projectGeneration,
+      transitionEpoch,
+      source,
+    });
+    if (validated.outcome === "unsupported") {
+      set({
+        resourceTrashInFlight: false,
+        projectTransitioning: false,
+        resourceTrashError: result.warning,
+      });
+      return false;
+    }
+    set((current) => ({
+      ...trashProjection(current, result),
+      projectGeneration: nextProjectGeneration(projectGeneration),
+      projectTransitioning: false,
+      resourceTrashInFlight: false,
+      resourceTrashError: null,
+      resourceTrashNotice: result.warning,
+    }));
+    if (validated.outcome === "effectUnknown") {
+      await Promise.all([
+        get().loadDirectory(parent),
+        get().refreshRepository(),
+      ]);
+    }
+    return true;
+  } catch (error) {
+    if (
+      intentMatches(
+        get(),
+        projectGeneration,
+        project.id,
+        transitionEpoch,
+        requestGeneration,
+      )
+    ) {
+      set({
+        resourceTrashInFlight: false,
+        projectTransitioning: false,
+        resourceTrashError: boundedError(
+          error,
+          MAX_RESOURCE_TRASH_ERROR_UNITS,
+          "utf16",
+        ),
+      });
+    }
+    return false;
+  } finally {
+    if (
+      get().resourceTrashRequestGeneration === requestGeneration &&
+      matchesProjectIntent(get(), projectGeneration, project.id)
+    ) {
+      set({ resourceTrashInFlight: false, projectTransitioning: false });
+    }
+  }
+}
 import { boundedError } from "../domain/errors";
