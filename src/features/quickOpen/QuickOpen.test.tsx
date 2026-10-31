@@ -368,3 +368,43 @@ describe("Quick Open", () => {
     );
   });
 });
+
+describe("Quick Open's commands (ED-2a)", () => {
+  it("lists commands for >, filters them by word, and runs the chosen one", async () => {
+    const sent = fakeNative();
+    const setSidebarView = vi.fn();
+    const onClose = vi.fn();
+    useWorkbenchStore.setState({ setSidebarView });
+    render(<QuickOpen seed=">" onClose={onClose} />);
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveValue(">");
+    expect(options()).toContain("Show Search");
+    expect(options()).toContain("Go to File…Ctrl+P");
+
+    fireEvent.change(box, { target: { value: ">search show" } });
+    expect(options()).toEqual(["Show Search"]);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(setSidebarView).toHaveBeenCalledWith("search");
+    expect(onClose).toHaveBeenCalledOnce();
+    // Commands never ask the File index.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(sent).toEqual([]);
+  });
+
+  it("goes back to Files for Go to File, and says when nothing matches", async () => {
+    fakeNative();
+    const onClose = vi.fn();
+    render(<QuickOpen seed=">" onClose={onClose} />);
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    fireEvent.change(box, { target: { value: ">zzz" } });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No matching commands.",
+    );
+    fireEvent.change(box, { target: { value: ">go to file" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(input()).toHaveValue("");
+    fireEvent.change(input(), { target: { value: "app" } });
+    await waitFor(() => expect(options()).toHaveLength(2));
+  });
+});

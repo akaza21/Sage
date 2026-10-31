@@ -19,6 +19,10 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import {
+  registerFileSurfaceCommands,
+  type FileSurfaceCommand,
+} from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
@@ -175,6 +179,25 @@ export function FileSurface({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
+
+  // The command palette (ED-2a) runs the same actions as the editor's keys.
+  const runCommandRef = useRef<(command: FileSurfaceCommand) => void>(() => {});
+  useEffect(() => {
+    runCommandRef.current = (command) => {
+      if (command === "save") void saveActiveEditor();
+      else if (previewing) return;
+      else if (command === "find") openFindFromSurface();
+      else if (command === "replace") openFindFromSurface(true);
+      else if (command === "goToLine") openGoToLine();
+      else void goToLocalSymbol();
+    };
+  });
+  useEffect(() => {
+    if (readOnly) return;
+    return registerFileSurfaceCommands((command) =>
+      runCommandRef.current(command),
+    );
+  }, [readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(contentText(findContent), goToQuery);

@@ -81,6 +81,13 @@
   text-overflow: ellipsis;
 }
 
+.quick-open__shortcut {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
 .quick-open__match {
   color: var(--color-accent);
   font-weight: 600;

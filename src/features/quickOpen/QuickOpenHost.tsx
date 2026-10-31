@@ -31,6 +31,8 @@ function preloadWhenIdle(): () => void {
 /** Mounts Quick Open while it is open and keeps its recent Files. */
 export function QuickOpenHost() {
   const open = useQuickOpenStore((state) => state.open);
+  const opening = useQuickOpenStore((state) => state.opening);
+  const seed = useQuickOpenStore((state) => state.seed);
   useEffect(preloadWhenIdle, []);
   // Leaving the editor closes it, so it doesn't reopen on the way back.
   useEffect(() => closeQuickOpen, []);
@@ -52,7 +54,9 @@ export function QuickOpenHost() {
       label="Quick Open"
       load={loadQuickOpen}
       fallback={null}
-      render={(QuickOpen) => <QuickOpen onClose={closeQuickOpen} />}
+      render={(QuickOpen) => (
+        <QuickOpen key={opening} seed={seed} onClose={closeQuickOpen} />
+      )}
     />
   );
 }

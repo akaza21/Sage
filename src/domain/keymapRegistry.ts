@@ -217,6 +217,16 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    id: "commandPalette",
+    label: "Show all commands",
+    description: "Lists the editor's commands to run one by name.",
+    scope: "Editor",
+    key: "p",
+    ctrlOrMeta: "required",
+    shift: "required",
+    alt: "forbidden",
+  },
+  {
     id: "goToSymbol",
     label: "Go to symbol",
     description: "Jumps to a symbol defined in the active file.",
