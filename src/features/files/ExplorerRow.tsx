@@ -13,6 +13,8 @@ interface ExplorerRowProps {
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
+  /** A right-click, or the context-menu key, on the row (ED-18). */
+  onContextMenu?: (resource: ResourceRef, row: HTMLButtonElement) => boolean;
 }
 
 export const ExplorerRow = memo(
@@ -24,6 +26,7 @@ export const ExplorerRow = memo(
       onSelectDirectory,
       onToggleDirectory,
       onOpenFile,
+      onContextMenu,
     },
     ref,
   ) {
@@ -59,6 +62,11 @@ export const ExplorerRow = memo(
             onToggleDirectory(entry.resource);
           } else {
             void onOpenFile(entry.resource);
+          }
+        }}
+        onContextMenu={(event) => {
+          if (onContextMenu?.(entry.resource, event.currentTarget)) {
+            event.preventDefault();
           }
         }}
       >
