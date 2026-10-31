@@ -6,6 +6,7 @@ import type {
   TurnProjection,
 } from "../../../domain/acp";
 import { terminalItemLifecycles } from "./statusSemantics";
+import type { AttachedContext } from "../../../domain/attachedContext";
 
 export function promptAttachmentItems(
   items: readonly AcpItem[],
@@ -54,6 +55,7 @@ export function latestRetryPrompt(page: AcpChatPage): {
   prompt: string;
   bindingId: AgentSessionProjection["bindingId"];
   modelId: AgentSessionProjection["modelId"];
+  attachedContext: readonly AttachedContext[];
 } | null {
   const session = currentSession(page);
   const turn = page.turns.at(-1);
@@ -70,6 +72,7 @@ export function latestRetryPrompt(page: AcpChatPage): {
         prompt: item.payload.text,
         bindingId: session.bindingId,
         modelId: session.modelId,
+        attachedContext: turn.attachedContext ?? [],
       }
     : null;
 }

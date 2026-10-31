@@ -11,7 +11,6 @@ import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
-  latestRetryPrompt,
   terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
@@ -181,9 +180,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   });
   const retryLastTurn = () => {
     if (!acpPage || actionBusy || activeAcpTurn) return;
-    const retry = latestRetryPrompt(acpPage);
-    if (retry)
-      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
+    void import("./retryChatTurn").then(({ retryChatTurn }) =>
+      retryChatTurn(acpPage, acpActions.submit),
+    );
   };
 
   useEffect(() => {
