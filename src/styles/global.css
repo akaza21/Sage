@@ -279,6 +279,21 @@
   --row-height-compact: 30px;
   --row-height-default: 32px;
   --row-height-emphasis: 34px;
+  /* Agent chrome follows the native-backed interface appearance choices. */
+  --agent-chrome-font-size: var(--font-size-md);
+  --agent-chrome-row-height: max(
+    var(--row-height-default),
+    calc(
+      var(--agent-chrome-font-size) * var(--line-height-normal) + var(--space-1)
+    )
+  );
+  --agent-chrome-control-height: max(
+    var(--control-height-default),
+    calc(
+      var(--agent-chrome-font-size) * var(--line-height-normal) + var(--space-1)
+    )
+  );
+  --agent-chrome-icon-control-size: var(--agent-chrome-control-height);
   --tab-height: 36px;
   --chrome-row-height: 40px;
   --icon-size-sm: 14px;

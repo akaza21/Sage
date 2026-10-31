@@ -10,6 +10,7 @@
   height: 100%;
   overflow: hidden;
   background: var(--bg);
+  font-size: var(--agent-chrome-font-size);
 }
 
 .agent-settings__nav {
@@ -58,13 +59,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
+  min-height: var(--agent-chrome-row-height);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-md);
   text-align: left;
   color: inherit;
   background: transparent;
+  font: inherit;
 }
 .agent-settings__nav-group button:hover,
 .agent-settings__nav-group button[aria-current] {
@@ -167,6 +169,7 @@
 }
 .agent-settings__control .input {
   width: 100%;
+  min-height: var(--agent-chrome-control-height);
 }
 .agent-settings__page button:disabled {
   cursor: not-allowed;

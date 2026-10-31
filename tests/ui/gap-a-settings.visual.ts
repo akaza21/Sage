@@ -4,6 +4,43 @@ import {
   expectNoViewportOverflow,
 } from "./shared/visualBrowserPrimitives";
 
+test("Appearance density changes rail and Settings geometry at 16px without clipping", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1380, height: 880 });
+  await openScenario(page, "agent-single", "agent");
+  const row = page.locator(".project-chat").first();
+  const before = await row.evaluate(
+    (node) => node.getBoundingClientRect().height,
+  );
+  await page.evaluate(async () => {
+    const { useUiAppearanceStore } =
+      await import("/src/app/uiAppearanceStore.ts");
+    useUiAppearanceStore.setState({
+      appearance: { fontSize: 16, density: "compact" },
+    });
+  });
+  expect(
+    await row.evaluate((node) => node.getBoundingClientRect().height),
+  ).toBeLessThan(before);
+  await page.keyboard.press("Control+,");
+  const nav = page.getByRole("button", { name: "Appearance", exact: true });
+  const compact = await nav.evaluate(
+    (node) => node.getBoundingClientRect().height,
+  );
+  await page.evaluate(async () => {
+    const { useUiAppearanceStore } =
+      await import("/src/app/uiAppearanceStore.ts");
+    useUiAppearanceStore.setState({
+      appearance: { fontSize: 16, density: "comfortable" },
+    });
+  });
+  expect(
+    await nav.evaluate((node) => node.getBoundingClientRect().height),
+  ).toBeGreaterThan(compact);
+  await expectNoViewportOverflow(page);
+});
+
 test("Settings fills the workspace and returns focus to its live launcher", async ({
   page,
 }) => {

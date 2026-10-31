@@ -21,8 +21,8 @@
 
 .workbench--agent .project-sidebar__icon-rail button {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: var(--agent-chrome-icon-control-size);
+  height: var(--agent-chrome-row-height);
   place-items: center;
   padding: 0;
   border: 0;
@@ -54,17 +54,17 @@
 
 .workbench--agent .project-sidebar__brand {
   display: flex;
-  height: 32px;
+  height: var(--agent-chrome-row-height);
   align-items: center;
   justify-content: space-between;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: var(--agent-chrome-font-size);
 }
 
 .workbench--agent .project-sidebar__brand button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: var(--agent-chrome-icon-control-size);
+  height: var(--agent-chrome-row-height);
   place-items: center;
   padding: 0;
   border: 0;
@@ -80,7 +80,7 @@
 }
 
 .workbench--agent .project-action--primary {
-  height: 28px;
+  height: var(--agent-chrome-row-height);
   padding: 0 8px;
   border: 0;
   color: var(--color-text-primary);
@@ -95,7 +95,7 @@
 
 .workbench--agent .project-row,
 .workbench--agent .project-chat-row {
-  min-height: 28px;
+  min-height: var(--agent-chrome-row-height);
   height: auto;
 }
 
@@ -105,7 +105,7 @@
 }
 
 .workbench--agent .project-chat {
-  min-height: 28px;
+  min-height: var(--agent-chrome-row-height);
   padding-block: 0;
 }
 
@@ -211,7 +211,7 @@
 
 .agent-rail-section__header {
   display: grid;
-  height: var(--row-height-compact);
+  height: var(--agent-chrome-row-height);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
@@ -220,7 +220,7 @@
   position: relative;
   display: flex;
   min-width: 0;
-  height: var(--row-height-compact);
+  height: var(--agent-chrome-row-height);
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-1);
