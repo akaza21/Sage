@@ -9,7 +9,11 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { BrowserSitePermissions } from "./BrowserSitePermissions";
+import {
+  BrowserDrawers,
+  BrowserSitePermissions,
+} from "./BrowserSitePermissions";
+import { resetSiteReloadFailuresForTests } from "./siteReloadFailures";
 
 const status = vi.fn();
 const resolve = vi.fn();
@@ -32,6 +36,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 beforeEach(() => {
+  resetSiteReloadFailuresForTests();
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockResolvedValue(() => undefined);
   status.mockReset();
@@ -146,4 +151,46 @@ it("warns when a revoke saved but the site's tabs did not reload", async () => {
     expect(reloadTabs).toHaveBeenCalledWith(["https://a.example"]),
   );
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+});
+
+it("keeps a failed reload warning when the site settings drawer closes and reopens", async () => {
+  status.mockResolvedValue({
+    tabId: "browser-1",
+    origin: "https://a.example",
+    pending: [],
+    decisions: [
+      { origin: "https://a.example", kind: "camera", decision: "allow" },
+    ],
+  });
+  revoke.mockResolvedValueOnce({
+    settings: [],
+    reloadFailed: ["https://a.example"],
+  });
+  const drawers = (settingsOpen: boolean) => (
+    <BrowserDrawers
+      tabId="browser-1"
+      settingsOpen={settingsOpen}
+      historyOpen={false}
+      historyEntries={[]}
+      onCloseSettings={() => undefined}
+      onCloseHistory={() => undefined}
+      onNavigate={() => undefined}
+    />
+  );
+  const { rerender } = render(drawers(true));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Revoke camera for https://a.example",
+    }),
+  );
+  await screen.findByText(/Revoked, but tabs on https:\/\/a.example/);
+  rerender(drawers(false));
+  expect(
+    await screen.findByText(/Revoked, but tabs on https:\/\/a.example/),
+  ).toBeVisible();
+  rerender(drawers(true));
+  expect(
+    await screen.findByText(/Revoked, but tabs on https:\/\/a.example/),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Reload tabs" })).toBeVisible();
 });

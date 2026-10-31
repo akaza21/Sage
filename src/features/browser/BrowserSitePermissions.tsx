@@ -11,6 +11,7 @@ import {
   browserSiteSettingReset,
 } from "../../ports/nativeBrowserSiteSettingsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { useSiteReloadFailures } from "./siteReloadFailures";
 
 const labels: Record<BrowserPermissionKind, string> = {
   camera: "camera",
@@ -48,9 +49,10 @@ export function BrowserSitePermissions({
   const [revokeBusy, setRevokeBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Sites whose tabs did not reload after a revoke; their pages may keep
-  // access until they reload.
-  const [unreloaded, setUnreloaded] = useState<string[]>([]);
+  // Shared with Settings and other drawers, so closing this drawer keeps it.
+  const unreloaded = useSiteReloadFailures((state) => state.sites);
+  const addUnreloaded = useSiteReloadFailures((state) => state.add);
+  const replaceUnreloaded = useSiteReloadFailures((state) => state.replace);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -112,9 +114,7 @@ export function BrowserSitePermissions({
       const failed = reloadFailedSites(
         await browserSiteSettingReset(origin, kind),
       );
-      if (failed.length) {
-        setUnreloaded((current) => [...new Set([...current, ...failed])]);
-      }
+      addUnreloaded(failed);
       setSnapshot((current) =>
         current
           ? {
@@ -136,7 +136,7 @@ export function BrowserSitePermissions({
     setRevokeBusy("reload");
     setError(null);
     try {
-      setUnreloaded(sites(await browserSiteReloadTabs(unreloaded)));
+      replaceUnreloaded(sites(await browserSiteReloadTabs([...unreloaded])));
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     } finally {

@@ -14,7 +14,8 @@ import {
   admitSiteOrigins,
   admitSiteSettingsUpdate,
   SITE_PERMISSION_LABELS,
-} from "./browserSiteSettings";
+} from "./browserSiteSettingsModel";
+import { useSiteReloadFailures } from "./siteReloadFailures";
 
 const LOAD_FAILURE = "Site permissions could not be loaded.";
 const SAVE_FAILURE = "The site permission could not be changed.";
@@ -33,9 +34,9 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Sites whose tabs did not reload after an Allow ended; their pages may
-  // keep access until they reload.
-  const [unreloaded, setUnreloaded] = useState<string[]>([]);
+  const unreloaded = useSiteReloadFailures((state) => state.sites);
+  const addUnreloaded = useSiteReloadFailures((state) => state.add);
+  const replaceUnreloaded = useSiteReloadFailures((state) => state.replace);
   // Counts change events, so a reply that a newer event overtook is dropped.
   const events = useRef(0);
 
@@ -104,11 +105,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
       if (seen === events.current) setRows(update.settings);
       // Earlier failures stay until Reload tabs confirms them; a later
       // change elsewhere does not prove those tabs lost access.
-      if (update.reloadFailed.length) {
-        setUnreloaded((current) => [
-          ...new Set([...current, ...update.reloadFailed]),
-        ]);
-      }
+      addUnreloaded(update.reloadFailed);
     } catch {
       setError(SAVE_FAILURE);
     } finally {
@@ -121,7 +118,9 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
     setBusy("reload");
     setError(null);
     try {
-      setUnreloaded(admitSiteOrigins(await browserSiteReloadTabs(unreloaded)));
+      replaceUnreloaded(
+        admitSiteOrigins(await browserSiteReloadTabs([...unreloaded])),
+      );
     } catch {
       setError(RELOAD_FAILURE);
     } finally {

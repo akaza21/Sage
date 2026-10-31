@@ -29,11 +29,12 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { BrowserSiteSettings } from "./BrowserSiteSettings";
+import { resetSiteReloadFailuresForTests } from "./siteReloadFailures";
 import {
   admitBrowserSiteSettings,
   admitSiteSettingsUpdate,
   MAX_SITE_SETTINGS,
-} from "./browserSiteSettings";
+} from "./browserSiteSettingsModel";
 
 const camera = {
   origin: "https://a.example",
@@ -47,6 +48,7 @@ const location = {
 } as const;
 
 beforeEach(() => {
+  resetSiteReloadFailuresForTests();
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockResolvedValue(() => undefined);
   for (const mock of [list, set, reset, resetAll, reloadTabs]) mock.mockReset();
