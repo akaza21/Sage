@@ -54,15 +54,6 @@ const KINDS: Record<number, HunkKind> = {
   [HUNK_DELETED]: "deleted",
 };
 
-/** True when `changes` replace all of a non-empty document of `length`. */
-export function replacesDocument(changes: ChangeDesc, length: number) {
-  let whole = false;
-  changes.iterChangedRanges((from, to) => {
-    if (length > 0 && from === 0 && to === length) whole = true;
-  });
-  return whole;
-}
-
 const EMPTY: GutterState = {
   base: null,
   hunks: [],
@@ -70,10 +61,46 @@ const EMPTY: GutterState = {
   peek: null,
 };
 
-function mapHunk(hunk: GutterHunk, changes: ChangeDesc): GutterHunk {
-  const from = changes.mapPos(hunk.from, hunk.kind === "deleted" ? 1 : -1);
-  const to = hunk.kind === "deleted" ? from : changes.mapPos(hunk.to, 1);
-  return from === hunk.from && to === hunk.to ? hunk : { ...hunk, from, to };
+/**
+ * Whether an edit still lets a hunk keep its staged text: typing inside a
+ * changed range does, but an edit reaching past it (a reload, a paste over
+ * it) does not, and mapping through it would stretch the hunk over text it
+ * never covered, so Revert would replace that text.
+ */
+function survives(hunk: GutterHunk, changes: ChangeDesc, length: number) {
+  let keeps = true;
+  changes.iterChangedRanges((fromA, toA) => {
+    if (!keeps) return;
+    if (length > 0 && fromA === 0 && toA === length) keeps = false;
+    else if (hunk.kind === "deleted") {
+      // The staged lines sit at `from`; a change crossing it removes the anchor.
+      if (fromA < hunk.from && toA >= hunk.from) keeps = false;
+    } else if (fromA <= hunk.to && toA >= hunk.from) {
+      keeps = fromA >= hunk.from && toA <= hunk.to;
+    }
+  });
+  return keeps;
+}
+
+/**
+ * Carries hunks through edits made before the next diff, dropping those an
+ * edit invalidated; the next diff brings them back.
+ */
+export function mapHunks(
+  hunks: readonly GutterHunk[],
+  changes: ChangeDesc,
+  length: number,
+): GutterHunk[] {
+  const mapped: GutterHunk[] = [];
+  for (const hunk of hunks) {
+    if (!survives(hunk, changes, length)) continue;
+    const from = changes.mapPos(hunk.from, hunk.kind === "deleted" ? 1 : -1);
+    const to = hunk.kind === "deleted" ? from : changes.mapPos(hunk.to, 1);
+    mapped.push(
+      from === hunk.from && to === hunk.to ? hunk : { ...hunk, from, to },
+    );
+  }
+  return mapped;
 }
 
 export const gutterField = StateField.define<GutterState>({
@@ -81,17 +108,14 @@ export const gutterField = StateField.define<GutterState>({
   update(value, transaction) {
     let next = value;
     if (transaction.docChanged && value.hunks.length > 0) {
-      // Any edit closes the peek: its staged text no longer lines up. A
-      // whole-document replace (an outside reload) would stretch every hunk
-      // over the document, so the markers wait for the next diff instead.
+      // Any edit closes the peek: its staged text no longer lines up.
       next = {
         ...value,
-        hunks: replacesDocument(
+        hunks: mapHunks(
+          value.hunks,
           transaction.changes,
           transaction.startState.doc.length,
-        )
-          ? []
-          : value.hunks.map((hunk) => mapHunk(hunk, transaction.changes)),
+        ),
         peek: null,
       };
     }
