@@ -318,12 +318,15 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         // The frame is an overlay above the sticky gutter, so it draws on
         // the editor's ::after (file-editor-surface.css).
         frameShadow: getComputedStyle(frame, "::after").boxShadow,
+        frameContent: getComputedStyle(frame, "::after").content,
         contentOutline: getComputedStyle(content).outlineWidth,
       };
     });
     expect(editorFocus).not.toBeNull();
     expect(editorFocus!.frameOutline).toBe("0px");
     expect(editorFocus!.frameShadow).not.toBe("none");
+    // Without content the ::after never draws, whatever its shadow says.
+    expect(editorFocus!.frameContent).not.toBe("none");
     expect(editorFocus!.contentOutline).toBe("0px");
 
     await page.getByRole("button", { name: "Search", exact: true }).click();

@@ -145,7 +145,9 @@ async function editorControlsReachable(page: Page) {
   await page.keyboard.press("Escape");
   await expect(quickOpen).toHaveCount(0);
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+  const drawer = page.locator(
+    '.workbench--editor .sidebar[role="dialog"][aria-label="Search project tools"]',
+  );
   // At 760px and below the tool sidebar is a modal drawer over the editor.
   await expectContained(drawer, page);
   await expectStatusBarTarget(
