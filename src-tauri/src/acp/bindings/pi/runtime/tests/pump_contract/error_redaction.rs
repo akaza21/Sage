@@ -7,6 +7,8 @@ use crate::acp::{
 
 #[tokio::test]
 async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
+    // Whole-page scans include generated UUIDs: use non-hex credential canaries.
+    // Exact terminal/retry message assertions below still verify the redacted text.
     for (detail, expected, canaries) in [
         (
             r#"{"user":"Bob Smith","token":"multiword-canary"}"#,
@@ -138,9 +140,9 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
             "[redacted]",
             &["hunter2"][..],
         ),
-        ("env:TOKEN=abc", "[redacted]", &["abc"][..]),
-        ("key[0]=abc", "[redacted]", &["abc"][..]),
-        ("api.key=abc", "[redacted]", &["abc"][..]),
+        ("env:TOKEN=credential-canary", "[redacted]", &["credential-canary"][..]),
+        ("key[0]=credential-canary", "[redacted]", &["credential-canary"][..]),
+        ("api.key=credential-canary", "[redacted]", &["credential-canary"][..]),
         (
             "Authorization :  private-token",
             "Authorization :  [redacted]",
@@ -152,31 +154,31 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
             &["dXNlcjpwYXNz"][..],
         ),
         (
-            r#""x-api-key": "abc""#,
+            r#""x-api-key": "credential-canary""#,
             r#""x-api-key": [redacted]"#,
-            &["abc"][..],
+            &["credential-canary"][..],
         ),
         (
-            r#"{"token":"abc123"}"#,
+            r#"{"token":"credential-canary-123"}"#,
             r#"{"token":[redacted]}"#,
-            &["abc123"][..],
+            &["credential-canary-123"][..],
         ),
         (
             "password: hunter2",
             "password: [redacted]",
             &["hunter2"][..],
         ),
-        ("token:abc", "[redacted]", &["abc"][..]),
-        ("--token:abc", "[redacted]", &["abc"][..]),
+        ("token:credential-canary", "[redacted]", &["credential-canary"][..]),
+        ("--token:credential-canary", "[redacted]", &["credential-canary"][..]),
         (
-            "--client-secret abc",
+            "--client-secret credential-canary",
             "--client-secret [redacted]",
-            &["abc"][..],
+            &["credential-canary"][..],
         ),
         (
-            "--access-token abc",
+            "--access-token credential-canary",
             "--access-token [redacted]",
-            &["abc"][..],
+            &["credential-canary"][..],
         ),
         (
             "curl -d @/home/u/secret",
