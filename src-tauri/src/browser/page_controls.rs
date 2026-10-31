@@ -1,6 +1,5 @@
 use tauri::{AppHandle, State, Webview};
 
-#[cfg(windows)]
 use tauri::Manager;
 
 #[cfg(windows)]
@@ -100,10 +99,28 @@ pub(crate) async fn browser_hide(
     app: AppHandle,
     state: State<'_, BrowserState>,
     tab_id: String,
+    cover: Option<bool>,
 ) -> Result<(), String> {
     let webview = active_webview(&state, &tab_id)?;
-    super::annotate::leave(&app, &tab_id, super::annotate::Exit::Hidden);
-    webview.hide().map_err(|error| error.to_string())
+    let visibility = state
+        .page_visibility_for_tab(&tab_id)
+        .ok_or("browser tab unavailable")?;
+    // A toolbar popover only covers the page for a moment, so Annotate stays
+    // on; any other hide ends it.
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.clone()
+        .run_on_main_thread(move || {
+            visibility.hide();
+            let state = app.state::<BrowserState>();
+            if let Some(exit) = state.annotate.hiding(&tab_id, cover == Some(true)) {
+                super::annotate::leave(&app, &tab_id, exit);
+            }
+            let _ = sender.send(webview.hide().map_err(|error| error.to_string()));
+        })
+        .map_err(|error| error.to_string())?;
+    receiver
+        .await
+        .map_err(|_| "browser hide unavailable".to_owned())?
 }
 
 #[tauri::command]

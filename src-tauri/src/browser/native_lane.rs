@@ -6,6 +6,7 @@
 //! behaviour: each call is the production function a command, the chrome or
 //! the Agent reaches.
 
+mod annotate;
 mod diagnostics;
 
 use std::{

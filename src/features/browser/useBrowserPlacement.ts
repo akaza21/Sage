@@ -1,5 +1,9 @@
-import { useEffect, type RefObject } from "react";
-import { hideBrowser, positionBrowser } from "../../ports/nativeBrowserPort";
+import { useEffect, useRef, type RefObject } from "react";
+import {
+  coverBrowser,
+  hideBrowser,
+  positionBrowser,
+} from "../../ports/nativeBrowserPort";
 
 export function useBrowserPlacement(
   tabId: string,
@@ -8,6 +12,14 @@ export function useBrowserPlacement(
   onError: (message: string) => void,
   covered = false,
 ) {
+  // A popover opening or closing places the page again without the cleanup
+  // below, whose hide would end Annotate.
+  const coveredRef = useRef(covered);
+  const placeRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    coveredRef.current = covered;
+    placeRef.current();
+  }, [covered]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -20,10 +32,15 @@ export function useBrowserPlacement(
     };
     const place = () => {
       cancelAnimationFrame(frameId);
-      // The page is a native window above Sage's DOM, so it hides while a
-      // toolbar popover covers it, and a resize must not show it again.
-      if (covered || center?.getAttribute("aria-hidden") === "true") {
+      // The page is a native window above Sage's DOM, so it hides while the
+      // centre pane is hidden, and a resize must not show it again.
+      if (center?.getAttribute("aria-hidden") === "true") {
         void hideBrowser(tabId).catch(reportError);
+        return;
+      }
+      // A toolbar popover covers it only for a moment, so Annotate stays on.
+      if (coveredRef.current) {
+        void coverBrowser(tabId).catch(reportError);
         return;
       }
       frameId = requestAnimationFrame(() => {
@@ -60,6 +77,7 @@ export function useBrowserPlacement(
         }).catch(reportError);
       });
     };
+    placeRef.current = place;
     const observer = new ResizeObserver(place);
     observer.observe(element);
     const visibilityObserver = new MutationObserver(place);
@@ -73,11 +91,12 @@ export function useBrowserPlacement(
     place();
     return () => {
       active = false;
+      placeRef.current = () => undefined;
       cancelAnimationFrame(frameId);
       observer.disconnect();
       visibilityObserver.disconnect();
       window.removeEventListener("resize", place);
       void hideBrowser(tabId).catch(() => undefined);
     };
-  }, [tabId, frame, surface, onError, covered]);
+  }, [tabId, frame, surface, onError]);
 }
