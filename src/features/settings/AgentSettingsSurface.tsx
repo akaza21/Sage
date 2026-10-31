@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import {
   Archive,
@@ -55,6 +55,21 @@ export function AgentSettingsSurface() {
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    const launcher = useAgentSettingsState.getState().launcher;
+    return () => {
+      requestAnimationFrame(() => {
+        if (useAgentSettingsState.getState().page) return;
+        const target =
+          launcher?.isConnected && launcher.getClientRects().length
+            ? launcher
+            : document.querySelector<HTMLElement>(
+                ".agent-chat-pane--focused textarea, .agent-chat-pane--focused, .title-bar input:checked",
+              );
+        target?.focus();
+      });
+    };
+  }, []);
   const normalized = query.trim().toLowerCase();
   const matching = groups
     .map((group) => ({
@@ -65,13 +80,10 @@ export function AgentSettingsSurface() {
     }))
     .filter((group) => group.pages.length > 0);
   return (
-    // Takes the Agent workspace's place below the title bar, which stays
-    // usable, with the settings dialog centred in it.
     <div className="agent-settings-layer">
       <section
         className="agent-settings"
-        role="dialog"
-        aria-modal="true"
+        role="region"
         aria-label="Agent settings"
         onKeyDown={(event) => {
           const target = event.target as Element;
@@ -81,7 +93,9 @@ export function AgentSettingsSurface() {
             !target.closest(
               "input:not([type]):not([type=search]), input[type=text], input[type=email], input[type=password], input[type=url], input[type=tel], input[type=number], input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week], textarea, [contenteditable=true]",
             ) &&
-            target.closest("[role=dialog]") === event.currentTarget &&
+            !target.closest(
+              "dialog, [role=dialog], [role=menu], [role=listbox]",
+            ) &&
             !(target.matches("input[type=search]") && query)
           ) {
             event.preventDefault();

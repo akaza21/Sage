@@ -1,19 +1,15 @@
 .agent-settings-layer {
   display: grid;
-  place-items: center;
   min-height: 0;
-  padding: 24px;
+  min-width: 0;
 }
 .agent-settings {
   display: grid;
   grid-template-columns: 256px minmax(0, 1fr);
-  width: min(1280px, 100%);
-  height: min(960px, 100%);
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
   background: var(--bg);
-  box-shadow: var(--elevation-floating);
 }
 
 .agent-settings__nav {
@@ -133,9 +129,6 @@
   .agent-settings__row {
     flex-wrap: wrap;
   }
-  .agent-settings__control {
-    max-width: 100%;
-  }
 }
 
 .agent-settings__page > p {
@@ -177,13 +170,6 @@
 }
 .agent-settings__page button:disabled {
   cursor: not-allowed;
-}
-.agent-settings__page :where(button) {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text);
-  background: var(--surface-hover);
 }
 .agent-settings__page :where(button:disabled) {
   opacity: 0.55;
@@ -259,4 +245,11 @@
 .agent-settings__page h3 {
   margin: 24px 0 4px;
   font-size: var(--font-size-md);
+}
+
+@media (max-width: 640px) {
+  .agent-settings__control {
+    width: 100%;
+    max-width: 100%;
+  }
 }

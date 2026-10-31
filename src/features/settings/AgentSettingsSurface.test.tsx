@@ -410,7 +410,8 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
 
 it("allows Escape from a checkbox but keeps text-entry edits open", () => {
   render(<AgentSettingsSurface />);
-  const dialog = screen.getByRole("dialog", { name: "Agent settings" });
+  const dialog = screen.getByRole("region", { name: "Agent settings" });
+  expect(dialog).not.toHaveAttribute("aria-modal");
   const text = document.createElement("input");
   text.type = "text";
   dialog.append(text);

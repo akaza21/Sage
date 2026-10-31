@@ -12,6 +12,7 @@ export const useAgentSettingsState = create<{
   page: AgentSettingsPage | null;
   browserTabId: string | null;
   showSitePermissions: boolean;
+  launcher: HTMLElement | null;
   open: (
     page?: AgentSettingsPage,
     browserTabId?: string,
@@ -22,13 +23,22 @@ export const useAgentSettingsState = create<{
   page: null,
   browserTabId: null,
   showSitePermissions: false,
+  launcher: null,
   // Without a page, keeps an open Settings where it is.
   open: (page, browserTabId, showSitePermissions = false) =>
-    set((state) =>
-      page
+    set((state) => ({
+      ...(!state.page
+        ? {
+            launcher:
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null,
+          }
+        : {}),
+      ...(page
         ? { page, browserTabId: browserTabId ?? null, showSitePermissions }
-        : { page: state.page ?? "Appearance" },
-    ),
+        : { page: state.page ?? "Appearance" }),
+    })),
   close: () =>
     set({ page: null, browserTabId: null, showSitePermissions: false }),
 }));
