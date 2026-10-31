@@ -49,8 +49,30 @@ fn read_snapshot(
     diff_ref: &DiffRef,
 ) -> Result<SnapshotData, SnapshotReadError> {
     let connection = database.connection();
-    verify_current_owner(&connection, expected_revision, diff_ref)?;
+    verify_snapshot_owner(&connection, expected_revision, diff_ref)?;
     read_owned(&connection, project_id, diff_ref)
+}
+
+/// Immutable reads need the retained session/turn/item, not the live head.
+/// Mutable dispatch continues to use verify_current_owner below.
+fn verify_snapshot_owner(
+    connection: &rusqlite::Connection,
+    expected_revision: crate::acp::contract::ProjectionRevision,
+    diff_ref: &DiffRef,
+) -> Result<(), SnapshotReadError> {
+    let retained: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chats c
+         JOIN agent_sessions s ON s.project_id=c.project_id AND s.chat_id=c.id
+         JOIN turns t ON t.project_id=c.project_id AND t.chat_id=c.id AND t.session_id=s.id
+         JOIN items i ON i.project_id=c.project_id AND i.chat_id=c.id AND i.session_id=s.id AND i.turn_id=t.id
+         WHERE c.project_id=?1 AND c.id=?2 AND s.id=?3 AND c.projection_revision=?4
+         AND t.id=?5 AND t.runtime_epoch=?6 AND i.id=?7 AND i.runtime_epoch=?6)",
+        rusqlite::params![diff_ref.project_id, diff_ref.chat_id, diff_ref.session_id,
+            expected_revision.get() as i64, diff_ref.turn_id, diff_ref.runtime_epoch as i64, diff_ref.item_id],
+        |row| row.get(0),
+    ).map_err(|_| SnapshotReadError::Corrupt)?;
+    if !retained { return Err(SnapshotReadError::Stale); }
+    Ok(())
 }
 
 pub(crate) fn verify_current_owner(

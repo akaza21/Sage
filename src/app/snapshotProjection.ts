@@ -25,7 +25,15 @@ export function snapshotProjectionRevision(
     scope.projectGeneration !== String(state.projectGeneration) ||
     page?.projectId !== ref.projectId ||
     page.chatId !== ref.chatId ||
-    page.currentSessionId !== ref.sessionId
+    (page.currentSessionId !== ref.sessionId &&
+      (!page.sessions.some((session) => session.id === page.currentSessionId) ||
+        !page.sessions.some((session) => session.id === ref.sessionId) ||
+        !page.turns.some(
+          (turn) =>
+            turn.id === ref.turnId &&
+            turn.sessionId === ref.sessionId &&
+            turn.runtimeEpoch === ref.runtimeEpoch,
+        )))
   )
     return null;
   return page.projectionRevision;

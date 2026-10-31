@@ -46,7 +46,10 @@ export async function openAgentArtifact(
 ): Promise<boolean> {
   if (!validAgentArtifactOwner(intent.owner)) return false;
   const projectGeneration = useWorkbenchStore.getState().projectGeneration;
-  if (!agentArtifactOwnerIsCurrent(intent.owner, projectGeneration)) {
+  if (
+    intent.target === "file" &&
+    !agentArtifactOwnerIsCurrent(intent.owner, projectGeneration)
+  ) {
     return false;
   }
 
@@ -60,7 +63,6 @@ export async function openAgentArtifact(
       !ref ||
       !sameAgentArtifactOwner(intent.owner, ref) ||
       !sameResource(intent.resource, ref) ||
-      !agentArtifactOwnerIsCurrent(intent.owner, projectGeneration) ||
       !selectedSnapshotIsCurrent(useWorkbenchStore.getState(), ref)
     )
       return false;
@@ -79,7 +81,15 @@ export async function openAgentArtifact(
       return false;
   }
 
-  if (!agentArtifactOwnerIsCurrent(intent.owner, projectGeneration)) {
+  // Historical bytes retain their original session identity. Presentation is
+  // admitted to the current Chat pane without granting old runtime authority.
+  const currentSessionId = acpProjectionStoreFor(intent.owner.chatId).getState()
+    .page?.currentSessionId;
+  const displayOwner =
+    intent.target === "diff" && currentSessionId
+      ? { ...intent.owner, sessionId: currentSessionId }
+      : intent.owner;
+  if (!agentArtifactOwnerIsCurrent(displayOwner, projectGeneration)) {
     return false;
   }
   const tab = useWorkbenchStore
@@ -96,10 +106,10 @@ export async function openAgentArtifact(
     );
   if (!tab) return false;
   useAgentArtifactAdmissionStore.getState().admit({
-    owner: intent.owner,
+    owner: displayOwner,
     tabId: tab.id,
   });
-  useAgentArtifactFollowStore.getState().observe(intent.owner, {
+  useAgentArtifactFollowStore.getState().observe(displayOwner, {
     kind: "tab",
     tabId: tab.id,
   });
@@ -107,19 +117,19 @@ export async function openAgentArtifact(
   const subagent = useSubagentPaneStore.getState();
   const changesSelected =
     changes.selected &&
-    changes.owner?.projectId === intent.owner.projectId &&
-    changes.owner.chatId === intent.owner.chatId &&
-    changes.owner.sessionId === intent.owner.sessionId;
+    changes.owner?.projectId === displayOwner.projectId &&
+    changes.owner.chatId === displayOwner.chatId &&
+    changes.owner.sessionId === displayOwner.sessionId;
   if (
     changesSelected ||
     (subagent.selected &&
-      sameAgentArtifactOwner(subagent.open?.owner, intent.owner))
+      sameAgentArtifactOwner(subagent.open?.owner, displayOwner))
   ) {
     changes.select(false);
     subagent.select(false);
     useAgentArtifactFollowStore
       .getState()
-      .pin(intent.owner, { kind: "tab", tabId: tab.id });
+      .pin(displayOwner, { kind: "tab", tabId: tab.id });
   }
   return true;
 }

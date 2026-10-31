@@ -58,6 +58,47 @@ function OpenSurface() {
   return tab ? <DiffSurface tab={tab} /> : null;
 }
 describe("actual saved-edit card to shared Diff surface", () => {
+  it("opens an exact retained earlier-session diff in the current Chat pane without changing the live session", async () => {
+    const page = snapshotPage();
+    const replacement = "session-replacement" as typeof ref.sessionId;
+    projection.setState({
+      page: {
+        ...page,
+        currentSessionId: replacement,
+        projectionRevision: "2" as never,
+        sessions: [
+          ...page.sessions,
+          { ...page.sessions[0], id: replacement, ordinal: 2 },
+        ],
+      },
+    });
+    vi.mocked(acpDesktop.getFileSnapshot).mockResolvedValue({
+      ...ref,
+      projectionRevision: "2" as never,
+      oldText: "old\n",
+      newText: "new\n",
+      oldBytes: 4,
+      newBytes: 4,
+    });
+    render(<OpenSurface />);
+    await act(async () => {
+      expect(
+        await openAgentArtifact({
+          owner: ref,
+          target: "diff",
+          resource,
+          diffRef: ref,
+        }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("-old")).toBeVisible();
+    expect(screen.getByText("+new")).toBeVisible();
+    expect(projection.getState().page?.currentSessionId).toBe(replacement);
+    expect(useWorkbenchStore.getState().tabs[0].diffRef).toEqual(ref);
+    expect(
+      useAgentArtifactAdmissionStore.getState().admissions[0].owner.sessionId,
+    ).toBe(replacement);
+  });
   it("keeps the chat pill collapsed during a live Turn and preserves explicit disclosure on completion", () => {
     const complete = snapshotPage();
     const runningTurn = { ...complete.turns[0], state: "running" as const };
