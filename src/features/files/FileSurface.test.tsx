@@ -114,6 +114,42 @@ afterEach(() => {
 });
 
 describe("FileSurface document language", () => {
+  it("retries a failed open and shows the recovered File in the same tab", async () => {
+    useWorkbenchStore.setState({
+      project: {
+        id: "project-a",
+        name: "A",
+        roots: [
+          {
+            id: "root-a",
+            name: "A",
+            ordinal: 0,
+            availability: "available",
+            message: null,
+          },
+        ],
+      },
+      tabs: [tab],
+      activeTabId: tab.id,
+      activeEditor: null,
+    });
+    vi.spyOn(editorPort, "openEditorDocument")
+      .mockRejectedValueOnce(new Error("Temporarily unavailable"))
+      .mockResolvedValue(document);
+    render(<FileSurface tab={tab} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Temporarily unavailable",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    const editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
+    expect(viewForEditor(editor).state.doc.toString()).toBe("base\n");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(useWorkbenchStore.getState().activeTabId).toBe(tab.id);
+    expect(useWorkbenchStore.getState().tabs).toHaveLength(1);
+  });
+
   it("keeps one resource root across loading, error, and ready states", () => {
     useWorkbenchStore.setState({
       tabs: [tab],

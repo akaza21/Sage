@@ -61,6 +61,7 @@ export function FileSurface({
     activeResourceKey,
     editor,
     projectTransitioning,
+    retryLoad,
     updateEditorContent,
     saveActiveEditor,
     content: findContent,
@@ -282,7 +283,13 @@ export function FileSurface({
           <MixedEolFileView key={activeResourceKey} resource={resource} />
         </Suspense>
       );
-    return <FileSurfaceResourceState path={path} error={editor.message} />;
+    return (
+      <FileSurfaceResourceState
+        path={path}
+        error={editor.message}
+        onRetry={projectTransitioning ? undefined : () => void retryLoad()}
+      />
+    );
   }
 
   return (

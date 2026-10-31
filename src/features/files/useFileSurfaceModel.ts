@@ -135,6 +135,10 @@ export function useFileSurfaceModel(
     activeResourceKey,
     editor,
     projectTransitioning,
+    retryLoad: () =>
+      resource &&
+      !projectTransitioning &&
+      useWorkbenchStore.getState().activateTab(tab.id),
     updateEditorContent,
     saveActiveEditor,
     content,

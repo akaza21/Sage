@@ -683,7 +683,7 @@ describe("ChatSurface ACP resource integration", () => {
     await act(async () => {
       await vi.dynamicImportSettled();
     });
-    await screen.findByRole("dialog", { name: "Agent settings" });
+    await screen.findByRole("region", { name: "Agent settings" });
     expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
     setTurnState("completed");
     view.rerender(<Workbench />);
@@ -696,7 +696,7 @@ describe("ChatSurface ACP resource integration", () => {
       ),
     );
     expect(
-      screen.getByRole("dialog", { name: "Agent settings" }),
+      screen.getByRole("region", { name: "Agent settings" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     await screen.findByRole("textbox", { name: "Message agent" });

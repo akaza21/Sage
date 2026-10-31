@@ -22,9 +22,11 @@ type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 export function FileSurfaceResourceState({
   error,
   path,
+  onRetry,
 }: {
   error?: string;
   path: string;
+  onRetry?: () => void;
 }) {
   return (
     <section
@@ -38,7 +40,13 @@ export function FileSurfaceResourceState({
           state="error"
           title={`Could not open ${path}`}
           detail={error}
-        />
+        >
+          {onRetry ? (
+            <button type="button" className="button" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
+        </ResourceStateNotice>
       )}
     </section>
   );

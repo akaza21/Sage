@@ -114,7 +114,7 @@ test("Files uses integrated controls and keeps focused row rings inside its scro
   await expectNoViewportOverflow(page);
 });
 
-test("An unbroken native error wraps inside a 320px resource pane", async ({
+test("An unbroken native error wraps and Retry recovers inside a 320px resource pane", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
@@ -128,9 +128,13 @@ test("An unbroken native error wraps inside a 320px resource pane", async ({
   await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const editor = useWorkbenchStore.getState().activeEditor;
+    // The visual scenario stubs activation; recovery must use the real load path.
+    useWorkbenchStore.setState({
+      activateTab: useWorkbenchStore.getInitialState().activateTab,
+    });
     if (editor.phase === "error")
       useWorkbenchStore.setState({
-        activeEditor: { ...editor, message: `D:\\${"a".repeat(500)}` },
+        activeEditor: { ...editor, message: `project/${"a".repeat(500)}` },
       });
   });
   const detail = page
@@ -153,5 +157,18 @@ test("An unbroken native error wraps inside a 320px resource pane", async ({
       };
     }),
   ).toEqual({ wraps: true, contained: true, noOverflow: true });
+  const retry = page
+    .getByRole("region", {
+      name: "File editor src/workbench/AgentChatPanes.tsx",
+    })
+    .getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeInViewport();
+  await retry.click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", {
+      name: "Edit src/workbench/AgentChatPanes.tsx",
+    }),
+  ).toBeVisible();
   await expectNoViewportOverflow(page);
 });

@@ -145,6 +145,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
+  // Chat preferences load only when their Settings page is selected.
+  "src/features/settings/AgentChatSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",
@@ -162,6 +164,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentProjectMenu.tsx",
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
+  // Unsaved-file confirmation and Editor tools stay off the Agent path.
+  "src/workbench/DirtyTabDialog.tsx",
+  "src/workbench/RightSidebar.tsx",
   "src/workbench/useAgentRailStatus.ts",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",

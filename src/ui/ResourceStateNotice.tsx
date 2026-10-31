@@ -1,10 +1,13 @@
+import type { ReactNode } from "react";
 import { CircleAlert, LoaderCircle } from "./leanIcons";
 
 export function ResourceStateNotice({
   detail,
   state,
   title,
+  children,
 }: {
+  children?: ReactNode;
   detail?: string;
   state: "error" | "idle" | "loading";
   title: string;
@@ -26,6 +29,7 @@ export function ResourceStateNotice({
       )}
       <strong className="resource-state__title">{title}</strong>
       {detail ? <span className="resource-state__detail">{detail}</span> : null}
+      {children}
     </div>
   );
 }
