@@ -3,15 +3,11 @@ import { useEffect, useState } from "react";
 import {
   browserPermissionResolve,
   browserPermissionStatus,
+  browserSiteSettingReset,
   type BrowserPermissionKind,
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
-import {
-  browserSiteReloadTabs,
-  browserSiteSettingReset,
-} from "../../ports/nativeBrowserSiteSettingsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
-import { useSiteReloadFailures } from "./siteReloadFailures";
 
 const labels: Record<BrowserPermissionKind, string> = {
   camera: "camera",
@@ -20,20 +16,6 @@ const labels: Record<BrowserPermissionKind, string> = {
   notifications: "notifications",
   clipboardRead: "clipboard",
 };
-
-/** The strings in a site list from Rust; anything malformed is none. */
-function sites(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((site): site is string => typeof site === "string")
-    : [];
-}
-
-/** The sites a reset reports as not reloaded. */
-function reloadFailedSites(update: unknown): string[] {
-  return typeof update === "object" && update !== null
-    ? sites((update as { reloadFailed?: unknown }).reloadFailed)
-    : [];
-}
 
 export function BrowserSitePermissions({
   tabId,
@@ -49,10 +31,6 @@ export function BrowserSitePermissions({
   const [revokeBusy, setRevokeBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Shared with Settings and other drawers, so closing this drawer keeps it.
-  const unreloaded = useSiteReloadFailures((state) => state.sites);
-  const addUnreloaded = useSiteReloadFailures((state) => state.add);
-  const replaceUnreloaded = useSiteReloadFailures((state) => state.replace);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -111,32 +89,8 @@ export function BrowserSitePermissions({
     setRevokeBusy(`${origin}:${kind}`);
     setError(null);
     try {
-      const failed = reloadFailedSites(
-        await browserSiteSettingReset(origin, kind),
-      );
-      addUnreloaded(failed);
-      setSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              decisions: current.decisions.filter(
-                (item) => item.origin !== origin || item.kind !== kind,
-              ),
-            }
-          : current,
-      );
-    } catch (cause) {
-      setError(String(cause).slice(0, 512));
-    } finally {
-      setRevokeBusy(null);
-    }
-  }
-
-  async function reloadAgain() {
-    setRevokeBusy("reload");
-    setError(null);
-    try {
-      replaceUnreloaded(sites(await browserSiteReloadTabs([...unreloaded])));
+      // Rust sends every tab's fresh snapshot once the reset is saved.
+      await browserSiteSettingReset(origin, kind);
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     } finally {
@@ -146,7 +100,7 @@ export function BrowserSitePermissions({
 
   if (
     !showEmpty &&
-    !unreloaded.length &&
+    !snapshot?.staleAccess &&
     !snapshot?.pending.length &&
     !snapshot?.decisions.length &&
     !error
@@ -186,10 +140,7 @@ export function BrowserSitePermissions({
           </button>
           {expanded || showEmpty ? (
             <>
-              <p>
-                Saved for this site in every tab. Revoking an allowed permission
-                reloads the site to stop active access.
-              </p>
+              <p>Saved for this site. Revoking an Allow reloads the site.</p>
               <ul>
                 {snapshot.decisions.map((decision) => (
                   <li key={`${decision.origin}:${decision.kind}`}>
@@ -214,20 +165,10 @@ export function BrowserSitePermissions({
           ) : null}
         </>
       ) : showEmpty ? (
-        <p>No site permissions saved for this site.</p>
+        <p>No site permissions saved for this tab.</p>
       ) : null}
-      {unreloaded.length ? (
-        <p role="alert">
-          Revoked, but tabs on {unreloaded.join(", ")} could not reload and may
-          keep access until they do.{" "}
-          <button
-            type="button"
-            disabled={revokeBusy !== null}
-            onClick={() => void reloadAgain()}
-          >
-            Reload tabs
-          </button>
-        </p>
+      {snapshot?.staleAccess ? (
+        <p role="alert">Reload this page to end revoked access.</p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </aside>

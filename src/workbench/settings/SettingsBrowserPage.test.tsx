@@ -25,6 +25,7 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
 vi.mock("../../ports/nativeBrowserPort", () => ({
   browserClearData: vi.fn(),
   closeBrowser: vi.fn(),
+  browserSiteSettingReset: vi.fn(),
 }));
 vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
   browserSiteSettings: () => siteSettings(),
@@ -41,9 +42,12 @@ beforeEach(() => {
   runtime.desktop = true;
   getPreferences.mockResolvedValue({ showFullUrl: false });
   setPreferences.mockImplementation(async (value: unknown) => value);
-  siteSettings.mockResolvedValue([
-    { origin: "https://a.example", kind: "camera", decision: "allow" },
-  ]);
+  siteSettings.mockResolvedValue({
+    staleSites: [],
+    settings: [
+      { origin: "https://a.example", kind: "camera", decision: "allow" },
+    ],
+  });
   resetBrowserPreferencesForTests();
 });
 

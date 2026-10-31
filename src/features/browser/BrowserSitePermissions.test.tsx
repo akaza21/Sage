@@ -9,11 +9,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import {
-  BrowserDrawers,
-  BrowserSitePermissions,
-} from "./BrowserSitePermissions";
-import { resetSiteReloadFailuresForTests } from "./siteReloadFailures";
+import { BrowserSitePermissions } from "./BrowserSitePermissions";
 
 const status = vi.fn();
 const resolve = vi.fn();
@@ -24,19 +20,14 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPermissionStatus: (tabId: string) => status(tabId),
   browserPermissionResolve: (tabId: string, id: number, allow: boolean) =>
     resolve(tabId, id, allow),
-}));
-const reloadTabs = vi.fn();
-vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
   browserSiteSettingReset: (origin: string, kind: string) =>
     revoke(origin, kind),
-  browserSiteReloadTabs: (origins: string[]) => reloadTabs(origins),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
 }));
 
 beforeEach(() => {
-  resetSiteReloadFailuresForTests();
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockResolvedValue(() => undefined);
   status.mockReset();
@@ -121,76 +112,16 @@ it("shows the saved site decisions and resets a site's camera access", async () 
   );
 });
 
-it("warns when a revoke saved but the site's tabs did not reload", async () => {
+it("warns while the page may still use access that was revoked", async () => {
   status.mockResolvedValueOnce({
     tabId: "browser-1",
     origin: "https://a.example",
     pending: [],
-    decisions: [
-      { origin: "https://a.example", kind: "camera", decision: "allow" },
-    ],
+    decisions: [],
+    staleAccess: true,
   });
-  revoke.mockResolvedValueOnce({
-    settings: [],
-    reloadFailed: ["https://a.example"],
-  });
-  reloadTabs.mockReset().mockResolvedValueOnce([]);
   render(<BrowserSitePermissions tabId="browser-1" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Site permissions" }),
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Reload this page to end revoked access.",
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Revoke camera for https://a.example" }),
-  );
-  const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent(
-    "Revoked, but tabs on https://a.example could not reload and may keep access until they do.",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Reload tabs" }));
-  await waitFor(() =>
-    expect(reloadTabs).toHaveBeenCalledWith(["https://a.example"]),
-  );
-  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-});
-
-it("keeps a failed reload warning when the site settings drawer closes and reopens", async () => {
-  status.mockResolvedValue({
-    tabId: "browser-1",
-    origin: "https://a.example",
-    pending: [],
-    decisions: [
-      { origin: "https://a.example", kind: "camera", decision: "allow" },
-    ],
-  });
-  revoke.mockResolvedValueOnce({
-    settings: [],
-    reloadFailed: ["https://a.example"],
-  });
-  const drawers = (settingsOpen: boolean) => (
-    <BrowserDrawers
-      tabId="browser-1"
-      settingsOpen={settingsOpen}
-      historyOpen={false}
-      historyEntries={[]}
-      onCloseSettings={() => undefined}
-      onCloseHistory={() => undefined}
-      onNavigate={() => undefined}
-    />
-  );
-  const { rerender } = render(drawers(true));
-  fireEvent.click(
-    await screen.findByRole("button", {
-      name: "Revoke camera for https://a.example",
-    }),
-  );
-  await screen.findByText(/Revoked, but tabs on https:\/\/a.example/);
-  rerender(drawers(false));
-  expect(
-    await screen.findByText(/Revoked, but tabs on https:\/\/a.example/),
-  ).toBeVisible();
-  rerender(drawers(true));
-  expect(
-    await screen.findByText(/Revoked, but tabs on https:\/\/a.example/),
-  ).toBeVisible();
-  expect(screen.getByRole("button", { name: "Reload tabs" })).toBeVisible();
 });

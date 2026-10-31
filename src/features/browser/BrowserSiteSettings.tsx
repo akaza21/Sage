@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { browserSiteSettingReset } from "../../ports/nativeBrowserPort";
 import {
   browserSiteReloadTabs,
-  browserSiteSettingReset,
   browserSiteSettingSet,
   browserSiteSettings,
   browserSiteSettingsResetAll,
@@ -10,12 +10,9 @@ import {
 } from "../../ports/nativeBrowserSiteSettingsPort";
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
 import {
-  admitBrowserSiteSettings,
-  admitSiteOrigins,
-  admitSiteSettingsUpdate,
+  admitSiteSettingsView,
   SITE_PERMISSION_LABELS,
 } from "./browserSiteSettingsModel";
-import { useSiteReloadFailures } from "./siteReloadFailures";
 
 const LOAD_FAILURE = "Site permissions could not be loaded.";
 const SAVE_FAILURE = "The site permission could not be changed.";
@@ -34,23 +31,30 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const unreloaded = useSiteReloadFailures((state) => state.sites);
-  const addUnreloaded = useSiteReloadFailures((state) => state.add);
-  const replaceUnreloaded = useSiteReloadFailures((state) => state.replace);
+  // Sites of tabs whose page may still use an Allow that ended; Rust
+  // tracks them until the page reloads or closes.
+  const [staleSites, setStaleSites] = useState<string[]>([]);
   // Counts change events, so a reply that a newer event overtook is dropped.
   const events = useRef(0);
+
+  const show = useCallback((input: unknown) => {
+    const view = admitSiteSettingsView(input);
+    setRows(view.settings);
+    setStaleSites(view.staleSites);
+    setReady(true);
+  }, []);
 
   const retry = useCallback(async () => {
     const seen = events.current;
     try {
-      const loaded = admitBrowserSiteSettings(await browserSiteSettings());
-      if (seen === events.current) setRows(loaded);
+      const loaded = await browserSiteSettings();
+      if (seen === events.current) show(loaded);
       setReady(true);
       setError(null);
     } catch {
       setError(LOAD_FAILURE);
     }
-  }, []);
+  }, [show]);
 
   useEffect(() => {
     let mounted = true;
@@ -68,8 +72,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
             if (!mounted) return;
             sawEvent = true;
             events.current += 1;
-            setRows(admitBrowserSiteSettings(event.payload));
-            setReady(true);
+            show(event.payload);
             setError(null);
           },
         );
@@ -81,10 +84,9 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
       }
       if (!mounted) return;
       try {
-        const loaded = admitBrowserSiteSettings(await browserSiteSettings());
+        const loaded = await browserSiteSettings();
         if (!mounted || sawEvent) return;
-        setRows(loaded);
-        setReady(true);
+        show(loaded);
       } catch {
         if (mounted && !sawEvent) setError(LOAD_FAILURE);
       }
@@ -93,40 +95,29 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
       mounted = false;
       unlisten?.();
     };
-  }, []);
+  }, [show]);
 
-  async function change(key: string, action: () => Promise<unknown>) {
+  async function run(
+    key: string,
+    action: () => Promise<unknown>,
+    failure: string,
+  ) {
     if (busy !== null) return;
     setBusy(key);
     setError(null);
     const seen = events.current;
     try {
-      const update = admitSiteSettingsUpdate(await action());
-      if (seen === events.current) setRows(update.settings);
-      // Earlier failures stay until Reload tabs confirms them; a later
-      // change elsewhere does not prove those tabs lost access.
-      addUnreloaded(update.reloadFailed);
+      const view = await action();
+      if (seen === events.current) show(view);
     } catch {
-      setError(SAVE_FAILURE);
+      setError(failure);
     } finally {
       setBusy(null);
     }
   }
 
-  async function reloadAgain() {
-    if (busy !== null) return;
-    setBusy("reload");
-    setError(null);
-    try {
-      replaceUnreloaded(
-        admitSiteOrigins(await browserSiteReloadTabs([...unreloaded])),
-      );
-    } catch {
-      setError(RELOAD_FAILURE);
-    } finally {
-      setBusy(null);
-    }
-  }
+  const change = (key: string, action: () => Promise<unknown>) =>
+    run(key, action, SAVE_FAILURE);
 
   function resetAll() {
     if (
@@ -157,17 +148,19 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
           ) : null}
         </div>
       ) : null}
-      {unreloaded.length ? (
+      {staleSites.length ? (
         <div className="settings-surface__error" role="alert">
           <span>
-            Saved, but tabs on {unreloaded.join(", ")} could not reload and may
-            keep access until they do.
+            Tabs on {staleSites.join(", ")} have not reloaded since an Allow
+            ended and may still use it. Reload or close them.
           </span>
           <button
             className="button button--compact"
             type="button"
             disabled={busy !== null}
-            onClick={() => void reloadAgain()}
+            onClick={() =>
+              void run("reload", browserSiteReloadTabs, RELOAD_FAILURE)
+            }
           >
             Reload tabs
           </button>

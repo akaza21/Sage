@@ -177,6 +177,7 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                     &completed_app,
                                     &completed_label,
                                     committed_url.as_deref(),
+                                    outcome::Settled::shows_new_document(settled),
                                 );
                                 if outcome::Settled::shows_new_document(settled) {
                                     title::capture_completed_title(

@@ -289,3 +289,16 @@ fn rows_that_no_longer_admit_are_deleted_on_load() {
         }]
     );
 }
+
+#[test]
+fn a_stale_tab_clears_only_when_its_document_is_replaced_or_it_closes() {
+    let mut permissions = SitePermissions::default();
+    permissions.mark_stale(["browser-1", "browser-2"]);
+    assert!(permissions.is_stale("browser-1"));
+    assert!(!permissions.document_replaced("browser-3"));
+    assert!(permissions.document_replaced("browser-1"));
+    assert!(!permissions.is_stale("browser-1"));
+    assert!(permissions.is_stale("browser-2"));
+    permissions.cancel_tab("browser-2");
+    assert!(permissions.stale_tabs().is_empty());
+}

@@ -197,8 +197,7 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   {
     id: "browser.sitePermissions",
     label: "Site permissions",
-    description:
-      "Camera, microphone, location, notifications, and clipboard choices saved for each site.",
+    description: "Camera, microphone, location, notifications, clipboard",
     group: "Site permissions",
   },
 ]);

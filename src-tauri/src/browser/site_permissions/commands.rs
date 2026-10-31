@@ -3,7 +3,10 @@
 //! origin, before a command runs. Origins from the renderer must already be
 //! canonical http(s) origins; kinds and decisions are closed enums.
 
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    time::{Duration, Instant},
+};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State, Webview};
@@ -14,7 +17,7 @@ use super::{
     Decision, PermissionDecisionView, PermissionKind, PermissionSnapshot, SitePermissions,
     site_origin,
 };
-use crate::{browser::BrowserState, settings_store::MAX_SITE_PERMISSIONS};
+use crate::browser::BrowserState;
 
 const MAX_TAB_ID_BYTES: usize = 64;
 const MAX_ORIGIN_ARGUMENT_BYTES: usize = 2048;
@@ -45,17 +48,45 @@ pub(super) fn snapshot(state: &BrowserState, tab_id: &str) -> Result<PermissionS
     Ok(PermissionSnapshot {
         tab_id: tab_id.to_owned(),
         origin: origin.unwrap_or_else(|| "unavailable".into()),
+        stale_access: permissions.is_stale(tab_id),
         pending,
         decisions,
     })
 }
 
-fn site_settings(state: &BrowserState) -> Result<Vec<PermissionDecisionView>, String> {
-    Ok(state.permissions.lock().map_err(lock_error)?.decisions())
+/// Settings > Browser's view: every saved answer, and the sites of tabs whose
+/// page may still use an Allow that ended because it has not reloaded yet.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SiteSettingsView {
+    settings: Vec<PermissionDecisionView>,
+    stale_sites: Vec<String>,
+}
+
+fn site_settings(state: &BrowserState) -> Result<SiteSettingsView, String> {
+    let (settings, stale) = {
+        let permissions = state.permissions.lock().map_err(lock_error)?;
+        (permissions.decisions(), permissions.stale_tabs().clone())
+    };
+    let stale_sites = state
+        .tabs
+        .lock()
+        .map_err(lock_error)?
+        .entries
+        .iter()
+        .filter(|(label, _)| stale.contains(*label))
+        .filter_map(|(_, tab)| tab.committed_url.as_deref().and_then(site_origin))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    Ok(SiteSettingsView {
+        settings,
+        stale_sites,
+    })
 }
 
 /// Tells the main webview the saved answers changed: every open tab's drawer
-/// gets a fresh snapshot, and Settings gets the full list.
+/// gets a fresh snapshot, and Settings gets the full view.
 pub(super) fn emit_site_settings(app: &AppHandle, state: &BrowserState) {
     let labels = state
         .tabs
@@ -67,24 +98,12 @@ pub(super) fn emit_site_settings(app: &AppHandle, state: &BrowserState) {
             let _ = app.emit_to("main", "browser:permissions", updated);
         }
     }
-    if let Ok(settings) = site_settings(state) {
-        let _ = app.emit_to("main", "browser:site-settings", settings);
+    if let Ok(view) = site_settings(state) {
+        let _ = app.emit_to("main", "browser:site-settings", view);
     }
 }
 
-/// The result of a Settings change. The change is saved even when a tab
-/// failed to reload; `reload_failed` names those tabs' sites so the user can
-/// reload them again, because until then a page may keep its old access.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SiteSettingsUpdate {
-    settings: Vec<PermissionDecisionView>,
-    reload_failed: Vec<String>,
-}
-
-/// Every tab showing one of `origins`, whoever drives it, with its site. A
-/// page that was granted access keeps it until its document goes away, so
-/// these reload after an Allow ends.
+/// Every tab showing one of `origins`, whoever drives it.
 fn tabs_on(
     state: &BrowserState,
     origins: &BTreeSet<String>,
@@ -97,39 +116,65 @@ fn tabs_on(
         .lock()
         .map_err(lock_error)?
         .entries
-        .values()
-        .filter_map(|tab| {
-            let origin = tab.committed_url.as_deref().and_then(site_origin)?;
-            origins
-                .contains(&origin)
-                .then(|| (origin, tab.handle.clone()))
+        .iter()
+        .filter(|(_, tab)| {
+            tab.committed_url
+                .as_deref()
+                .and_then(site_origin)
+                .is_some_and(|origin| origins.contains(&origin))
         })
+        .map(|(label, tab)| (label.clone(), tab.handle.clone()))
         .collect())
 }
 
-/// Reloads every tab on `origins`, trying each even if one fails, and
-/// returns the sites whose tabs did not reload.
-fn reload_sites(state: &BrowserState, origins: &BTreeSet<String>) -> Result<Vec<String>, String> {
-    let failed = tabs_on(state, origins)?
-        .into_iter()
-        .filter(|(_, webview)| webview.reload().is_err())
-        .map(|(origin, _)| origin)
-        .collect::<BTreeSet<_>>();
-    Ok(failed.into_iter().collect())
+/// How long a Settings change waits for reloaded tabs to commit a new
+/// document before it reports them as still stale.
+const RELOAD_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
+const RELOAD_CONFIRM_POLL: Duration = Duration::from_millis(50);
+
+/// Reloads `tabs` and waits, up to [`RELOAD_CONFIRM_TIMEOUT`], until each has
+/// committed a new document. `WebView::reload` only queues the reload, so
+/// only a committed document (which clears the tab's stale mark) proves the
+/// old page is gone. Tabs that do not get there stay marked.
+async fn reload_and_confirm(state: &BrowserState, tabs: Vec<(String, Webview)>) {
+    if tabs.is_empty() {
+        return;
+    }
+    for (_, webview) in &tabs {
+        // A failed request leaves the tab marked; the wait below reports it.
+        let _ = webview.reload();
+    }
+    let deadline = Instant::now() + RELOAD_CONFIRM_TIMEOUT;
+    while Instant::now() < deadline {
+        let pending = state
+            .permissions
+            .lock()
+            .is_ok_and(|permissions| tabs.iter().any(|(label, _)| permissions.is_stale(label)));
+        if !pending {
+            return;
+        }
+        tokio::time::sleep(RELOAD_CONFIRM_POLL).await;
+    }
 }
 
-fn apply(
+/// Applies a Settings change. Tabs on sites whose Allow ended are marked
+/// stale before they reload, so a page that keeps its document is reported
+/// rather than silently treated as revoked.
+async fn apply(
     app: &AppHandle,
     state: &BrowserState,
     change: impl FnOnce(&mut SitePermissions) -> Result<BTreeSet<String>, String>,
-) -> Result<SiteSettingsUpdate, String> {
+) -> Result<SiteSettingsView, String> {
     let ended_allows = change(&mut *state.permissions.lock().map_err(lock_error)?)?;
+    let tabs = tabs_on(state, &ended_allows)?;
+    state
+        .permissions
+        .lock()
+        .map_err(lock_error)?
+        .mark_stale(tabs.iter().map(|(label, _)| label.as_str()));
     emit_site_settings(app, state);
-    let reload_failed = reload_sites(state, &ended_allows)?;
-    Ok(SiteSettingsUpdate {
-        settings: site_settings(state)?,
-        reload_failed,
-    })
+    reload_and_confirm(state, tabs).await;
+    site_settings(state)
 }
 
 fn admit_origin_argument(origin: &str) -> Result<(), String> {
@@ -162,7 +207,7 @@ pub(crate) async fn browser_permission_status(
 #[tauri::command]
 pub(crate) async fn browser_site_settings(
     state: State<'_, BrowserState>,
-) -> Result<Vec<PermissionDecisionView>, String> {
+) -> Result<SiteSettingsView, String> {
     site_settings(&state)
 }
 
@@ -176,7 +221,7 @@ pub(crate) async fn browser_site_setting_set(
     origin: String,
     kind: PermissionKind,
     decision: Decision,
-) -> Result<SiteSettingsUpdate, String> {
+) -> Result<SiteSettingsView, String> {
     admit_origin_argument(&origin)?;
     apply(&app, &state, |permissions| {
         let previous = permissions.set(&origin, kind, decision)?;
@@ -186,21 +231,23 @@ pub(crate) async fn browser_site_setting_set(
             BTreeSet::new()
         })
     })
+    .await
 }
 
 /// Forgets one site's answer, so the site asks again. Ending an Allow reloads
 /// that site's tabs.
 #[tauri::command]
-pub(crate) async fn browser_site_setting_reset(
+pub(crate) async fn browser_permission_reset(
     app: AppHandle,
     state: State<'_, BrowserState>,
     origin: String,
     kind: PermissionKind,
-) -> Result<SiteSettingsUpdate, String> {
+) -> Result<SiteSettingsView, String> {
     admit_origin_argument(&origin)?;
     apply(&app, &state, |permissions| {
         Ok(ended_allow(&origin, permissions.reset(&origin, kind)?))
     })
+    .await
 }
 
 /// Forgets every saved answer and reloads tabs on sites that had an Allow.
@@ -208,29 +255,35 @@ pub(crate) async fn browser_site_setting_reset(
 pub(crate) async fn browser_site_settings_reset_all(
     app: AppHandle,
     state: State<'_, BrowserState>,
-) -> Result<SiteSettingsUpdate, String> {
-    apply(&app, &state, SitePermissions::reset_all)
+) -> Result<SiteSettingsView, String> {
+    apply(&app, &state, SitePermissions::reset_all).await
 }
 
-/// Reloads the tabs on sites whose earlier reload failed. Each origin must be
-/// canonical; the reply names the sites that still did not reload.
+/// Reloads every tab still marked stale and waits for each to commit a new
+/// document. Takes no arguments: Rust knows which tabs are stale.
 #[tauri::command]
 pub(crate) async fn browser_site_reload_tabs(
+    app: AppHandle,
     state: State<'_, BrowserState>,
-    origins: Vec<String>,
-) -> Result<Vec<String>, String> {
-    if origins.len() > MAX_SITE_PERMISSIONS {
-        return Err("too many sites".into());
-    }
-    let mut admitted = BTreeSet::new();
-    for origin in origins {
-        admit_origin_argument(&origin)?;
-        if site_origin(&origin).as_deref() != Some(origin.as_str()) {
-            return Err("invalid permission origin".into());
-        }
-        admitted.insert(origin);
-    }
-    reload_sites(&state, &admitted)
+) -> Result<SiteSettingsView, String> {
+    let stale = state
+        .permissions
+        .lock()
+        .map_err(lock_error)?
+        .stale_tabs()
+        .clone();
+    let tabs = state
+        .tabs
+        .lock()
+        .map_err(lock_error)?
+        .entries
+        .iter()
+        .filter(|(label, _)| stale.contains(*label))
+        .map(|(label, tab)| (label.clone(), tab.handle.clone()))
+        .collect();
+    reload_and_confirm(&state, tabs).await;
+    emit_site_settings(&app, &state);
+    site_settings(&state)
 }
 
 #[tauri::command]

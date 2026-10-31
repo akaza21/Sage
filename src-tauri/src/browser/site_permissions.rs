@@ -72,6 +72,8 @@ pub(crate) struct PermissionSnapshot {
     origin: String,
     pending: Vec<PermissionPrompt>,
     decisions: Vec<PermissionDecisionView>,
+    /// The page held an Allow that has ended and has not reloaded since.
+    stale_access: bool,
 }
 
 /// The canonical origin of an admitted browser URL, or `None` when the
@@ -92,6 +94,11 @@ pub(super) struct SitePermissions {
     waiters: BTreeMap<u64, usize>,
     active_origin: BTreeMap<String, String>,
     closing_tabs: BTreeSet<String>,
+    /// Tabs whose page held an Allow that has since ended and whose document
+    /// has not been replaced yet, so the page may still be using it. Cleared
+    /// only when a new document commits or the tab closes. At most one entry
+    /// per open tab.
+    stale_tabs: BTreeSet<String>,
 }
 
 impl SitePermissions {
@@ -354,8 +361,28 @@ impl SitePermissions {
 
     /// Ends a closing tab's prompts. Saved answers belong to the site, not
     /// the tab, so they stay.
+    /// Marks tabs whose page may still hold an Allow that just ended.
+    pub(super) fn mark_stale<'a>(&mut self, tabs: impl IntoIterator<Item = &'a str>) {
+        self.stale_tabs.extend(tabs.into_iter().map(str::to_owned));
+    }
+
+    /// A new document committed in `tab_id`, so its old page and any access
+    /// it held are gone. Reports whether the tab had been stale.
+    pub(super) fn document_replaced(&mut self, tab_id: &str) -> bool {
+        self.stale_tabs.remove(tab_id)
+    }
+
+    pub(super) fn is_stale(&self, tab_id: &str) -> bool {
+        self.stale_tabs.contains(tab_id)
+    }
+
+    pub(super) fn stale_tabs(&self) -> &BTreeSet<String> {
+        &self.stale_tabs
+    }
+
     pub(super) fn cancel_tab(&mut self, tab_id: &str) -> Vec<u64> {
         self.closing_tabs.insert(tab_id.to_owned());
+        self.stale_tabs.remove(tab_id);
         self.active_origin.remove(tab_id);
         let ids = self
             .pending

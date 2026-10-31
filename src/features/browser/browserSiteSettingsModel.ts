@@ -1,7 +1,7 @@
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
 import type {
   BrowserSiteSetting,
-  BrowserSiteSettingsUpdate,
+  BrowserSiteSettingsView,
 } from "../../ports/nativeBrowserSiteSettingsPort";
 
 /** Rust keeps at most this many saved answers (`MAX_SITE_PERMISSIONS`). */
@@ -68,16 +68,14 @@ export function admitSiteOrigins(input: unknown): string[] {
   return input.slice(0, MAX_SITE_SETTINGS).filter(isOrigin);
 }
 
-/** Admits a change's reply: the saved list and the sites left unreloaded. */
-export function admitSiteSettingsUpdate(
-  input: unknown,
-): BrowserSiteSettingsUpdate {
+/** Admits Settings' view: the saved list and the sites with stale tabs. */
+export function admitSiteSettingsView(input: unknown): BrowserSiteSettingsView {
   const source =
     typeof input === "object" && input !== null
       ? (input as Record<string, unknown>)
       : {};
   return {
     settings: admitBrowserSiteSettings(source.settings),
-    reloadFailed: admitSiteOrigins(source.reloadFailed),
+    staleSites: admitSiteOrigins(source.staleSites),
   };
 }

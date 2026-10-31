@@ -281,14 +281,25 @@ pub(crate) fn deny_navigation_native(app: &AppHandle, tab_id: &str, ids: Vec<u64
     deny_stale(app, tab_id, ids);
 }
 
-pub(crate) fn navigation_settled_native(app: &AppHandle, tab_id: &str, source: Option<&str>) {
-    let ids = app
+pub(crate) fn navigation_settled_native(
+    app: &AppHandle,
+    tab_id: &str,
+    source: Option<&str>,
+    new_document: bool,
+) {
+    let (ids, replaced) = app
         .state::<BrowserState>()
         .permissions
         .lock()
-        .map(|mut permissions| permissions.navigation_settled(tab_id, source))
+        .map(|mut permissions| {
+            let ids = permissions.navigation_settled(tab_id, source);
+            (ids, new_document && permissions.document_replaced(tab_id))
+        })
         .unwrap_or_default();
     deny_stale(app, tab_id, ids);
+    if replaced {
+        emit_site_settings(app, &app.state::<BrowserState>());
+    }
 }
 
 pub(crate) async fn resolve_native(
