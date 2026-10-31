@@ -1046,14 +1046,29 @@ mod tests {
             ))
             .unwrap_err();
 
+        // `GitEffectUnknown` is only returned once the killed child has been
+        // reaped, so the call itself proves the first half of the contract.
+        // The child may or may not have staged the file before the kill
+        // landed (the effect is unknown by design); whichever it did, nothing
+        // may change after the call returns.
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
-        let immediate = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(immediate.changes[0].index_status, "unchanged");
-        assert_eq!(immediate.changes[0].worktree_status, "untracked");
+        let observe = || {
+            let status = runtime.block_on(repository::status(&workspace)).unwrap();
+            let [change] = status.changes.as_slice() else {
+                panic!("expected one change, got {:?}", status.changes);
+            };
+            (change.index_status.clone(), change.worktree_status.clone())
+        };
+        let immediate = observe();
+        assert!(
+            matches!(
+                (immediate.0.as_str(), immediate.1.as_str()),
+                ("unchanged", "untracked") | ("added", "unchanged")
+            ),
+            "the killed `git add` left a partial state: {immediate:?}"
+        );
         std::thread::sleep(Duration::from_millis(200));
-        let later = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(later.changes[0].index_status, "unchanged");
-        assert_eq!(later.changes[0].worktree_status, "untracked");
+        assert_eq!(observe(), immediate);
         fs::remove_dir_all(root).unwrap();
     }
 }
