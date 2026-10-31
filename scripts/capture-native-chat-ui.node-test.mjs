@@ -197,7 +197,11 @@ async function openCapture(t, scenario, options) {
     return (
       observation.projectionLoaded === true &&
       observation.singlePane === true &&
-      observation.lazyFallbackVisible === false
+      observation.lazyFallbackVisible === false &&
+      // The composer mounts after the projection; slow runners show the gap.
+      observation.controls.send === true &&
+      observation.controls.harness === true &&
+      typeof observation.selected === "string"
     );
   }, deadline);
   return {
