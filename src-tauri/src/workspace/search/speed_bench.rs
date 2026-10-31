@@ -1,7 +1,10 @@
 //! Manual timing of Search on a tree from `scripts/synthetic-tree.mjs`:
 //! `SAGE_SEARCH_BENCH_ROOT=<tree> cargo test --release --lib speed_bench -- --ignored --nocapture`
 
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use super::{
     engine::SearchEngine,
@@ -10,7 +13,7 @@ use super::{
 };
 use crate::workspace::Workspace;
 
-fn root(path: &PathBuf) -> Vec<SearchRoot> {
+fn root(path: &Path) -> Vec<SearchRoot> {
     vec![SearchRoot {
         root_id: "root-test".into(),
         root_name: "bench".into(),
@@ -20,14 +23,14 @@ fn root(path: &PathBuf) -> Vec<SearchRoot> {
     }]
 }
 
-fn time(label: &str, limits: &SearchLimits, query: &str, case_sensitive: bool, path: &PathBuf) {
+fn time(label: &str, limits: &SearchLimits, query: &str, case_sensitive: bool, path: &Path) {
     let mut samples = Vec::new();
     let mut summary = String::new();
     for _ in 0..7 {
         let mut search = request(query);
         search.case_sensitive = case_sensitive;
         let started = Instant::now();
-        let mut engine = SearchEngine::new(limits.clone());
+        let mut engine = SearchEngine::new(*limits);
         if let Ok(threads) = std::env::var("SAGE_SEARCH_BENCH_THREADS") {
             engine.threads = threads.parse().unwrap();
         }

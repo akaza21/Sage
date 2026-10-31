@@ -10,7 +10,7 @@ use super::{
 };
 
 /// A NUL byte this early marks a File as binary, as in VS Code and Git.
-const BINARY_SNIFF_BYTES: u64 = 8_192;
+pub(super) const BINARY_SNIFF_BYTES: u64 = 8_192;
 
 /// What one Search query asks of every File.
 #[derive(Clone, Copy)]

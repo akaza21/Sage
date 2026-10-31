@@ -5,6 +5,7 @@ use crate::workspace::Workspace;
 use super::{
     contained_file::open_contained_file,
     engine::{RootCounters, SearchBudget, SearchEngine},
+    file_scan::BINARY_SNIFF_BYTES,
     literal_match::literal_matches,
     types::{
         ContinuationCursor, SearchLimitReason, SearchRootReport, SearchRootState,
@@ -115,7 +116,11 @@ impl SearchEngine {
         // Binary files are skipped like symlinks: counted, but the search stays
         // complete, as in VS Code. Text that is not UTF-8 was not searched, so it
         // still marks the root partial.
-        if bytes.iter().take(8_192).any(|byte| *byte == 0) {
+        if bytes
+            .iter()
+            .take(BINARY_SNIFF_BYTES as usize)
+            .any(|byte| *byte == 0)
+        {
             counters.skipped_files += 1;
             return;
         }

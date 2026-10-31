@@ -3,6 +3,7 @@ use std::{
     ffi::OsString,
     fs::{self, DirEntry},
     io,
+    panic::{AssertUnwindSafe, catch_unwind},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -10,6 +11,7 @@ use std::{
         mpsc,
     },
     thread::Scope,
+    time::Instant,
 };
 
 use crate::workspace::{
@@ -25,17 +27,22 @@ use super::{
     types::{MAX_RESOURCE_PATH_BYTES, contract_join},
 };
 
-/// Folders listed and read ahead of the walk. Each worker takes a whole
-/// folder, so handing work over costs once per folder, not once per File.
-const FOLDERS_AHEAD: u64 = 16;
+/// Folders handed out ahead of the walk for each worker. Each worker takes a
+/// whole folder, so handing work over costs once per folder, not once per
+/// File; a few folders each keep the workers busy while the walk catches up.
+/// Measured on 200k small Files: 8 folders in all ran 1.9x, 16 ran 2.2x.
+const FOLDERS_AHEAD_PER_WORKER: u64 = 5;
 /// A larger folder is left to the walk, which bounds what one listing holds.
 const MAX_LISTED_ENTRIES: usize = 4_096;
-/// Files read ahead in one folder, at most.
-const MAX_SCANNED_FILES: usize = 512;
 
-/// A folder in the walk's queue: path, root-relative path, depth and the
-/// rules of the folder holding it.
-pub(super) type QueuedFolder = (PathBuf, String, usize, FolderChain);
+/// A folder in the walk's queue.
+pub(super) struct QueuedFolder {
+    pub(super) path: PathBuf,
+    pub(super) relative: String,
+    pub(super) depth: usize,
+    /// The rules of the folder holding it.
+    pub(super) parent_rules: FolderChain,
+}
 
 /// One folder, listed and read ahead.
 pub(super) struct Listing {
@@ -53,7 +60,18 @@ struct Job {
     directory: PathBuf,
     relative: String,
     parent_rules: FolderChain,
-    scan_files: bool,
+    /// What is left of the page when the job was handed out. Both only
+    /// shrink, so reads past them are never needed.
+    reads: Option<ReadBudget>,
+}
+
+/// What the page has left, for the reads ahead; None while a continuation
+/// replays, which reads no Files.
+#[derive(Clone, Copy)]
+pub(super) struct ReadBudget {
+    /// None when the time limit is too far off to represent.
+    pub(super) deadline: Option<Instant>,
+    pub(super) bytes_left: u64,
 }
 
 /// What the workers share with the walk, borrowed for the walk's length.
@@ -78,6 +96,7 @@ pub(super) struct Prefetch {
     results: mpsc::Receiver<(u64, Option<Listing>)>,
     ready: HashMap<u64, Option<Listing>>,
     submitted: u64,
+    ahead: u64,
     stop: Arc<AtomicBool>,
 }
 
@@ -118,7 +137,11 @@ impl Prefetch {
                         break;
                     };
                     let id = job.id;
-                    let listing = list_folder(context, job, &stop);
+                    // A panic leaves the folder to the walk, which then fails
+                    // the same way, instead of waiting forever for it.
+                    let listing =
+                        catch_unwind(AssertUnwindSafe(|| list_folder(context, job, &stop)))
+                            .unwrap_or(None);
                     if sender.send((id, listing)).is_err() {
                         break;
                     }
@@ -130,6 +153,7 @@ impl Prefetch {
             results,
             ready: HashMap::new(),
             submitted: 0,
+            ahead: workers as u64 * FOLDERS_AHEAD_PER_WORKER,
             stop,
         })
     }
@@ -141,24 +165,22 @@ impl Prefetch {
         &mut self,
         queue: &VecDeque<QueuedFolder>,
         front: u64,
-        scan_files: bool,
+        reads: Option<ReadBudget>,
     ) {
         let Some(jobs) = &self.jobs else {
             return;
         };
         self.submitted = self.submitted.max(front);
-        while self.submitted < front + FOLDERS_AHEAD {
-            let Some((directory, relative, _, parent_rules)) =
-                queue.get((self.submitted - front) as usize)
-            else {
+        while self.submitted < front + self.ahead {
+            let Some(folder) = queue.get((self.submitted - front) as usize) else {
                 break;
             };
             let job = Job {
                 id: self.submitted,
-                directory: directory.clone(),
-                relative: relative.clone(),
-                parent_rules: parent_rules.clone(),
-                scan_files,
+                directory: folder.path.clone(),
+                relative: folder.relative.clone(),
+                parent_rules: folder.parent_rules.clone(),
+                reads,
             };
             if jobs.send(job).is_err() {
                 break;
@@ -208,7 +230,7 @@ fn list_folder(context: WalkContext<'_>, job: Job, stop: &AtomicBool) -> Option<
         .rules
         .enter(&job.parent_rules, &job.relative, rule_files);
     let mut scans = HashMap::new();
-    if job.scan_files {
+    if let Some(reads) = job.reads {
         let mut files = entries
             .iter()
             .filter_map(|entry| entry.as_ref().ok())
@@ -219,19 +241,28 @@ fn list_folder(context: WalkContext<'_>, job: Job, stop: &AtomicBool) -> Option<
             .collect::<Vec<(OsString, String)>>();
         // In walk order, so the reads stop where a page would.
         files.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-        let limits = &context.engine.limits;
+        let max_results = context.engine.limits.max_results;
         let (mut found, mut bytes) = (0_usize, 0_u64);
-        for (_, relative) in files.into_iter().take(MAX_SCANNED_FILES) {
+        for (_, relative) in files {
             if stop.load(Ordering::Relaxed) {
                 return None;
             }
-            if found >= limits.max_results || bytes > limits.max_total_bytes {
+            if found >= max_results
+                || bytes > reads.bytes_left
+                || reads
+                    .deadline
+                    .is_some_and(|deadline| Instant::now() >= deadline)
+            {
                 break;
             }
-            let scan =
-                context
-                    .engine
-                    .scan_file(context.workspace, &relative, context.query, u64::MAX);
+            // Only the whole budget left is safe to pass: the walk may not
+            // charge every byte counted here (an oversized File is skipped).
+            let scan = context.engine.scan_file(
+                context.workspace,
+                &relative,
+                context.query,
+                reads.bytes_left,
+            );
             if let FileScan::Opened { byte_len, body } = &scan {
                 bytes = bytes.saturating_add(*byte_len);
                 found += body.match_count();

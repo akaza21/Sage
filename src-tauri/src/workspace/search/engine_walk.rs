@@ -13,7 +13,7 @@ use crate::workspace::{
 use super::{
     engine::{RootCounters, SearchBudget, SearchEngine},
     engine_continue::{ContinuationSeek, stale_report},
-    file_prefetch::{Prefetch, QueuedFolder, WalkContext},
+    file_prefetch::{Prefetch, QueuedFolder, ReadBudget, WalkContext},
     file_scan::ScanQuery,
     path_filter::path_is_admitted,
     types::{
@@ -82,29 +82,41 @@ impl SearchEngine {
         };
         let stopped = std::thread::scope(|scope| {
             let mut prefetch = Prefetch::start(scope, context);
-            let mut directories: VecDeque<QueuedFolder> = VecDeque::from([(
-                workspace.root().to_path_buf(),
-                String::new(),
-                0,
-                FolderChain::default(),
-            )]);
+            let mut directories = VecDeque::from([QueuedFolder {
+                path: workspace.root().to_path_buf(),
+                relative: String::new(),
+                depth: 0,
+                parent_rules: FolderChain::default(),
+            }]);
             // Folders are numbered in the order they were queued.
             let mut front = 0_u64;
 
             loop {
                 if let Some(prefetch) = prefetch.as_mut() {
-                    prefetch.submit_ahead(&directories, front, seek.is_none());
+                    let reads = seek.is_none().then(|| ReadBudget {
+                        deadline: budget.started_at.checked_add(self.limits.max_duration),
+                        bytes_left: self
+                            .limits
+                            .max_total_bytes
+                            .saturating_sub(budget.bytes_scanned),
+                    });
+                    prefetch.submit_ahead(&directories, front, reads);
                 }
-                let Some((directory, relative, depth, parent_rules)) = directories.pop_front()
+                let Some(QueuedFolder {
+                    path: directory,
+                    relative,
+                    depth,
+                    parent_rules,
+                }) = directories.pop_front()
                 else {
                     break;
                 };
-                let listing = prefetch.as_mut().and_then(|prefetch| prefetch.take(front));
-                front += 1;
                 if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
                     counters.partial = true;
                     break;
                 }
+                let listing = prefetch.as_mut().and_then(|prefetch| prefetch.take(front));
+                front += 1;
                 let (read_directory, mut ahead): (Box<dyn Iterator<Item = _>>, _) = match listing {
                     Some(listing) => (
                         Box::new(listing.entries.into_iter()),
@@ -247,12 +259,12 @@ impl SearchEngine {
                             push_reason(&mut budget.reasons, SearchLimitReason::Entries);
                             counters.partial = true;
                         } else {
-                            directories.push_back((
-                                entry.path(),
-                                child_relative,
-                                depth + 1,
-                                folder_rules.clone(),
-                            ));
+                            directories.push_back(QueuedFolder {
+                                path: entry.path(),
+                                relative: child_relative,
+                                depth: depth + 1,
+                                parent_rules: folder_rules.clone(),
+                            });
                         }
                         continue;
                     }
