@@ -268,6 +268,20 @@ async function clickable(capture, selector) {
   return capture.evaluate(clickableExpression(selector));
 }
 
+/**
+ * Waits, as the capture drivers do, for a probe to hold; the composer and its
+ * pickers can enable a moment after the projection loads on a slow runner.
+ */
+async function settled(probe, label = "control") {
+  try {
+    await waitForState(probe, Date.now() + SETTLE_MS);
+  } catch (error) {
+    if (error.message === "state-timeout")
+      assert.fail(`${label} did not settle`);
+    throw error;
+  }
+}
+
 for (const width of WIDTHS)
   test(
     `the prepare and submit controls resolve to one enabled match at ${width}`,
@@ -280,32 +294,17 @@ for (const width of WIDTHS)
       );
       // New task is reachable without a navigation drawer at every width.
       for (const control of [NEW_TASK, HARNESS_PICKER, ACCESS_OPTIONS])
-        assert.equal(await clickable(capture, control), true, control);
+        await settled(() => clickable(capture, control), control);
       const { selected } = await capture.observe();
-      assert.equal(
-        await capture.evaluate(clickExpression(HARNESS_PICKER)),
-        true,
-      );
-      await waitForState(
-        () => clickable(capture, harnessOption(selected)),
-        Date.now() + SETTLE_MS,
-      );
+      await settled(() => capture.evaluate(clickExpression(HARNESS_PICKER)));
+      await settled(() => clickable(capture, harnessOption(selected)));
       await capture.evaluate(clickExpression(HARNESS_PICKER));
-      assert.equal(
-        await capture.evaluate(clickExpression(ACCESS_OPTIONS)),
-        true,
-      );
+      await settled(() => capture.evaluate(clickExpression(ACCESS_OPTIONS)));
       for (const mode of ["readOnly", "workspaceWrite"])
-        await waitForState(
-          () => clickable(capture, accessModeOption(mode)),
-          Date.now() + SETTLE_MS,
-        );
+        await settled(() => clickable(capture, accessModeOption(mode)), mode);
       await capture.evaluate(clickExpression(ACCESS_OPTIONS));
-      assert.equal(await capture.evaluate(COMPOSER_FILL), true);
-      await waitForState(
-        () => clickable(capture, SEND_MESSAGE),
-        Date.now() + SETTLE_MS,
-      );
+      await settled(() => capture.evaluate(COMPOSER_FILL));
+      await settled(() => clickable(capture, SEND_MESSAGE));
     },
   );
 
@@ -329,12 +328,9 @@ for (const [drift, mutation] of [
         "agent-single",
         admitted("codex", "composer-idle", 1888),
       );
-      assert.equal(await capture.evaluate(COMPOSER_FILL), true);
-      await waitForState(
-        () => clickable(capture, SEND_MESSAGE),
-        Date.now() + SETTLE_MS,
-      );
-      assert.equal(await capture.evaluate(mutation), true);
+      await settled(() => capture.evaluate(COMPOSER_FILL));
+      await settled(() => clickable(capture, SEND_MESSAGE));
+      await settled(() => capture.evaluate(mutation));
       assert.equal(await clickable(capture, SEND_MESSAGE), false);
     },
   );
@@ -356,7 +352,9 @@ for (const [drift, mutation] of [
     async (t) => {
       const options = admitted("codex", "harness-menu", 1888);
       const capture = await openCapture(t, "agent-single", options);
-      assert.equal(await capture.evaluate(mutation), true);
+      // Mutate only once the picker is live, so the drift is what fails.
+      await settled(() => clickable(capture, HARNESS_PICKER));
+      await settled(() => capture.evaluate(mutation));
       await assert.rejects(
         drive(capture, options, Date.now() + 2_000),
         /state-timeout/u,
