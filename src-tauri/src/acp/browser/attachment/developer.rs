@@ -8,6 +8,7 @@
 //! the slot under the same lock, either end it or make the grant refuse.
 
 use super::*;
+use crate::acp::browser::developer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeveloperGrant {
@@ -24,7 +25,20 @@ fn origin_of(url: &str) -> Option<String> {
 impl AttachmentLease {
     /// Records the user's approval for `session` on `origin`; false when the
     /// attachment, its authority or its page moved on since the card.
+    #[cfg(test)]
     pub(crate) fn grant_developer_mode(&self, session: &str, origin: &str) -> bool {
+        self.grant_developer_mode_at(session, origin, developer::switch_generation())
+    }
+
+    /// Records the grant unless the Settings switch changed since
+    /// `generation` was read; checked under the grant's own lock, which the
+    /// switch going off takes to end grants.
+    pub(crate) fn grant_developer_mode_at(
+        &self,
+        session: &str,
+        origin: &str,
+        generation: u64,
+    ) -> bool {
         let Ok(slot) = self.authority.lock() else {
             return false;
         };
@@ -38,6 +52,9 @@ impl AttachmentLease {
         let Ok(mut grant) = self.developer.lock() else {
             return false;
         };
+        if developer::switch_generation() != generation {
+            return false;
+        }
         *grant = Some(DeveloperGrant {
             session: session.to_owned(),
             origin: origin.to_owned(),

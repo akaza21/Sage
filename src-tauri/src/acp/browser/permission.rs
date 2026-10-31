@@ -300,7 +300,7 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
     fn perform_admitted(
         &mut self,
         request: &BrowserRequest,
-        elevated: Option<(&dyn DeveloperModePolicy, &str)>,
+        elevated: Option<(&dyn DeveloperModePolicy, &str, &dyn Fn() -> bool)>,
     ) -> Result<BrowserResult, BrowserFailure> {
         let session = request.scope.session_id.as_str();
         let (revision, owner_generation, origin, already_granted) = {
@@ -319,8 +319,8 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
                 _ => state.origin.clone(),
             };
             let granted = match elevated {
-                Some((_, admitted)) if admitted != origin => return Err(BrowserFailure::Denied),
-                Some((developer, _)) => developer.granted(session, &origin),
+                Some((_, admitted, _)) if admitted != origin => return Err(BrowserFailure::Denied),
+                Some((developer, _, _)) => developer.granted(session, &origin),
                 None => state.grant_origin.as_deref() == Some(origin.as_str()),
             };
             (state.revision, state.owner_generation, origin, granted)
@@ -345,10 +345,14 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
             return Err(BrowserFailure::Denied);
         }
         // The attachment holds the grant, so Stop, Take over and a
-        // cross-origin commit end it whichever authority asked.
-        if let Some((developer, _)) = elevated
-            && !already_granted
-            && !developer.grant(session, &origin)
+        // cross-origin commit end it whichever authority asked. The switch
+        // is read again because it may have gone off while the card was
+        // open, and the command leaves Sage only once its audit row is
+        // written.
+        if let Some((developer, _, record_sent)) = elevated
+            && (!developer.enabled()
+                || (!already_granted && !developer.grant(session, &origin))
+                || !record_sent())
         {
             return Err(BrowserFailure::Denied);
         }

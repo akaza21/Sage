@@ -262,6 +262,9 @@ pub trait BrowserCapability {
         None
     }
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure>;
+    /// Told when a request fails validation and is never performed, so a
+    /// refused developer-mode call is still audited (ADR-0009b).
+    fn refused(&mut self, _request: &BrowserRequest, _failure: BrowserFailure) {}
 }
 
 pub fn admit_request_json(bytes: &[u8]) -> Result<BrowserRequest, BrowserFailure> {
@@ -283,7 +286,10 @@ pub fn dispatch<P: BrowserCapability>(
     port: &mut P,
     request: BrowserRequest,
 ) -> Result<BrowserResponse, BrowserFailure> {
-    validate_request(&request)?;
+    if let Err(failure) = validate_request(&request) {
+        port.refused(&request, failure);
+        return Err(failure);
+    }
     let mut result = port.perform(&request)?;
     redact_result(&mut result);
     validate_result(&result)?;

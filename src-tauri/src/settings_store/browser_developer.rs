@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::SettingsStore;
 use crate::{
-    acp::browser::{developer::CdpAuditEntry, redact_console},
+    acp::browser::{developer::CdpAuditEntry, redact_console, redact_json},
     error::AppResult,
 };
 
@@ -33,7 +33,7 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            params_bytes INTEGER NOT NULL CHECK (params_bytes >= 0),
            result_bytes INTEGER CHECK (result_bytes IS NULL OR result_bytes >= 0),
            outcome TEXT NOT NULL CHECK (outcome IN
-             ('ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
+             ('sent', 'ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
          ) STRICT;",
     )?;
     Ok(())
@@ -42,7 +42,17 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
 /// The redacted parameters, cut at a character boundary within the cap.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn preview(params: &str) -> String {
-    let mut redacted = redact_console(params);
+    // Secret-named fields go first and every string is redacted on its
+    // own; a cookie's or header's `value` beside its `name` is always
+    // dropped. Text that is not JSON is redacted as a whole.
+    let mut redacted = match serde_json::from_str::<serde_json::Value>(params) {
+        Ok(mut value) => {
+            redact_json(&mut value);
+            drop_named_values(&mut value);
+            value.to_string()
+        }
+        Err(_) => redact_console(params),
+    };
     if redacted.len() > PARAMS_PREVIEW_BYTES {
         let mut end = PARAMS_PREVIEW_BYTES;
         while !redacted.is_char_boundary(end) {
@@ -51,6 +61,20 @@ fn preview(params: &str) -> String {
         redacted.truncate(end);
     }
     redacted
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn drop_named_values(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if map.contains_key("name") && map.contains_key("value") {
+                map.insert("value".into(), "[redacted]".into());
+            }
+            map.values_mut().for_each(drop_named_values);
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(drop_named_values),
+        _ => {}
+    }
 }
 
 impl SettingsStore {
@@ -187,6 +211,24 @@ mod tests {
         assert!(preview.len() <= 512);
         assert_eq!(bytes, params.len() as i64);
         assert_eq!(outcome, "ok");
+    }
+
+    #[test]
+    fn a_cookie_value_in_the_parameters_never_reaches_the_preview() {
+        let store = SettingsStore::in_memory().unwrap();
+        let params =
+            r#"{"name":"sid","value":"s3cr3t-session-value","url":"https://example.com/"}"#;
+        store.record_cdp_audit(&entry(params.into()), 1).unwrap();
+        let preview: String = store
+            .0
+            .lock()
+            .unwrap()
+            .query_row("SELECT params_preview FROM browser_cdp_audit", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(preview.contains("https://example.com/"), "{preview}");
+        assert!(!preview.contains("s3cr3t-session-value"), "{preview}");
     }
 
     #[test]

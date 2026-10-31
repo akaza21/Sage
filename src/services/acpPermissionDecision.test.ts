@@ -47,6 +47,47 @@ describe("ACP permission decision bridge", () => {
     ).rejects.toMatchObject({ failure: { kind: "internal" } });
   });
 
+  it("accepts each decision only from the source that offers it, in its expected state", async () => {
+    const cases: [
+      ResolvePermissionDecisionRequest["decision"],
+      "browser" | undefined,
+      string | null,
+    ][] = [
+      ["allowDeveloperMode", "browser", "resolvedAllowed"],
+      ["allowForOriginSession", "browser", "resolvedAllowed"],
+      ["allowOnce", "browser", "resolvedAllowed"],
+      ["allowAlways", "browser", null],
+      ["ask", "browser", null],
+      ["allowDeveloperMode", undefined, null],
+      ["allowForOriginSession", undefined, null],
+      ["allowAlways", undefined, "allowPending"],
+      ["ask", undefined, "asked"],
+    ];
+    for (const [decision, source, state] of cases) {
+      const request = { ...permissionRequest, decision };
+      for (const answered of [
+        state ?? "resolvedAllowed",
+        "allowPending",
+        "resolvedAllowed",
+        "toString",
+      ]) {
+        const response = {
+          ...request,
+          state: answered,
+          ...(source ? { source } : {}),
+        };
+        invokeMock.mockResolvedValueOnce(response);
+        const outcome = acpDesktop.resolvePermissionDecision(request);
+        if (state !== null && answered === state)
+          await expect(outcome).resolves.toEqual(response);
+        else
+          await expect(outcome).rejects.toMatchObject({
+            failure: { kind: "internal" },
+          });
+      }
+    }
+  });
+
   it("sends and accepts only the exact six-field permission identity", async () => {
     invokeMock.mockResolvedValue({
       ...permissionRequest,

@@ -2,21 +2,39 @@
 //! may reach the attached tab, and the seam through which the gate reads the
 //! Settings switch, the per-session grant and the audit log.
 //!
-//! The deny list is about leaving the tab, not about what the tab can do:
-//! any command that reaches other targets, the whole browser profile, or
-//! another origin's storage is refused before it is sent.
+//! The deny list is about leaving the tab and the grant, not about what the
+//! page can do: any command that reaches other targets, the whole browser
+//! profile, local files, another origin's frames or storage, or that leaves
+//! state behind on the tab's shared DevTools session after the grant ends,
+//! is refused before it is sent.
+
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Map, Value};
 
 use super::BrowserFailure;
 
-/// Domains whose every command reaches beyond the attached tab or its origin.
+/// Domains whose commands reach beyond the attached tab or its origin, or
+/// leave state on the tab's DevTools session that would outlive the grant
+/// (breakpoints and pauses, request interception, emulation overrides,
+/// virtual authenticators).
 const DENIED_DOMAINS: &[&str] = &[
     "Autofill",
     "BackgroundService",
+    "BluetoothEmulation",
     "Browser",
+    "Cast",
+    "DOMDebugger",
+    "DOMSnapshot",
+    "Debugger",
+    "DeviceAccess",
+    "DeviceOrientation",
+    "Emulation",
+    "EventBreakpoints",
     "Extensions",
     "FedCm",
+    "Fetch",
+    "IO",
     "PWA",
     "ServiceWorker",
     "Storage",
@@ -24,14 +42,48 @@ const DENIED_DOMAINS: &[&str] = &[
     "Target",
     "Tethering",
     "Tracing",
+    "WebAuthn",
 ];
 
-/// Single commands that act on the whole profile or bypass a security check.
+/// Single commands that act on the whole profile, read local files, fetch
+/// with the user's credentials outside the page, close or freeze the tab,
+/// bypass a security check, or install state that outlives the grant.
 const DENIED_METHODS: &[&str] = &[
+    "DOM.setFileInputFiles",
+    "Input.dispatchDragEvent",
+    "Input.setIgnoreInputEvents",
+    "Input.setInterceptDrags",
+    "Memory.setPressureNotificationsSuppressed",
+    "Memory.simulatePressureNotification",
     "Network.clearBrowserCache",
     "Network.clearBrowserCookies",
+    "Network.emulateNetworkConditions",
+    "Network.emulateNetworkConditionsByRule",
+    "Network.enableReportingApi",
     "Network.getAllCookies",
+    "Network.loadNetworkResource",
+    "Network.overrideNetworkState",
+    "Network.setAttachDebugStack",
+    "Network.setBlockedURLs",
+    "Network.setBypassServiceWorker",
+    "Network.setCacheDisabled",
+    "Network.setCookieControls",
+    "Network.setExtraHTTPHeaders",
+    "Network.setRequestInterception",
+    "Network.setUserAgentOverride",
+    "Page.addScriptToEvaluateOnLoad",
+    "Page.addScriptToEvaluateOnNewDocument",
+    "Page.captureSnapshot",
+    "Page.close",
+    "Page.crash",
+    "Page.handleFileChooser",
+    "Page.setBypassCSP",
     "Page.setDownloadBehavior",
+    "Page.setInterceptFileChooserDialog",
+    "Page.setRPHRegistrationMode",
+    "Page.setSPCTransactionMode",
+    "Page.setWebLifecycleState",
+    "Runtime.addBinding",
     "Security.handleCertificateError",
     "Security.setIgnoreCertificateErrors",
     "Security.setOverrideCertificateErrors",
@@ -40,6 +92,19 @@ const DENIED_METHODS: &[&str] = &[
 /// Parameter keys that name a storage partition; each must be the granted
 /// origin's.
 const ORIGIN_KEYS: &[&str] = &["securityOrigin", "storageKey"];
+
+/// Parameter keys that would aim a command at another frame or execution
+/// context (a same-site iframe can share the page's process), at a cache
+/// named by another origin's storage key, or at local files. Commands run
+/// on the main frame's default context only.
+const DENIED_KEYS: &[&str] = &[
+    "cacheId",
+    "contextId",
+    "executionContextId",
+    "files",
+    "frameId",
+    "uniqueContextId",
+];
 
 /// Accepts `Domain.command`, both ASCII alphanumeric and non-empty.
 pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
@@ -66,7 +131,8 @@ pub fn admit_command(
     if DENIED_DOMAINS.contains(&domain) || DENIED_METHODS.contains(&method) {
         return Err(BrowserFailure::Denied);
     }
-    if !storage_keys_match(&Value::Object(params.clone()), origin) {
+    let params_value = Value::Object(params.clone());
+    if !storage_keys_match(&params_value, origin) || !stays_in_main_frame(&params_value) {
         return Err(BrowserFailure::Denied);
     }
     match method {
@@ -128,6 +194,20 @@ fn storage_keys_match(value: &Value, origin: &str) -> bool {
     }
 }
 
+/// No denied key at any depth, and no `pierce`, which would walk into
+/// iframe documents.
+fn stays_in_main_frame(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => map.iter().all(|(key, value)| {
+            !DENIED_KEYS.contains(&key.as_str())
+                && !(key == "pierce" && value != &Value::Bool(false))
+                && stays_in_main_frame(value)
+        }),
+        Value::Array(items) => items.iter().all(stays_in_main_frame),
+        _ => true,
+    }
+}
+
 fn same_origin(url: &str, origin: &str) -> bool {
     url::Url::parse(url).is_ok_and(|url| url.origin().ascii_serialization() == origin)
 }
@@ -141,6 +221,9 @@ fn host_of(origin: &str) -> Option<String> {
 /// How one developer-mode call ended, as the audit log records it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CdpAuditOutcome {
+    /// Approved and about to be sent; written before the command leaves
+    /// Sage, which refuses to send it if the row cannot be written.
+    Sent,
     Ok,
     /// The switch was off, the user declined, or the grant had ended.
     Denied,
@@ -152,6 +235,7 @@ pub enum CdpAuditOutcome {
 impl CdpAuditOutcome {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Sent => "sent",
             Self::Ok => "ok",
             Self::Denied => "denied",
             Self::Blocked => "blocked",
@@ -176,6 +260,21 @@ pub struct CdpAuditEntry {
     pub outcome: CdpAuditOutcome,
 }
 
+/// Bumped whenever the Settings switch changes. A call captures it when it
+/// starts; a grant or send made after the switch changed is refused, even
+/// when the user approves a card that was already open.
+static SWITCH_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub fn switch_generation() -> u64 {
+    SWITCH_GENERATION.load(Ordering::SeqCst)
+}
+
+/// Called before the switch's grants are ended, so a grant racing the
+/// switch either lands first and is ended, or sees the new generation.
+pub fn bump_switch_generation() {
+    SWITCH_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
+
 /// What the permission gate needs to admit an elevated command. Grants are
 /// held in memory by the attachment and end on Stop, Take over, detach,
 /// tab close, a cross-origin commit and the switch going off.
@@ -187,7 +286,8 @@ pub trait DeveloperModePolicy: Send + Sync {
     /// Records a grant the user just approved; false when the attachment
     /// can no longer hold one.
     fn grant(&self, session: &str, origin: &str) -> bool;
-    fn audit(&self, entry: CdpAuditEntry);
+    /// Writes one audit row; false when it could not be written.
+    fn audit(&self, entry: CdpAuditEntry) -> bool;
 }
 
 #[cfg(test)]

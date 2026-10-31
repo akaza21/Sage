@@ -17,6 +17,8 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
         method: &str,
         params: &Map<String, Value>,
     ) -> Result<BrowserResult, BrowserFailure> {
+        // Without a policy there is no switch, store or grant to consult;
+        // the session capability audits that refusal (`attached.rs`).
         let developer = self.developer.clone().ok_or(BrowserFailure::Denied)?;
         let (origin, live) = {
             let state = self
@@ -29,16 +31,17 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
                 state.active && state.scope == request.scope,
             )
         };
+        let entry = |outcome: CdpAuditOutcome, result_bytes: Option<usize>| CdpAuditEntry {
+            session_id: request.scope.session_id.clone(),
+            tab_id: request.scope.tab_id,
+            origin: origin.clone(),
+            method: method.to_owned(),
+            params: serde_json::to_string(params).unwrap_or_default(),
+            result_bytes,
+            outcome,
+        };
         let audit = |outcome: CdpAuditOutcome, result_bytes: Option<usize>| {
-            developer.audit(CdpAuditEntry {
-                session_id: request.scope.session_id.clone(),
-                tab_id: request.scope.tab_id,
-                origin: origin.clone(),
-                method: method.to_owned(),
-                params: serde_json::to_string(params).unwrap_or_default(),
-                result_bytes,
-                outcome,
-            });
+            developer.audit(entry(outcome, result_bytes));
         };
         if !live || !developer.enabled() {
             audit(CdpAuditOutcome::Denied, None);
@@ -48,7 +51,11 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
             audit(CdpAuditOutcome::Blocked, None);
             return Err(failure);
         }
-        let outcome = self.perform_admitted(request, Some((developer.as_ref(), &origin)));
+        // Written after approval and before sending; if it cannot be
+        // written, the command is not sent.
+        let record_sent = || developer.audit(entry(CdpAuditOutcome::Sent, None));
+        let outcome =
+            self.perform_admitted(request, Some((developer.as_ref(), &origin, &record_sent)));
         match &outcome {
             Ok(BrowserResult::Cdp { result }) => audit(
                 CdpAuditOutcome::Ok,

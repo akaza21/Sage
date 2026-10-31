@@ -201,7 +201,7 @@ it.each([
   },
 );
 
-it("names the CDP method a developer-mode call ran", () => {
+it("shows a developer-mode call as page use with its CDP method in the detail", () => {
   render(
     <BrowserOperationItem
       operation={{
@@ -214,7 +214,8 @@ it("names the CDP method a developer-mode call ran", () => {
   );
   expect(
     screen.getByRole("group", {
-      name: "Ran Runtime.evaluate on example.com · Completed",
+      name: "Used page on example.com · Completed",
     }),
   ).toBeInTheDocument();
+  expect(screen.getByText("CDP Runtime.evaluate")).toBeInTheDocument();
 });

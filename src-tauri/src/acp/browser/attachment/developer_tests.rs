@@ -130,3 +130,15 @@ fn the_settings_switch_going_off_ends_every_grant() {
     assert!(!lease.developer_granted(SESSION, ORIGIN));
     assert!(registry.end_developer_mode().is_empty());
 }
+
+#[test]
+fn a_grant_made_after_the_switch_changed_is_refused() {
+    let (_registry, lease) = attached();
+    // A call that started under another switch generation (no global bump
+    // here, so parallel tests are unaffected).
+    let stale = crate::acp::browser::developer::switch_generation().wrapping_add(1);
+    assert!(!lease.grant_developer_mode_at(SESSION, ORIGIN, stale));
+    assert!(!lease.developer_mode_active());
+    let current = crate::acp::browser::developer::switch_generation();
+    assert!(lease.grant_developer_mode_at(SESSION, ORIGIN, current));
+}

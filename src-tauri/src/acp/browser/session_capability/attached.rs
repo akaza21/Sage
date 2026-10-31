@@ -65,7 +65,25 @@ impl<'a, C, F> AttachedSessionCapability<'a, C, F> {
 }
 
 impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapability<'_, C, F> {
+    /// A `cdp` call refused before the gate is built leaves an audit row
+    /// too; the gate audits everything after that.
     fn perform_once(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
+        let mut reached_gate = false;
+        let outcome = self.perform_through_gate(request, &mut reached_gate);
+        if let Err(failure) = outcome
+            && !reached_gate
+            && let Some(settings) = self.context.developer_settings()
+        {
+            super::developer::audit_refused(&settings, request, failure);
+        }
+        outcome
+    }
+
+    fn perform_through_gate(
+        &mut self,
+        request: &BrowserRequest,
+        reached_gate: &mut bool,
+    ) -> Result<BrowserResult, BrowserFailure> {
         if request.scope.session_id != self.session.as_str()
             || matches!(
                 request.command,
@@ -136,6 +154,7 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
         if let Some(policy) = developer {
             gate = gate.with_developer_mode(policy);
         }
+        *reached_gate = true;
         with_session_owner_guards(gate, self.context.clone(), owner).perform(request)
     }
 }

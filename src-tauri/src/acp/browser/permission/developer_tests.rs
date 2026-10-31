@@ -1,7 +1,10 @@
 //! The gate's developer-mode path (ADR-0009b).
 
 use super::*;
-use crate::acp::browser::{BrowserCommand, BrowserResult, developer::CdpAuditEntry};
+use crate::acp::browser::{
+    BrowserCommand, BrowserResult,
+    developer::{CdpAuditEntry, CdpAuditOutcome},
+};
 use serde_json::{Map, json};
 use std::sync::atomic::AtomicUsize;
 
@@ -10,6 +13,7 @@ struct Policy {
     enabled: AtomicBool,
     grant: Mutex<Option<(String, String)>>,
     refuse_grant: AtomicBool,
+    refuse_audit: AtomicBool,
     audit: Mutex<Vec<CdpAuditEntry>>,
 }
 
@@ -27,8 +31,12 @@ impl DeveloperModePolicy for Policy {
         *self.grant.lock().unwrap() = Some((session.to_owned(), origin.to_owned()));
         true
     }
-    fn audit(&self, entry: CdpAuditEntry) {
+    fn audit(&self, entry: CdpAuditEntry) -> bool {
+        if self.refuse_audit.load(Ordering::SeqCst) {
+            return false;
+        }
         self.audit.lock().unwrap().push(entry);
+        true
     }
 }
 
@@ -159,13 +167,20 @@ fn approval_grants_the_session_so_later_calls_run_without_a_card() {
     assert_eq!(asked.load(Ordering::SeqCst), 1);
     assert_eq!(port.0.load(Ordering::SeqCst), 3);
     assert!(policy.granted("session-1", "https://example.com"));
+    assert_eq!(
+        policy.outcomes(),
+        ["sent", "ok", "sent", "ok", "sent", "ok"]
+    );
     let audit = policy.audit.lock().unwrap();
-    assert_eq!(audit.len(), 3);
     assert!(audit.iter().all(|entry| entry.method == "Runtime.evaluate"
         && entry.origin == "https://example.com"
         && entry.tab_id == 7
-        && entry.result_bytes.is_some()
         && entry.params.contains("1 + 1")));
+    assert!(
+        audit
+            .iter()
+            .all(|entry| entry.result_bytes.is_some() == (entry.outcome == CdpAuditOutcome::Ok))
+    );
 }
 
 #[test]
@@ -285,5 +300,42 @@ fn a_stopped_authority_or_a_switch_turned_off_ends_a_granted_session() {
     gate.authority.stop();
     assert_eq!(gate.perform(&evaluate()), Err(BrowserFailure::Denied));
     assert_eq!(port.0.load(Ordering::SeqCst), 1);
-    assert_eq!(policy.outcomes(), ["ok", "denied", "denied"]);
+    assert_eq!(policy.outcomes(), ["sent", "ok", "denied", "denied"]);
+}
+
+#[test]
+fn turning_the_switch_off_while_the_card_is_open_refuses_the_approval() {
+    let port = Port::default();
+    let policy = Policy::on();
+    let mut gate = BrowserPermissionGate::new(
+        port.clone(),
+        {
+            let policy = policy.clone();
+            move |_: &BrowserPermissionPrompt| {
+                policy.enabled.store(false, Ordering::SeqCst);
+                BrowserPermissionChoice::AllowDeveloperMode
+            }
+        },
+        authority(),
+    )
+    .with_developer_mode(policy.clone());
+    assert_eq!(gate.perform(&evaluate()), Err(BrowserFailure::Denied));
+    assert_eq!(port.0.load(Ordering::SeqCst), 0);
+    assert!(!policy.granted("session-1", "https://example.com"));
+    assert_eq!(policy.outcomes(), ["denied"]);
+}
+
+#[test]
+fn a_command_whose_audit_row_cannot_be_written_is_not_sent() {
+    let port = Port::default();
+    let policy = Policy::on();
+    policy.refuse_audit.store(true, Ordering::SeqCst);
+    let mut gate = gate(
+        port.clone(),
+        &policy,
+        BrowserPermissionChoice::AllowDeveloperMode,
+        Arc::default(),
+    );
+    assert_eq!(gate.perform(&evaluate()), Err(BrowserFailure::Denied));
+    assert_eq!(port.0.load(Ordering::SeqCst), 0);
 }

@@ -45,8 +45,8 @@ fn tab_scoped_commands_pass_including_script() {
         "Runtime.evaluate",
         "Page.navigate",
         "DOM.querySelector",
-        "Debugger.enable",
-        "Network.setExtraHTTPHeaders",
+        "Network.enable",
+        "Profiler.start",
         "Security.enable",
     ] {
         assert_eq!(
@@ -82,6 +82,37 @@ fn domains_and_commands_that_leave_the_tab_are_blocked() {
         "Security.setIgnoreCertificateErrors",
         "Security.handleCertificateError",
         "Security.setOverrideCertificateErrors",
+        // Local files.
+        "DOM.setFileInputFiles",
+        "Input.dispatchDragEvent",
+        "Page.setInterceptFileChooserDialog",
+        "Page.handleFileChooser",
+        "IO.read",
+        // Fetching with the user's credentials outside the page.
+        "Network.loadNetworkResource",
+        // State that would outlive the grant on the shared DevTools session.
+        "Page.addScriptToEvaluateOnNewDocument",
+        "Page.addScriptToEvaluateOnLoad",
+        "Page.setBypassCSP",
+        "Runtime.addBinding",
+        "Fetch.enable",
+        "Debugger.enable",
+        "Debugger.setBreakpointByUrl",
+        "DOMDebugger.setEventListenerBreakpoint",
+        "Emulation.setUserAgentOverride",
+        "Network.setExtraHTTPHeaders",
+        "Network.setBlockedURLs",
+        "Network.setUserAgentOverride",
+        "Input.setIgnoreInputEvents",
+        "WebAuthn.addVirtualAuthenticator",
+        // Other frames, the tab itself, the whole browser.
+        "DOMSnapshot.captureSnapshot",
+        "Page.captureSnapshot",
+        "Page.close",
+        "Page.crash",
+        "Network.setCookieControls",
+        "Memory.simulatePressureNotification",
+        "Cast.enable",
     ] {
         assert_eq!(
             admit(method, json!({})),
@@ -221,4 +252,49 @@ fn audit_outcomes_have_stable_names() {
         CdpAuditOutcome::Failed(BrowserFailure::StaleHandle).as_str(),
         "unavailable"
     );
+}
+
+#[test]
+fn commands_stay_in_the_main_frame_and_its_default_context() {
+    assert_eq!(admit("DOM.getDocument", json!({"depth": 2})), Ok(()));
+    assert_eq!(admit("DOM.getDocument", json!({"pierce": false})), Ok(()));
+    for (method, value) in [
+        ("DOM.getDocument", json!({"pierce": true})),
+        ("DOM.describeNode", json!({"nodeId": 1, "pierce": true})),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "1", "contextId": 3}),
+        ),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "1", "uniqueContextId": "x"}),
+        ),
+        (
+            "Runtime.callFunctionOn",
+            json!({"functionDeclaration": "f", "executionContextId": 3}),
+        ),
+        (
+            "Page.navigate",
+            json!({"url": "file:///etc/passwd", "frameId": "F2"}),
+        ),
+        (
+            "Page.getResourceContent",
+            json!({"frameId": "F2", "url": "https://x"}),
+        ),
+        ("Page.createIsolatedWorld", json!({"frameId": "F2"})),
+        (
+            "CacheStorage.requestEntries",
+            json!({"cacheId": "https://bank.example/|c"}),
+        ),
+        (
+            "Network.continueInterceptedRequest",
+            json!({"nested": {"files": ["/x"]}}),
+        ),
+    ] {
+        assert_eq!(
+            admit(method, value.clone()),
+            Err(BrowserFailure::Denied),
+            "{method} {value}"
+        );
+    }
 }

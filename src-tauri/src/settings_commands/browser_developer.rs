@@ -41,6 +41,9 @@ pub(crate) fn browser_set_developer_mode(
     if !AVAILABLE {
         return Err("Developer mode needs the Windows built-in browser.".into());
     }
+    // Calls already in flight, and cards already open, belong to the old
+    // setting: they are refused from here on.
+    crate::acp::browser::developer::bump_switch_generation();
     let enabled = state
         .settings
         .set_browser_developer_mode(enabled)
