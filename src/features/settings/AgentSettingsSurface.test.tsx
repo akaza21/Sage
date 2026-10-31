@@ -17,7 +17,7 @@ import { useAgentSettingsState } from "./agentSettingsState";
 const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
 const appearance = useUiAppearanceStore.getState();
-beforeEach(() => {
+beforeEach(async () => {
   useAgentSettingsState.getState().open("Chats");
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
@@ -48,6 +48,9 @@ beforeEach(() => {
     selectedModelId: "model-a",
   });
   useSessionAccessModeStore.setState({ ready: true, modes: {}, error: null });
+  const initialSettings = render(<AgentSettingsSurface />);
+  await screen.findByRole("combobox", { name: "Current model" });
+  initialSettings.unmount();
 });
 
 it("shows installation and sign-in evidence without treating an installed adapter as signed in", () => {
@@ -286,7 +289,7 @@ it("restores the real per-harness access default from its persistence boundary a
     target: { value: "workspaceWrite" },
   });
   expect(stored).toEqual({});
-  fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.getByRole("combobox", { name: "Default access" })).toHaveValue(
     "readOnly",
   );
@@ -393,6 +396,8 @@ it("discards workspace confirmation when the selected harness changes", async ()
         ...harness,
         id: "adapter-b",
         bindingId: "binding-b",
+        transport: "acp",
+        installState: "available",
         accessModes: modes,
       },
     ],

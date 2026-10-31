@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { TitleBar } from "./TitleBar";
+import { titleBarSessionTitle, titleBarFocusedChatId } from "./titleBarCenter";
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
@@ -20,7 +20,14 @@ function show(titles: string[], activeTabId: string | null = "chat-0") {
     })),
     activeTabId,
   });
-  render(createElement(TitleBar, { mode: "agent", onModeChange: () => {} }));
+  const id = titleBarFocusedChatId(
+    titles.map((_, index) => `chat-${index}`),
+    activeTabId,
+  );
+  const label = titleBarSessionTitle(
+    useWorkbenchStore.getState().tabs.find((tab) => tab.id === id)?.title,
+  );
+  render(label ? createElement("h1", null, label) : null);
 }
 describe("title bar center labels", () => {
   it.each([

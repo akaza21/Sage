@@ -16,7 +16,6 @@ import {
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
-import { AgentChatSettings } from "./AgentChatSettings";
 import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import {
   useAgentSettingsState,
@@ -30,6 +29,10 @@ const loadBrowserSettings = () =>
 
 const loadExecution = () => import("./AgentSettingsExecution");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
+const loadChatSettings = () =>
+  import("./AgentChatSettings").then(({ AgentChatSettings }) => ({
+    default: AgentChatSettings,
+  }));
 
 export default AgentSettingsSurface;
 
@@ -95,7 +98,7 @@ const searchControls: readonly {
     page: "Browser",
     label: "Browsing history",
     aliases: "visited pages",
-    selector: '[data-setting-search="history"]',
+    selector: "#settings-history",
     capability: "browser",
   },
 ];
@@ -285,7 +288,13 @@ export function AgentSettingsSurface() {
               />
             ) : null}
             {page === "Harnesses" ? <AgentHarnessSettings /> : null}
-            {page === "Chats" ? <AgentChatSettings /> : null}
+            {page === "Chats" ? (
+              <LazyModuleBoundary
+                label="Chat settings"
+                load={loadChatSettings}
+                render={(ChatSettings) => <ChatSettings />}
+              />
+            ) : null}
             {page === "Browser" ? (
               <LazyModuleBoundary
                 label="Browser settings"

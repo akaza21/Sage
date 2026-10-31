@@ -104,7 +104,7 @@ function LiveTabSettings({
           description="Recent pages visited by this browser tab."
         >
           <button
-            data-setting-search="history"
+            id="settings-history"
             type="button"
             className="button button--compact"
             aria-expanded={history}

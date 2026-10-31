@@ -96,7 +96,7 @@ describe("D0 workbench window mode seam", () => {
     await act(() => useWorkbenchStore.getState().openSettings("browser"));
     await settleLazyModules();
     expect(
-      screen.getByRole("dialog", { name: "Agent settings" }),
+      screen.getByRole("region", { name: "Agent settings" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Browser" })).toHaveAttribute(
       "aria-current",
@@ -116,7 +116,7 @@ describe("D0 workbench window mode seam", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
     await settleLazyModules();
     expect(
-      screen.getAllByRole("dialog", { name: "Agent settings" }),
+      screen.getAllByRole("region", { name: "Agent settings" }),
     ).toHaveLength(1);
   });
 

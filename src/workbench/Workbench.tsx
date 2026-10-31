@@ -16,12 +16,10 @@ import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
-import { DirtyTabDialog } from "./DirtyTabDialog";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
-import { RightSidebar } from "./RightSidebar";
-import { StatusBar } from "./StatusBar";
 import { TabStrip } from "./TabStrip";
+import { StatusBar } from "./StatusBar";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
@@ -64,6 +62,14 @@ const loadRailStatus = () =>
   }));
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
+const loadEditorRail = () =>
+  import("./RightSidebar").then(({ RightSidebar }) => ({
+    default: RightSidebar,
+  }));
+const loadDirtyDialog = () =>
+  import("./DirtyTabDialog").then(({ DirtyTabDialog }) => ({
+    default: DirtyTabDialog,
+  }));
 
 const loadTerminalDock = () =>
   import("./TerminalDockShell").then(({ TerminalDockForWorkbench }) => ({
@@ -78,6 +84,9 @@ const workbenchGeometryStyle = {
 } as CSSProperties;
 
 export function Workbench() {
+  const pendingClose = useWorkbenchStore(
+    (state) => state.pendingCloseTabId !== null,
+  );
   const onPreviewTargetChange = usePreviewTargetLifetime();
   const agentSettingsPage = useAgentSettingsState(
     (state) => state.page !== null,
@@ -251,7 +260,13 @@ export function Workbench() {
       {windowMode === "editor" && !agentSettingsPage ? (
         <div className="workbench__body" style={bodyStyle}>
           <ExplorerReleasesOpenFiles.Provider value={true}>
-            <RightSidebar compact={compact} railFirst />
+            <LazyModuleBoundary
+              label="Editor tools"
+              load={loadEditorRail}
+              render={(RightSidebar) => (
+                <RightSidebar compact={compact} railFirst />
+              )}
+            />
           </ExplorerReleasesOpenFiles.Provider>
           {!compact ? (
             <WorkbenchSidebarSplitter
@@ -308,7 +323,13 @@ export function Workbench() {
             : undefined
         }
       />
-      <DirtyTabDialog />
+      {pendingClose ? (
+        <LazyModuleBoundary
+          label="Unsaved changes"
+          load={loadDirtyDialog}
+          render={(DirtyTabDialog) => <DirtyTabDialog />}
+        />
+      ) : null}
     </main>
   );
 }

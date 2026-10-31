@@ -109,18 +109,20 @@ describe("TitleBar center chrome", () => {
     ).toBeEnabled();
   });
 
-  it("shows the focused session title in Agent and Quick Open's Search files in Editor", () => {
+  it("keeps chat captioning in its pane and Quick Open's Search files in Editor", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
 
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Go back" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Search files" })).toBeNull();
 
     useWorkbenchStore.setState({ activeTabId: "file:app" });
     rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Go forward" })).toBeDisabled();
 
     rerender(<TitleBar mode="editor" onModeChange={vi.fn()} />);
     expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
@@ -134,7 +136,7 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("keeps the parent's window title while its side chat has focus (Codex s2/f0244)", () => {
+  it("keeps side-chat captioning out of the title bar", () => {
     seedChats();
     const { tabs } = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
@@ -156,7 +158,8 @@ describe("TitleBar center chrome", () => {
     });
     try {
       render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-      expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+      expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Go back" })).toBeDisabled();
       expect(screen.queryByRole("heading", { name: "Side chat" })).toBeNull();
     } finally {
       useSideChatState.setState({ sides: [] });

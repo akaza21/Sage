@@ -91,7 +91,7 @@ it("keeps the same Agent body asleep behind Settings and across Editor", async (
 
   fireEvent.keyDown(window, { key: ",", ctrlKey: true });
   await settleLazyModules();
-  expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "Agent settings" })).toBeVisible();
   expect(node.isConnected).toBe(true);
   expect(node).not.toBeVisible();
   expect(body.liveTimers).toBe(0);
@@ -101,7 +101,7 @@ it("keeps the same Agent body asleep behind Settings and across Editor", async (
   expect(node).not.toBeVisible();
   expect(body.liveTimers).toBe(0);
   await selectMode("Agent");
-  expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "Agent settings" })).toBeVisible();
   expect(node).not.toBeVisible();
   expect(body.liveTimers).toBe(0);
 

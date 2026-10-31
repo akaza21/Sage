@@ -181,7 +181,7 @@ it("keeps the Preview frame asleep behind Settings through a resize", async () =
 
   fireEvent.keyDown(window, { key: ",", ctrlKey: true });
   await settleLazyModules();
-  expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "Agent settings" })).toBeVisible();
   expect(frame.isConnected).toBe(true);
   expect(frame).not.toBeVisible();
   expect(previewBridge.stop).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ it.each([false, true])(
     );
     await settleLazyModules();
     expect(
-      screen.getByRole("dialog", { name: "Agent settings" }),
+      screen.getByRole("region", { name: "Agent settings" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(modeRadio("Editor")).toBeChecked();

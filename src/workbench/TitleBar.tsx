@@ -6,16 +6,16 @@ import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
   FileSearch,
+  ArrowLeft,
+  ArrowRight,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
   Settings,
 } from "../ui/leanIcons";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
-import { useRailChatId } from "./sideChatState";
-import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
+import { useAgentNavigationHistory } from "./titleBarCenter";
 import {
-  collectChatTabIds,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -72,8 +72,6 @@ export function TitleBar({
   agentNavigationCollapsed?: boolean;
   onToggleAgentNavigation?: () => void;
 }) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const project = useWorkbenchStore((state) => state.project);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -110,16 +108,7 @@ export function TitleBar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inert, chatSearchDisabled, mode, openChatSearch]);
-  // A side chat keeps its parent's window title.
-  const focusedId = useRailChatId(
-    titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
-  );
-  const sessionTitle =
-    mode === "agent"
-      ? titleBarSessionTitle(
-          tabs.find((tab) => tab.id === focusedId)?.title ?? null,
-        )
-      : null;
+  const history = useAgentNavigationHistory(mode === "agent" && !inert);
 
   return (
     <header
@@ -129,6 +118,30 @@ export function TitleBar({
     >
       <div className="title-bar__start">
         <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />
+        {mode === "agent" ? (
+          <>
+            <button
+              className="title-bar__chat-search"
+              type="button"
+              aria-label="Go back"
+              title={history.backLabel}
+              disabled={!history.canBack}
+              onClick={() => void history.travel(-1)}
+            >
+              <ArrowLeft size={14} aria-hidden="true" />
+            </button>
+            <button
+              className="title-bar__chat-search"
+              type="button"
+              aria-label="Go forward"
+              title={history.forwardLabel}
+              disabled={!history.canForward}
+              onClick={() => void history.travel(1)}
+            >
+              <ArrowRight size={14} aria-hidden="true" />
+            </button>
+          </>
+        ) : null}
         {mode === "agent" && onToggleAgentNavigation ? (
           <button
             className="title-bar__chat-search"
@@ -154,8 +167,6 @@ export function TitleBar({
             <FileSearch size={14} aria-hidden="true" />
             <span className="title-bar__search-label">Search files</span>
           </button>
-        ) : sessionTitle ? (
-          <h1 className="title-bar__session">{sessionTitle}</h1>
         ) : null}
       </div>
       <div className="title-bar__end">
