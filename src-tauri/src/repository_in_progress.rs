@@ -12,7 +12,7 @@ use crate::{
     workspace::Workspace,
 };
 
-const MAX_GIT_ADMIN_PATHS_BYTES: usize = 6 * 32 * 1024;
+const MAX_GIT_ADMIN_PATHS_BYTES: usize = MARKERS.len() * 32 * 1024;
 const MARKERS: [&str; 6] = [
     "MERGE_HEAD",
     "CHERRY_PICK_HEAD",
