@@ -241,6 +241,7 @@ impl<T> BrowserTabs<T> {
             tab.committed_url = Some(source.to_owned());
         }
         tab.revision = tab.revision.wrapping_add(1);
+        tab.document_revision = tab.document_revision.wrapping_add(1);
     }
 }
 

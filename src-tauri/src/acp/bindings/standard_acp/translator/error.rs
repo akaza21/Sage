@@ -33,6 +33,10 @@ pub(crate) enum TranslationError {
     PlanLimit,
     #[error("Claude ACP frame expanded to too many normalized events")]
     EventLimit,
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     #[error("Claude ACP path was foreign, ambiguous, missing, or noncanonical")]
     Resource,
     #[error(transparent)]

@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -43,6 +43,7 @@ mod state_init;
 pub(crate) mod state_query;
 mod teardown;
 pub(crate) mod user_screenshot;
+mod visibility;
 
 #[cfg(test)]
 use admission::MAX_BROWSER_URL_BYTES;
@@ -110,12 +111,14 @@ impl BrowserState {
 
 struct BrowserTab<T> {
     handle: T,
+    visibility: Arc<visibility::PageVisibility>,
     loading: bool,
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
     navigation_id: Option<u64>,
     revision: u64,
+    document_revision: u64,
     committed_url: Option<String>,
     history: BrowserHistory,
     fallback_url: Option<String>,
@@ -197,12 +200,14 @@ impl<T> BrowserTabs<T> {
             label,
             BrowserTab {
                 handle,
+                visibility: Arc::default(),
                 loading,
                 title: None,
                 favicon: None,
                 zoom_percent: 100,
                 navigation_id: None,
                 revision: 0,
+                document_revision: 0,
                 committed_url: None,
                 history: BrowserHistory::default(),
                 fallback_url: None,
@@ -271,6 +276,7 @@ impl<T> BrowserTabs<T> {
         tab.favicon = None;
         tab.last_error = None;
         tab.revision = tab.revision.wrapping_add(1);
+        tab.document_revision = tab.document_revision.wrapping_add(1);
         true
     }
 
@@ -293,6 +299,7 @@ impl<T> BrowserTabs<T> {
             tab.loading = false;
         }
         tab.revision = tab.revision.wrapping_add(1);
+        tab.document_revision = tab.document_revision.wrapping_add(1);
         true
     }
 
@@ -379,6 +386,7 @@ impl<T> BrowserTabs<T> {
             tab.loading = false;
             tab.last_error = Some("Back or Forward could not reach the saved page");
             tab.revision = tab.revision.wrapping_add(1);
+            tab.document_revision = tab.document_revision.wrapping_add(1);
         }
     }
 
@@ -407,6 +415,7 @@ impl<T> BrowserTabs<T> {
             tab.loading = true;
         }
         tab.revision = tab.revision.wrapping_add(1);
+        tab.document_revision = tab.document_revision.wrapping_add(1);
         true
     }
 

@@ -195,6 +195,82 @@ describe("FileSurface durability cadence", () => {
     expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
   });
 
+  it("keeps typing in the editor after a keyboard save", async () => {
+    setReadyEditor({ ...tab, dirty: true });
+    render(<FileSurface tab={{ ...tab, dirty: true }} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    const view = viewForEditor(editor);
+    act(() => view.focus());
+    const setSaving = (saving: boolean) =>
+      act(() =>
+        useWorkbenchStore.setState((state) => ({
+          activeEditor:
+            state.activeEditor?.phase === "ready"
+              ? { ...state.activeEditor, saving }
+              : state.activeEditor,
+        })),
+      );
+    setSaving(true);
+    // A browser drops focus from content that stops being editable.
+    act(() => view.contentDOM.blur());
+    setSaving(false);
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it("says why an edit past the size limit was not applied", async () => {
+    setReadyEditor();
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    const view = viewForEditor(editor);
+    act(() => {
+      view.dispatch({
+        changes: {
+          from: 0,
+          insert: "x".repeat(MAX_EDITABLE_CONTENT_BYTES),
+        },
+      });
+    });
+    expect(view.state.doc.toString()).toBe("base\n");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "That edit was not applied: it would make this File larger than 1 MiB",
+    );
+    act(() => {
+      view.dispatch({ changes: { from: 0, insert: "y" } });
+    });
+    expect(screen.queryByText(/That edit was not applied/u)).toBeNull();
+  });
+
+  it("focuses the editor of a File that New File just opened", async () => {
+    const { requestEditorFocus } = await import("./editorFocusRequest");
+    setReadyEditor();
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    expect(viewForEditor(editor).hasFocus).toBe(false);
+    act(() =>
+      requestEditorFocus({ rootId: "root-a", relativePath: "other.txt" }),
+    );
+    expect(viewForEditor(editor).hasFocus).toBe(false);
+    act(() => requestEditorFocus({ ...resource }));
+    await waitFor(() => expect(viewForEditor(editor).hasFocus).toBe(true));
+  });
+
+  it("takes a New File focus request made before its editor mounts", async () => {
+    const { requestEditorFocus } = await import("./editorFocusRequest");
+    requestEditorFocus(resource);
+    setReadyEditor();
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: `Edit ${path}`,
+    });
+    await waitFor(() => expect(viewForEditor(editor).hasFocus).toBe(true));
+  });
+
   it("clears the dirty marker when undo returns a clean file to disk content", async () => {
     setReadyEditor();
     render(<FileSurface tab={tab} />);

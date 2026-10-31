@@ -20,7 +20,8 @@ impl AdmittedCodexBinding {
             let current = observed_entrypoint_identity(&self.entrypoint.path)?;
             return (current.sha256 == self.entrypoint.sha256
                 && current.byte_len == self.entrypoint.byte_len
-                && observed.environment == observed_environment(&self.entrypoint.path)?)
+                && observed.environment
+                    == observed_environment(&self.entrypoint.path, observed.inputs.as_ref())?)
             .then_some(())
             .ok_or(CodexAdmissionUnavailable::Drift);
         }

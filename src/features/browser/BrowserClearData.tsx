@@ -1,18 +1,29 @@
-import { useState } from "react";
-
 import { useWorkbenchStore } from "../../app/store";
+import { useClearProgress } from "./browserClearProgress";
 import { reconcileNativeClosedBrowserTabs } from "../../app/tabClosing";
 import {
   browserClearData,
   type BrowserClearDataCompletion,
 } from "../../ports/nativeBrowserPort";
 
-export function BrowserClearData({ menuItem = false }: { menuItem?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+const setBusy = (busy: boolean) => useClearProgress.setState({ busy });
+const setError = (error: string | null) => useClearProgress.setState({ error });
+const setSuccess = (success: string | null) =>
+  useClearProgress.setState({ success });
+
+export function BrowserClearData({
+  menuItem = false,
+  buttonClassName,
+  describedBy,
+}: {
+  menuItem?: boolean;
+  buttonClassName?: string;
+  describedBy?: string;
+}) {
+  const { busy, error, success } = useClearProgress();
 
   async function clear() {
+    if (useClearProgress.getState().busy) return;
     if (
       !window.confirm(
         "Clear browser history, cookies, and site storage? All browser tabs will close and agent access will be revoked. Sage and preview data stay intact.",
@@ -91,9 +102,11 @@ export function BrowserClearData({ menuItem = false }: { menuItem?: boolean }) {
       }
     >
       <button
+        className={buttonClassName}
         type="button"
         role={menuItem ? "menuitem" : undefined}
         disabled={busy}
+        aria-describedby={describedBy}
         onClick={() => void clear()}
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}

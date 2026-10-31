@@ -215,7 +215,50 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required",
     shift: "forbidden",
     alt: "forbidden",
-    reservedFor: "EP-08",
+  },
+  {
+    id: "commandPalette",
+    label: "Show all commands",
+    description: "Lists the editor's commands to run one by name.",
+    scope: "Editor",
+    key: "p",
+    ctrlOrMeta: "required",
+    shift: "required",
+    alt: "forbidden",
+  },
+  {
+    id: "navigateBack",
+    label: "Go back",
+    description: "Returns to the previous place in the editor.",
+    scope: "Editor",
+    key: "arrowleft",
+    ctrlOrMeta: "forbidden",
+    shift: "forbidden",
+    alt: "required",
+    appleControl: true,
+    apple: {
+      key: "-",
+      ctrlOrMeta: "required",
+      shift: "forbidden",
+      alt: "forbidden",
+    },
+  },
+  {
+    id: "navigateForward",
+    label: "Go forward",
+    description: "Undoes a Go back.",
+    scope: "Editor",
+    key: "arrowright",
+    ctrlOrMeta: "forbidden",
+    shift: "forbidden",
+    alt: "required",
+    appleControl: true,
+    apple: {
+      key: "-",
+      ctrlOrMeta: "required",
+      shift: "required",
+      alt: "forbidden",
+    },
   },
   {
     id: "goToSymbol",
@@ -298,6 +341,8 @@ export function matchesPlatformChord(
     admits(chord.shift, event.shiftKey) &&
     admits(chord.alt, event.altKey) &&
     (event.key.toLowerCase() === chord.key ||
+      // Shift turns "-" into "_" on most layouts.
+      (chord.key === "-" && event.shiftKey && event.key === "_") ||
       (apple && event.altKey && optionLetter(event.code) === chord.key))
   );
 }
@@ -320,6 +365,8 @@ const KEY_LABELS: Record<string, string> = {
   tab: "Tab",
   arrowup: "Up",
   arrowdown: "Down",
+  arrowleft: "Left",
+  arrowright: "Right",
 };
 
 export function formatKeymapChords(

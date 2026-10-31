@@ -16,6 +16,13 @@ pub(crate) struct ManifestExpectation {
 }
 
 impl ManifestExpectation {
+    #[cfg_attr(
+        not(windows),
+        allow(
+            dead_code,
+            reason = "only the Windows supervisor pins launch manifests"
+        )
+    )]
     pub(super) fn open_for_launch(
         spec: &super::supervisor::LaunchSpec,
     ) -> Result<Option<ManifestGuard>, LaunchError> {
@@ -42,10 +49,18 @@ impl ManifestExpectation {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn path(&self) -> &Path {
         &self.canonical_absolute_path
     }
 
+    #[cfg_attr(
+        not(windows),
+        allow(
+            dead_code,
+            reason = "only the Windows supervisor pins launch manifests"
+        )
+    )]
     pub(crate) fn open_guard(&self) -> Result<ManifestGuard, LaunchError> {
         let mut file = open_denying_writers(&self.canonical_absolute_path)?;
         let mut bytes = Vec::with_capacity(usize::try_from(self.byte_len).unwrap_or(0));
@@ -68,12 +83,21 @@ impl ManifestExpectation {
     }
 }
 
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows supervisor pins launch manifests"
+    )
+)]
 #[must_use = "dropping the manifest guard reopens the substitution window"]
 pub(crate) struct ManifestGuard {
+    #[allow(dead_code, reason = "held open to deny writers until the guard drops")]
     file: File,
 }
 
 impl ManifestGuard {
+    #[cfg(test)]
     pub(crate) fn byte_len(&self) -> Result<u64, LaunchError> {
         Ok(self.file.metadata().map_err(|_| LaunchError::Io)?.len())
     }
@@ -85,6 +109,10 @@ fn open_denying_writers(path: &Path) -> Result<File, LaunchError> {
 }
 
 #[cfg(not(windows))]
+#[allow(
+    dead_code,
+    reason = "only the Windows supervisor pins launch manifests"
+)]
 fn open_denying_writers(path: &Path) -> Result<File, LaunchError> {
     File::open(path).map_err(|_| LaunchError::Io)
 }

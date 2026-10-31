@@ -94,6 +94,7 @@ describe("S0.3 workbench port seam", () => {
       "getFileDiff",
       "getNestedRepositoryFileDiff",
       "getNestedRepositoryStatus",
+      "getRepositoryChangeStamp",
       "getRepositoryStatus",
       "mutateGitFile",
       "pullGitRepository",

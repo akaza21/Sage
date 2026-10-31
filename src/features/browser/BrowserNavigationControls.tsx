@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Ellipsis,
+  Lock,
   RotateCw,
   X,
 } from "../../ui/leanIcons";
@@ -22,8 +23,9 @@ import type {
   BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { useWorkbenchStore } from "../../app/store";
-import type { BrowserPageIdentity } from "./browserAddress";
+import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
+import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
 import { useDismissOnOutsidePointer } from "./browserPopover";
 
 interface Props {
@@ -42,7 +44,7 @@ interface Props {
   onZoomReset: () => void;
   onDownloads: () => void;
   onHistory: () => void;
-  onSettings: () => void;
+  onSettings: (target: "browser" | "site") => void;
   onCopy: () => void;
   onExternal: () => void;
   clearDataControl: ReactNode;
@@ -77,6 +79,7 @@ export function BrowserNavigationControls({
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const addressText = useAddressText(editing, page, address);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
@@ -184,7 +187,7 @@ export function BrowserNavigationControls({
               : "No page"
           }
         >
-          {page?.transport === "secure" ? "⌁" : ""}
+          {page?.transport === "secure" && <Lock size={14} />}
         </span>
         <input
           ref={addressField}
@@ -192,7 +195,7 @@ export function BrowserNavigationControls({
           placeholder="Search or enter a URL"
           type="text"
           maxLength={2048}
-          value={editing || !page ? address : new URL(page.url).host}
+          value={addressText}
           onFocus={() => setEditing(true)}
           onBlur={() => setEditing(false)}
           onChange={(event) => onAddressChange(event.target.value)}
@@ -298,13 +301,7 @@ export function BrowserNavigationControls({
               {clearDataControl}
             </div>
             <div className="browser-surface__menu-group">
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => run(onSettings)}
-              >
-                Browser settings
-              </button>
+              <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
               {page ? (
                 <>
                   <button

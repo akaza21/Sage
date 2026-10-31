@@ -1,5 +1,3 @@
-#![allow(dead_code)] // Removed when the isolated packet receives central wiring.
-
 mod activation_outcome;
 mod activity_ingress;
 mod adapter_batch;
@@ -40,17 +38,15 @@ mod terminalize;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use crate::acp::lifecycle::SessionState;
 use crate::acp::{
     contract::{
         ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
-        SageActivityId, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
-        SageServerRequestId, SageTurnId,
+        SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
     },
     intent::Prompt,
-    lifecycle::{
-        ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
-        ToolState, TurnState,
-    },
+    lifecycle::{DeliveryState, ServerRequestState, TurnState},
 };
 
 type StartDuplicateRow = (
@@ -64,56 +60,48 @@ type StartDuplicateRow = (
     i64,
 );
 
-#[allow(unused_imports)]
 pub(crate) use activation_outcome::{
     AbortActivationCommand, ActivationAbortCategory, CompleteActivationCommand,
     FailActivationCommand, abort_activation, complete_activation, fail_activation,
 };
-#[allow(unused_imports)]
 pub(crate) use activity_ingress::{
     ActivityIngressCommand, ActivityIngressMutation, apply_activity_ingress,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use adapter_batch::apply_adapter_inbound_batch;
 pub(crate) use adapter_batch::{
     AdapterActivityItemCommand, AdapterBatchMutation, AdapterInboundBatchCommand,
     AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
-    TurnTerminalReasonCommand, TurnUsageSnapshotCommand, apply_adapter_inbound_batch,
+    TurnTerminalReasonCommand, TurnUsageSnapshotCommand,
 };
-#[allow(unused_imports)]
 pub(crate) use cancel::begin_cancel;
-#[allow(unused_imports)]
-pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn, prepare_turn};
+#[cfg(test)]
+pub(crate) use commands::prepare_turn;
+pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
 pub(crate) use facts::next_projection_revision;
-#[allow(unused_imports)]
 pub(crate) use history::load_chat_page;
-#[allow(unused_imports)]
 pub(crate) use item_ingress::{ItemIngressCommand, ItemIngressMutation, apply_item_ingress};
 pub(crate) use mutations::{StoreMutation, StoreMutationResult};
 pub(crate) use paging::{RecoveryCandidate, load_recovery_candidates};
 pub(crate) use request_terminal::apply_request_state;
-#[allow(unused_imports)]
-pub(crate) use requests::{
-    DenyOnlyPermissionJournal, PermissionDecisionJournal, receive_permission_request,
-};
-#[allow(unused_imports)]
+#[cfg(test)]
+pub(crate) use requests::DenyOnlyPermissionJournal;
+pub(crate) use requests::receive_permission_request;
 pub(crate) use residency::{ParkSessionCommand, park_session_after_zero_process};
-#[allow(unused_imports)]
-pub(crate) use send::{begin_send, parse_turn_state, record_send_observation};
-#[allow(unused_imports)]
+pub(crate) use send::parse_turn_state;
+#[cfg(test)]
+pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
-#[allow(unused_imports)]
 pub(crate) use sessions::{
     ActivateSessionCommand, CloseSessionCommand, SessionMutation, StartSessionCommand,
     activate_session, start_session,
 };
-#[allow(unused_imports)]
 pub(crate) use snapshots::{FilePairCommand, read_snapshot};
-#[allow(unused_imports)]
-pub(crate) use terminal::{
-    apply_activity_terminal, apply_item_terminal, apply_session_terminal, apply_turn_terminal,
-};
+#[cfg(test)]
+pub(crate) use terminal::apply_session_terminal;
+pub(crate) use terminal::apply_turn_terminal;
 pub(crate) use terminalize::terminalize_recovery_epoch;
 
 #[derive(Debug, thiserror::Error)]
@@ -182,6 +170,7 @@ pub(crate) enum SendObservation {
     ZeroBytes,
     PossibleBytes,
     CompleteBytes,
+    #[allow(dead_code, reason = "only tests construct this variant so far")]
     Correlated,
     ProcessLost,
 }
@@ -212,38 +201,13 @@ pub(crate) struct TurnMutation {
     pub disposition: MutationDisposition,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionTerminalCommand {
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
     pub terminal: SessionState,
-    pub now_millis: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ItemTerminalCommand {
-    pub project_id: SageProjectId,
-    pub chat_id: SageChatId,
-    pub session_id: SageAgentSessionId,
-    pub turn_id: SageTurnId,
-    pub runtime_epoch: RuntimeEpoch,
-    pub item_id: SageItemId,
-    pub lifecycle: ItemLifecycle,
-    pub tool_state: Option<ToolState>,
-    pub payload_digest: String,
-    pub now_millis: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivityTerminalCommand {
-    pub project_id: SageProjectId,
-    pub chat_id: SageChatId,
-    pub session_id: SageAgentSessionId,
-    pub turn_id: SageTurnId,
-    pub runtime_epoch: RuntimeEpoch,
-    pub activity_id: SageActivityId,
-    pub lifecycle: ActivityLifecycle,
     pub now_millis: i64,
 }
 

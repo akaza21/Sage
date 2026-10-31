@@ -6,6 +6,7 @@ import {
   MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
+  MAX_MARKDOWN_LIST_DEPTH,
   canPreviewDiagram,
   canPreviewMarkdown,
   renderMarkdownPreview,
@@ -277,7 +278,10 @@ describe("renderMarkdownPreview", () => {
     expect(document.truncated).toBe(false);
     expect(document.blocks).toEqual([
       { kind: "heading", level: 1, text: "Title" },
-      { kind: "paragraph", text: "Hello world and docs." },
+      {
+        kind: "paragraph",
+        text: "Hello world and docs.",
+      },
       { kind: "list", items: ["one", "two"] },
       { kind: "quote", text: "quoted" },
       {
@@ -288,8 +292,132 @@ describe("renderMarkdownPreview", () => {
       },
       { kind: "paragraph", text: "alert(1) diagram" },
     ]);
-    expect(JSON.stringify(document)).not.toContain("https://example.test");
+    // An image is never fetched, and its address is not shown.
+    expect(JSON.stringify(document)).not.toContain("a.png");
     expect(JSON.stringify(document)).toContain("alert(1)");
+  });
+
+  it("nests indented list items under the item before them", () => {
+    const document = renderMarkdownPreview(
+      [
+        "- one",
+        "  - one.a",
+        "    1. deep",
+        "  - one.b",
+        "- two",
+        " - sibling, indented one space",
+        "1. other list",
+      ].join("\n"),
+    );
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          "one",
+          "one.a",
+          "deep",
+          "one.b",
+          "two",
+          "sibling, indented one space",
+        ],
+        shape: [
+          { depth: 0, ordered: false },
+          { depth: 1, ordered: false },
+          { depth: 2, ordered: true },
+          { depth: 1, ordered: false },
+          { depth: 0, ordered: false },
+          { depth: 0, ordered: false },
+        ],
+      },
+      { kind: "list", items: ["other list"], ordered: true, start: 1 },
+    ]);
+  });
+
+  it("keeps the list a tree when an item is dropped or indented unevenly", () => {
+    const [dropped] = renderMarkdownPreview(
+      ["- <br>", "  - child", "    - grandchild", "- sibling"].join("\n"),
+    ).blocks;
+    expect(dropped).toMatchObject({
+      items: ["child", "grandchild", "sibling"],
+      shape: [{ depth: 0 }, { depth: 1 }, { depth: 0 }],
+    });
+    const [uneven] = renderMarkdownPreview(
+      ["- a", "    - b", "  1. c"].join("\n"),
+    ).blocks;
+    expect(uneven).toMatchObject({
+      items: ["a", "b", "c"],
+      shape: [
+        { depth: 0, ordered: false },
+        { depth: 1, ordered: false },
+        { depth: 1, ordered: true },
+      ],
+    });
+  });
+
+  it("refuses web link addresses with hidden characters", () => {
+    const document = renderMarkdownPreview(
+      "[a](https://example.test/\u202Egnp.exe) [b](https://exa\u200Bmple.test)",
+    );
+    expect(JSON.stringify(document.formats)).not.toContain('"tag":"a"');
+  });
+
+  it("bounds list nesting", () => {
+    const lines = Array.from(
+      { length: MAX_MARKDOWN_LIST_DEPTH + 4 },
+      (_, depth) => `${"  ".repeat(depth)}- level ${depth}`,
+    );
+    const block = renderMarkdownPreview(lines.join("\n")).blocks[0];
+    expect(block.kind === "list" && block.shape?.at(-1)?.depth).toBe(
+      MAX_MARKDOWN_LIST_DEPTH - 1,
+    );
+  });
+
+  it("reads task list items as checked or unchecked", () => {
+    const document = renderMarkdownPreview(
+      ["- [ ] todo", "- [x] done", "- [X] also done", "- [] not a task"].join(
+        "\n",
+      ),
+    );
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: ["todo", "done", "also done", "[] not a task"],
+        shape: [
+          { depth: 0, ordered: false, checked: false },
+          { depth: 0, ordered: false, checked: true },
+          { depth: 0, ordered: false, checked: true },
+          { depth: 0, ordered: false },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps a list item that interrupts a paragraph", () => {
+    expect(
+      renderMarkdownPreview("Steps:\n  + first\n  + second").blocks,
+    ).toEqual([
+      { kind: "paragraph", text: "Steps:" },
+      { kind: "list", items: ["first", "second"] },
+    ]);
+  });
+
+  it("keeps a web link's address without making it a File link", () => {
+    const document = renderMarkdownPreview(
+      '[docs](https://example.test/guide "Guide") [mail](<mailto:a@example.test>) [js](javascript:void)',
+    );
+    expect(document.blocks).toEqual([
+      { kind: "paragraph", text: "docs mail js" },
+    ]);
+    expect(document.formats[0].spans).toEqual([
+      "",
+      { tag: "a", href: "https://example.test/guide", children: ["docs"] },
+      " ",
+      { tag: "a", href: "mailto:a@example.test", children: ["mail"] },
+      " ",
+      "js",
+      "",
+    ]);
+    expect(document.fileLinks).toEqual([]);
   });
 
   it("retains fenced code languages for mermaid projection", () => {

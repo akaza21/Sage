@@ -62,7 +62,10 @@ import {
   type FileNavigationSlice,
 } from "./fileNavigationSlice";
 import { closeWorkbenchTab } from "./tabClosing";
+import { shareRepositoryStatus } from "./shareRepositoryStatus";
 import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
+import type { SettingsPageId } from "../domain/settingsNavigation";
+import { requestSettingsPage } from "./settingsPageRequest";
 
 export type SidebarView =
   "explorer" | "search" | "sourceControl" | "preview" | "outline";
@@ -120,7 +123,8 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  openSettings: () => Promise<void>;
+  /** Opens the Settings tab, on `page` when given (otherwise where it was). */
+  openSettings: (page?: SettingsPageId) => Promise<void>;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -265,13 +269,16 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       }
     },
 
-    openSettings: async () => {
+    openSettings: async (page) => {
       const id = "settings:appearance";
       const sourceActiveTabId = get().activeTabId;
       const sourceActiveTab = get().tabs.find(
         (tab) => tab.id === sourceActiveTabId,
       );
-      if (sourceActiveTab?.id === id) return;
+      if (sourceActiveTab?.id === id) {
+        requestSettingsPage(page);
+        return;
+      }
       const sourceProjectId = get().project?.id ?? null;
       const sourceGeneration = get().projectGeneration;
       try {
@@ -319,6 +326,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       } else {
         set({ activeTabId: id, activeEditor: null });
       }
+      requestSettingsPage(page);
       void get()
         .persistLayout()
         .catch((error) => set({ error: errorMessage(error) }));
@@ -352,7 +360,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           get().repositoryRequestGeneration === requestGeneration
         ) {
           set((state) => ({
-            repositories,
+            repositories: shareRepositoryStatus(
+              state.repositories,
+              repositories,
+            ),
             repositoryRefreshing: false,
             repositoryRefreshSuperseded: false,
             repositoryCommitError:

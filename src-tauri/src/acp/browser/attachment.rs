@@ -203,6 +203,9 @@ impl BrowserAttachments {
         }
         if let Some(previous) = entries.remove(&key) {
             previous.stop();
+            // Keep replacement unpublished until its old family is gone.
+            // Registry lock order is user entries, then Agent entries.
+            self.drop_joined_popups(&previous.tab_label);
         }
         entries.insert(
             key,

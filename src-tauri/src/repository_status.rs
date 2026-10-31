@@ -50,54 +50,34 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         &status_output.stdout,
         status_output.stdout_truncated,
     )?;
-    let tracking = tracking_status(workspace, branch.as_deref()).await?;
     for change in &mut changes {
         change.resource = workspace.git_resource_identity(&change.resource)?;
         if let Some(original) = &change.original_resource {
             change.original_resource = Some(workspace.git_resource_identity(original)?);
         }
     }
-    let mut stats = HashMap::new();
-    let mut numstat_truncated = false;
-    if changes
+    let needs_numstat = changes
         .iter()
-        .any(|change| change.worktree_status != "untracked")
-    {
-        let base = repository_diff_base(workspace.root()).await?;
-        let output = run_git(
-            workspace.root(),
-            &[
-                "diff",
-                "--numstat",
-                "-z",
-                "--no-ext-diff",
-                "--no-textconv",
-                &base,
-            ],
-            MAX_STATUS_BYTES,
-        )
-        .await?;
-        ensure_success(&output)?;
-        numstat_truncated = merge_numstat(&mut stats, &output.stdout, output.stdout_truncated)?;
-        stats = canonicalize_numstat_paths(workspace, stats)?;
-    }
+        .any(|change| change.worktree_status != "untracked");
+    // Everything below depends only on the status above, so the Git processes
+    // run side by side: a refresh waits for the slowest, not for their sum.
+    let (tracking, numstat, listed, history, remotes, in_progress) = tokio::try_join!(
+        tracking_status(workspace, branch.as_deref()),
+        numstat(workspace, needs_numstat),
+        crate::repository_branches::list_local_branches(workspace),
+        crate::repository_history::list_recent_commits(workspace),
+        crate::repository_remotes::list_remotes(workspace),
+        crate::repository_in_progress::in_progress(workspace),
+    )?;
+    let (stats, numstat_truncated) = numstat;
     for change in &mut changes {
         if let Some((additions, deletions)) = stats.get(&change.resource.relative_path) {
             change.additions = *additions;
             change.deletions = *deletions;
         }
     }
-
-    let listed = crate::repository_branches::list_local_branches(workspace).await?;
     let listed =
         crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
-    let history = crate::repository_history::list_recent_commits(workspace).await?;
-    let remotes = crate::repository_remotes::list_remotes(workspace).await?;
-    let merge_in_progress = crate::repository_conflict::merge_in_progress(workspace).await?;
-    let rebase_in_progress = crate::repository_conflict::rebase_in_progress(workspace).await?;
-    let cherry_pick_in_progress =
-        crate::repository_conflict::cherry_pick_in_progress(workspace).await?;
-    let revert_in_progress = crate::repository_conflict::revert_in_progress(workspace).await?;
 
     Ok(RootRepositoryStatus {
         root_id: workspace.root_id().into(),
@@ -112,10 +92,10 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         recent_commits_truncated: history.truncated,
         remotes: remotes.names,
         remotes_truncated: remotes.truncated,
-        merge_in_progress,
-        rebase_in_progress,
-        cherry_pick_in_progress,
-        revert_in_progress,
+        merge_in_progress: in_progress.merge,
+        rebase_in_progress: in_progress.rebase,
+        cherry_pick_in_progress: in_progress.cherry_pick,
+        revert_in_progress: in_progress.revert,
         changes,
         truncated: parser_truncated || numstat_truncated,
         elapsed_ms: started.elapsed().as_millis() as u64,
@@ -255,4 +235,30 @@ pub async fn project_status(
         roots,
         elapsed_ms: started.elapsed().as_millis() as u64,
     }
+}
+
+/// Lines added and removed per changed File, against `HEAD` (or the empty
+/// tree in a repository with no commits yet).
+async fn numstat(workspace: &Workspace, needed: bool) -> AppResult<(NumstatByPath, bool)> {
+    if !needed {
+        return Ok((HashMap::new(), false));
+    }
+    let base = repository_diff_base(workspace.root()).await?;
+    let output = run_git(
+        workspace.root(),
+        &[
+            "diff",
+            "--numstat",
+            "-z",
+            "--no-ext-diff",
+            "--no-textconv",
+            &base,
+        ],
+        MAX_STATUS_BYTES,
+    )
+    .await?;
+    ensure_success(&output)?;
+    let mut stats = HashMap::new();
+    let truncated = merge_numstat(&mut stats, &output.stdout, output.stdout_truncated)?;
+    Ok((canonicalize_numstat_paths(workspace, stats)?, truncated))
 }

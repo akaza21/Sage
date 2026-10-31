@@ -4,6 +4,7 @@ import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../app/store";
 import type { ProjectGeneration } from "../../../domain/acp";
+import { errorMessage } from "../../../domain/errors";
 import { getGoalChatPage } from "../../../services/acpGoalDesktop";
 
 export function useAcpChatHistory(boundChatId?: string | null) {
@@ -48,10 +49,7 @@ export function useAcpChatHistory(boundChatId?: string | null) {
       .catch((loadError: unknown) => {
         acpProjectionStoreFor(boundChatId)
           .getState()
-          .failPageLoad(
-            intent,
-            loadError instanceof Error ? loadError.message : String(loadError),
-          );
+          .failPageLoad(intent, errorMessage(loadError));
       });
   }, [boundChatId]);
 

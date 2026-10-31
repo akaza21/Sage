@@ -3,6 +3,8 @@ use crate::acp::browser::BrowserScope;
 use crate::acp::browser::permission::BrowserPermissionDecider;
 use std::sync::{Arc, Mutex};
 
+#[path = "journey_tests.rs"]
+mod journey_tests;
 #[path = "owner_guard_tests.rs"]
 mod owner_guard_tests;
 

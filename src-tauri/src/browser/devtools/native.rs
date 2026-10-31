@@ -92,6 +92,13 @@ pub(crate) fn clear_agent_highlight(webview: &Webview) {
     });
 }
 
+/// Removes the user's Annotate hover outline, outside any Agent permit.
+pub(crate) fn clear_annotate_outline(webview: &Webview) -> Result<(), BrowserFailure> {
+    let (method, params) = super::cdp_port::inspect::HIDE_OUTLINE;
+    cdp::call(webview, method, params, 4096, Duration::from_secs(1))?;
+    Ok(())
+}
+
 /// Turns the user's Annotate hover highlight on or off, outside any Agent
 /// permit.
 pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFailure> {

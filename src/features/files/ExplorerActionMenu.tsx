@@ -1,10 +1,21 @@
 import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { explorerSelectionAction } from "./explorerActionDialogController";
+import { ExplorerContextMenuContext } from "./explorerContextMenu";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { RenameFileControl } from "./RenameFileControl";
 import { RenameFolderControl } from "./RenameFolderControl";
 import { TrashResourceControl } from "./TrashResourceControl";
@@ -29,28 +40,72 @@ export function ExplorerActionMenu() {
   const activeResource = useWorkbenchStore(
     (state) => state.activeEditor?.resource ?? null,
   );
-  const action = explorerSelectionAction({
-    activeEditor: activeResource && { resource: activeResource },
-    directoryListings,
-    selectedResource,
-    tabs,
-  });
+  const releaseOpenFiles = useContext(ExplorerReleasesOpenFiles);
+  const action = explorerSelectionAction(
+    {
+      activeEditor: activeResource && { resource: activeResource },
+      directoryListings,
+      selectedResource,
+      tabs,
+    },
+    releaseOpenFiles,
+  );
   const addProjectRoot = useWorkbenchStore((state) => state.addProjectRoot);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
+  // The row a right-click opened the menu at, or null for the button.
+  const [row, setRow] = useState<HTMLElement | null>(null);
+  // Focus goes back to that row, or to the button if the row is gone (a
+  // renamed File's row is replaced). A new object per anchor, so the popover
+  // follows the row it now belongs to.
+  const anchorRef = useMemo<RefObject<HTMLButtonElement | null>>(
+    () => ({
+      get current() {
+        return row?.isConnected
+          ? (row as HTMLButtonElement)
+          : triggerRef.current;
+      },
+    }),
+    [row],
+  );
+  // A close hands the focus back on the next frame; reopening before then
+  // (a right-click on another row, the "…" button) must keep it instead.
+  const focusFrame = useRef<number | null>(null);
+  const keepFocus = useCallback(() => {
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+    focusFrame.current = null;
+  }, []);
+  const contextMenu = useContext(ExplorerContextMenuContext);
+  useEffect(
+    () =>
+      contextMenu?.register((anchor) => {
+        keepFocus();
+        setRow(anchor);
+        setOpeningFocus("first");
+        setOpen(true);
+      }),
+    [contextMenu, keepFocus],
+  );
   const menuId = useId();
   const actionSource = action.kind === "unavailable" ? null : action.source;
   const rootName =
     project?.roots.find((root) => root.id === actionSource?.rootId)?.name ??
     null;
 
-  const closeMenu = useCallback((restoreFocus = true) => {
-    setOpen(false);
-    if (restoreFocus) {
-      requestAnimationFrame(() => triggerRef.current?.focus());
-    }
-  }, []);
+  const closeMenu = useCallback(
+    (restoreFocus = true) => {
+      setOpen(false);
+      keepFocus();
+      if (restoreFocus) {
+        focusFrame.current = requestAnimationFrame(() => {
+          focusFrame.current = null;
+          anchorRef.current?.focus();
+        });
+      }
+    },
+    [anchorRef, keepFocus],
+  );
 
   useEffect(() => {
     if (!open || !project) return;
@@ -78,18 +133,23 @@ export function ExplorerActionMenu() {
         type="button"
         aria-label="More Explorer actions"
         aria-controls={menuId}
-        aria-expanded={open}
+        // A menu a row opened belongs to that row.
+        aria-expanded={open && row === null}
         aria-haspopup="menu"
         title={project ? "More Explorer actions" : "Open a Project first"}
         disabled={!project || projectTransitioning}
         onClick={() => {
+          keepFocus();
           setOpeningFocus("first");
-          setOpen((current) => !current);
+          setOpen((current) => !current || row !== null);
+          setRow(null);
         }}
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
+          keepFocus();
           setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
+          setRow(null);
           setOpen(true);
         }}
       >
@@ -102,7 +162,7 @@ export function ExplorerActionMenu() {
         className="menu-popover--editor explorer-action-menu__surface"
         initialFocus={openingFocus}
         keepMounted
-        triggerRef={triggerRef}
+        triggerRef={anchorRef}
         onDismiss={(reason) => {
           if (reason === "outside") closeMenu();
           else setOpen(false);
@@ -126,14 +186,14 @@ export function ExplorerActionMenu() {
             <RenameFileControl
               source={action.source}
               rootName={rootName}
-              returnFocusRef={triggerRef}
+              returnFocusRef={anchorRef}
               onDialogOpen={() => setOpen(false)}
             />
             <TrashResourceControl
               source={action.source}
               kind="file"
               rootName={rootName}
-              returnFocusRef={triggerRef}
+              returnFocusRef={anchorRef}
               onDialogOpen={() => setOpen(false)}
             />
           </>
@@ -142,14 +202,14 @@ export function ExplorerActionMenu() {
             <RenameFolderControl
               source={action.source}
               rootName={rootName}
-              returnFocusRef={triggerRef}
+              returnFocusRef={anchorRef}
               onDialogOpen={() => setOpen(false)}
             />
             <TrashResourceControl
               source={action.source}
               kind="emptyFolder"
               rootName={rootName}
-              returnFocusRef={triggerRef}
+              returnFocusRef={anchorRef}
               onDialogOpen={() => setOpen(false)}
             />
           </>

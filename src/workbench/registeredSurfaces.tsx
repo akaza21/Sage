@@ -1,8 +1,19 @@
+import { useState } from "react";
+
 import type { WorkbenchTab } from "../domain/workbench";
-import { ExplorerSurface } from "../features/files/ExplorerSurface";
+import type * as ExplorerModule from "../features/files/ExplorerSurface";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
 
+// Explorer starts loading with the workbench but stays out of its startup
+// bundle, which the Agent window shares. Once loaded it renders directly, so
+// the Editor shows no loading state after the first moment.
+let explorerModule: typeof ExplorerModule | null = null;
+const loadExplorerSurface = () =>
+  import("../features/files/ExplorerSurface").then((module) => {
+    explorerModule = module;
+    return { default: module.ExplorerSurface };
+  });
 const loadChatSurface = () =>
   import("../features/chat/ChatSurface").then(({ ChatSurface }) => ({
     default: ChatSurface,
@@ -84,6 +95,17 @@ function ChatCanvas({ tab }: { tab: WorkbenchTab }) {
   );
 }
 
+function ExplorerToolSurface() {
+  // Chosen once per mount, so Explorer never remounts (losing an open menu or
+  // dialog) when its module arrives while the fallback is showing.
+  const [loaded] = useState(() => explorerModule);
+  return loaded ? (
+    <loaded.ExplorerSurface />
+  ) : (
+    <LazyToolSurface label="Explorer" load={loadExplorerSurface} />
+  );
+}
+
 let registered = false;
 
 export function registerWorkbenchSurfaces(): void {
@@ -108,7 +130,9 @@ export function registerWorkbenchSurfaces(): void {
   registerCanvasSurface("browser", ({ tab }) => (
     <LazyCanvasSurface tab={tab} label="Browser" load={loadBrowserSurface} />
   ));
-  registerToolSurface("explorer", ExplorerSurface);
+  // A failed early load shows its retry when Explorer is opened.
+  void loadExplorerSurface().catch(() => undefined);
+  registerToolSurface("explorer", ExplorerToolSurface);
   registerToolSurface("search", () => (
     <LazyToolSurface label="Search" load={loadSearchSurface} />
   ));

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { subscribeWorkspaceNotifySearch } from "../files/workspaceNotifyCompose";
+import { sameSearchSettings, searchSettingFields } from "./searchSettings";
 import type {
   WorkspaceSearchGateway,
   WorkspaceSearchResponse,
@@ -55,6 +57,12 @@ export function useWorkspaceSearch({
   gateway,
 }: UseWorkspaceSearchOptions) {
   const [state, setState] = useState<WorkspaceSearchState>(initialState);
+  const useIgnoreFiles = useEditorSettingsStore(
+    (store) => store.settings["search.useIgnoreFiles"],
+  );
+  const filesExclude = useEditorSettingsStore(
+    (store) => store.settings["files.exclude"],
+  );
   const active = useRef<AbortController | null>(null);
   const generation = useRef(0);
 
@@ -71,6 +79,24 @@ export function useWorkspaceSearch({
     active.current?.abort();
     active.current = null;
   }, []);
+
+  // Changing `search.useIgnoreFiles` or `files.exclude` retires results like
+  // any other criterion, so a page never continues under other settings.
+  useEffect(
+    () =>
+      useEditorSettingsStore.subscribe((store, previous) => {
+        if (sameSearchSettings(store.settings, previous.settings)) return;
+        retireCriteria();
+        setState((current) => ({
+          ...current,
+          phase: "idle",
+          response: null,
+          pages: [],
+          error: null,
+        }));
+      }),
+    [retireCriteria],
+  );
 
   const setQuery = useCallback(
     (query: string) => {
@@ -206,6 +232,7 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
+          ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,
       );
@@ -255,6 +282,8 @@ export function useWorkspaceSearch({
     state.wholeWord,
     state.includePatternText,
     state.excludePatternText,
+    useIgnoreFiles,
+    filesExclude,
     state.query,
     transitionEpoch,
   ]);
@@ -290,6 +319,7 @@ export function useWorkspaceSearch({
           wholeWord: state.wholeWord,
           includePatterns: filterPatterns(state.includePatternText),
           excludePatterns: filterPatterns(state.excludePatternText),
+          ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,
       );
@@ -341,6 +371,8 @@ export function useWorkspaceSearch({
     state.wholeWord,
     state.includePatternText,
     state.excludePatternText,
+    useIgnoreFiles,
+    filesExclude,
     state.pages,
     state.query,
     transitionEpoch,

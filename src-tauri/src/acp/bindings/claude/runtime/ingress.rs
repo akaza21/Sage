@@ -3,6 +3,8 @@ use super::*;
 mod permission;
 mod read_text_file;
 
+const MAX_CANCELLED_PROMPT_ERRORS: usize = 16;
+
 impl ClaudeRuntime {
     fn binding_is_characterised(&self) -> bool {
         self.launch_binding
@@ -38,10 +40,8 @@ impl ClaudeRuntime {
         }
         let result = match pending {
             PendingRequest::Initialize => self.initialize_response(value),
-            PendingRequest::NewSession => self.session_response(value, None, false),
-            PendingRequest::ResumeSession(expected) => {
-                self.session_response(value, Some(expected), true)
-            }
+            PendingRequest::NewSession => self.session_response(value, None),
+            PendingRequest::ResumeSession(expected) => self.session_response(value, Some(expected)),
             PendingRequest::CloseSession => {
                 if value.get("error").is_some()
                     || !value.get("result").is_some_and(Value::is_object)
@@ -118,7 +118,6 @@ impl ClaudeRuntime {
         &mut self,
         value: Value,
         expected: Option<ExternalId>,
-        loaded: bool,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let external_id = result_session_id(&value)?;
         if expected
@@ -136,11 +135,13 @@ impl ClaudeRuntime {
             turn: None,
             config: crate::acp::session_config::SessionConfig::from_wire(&value["result"], true)
                 .map_err(|_| AdapterRuntimeError::Frame)?,
+            cancelled_prompt_errors: Default::default(),
         });
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
                 id: self.session_identity(external_id),
-                loaded,
+                // Resume does not replay history; session/load is unsupported.
+                loaded: false,
             }],
             Vec::new(),
         )
@@ -148,9 +149,16 @@ impl ClaudeRuntime {
 
     fn ingest_late_prompt_response(
         &mut self,
-        value: Value,
+        mut value: Value,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
+        if value.get("error").is_some()
+            && active
+                .cancelled_prompt_errors
+                .contains(&response_id(&value)?)
+        {
+            cancelled_prompt_result(&mut value)?;
+        }
         let events = active
             .translator
             .translate_prompt_result_value(value)
@@ -158,16 +166,30 @@ impl ClaudeRuntime {
         self.translate_events(events)
     }
 
-    fn prompt_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
+    fn prompt_response(&mut self, mut value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
         let request_id = response_id(&value)?;
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         if active.turn.as_ref().map(|turn| turn.request_id) != Some(request_id) {
             return Err(AdapterRuntimeError::Frame);
         }
+        // Some ACP hosts report an aborted prompt as an RPC error. Only a
+        // completely written user cancel owns that outcome; a queued or
+        // zero-byte cancel must not hide a genuine prompt failure.
+        let cancelled_error = value.get("error").is_some()
+            && active.turn.as_ref().is_some_and(|turn| turn.cancel_written);
+        if cancelled_error {
+            cancelled_prompt_result(&mut value)?;
+        }
         let events = active
             .translator
             .translate_prompt_result_value(value)
             .map_err(map_translation)?;
+        if cancelled_error {
+            if active.cancelled_prompt_errors.len() >= MAX_CANCELLED_PROMPT_ERRORS {
+                active.cancelled_prompt_errors.pop_first();
+            }
+            active.cancelled_prompt_errors.insert(request_id);
+        }
         self.translate_events(events)
     }
 
@@ -349,6 +371,13 @@ impl ClaudeRuntime {
             self.ingest_response(value)
         }
     }
+}
+
+fn cancelled_prompt_result(value: &mut Value) -> Result<(), AdapterRuntimeError> {
+    let object = value.as_object_mut().ok_or(AdapterRuntimeError::Frame)?;
+    object.remove("error");
+    object.insert("result".into(), json!({"stopReason":"cancelled"}));
+    Ok(())
 }
 
 pub(super) fn terminal_state(value: PromptTerminal) -> TurnState {

@@ -46,14 +46,6 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         crate::acp::service::CodexSessionError::SignInRequired => AcpIpcError::SignInRequired {
             message: safe_message("The harness requires sign-in before it can continue."),
         },
-        crate::acp::service::CodexSessionError::BrowserToolsUnavailable => {
-            AcpIpcError::Unavailable {
-                reason: AcpUnavailableReason::CapabilityUnavailable,
-                message: safe_message(
-                    "Codex browser tools are unavailable for this session; this Codex version or browser helper could not be verified.",
-                ),
-            }
-        }
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
             message: safe_message("The native runtime requires authoritative recovery."),
         },
@@ -333,16 +325,6 @@ mod tests {
             AcpIpcError::Conflict { resource: AcpConflictResource::Session, message }
                 if message.as_str().contains("started on an earlier Codex version")
                     && message.as_str().contains("Chat history is still available")
-        ));
-    }
-
-    #[test]
-    fn unavailable_codex_browser_route_has_a_readable_ipc_message() {
-        let error = session_error(crate::acp::service::CodexSessionError::BrowserToolsUnavailable);
-        assert!(matches!(
-            error,
-            AcpIpcError::Unavailable { message, .. }
-                if message.as_str().contains("Codex browser tools are unavailable")
         ));
     }
 

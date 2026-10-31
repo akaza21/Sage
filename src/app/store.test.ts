@@ -2611,6 +2611,40 @@ describe("workbench resource and project navigation", () => {
     },
   );
 
+  it("keeps the repository status object when a refresh finds nothing new", async () => {
+    const status = (
+      elapsedMs: number,
+      branch = "main",
+    ): ProjectRepositoryStatus => ({
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch,
+          changes: [],
+          truncated: false,
+          elapsedMs,
+          message: null,
+        },
+      ],
+      truncated: false,
+      elapsedMs,
+    });
+    const port = vi.spyOn(desktop, "getRepositoryStatus");
+    port.mockResolvedValueOnce(status(10));
+    await useWorkbenchStore.getState().refreshRepository();
+    const first = useWorkbenchStore.getState().repositories;
+    expect(first.roots[0]?.branch).toBe("main");
+    port.mockResolvedValueOnce(status(25));
+    await useWorkbenchStore.getState().refreshRepository();
+    expect(useWorkbenchStore.getState().repositories).toBe(first);
+    port.mockResolvedValueOnce(status(12, "topic"));
+    await useWorkbenchStore.getState().refreshRepository();
+    expect(useWorkbenchStore.getState().repositories.roots[0]?.branch).toBe(
+      "topic",
+    );
+  });
+
   it.each(["success", "error"] as const)(
     "ignores an old repository refresh %s after switching",
     async (outcome) => {

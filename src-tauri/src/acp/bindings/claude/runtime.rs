@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use serde_json::{Value, json};
 
@@ -26,10 +29,9 @@ use crate::acp::{
 };
 
 use super::{
-    AdapterEvent, CLAUDE_PROFILE_ID, CandidateManifest, ClaudeAuthState, ClaudeCapabilityOffer,
-    ClaudeTranslator, PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
-    decode_auth_status_update, negotiate_capabilities, validate_research_candidate,
-    wire::decode_frame,
+    AdapterEvent, CLAUDE_PROFILE_ID, ClaudeAuthState, ClaudeCapabilityOffer, ClaudeTranslator,
+    PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
+    decode_auth_status_update, negotiate_capabilities, wire::decode_frame,
 };
 
 mod browse_host;
@@ -73,6 +75,8 @@ struct ActiveSession {
     translator: ClaudeTranslator,
     turn: Option<TurnIntent>,
     config: crate::acp::session_config::SessionConfig,
+    /// Request-scoped cancellation interpretation for bounded late-response replay.
+    cancelled_prompt_errors: BTreeSet<u64>,
 }
 
 #[derive(Clone)]
@@ -80,6 +84,7 @@ struct TurnIntent {
     external_turn_id: ExternalId,
     client_message_id: RequiredText<512>,
     request_id: u64,
+    cancel_written: bool,
 }
 
 enum PendingRequest {
@@ -128,20 +133,6 @@ enum DeliveryUnknown {
 }
 
 impl ClaudeRuntime {
-    pub(crate) fn from_candidate(
-        candidate: CandidateManifest,
-        binding_digest: [u8; 32],
-        runtime_epoch: RuntimeEpoch,
-        session_id: SageAgentSessionId,
-    ) -> Result<Self, AdapterRuntimeError> {
-        let candidate = validate_research_candidate(candidate)
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        candidate
-            .require_launch_admission()
-            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        Ok(Self::new(None, binding_digest, runtime_epoch, session_id))
-    }
-
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedClaudeBinding>,
         runtime_epoch: RuntimeEpoch,
@@ -285,6 +276,7 @@ pub(crate) struct ClaudeRuntimeFactory {
 }
 
 impl ClaudeRuntimeFactory {
+    #[cfg(test)]
     pub(crate) fn from_admitted_binding(
         binding: Arc<AdmittedClaudeBinding>,
         project_root: crate::project_registry::ProjectRootAuthority,

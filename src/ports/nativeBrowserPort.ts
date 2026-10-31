@@ -120,6 +120,11 @@ export function hideBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_hide", { tabId });
 }
 
+/** Hides the page while a toolbar popover covers it; Annotate stays on. */
+export function coverBrowser(tabId: string): Promise<void> {
+  return invokeNative("browser_hide", { tabId, cover: true });
+}
+
 export interface BrowserNavigation {
   tabId: string;
   url: string;

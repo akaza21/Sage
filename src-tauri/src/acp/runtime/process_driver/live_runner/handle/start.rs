@@ -26,9 +26,17 @@ pub(crate) enum RunnerStartSubstep {
     SessionNew,
     SessionResume,
     SessionLoad,
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     Permission,
     ReadyHandoff,
     Timeout,
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     UnexpectedMethod,
     Unexpected,
 }
@@ -47,6 +55,7 @@ impl From<ActivationStartupStep> for RunnerStartSubstep {
 
 // Recovery variants deliberately retain their unique driver/handoff by value;
 // callers must consume exactly one authority instead of sharing indirection.
+#[allow(dead_code, reason = "only tests read these fields")]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ActivationStartFailure<A, R, T>
 where

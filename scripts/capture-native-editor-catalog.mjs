@@ -66,7 +66,7 @@ export const EDITOR_CATALOG = Object.freeze(
       state: "quick-open",
       supported: false,
       reason:
-        "Ctrl+P is reservedFor EP-08 in keymapRegistry; no Quick Open listener or surface exists.",
+        "EP-08 ships Quick Open on Ctrl+P (Cmd+P on macOS), but the native editor driver has no quick-open steps yet.",
       widths: [1888, 720, 480],
     },
     {

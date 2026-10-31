@@ -1,7 +1,7 @@
 use super::{
     super::installed_role::SignedInstalledRole,
     AdmittedCodexBinding, BINDING_DIGEST, BINDING_DIGEST_HEX, CodexAdmissionUnavailable,
-    ObservedEntrypoint, observed_environment,
+    ObservedEntrypoint, ObservedLaunchInputs, observed_environment,
     verify::{
         entrypoint_identity, observed_binding_digest, observed_entrypoint_identity, sha256_hex,
     },
@@ -54,9 +54,10 @@ impl AdmittedCodexBinding {
         Ok(binding)
     }
 
-    pub(crate) fn admit_observed(
+    pub(crate) fn admit_observed_with_inputs(
         executable: std::path::PathBuf,
         version: String,
+        inputs: std::sync::Arc<dyn ObservedLaunchInputs>,
     ) -> Result<Self, CodexAdmissionUnavailable> {
         if version.is_empty() || version.len() > 512 {
             return Err(CodexAdmissionUnavailable::IndependentAdmission);
@@ -69,7 +70,7 @@ impl AdmittedCodexBinding {
         let binding_digest = observed_binding_digest(&entrypoint);
         let artifact_digest = sha256_hex(entrypoint.sha256);
         let binding_digest_hex = sha256_hex(binding_digest);
-        let environment = observed_environment(&entrypoint.path)?;
+        let environment = observed_environment(&entrypoint.path, inputs.as_ref())?;
         let characterisation =
             crate::acp::bindings::characterisation::codex_characterisation(&version);
         Ok(Self {
@@ -78,7 +79,10 @@ impl AdmittedCodexBinding {
             authority: None,
             environment: None,
             entrypoint,
-            observed: Some(ObservedEntrypoint { environment }),
+            observed: Some(ObservedEntrypoint {
+                environment,
+                inputs,
+            }),
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             desktop_fixture: None,
             binding_digest,

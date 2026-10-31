@@ -71,11 +71,7 @@ impl TreeControl {
         Ok(())
     }
 
-    pub(crate) fn terminate(&self, reason: TreeExit) -> Result<TreeExit, LaunchError> {
-        self.request_termination(reason)?;
-        self.wait_root_exit()
-    }
-
+    #[cfg(test)]
     pub(crate) fn terminate_zero(
         &self,
         reason: TreeExit,

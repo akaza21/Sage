@@ -93,8 +93,11 @@
   color: var(--color-file-media);
 }
 
+/* Pushed right whether or not actions follow, so it never jumps to the
+   middle when a save state or Preview button appears. */
 .file-header__metadata {
   flex: 0 0 auto;
+  margin-left: auto;
   color: var(--color-text-muted);
 }
 
@@ -345,14 +348,16 @@
   tab-size: 2;
 }
 
+/* Horizontal padding sits on each line, not the content, so the active-line
+   band runs from the gutter to the right edge. */
 .editor-input .cm-content {
   min-height: 100%;
-  padding: 16px 20px 16px 8px;
+  padding: 16px 0;
   caret-color: var(--resource-document-caret);
 }
 
 .editor-input .cm-line {
-  padding: 0;
+  padding: 0 20px 0 8px;
 }
 
 /* No top padding here: CodeMirror already offsets gutter rows by the content
@@ -452,9 +457,23 @@
   background: var(--resource-document-fold-placeholder);
 }
 
+/* The focus frame is an overlay above the sticky gutter (z-index 200), so
+   it runs along the left edge too instead of starting after the gutter. */
 .editor-input .cm-focused {
   outline: 0;
-  box-shadow: var(--highlight-focus-frame-shadow);
+}
+
+.editor-input .cm-editor.cm-focused::after {
+  position: absolute;
+  z-index: 201;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: var(
+    --editor-input-focus-frame,
+    var(--highlight-focus-frame-shadow)
+  );
+  content: "";
+  pointer-events: none;
 }
 
 @container (max-width: 560px) {
@@ -517,6 +536,14 @@
 
 @media (forced-colors: active) {
   .editor-input .cm-focused {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+
+  /* The ring goes on the overlay too, so the gutter can't cover its
+     left edge. */
+  .editor-input .cm-editor.cm-focused::after {
     outline: var(--focus-ring);
     outline-offset: -2px;
     box-shadow: none;

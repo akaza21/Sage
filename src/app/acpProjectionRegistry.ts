@@ -9,6 +9,10 @@ export const MAX_VISIBLE_ACP_PROJECTION_SLOTS = 2;
 const slots = new Map<string, AcpProjectionStore>();
 const pinnedIds = new Set<string>();
 
+export function isAcpProjectionPinned(chatId: string): boolean {
+  return pinnedIds.has(chatId);
+}
+
 export function pinAcpProjectionIds(ids: readonly string[]): void {
   pinnedIds.clear();
   for (const id of ids) {

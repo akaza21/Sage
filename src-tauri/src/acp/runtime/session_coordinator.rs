@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+#[cfg(any(test, all(windows, feature = "acp-fixture")))]
+use crate::acp::store::FailActivationCommand;
 use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     intent::ProjectionChangedV1,
@@ -7,9 +9,8 @@ use crate::acp::{
     scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
     store::{
         ActivateSessionCommand, CloseSessionCommand, CompleteActivationCommand,
-        FailActivationCommand, FinalizeCloseCommand, ParkSessionCommand, RecoverRuntimeCommand,
-        SessionMutation, StartSessionCommand, StoreCommit, StoreError, StoreMutation,
-        StoreMutationResult,
+        FinalizeCloseCommand, ParkSessionCommand, RecoverRuntimeCommand, SessionMutation,
+        StartSessionCommand, StoreCommit, StoreError, StoreMutation, StoreMutationResult,
     },
 };
 
@@ -101,20 +102,24 @@ impl std::fmt::Debug for ActivationFailure {
 }
 
 impl ActivationRecovery {
+    #[cfg(test)]
     pub(crate) fn owner(&self) -> &RuntimeOwner {
         &self.owner
     }
 
+    #[cfg(test)]
     pub(crate) fn command(&self) -> &ActivateSessionCommand {
         &self.command
     }
 
+    #[cfg(test)]
     pub(crate) fn committed(&self) -> Option<&SessionMutation> {
         self.committed.as_ref()
     }
 
     // Recovery owns the sole tree lease and activation command; returning it
     // intact prevents a false release while commit status is unresolved.
+    #[cfg(test)]
     #[allow(clippy::result_large_err)]
     pub(crate) fn into_committed_lease(self) -> Result<SessionTreeLease, Self> {
         if self.committed.is_none() {

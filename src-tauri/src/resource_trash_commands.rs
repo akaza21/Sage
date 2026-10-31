@@ -17,7 +17,7 @@ use crate::{
     workspace::{
         Workspace,
         resource_trash::{
-            ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker,
+            ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker, TRASH_NAME,
             supported as resource_trash_supported,
         },
     },
@@ -123,7 +123,7 @@ where
             if result.is_ok() || observed_marker.mutation_started() {
                 Ok(result)
             } else {
-                Err(result.expect_err("failed Recycle Bin result exists"))
+                Err(result.expect_err("failed trash result exists"))
             }
         });
         coordinated.and_then(std::convert::identity)
@@ -155,7 +155,9 @@ where
         outcome = ResourceTrashOutcome::EffectUnknown;
         append_warning(
             &mut commit,
-            "The authoritative layout snapshot was unavailable after the Recycle Bin operation; Explorer is refreshing.",
+            &format!(
+                "The authoritative layout snapshot was unavailable after the {TRASH_NAME} operation; Explorer is refreshing."
+            ),
         );
     }
     Ok(result_from_commit(
@@ -191,9 +193,9 @@ where
         Ok(commit) if marker.mutation_started() => commit,
         Ok(_) => {
             intent::clear(&database, &pending)?;
-            return Err(AppError::InvalidRequest(
-                "Recycle Bin operation completed without recording its mutation boundary".into(),
-            ));
+            return Err(AppError::InvalidRequest(format!(
+                "{TRASH_NAME} operation completed without recording its mutation boundary"
+            )));
         }
         Err(error) if !marker.mutation_started() => {
             intent::clear(&database, &pending)?;
@@ -255,7 +257,7 @@ fn recover_effect_unknown(
     marker: &ResourceTrashMarker,
 ) -> AppResult<ResourceTrashCommit> {
     let pending = intent::load(&database)?.ok_or_else(|| {
-        AppError::InvalidRequest("pending Recycle Bin intent is unavailable".into())
+        AppError::InvalidRequest(format!("pending {TRASH_NAME} intent is unavailable"))
     })?;
     let workspace = admit_request(&database, &request)?;
     let commit = workspace
@@ -278,9 +280,9 @@ fn resolve_workspace(
         .optional()?
         .flatten();
     if active.as_deref() != Some(request.project_id.as_str()) {
-        return Err(AppError::InvalidRequest(
-            "Recycle Bin Project is not active".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "{TRASH_NAME} Project is not active"
+        )));
     }
     let root = transaction
         .query_row(
@@ -298,9 +300,9 @@ fn resolve_workspace(
         )
         .optional()?
         .ok_or_else(|| {
-            AppError::InvalidRequest(
-                "Recycle Bin root does not belong to the active Project".into(),
-            )
+            AppError::InvalidRequest(format!(
+                "{TRASH_NAME} root does not belong to the active Project"
+            ))
         })?;
     Workspace::open(&root.project_id, &root.id, &root.absolute_path)
 }
@@ -310,30 +312,30 @@ fn validate_request(request: &TrashProjectResourceRequest) -> AppResult<()> {
     validate_request_id("root ID", &request.source.root_id)?;
     crate::workspace::validate_contract_path(&request.source.relative_path, false)?;
     if request.current_layout.project_id != request.project_id {
-        return Err(AppError::InvalidRequest(
-            "Recycle Bin layout does not belong to the requested Project".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "{TRASH_NAME} layout does not belong to the requested Project"
+        )));
     }
     if request.project_generation > MAX_JAVASCRIPT_SAFE_INTEGER
         || request.expected_transition_epoch > MAX_JAVASCRIPT_SAFE_INTEGER
     {
-        return Err(AppError::InvalidRequest(
-            "Recycle Bin intent metadata is outside the safe integer range".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "{TRASH_NAME} intent metadata is outside the safe integer range"
+        )));
     }
     Ok(())
 }
 
 fn validate_epoch(epoch: u64, request: &TrashProjectResourceRequest) -> AppResult<()> {
     if epoch != request.expected_transition_epoch {
-        return Err(AppError::InvalidRequest(
-            "Project changed before the Recycle Bin operation could run".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "Project changed before the {TRASH_NAME} operation could run"
+        )));
     }
     if epoch >= MAX_JAVASCRIPT_SAFE_INTEGER {
-        return Err(AppError::InvalidRequest(
-            "Project transition epoch exhausted before the Recycle Bin operation".into(),
-        ));
+        return Err(AppError::InvalidRequest(format!(
+            "Project transition epoch exhausted before the {TRASH_NAME} operation"
+        )));
     }
     Ok(())
 }
@@ -365,7 +367,9 @@ fn fallback_commit(request: &TrashProjectResourceRequest) -> ResourceTrashCommit
     ResourceTrashCommit::unconfirmed(
         request.source.clone(),
         parent_resource(&request.source),
-        "Recycle Bin operation may have changed the filesystem, but retained-authority recovery failed; Explorer is refreshing.",
+        format!(
+            "{TRASH_NAME} operation may have changed the filesystem, but retained-authority recovery failed; Explorer is refreshing."
+        ),
     )
 }
 

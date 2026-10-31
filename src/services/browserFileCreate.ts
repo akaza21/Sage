@@ -90,7 +90,7 @@ function createBrowserProjectResource(
       const rank = (kind: string) => (kind === "directory" ? 0 : 1);
       return (
         rank(left.kind) - rank(right.kind) ||
-        left.name.localeCompare(right.name)
+        left.name.localeCompare(right.name, undefined, { numeric: true })
       );
     }),
   };

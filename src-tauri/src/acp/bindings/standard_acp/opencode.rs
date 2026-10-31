@@ -182,6 +182,7 @@ pub(crate) struct OpenCodeRuntimeFactory {
 }
 
 impl OpenCodeRuntimeFactory {
+    #[cfg(test)]
     pub(crate) fn from_admitted_binding(
         registration: Arc<OpenCodeBindingRegistration>,
         binding: Arc<AdmittedStandardAcpBinding>,

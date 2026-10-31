@@ -352,7 +352,10 @@ impl super::AcpService {
         self.browser_chat_is_live(project, chat)
             && crate::acp::contract::SageAgentSessionId::parse(session).is_ok_and(|session| {
                 self.current_browser_owner(project, chat, &session)
-                    .is_some_and(|owner| self.browser_owner_precheck_matches(&owner))
+                    .is_some_and(|owner| {
+                        self.browser_owner_precheck_matches(&owner)
+                            && self.browser_owner_witness_matches(&owner)
+                    })
             })
     }
 

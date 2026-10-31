@@ -43,7 +43,7 @@ fn deadline_kills_and_reaps_the_actual_helper_process() {
     crate::test_wait::guarded("search helper run deadline", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
-            HelperRequest::new(request("needle"), Vec::new()),
+            HelperRequest::new(request("needle"), Vec::new(), None),
             receiver,
             sleeping_process(),
             Duration::from_millis(100),
@@ -65,7 +65,7 @@ fn cancellation_kills_and_reaps_the_actual_helper_process() {
             let _ = cancel.send(());
         });
         let error = run_with_spec(
-            HelperRequest::new(request("needle"), Vec::new()),
+            HelperRequest::new(request("needle"), Vec::new(), None),
             receiver,
             sleeping_process(),
             Duration::from_secs(5),
@@ -84,7 +84,7 @@ fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
     crate::test_wait::guarded("search helper forced reap handoff", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
-            HelperRequest::new(request("needle"), Vec::new()),
+            HelperRequest::new(request("needle"), Vec::new(), None),
             receiver,
             sleeping_process(),
             Duration::from_millis(100),

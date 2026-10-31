@@ -173,10 +173,6 @@ fn reopen_usage(fixture: &Fixture) -> (i64, i64, i64, i64) {
     reopen_usage_in(&fixture.connection)
 }
 
-fn reopen_blobs(fixture: &Fixture, revision: u64) -> (Vec<u8>, Vec<u8>, String, i64, i64) {
-    reopen_blobs_in(&fixture.connection, revision)
-}
-
 fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, SageRootId) {
     let directory = std::env::temp_dir().join(format!("sage-snapshot-reopen-{}", Uuid::new_v4()));
     let root = directory.join("project-root");

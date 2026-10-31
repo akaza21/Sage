@@ -2,7 +2,6 @@ mod lifecycle;
 mod main_window;
 
 pub(crate) use lifecycle::RendererRecreationReloadLifecycle;
-#[allow(unused_imports)] // Production labeled-main adapter; packaged observer still pending.
 pub(crate) use main_window::MainWindowRendererReload;
 
 use crate::acp::{

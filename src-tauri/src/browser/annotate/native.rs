@@ -1,6 +1,8 @@
 //! Annotate's WebView2 side: isolated-world trusted input and hiding the
 //! page behind its frozen frame while the user comments.
 
+use std::{sync::mpsc, time::Duration};
+
 use tauri::{Manager, Webview};
 
 use super::{InspectOverlay, NativeOverlay, element, selection::Selection};
@@ -11,6 +13,30 @@ impl NativeOverlay<'_> {
         self.0
             .webview_for_tab(label)
             .ok_or("browser tab unavailable".into())
+    }
+
+    /// Placement and cover changes run on this same thread. Never take the
+    /// Annotate mode lock here: its caller holds it while waiting for us.
+    fn with_visible_page(
+        &self,
+        label: &str,
+        step: impl FnOnce(Webview) -> tauri::Result<()> + Send + 'static,
+    ) -> Result<(), String> {
+        let webview = self.webview(label)?;
+        let visibility = self
+            .0
+            .page_visibility_for_tab(label)
+            .ok_or("browser tab unavailable")?;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        self.1
+            .run_on_main_thread(move || {
+                let result = visibility.reveal(|| step(webview).map_err(unavailable));
+                let _ = sender.send(result);
+            })
+            .map_err(unavailable)?;
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(unavailable)?
     }
 }
 
@@ -109,7 +135,7 @@ impl InspectOverlay for NativeOverlay<'_> {
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String> {
         let webview = self.webview(label)?;
         let shown = if reveal {
-            webview.show().map_err(unavailable)
+            self.with_visible_page(label, |page| page.show())
         } else {
             Ok(())
         };
@@ -121,13 +147,17 @@ impl InspectOverlay for NativeOverlay<'_> {
     /// the comment box would get no typing, and a page shown again would
     /// get no Escape.
     fn focus(&self, label: &str, page: bool) -> Result<(), String> {
-        let webview = if page {
-            self.webview(label)?
-        } else {
-            self.1
-                .get_webview("main")
-                .ok_or("browser annotate unavailable")?
-        };
+        if page {
+            return self.with_visible_page(label, |page| page.set_focus());
+        }
+        let webview = self
+            .1
+            .get_webview("main")
+            .ok_or("browser annotate unavailable")?;
         webview.set_focus().map_err(unavailable)
+    }
+
+    fn clear_outline(&self, label: &str) -> Result<(), String> {
+        devtools::clear_annotate_outline(&self.webview(label)?).map_err(unavailable)
     }
 }

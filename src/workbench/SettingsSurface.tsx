@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import {
   SETTINGS_PAGES,
   matchingSettingsEntryIds,
@@ -11,11 +12,29 @@ import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
 
+const SettingsBrowserPage = lazy(() =>
+  import("./settings/SettingsBrowserPage").then(({ SettingsBrowserPage }) => ({
+    default: SettingsBrowserPage,
+  })),
+);
+
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
-    SETTINGS_PAGES[0].id,
+    () => useSettingsPageRequest.getState().page ?? SETTINGS_PAGES[0].id,
   );
+  // A caller such as the browser's menu asks for a page: the first render
+  // opens on it, and while Settings is open a new request switches to it with
+  // the search cleared. Either way the request is then forgotten.
+  useEffect(() => {
+    useSettingsPageRequest.setState({ page: null });
+    return useSettingsPageRequest.subscribe(({ page }) => {
+      if (!page) return;
+      setActivePageId(page);
+      setQuery("");
+      useSettingsPageRequest.setState({ page: null });
+    });
+  }, []);
   const persistenceMessage = useEditorSettingsStore(
     (state) => state.persistenceMessage,
   );
@@ -91,6 +110,16 @@ export function SettingsSurface() {
         </p>
       ) : activePageId === "keyboard" ? (
         <SettingsKeyboardPage visible={visible} />
+      ) : activePageId === "browser" ? (
+        <Suspense
+          fallback={
+            <p className="settings-surface__loading" role="status">
+              Loading browser settings…
+            </p>
+          }
+        >
+          <SettingsBrowserPage visible={visible} />
+        </Suspense>
       ) : (
         <SettingsEditorPage
           visible={visible}

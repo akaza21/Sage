@@ -1,7 +1,6 @@
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code, reason = "BETA-0001: signed candidate evidence is deferred")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BetaEvidenceCandidateIdentity {
@@ -10,6 +9,7 @@ pub struct BetaEvidenceCandidateIdentity {
     pub source_commit: String,
 }
 
+#[allow(dead_code, reason = "BETA-0001: signed candidate evidence is deferred")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BetaEvidenceDescriptor {
@@ -17,6 +17,7 @@ pub struct BetaEvidenceDescriptor {
     pub status: String,
 }
 
+#[allow(dead_code, reason = "BETA-0001: signed candidate evidence is deferred")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BetaEvidenceResult {
@@ -28,6 +29,7 @@ pub struct BetaEvidenceResult {
     pub verdict: String,
 }
 
+#[allow(dead_code, reason = "BETA-0001: signed candidate evidence is deferred")]
 impl BetaEvidenceResult {
     pub fn incomplete(
         contract_sha256: impl Into<String>,

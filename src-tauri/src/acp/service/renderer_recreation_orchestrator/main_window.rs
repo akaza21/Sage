@@ -116,12 +116,10 @@ fn json_shape(value: &serde_json::Value) -> String {
     }
 }
 
-#[allow(dead_code)] // Production adapter; packaged observer still pending.
 pub(crate) struct MainWindowRendererReload<'a> {
     window: &'a tauri::WebviewWindow,
 }
 
-#[allow(dead_code)]
 impl<'a> MainWindowRendererReload<'a> {
     pub(crate) fn new(window: &'a tauri::WebviewWindow) -> Self {
         Self { window }

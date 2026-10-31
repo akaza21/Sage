@@ -6,6 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useWorkbenchStore } from "../app/store";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
@@ -44,8 +45,16 @@ import "./workbench-window-mode.css";
 import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
+import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
+import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import {
+  openCommandPalette,
+  openQuickOpen,
+} from "../features/quickOpen/quickOpenState";
 
 registerWorkbenchSurfaces();
 
@@ -88,7 +97,11 @@ function EditorContinuityKeeper({
     const state = useWorkbenchStore.getState();
     const active =
       state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
-    if (active && isAgentArtifactTabKind(active.kind)) return;
+    if (
+      active &&
+      (isAgentArtifactTabKind(active.kind) || active.kind === "settings")
+    )
+      return;
     const continuity = lastArtifactTabId(state.tabs, lastArtifactId.current);
     if (continuity && continuity !== state.activeTabId) {
       void state.activateTab(continuity);
@@ -180,6 +193,12 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
+  useEffect(() => {
+    // A resource menu may open Settings while the Agent canvas is visible.
+    return useSettingsPageRequest.subscribe(({ page }) => {
+      if (page) setWindowMode("editor");
+    });
+  }, []);
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
     useAgentDesktopSidebarWidths(agentArtifactExpanded);
@@ -202,6 +221,21 @@ export function Workbench() {
         setWindowMode("editor");
         void useWorkbenchStore.getState().openSettings();
       }
+      // In Agent mode the same chord opens the Chat's Files picker (CP-48).
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("quickOpen"), event, apple)
+      ) {
+        event.preventDefault();
+        openQuickOpen();
+      }
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
+      ) {
+        event.preventDefault();
+        openCommandPalette();
+      }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
         setWindowMode("agent");
@@ -210,7 +244,9 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal]);
+  }, [resourceModal, windowMode]);
+  useEditorHistoryKeys(windowMode === "editor");
+  useRepositoryAutoRefresh();
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -294,7 +330,9 @@ export function Workbench() {
         />
       ) : (
         <div className="workbench__body" style={bodyStyle}>
-          <RightSidebar compact={compact} railFirst />
+          <ExplorerReleasesOpenFiles.Provider value={true}>
+            <RightSidebar compact={compact} railFirst />
+          </ExplorerReleasesOpenFiles.Provider>
           {!compact ? (
             <WorkbenchSidebarSplitter
               ariaLabel="Resize Editor tool rail"
@@ -315,6 +353,7 @@ export function Workbench() {
             </div>
             <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
           </div>
+          <QuickOpenHost />
         </div>
       )}
       {terminalOpen ? (

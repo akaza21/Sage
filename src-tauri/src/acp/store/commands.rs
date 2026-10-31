@@ -9,23 +9,16 @@ use crate::{
 };
 
 use super::{
-    MutationDisposition, PrepareTurnCommand, PreparedTurn, SendObservation, StoreError,
-    TurnMutation, TurnMutationCommand,
+    MutationDisposition, PrepareTurnCommand, PreparedTurn, StoreError, TurnMutation,
+    TurnMutationCommand,
     facts::{
         append_fact_payload, check_add, entity_revision_from_i64, hex_digest,
         next_projection_revision, projection_from_i64,
     },
-    send::{begin_send, record_send_observation},
 };
 
 impl Database {
-    pub(crate) fn acp_lookup_prepared_turn(
-        &self,
-        command: &PrepareTurnCommand,
-    ) -> Result<Option<PreparedTurn>, StoreError> {
-        lookup_prepared_turn(&self.connection(), command)
-    }
-
+    #[cfg(test)]
     pub(crate) fn acp_prepare_turn(
         &self,
         command: PrepareTurnCommand,
@@ -34,27 +27,6 @@ impl Database {
             .write_connection()
             .map_err(|_| StoreError::Corrupt("storage recovery required"))?;
         prepare_turn(&mut connection, command)
-    }
-
-    pub(crate) fn acp_begin_send(
-        &self,
-        command: TurnMutationCommand,
-    ) -> Result<TurnMutation, StoreError> {
-        let mut connection = self
-            .write_connection()
-            .map_err(|_| StoreError::Corrupt("storage recovery required"))?;
-        begin_send(&mut connection, command)
-    }
-
-    pub(crate) fn acp_record_send_observation(
-        &self,
-        command: TurnMutationCommand,
-        observation: SendObservation,
-    ) -> Result<TurnMutation, StoreError> {
-        let mut connection = self
-            .write_connection()
-            .map_err(|_| StoreError::Corrupt("storage recovery required"))?;
-        record_send_observation(&mut connection, command, observation)
     }
 }
 
@@ -105,6 +77,7 @@ pub(crate) fn lookup_active_turn(
     .transpose()
 }
 
+#[cfg(test)]
 pub(crate) fn prepare_turn(
     connection: &mut rusqlite::Connection,
     command: PrepareTurnCommand,

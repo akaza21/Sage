@@ -9,14 +9,17 @@ import {
 
 interface EditorCaretStore {
   caret: EditorCaret | null;
-  publish: (document: Text, offset: number) => void;
+  /** False for a read-only File, such as one an Agent shows. */
+  editable: boolean;
+  publish: (document: Text, offset: number, editable?: boolean) => void;
   clear: () => void;
 }
 
 export const useEditorCaretStore = create<EditorCaretStore>((set) => ({
   caret: null,
-  publish: (document, offset) =>
-    set({ caret: admitCaretStatus(document, offset) }),
+  editable: true,
+  publish: (document, offset, editable = true) =>
+    set({ caret: admitCaretStatus(document, offset), editable }),
   clear: () => set({ caret: null }),
 }));
 
@@ -25,7 +28,7 @@ export const useEditorCaretStore = create<EditorCaretStore>((set) => ({
  * with each offset, so the caret never pairs a new offset with the text of an
  * earlier render.
  */
-export function useEditorCaretPublisher(active: boolean) {
+export function useEditorCaretPublisher(active: boolean, editable = true) {
   useEffect(() => {
     if (!active) {
       useEditorCaretStore.getState().clear();
@@ -44,6 +47,6 @@ export function useEditorCaretPublisher(active: boolean) {
       useEditorCaretStore.getState().clear();
       return;
     }
-    useEditorCaretStore.getState().publish(document, offset);
+    useEditorCaretStore.getState().publish(document, offset, editable);
   };
 }

@@ -108,9 +108,15 @@
 }
 
 .diff-editor {
+  /* One column as wide as the pane or the longest line, so every row and
+     hunk header shares one width and the pane scrolls only when it must. */
+  display: grid;
   min-height: 0;
   padding: 16px 0;
   overflow: auto;
+  align-content: start;
+  grid-template-columns: minmax(max-content, 1fr);
+  isolation: isolate;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
 }
@@ -119,36 +125,82 @@
   margin-top: 12px;
 }
 
+/* A long hunk header is clipped rather than widening the pane; its text
+   stays in view when the lines scroll sideways. */
 .diff-hunk__header {
-  min-width: 720px;
+  contain: inline-size;
+  overflow: hidden;
+  overflow: clip;
   min-height: 28px;
-  padding: 4px 12px 4px 104px;
-  color: var(--color-diff-add);
-  background: var(--color-diff-add-muted);
+  white-space: nowrap;
+  padding: 4px 12px 4px 108px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
   font-size: var(--font-size-xs);
 }
 
-.diff-line {
-  display: grid;
-  min-width: 720px;
-  min-height: 24px;
-  grid-template-columns: 46px 46px 0 minmax(0, 1fr);
-  align-items: center;
-  border-left: 3px solid transparent;
+/* Notes wrap to the pane instead of widening it. */
+.diff-editor > p {
+  contain: inline-size;
 }
 
+.diff-hunk__header > span {
+  display: inline-block;
+  position: sticky;
+  left: 108px;
+}
+
+.diff-line {
+  --diff-line-background: transparent;
+  --diff-line-marker: transparent;
+  display: grid;
+  min-height: 24px;
+  grid-template-columns: 48px 48px 0 auto;
+  align-items: center;
+  background: var(--diff-line-background);
+}
+
+/* Line numbers stay in view when a long line scrolls sideways; they paint
+   the row's tint over the canvas so code never shows through. */
 .diff-line > span {
+  position: sticky;
+  z-index: 1;
+  left: 0;
   align-self: stretch;
   padding: 4px 8px 0 0;
   border-right: 1px solid var(--resource-document-gutter-divider);
   color: var(--resource-document-gutter-foreground);
+  background:
+    linear-gradient(var(--diff-line-background), var(--diff-line-background)),
+    var(--color-canvas);
   text-align: right;
   user-select: none;
 }
 
+.diff-line > span:first-child {
+  box-shadow: inset 4px 0 var(--diff-line-marker);
+}
+
+.diff-line > span + span {
+  left: 48px;
+}
+
+/* Sticky like the line numbers, so the comment button stays reachable. */
 .diff-line__comment-gutter {
-  position: relative;
+  position: sticky;
+  z-index: 2;
+  left: 96px;
   min-height: 24px;
+}
+
+/* An open composer drops over the rows below, so its row paints above
+   theirs. Separate rules: an unknown :has() must not drop :focus-within. */
+.diff-line__comment-gutter:focus-within {
+  z-index: 4;
+}
+
+.diff-line__comment-gutter:has(.diff-comment-composer) {
+  z-index: 4;
 }
 
 .diff-line__comment-trigger {
@@ -241,18 +293,18 @@
 }
 
 .diff-line--removed {
-  border-left-color: var(--color-diff-delete);
-  background: var(--color-diff-delete-muted);
+  --diff-line-background: var(--color-diff-delete-muted);
+  --diff-line-marker: var(--color-diff-delete);
 }
 
 .diff-line--added {
-  border-left-color: var(--color-diff-add);
-  background: var(--color-diff-add-muted);
+  --diff-line-background: var(--color-diff-add-muted);
+  --diff-line-marker: var(--color-diff-add);
 }
 
 .diff-line--meta {
+  --diff-line-background: var(--color-panel);
   color: var(--color-text-muted);
-  background: var(--color-panel);
 }
 
 .diff-limit {

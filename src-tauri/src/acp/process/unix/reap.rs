@@ -26,10 +26,6 @@ impl TreeControl {
         self.wait_before(Instant::now() + self.0.terminate_deadline)
     }
 
-    pub(crate) fn wait(&self) -> Result<TreeExit, LaunchError> {
-        self.wait_root_exit()
-    }
-
     pub(crate) fn wait_before(&self, deadline: Instant) -> Result<TreeExit, LaunchError> {
         let status = loop {
             let mut child = self

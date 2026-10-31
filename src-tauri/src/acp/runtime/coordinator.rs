@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::acp::{
-    contract::{EntityRevision, ProjectionRevision},
+    contract::ProjectionRevision,
     intent::{IntentSnapshot, ProjectionChangedV1, validate_base_intent},
     scheduler::{RunningTurnLease, SchedulerError, TreeLease, TurnReservation},
     store::{
@@ -55,6 +55,10 @@ pub(crate) struct SendCoordinator<A> {
 
 pub(crate) enum PrepareDispatch {
     Applied(ActiveDispatch),
+    #[allow(
+        dead_code,
+        reason = "callers treat a duplicate as settled and do not inspect the stored turn"
+    )]
     Duplicate(PreparedTurn),
 }
 
@@ -265,10 +269,6 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
             _ => Err(CoordinatorError::JournalProtocol),
         }
     }
-}
-
-pub(crate) fn revision_zero() -> EntityRevision {
-    EntityRevision::ZERO
 }
 
 fn deadline(now_millis: i64, delta: u64) -> u64 {

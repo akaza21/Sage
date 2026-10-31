@@ -87,6 +87,19 @@ impl CodexRuntime {
                 }
                 let mut batch = AdapterBatchBuilder::new();
                 for event in events {
+                    // A notice needs the Turn's durable scope, so emit it only
+                    // after the first running Turn has been bound.
+                    let browser_notice = if matches!(
+                        &event,
+                        IncomingEvent::Turn {
+                            state: crate::acp::lifecycle::TurnState::Running,
+                            ..
+                        }
+                    ) {
+                        self.mcp.take_browser_unavailable_notice()
+                    } else {
+                        None
+                    };
                     if let IncomingEvent::HostToolReply { bytes } = event {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
@@ -109,6 +122,21 @@ impl CodexRuntime {
                             error
                         }
                     })?;
+                    if let Some(message) = browser_notice {
+                        batch.push_event(AdapterEvent::Error(
+                            crate::acp::intent::NormalizedPayload::Error {
+                                kind: None,
+                                code: crate::acp::contract::SafeText::new(
+                                    "code",
+                                    "browserMcpUnavailable",
+                                )
+                                .map_err(|_| AdapterRuntimeError::Frame)?,
+                                message: crate::acp::contract::SafeText::new("message", message)
+                                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                                retryable: false,
+                            },
+                        ))?;
+                    }
                     if let Some(egress) = egress {
                         batch.push_egress(egress).map_err(|error| {
                             if mandatory {

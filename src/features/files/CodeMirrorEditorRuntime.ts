@@ -55,6 +55,8 @@ interface RuntimeProps {
   /** Hands over the editor's immutable document; never a built string. */
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
+  /** An edit was refused because the File would pass `maxContentLength`. */
+  onLimitExceeded?: () => void;
 }
 
 interface RuntimeOptions extends RuntimeProps {
@@ -74,6 +76,7 @@ export interface CodeMirrorEditorRuntime {
 import type { EditorContent, EditorContentBase } from "./editorContent";
 import type * as EditingFeatures from "./editorEditing";
 import { utf8LengthField, withinUtf8Limit } from "./utf8Tracking";
+import { editorSaveRefocus } from "./editorSaveRefocus";
 
 /*
  * Document syntax palette resolves from --doc-syntax-* tokens (authority in
@@ -286,11 +289,15 @@ export function createCodeMirrorEditorRuntime(
         ),
         utf8LengthField,
         // Costs the size of the edit, not the document (EP-01).
-        EditorState.transactionFilter.of((transaction) =>
-          withinUtf8Limit(transaction, current.maxContentLength)
-            ? transaction
-            : [],
-        ),
+        EditorState.transactionFilter.of((transaction) => {
+          if (withinUtf8Limit(transaction, current.maxContentLength)) {
+            return transaction;
+          }
+          // Refused edits are reported rather than dropped silently.
+          const report = current.onLimitExceeded;
+          if (report) queueMicrotask(report);
+          return [];
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingControlledContent) {
             const document = update.state.doc;
@@ -317,6 +324,7 @@ export function createCodeMirrorEditorRuntime(
       ],
     }),
   });
+  const saveRefocus = editorSaveRefocus(view);
 
   function selectLanguage(path: string) {
     const generation = ++languageGeneration;
@@ -365,6 +373,7 @@ export function createCodeMirrorEditorRuntime(
   return {
     destroy: () => {
       destroyed = true;
+      saveRefocus.cancel();
       languageGeneration += 1;
       view.destroy();
     },
@@ -390,6 +399,7 @@ export function createCodeMirrorEditorRuntime(
       };
       current = next;
       const effects = [];
+      if (next.disabled && !previous.disabled) saveRefocus.disabled();
       if (!sameEditableConfiguration(previous, next)) {
         effects.push(editableCompartment.reconfigure(editableExtensions(next)));
       }
@@ -408,6 +418,7 @@ export function createCodeMirrorEditorRuntime(
       if (effects.length > 0) {
         view.dispatch({ effects });
       }
+      if (previous.disabled && !next.disabled) saveRefocus.enabled();
       if (!sameValues(previous.editing, next.editing)) {
         applyEditing();
       }

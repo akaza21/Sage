@@ -5,10 +5,9 @@ use crate::acp::{
     intent::CapabilitySnapshotV1,
 };
 
-use super::{
-    sanitize::normalized_text,
-    wire::{WireError, decode_frame},
-};
+#[cfg(test)]
+use super::wire::decode_frame;
+use super::{sanitize::normalized_text, wire::WireError};
 
 const MAX_MODELS: usize = 128;
 const MAX_MODEL_BYTES: usize = 262_144;
@@ -35,6 +34,7 @@ pub(crate) struct ClaudeModel {
 }
 
 impl ClaudeCapabilityOffer {
+    #[cfg(test)]
     pub(crate) fn from_initialize_bytes(raw: &[u8]) -> Result<Self, CapabilityError> {
         let value = decode_frame(raw)?;
         Self::from_initialize_value(&value)

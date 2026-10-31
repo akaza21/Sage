@@ -1,6 +1,4 @@
 // P1 defines the private process contract before P2 connects the runtime.
-// Keep the dormant private surface warning-clean without making it public.
-#![allow(dead_code, unused_imports)]
 
 mod capacity;
 mod identity;
@@ -13,12 +11,10 @@ mod unix;
 mod windows;
 #[cfg(windows)]
 pub(crate) use windows::TerminalJobBoundary;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "acp-fixture"))]
 pub(crate) use windows::monotonic_tick;
 #[cfg(windows)]
-pub(crate) use windows::{
-    PreviewJobBoundary, PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess,
-};
+pub(crate) use windows::{PreviewLaunchFailure, PreviewLaunchRecovery, PreviewWindowsProcess};
 #[cfg(windows)]
 pub(crate) use windows::{
     command_line as windows_command_line, environment_block as windows_environment_block,
@@ -29,19 +25,21 @@ pub(crate) use windows::{
 pub(crate) use unix::launch_fixture_for_test;
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
-pub(crate) use identity::{ProcessIdentityReceipt, SpawnTimingReceipt};
+pub(crate) use identity::ProcessIdentityReceipt;
+#[cfg(windows)]
+pub(crate) use identity::SpawnTimingReceipt;
 pub(crate) use manifest::ManifestExpectation;
+#[cfg(all(test, windows))]
+pub(crate) use platform::RunningTree;
 pub(crate) use platform::{
-    LaunchFailure, LaunchRecovery, PlatformSupervisor, RunningTree, StdinEndpoint, StdoutEndpoint,
-    TreeControl,
+    LaunchFailure, LaunchRecovery, PlatformSupervisor, StdinEndpoint, StdoutEndpoint, TreeControl,
 };
+pub(crate) use supervisor::TreeExit;
 pub(crate) use supervisor::ZeroProcessToken;
 pub(crate) use supervisor::{
     ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, EntryPointKind, LaunchError,
     LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
 };
-pub(crate) use supervisor::{SupervisorLifecycle, TeardownAction, TreeExit, TreeState};
-
 #[cfg(all(test, windows))]
 struct FixtureLiveProcess {
     executable: std::path::PathBuf,

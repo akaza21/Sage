@@ -7,6 +7,11 @@ export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
 export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 
+/** A `.gitignore` or `.ignore` file: a change re-dims every listing below. */
+export function isIgnoreRuleFile(relativePath: string): boolean {
+  return /(?:^|\/)\.(?:git)?ignore$/i.test(relativePath);
+}
+
 const NOTICE_KEYS = [
   "projectId",
   "projectGeneration",
@@ -262,7 +267,9 @@ export async function syncLiveProjectWorkspaceNotify(
     }
     publishWorkspaceNotifySearch(accepted);
     const listing = listingResourceForNotify(accepted);
-    if (accepted.kind === "resync") {
+    // A rule-file change refreshes the whole root, so it must not be
+    // coalesced into a refresh of its folder that is already running.
+    if (accepted.kind === "resync" || isIgnoreRuleFile(accepted.relativePath)) {
       void Promise.resolve(hooks.invalidate(accepted, listing));
       return;
     }

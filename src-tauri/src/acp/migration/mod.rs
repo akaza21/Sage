@@ -25,7 +25,7 @@ mod tool_result_fold;
 mod tool_result_fold_tests;
 mod v18_backup;
 
-#[allow(unused_imports)]
+#[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
 pub(crate) use image_files::{read_image_file, remove_image_file};
 

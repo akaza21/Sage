@@ -1,14 +1,17 @@
-// P1 freezes redaction types before P2 connects diagnostics and persistence.
-#![allow(dead_code)]
-
 use std::collections::VecDeque;
 
 use serde::Serialize;
 use serde_json::Value;
+
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(
+    dead_code,
+    reason = "P2: codes are frozen before diagnostics are connected; only ProtocolFailure is produced yet"
+)]
 pub(crate) enum DiagnosticCode {
     ContainmentFailure,
     IdentityMismatch,
@@ -37,8 +40,10 @@ pub(crate) struct SafeStderrDiagnostic {
 
 /// Sensitive bytes never implement `Debug`, `Display`, `Clone`, or `Serialize`.
 /// Their allocation is cleared before it is released.
+#[cfg(test)]
 pub(crate) struct SensitiveBytes(Vec<u8>);
 
+#[cfg(test)]
 impl SensitiveBytes {
     pub(crate) fn new(bytes: Vec<u8>) -> Self {
         Self(bytes)
@@ -58,15 +63,18 @@ impl SensitiveBytes {
     }
 }
 
+#[cfg(test)]
 impl Drop for SensitiveBytes {
     fn drop(&mut self) {
         self.0.fill(0);
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct ExternalIdFingerprint([u8; 16]);
 
+#[cfg(test)]
 impl ExternalIdFingerprint {
     pub(crate) fn from_external_id(id: &[u8]) -> Self {
         let digest = Sha256::digest(id);
@@ -182,7 +190,7 @@ impl StderrRing {
             .unwrap_or_else(empty_stderr_diagnostic)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "acp-fixture"))]
     pub(crate) fn retained_bytes(&self) -> usize {
         self.bytes.len()
     }

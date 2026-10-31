@@ -1,24 +1,23 @@
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::Transaction;
+#[cfg(test)]
+use rusqlite::{OptionalExtension, params};
 
-use crate::acp::{
-    contract::{EntityRevision, ProjectionRevision},
-    lifecycle::classify_terminal,
-};
+use crate::acp::contract::{EntityRevision, ProjectionRevision};
+#[cfg(test)]
+use crate::acp::lifecycle::classify_terminal;
 
+#[cfg(test)]
+use super::SessionTerminalCommand;
+#[cfg(test)]
+use super::facts::next_projection_revision;
+#[cfg(test)]
+use super::state::{parse_session_state, session_state_text};
 use super::{
-    ActivityTerminalCommand, EntityMutation, FactPayload, ItemTerminalCommand, MutationDisposition,
-    SessionTerminalCommand, StoreError, TurnMutationCommand,
-    facts::{
-        append_fact_payload, entity_revision_from_i64, next_projection_revision,
-        projection_from_i64, publish_projection,
-    },
-    state::{
-        activity_lifecycle_text, item_lifecycle_text, parse_activity_lifecycle,
-        parse_item_lifecycle, parse_session_state, parse_tool_state, session_state_text,
-        tool_state_text,
-    },
+    EntityMutation, FactPayload, MutationDisposition, StoreError, TurnMutationCommand,
+    facts::{append_fact_payload, entity_revision_from_i64, projection_from_i64},
 };
 
+#[cfg(test)]
 pub(crate) fn apply_session_terminal(
     connection: &mut rusqlite::Connection,
     command: SessionTerminalCommand,
@@ -113,147 +112,6 @@ pub(crate) fn apply_turn_terminal(
     )
 }
 
-pub(crate) fn apply_item_terminal(
-    connection: &mut rusqlite::Connection,
-    command: ItemTerminalCommand,
-) -> Result<EntityMutation, StoreError> {
-    if !command.lifecycle.is_terminal()
-        || command.tool_state.is_some_and(|state| !state.is_terminal())
-        || !valid_digest(&command.payload_digest)
-    {
-        return Err(StoreError::InvalidTransition { resource: "item" });
-    }
-    let transaction = connection.transaction()?;
-    let row:(String,Option<String>,String,i64)=transaction.query_row(
-        "SELECT lifecycle,tool_state,payload_digest,revision FROM items WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND turn_id=?4 AND runtime_epoch=?5 AND id=?6",
-        params![command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),command.turn_id.as_str(),command.runtime_epoch.get() as i64,command.item_id.as_str()],
-        |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
-    ).optional()?.ok_or(StoreError::Conflict { resource:"item" })?;
-    let current = parse_item_lifecycle(&row.0)?;
-    let current_tool = row.1.as_deref().map(parse_tool_state).transpose()?;
-    if current.is_terminal() {
-        if current == command.lifecycle
-            && current_tool == command.tool_state
-            && row.2 == command.payload_digest
-        {
-            return duplicate(&transaction, command.session_id.as_str(), row.3);
-        }
-        return Err(StoreError::TerminalConflict { resource: "item" });
-    }
-    if !current.can_transition_to(command.lifecycle) || row.2 != command.payload_digest {
-        return Err(StoreError::InvalidTransition { resource: "item" });
-    }
-    if let (Some(old), Some(next)) = (current_tool, command.tool_state)
-        && !old.can_transition_to(next)
-    {
-        return Err(StoreError::InvalidTransition { resource: "tool" });
-    }
-    let revision = entity_revision_from_i64(row.3)?
-        .next()
-        .map_err(|_| StoreError::CounterExhausted)?;
-    let projection = next_projection_revision(
-        &transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-    )?;
-    ensure_one(transaction.execute(
-        "UPDATE items SET lifecycle=?2,tool_state=?3,revision=?4,updated_at=?5,terminal_at=?5 WHERE id=?1",
-        params![command.item_id.as_str(),item_lifecycle_text(command.lifecycle),command.tool_state.map(tool_state_text),revision.get() as i64,command.now_millis],
-    )?,"item")?;
-    append_entity_fact(
-        &transaction,
-        &command.project_id,
-        &command.chat_id,
-        &command.session_id,
-        Some(&command.turn_id),
-        "itemTerminal",
-        command.item_id.as_str(),
-        item_lifecycle_text(command.lifecycle),
-        projection,
-        command.now_millis,
-    )?;
-    publish_projection(
-        &transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-        command.session_id.as_str(),
-        projection,
-        command.now_millis,
-    )?;
-    transaction
-        .commit()
-        .map_err(|_| StoreError::CommitUnknown)?;
-    Ok(applied(revision, projection))
-}
-
-pub(crate) fn apply_activity_terminal(
-    connection: &mut rusqlite::Connection,
-    command: ActivityTerminalCommand,
-) -> Result<EntityMutation, StoreError> {
-    if !command.lifecycle.is_terminal() {
-        return Err(StoreError::InvalidTransition {
-            resource: "activity",
-        });
-    }
-    let transaction = connection.transaction()?;
-    let row:(String,i64)=transaction.query_row(
-        "SELECT lifecycle,revision FROM session_activities WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND turn_id=?4 AND runtime_epoch=?5 AND id=?6",
-        params![command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),command.turn_id.as_str(),command.runtime_epoch.get() as i64,command.activity_id.as_str()],
-        |row|Ok((row.get(0)?,row.get(1)?)),
-    ).optional()?.ok_or(StoreError::Conflict { resource:"activity" })?;
-    let current = parse_activity_lifecycle(&row.0)?;
-    if current.is_terminal() {
-        return if current == command.lifecycle {
-            duplicate(&transaction, command.session_id.as_str(), row.1)
-        } else {
-            Err(StoreError::TerminalConflict {
-                resource: "activity",
-            })
-        };
-    }
-    if !current.can_transition_to(command.lifecycle) {
-        return Err(StoreError::InvalidTransition {
-            resource: "activity",
-        });
-    }
-    let revision = entity_revision_from_i64(row.1)?
-        .next()
-        .map_err(|_| StoreError::CounterExhausted)?;
-    let projection = next_projection_revision(
-        &transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-    )?;
-    ensure_one(transaction.execute(
-        "UPDATE session_activities SET lifecycle=?2,revision=?3,updated_at=?4,terminal_at=?4 WHERE id=?1",
-        params![command.activity_id.as_str(),activity_lifecycle_text(command.lifecycle),revision.get() as i64,command.now_millis],
-    )?,"activity")?;
-    append_entity_fact(
-        &transaction,
-        &command.project_id,
-        &command.chat_id,
-        &command.session_id,
-        Some(&command.turn_id),
-        "activityTerminal",
-        command.activity_id.as_str(),
-        activity_lifecycle_text(command.lifecycle),
-        projection,
-        command.now_millis,
-    )?;
-    publish_projection(
-        &transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-        command.session_id.as_str(),
-        projection,
-        command.now_millis,
-    )?;
-    transaction
-        .commit()
-        .map_err(|_| StoreError::CommitUnknown)?;
-    Ok(applied(revision, projection))
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn append_entity_fact(
     transaction: &Transaction<'_>,
@@ -311,12 +169,6 @@ pub(super) fn applied(
         projection_revision,
         disposition: MutationDisposition::Applied,
     }
-}
-fn valid_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 pub(super) fn ensure_one(changed: usize, resource: &'static str) -> Result<(), StoreError> {
     if changed == 1 {

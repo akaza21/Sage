@@ -88,6 +88,7 @@ where
     T: StdinTransport + crate::acp::runtime::ActivationTransport,
     C: ProcessTreeControl,
 {
+    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn new(
         pump: ActivationPump<A, J, R>,
         transport: T,

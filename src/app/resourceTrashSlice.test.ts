@@ -198,7 +198,7 @@ describe("resource trash store transaction", () => {
       resourceConfirmed: false,
       parentListing: null,
       snapshot: snapshot(source),
-      warning: "Recycle Bin outcome is unknown; Explorer is refreshing.",
+      warning: "Trash outcome is unknown; Explorer is refreshing.",
     });
 
     await expect(

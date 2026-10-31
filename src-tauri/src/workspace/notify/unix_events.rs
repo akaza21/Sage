@@ -6,6 +6,10 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(dead_code, reason = "only inotify reports creates and renames")
+)]
 pub(crate) enum UnixWatchKind {
     Created,
     Deleted,
@@ -34,14 +38,22 @@ pub(crate) fn unix_watch_delivery(
     Ok((relative, action))
 }
 
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_MODIFY: u32 = 0x0000_0002;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_ATTRIB: u32 = 0x0000_0004;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_MOVED_FROM: u32 = 0x0000_0040;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_MOVED_TO: u32 = 0x0000_0080;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_CREATE: u32 = 0x0000_0100;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_DELETE: u32 = 0x0000_0200;
+#[cfg(any(target_os = "linux", test))]
 pub(super) const IN_Q_OVERFLOW: u32 = 0x0000_4000;
 
+#[cfg(any(target_os = "linux", test))]
 pub(super) fn unix_kind_from_inotify_mask(mask: u32) -> UnixWatchKind {
     if mask & IN_Q_OVERFLOW != 0 {
         UnixWatchKind::Overflow
@@ -60,8 +72,10 @@ pub(super) fn unix_kind_from_inotify_mask(mask: u32) -> UnixWatchKind {
     }
 }
 
+#[cfg(any(target_os = "linux", test))]
 const INOTIFY_EVENT_BYTES: usize = 16;
 
+#[cfg(any(target_os = "linux", test))]
 pub(super) fn unix_watch_deliveries_from_inotify_bytes(buffer: &[u8]) -> Vec<(String, u32)> {
     let mut offset = 0_usize;
     let mut deliveries = Vec::new();
@@ -109,6 +123,7 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(buffer: &[u8]) -> Vec<(St
 
 pub(super) const MAX_UNIX_WATCH_DIRECTORIES: usize = 64;
 
+#[cfg(test)]
 pub(super) fn unix_workspace_notify_supported() -> bool {
     cfg!(any(target_os = "macos", target_os = "linux"))
 }

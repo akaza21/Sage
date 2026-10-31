@@ -26,6 +26,18 @@ pub(super) struct BrowserMcpActivationGuard {
 }
 
 impl BrowserMcpActivationGuard {
+    #[cfg(test)]
+    pub(super) fn for_test() -> (Self, Arc<AtomicBool>) {
+        let revoked = Arc::new(AtomicBool::new(false));
+        (
+            Self {
+                revoked: Arc::clone(&revoked),
+                committed: false,
+            },
+            revoked,
+        )
+    }
+
     pub(super) fn commit(&mut self) {
         self.committed = true;
     }
@@ -39,7 +51,7 @@ impl Drop for BrowserMcpActivationGuard {
     }
 }
 
-fn session_state(
+pub(super) fn session_state(
     database: &crate::persistence::Database,
     owner: &RuntimeOwner,
 ) -> BrowserMcpSessionState {
@@ -60,7 +72,9 @@ fn session_state(
         .optional();
     match row {
         Ok(Some((session, Some(epoch))))
-            if matches!(session.as_str(), "starting" | "ready" | "active")
+            // Resume creates a starting epoch under a recovering session before
+            // the harness connects. Keep its new pipe alive just as on first start.
+            if matches!(session.as_str(), "starting" | "recovering" | "ready" | "active")
                 && matches!(epoch.as_str(), "starting" | "running") =>
         {
             BrowserMcpSessionState::Live

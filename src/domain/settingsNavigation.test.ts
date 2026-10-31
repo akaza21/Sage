@@ -8,11 +8,23 @@ import {
 } from "./settingsNavigation";
 
 describe("settings navigation", () => {
-  it("orders the pages so Editor comes before Keyboard", () => {
+  it("orders the pages so Editor comes before Keyboard and Browser", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",
       "keyboard",
+      "browser",
     ]);
+  });
+
+  it("finds the Browser settings by their Codex labels", () => {
+    expect(admitSettingsPageId("browser")).toBe("browser");
+    expect(pagesWithMatches("full url")).toEqual(new Set(["browser"]));
+    expect(matchingSettingsEntryIds("address bar", "browser")).toEqual(
+      new Set(["browser.showFullUrl"]),
+    );
+    expect(matchingSettingsEntryIds("cache", "browser")).toEqual(
+      new Set(["browser.clearData"]),
+    );
   });
 
   it("admits a known page id and falls back to the first page otherwise", () => {
@@ -66,11 +78,10 @@ describe("settings navigation", () => {
   });
 });
 
-describe("reserved shortcuts", () => {
-  it("leaves a reserved binding off the Keyboard page until its ticket lands", () => {
-    expect(matchingSettingsEntryIds("quick open", "keyboard")).toEqual(
-      new Set(),
+describe("Quick Open shortcut", () => {
+  it("is listed on the Keyboard page now that Quick Open exists", () => {
+    expect(matchingSettingsEntryIds("quick open", "keyboard")).toContain(
+      "quickOpen",
     );
-    expect(matchingSettingsEntryIds("", "keyboard")).not.toContain("quickOpen");
   });
 });

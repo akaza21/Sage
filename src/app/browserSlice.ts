@@ -23,11 +23,8 @@ import {
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
 import type { WorkbenchState } from "./store";
-import {
-  abandonNativePopup,
-  abandonOpenedPopup,
-  ackPopup,
-} from "./browserPopupNative";
+import { positionTab } from "./tabState";
+import { popupAdoption, ackPopup } from "./browserPopupNative";
 
 export interface BrowserSlice {
   openBrowser: (url?: string) => Promise<void>;
@@ -105,17 +102,18 @@ export const createBrowserSlice: StateCreator<
       return;
     }
     processingPopups.add(intent.id);
+    const popup = popupAdoption(set, get, intent);
     try {
       const projectId = get().project?.id;
       const generation = get().projectGeneration;
       if (!projectId || get().projectTransitioning)
-        return await abandonNativePopup(intent);
+        return await popup.abandon();
       await get().flushActiveEditor();
       if (!matchesProjectIntent(get(), generation, projectId)) {
-        await abandonNativePopup(intent);
         throw new Error("Project changed");
       }
       const opened = await browserOpenPopup(intent.id, intent.openerTabId);
+      popup.opened = opened;
       if (
         opened.openerTabId !== intent.openerTabId ||
         !opened.tabId ||
@@ -123,16 +121,14 @@ export const createBrowserSlice: StateCreator<
       )
         throw new Error("Popup response invalid");
       if (!matchesProjectIntent(get(), generation, projectId)) {
-        await abandonOpenedPopup(intent.id, opened);
         throw new Error("Project changed");
       }
-      const inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
-      if (inserted) {
+      popup.inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
+      if (popup.inserted) {
         const openerIndex = get().tabs.findIndex(
           (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
         );
         if (openerIndex < 0) {
-          await abandonOpenedPopup(intent.id, opened);
           throw new Error("Popup opener closed");
         }
         set((state) => {
@@ -147,19 +143,28 @@ export const createBrowserSlice: StateCreator<
             openerTabId: opened.openerTabId,
           });
           return {
-            tabs: tabs.map((tab, position) => ({ ...tab, position })),
+            tabs: tabs.map(positionTab),
             activeTabId: opened.tabId,
             activeEditor: null,
           };
         });
       }
-      await ackPopup(set, get, intent.id, opened, inserted);
+      popup.cleanupAttempted = true;
+      await ackPopup(set, get, intent.id, opened, popup.inserted);
       finishedPopups.add(intent.id);
       if (finishedPopups.size > 32) {
         const first = finishedPopups.values().next().value;
         if (first !== undefined) finishedPopups.delete(first);
       }
     } catch (error) {
+      if (!popup.cleanupAttempted) {
+        try {
+          await popup.abandon();
+        } catch (cleanupError) {
+          set({ error: `Couldn't close popup: ${errorMessage(cleanupError)}` });
+          return;
+        }
+      }
       set({ error: `Couldn't open popup: ${errorMessage(error)}` });
     } finally {
       processingPopups.delete(intent.id);
@@ -248,7 +253,7 @@ export const createBrowserSlice: StateCreator<
                 try {
                   title = new URL(url).host.slice(0, 48);
                 } catch {
-                  title = "New tab";
+                  // Retain the default title when the native URL is unreadable.
                 }
                 set((state) => ({
                   tabs: [

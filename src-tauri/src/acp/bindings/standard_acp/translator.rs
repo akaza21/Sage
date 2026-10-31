@@ -12,11 +12,12 @@ use crate::acp::{
     limits::LIMITS,
 };
 
+#[cfg(test)]
+use super::wire::decode_frame;
 use super::{
     profile::StandardAcpProfile,
     sanitize::normalized_text,
     surface::{SessionUpdateKind, UNKNOWN_NOTIFICATION_REASON, UnmappedUpdate, unmapped_update},
-    wire::decode_frame,
 };
 
 mod decode;
@@ -69,6 +70,10 @@ pub(crate) enum AdapterEvent {
         old_text: String,
         new_text: String,
     },
+    #[allow(
+        dead_code,
+        reason = "consumers handle this variant; nothing produces it yet"
+    )]
     PermissionDecline {
         request_id: ExternalId,
         tool_call_id: ExternalId,
@@ -173,6 +178,19 @@ impl StandardAcpTranslator {
         Ok(())
     }
 
+    /// Releases concurrency capacity after the runtime wrote an allow reply.
+    /// The runtime owns bounded reply replay; the tool still settles on ingress.
+    pub(crate) fn permission_allow_written(
+        &mut self,
+        request_id: &str,
+    ) -> Result<(), TranslationError> {
+        self.permissions
+            .remove(request_id)
+            .ok_or(TranslationError::ForeignId)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn translate_notification(
         &mut self,
         raw: &[u8],

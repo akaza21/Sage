@@ -268,6 +268,107 @@ mod tests {
 
     const PAGE: Option<(&str, u64)> = Some(("https://example.com/next", 3));
 
+    #[test]
+    fn recovered_chat_can_reattach_a_joined_tab_and_detach_the_old_family() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
+        assert!(registry.adopt_popup("browser-7", "browser-10", PAGE, &running));
+        let old_child = registry
+            .agent_resolve(&project, &chat, "session-1", 9)
+            .unwrap();
+        assert!(registry.take_over("browser-7"));
+        registry
+            .attach(
+                project.clone(),
+                chat.clone(),
+                "browser-9",
+                "https://example.com/next",
+                3,
+            )
+            .unwrap();
+        assert!(!old_child.is_live());
+        assert!(registry.agent_control("browser-10").is_none());
+        assert!(!registry.chat_under_user_control(&project, &chat));
+        let fresh = registry.resolve(&project, &chat).unwrap();
+        assert!(
+            fresh
+                .authority_for(&BrowserScope {
+                    session_id: "session-recovered".into(),
+                    tab_id: 9
+                })
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn replacing_the_same_opener_rejects_stale_joins_and_keeps_new_children() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        let old_opener = registry.resolve(&project, &chat).unwrap();
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
+        registry
+            .attach(
+                project.clone(),
+                chat.clone(),
+                "browser-7",
+                "https://example.com/",
+                1,
+            )
+            .unwrap();
+        assert!(!old_opener.is_live());
+        assert!(registry.agent_control("browser-9").is_none());
+        // A join that captured the old opener before replacement cannot land.
+        assert!(
+            registry
+                .attach_agent_tab(
+                    project.clone(),
+                    chat.clone(),
+                    "session-1",
+                    "browser-10",
+                    "https://example.com/next",
+                    3,
+                    Some(("browser-7", &old_opener))
+                )
+                .is_err()
+        );
+        let fresh = registry.resolve(&project, &chat).unwrap();
+        assert!(fresh.authority_for(&scope(7)).is_some());
+        drop(registry.begin_agent_action("browser-7"));
+        assert!(registry.adopt_popup("browser-7", "browser-11", PAGE, &running));
+        assert!(
+            registry
+                .agent_resolve(&project, &chat, "session-1", 11)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn failed_join_keeps_the_child_plain_and_the_opener_permission_live() {
+        let registry = driven_opener();
+        let (project, chat) = ids();
+        let opener = registry.resolve(&project, &chat).unwrap();
+        let authority = opener.authority_for(&scope(7)).unwrap();
+        let prompt = crate::acp::browser::permission::BrowserPermissionPrompt {
+            scope: scope(7),
+            origin: "https://example.com".into(),
+            operation: "snapshotPage",
+        };
+        let live = authority.liveness_for(&prompt).unwrap();
+        assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
+        assert!(registry.adopt_popup("browser-7", "browser-10", PAGE, &running));
+        assert!(!registry.adopt_popup("browser-7", "browser-11", PAGE, &running));
+        assert_eq!(registry.agent_control("browser-11"), None);
+        assert!(live());
+        assert!(opener.is_live());
+        assert!(
+            registry
+                .resolve(&project, &chat)
+                .unwrap()
+                .same_attachment(&opener)
+        );
+    }
+
     /// The user attached `browser-7` and the Agent has used it.
     fn driven_opener() -> BrowserAttachments {
         let registry = BrowserAttachments::default();

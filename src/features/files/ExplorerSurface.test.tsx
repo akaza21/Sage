@@ -4,9 +4,11 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { useWorkbenchStore } from "../../app/store";
 import { childResource, resourceKey } from "../../domain/resourceIdentity";
 import { ExplorerSurface } from "./ExplorerSurface";
@@ -23,10 +25,12 @@ Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 });
 
 const initialState = useWorkbenchStore.getState();
+const initialSettings = useEditorSettingsStore.getState();
 
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
+  useEditorSettingsStore.setState(initialSettings, true);
 });
 
 it("keeps Add folder root on Editor Explorer, not as a chat blocker", () => {
@@ -216,4 +220,130 @@ it("updates only the affected memoized Explorer rows when selection changes", ()
   expect(
     screen.getByRole("treeitem", { name: "Open file src/second.ts" }),
   ).toHaveAttribute("aria-current", "page");
+});
+
+it("dims ignored entries by default and hides them when the setting says so", () => {
+  const root = childResource("root-a");
+  const log = childResource("root-a", "debug.log");
+  const source = childResource("root-a", "main.ts");
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    selectedResource: null,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [
+            {
+              name: "debug.log",
+              resource: log,
+              kind: "file",
+              byteLen: 3,
+              ignored: true,
+            },
+            { name: "main.ts", resource: source, kind: "file", byteLen: 3 },
+          ],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: {},
+  });
+
+  render(<ExplorerSurface />);
+
+  const ignoredRow = screen.getByRole("treeitem", {
+    name: "Open file debug.log",
+  });
+  expect(ignoredRow).toHaveClass("tree__row--ignored");
+  expect(
+    screen.getByRole("treeitem", { name: "Open file main.ts" }),
+  ).not.toHaveClass("tree__row--ignored");
+
+  act(() => {
+    useEditorSettingsStore.setState({
+      settings: {
+        ...useEditorSettingsStore.getState().settings,
+        "explorer.showIgnored": "hidden",
+      },
+    });
+  });
+  expect(
+    screen.queryByRole("treeitem", { name: "Open file debug.log" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("treeitem", { name: "Open file main.ts" }),
+  ).toBeInTheDocument();
+});
+
+it("hides what files.exclude names, .DS_Store by default", async () => {
+  const root = childResource("root-a");
+  const entry = (name: string) => ({
+    name,
+    resource: childResource("root-a", name),
+    kind: "file" as const,
+    byteLen: 3,
+  });
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    selectedResource: null,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [entry(".DS_Store"), entry("main.ts"), entry("notes.tmp")],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: {},
+  });
+
+  render(<ExplorerSurface />);
+
+  const shown = () =>
+    screen
+      .getAllByRole("treeitem")
+      .map((row) => row.getAttribute("aria-label"))
+      .filter((label) => label?.startsWith("Open file"));
+  // The matcher loads on its own; the default list then hides .DS_Store.
+  await waitFor(() =>
+    expect(shown()).toEqual(["Open file main.ts", "Open file notes.tmp"]),
+  );
+
+  act(() => {
+    useEditorSettingsStore.setState({
+      settings: {
+        ...useEditorSettingsStore.getState().settings,
+        "files.exclude": ["**/*.tmp"],
+      },
+    });
+  });
+  expect(shown()).toEqual(["Open file .DS_Store", "Open file main.ts"]);
 });
