@@ -214,3 +214,14 @@ it("does not retain live-tab controls after the native browser data has been cle
     screen.queryByRole("button", { name: "Manage browsing history" }),
   ).toBeNull();
 });
+
+it("opens site permissions directly when Site settings requests the originating tab", async () => {
+  useAgentSettingsState.getState().open("Browser", "browser-b", true);
+  render(<AgentBrowserSettings />);
+  await waitFor(() =>
+    expect(browserPermissionStatus).toHaveBeenCalledWith("browser-b"),
+  );
+  expect(
+    screen.getByRole("button", { name: "Manage site permissions" }),
+  ).toHaveAttribute("aria-expanded", "true");
+});

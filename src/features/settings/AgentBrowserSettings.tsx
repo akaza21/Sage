@@ -70,8 +70,14 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
   );
 }
 
-function LiveTabSettings({ tabId }: { tabId: string }) {
-  const [permissions, setPermissions] = useState(false);
+function LiveTabSettings({
+  tabId,
+  showSitePermissions,
+}: {
+  tabId: string;
+  showSitePermissions: boolean;
+}) {
+  const [permissions, setPermissions] = useState(showSitePermissions);
   const [history, setHistory] = useState(false);
   const [downloads, setDownloads] = useState(false);
   return (
@@ -129,6 +135,9 @@ function LiveTabSettings({ tabId }: { tabId: string }) {
 export function AgentBrowserSettings() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const clearNotice = useWorkbenchStore((state) => state.browserClearNotice);
+  const showSitePermissions = useAgentSettingsState(
+    (state) => state.showSitePermissions,
+  );
   const requestedId = useAgentSettingsState((state) => state.browserTabId);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [liveIds, setLiveIds] = useState<string[]>([]);
@@ -223,7 +232,11 @@ export function AgentBrowserSettings() {
       {loading ? (
         <p role="status">Loading browser tabs...</p>
       ) : tabId ? (
-        <LiveTabSettings key={tabId} tabId={tabId} />
+        <LiveTabSettings
+          key={tabId}
+          tabId={tabId}
+          showSitePermissions={showSitePermissions}
+        />
       ) : (
         <p role="status">
           Open a browser tab in Files and preview to manage its history, site

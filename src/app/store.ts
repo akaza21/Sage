@@ -122,7 +122,7 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  /** Opens the Settings tab, on `page` when given (otherwise where it was). */
+  /** Opens Editor settings, or the shared Agent dialog for Browser. */
   openSettings: (page?: SettingsPageId) => Promise<void>;
 }
 

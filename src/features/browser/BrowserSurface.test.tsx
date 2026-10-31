@@ -160,6 +160,18 @@ it("routes Browser settings to Agent settings with the originating tab", async (
   ).toBeNull();
 });
 
+it("routes Site settings to the originating tab with permissions expanded", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: true,
+  });
+});
+
 it("disposes a navigation subscription that resolves after Activity sleeps without bootstrapping hidden browser state", async () => {
   let finish: ((dispose: () => void) => void) | undefined;
   const lateDispose = vi.fn();

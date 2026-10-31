@@ -11,17 +11,24 @@ export type AgentSettingsPage =
 export const useAgentSettingsState = create<{
   page: AgentSettingsPage | null;
   browserTabId: string | null;
-  open: (page?: AgentSettingsPage, browserTabId?: string) => void;
+  showSitePermissions: boolean;
+  open: (
+    page?: AgentSettingsPage,
+    browserTabId?: string,
+    showSitePermissions?: boolean,
+  ) => void;
   close: () => void;
 }>((set) => ({
   page: null,
   browserTabId: null,
+  showSitePermissions: false,
   // Without a page, keeps an open Settings where it is.
-  open: (page, browserTabId) =>
+  open: (page, browserTabId, showSitePermissions = false) =>
     set((state) =>
       page
-        ? { page, browserTabId: browserTabId ?? null }
+        ? { page, browserTabId: browserTabId ?? null, showSitePermissions }
         : { page: state.page ?? "Appearance" },
     ),
-  close: () => set({ page: null, browserTabId: null }),
+  close: () =>
+    set({ page: null, browserTabId: null, showSitePermissions: false }),
 }));

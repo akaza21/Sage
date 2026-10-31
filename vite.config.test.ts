@@ -75,7 +75,13 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
 ];
+const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/app/browserPopupNative.ts",
+  "src/features/files/fileRenameResult.ts",
+  "src/features/files/resourceTrashContract.ts",
+];
 const REQUIRED_DYNAMIC_FACADES = [
+  ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
@@ -166,6 +172,7 @@ const REQUIRED_DYNAMIC_FACADES = [
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [
+  "src/features/settings/agentSettingsState.ts",
   ...REQUIRED_DYNAMIC_FACADES,
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
@@ -855,6 +862,7 @@ describe("desktop-native chunk topology", () => {
       Math.ceil(ordinaryGraph.allModules.length * 0.65),
     );
     for (const snapshotModule of [
+      ...REQUEST_ONLY_DYNAMIC_FACADES.map((file) => `/${file}`),
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",
       "/src/app/agentDiffAdmission.ts",
