@@ -179,6 +179,33 @@ it("labels transient harness/model selection honestly and exposes only real acce
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
+it("keeps duplicate readable models distinct and finds models beyond the first page", () => {
+  useWorkbenchStore.setState({
+    models: Array.from({ length: 205 }, (_, index) => ({
+      id: `model-${index}`,
+      name: index < 2 ? "gpt-5" : `Model ${index}`,
+    })),
+    selectedModelId: "model-204",
+    selectModel: (id) => useWorkbenchStore.setState({ selectedModelId: id }),
+  });
+  const first = render(<AgentSettingsSurface />);
+  const models = screen.getByRole("combobox", { name: "Current model" });
+  expect(models).toHaveValue("model-204");
+  expect(screen.getByRole("option", { name: "GPT-5 (model-0)" })).toBeVisible();
+  fireEvent.change(models, { target: { value: "model-1" } });
+  expect(models).toHaveValue("model-1");
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search models" }), {
+    target: { value: "Model 203" },
+  });
+  fireEvent.change(models, { target: { value: "model-203" } });
+  expect(models).toHaveValue("model-203");
+  first.unmount();
+  render(<AgentSettingsSurface />);
+  expect(screen.getByRole("combobox", { name: "Current model" })).toHaveValue(
+    "model-203",
+  );
+});
+
 it("shows only the sections T3 Code's settings also have, in its order", () => {
   render(<AgentSettingsSurface />);
   const nav = screen.getByRole("navigation", {
@@ -271,15 +298,21 @@ it("restores the real per-harness access default from its persistence boundary a
 
 it("filters settings navigation without changing the current section", () => {
   render(<AgentSettingsSurface />);
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "BROWSER" },
-  });
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    {
+      target: { value: "BROWSER" },
+    },
+  );
   expect(screen.getByRole("button", { name: "Browser" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Harnesses" })).toBeNull();
   expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "does not match" },
-  });
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    {
+      target: { value: "does not match" },
+    },
+  );
   expect(screen.getByText("No matching sections.")).toBeVisible();
 });
 
@@ -291,9 +324,12 @@ it.each([
   async (query, label) => {
     useUiAppearanceStore.setState({ ready: true });
     render(<AgentSettingsSurface />);
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: query },
-    });
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+      {
+        target: { value: query },
+      },
+    );
     fireEvent.click(
       screen.getByRole("button", { name: `Appearance: ${label}` }),
     );
@@ -305,9 +341,12 @@ it.each([
 
 it("finds access while leaving unsupported history unavailable", async () => {
   render(<AgentSettingsSurface />);
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "access" },
-  });
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    {
+      target: { value: "access" },
+    },
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Chats: Default access" }),
   );
@@ -316,9 +355,12 @@ it("finds access while leaving unsupported history unavailable", async () => {
       screen.getByRole("combobox", { name: "Default access" }),
     ).toHaveFocus(),
   );
-  fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "history" },
-  });
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    {
+      target: { value: "history" },
+    },
+  );
   expect(
     screen.getByRole("button", { name: "Browser: Browsing history" }),
   ).toBeDisabled();

@@ -2,7 +2,10 @@ import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
+import { composerModelName } from "../chat/composerModelName";
 import { SettingsRow } from "./SettingsRow";
+
+const MODEL_RESULT_LIMIT = 200;
 
 export function AgentChatSettings() {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
@@ -23,6 +26,30 @@ export function AgentChatSettings() {
   );
   const disabled =
     !project || transitioning || phase === "checking" || phase === "waiting";
+  const [filter, setFilter] = useState({ harnessId, query: "" });
+  const query = filter.harnessId === harnessId ? filter.query : "";
+  const choices = useMemo(() => {
+    const labels = models.map((model) => composerModelName(model.name));
+    const counts = new Map<string, number>();
+    for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+    return models.map((model, index) => ({
+      ...model,
+      label:
+        (counts.get(labels[index]) ?? 0) > 1
+          ? `${labels[index]} (${model.id})`
+          : labels[index],
+    }));
+  }, [models]);
+  const visible = choices
+    .filter((model) =>
+      `${model.label} ${model.id}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+    )
+    .slice(0, MODEL_RESULT_LIMIT);
+  const selected = choices.find((model) => model.id === modelId);
+  if (selected && !visible.some((model) => model.id === modelId))
+    visible.splice(MODEL_RESULT_LIMIT - 1, 1, selected);
   return (
     <>
       <p>
@@ -64,6 +91,18 @@ export function AgentChatSettings() {
               : "Select an installed harness and complete discovery or sign-in to load models."
           }
         >
+          <input
+            type="search"
+            className="input input--compact"
+            aria-label="Search models"
+            maxLength={256}
+            disabled={disabled || phase !== "ready" || !models.length}
+            placeholder="Search models"
+            value={query}
+            onChange={(event) =>
+              setFilter({ harnessId, query: event.target.value })
+            }
+          />
           <select
             aria-label="Current model"
             className="input"
@@ -74,12 +113,13 @@ export function AgentChatSettings() {
             <option value="" disabled>
               No model selected
             </option>
-            {models.slice(0, 200).map((model) => (
+            {visible.map((model) => (
               <option key={model.id} value={model.id}>
-                {model.name}
+                {model.label}
               </option>
             ))}
           </select>
+          {!visible.length ? <p role="status">No matching models.</p> : null}
         </SettingsRow>
         <SettingsRow
           title="Default access"
@@ -124,3 +164,4 @@ export function AgentChatSettings() {
     </>
   );
 }
+import { useMemo, useState } from "react";
