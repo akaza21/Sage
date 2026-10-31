@@ -46,6 +46,8 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 
 registerWorkbenchSurfaces();
 
@@ -202,6 +204,14 @@ export function Workbench() {
         setWindowMode("editor");
         void useWorkbenchStore.getState().openSettings();
       }
+      // In Agent mode the same chord opens the Chat's Files picker (CP-48).
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("quickOpen"), event, apple)
+      ) {
+        event.preventDefault();
+        openQuickOpen();
+      }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
         setWindowMode("agent");
@@ -210,7 +220,7 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal]);
+  }, [resourceModal, windowMode]);
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -315,6 +325,7 @@ export function Workbench() {
             </div>
             <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
           </div>
+          <QuickOpenHost />
         </div>
       )}
       {terminalOpen ? (

@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useQuickOpenStore } from "../features/quickOpen/quickOpenState";
 import { EditorWelcome } from "./EditorWelcome";
 
 const initialState = useWorkbenchStore.getState();
@@ -30,7 +31,8 @@ describe("EditorWelcome", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Search files" }));
-    expect(useWorkbenchStore.getState().sidebarView).toBe("search");
+    expect(useQuickOpenStore.getState().open).toBe(true);
+    useQuickOpenStore.setState({ open: false });
 
     fireEvent.click(screen.getByRole("button", { name: "Open Agent" }));
     expect(onOpenAgent).toHaveBeenCalledOnce();

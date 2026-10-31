@@ -114,6 +114,10 @@ describe("Devin-dark theme tokens", () => {
         selector: ".tree__row--selected",
       },
       {
+        path: "features/quickOpen/quick-open.css",
+        selector: '.quick-open__row[aria-selected="true"]',
+      },
+      {
         path: "features/search/workspace-search.css",
         selector:
           '.workspace-search__query-actions button[aria-pressed="true"]',

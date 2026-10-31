@@ -66,11 +66,10 @@ describe("settings navigation", () => {
   });
 });
 
-describe("reserved shortcuts", () => {
-  it("leaves a reserved binding off the Keyboard page until its ticket lands", () => {
-    expect(matchingSettingsEntryIds("quick open", "keyboard")).toEqual(
-      new Set(),
+describe("Quick Open shortcut", () => {
+  it("is listed on the Keyboard page now that Quick Open exists", () => {
+    expect(matchingSettingsEntryIds("quick open", "keyboard")).toContain(
+      "quickOpen",
     );
-    expect(matchingSettingsEntryIds("", "keyboard")).not.toContain("quickOpen");
   });
 });
