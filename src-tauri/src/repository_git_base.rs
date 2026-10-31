@@ -9,8 +9,8 @@ use crate::{
     domain::ResourceRef,
     editor_content::MAX_EDITABLE_BYTES,
     error::AppResult,
-    repository::{RepositoryBoundary, ensure_success},
-    repository_workspace::{repository_boundary, run_git},
+    repository::{RepositoryBoundary, ensure_success, repository_boundary},
+    repository_workspace::run_git,
     state::AppState,
     workspace::Workspace,
 };
@@ -56,13 +56,15 @@ pub(crate) async fn file_git_base(
 ) -> AppResult<FileGitBase> {
     let relative_path = workspace.validate_resource(resource, false)?;
     if !matches!(
-        repository_boundary(workspace).await?,
+        repository_boundary(workspace.root()).await?,
         RepositoryBoundary::Exact
     ) {
         return Ok(FileGitBase::Unavailable);
     }
-    // Both reads go through the workspace's anchored Git runner, which holds
-    // the root and checks its identity, so a swapped root reads nothing.
+    // The boundary is classified first, as status does: the anchored runner
+    // needs a repository root and would fail on a plain folder. Both reads
+    // then go through it, holding the root and checking its identity, so a
+    // swapped root reads nothing.
     // Sage runs Git with `--literal-pathspecs`, so the path is never a glob.
     let entry = run_git(
         workspace,
