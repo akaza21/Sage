@@ -69,7 +69,7 @@ it("replaces the established empty transcript with the real project home without
   const { container } = render(<ChatTranscript {...transcriptProps()} />);
   await settleLazyModules();
   expect(
-    screen.getByRole("heading", { name: "What should we work on?" }),
+    screen.getByRole("heading", { name: "What should we work on in Sage?" }),
   ).toBeVisible();
   expect(
     within(screen.getByRole("region", { name: "New chat" })).getByText("Sage"),
@@ -142,7 +142,7 @@ it("names the project once adjacent to the home heading and keeps its picker usa
   render(<ChatTranscript {...transcriptProps()} />);
   const home = screen.getByRole("region", { name: "New chat" });
   const heading = within(home).getByRole("heading", {
-    name: "What should we work on?",
+    name: "What should we work on in Sage?",
   });
   expect(heading.tagName).toBe("H3");
   expect(home.textContent?.match(/Sage/g)).toHaveLength(1);
@@ -150,7 +150,7 @@ it("names the project once adjacent to the home heading and keeps its picker usa
     screen.getByRole("heading", { name: emptyPage().title, level: 2 }),
   ).toBeInTheDocument();
   const picker = within(home).getByRole("button", { name: "Project: Sage" });
-  expect(heading).not.toContainElement(picker);
+  expect(heading).toContainElement(picker);
   fireEvent.click(picker);
   expect(screen.getByRole("combobox", { name: "Project: Sage" })).toBeVisible();
 });
@@ -353,7 +353,7 @@ it("switches projects through the existing keyboard-accessible picker and discar
     />,
   );
   expect(
-    screen.getByRole("heading", { name: "What should we work on?" }),
+    screen.getByRole("heading", { name: "What should we work on in Other?" }),
   ).toBeVisible();
   expect(screen.queryByText("Sage")).toBeNull();
   await settleLazyModules();

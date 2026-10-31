@@ -7,8 +7,20 @@ export function ChatHome({ projectName }: { projectName: string | null }) {
   return (
     <section className="chat-home" aria-label="New chat">
       <SageMark />
-      <h3>What should we work on?</h3>
-      {projectName ? <ProjectScopeChip projectName={projectName} /> : null}
+      <h3
+        aria-label={
+          projectName ? `What should we work on in ${projectName}?` : undefined
+        }
+      >
+        What should we work on
+        {projectName ? (
+          <>
+            {" "}
+            in <ProjectScopeChip projectName={projectName} />
+          </>
+        ) : null}
+        ?
+      </h3>
     </section>
   );
 }

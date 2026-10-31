@@ -44,7 +44,7 @@
 .chat-home h3 {
   margin: var(--space-6) 0 0;
   color: var(--color-text-primary);
-  font-size: calc(var(--type-size-chat-title) * 1.2);
+  font-size: var(--type-size-chat-title);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-normal);
   overflow-wrap: anywhere;
@@ -52,7 +52,7 @@
 
 .chat-home .project-scope {
   display: inline-flex;
-  width: 100%;
+  width: auto;
   max-width: 100%;
   justify-content: center;
   margin-top: 0;
@@ -69,8 +69,8 @@
 }
 
 .chat-home .searchable-picker {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  width: auto;
   max-width: 100%;
 }
 
@@ -80,6 +80,11 @@
   text-align: center;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.chat-home .project-scope__label {
+  text-decoration: underline dotted;
+  text-underline-offset: var(--space-1);
 }
 
 .chat-home .project-scope__icon,
