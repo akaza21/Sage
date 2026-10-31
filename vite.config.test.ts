@@ -78,8 +78,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/app/openFileRelease.ts",
   // Explorer's files.exclude matcher loads beside the startup bundle.
   "src/domain/pathGlobMatcher.ts",
-  // The device toolbar, its handles and styles load when it is first shown.
-  "src/features/browser/BrowserDeviceToolbar.tsx",
+  // The device toolbar, its state, handles and styles load when first shown.
+  "src/features/browser/BrowserDeviceController.tsx",
   // The browser downloads popover body loads on its first open.
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.

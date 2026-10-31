@@ -1,18 +1,28 @@
 /* Device toolbar (BF-7a), measured on Codex ref 41: a 35 px bar and a
    divider under the address bar, 60 × 21 px size fields 22 px apart (20 px tall here, on the 4 px scale). */
+/* A centred device in a gutter that holds its resize grips. */
+.browser-surface__frame[data-device] {
+  background: var(--browser-device-gutter);
+}
+.browser-surface__frame[data-device] .browser-surface__viewport {
+  inset: auto;
+  top: 0;
+  left: calc((100% - var(--browser-device-width)) / 2);
+  width: var(--browser-device-width);
+  height: var(--browser-device-height);
+}
 .browser-device-toolbar {
   display: grid;
   /* The size fields start 231 px into the pane, as in the reference. */
   grid-template-columns: minmax(0, 223px) auto minmax(0, 1fr);
   align-items: center;
-  height: 36px;
-  flex: 0 0 36px;
+  height: 100%;
+  box-sizing: border-box;
   padding: 0 4px 0 8px;
   border-bottom: 1px solid var(--browser-chrome-divider);
   color: var(--browser-muted-text);
   background: var(--browser-start-fill);
   font-size: var(--font-size-xs);
-  z-index: 4;
 }
 .browser-device-toolbar__preset {
   display: flex;

@@ -71,7 +71,7 @@
       "id": "device-gutter-fill",
       "ref": "reference/41",
       "source": "BF-7a measured the gutter around the device rgb(65, 65, 65)",
-      "selector": ".browser-surface__frame--device",
+      "selector": ".browser-surface__frame[data-device]",
       "measure": "background-color",
       "expected": "rgb(65, 65, 65)"
     },
@@ -81,7 +81,7 @@
       "source": "BF-7a measured the gutter x1010-1027 left of the page (18 px)",
       "selector": ".browser-surface__viewport",
       "measure": "left-inset",
-      "within": ".browser-surface__frame--device",
+      "within": ".browser-surface__frame[data-device]",
       "expected": 18,
       "tolerancePx": 1
     },
@@ -91,7 +91,7 @@
       "source": "BF-7a measured the gutter x1858-1875 right of the page (18 px)",
       "selector": ".browser-surface__viewport",
       "measure": "right-inset",
-      "within": ".browser-surface__frame--device",
+      "within": ".browser-surface__frame[data-device]",
       "expected": 18,
       "tolerancePx": 1
     },

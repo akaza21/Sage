@@ -113,36 +113,57 @@ pub(super) fn chrome_major(version: &str) -> Option<u32> {
     (1..10_000).contains(&major).then_some(major)
 }
 
+/// What a failed update left on the page.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Left {
+    /// Every reset step was confirmed: the page holds no emulation.
+    Reset,
+    /// A reset step failed, so some override may still be on.
+    Unknown,
+}
+
 /// Applies `emulation`, or resets the tab when it is `None`, through `call`.
-/// On a failed step it tries to reset, so a tab is never left half emulated.
+/// Any failure resets the tab, trying every step, and says whether that
+/// reset was confirmed, so the toolbar never shows a state the page lacks.
 pub(crate) fn apply_with(
     emulation: Option<&DeviceEmulation>,
     mut call: impl FnMut(&'static str, &str) -> Result<String, String>,
-) -> Result<(), String> {
-    let commands = match emulation {
-        None => reset_commands(),
-        Some(emulation) => {
-            let major = if emulation.needs_engine_version() {
-                Some(
-                    call("Browser.getVersion", "{}")
-                        .ok()
-                        .as_deref()
-                        .and_then(chrome_major)
-                        .ok_or("browser engine version unavailable")?,
-                )
-            } else {
-                None
-            };
-            emulation.commands(major)
-        }
+) -> Result<(), (String, Left)> {
+    let applied = match emulation {
+        None => Ok(()),
+        Some(emulation) => apply_steps(emulation, &mut call),
     };
-    let result = commands
-        .iter()
-        .try_for_each(|(method, params)| call(method, &params.to_string()).map(drop));
-    if result.is_err() && emulation.is_some() {
-        for (method, params) in reset_commands() {
-            let _ = call(method, &params.to_string());
+    let failure = match (applied, emulation) {
+        (Ok(()), Some(_)) => return Ok(()),
+        (Ok(()), None) => None,
+        (Err(message), _) => Some(message),
+    };
+    // Every step runs even after one fails: each clears its own override.
+    let mut reset_error = None;
+    for (method, params) in reset_commands() {
+        if let Err(message) = call(method, &params.to_string()) {
+            reset_error.get_or_insert(message);
         }
     }
-    result
+    match (failure, reset_error) {
+        (None, None) => Ok(()),
+        (Some(message), None) => Err((message, Left::Reset)),
+        (failure, Some(reset)) => Err((failure.unwrap_or(reset), Left::Unknown)),
+    }
+}
+
+fn apply_steps(
+    emulation: &DeviceEmulation,
+    call: &mut impl FnMut(&'static str, &str) -> Result<String, String>,
+) -> Result<(), String> {
+    let major = if emulation.needs_engine_version() {
+        let version = call("Browser.getVersion", "{}")?;
+        Some(chrome_major(&version).ok_or("browser engine version unavailable")?)
+    } else {
+        None
+    };
+    emulation
+        .commands(major)
+        .iter()
+        .try_for_each(|(method, params)| call(method, &params.to_string()).map(drop))
 }

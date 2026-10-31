@@ -11,8 +11,6 @@ export interface BrowserDeviceArea {
 }
 
 export const RESPONSIVE = "responsive";
-/** The device toolbar's height, divider included (Codex ref 41). */
-export const DEVICE_TOOLBAR_HEIGHT = 36;
 export const MIN_DEVICE_SIDE = 50;
 export const MAX_DEVICE_SIDE = 3840;
 const MIN_SCALE_PERCENT = 10;

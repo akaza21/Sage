@@ -1,8 +1,9 @@
 use serde_json::{Value, json};
 
 use super::{
-    DeviceEmulation, DeviceRequest, PRESETS, RESPONSIVE, admit, apply_with,
+    DeviceEmulation, DeviceFailure, DeviceRequest, Left, PRESETS, RESPONSIVE, admit, apply_with,
     emulation::{chrome_major, reset_commands},
+    held_after,
 };
 use crate::browser::BrowserTabs;
 
@@ -185,8 +186,15 @@ fn engine_major_comes_from_the_product_string() {
     }
 }
 
+fn reset_methods() -> Vec<&'static str> {
+    reset_commands()
+        .into_iter()
+        .map(|(method, _)| method)
+        .collect()
+}
+
 #[test]
-fn apply_sends_each_step_in_order_and_resets_after_a_failed_step() {
+fn apply_sends_each_step_in_order() {
     let device = admitted("pixel-7", 915, 412, 50);
     let mut sent = Vec::new();
     apply_with(Some(&device), |method, _| {
@@ -203,7 +211,10 @@ fn apply_sends_each_step_in_order_and_resets_after_a_failed_step() {
             "Emulation.setUserAgentOverride",
         ]
     );
+}
 
+#[test]
+fn a_failed_step_resets_the_tab_and_confirms_it() {
     let mut sent = Vec::new();
     let failed = apply_with(Some(&admitted("iphone-se", 375, 667, 100)), |method, _| {
         sent.push(method);
@@ -213,23 +224,86 @@ fn apply_sends_each_step_in_order_and_resets_after_a_failed_step() {
             Ok("{}".into())
         }
     });
-    assert_eq!(failed, Err("refused".into()));
-    let reset: Vec<_> = reset_commands()
-        .into_iter()
-        .map(|(method, _)| method)
-        .collect();
-    assert_eq!(&sent[2..], reset.as_slice());
+    assert_eq!(failed, Err(("refused".into(), Left::Reset)));
+    assert_eq!(&sent[2..], reset_methods().as_slice());
 }
 
 #[test]
-fn android_apply_fails_closed_without_an_engine_version() {
+fn an_android_switch_without_an_engine_version_resets_the_emulated_tab() {
+    // The tab is already an iPhone; Pixel needs the engine version first.
+    for version in [Err("gone".to_owned()), Ok("{}".to_owned())] {
+        let mut sent = Vec::new();
+        let result = apply_with(Some(&admitted("pixel-7", 412, 915, 100)), |method, _| {
+            sent.push(method);
+            if method == "Browser.getVersion" {
+                version.clone()
+            } else {
+                Ok("{}".into())
+            }
+        });
+        assert_eq!(result.map_err(|(_, left)| left), Err(Left::Reset));
+        assert_eq!(sent[0], "Browser.getVersion");
+        assert_eq!(&sent[1..], reset_methods().as_slice());
+    }
+}
+
+#[test]
+fn a_reset_tries_every_step_and_reports_an_unconfirmed_one() {
+    for emulation in [None, Some(admitted("iphone-se", 375, 667, 100))] {
+        let mut sent = Vec::new();
+        let result = apply_with(emulation.as_ref(), |method, _| {
+            sent.push(method);
+            if method == "Emulation.clearDeviceMetricsOverride"
+                || (emulation.is_some() && method == "Emulation.setDeviceMetricsOverride")
+            {
+                Err("refused".into())
+            } else {
+                Ok("{}".into())
+            }
+        });
+        assert_eq!(result, Err(("refused".into(), Left::Unknown)));
+        assert_eq!(
+            &sent[sent.len() - reset_methods().len()..],
+            reset_methods().as_slice()
+        );
+    }
     let mut sent = Vec::new();
-    let result = apply_with(Some(&admitted("pixel-7", 412, 915, 100)), |method, _| {
-        sent.push(method);
-        Ok("{}".into())
-    });
-    assert!(result.is_err());
-    assert_eq!(sent, ["Browser.getVersion"]);
+    assert_eq!(
+        apply_with(None, |method, _| {
+            sent.push(method);
+            Ok("{}".into())
+        }),
+        Ok(())
+    );
+    assert_eq!(sent, reset_methods());
+}
+
+#[test]
+fn the_toolbar_is_told_what_the_tab_holds_after_an_update() {
+    let iphone = admitted("iphone-se", 375, 667, 100);
+    let pixel = admitted("pixel-7", 412, 915, 100);
+    let failed = |left| Err(("refused".to_owned(), left));
+    assert_eq!(
+        held_after(Some(pixel), Some(iphone), Ok(())),
+        Ok(Some(pixel))
+    );
+    assert_eq!(held_after(None, Some(iphone), Ok(())), Ok(None));
+    assert_eq!(
+        held_after(Some(pixel), Some(iphone), failed(Left::Reset)),
+        Err(DeviceFailure::new("refused", None))
+    );
+    assert_eq!(
+        held_after(Some(pixel), Some(iphone), failed(Left::Unknown)),
+        Err(DeviceFailure::new("refused", Some(pixel)))
+    );
+    assert_eq!(
+        held_after(None, Some(iphone), failed(Left::Unknown)),
+        Err(DeviceFailure::new("refused", Some(iphone)))
+    );
+    assert_eq!(
+        serde_json::to_value(DeviceFailure::new("refused", None)).unwrap(),
+        json!({"message": "refused", "device": null})
+    );
 }
 
 #[test]

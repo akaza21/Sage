@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { BrowserDevice } from "../../ports/nativeBrowserPort";
+import type * as DevicePort from "../../ports/nativeBrowserDevicePort";
 import { BrowserSurface } from "./BrowserSurface";
 
 const browserStatus = vi.fn();
@@ -21,8 +22,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   closeBrowser: vi.fn(async () => undefined),
   browserPopupPending: vi.fn(async () => []),
   browserStatus: (tabId: string) => browserStatus(tabId),
-  browserSetDevice: (tabId: string, device: BrowserDevice | null) =>
-    browserSetDevice(tabId, device),
   browserPageContext: vi.fn(),
   browserZoom: vi.fn(async () => undefined),
   browserFind: vi.fn(async () => undefined),
@@ -48,6 +47,11 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   coverBrowser: vi.fn(async () => undefined),
   positionBrowser: vi.fn(async () => undefined),
 }));
+vi.mock("../../ports/nativeBrowserDevicePort", async (importOriginal) => ({
+  ...(await importOriginal<typeof DevicePort>()),
+  browserSetDevice: (tabId: string, device: BrowserDevice | null) =>
+    browserSetDevice(tabId, device),
+}));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: vi.fn(async () => ({ showFullUrl: false })),
   browserSetPreferences: vi.fn(async (value: unknown) => value),
@@ -65,11 +69,12 @@ const tab: WorkbenchTab = {
   dirty: false,
 };
 
-/** The page frame is 878 × 916 before the device toolbar takes 36 px of it,
- * which leaves an 842 × 862 device after the 18 px gutters. */
+/** The page frame is 878 × 916 until the device toolbar's row takes 36 px
+ * of it, which leaves an 842 × 862 device after the 18 px gutters. */
 function frameRect(this: HTMLElement) {
+  const toolbar = document.querySelector(".browser-surface__device-slot");
   const [width, height] = this.classList.contains("browser-surface__frame")
-    ? [878, 916]
+    ? [878, toolbar ? 880 : 916]
     : [0, 0];
   return {
     x: 0,
@@ -138,7 +143,7 @@ it("opens Responsive at the pane's size and draws the page in a gutter", async (
   expect(screen.getByRole("spinbutton", { name: "Height" })).toHaveValue(862);
   expect(screen.getByText("100%")).toBeInTheDocument();
   const frame = document.querySelector(".browser-surface__frame")!;
-  expect(frame).toHaveClass("browser-surface__frame--device");
+  expect(frame).toHaveAttribute("data-device");
   expect(
     (frame as HTMLElement).style.getPropertyValue("--browser-device-width"),
   ).toBe("842px");
@@ -186,16 +191,16 @@ it("scales a device larger than the pane down to fit", async () => {
   fireEvent.change(screen.getByRole("combobox", { name: "Dimensions:" }), {
     target: { value: "ipad-air" },
   });
-  // 1180 px tall in 898 px of room: drawn at 76%.
+  // 1180 px tall in 862 px of room: drawn at 73%.
   await waitFor(() =>
     expect(browserSetDevice).toHaveBeenLastCalledWith(tab.id, {
       preset: "ipad-air",
       width: 820,
       height: 1180,
-      scalePercent: 76,
+      scalePercent: 73,
     }),
   );
-  expect(screen.getByText("76%")).toBeInTheDocument();
+  expect(screen.getByText("73%")).toBeInTheDocument();
 });
 
 it("commits a typed Responsive width within the admitted bounds", async () => {
@@ -271,8 +276,8 @@ it("closes the toolbar and resets the tab", async () => {
     expect(browserSetDevice).toHaveBeenLastCalledWith(tab.id, null),
   );
   expect(screen.queryByRole("toolbar", { name: "Device toolbar" })).toBeNull();
-  expect(document.querySelector(".browser-surface__frame")).not.toHaveClass(
-    "browser-surface__frame--device",
+  expect(document.querySelector(".browser-surface__frame")).not.toHaveAttribute(
+    "data-device",
   );
 });
 
@@ -295,8 +300,11 @@ it("restores the tab's emulation from Rust when the surface remounts", async () 
   expect(screen.getByRole("spinbutton", { name: "Width" })).toHaveValue(915);
 });
 
-it("reports a failed apply and closes the toolbar Rust already reset", async () => {
-  browserSetDevice.mockRejectedValueOnce("device toolbar could not update");
+it("reports a failed apply and closes the toolbar Rust confirmed reset", async () => {
+  browserSetDevice.mockRejectedValueOnce({
+    message: "device toolbar could not update",
+    device: null,
+  });
   await openDevice();
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "device toolbar could not update",
@@ -306,6 +314,47 @@ it("reports a failed apply and closes the toolbar Rust already reset", async () 
       screen.queryByRole("toolbar", { name: "Device toolbar" }),
     ).toBeNull(),
   );
+  expect(browserSetDevice).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeEnabled();
+});
+
+it("keeps showing what Rust says may still be on after an unconfirmed reset", async () => {
+  const iphone = { preset: "iphone-se", width: 375, height: 667 };
+  await openDevice();
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(1));
+  browserSetDevice.mockRejectedValueOnce({
+    message: "device toolbar could not update the page",
+    device: { ...iphone, scalePercent: 100 },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "device toolbar could not update the page",
+  );
+  expect(
+    await screen.findByRole("toolbar", { name: "Device toolbar" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Dimensions:" })).toHaveValue(
+    "iphone-se",
+  );
+  // The toolbar now matches the page, so nothing is sent again.
+  expect(browserSetDevice).toHaveBeenCalledTimes(2);
+});
+
+it("never reapplies the device when unrelated surface state changes", async () => {
+  await openDevice();
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(1));
+  const address = screen.getByLabelText("Address or search");
+  for (const value of ["e", "ex", "exa"])
+    fireEvent.change(address, { target: { value } });
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: "Escape",
+  });
+  await act(async () => undefined);
+  expect(browserSetDevice).toHaveBeenCalledTimes(1);
 });
 
 it("keeps the menu item off where Rust says emulation is unavailable", async () => {
@@ -327,6 +376,51 @@ it("keeps the menu item off where Rust says emulation is unavailable", async () 
   expect(item).toHaveAttribute(
     "title",
     "Device toolbar is unavailable on this platform",
+  );
+});
+
+it("sends a tab's reset even when the pane switches to an emulated tab", async () => {
+  const other: WorkbenchTab = { ...tab, id: "browser-2" };
+  const pixel = {
+    preset: "pixel-7",
+    width: 412,
+    height: 915,
+    scalePercent: 94,
+  };
+  browserStatus.mockImplementation(async (tabId: string) => ({
+    tabId,
+    url: "https://example.com/",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    device: tabId === other.id ? pixel : null,
+  }));
+  let release = () => {};
+  browserSetDevice.mockImplementationOnce(
+    () =>
+      new Promise<undefined>((resolve) => (release = () => resolve(undefined))),
+  );
+  const { rerender } = render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  );
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(1));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Close device toolbar" }),
+  );
+  rerender(<BrowserSurface tab={other} />);
+  await screen.findByRole("toolbar", { name: "Device toolbar" });
+  await act(async () => release());
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(3));
+  expect(browserSetDevice).toHaveBeenNthCalledWith(2, tab.id, null);
+  expect(browserSetDevice).toHaveBeenNthCalledWith(
+    3,
+    other.id,
+    expect.objectContaining({ preset: "pixel-7", width: 412, height: 915 }),
   );
 });
 
@@ -355,5 +449,5 @@ it("never carries one tab's device over to the next tab in the same pane", async
     other.id,
     expect.anything(),
   );
-  expect(document.querySelector(".browser-surface__frame--device")).toBeNull();
+  expect(document.querySelector("[data-device]")).toBeNull();
 });

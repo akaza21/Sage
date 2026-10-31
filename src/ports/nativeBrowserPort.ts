@@ -230,14 +230,6 @@ export function browserZoom(tabId: string, percent: number): Promise<void> {
   return invokeNative("browser_zoom", { tabId, percent });
 }
 
-/** Applies the device toolbar's emulation to the tab, or resets it with null. */
-export function browserSetDevice(
-  tabId: string,
-  device: BrowserDevice | null,
-): Promise<void> {
-  return invokeNative("browser_set_device", { tabId, device });
-}
-
 export function browserFind(
   tabId: string,
   action: "start" | "next" | "previous" | "stop",

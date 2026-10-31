@@ -35,12 +35,18 @@ import {
   performBrowserShortcut,
   useBrowserShortcuts,
 } from "./browserShortcuts";
-import { BrowserDeviceBar, BrowserDeviceGutter } from "./BrowserDeviceSlots";
-import { useBrowserDevice } from "./useBrowserDevice";
+import { useBrowserDeviceTrigger } from "./useBrowserDeviceTrigger";
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import { useBrowserScreenshot } from "./useBrowserScreenshot";
 import "./browser.css";
 
+// The device toolbar's state, grips and styles load when it is first shown
+// or a tab restores an emulation; the surface keeps only whether it is open.
+const BrowserDeviceController = lazy(() =>
+  import("./BrowserDeviceController").then((module) => ({
+    default: module.BrowserDeviceController,
+  })),
+);
 const BrowserNewTab = lazy(() =>
   import("./BrowserNewTab").then((module) => ({
     default: module.BrowserNewTab,
@@ -181,7 +187,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   }, [tab.id, screenshotEpoch, setScreenshotStatus]);
   const covered = downloadsOpen || menuOpen;
   useBrowserPlacement(tab.id, viewport, surface, setError, covered);
-  const device = useBrowserDevice(tab.id, frame, navigation, setError);
+  const status = navigation?.tabId === tab.id ? navigation : null;
+  const device = useBrowserDeviceTrigger(tab.id, status);
   async function navigate() {
     try {
       setError(null);
@@ -283,8 +290,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onScreenshot={() => void copyScreenshot(navigation?.revision)}
           onZoom={changeZoom}
           onZoomReset={() => setZoom(100)}
-          deviceOpen={device.size !== null}
-          onDevice={device.size ? device.close : device.open}
+          deviceOpen={device.open}
+          onDevice={() => device.setOpen(!device.open)}
           onDownloads={() => setDownloadsOpen(true)}
           onHistory={openHistory}
           onSettings={(target) =>
@@ -320,7 +327,24 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
         />
       </div>
-      <BrowserDeviceBar device={device} />
+      {device.loaded ? (
+        <Suspense
+          fallback={
+            device.open ? (
+              <div className="browser-surface__device-slot" />
+            ) : null
+          }
+        >
+          <BrowserDeviceController
+            tabId={tab.id}
+            open={device.open}
+            restored={status?.device ?? null}
+            frame={frame}
+            onOpenChange={device.setOpen}
+            onError={setError}
+          />
+        </Suspense>
+      ) : null}
       {findOpen ? (
         <BrowserFindControls
           findField={findField}
@@ -375,12 +399,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <div
         ref={frame}
-        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}${device.frameClass}`}
-        style={device.frameStyle}
+        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}`}
       >
-        <div ref={viewport} className="browser-surface__viewport">
-          <BrowserDeviceGutter device={device} />
-        </div>
+        <div ref={viewport} className="browser-surface__viewport" />
       </div>
     </section>
   );

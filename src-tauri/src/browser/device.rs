@@ -14,7 +14,7 @@ use super::BrowserState;
 #[cfg(any(windows, test))]
 mod emulation;
 #[cfg(any(windows, test))]
-pub(crate) use emulation::apply_with;
+pub(crate) use emulation::{Left, apply_with};
 #[cfg(windows)]
 mod native;
 
@@ -214,6 +214,11 @@ impl<T> super::BrowserTabs<T> {
             .is_some_and(|tab| tab.device.requests == request)
     }
 
+    /// What the tab holds now.
+    pub(super) fn applied_device(&self, label: &str) -> Option<DeviceEmulation> {
+        self.entries.get(label)?.device.applied
+    }
+
     /// Records what `request` left applied, unless a later update owns the
     /// tab now. Returns whether it was recorded.
     pub(super) fn settle_device(
@@ -232,21 +237,73 @@ impl<T> super::BrowserTabs<T> {
     }
 }
 
+/// Why an update failed, with what the tab holds after it, so the toolbar
+/// shows what the page has rather than what was asked for.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeviceFailure {
+    message: String,
+    device: Option<DeviceEmulation>,
+}
+
+impl DeviceFailure {
+    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
+    fn new(message: impl Into<String>, device: Option<DeviceEmulation>) -> Self {
+        Self {
+            message: message.into(),
+            device,
+        }
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn browser_set_device(
     state: State<'_, BrowserState>,
     tab_id: String,
     device: Option<DeviceRequest>,
-) -> Result<(), String> {
-    let device = device.as_ref().map(admit).transpose()?;
+) -> Result<(), DeviceFailure> {
+    let device = match device.as_ref().map(admit).transpose() {
+        Ok(device) => device,
+        Err(message) => {
+            // Nothing was sent: the tab keeps what it had.
+            let held = state
+                .tabs
+                .lock()
+                .ok()
+                .and_then(|tabs| tabs.snapshot(&tab_id))
+                .and_then(|snapshot| snapshot.device);
+            return Err(DeviceFailure {
+                message,
+                device: held,
+            });
+        }
+    };
     #[cfg(windows)]
     {
         native::set(&state, tab_id, device).await
     }
     #[cfg(not(windows))]
     {
-        let _ = (state, tab_id, device);
-        Err(UNAVAILABLE_REASON.unwrap_or_default().into())
+        let _ = (tab_id, device);
+        Err(DeviceFailure {
+            message: UNAVAILABLE_REASON.unwrap_or_default().into(),
+            device: None,
+        })
+    }
+}
+
+/// What the tab holds after an update: the request when it applied, nothing
+/// after a confirmed reset, and the most that may still be on otherwise.
+#[cfg(any(windows, test))]
+pub(crate) fn held_after(
+    requested: Option<DeviceEmulation>,
+    previous: Option<DeviceEmulation>,
+    applied: Result<(), (String, Left)>,
+) -> Result<Option<DeviceEmulation>, DeviceFailure> {
+    match applied {
+        Ok(()) => Ok(requested),
+        Err((message, Left::Reset)) => Err(DeviceFailure::new(message, None)),
+        Err((message, Left::Unknown)) => Err(DeviceFailure::new(message, requested.or(previous))),
     }
 }
 

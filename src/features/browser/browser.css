@@ -1,4 +1,6 @@
 .browser-surface {
+  /* The device toolbar's row, divider included (Codex ref 41). */
+  --browser-device-toolbar-height: 36px;
   position: absolute;
   inset: 0;
   min-width: 0;
@@ -317,26 +319,22 @@
   color: var(--color-text-secondary);
   background: var(--bg);
 }
+/* The device toolbar's row; it holds its height while the toolbar loads. */
+.browser-surface__device-slot {
+  flex: 0 0 var(--browser-device-toolbar-height);
+  min-width: 0;
+  z-index: 4;
+}
 .browser-surface__frame {
   position: relative;
   flex: 1;
   min-height: 0;
 }
 /* The native page sits over this box: the whole frame, or a centred
-   device with a gutter for its resize handles (BF-7a). */
+   device with a gutter for its resize handles (BF-7a, browser-device.css). */
 .browser-surface__viewport {
   position: absolute;
   inset: 0;
-}
-.browser-surface__frame--device {
-  background: var(--browser-device-gutter);
-}
-.browser-surface__frame--device .browser-surface__viewport {
-  inset: auto;
-  top: 0;
-  left: calc((100% - var(--browser-device-width)) / 2);
-  width: var(--browser-device-width);
-  height: var(--browser-device-height);
 }
 /* Annotate's comment box over the frozen page (Codex ref 60). */
 .browser-annotate {
