@@ -18,14 +18,19 @@ function jobBlock(workflow, jobId) {
 
 test("BETA-0001 macOS CI compiles and tests the named shared contracts", async () => {
   const workflow = await readFile(workflowPath, "utf8");
+  const plan = jobBlock(workflow, "plan");
   const rust = jobBlock(workflow, "rust");
-  const macosSharedContracts = jobBlock(workflow, "macos-shared-contracts");
   const mergeGate = jobBlock(workflow, "merge-gate");
 
+  // The macOS leg is part of the full Rust matrix, requested on demand.
   assert.match(
     rust,
-    /matrix:[\s\S]*?os:[\s\S]*?-\s*windows-latest[\s\S]*?-\s*ubuntu-latest[\s\S]*?-\s*macos-latest/,
+    /os:\s*\$\{\{\s*fromJSON\(needs\.plan\.outputs\.rust-os\)\s*\}\}/,
   );
+  assert.match(plan, /macos\) macos=true ;;/);
+  assert.match(plan, /all\) windows=true; macos=true ;;/);
+  assert.match(plan, /rust_os\+=',"macos-latest"'/);
+
   const placeholder =
     "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"";
   assert.ok(
@@ -49,26 +54,19 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
       `full Rust matrix must retain ${command}`,
     );
   }
-  assert.match(macosSharedContracts, /runs-on:\s*macos-latest/);
-  assert.match(
-    macosSharedContracts,
-    /name:\s*Compile shared contracts[\s\S]*?cargo check --manifest-path src-tauri\/Cargo\.toml --release --lib/,
+
+  // The parallel test phase runs the shared-contract suites on every leg.
+  const parallelPhase = rust.match(
+    /name:\s*Test Rust parallel phase\s*\n\s*run:\s*"([^"]+)"/,
   );
-  assert.match(
-    macosSharedContracts,
-    /name:\s*Test workspace-notify shared contract[\s\S]*?cargo test --manifest-path src-tauri\/Cargo\.toml workspace::notify/,
-  );
-  assert.match(
-    macosSharedContracts,
-    /name:\s*Test editor-watch shared contract[\s\S]*?cargo test --manifest-path src-tauri\/Cargo\.toml editor_watch/,
-  );
-  assert.match(
-    mergeGate,
-    /needs:[\s\S]*?-\s*frontend[\s\S]*?-\s*rust[\s\S]*?-\s*macos-shared-contracts/,
-  );
-  assert.match(
-    mergeGate,
-    /MACOS_SHARED_CONTRACTS:\s*\$\{\{\s*needs\.macos-shared-contracts\.result\s*\}\}/,
-  );
-  assert.match(mergeGate, /test "\$MACOS_SHARED_CONTRACTS" = "success"/);
+  assert.ok(parallelPhase, "Rust matrix must run the parallel test phase");
+  for (const suite of ["workspace::notify", "editor_watch"]) {
+    assert.ok(
+      !parallelPhase[1].includes(`--skip ${suite}`),
+      `the parallel phase must not skip ${suite}`,
+    );
+  }
+
+  assert.match(mergeGate, /needs:[\s\S]*?-\s*plan[\s\S]*?-\s*rust/);
+  assert.match(mergeGate, /require "Rust" "\$RUST_PLANNED" "\$RUST"/);
 });

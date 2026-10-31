@@ -51,3 +51,45 @@ test("Rust CI runs the supported all-feature phases in strict job order", async 
     rustTestPhases,
   );
 });
+
+test("CI keeps hosted-runner spend bounded", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /^concurrency:\n {2}group: .+\n {2}cancel-in-progress: true$/m,
+    "a new push must cancel the run in flight for the same branch",
+  );
+  assert.match(
+    workflow,
+    /^ {2}push:\n {4}branches:\n {6}- main$/m,
+    "push runs are limited to main",
+  );
+
+  const jobIds = [
+    ...workflow.matchAll(/^ {2}([a-z][a-z0-9-]*):\n {4}name:/gm),
+  ].map((match) => match[1]);
+  assert.ok(jobIds.length > 0, "CI must define jobs");
+  for (const jobId of jobIds) {
+    assert.match(
+      jobBlock(workflow, jobId),
+      /^ {4}timeout-minutes: \d+$/m,
+      `${jobId} must set timeout-minutes`,
+    );
+  }
+
+  // Windows and macOS run only when requested through workflow_dispatch.
+  const smokeCli = jobBlock(workflow, "smoke-cli");
+  assert.match(smokeCli, /if: needs\.plan\.outputs\.windows == 'true'/);
+  const workflowOutsideSmokeCli = workflow.replace(smokeCli, "");
+  for (const line of workflowOutsideSmokeCli.split("\n")) {
+    if (/windows-latest|macos-latest/.test(line)) {
+      assert.match(
+        line,
+        /rust_os\+=/,
+        `a Windows or macOS runner may only be added on request: ${line.trim()}`,
+      );
+    }
+  }
+  assert.match(jobBlock(workflow, "plan"), /case "\$\{PLATFORMS:-linux\}" in/);
+});

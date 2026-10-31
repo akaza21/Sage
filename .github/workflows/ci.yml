@@ -1,21 +1,121 @@
 name: CI
 
+# Hosted minutes are billed per platform: a macOS minute costs about ten Linux
+# minutes and a Windows minute about two. Pull requests and main therefore run
+# the Linux lanes only. The Windows and macOS lanes run when someone asks for
+# them on a branch:
+#
+#   gh workflow run ci.yml --ref <branch> -f platforms=windows|macos|all
+#
+# Their checks land on the branch's head commit, so they show on its pull
+# request next to the Linux ones.
+
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platform lanes to run in addition to Linux
+        type: choice
+        default: all
+        options:
+          - linux
+          - windows
+          - macos
+          - all
 
 permissions:
   contents: read
 
+# One run per branch: a new push, or a requested platform run, supersedes the
+# run already in flight for the same head.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Plan lanes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.plan.outputs.frontend }}
+      rust: ${{ steps.plan.outputs.rust }}
+      rust-os: ${{ steps.plan.outputs.rust-os }}
+      windows: ${{ steps.plan.outputs.windows }}
+    steps:
+      - name: Choose the lanes this change needs
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PLATFORMS: ${{ inputs.platforms }}
+          REPOSITORY: ${{ github.repository }}
+          # Paths the Rust crate compiles in or reads in its tests.
+          RUST_PATHS: ^(src-tauri/|testdata/|tests/fixtures/|docs/work-items/|scripts/ade|src/features/chat/acp/|rust-toolchain\.toml$|\.github/workflows/)
+        run: |
+          set -euo pipefail
+          frontend=true
+          rust=true
+          case "$EVENT" in
+            pull_request)
+              if [ "$DRAFT" = "true" ]; then
+                frontend=false
+                rust=false
+              else
+                # The files API lists at most 3000 files; past that, assume Rust changed.
+                gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" \
+                  --jq '.[].filename' > changed-files
+                if [ "$(wc -l < changed-files)" -lt 3000 ] && ! grep -Eq "$RUST_PATHS" changed-files; then
+                  rust=false
+                fi
+              fi
+              ;;
+          esac
+
+          windows=false
+          macos=false
+          case "${PLATFORMS:-linux}" in
+            windows) windows=true ;;
+            macos) macos=true ;;
+            all) windows=true; macos=true ;;
+          esac
+
+          rust_os='["ubuntu-latest"'
+          if [ "$windows" = "true" ]; then rust_os+=',"windows-latest"'; fi
+          if [ "$macos" = "true" ]; then rust_os+=',"macos-latest"'; fi
+          rust_os+=']'
+
+          {
+            echo "frontend=$frontend"
+            echo "rust=$rust"
+            echo "rust-os=$rust_os"
+            echo "windows=$windows"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Lanes"
+            echo "- Frontend and policy: $frontend"
+            echo "- Rust: $rust on $rust_os"
+            echo "- Windows budget lane: $windows"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   frontend:
     name: Frontend and policy
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,6 +134,8 @@ jobs:
 
   smoke-cli:
     name: Windows budget lane (browser)
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -50,15 +152,14 @@ jobs:
 
   rust:
     name: Rust (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
+        os: ${{ fromJSON(needs.plan.outputs.rust-os) }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux Tauri dependencies
@@ -81,11 +182,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # Branches restore main's cache instead of each writing their own,
+          # which would evict it under the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Create Tauri frontend placeholder
         run: >-
           node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      # The parallel phase includes the shared-contract suites
+      # (workspace::notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
         run: "cargo test --manifest-path src-tauri/Cargo.toml --all-features -- --skip repository_mutation_commands::tests:: --skip app_preview"
       - name: Test repository mutation commands serially
@@ -94,41 +201,49 @@ jobs:
         run: "cargo test --manifest-path src-tauri/Cargo.toml --all-features app_preview -- --test-threads=1"
       - run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
 
-  macos-shared-contracts:
-    name: macOS shared contracts
-    runs-on: macos-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-      - name: Compile shared contracts
-        run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
-      - name: Test workspace-notify shared contract
-        run: cargo test --manifest-path src-tauri/Cargo.toml workspace::notify
-      - name: Test editor-watch shared contract
-        run: cargo test --manifest-path src-tauri/Cargo.toml editor_watch
-
   merge-gate:
     name: Merge gate
     if: always()
     needs:
+      - plan
       - frontend
       - smoke-cli
       - rust
-      - macos-shared-contracts
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Require all checks
+      - name: Require every planned lane
         env:
+          PLAN: ${{ needs.plan.result }}
           FRONTEND: ${{ needs.frontend.result }}
+          FRONTEND_PLANNED: ${{ needs.plan.outputs.frontend }}
           SMOKE_CLI: ${{ needs.smoke-cli.result }}
+          SMOKE_CLI_PLANNED: ${{ needs.plan.outputs.windows }}
           RUST: ${{ needs.rust.result }}
-          MACOS_SHARED_CONTRACTS: ${{ needs.macos-shared-contracts.result }}
+          RUST_PLANNED: ${{ needs.plan.outputs.rust }}
+          RUST_OS: ${{ needs.plan.outputs.rust-os }}
         run: |
-          test "$FRONTEND" = "success"
-          test "$SMOKE_CLI" = "success"
-          test "$RUST" = "success"
-          test "$MACOS_SHARED_CONTRACTS" = "success"
+          set -euo pipefail
+          # A planned lane must succeed; a lane the plan left out must not have run.
+          require() {
+            local lane="$1" planned="$2" result="$3"
+            if [ "$planned" = "true" ]; then
+              test "$result" = "success" || { echo "::error::$lane: $result"; exit 1; }
+            else
+              test "$result" = "skipped" || { echo "::error::$lane ran unplanned: $result"; exit 1; }
+            fi
+          }
+          test "$PLAN" = "success"
+          require "Frontend and policy" "$FRONTEND_PLANNED" "$FRONTEND"
+          require "Windows budget lane" "$SMOKE_CLI_PLANNED" "$SMOKE_CLI"
+          require "Rust" "$RUST_PLANNED" "$RUST"
+          {
+            echo "### Verified in this run"
+            echo "- Frontend and policy: $FRONTEND"
+            echo "- Rust on $RUST_OS: $RUST"
+            echo "- Windows budget lane: $SMOKE_CLI"
+            if [ "$SMOKE_CLI_PLANNED" != "true" ]; then
+              echo
+              echo "Windows and macOS were not run here; request them with workflow_dispatch or record a local run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
