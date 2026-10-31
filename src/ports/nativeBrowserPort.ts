@@ -135,9 +135,21 @@ export interface BrowserNavigation {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  /** The device toolbar's emulation, as Rust holds it for the tab. */
+  device?: BrowserDevice | null;
   error?: string | null;
   printUnavailableReason?: string | null;
   annotateUnavailableReason?: string | null;
+  deviceUnavailableReason?: string | null;
+}
+
+/** A device toolbar emulation: a preset id, the CSS viewport size and the
+ * share of that size the page is drawn at to fit the pane. */
+export interface BrowserDevice {
+  preset: string;
+  width: number;
+  height: number;
+  scalePercent: number;
 }
 
 export function browserStatus(tabId: string): Promise<BrowserNavigation> {
@@ -216,6 +228,14 @@ export function browserAgentControl(
 
 export function browserZoom(tabId: string, percent: number): Promise<void> {
   return invokeNative("browser_zoom", { tabId, percent });
+}
+
+/** Applies the device toolbar's emulation to the tab, or resets it with null. */
+export function browserSetDevice(
+  tabId: string,
+  device: BrowserDevice | null,
+): Promise<void> {
+  return invokeNative("browser_set_device", { tabId, device });
 }
 
 export function browserFind(

@@ -15,9 +15,11 @@ pub(crate) struct BrowserNavigation {
     pub(crate) can_go_back: bool,
     pub(crate) can_go_forward: bool,
     pub(crate) zoom_percent: u16,
+    pub(crate) device: Option<crate::browser::device::DeviceEmulation>,
     pub(crate) error: Option<String>,
     pub(crate) print_unavailable_reason: Option<&'static str>,
     pub(crate) annotate_unavailable_reason: Option<&'static str>,
+    pub(crate) device_unavailable_reason: Option<&'static str>,
 }
 
 pub(crate) async fn browser_status(

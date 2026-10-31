@@ -5,7 +5,6 @@ import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../../domain/workbench";
 import {
   browserControl,
-  browserCaptureScreenshot,
   browserFind,
   browserHistory,
   browserNavigate,
@@ -25,19 +24,21 @@ import {
 } from "./browserAddress";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
-import { copyPngToClipboard } from "./browserClipboard";
 import { BrowserDrawers } from "./BrowserSitePermissions";
 import { BrowserClearData } from "./BrowserClearData";
+import { BrowserFindControls } from "./BrowserFindControls";
 import {
   ClosedBrowserSurface,
-  BrowserFindControls,
   BrowserNavigationControls,
 } from "./BrowserNavigationControls";
 import {
   performBrowserShortcut,
   useBrowserShortcuts,
 } from "./browserShortcuts";
+import { BrowserDeviceBar, BrowserDeviceGutter } from "./BrowserDeviceSlots";
+import { useBrowserDevice } from "./useBrowserDevice";
 import { useBrowserPlacement } from "./useBrowserPlacement";
+import { useBrowserScreenshot } from "./useBrowserScreenshot";
 import "./browser.css";
 
 const BrowserNewTab = lazy(() =>
@@ -68,10 +69,10 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     .filter((candidate) => candidate.kind === "chat")
     .map((candidate) => ({ id: candidate.id, title: candidate.title }));
   const frame = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLElement>(null);
   const addressField = useRef<HTMLInputElement>(null);
   const findField = useRef<HTMLInputElement>(null);
-  const screenshotEpoch = useRef(0);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);
   const latestNavigationRevision = useRef<bigint>(-1n);
   const [suggestionResult, setSuggestionResult] = useState<{
@@ -80,7 +81,12 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   } | null>(null);
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
+  const {
+    status: screenshotStatus,
+    setStatus: setScreenshotStatus,
+    epoch: screenshotEpoch,
+    copy: copyScreenshot,
+  } = useBrowserScreenshot(tab.id, setError);
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -172,9 +178,10 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       screenshotEpoch.current += 1;
       unlisten?.();
     };
-  }, [tab.id]);
+  }, [tab.id, screenshotEpoch, setScreenshotStatus]);
   const covered = downloadsOpen || menuOpen;
-  useBrowserPlacement(tab.id, frame, surface, setError, covered);
+  useBrowserPlacement(tab.id, viewport, surface, setError, covered);
+  const device = useBrowserDevice(tab.id, frame, navigation, setError);
   async function navigate() {
     try {
       setError(null);
@@ -211,32 +218,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       setError(String(cause).slice(0, 512));
     }
   }
-  async function copyScreenshot() {
-    const revision = navigation?.revision;
-    if (!revision) return;
-    const epoch = screenshotEpoch.current;
-    setError(null);
-    setScreenshotStatus("Capturing screenshot…");
-    try {
-      const screenshot = await browserCaptureScreenshot(tab.id, revision);
-      if (epoch !== screenshotEpoch.current) return;
-      await copyPngToClipboard(screenshot.pngBase64);
-      if (epoch !== screenshotEpoch.current) return;
-      setScreenshotStatus("Screenshot copied to clipboard");
-    } catch (cause) {
-      if (epoch !== screenshotEpoch.current) return;
-      setScreenshotStatus(null);
-      setError(
-        `Screenshot could not be copied: ${String(cause).slice(0, 384)}`,
-      );
-    }
-  }
-
-  useEffect(() => {
-    if (screenshotStatus !== "Screenshot copied to clipboard") return;
-    const timeout = setTimeout(() => setScreenshotStatus(null), 5_000);
-    return () => clearTimeout(timeout);
-  }, [screenshotStatus]);
   function changeZoom(delta: number) {
     const percent = Math.max(
       50,
@@ -299,9 +280,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onError={setError}
           onFind={() => setFindOpen(true)}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
-          onScreenshot={() => void copyScreenshot()}
+          onScreenshot={() => void copyScreenshot(navigation?.revision)}
           onZoom={changeZoom}
           onZoomReset={() => setZoom(100)}
+          deviceOpen={device.size !== null}
+          onDevice={device.size ? device.close : device.open}
           onDownloads={() => setDownloadsOpen(true)}
           onHistory={openHistory}
           onSettings={(target) =>
@@ -337,6 +320,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
         />
       </div>
+      <BrowserDeviceBar device={device} />
       {findOpen ? (
         <BrowserFindControls
           findField={findField}
@@ -391,8 +375,13 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <div
         ref={frame}
-        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}`}
-      />
+        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}${device.frameClass}`}
+        style={device.frameStyle}
+      >
+        <div ref={viewport} className="browser-surface__viewport">
+          <BrowserDeviceGutter device={device} />
+        </div>
+      </div>
     </section>
   );
 }

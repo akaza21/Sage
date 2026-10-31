@@ -24,6 +24,7 @@ mod admission;
 pub(crate) mod annotate;
 pub(crate) mod bounds;
 pub(crate) mod clear_data;
+pub(crate) mod device;
 pub(crate) mod devtools;
 pub(crate) mod downloads;
 mod favicon;
@@ -41,6 +42,7 @@ mod shortcuts;
 pub(crate) mod site_permissions;
 mod state_init;
 pub(crate) mod state_query;
+mod tab_title;
 mod teardown;
 pub(crate) mod user_screenshot;
 mod visibility;
@@ -73,6 +75,9 @@ pub(crate) struct BrowserState {
     popups: Mutex<PopupRequests>,
     annotate: annotate::Annotate,
     clearing_data: AtomicBool,
+    /// Device toolbar updates apply one at a time across tabs.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    device_updates: Mutex<()>,
 }
 
 impl BrowserState {
@@ -116,6 +121,7 @@ struct BrowserTab<T> {
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
+    device: device::TabDevice,
     navigation_id: Option<u64>,
     revision: u64,
     document_revision: u64,
@@ -132,6 +138,7 @@ struct BrowserSnapshot {
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
+    device: Option<device::DeviceEmulation>,
     navigation_id: Option<u64>,
     revision: u64,
     committed_url: Option<String>,
@@ -205,6 +212,7 @@ impl<T> BrowserTabs<T> {
                 title: None,
                 favicon: None,
                 zoom_percent: 100,
+                device: device::TabDevice::default(),
                 navigation_id: None,
                 revision: 0,
                 document_revision: 0,
@@ -232,6 +240,7 @@ impl<T> BrowserTabs<T> {
             title: tab.title.clone(),
             favicon: tab.favicon.clone(),
             zoom_percent: tab.zoom_percent,
+            device: tab.device.applied(),
             navigation_id: tab.navigation_id,
             revision: tab.revision,
             committed_url: if tab.last_error.is_none() {
@@ -308,36 +317,6 @@ impl<T> BrowserTabs<T> {
             return false;
         };
         tab.zoom_percent = percent;
-        tab.revision = tab.revision.wrapping_add(1);
-        true
-    }
-
-    fn set_document_title(&mut self, label: &str, url: &str, raw: &str) -> bool {
-        let Some(tab) = self.entries.get_mut(label) else {
-            return false;
-        };
-        if tab.loading || tab.last_error.is_some() || tab.committed_url.as_deref() != Some(url) {
-            return false;
-        }
-        let title = raw
-            .chars()
-            .take(256)
-            .filter(|character| {
-                !matches!(character, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
-            })
-            .map(|character| if character.is_control() { ' ' } else { character })
-            .collect::<String>()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .chars()
-            .take(80)
-            .collect::<String>();
-        let title = if title.is_empty() { None } else { Some(title) };
-        if tab.title == title {
-            return false;
-        }
-        tab.title = title;
         tab.revision = tab.revision.wrapping_add(1);
         true
     }

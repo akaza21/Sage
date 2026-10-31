@@ -80,6 +80,7 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::page_controls::browser_navigate",
         "browser::navigation::control::browser_control",
         "browser::page_controls::browser_zoom",
+        "browser::device::browser_set_device",
         "browser::page_controls::browser_open_external",
         "browser::page_controls::browser_find",
         "browser::page_controls::browser_print",

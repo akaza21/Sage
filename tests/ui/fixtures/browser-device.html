@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser device toolbar visual fixture</title>
+    <style>
+      body {
+        margin: 0;
+        background: #181818;
+      }
+      /* Stands in for the native page the WebView2 draws over the device. */
+      .fixture-page {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="surface"
+      class="browser-surface"
+      style="position: relative; width: 878px; height: 960px"
+    ></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
+      import {
+        BrowserDeviceHandles,
+        BrowserDeviceToolbar,
+      } from "/src/features/browser/BrowserDeviceToolbar.tsx";
+      import {
+        DEVICE_TOOLBAR_HEIGHT,
+        deviceArea,
+        drawnDeviceSize,
+        fitScalePercent,
+        responsiveDevice,
+      } from "/src/features/browser/browserDevice.ts";
+      import "/src/styles/global.css";
+      import "/src/features/browser/browser.css";
+
+      const url = "https://en.wikipedia.org/wiki/Web_browser";
+      const h = React.createElement;
+      const noop = () => {};
+      function Fixture() {
+        const frame = React.useRef(null);
+        const [area, setArea] = React.useState(null);
+        const [size, setSize] = React.useState(null);
+        React.useLayoutEffect(() => {
+          // Measured before the device toolbar takes its row, as the hook does.
+          const { width, height } = frame.current.getBoundingClientRect();
+          const next = deviceArea({
+            width,
+            height: height - DEVICE_TOOLBAR_HEIGHT,
+          });
+          setArea(next);
+          // Responsive opens at the room it has, filling it at 100%.
+          setSize(responsiveDevice(next));
+        }, []);
+        const scale = size && area ? fitScalePercent(size, area) : null;
+        const drawn = scale === null ? null : drawnDeviceSize(size, scale);
+        return h(
+          React.Fragment,
+          null,
+          h(
+            "div",
+            { className: "browser-surface__toolbar" },
+            h(BrowserNavigationControls, {
+              navigation: {
+                tabId: "browser-visual",
+                url,
+                revision: "1",
+                loading: false,
+                canGoBack: true,
+                canGoForward: false,
+                zoomPercent: 100,
+              },
+              page: {
+                origin: "https://en.wikipedia.org",
+                transport: "secure",
+                url,
+              },
+              address: url,
+              addressField: React.createRef(),
+              onAddressChange: noop,
+              onNavigate: noop,
+              onControl: noop,
+              onError: noop,
+              onFind: noop,
+              onPrint: noop,
+              onScreenshot: noop,
+              onZoom: noop,
+              onZoomReset: noop,
+              deviceOpen: true,
+              onDevice: noop,
+              onDownloads: noop,
+              onHistory: noop,
+              onSettings: noop,
+              onCopy: noop,
+              onExternal: noop,
+              clearDataControl: null,
+            }),
+          ),
+          size
+            ? h(BrowserDeviceToolbar, {
+                size,
+                scalePercent: scale,
+                onChange: setSize,
+                onClose: noop,
+              })
+            : null,
+          h(
+            "div",
+            {
+              ref: frame,
+              className: `browser-surface__frame${drawn ? " browser-surface__frame--device" : ""}`,
+              style: drawn
+                ? {
+                    "--browser-device-width": `${drawn.width}px`,
+                    "--browser-device-height": `${drawn.height}px`,
+                  }
+                : undefined,
+            },
+            h(
+              "div",
+              { className: "browser-surface__viewport" },
+              h("div", { className: "fixture-page" }),
+              size && scale !== null
+                ? h(BrowserDeviceHandles, {
+                    size,
+                    scalePercent: scale,
+                    onChange: setSize,
+                  })
+                : null,
+            ),
+          ),
+        );
+      }
+      createRoot(document.getElementById("surface")).render(h(Fixture));
+    </script>
+  </body>
+</html>

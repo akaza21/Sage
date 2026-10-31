@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "fixture": "/tests/ui/fixtures/browser-device.html",
+  "viewport": {
+    "width": 1280,
+    "height": 1000
+  },
+  "rules": [
+    {
+      "id": "device-toolbar-height",
+      "ref": "reference/41",
+      "source": "BF-7a measured the device bar y137-171 under the address bar's divider, then its own 1 px divider at y172 (36 px)",
+      "selector": ".browser-device-toolbar",
+      "measure": "height",
+      "expected": 36,
+      "tolerancePx": 1
+    },
+    {
+      "id": "device-toolbar-under-address-bar",
+      "ref": "reference/41",
+      "source": "BF-7a the device bar starts right under the 44 px address toolbar",
+      "selector": ".browser-device-toolbar",
+      "measure": "gap-below",
+      "other": ".browser-surface__toolbar",
+      "expected": 0,
+      "tolerancePx": 0
+    },
+    {
+      "id": "device-toolbar-fill",
+      "ref": "reference/41",
+      "source": "BF-7a measured the device bar fill rgb(24, 24, 24), the toolbar's own fill",
+      "selector": ".browser-device-toolbar",
+      "measure": "background-color",
+      "expected": "rgb(24, 24, 24)"
+    },
+    {
+      "id": "device-width-field-width",
+      "ref": "reference/41",
+      "source": "BF-7a measured the width field x1241-1300 (60 px)",
+      "selector": "input[aria-label='Width']",
+      "measure": "width",
+      "expected": 60,
+      "tolerancePx": 1
+    },
+    {
+      "id": "device-width-field-height",
+      "ref": "reference/41",
+      "source": "BF-7a measured the width field y144-164 (21 px)",
+      "selector": "input[aria-label='Width']",
+      "measure": "height",
+      "expected": 21,
+      "tolerancePx": 1
+    },
+    {
+      "id": "device-field-fill",
+      "ref": "reference/41",
+      "source": "BF-7a measured the size field fill rgb(36, 36, 36)",
+      "selector": "input[aria-label='Height']",
+      "measure": "background-color",
+      "expected": "rgb(36, 36, 36)"
+    },
+    {
+      "id": "device-width-left-of-height",
+      "ref": "reference/41",
+      "source": "BF-7a the width field (x1241) sits left of the height field (x1321) with × between",
+      "selector": "input[aria-label='Width']",
+      "measure": "left-of",
+      "other": "input[aria-label='Height']"
+    },
+    {
+      "id": "device-gutter-fill",
+      "ref": "reference/41",
+      "source": "BF-7a measured the gutter around the device rgb(65, 65, 65)",
+      "selector": ".browser-surface__frame--device",
+      "measure": "background-color",
+      "expected": "rgb(65, 65, 65)"
+    },
+    {
+      "id": "device-left-gutter",
+      "ref": "reference/41",
+      "source": "BF-7a measured the gutter x1010-1027 left of the page (18 px)",
+      "selector": ".browser-surface__viewport",
+      "measure": "left-inset",
+      "within": ".browser-surface__frame--device",
+      "expected": 18,
+      "tolerancePx": 1
+    },
+    {
+      "id": "device-right-gutter",
+      "ref": "reference/41",
+      "source": "BF-7a measured the gutter x1858-1875 right of the page (18 px)",
+      "selector": ".browser-surface__viewport",
+      "measure": "right-inset",
+      "within": ".browser-surface__frame--device",
+      "expected": 18,
+      "tolerancePx": 1
+    },
+    {
+      "id": "device-page-flush-under-bar",
+      "ref": "reference/41",
+      "source": "BF-7a measured the page starting y173, right after the device bar's divider",
+      "selector": ".browser-surface__viewport",
+      "measure": "gap-below",
+      "other": ".browser-device-toolbar",
+      "expected": 0,
+      "tolerancePx": 0
+    }
+  ]
+}

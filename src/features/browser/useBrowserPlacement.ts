@@ -80,6 +80,8 @@ export function useBrowserPlacement(
     placeRef.current = place;
     const observer = new ResizeObserver(place);
     observer.observe(element);
+    // A centred device moves without resizing when its frame does.
+    if (element.parentElement) observer.observe(element.parentElement);
     const visibilityObserver = new MutationObserver(place);
     if (center) {
       visibilityObserver.observe(center, {

@@ -18,6 +18,7 @@ pub(crate) fn navigation_state(
         can_go_back: snapshot.can_go_back,
         can_go_forward: snapshot.can_go_forward,
         zoom_percent: snapshot.zoom_percent,
+        device: snapshot.device,
         error: snapshot.error.map(str::to_owned),
         print_unavailable_reason: if cfg!(windows) {
             None
@@ -25,6 +26,7 @@ pub(crate) fn navigation_state(
             Some("system print dialog is unavailable on this platform")
         },
         annotate_unavailable_reason: crate::browser::annotate::unavailable_reason(snapshot),
+        device_unavailable_reason: crate::browser::device::unavailable_reason(),
     })
 }
 
