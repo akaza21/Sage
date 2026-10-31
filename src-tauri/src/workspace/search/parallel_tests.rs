@@ -2,12 +2,12 @@
 //! same tree, query and limits give byte-for-byte the same matches, reports,
 //! limit reasons and continuation tokens with one thread as with four.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use uuid::Uuid;
 
 use super::{
-    engine::SearchEngine,
+    engine::{SearchEngine, TestClock},
     tests::request,
     types::{
         SearchLimitReason, SearchLimits, SearchRoot, SearchRootSource, WorkspaceSearchResponse,
@@ -256,25 +256,28 @@ fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
 
 /// Where reading each entry's file type is slow, read-ahead must not hold a
 /// folder's listing back until every entry is checked: the time limit would
-/// then land before the walk reached a File one thread reads first.
+/// then land before the walk reached a File one thread reads first. Time
+/// moves only as file types are read, and the page ends at its first match,
+/// so a correct search reads at most two file types (the walk's and a
+/// worker's) whichever thread runs first.
 #[test]
 fn slow_file_types_keep_the_first_match_before_the_time_limit() {
     let path = std::env::temp_dir().join(format!("sage-search-slow-types-{}", Uuid::new_v4()));
     fs::create_dir_all(&path).unwrap();
     fs::write(path.join("a.txt"), "needle\n").unwrap();
     for file in 0..60 {
-        fs::write(path.join(format!("b{file:02}.txt")), "nothing\n").unwrap();
+        fs::write(path.join(format!("b{file:02}.txt")), "needle\n").unwrap();
     }
     let limits = SearchLimits {
-        max_duration: std::time::Duration::from_secs(1),
+        max_duration: Duration::from_secs(1),
+        max_results: 1,
         ..SearchLimits::default()
     };
-    // Checking every entry first would take 61 × 50 ms, three times the
-    // limit; reading `a.txt` first takes one delay.
+    // Checking all 61 entries first takes three times the limit.
     for threads in [1, 4] {
         let mut engine = SearchEngine::new(limits);
         engine.threads = threads;
-        engine.file_type_delay = Some(std::time::Duration::from_millis(50));
+        engine.test_clock = Some(TestClock::new(Duration::from_millis(50)));
         let response = engine
             .search(
                 request("needle"),
@@ -287,8 +290,9 @@ fn slow_file_types_keep_the_first_match_before_the_time_limit() {
                 }],
             )
             .unwrap();
-        assert!(
-            response.limit_reasons.contains(&SearchLimitReason::Time),
+        assert_eq!(
+            response.limit_reasons,
+            [SearchLimitReason::Results],
             "{threads} threads"
         );
         let found = response

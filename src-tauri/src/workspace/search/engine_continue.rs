@@ -27,7 +27,7 @@ impl SearchEngine {
     ) -> bool {
         if let Some(seek) = seek {
             return seek.entries_visited >= self.limits.max_entries
-                || seek.started_at.elapsed() >= self.limits.max_duration;
+                || self.time_since(seek.started_at) >= self.limits.max_duration;
         }
         self.limit_reached(budget, result_count)
     }

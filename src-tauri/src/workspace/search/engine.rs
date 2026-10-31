@@ -32,10 +32,43 @@ pub struct SearchEngine {
     /// lands at the same place on every run.
     #[cfg(test)]
     pub(super) time_checks_left: Option<std::sync::atomic::AtomicU64>,
-    /// Tests make each entry's file type this slow to read, as on a
-    /// filesystem whose listings leave it out.
+    /// Tests read time from this clock instead, so a time limit lands at the
+    /// same place on every run.
     #[cfg(test)]
-    pub(super) file_type_delay: Option<std::time::Duration>,
+    pub(super) test_clock: Option<TestClock>,
+}
+
+/// Time that moves only when an entry's file type is read, by the same step
+/// each time: a filesystem whose listings leave file types out, where each
+/// costs a metadata read.
+#[cfg(test)]
+pub(super) struct TestClock {
+    started_at: Instant,
+    elapsed_nanos: std::sync::atomic::AtomicU64,
+    per_file_type: std::time::Duration,
+}
+
+#[cfg(test)]
+impl TestClock {
+    pub(super) fn new(per_file_type: std::time::Duration) -> Self {
+        Self {
+            started_at: Instant::now(),
+            elapsed_nanos: std::sync::atomic::AtomicU64::new(0),
+            per_file_type,
+        }
+    }
+
+    fn now(&self) -> Instant {
+        use std::sync::atomic::Ordering;
+        self.started_at
+            + std::time::Duration::from_nanos(self.elapsed_nanos.load(Ordering::Relaxed))
+    }
+
+    fn read_file_type(&self) {
+        use std::sync::atomic::Ordering;
+        let step = u64::try_from(self.per_file_type.as_nanos()).unwrap_or(u64::MAX);
+        self.elapsed_nanos.fetch_add(step, Ordering::Relaxed);
+    }
 }
 
 pub(super) struct SearchBudget {
@@ -64,7 +97,7 @@ impl SearchEngine {
             #[cfg(test)]
             time_checks_left: None,
             #[cfg(test)]
-            file_type_delay: None,
+            test_clock: None,
         }
     }
 
@@ -88,7 +121,7 @@ impl SearchEngine {
             .transpose()?
             .map(|cursor| ContinuationSeek {
                 cursor,
-                started_at: Instant::now(),
+                started_at: self.now(),
                 entries_visited: 0,
             });
         if self.limits.max_results == 0
@@ -106,7 +139,7 @@ impl SearchEngine {
         let mut matches = Vec::new();
         let mut reports = Vec::with_capacity(roots.len());
         let mut budget = SearchBudget {
-            started_at: Instant::now(),
+            started_at: self.now(),
             files_seen: 0,
             bytes_scanned: 0,
             entries_visited: 0,
@@ -208,10 +241,22 @@ impl SearchEngine {
     /// left it out.
     pub(super) fn entry_file_type(&self, entry: &DirEntry) -> io::Result<FileType> {
         #[cfg(test)]
-        if let Some(delay) = self.file_type_delay {
-            std::thread::sleep(delay);
+        if let Some(clock) = &self.test_clock {
+            clock.read_file_type();
         }
         entry.file_type()
+    }
+
+    pub(super) fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(clock) = &self.test_clock {
+            return clock.now();
+        }
+        Instant::now()
+    }
+
+    pub(super) fn time_since(&self, started_at: Instant) -> std::time::Duration {
+        self.now().saturating_duration_since(started_at)
     }
 
     fn out_of_time(&self, started_at: Instant) -> bool {
@@ -224,7 +269,7 @@ impl SearchEngine {
                 })
                 .is_err();
         }
-        started_at.elapsed() >= self.limits.max_duration
+        self.time_since(started_at) >= self.limits.max_duration
     }
 }
 

@@ -325,7 +325,7 @@ fn read_folder(
             || bytes > reads.bytes_left
             || reads
                 .deadline
-                .is_some_and(|deadline| Instant::now() >= deadline)
+                .is_some_and(|deadline| context.engine.now() >= deadline)
         {
             break;
         }

@@ -325,7 +325,7 @@ impl SearchEngine {
                         let cursor = active_seek.cursor.clone();
                         *seek = None;
                         charge_remaining_to_page = true;
-                        budget.started_at = std::time::Instant::now();
+                        budget.started_at = self.now();
                         self.search_file_after_cursor(
                             workspace,
                             child_relative,
