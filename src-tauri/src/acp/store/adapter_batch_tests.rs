@@ -46,6 +46,7 @@ fn fixture() -> Fixture {
     complete_activation(
         &mut connection,
         CompleteActivationCommand {
+            model_context: Default::default(),
             project_id: project(),
             chat_id: chat(),
             session_id: started.session_id.clone(),

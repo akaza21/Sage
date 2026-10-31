@@ -30,6 +30,7 @@ pub struct Outbound {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSummary {
+    pub(crate) context_limits: crate::acp::context_handoff::budget::ModelContextLimits,
     pub provider: String,
     pub id: String,
     pub name: String,

@@ -63,6 +63,14 @@ pub(crate) fn freeze_prompt(
     connection: &mut Connection,
     command: &mut PrepareTurnCommand,
 ) -> Result<(), StoreError> {
+    freeze_prompt_with_model_context(connection, command, None)
+}
+
+pub(crate) fn freeze_prompt_with_model_context(
+    connection: &mut Connection,
+    command: &mut PrepareTurnCommand,
+    live_model: Option<&crate::acp::session_config::ConfirmedModel>,
+) -> Result<(), StoreError> {
     let transaction = connection.transaction()?;
     let row: Option<(i64, Option<String>, String, Option<String>)> = transaction.query_row(
         "SELECT source_watermark,plan_json,state,digest FROM acp_context_handoffs WHERE project_id=?1 AND chat_id=?2 AND target_session=?3",
@@ -93,7 +101,7 @@ pub(crate) fn freeze_prompt(
             resource: "handoffOwner",
         });
     }
-    let byte_budget = prompt_byte_budget(command)?;
+    let byte_budget = prompt_byte_budget(&transaction, command, live_model)?;
     let plan = if let Some(payload) = payload {
         if digest.as_deref() != Some(hex_digest(payload.as_bytes()).as_str()) {
             return Err(StoreError::Corrupt("handoff plan digest"));
@@ -135,9 +143,14 @@ pub(crate) fn freeze_prompt(
     transaction.commit().map_err(|_| StoreError::CommitUnknown)
 }
 
-fn prompt_byte_budget(command: &PrepareTurnCommand) -> Result<u64, StoreError> {
+fn prompt_byte_budget(
+    connection: &Connection,
+    command: &PrepareTurnCommand,
+    live_model: Option<&crate::acp::session_config::ConfirmedModel>,
+) -> Result<u64, StoreError> {
     let user = command.prompt.user_payload();
     let mut budget = BudgetInput::fresh(user["text"].as_str().unwrap_or_default());
+    super::context_handoff_budget::populate(connection, command, live_model, &mut budget)?;
     if let Some(attachments) = user
         .get("attachedContext")
         .and_then(serde_json::Value::as_array)

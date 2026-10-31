@@ -17,7 +17,12 @@ impl ClaudeRuntime {
         };
         if let Some(observed) = decode_auth_required_error(&value) {
             self.auth = observed;
-            if matches!(pending, PendingRequest::Prompt | PendingRequest::NewSession) {
+            if matches!(
+                pending,
+                PendingRequest::Prompt
+                    | PendingRequest::NewSession
+                    | PendingRequest::ResumeSession(_)
+            ) {
                 self.refusal_detail = profile_for(CLAUDE_PROFILE_ID)
                     .and_then(|profile| auth_refusal_detail(profile, &value));
                 if matches!(pending, PendingRequest::Prompt) {
@@ -49,7 +54,20 @@ impl ClaudeRuntime {
                     {
                         return Err(AdapterRuntimeError::Frame);
                     }
-                    return Err(AdapterRuntimeError::ResumeRefused);
+                    // Only this binding's definitive missing-session response permits
+                    // discarding continuation. Authentication and server failures do not.
+                    return Err(
+                        if self.binding_is_characterised()
+                            && error["code"].as_i64() == Some(-32603)
+                            && error["message"].as_str() == Some("Internal error")
+                            && error.pointer("/data/details").and_then(Value::as_str)
+                                == Some("Session not found")
+                        {
+                            AdapterRuntimeError::ResumeRefused
+                        } else {
+                            AdapterRuntimeError::Operation
+                        },
+                    );
                 }
                 self.session_response(value, Some(expected), true)
             }
@@ -92,6 +110,7 @@ impl ClaudeRuntime {
             .enumerate()
             .map(|(index, model)| {
                 Ok(AdapterModel {
+                    context_limits: model.context_limits,
                     id: model.id,
                     name: RequiredText::new("modelName", model.label.as_str())
                         .map_err(|_| AdapterRuntimeError::Frame)?,

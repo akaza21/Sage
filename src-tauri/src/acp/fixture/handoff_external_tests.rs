@@ -100,18 +100,8 @@ fn handoff_a_b_a_uses_three_native_sessions() {
 #[test]
 #[ignore = "requires the separately built, path-bound acp-adversarial-fixture"]
 fn handoff_other_live_lane_remains_usable() {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let mut first = HandoffJourney::new().await;
-        let mut other = first.other_lane().await;
-        let owner = other.session_id();
-        first.complete().await;
-        first = first.switch("binding-b", ExternalCase::HandoffInline).await;
-        first.complete().await;
-        other.complete().await;
-        assert_eq!(other.session_id(), owner);
-        assert_eq!(other.send_count(), 1);
-        assert_eq!(first.summary().state, HandoffState::Inline);
-        other.finish().await;
-        first.finish().await;
+    let _serial = crate::test_wait::serial_process_guard();
+    tauri::async_runtime::block_on(async {
+        crate::acp::service::AcpService::assert_handoff_preserves_other_live_lane().await;
     });
 }

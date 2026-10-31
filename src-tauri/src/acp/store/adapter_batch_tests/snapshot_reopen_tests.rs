@@ -229,6 +229,7 @@ fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, Sage
     let completed = complete_activation(
         &mut connection,
         CompleteActivationCommand {
+            model_context: Default::default(),
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
             session_id: started.session_id.clone(),

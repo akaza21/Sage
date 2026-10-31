@@ -3,19 +3,19 @@ use super::{
     external_fixture_runtime::{
         ExternalPrepared, prepare_external_case, prepare_external_environment,
     },
-    external_fixture_support::{FIXTURE_BINDING_DIGEST, FixtureEnvironment, TempRoot},
-    test_support::{FixtureDeadline, JournalCleanup},
+    external_fixture_support::{FIXTURE_BINDING_DIGEST, FixtureEnvironment},
+    test_support::FixtureDeadline,
 };
 use crate::{
     acp::{
         context_handoff::HandoffSummary,
-        contract::{ClientIntentId, RequiredText, SageChatId},
+        contract::{ClientIntentId, RequiredText},
         recovery::recover_runtime_after_zero_process,
-        runtime::{JournalHandle, LiveWrite, SessionCoordinator},
+        runtime::{LiveWrite, SessionCoordinator},
         scheduler::Scheduler,
         store::{
-            DatabaseAcpStore, RecoverRuntimeCommand, SendObservation, StartSessionCommand,
-            context_handoff, load_chat_page,
+            RecoverRuntimeCommand, SendObservation, StartSessionCommand, context_handoff,
+            load_chat_page,
             session_replace::{ReplaceSessionCommand, replace_session},
         },
     },
@@ -308,76 +308,6 @@ impl HandoffJourney {
                 resource: "handoffDeliveryUnknown"
             })
         ));
-    }
-
-    pub(super) async fn other_lane(&self) -> Self {
-        let database = self.prepared().database.clone();
-        let chat_id = SageChatId::parse("fixture-other").unwrap();
-        database.connection().execute("INSERT INTO chats(id,project_id,title,ordinal,created_at,updated_at) VALUES(?1,?2,'Other',2,1,1)",
-            rusqlite::params![chat_id.as_str(),self.prepared().project_id.as_str()]).unwrap();
-        let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
-        let journal_cleanup =
-            JournalCleanup::spawn(self.deadline, journal.clone(), runner).unwrap();
-        let scheduler = Scheduler::new();
-        let sessions = SessionCoordinator::new(
-            journal.clone(),
-            scheduler.clone(),
-            self.prepared().publisher.clone(),
-        );
-        let page = load_chat_page(
-            &database.connection(),
-            self.prepared().project_id.clone(),
-            chat_id.clone(),
-            None,
-        )
-        .unwrap();
-        let started = sessions
-            .start_session(StartSessionCommand {
-                project_id: self.prepared().project_id.clone(),
-                chat_id: chat_id.clone(),
-                expected_projection_revision: page.projection_revision,
-                client_intent_id: ClientIntentId::parse("other-start").unwrap(),
-                binding_id: RequiredText::new("binding", "fixture-binding").unwrap(),
-                binding_digest: hex(&FIXTURE_BINDING_DIGEST),
-                harness_version: None,
-                model_id: None,
-                now_millis: self.prepared().now_millis,
-            })
-            .await
-            .unwrap();
-        let temp_root = TempRoot::new("handoff-other");
-        std::fs::create_dir_all(temp_root.path()).unwrap();
-        let environment = FixtureEnvironment {
-            project_root: self
-                .prepared()
-                .database_path
-                .parent()
-                .unwrap()
-                .join("project"),
-            database_path: self.prepared().database_path.clone(),
-            database,
-            project_id: self.prepared().project_id.clone(),
-            chat_id,
-            now_millis: self.prepared().now_millis,
-            publisher: self.prepared().publisher.clone(),
-            journal,
-            journal_cleanup,
-            scheduler,
-            sessions,
-            started,
-            temp_root,
-        };
-        Self {
-            prepared: Some(
-                prepare_external_environment(
-                    ExternalCase::TurnTextSuccess,
-                    self.deadline,
-                    environment,
-                )
-                .await,
-            ),
-            deadline: self.deadline,
-        }
     }
 
     pub(super) async fn finish(mut self) {

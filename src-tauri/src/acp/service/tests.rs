@@ -551,6 +551,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
             .unwrap();
         lease
             .complete_activation(CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),
@@ -666,6 +667,7 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
         old_capabilities.child_transcript_read = false;
         lease
             .complete_activation(CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),
@@ -958,6 +960,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
         let capabilities = serde_json::to_string(&capabilities()).unwrap();
         let ready = first
             .complete_activation(CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: started.session_id.clone(),
@@ -1499,6 +1502,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         let external_session = ExternalId::new("external", "external-switch").unwrap();
         let ready = tree
             .complete_activation(CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: project_a_id.clone(),
                 chat_id: chat_a.clone(),
                 session_id: started.session_id.clone(),

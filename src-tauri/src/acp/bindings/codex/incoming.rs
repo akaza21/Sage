@@ -62,6 +62,7 @@ pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelDescriptor {
+    pub(crate) context_limits: crate::acp::context_handoff::budget::ModelContextLimits,
     pub(crate) id: RequiredText<512>,
     pub(crate) name: RequiredText<512>,
     pub(crate) is_default: bool,
@@ -177,6 +178,10 @@ pub(crate) enum IngressDisposition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum IngressError {
+    #[error("the harness reports that it is not signed in")]
+    SignInRequired,
+    #[error("the correlated activation request failed without a definitive continuation refusal")]
+    ActivationFailed,
     #[error("the harness refused the correlated resume request")]
     ResumeRefused,
     #[error("incoming frame exceeds its byte limit")]

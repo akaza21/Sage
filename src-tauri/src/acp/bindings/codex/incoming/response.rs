@@ -66,7 +66,7 @@ pub(super) fn response(
             debug_assert_eq!(removed, Some(kind));
         }
         return match kind {
-            RequestKind::Resume => Err(IngressError::ResumeRefused),
+            RequestKind::Resume => Err(resume_error(error, message)),
             RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
                 TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
                     IncomingEvent::Error(payload),
@@ -238,6 +238,31 @@ pub(super) fn response(
         }
     }
     Ok(event.into())
+}
+
+fn resume_error(error: &Value, message: &str) -> IngressError {
+    if error["code"].as_i64() == Some(-32000)
+        && [
+            "authentication required",
+            "not logged in",
+            "not authenticated",
+        ]
+        .iter()
+        .any(|known| message.eq_ignore_ascii_case(known))
+    {
+        return IngressError::SignInRequired;
+    }
+    // Codex's invalid-request response for a missing persisted rollout is
+    // definitive. Generic JSON-RPC server/internal errors are not.
+    if error["code"].as_i64() == Some(-32600)
+        && message
+            .strip_prefix("no rollout found for thread id ")
+            .is_some_and(|id| !id.is_empty() && id.len() <= 512)
+    {
+        IngressError::ResumeRefused
+    } else {
+        IngressError::ActivationFailed
+    }
 }
 
 pub(super) fn browser_mcp_unavailable() -> Result<IncomingEvent, IngressError> {

@@ -28,6 +28,7 @@ mod permission_item;
 mod projection_decode;
 pub(crate) use projection_decode::parse_legacy_text;
 pub(crate) mod context_handoff;
+mod context_handoff_budget;
 #[cfg(test)]
 pub(crate) mod handoff_fixture;
 mod request_identity;
@@ -40,7 +41,7 @@ mod session_duplicates;
 mod session_insert;
 pub(crate) mod session_replace;
 #[cfg(test)]
-mod session_replace_tests;
+pub(crate) mod session_replace_tests;
 pub(crate) mod sessions;
 mod snapshots;
 mod state;

@@ -55,6 +55,40 @@ fn malformed_resume_errors_do_not_authorize_fresh_handoff() {
 }
 
 #[test]
+fn correlated_resume_authentication_and_internal_errors_do_not_authorize_handoff() {
+    for (code, message, expected) in [
+        (
+            -32000,
+            "Authentication required",
+            AdapterRuntimeError::SignInRequired,
+        ),
+        (-32603, "Internal error", AdapterRuntimeError::Operation),
+        (-32000, "missing", AdapterRuntimeError::Operation),
+    ] {
+        let mut runtime = fixture_runtime();
+        initialize(&mut runtime);
+        let request = runtime
+            .command(AdapterCommand::ResumeSession {
+                external_session_id: ExternalId::new("external", "missing-thread").unwrap(),
+                native_root: r"C:\repo".into(),
+                model: None,
+            })
+            .unwrap();
+        let id = request_id(&request);
+        assert_eq!(
+            runtime
+                .ingest(
+                    &frame(json!({"id":id,"error":{"code":code,"message":message}})),
+                    &Mapper
+                )
+                .err()
+                .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn correlated_resume_rejection_is_distinct_from_foreign_responses() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
@@ -69,7 +103,7 @@ fn correlated_resume_rejection_is_distinct_from_foreign_responses() {
     assert_ne!(
         runtime
             .ingest(
-                &frame(json!({"id":id+1,"error":{"code":-32000,"message":"missing"}})),
+                &frame(json!({"id":id+1,"error":{"code":-32600,"message":"no rollout found for thread id missing-thread"}})),
                 &Mapper
             )
             .err()
@@ -79,7 +113,7 @@ fn correlated_resume_rejection_is_distinct_from_foreign_responses() {
     assert_eq!(
         runtime
             .ingest(
-                &frame(json!({"id":id,"error":{"code":-32000,"message":"missing"}})),
+                &frame(json!({"id":id,"error":{"code":-32600,"message":"no rollout found for thread id missing-thread"}})),
                 &Mapper
             )
             .err()

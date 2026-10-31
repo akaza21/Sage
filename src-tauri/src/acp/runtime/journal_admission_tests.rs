@@ -115,6 +115,7 @@ fn admitted_mutations() -> Vec<StoreMutation> {
             now_millis: 1,
         }),
         StoreMutation::CompleteActivation(CompleteActivationCommand {
+            model_context: Default::default(),
             project_id: project.clone(),
             chat_id: chat.clone(),
             session_id: session.clone(),

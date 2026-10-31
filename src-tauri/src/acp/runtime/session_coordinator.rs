@@ -975,6 +975,7 @@ mod tests {
 
     fn complete() -> CompleteActivationCommand {
         CompleteActivationCommand {
+            model_context: Default::default(),
             project_id: project("one"),
             chat_id: chat("one"),
             session_id: session_id("one"),

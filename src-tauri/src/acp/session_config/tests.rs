@@ -88,6 +88,7 @@ fn confirmed_model_is_bounded_binding_metadata_not_a_selectable_acp_extension() 
     );
     let mut config = SessionConfig {
         confirmed_model: Some(ConfirmedModel {
+            context_limits: Default::default(),
             id: RequiredText::new("modelId", "actual").unwrap(),
             name: Some(RequiredText::new("modelName", "Actual").unwrap()),
         }),

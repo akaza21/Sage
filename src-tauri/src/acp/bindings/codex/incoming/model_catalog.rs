@@ -55,6 +55,9 @@ pub(super) fn parse_models(
             return Err(IngressError::CollectionLimit);
         }
         models.push(ModelDescriptor {
+            context_limits: crate::acp::context_handoff::budget::ModelContextLimits::from_model(
+                value,
+            ),
             id: RequiredText::new("modelId", id.to_owned()).map_err(content)?,
             name: RequiredText::new("modelName", name.to_owned()).map_err(content)?,
             is_default: model

@@ -26,7 +26,12 @@ pub(super) fn parse_model(model: &Value) -> Result<ModelSummary, AdapterError> {
     let id = opaque_id(model.get("id").or_else(|| model.get("modelId")), 512)?
         .ok_or(AdapterError::Malformed)?;
     let name = bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
-    Ok(ModelSummary { provider, id, name })
+    Ok(ModelSummary {
+        provider,
+        id,
+        name,
+        context_limits: crate::acp::context_handoff::budget::ModelContextLimits::from_model(model),
+    })
 }
 
 pub(super) fn parse_thinking_levels(value: &Value) -> Result<Vec<String>, AdapterError> {
@@ -58,7 +63,14 @@ pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> 
                 .ok_or(AdapterError::Malformed)?;
             let name =
                 bounded_string(model.get("name"), MODEL_NAME_BYTES)?.unwrap_or_else(|| id.clone());
-            Ok(ModelSummary { provider, id, name })
+            Ok(ModelSummary {
+                provider,
+                id,
+                name,
+                context_limits: crate::acp::context_handoff::budget::ModelContextLimits::from_model(
+                    &Value::Object(model.clone()),
+                ),
+            })
         })
         .transpose()?;
     Ok(StateSnapshot {

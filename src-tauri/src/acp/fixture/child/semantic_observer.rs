@@ -73,6 +73,7 @@ fn observe_capability(frame: Frame) -> Value {
         complete_activation(
             &mut database.connection(),
             CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: SageProjectId::parse("project-a").unwrap(),
                 chat_id: SageChatId::parse("chat-a").unwrap(),
                 session_id: SageAgentSessionId::parse("session-a").unwrap(),
@@ -158,6 +159,7 @@ fn observe_models(frame: Frame) -> Value {
         .iter()
         .map(|value| {
             Ok(AdapterModel {
+                context_limits: Default::default(),
                 id: ModelId::new("modelId", value["id"].as_str().unwrap().to_owned())?,
                 name: RequiredText::new("modelName", value["name"].as_str().unwrap().to_owned())?,
                 is_default: false,

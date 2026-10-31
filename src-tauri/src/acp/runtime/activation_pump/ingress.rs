@@ -334,6 +334,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
         let capabilities_json = serde_json::to_string(&ready.capabilities)
             .map_err(|_| ActivationPumpError::Capacity)?;
         let command = CompleteActivationCommand {
+            model_context: self.activation_model_context(&ready),
             project_id: ready.project_id.clone(),
             chat_id: ready.chat_id.clone(),
             session_id: ready.session_id.clone(),

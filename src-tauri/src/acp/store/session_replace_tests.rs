@@ -410,11 +410,113 @@ fn recovered_unknown_handoff_requires_confirmation_without_a_head() {
 }
 
 fn frozen_handoff() -> (rusqlite::Connection, PrepareTurnCommand) {
+    let (mut connection, mut prompt) = prepared_handoff();
+    super::context_handoff::freeze_prompt(&mut connection, &mut prompt).unwrap();
+    let transaction = connection.transaction().unwrap();
+    super::context_handoff::bind_turn(
+        &transaction,
+        &prompt,
+        "handoff-turn",
+        prompt.expected_projection_revision,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    (connection, prompt)
+}
+
+#[test]
+fn freeze_reserves_output_for_the_admitted_target_model() {
+    let (mut connection, mut prompt) = prepared_handoff();
+    prompt.prompt = crate::acp::intent::Prompt::new("prompt", "x".repeat(20_000)).unwrap();
+    assert!(matches!(
+        super::context_handoff::freeze_prompt(&mut connection, &mut prompt),
+        Err(StoreError::HandoffBudgetExceeded)
+    ));
+    assert_eq!(prompt.prompt.as_str().len(), 20_000);
+    let plan: Option<String> = connection
+        .query_row("SELECT plan_json FROM acp_context_handoffs", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert!(plan.is_none(), "failed freeze must not persist a plan");
+}
+
+#[test]
+fn freeze_honors_each_live_model_capacity_limit() {
+    use crate::acp::{context_handoff::budget::ModelContextLimits, session_config::ConfirmedModel};
+    for limits in [
+        ModelContextLimits {
+            model_window_bytes: Some(18_000),
+            ..Default::default()
+        },
+        ModelContextLimits {
+            reported_max_bytes: Some(18_000),
+            ..Default::default()
+        },
+        ModelContextLimits {
+            auto_compact_bytes: Some(18_000),
+            ..Default::default()
+        },
+    ] {
+        let (mut connection, mut prompt) = prepared_handoff();
+        prompt.prompt = crate::acp::intent::Prompt::new("prompt", "x".repeat(3_000)).unwrap();
+        let model = ConfirmedModel {
+            id: crate::acp::intent::ModelId::new("modelId", "small").unwrap(),
+            name: None,
+            context_limits: limits,
+        };
+        assert!(matches!(
+            super::context_handoff::freeze_prompt_with_model_context(
+                &mut connection,
+                &mut prompt,
+                Some(&model)
+            ),
+            Err(StoreError::HandoffBudgetExceeded)
+        ));
+    }
+}
+
+#[test]
+fn freeze_bounds_history_by_identity_scoped_target_telemetry() {
+    let (mut connection, mut prompt) = prepared_handoff();
+    connection.execute("INSERT INTO acp_turn_usage_snapshots(project_id,chat_id,session_id,turn_id,runtime_epoch,input_tokens,output_tokens,context_window,revision,created_at,updated_at) VALUES('project','chat',?1,'handoff-turn',1,0,0,18000,0,3,3)", [prompt.session_id.as_str()]).unwrap();
+    prompt.prompt = crate::acp::intent::Prompt::new("prompt", "x".repeat(3_000)).unwrap();
+    assert!(matches!(
+        super::context_handoff::freeze_prompt(&mut connection, &mut prompt),
+        Err(StoreError::HandoffBudgetExceeded)
+    ));
+    // A different native epoch must never constrain the fresh target.
+    connection
+        .execute("DELETE FROM acp_turn_usage_snapshots", [])
+        .unwrap();
+    connection.execute("INSERT INTO acp_turn_usage_snapshots(project_id,chat_id,session_id,turn_id,runtime_epoch,input_tokens,output_tokens,context_window,revision,created_at,updated_at) VALUES('project','chat',?1,'history-turn',1,90000,0,18000,0,3,3)", [head_source(&connection)]).unwrap();
+    super::context_handoff::freeze_prompt(&mut connection, &mut prompt).unwrap();
+    assert!(prompt.prompt.as_str().contains("first request"));
+}
+
+fn head_source(connection: &rusqlite::Connection) -> String {
+    connection
+        .query_row(
+            "SELECT source_session FROM acp_context_handoffs",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+pub(crate) fn prepared_handoff() -> (rusqlite::Connection, PrepareTurnCommand) {
+    prepared_handoff_with_model(None)
+}
+
+pub(crate) fn prepared_handoff_with_model(
+    model: Option<crate::acp::intent::ModelId>,
+) -> (rusqlite::Connection, PrepareTurnCommand) {
     let mut connection = setup();
     let first = command(&connection, "first", "a");
     let old = replace_session(&mut connection, first).unwrap();
     historical_turn(&connection, &old.session_id);
-    let next = command(&connection, "next", "b");
+    let mut next = command(&connection, "next", "b");
+    next.start.model_id = model;
     let target = replace_session(&mut connection, next).unwrap();
     connection
         .execute(
@@ -422,30 +524,39 @@ fn frozen_handoff() -> (rusqlite::Connection, PrepareTurnCommand) {
             [target.session_id.as_str()],
         )
         .unwrap();
-    connection.execute("UPDATE agent_sessions SET state='ready',external_session_id='native-target',capabilities_json=?2 WHERE id=?1", rusqlite::params![target.session_id.as_str(), super::extended_tests::capabilities()]).unwrap();
-    connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at) VALUES('project','chat',?1,1,'running',3)", [target.session_id.as_str()]).unwrap();
+    connection.execute("INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project','chat',?1,1,'starting',?2,3)", rusqlite::params![target.session_id.as_str(), "d".repeat(64)]).unwrap();
+    let ready = complete_activation(
+        &mut connection,
+        CompleteActivationCommand {
+            project_id: SageProjectId::parse("project").unwrap(),
+            chat_id: SageChatId::parse("chat").unwrap(),
+            session_id: target.session_id.clone(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            binding_digest: "a".repeat(64),
+            artifact_digest: "d".repeat(64),
+            external_session_id: crate::acp::intent::ExternalId::new("native", "native-target")
+                .unwrap(),
+            capabilities_json: super::extended_tests::capabilities(),
+            model_context: crate::acp::context_handoff::budget::ModelContextLimits {
+                model_window_bytes: Some(32_000),
+                ..Default::default()
+            },
+            now_millis: 3,
+        },
+    )
+    .unwrap();
     connection.execute("INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,created_at,updated_at) VALUES('handoff-turn','project','chat',?1,1,0,'handoff-intent','queued','notWritten',3,3)", [target.session_id.as_str()]).unwrap();
-    let mut prompt = PrepareTurnCommand {
+    let prompt = PrepareTurnCommand {
         project_id: SageProjectId::parse("project").unwrap(),
         project_generation: ProjectGeneration::ZERO,
         chat_id: SageChatId::parse("chat").unwrap(),
         session_id: target.session_id,
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        expected_projection_revision: target.projection_revision,
+        expected_projection_revision: ready.projection_revision,
         client_intent_id: ClientIntentId::parse("handoff-intent").unwrap(),
         prompt: crate::acp::intent::Prompt::new("prompt", "current request").unwrap(),
         now_millis: 3,
     };
-    super::context_handoff::freeze_prompt(&mut connection, &mut prompt).unwrap();
-    let transaction = connection.transaction().unwrap();
-    super::context_handoff::bind_turn(
-        &transaction,
-        &prompt,
-        "handoff-turn",
-        target.projection_revision,
-    )
-    .unwrap();
-    transaction.commit().unwrap();
     (connection, prompt)
 }
 

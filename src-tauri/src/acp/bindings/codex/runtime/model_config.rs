@@ -56,6 +56,8 @@ impl CodexRuntime {
             self.reported_model_id
                 .as_ref()
                 .map(|id| crate::acp::session_config::ConfirmedModel {
+                    context_limits: model
+                        .map_or_else(Default::default, |model| model.context_limits),
                     id: id.clone(),
                     name: model.map(|model| model.name.clone()),
                 });

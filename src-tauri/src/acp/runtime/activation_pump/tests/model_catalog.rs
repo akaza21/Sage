@@ -45,6 +45,7 @@ fn idle_catalog_accepts_exact_shared_model_limit_and_rejects_one_more_before_mut
         model: None,
     });
     let model = |index| AdapterModel {
+        context_limits: Default::default(),
         id: ModelId::new("modelId", format!("model-{index}")).unwrap(),
         name: RequiredText::new("modelName", format!("Model {index}")).unwrap(),
         is_default: false,

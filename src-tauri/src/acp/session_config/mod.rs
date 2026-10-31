@@ -84,6 +84,8 @@ pub(crate) struct SessionConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ConfirmedModel {
+    #[serde(skip)]
+    pub context_limits: crate::acp::context_handoff::budget::ModelContextLimits,
     pub id: RequiredText<512>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<RequiredText<512>>,

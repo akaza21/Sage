@@ -122,6 +122,7 @@ pub(super) fn model_values(
         .try_reserve_exact(models.len())
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
     output.extend(models.into_iter().map(|model| AdapterModel {
+        context_limits: model.context_limits,
         id: model.id,
         name: model.name,
         is_default: model.is_default,
@@ -178,6 +179,7 @@ pub(super) fn config_for_model(
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {
     match error {
+        AdapterError::Ingress(IngressError::SignInRequired) => AdapterRuntimeError::SignInRequired,
         AdapterError::Ingress(IngressError::ResumeRefused) => AdapterRuntimeError::ResumeRefused,
         AdapterError::Ingress(IngressError::FrameBytes | IngressError::Malformed) => {
             AdapterRuntimeError::Frame

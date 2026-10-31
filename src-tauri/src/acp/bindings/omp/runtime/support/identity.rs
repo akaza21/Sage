@@ -100,6 +100,7 @@ impl OmpRuntime {
             .into_iter()
             .map(|model| {
                 Ok(AdapterModel {
+                    context_limits: Default::default(),
                     id: model.external_id,
                     name: RequiredText::new("modelName", model.name)
                         .map_err(|_| AdapterRuntimeError::Frame)?,

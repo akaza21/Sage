@@ -12,6 +12,8 @@ pub(crate) struct AdapterIdentity {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct AdapterModel {
+    #[serde(skip)]
+    pub(crate) context_limits: crate::acp::context_handoff::budget::ModelContextLimits,
     pub(crate) id: ModelId,
     pub(crate) name: RequiredText<512>,
     pub(crate) is_default: bool,

@@ -20,10 +20,13 @@ use super::{
 };
 
 mod abort;
+mod fact;
 pub(crate) use abort::{AbortActivationCommand, ActivationAbortCategory, abort_activation};
+use fact::append_activation_fact;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompleteActivationCommand {
+    pub model_context: crate::acp::context_handoff::budget::ModelContextLimits,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
@@ -167,6 +170,7 @@ pub(crate) fn complete_activation(
         &command.session_id,
         command.runtime_epoch,
         "activationReady",
+        Some(command.model_context),
         projection,
         command.now_millis,
     )?;
@@ -257,6 +261,7 @@ pub(crate) fn fail_activation(
         &command.session_id,
         command.runtime_epoch,
         "activationFailed",
+        None,
         projection,
         command.now_millis,
     )?;
@@ -378,34 +383,4 @@ fn duplicate(
 }
 fn parse_session(value: &str) -> Result<SessionState, StoreError> {
     super::state::parse_session_state(value)
-}
-#[allow(clippy::too_many_arguments)]
-fn append_activation_fact(
-    transaction: &rusqlite::Transaction<'_>,
-    project: &SageProjectId,
-    chat: &SageChatId,
-    session: &SageAgentSessionId,
-    epoch: RuntimeEpoch,
-    kind: &str,
-    projection: ProjectionRevision,
-    now: i64,
-) -> Result<(), StoreError> {
-    let payload = serde_json::to_string(&serde_json::json!({
-        "kind": kind,
-        "entityId": session.as_str(),
-        "state": "committed",
-        "runtimeEpoch": epoch.get()
-    }))
-    .map_err(|_| StoreError::Corrupt("activation fact"))?;
-    append_fact_payload(
-        transaction,
-        project.as_str(),
-        chat.as_str(),
-        session.as_str(),
-        None,
-        kind,
-        &payload,
-        projection,
-        now,
-    )
 }

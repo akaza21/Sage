@@ -1053,6 +1053,10 @@ mod journey_shutdown_tests;
 #[path = "journey_tests/lane_tests.rs"]
 mod lane_tests;
 
+#[cfg(feature = "acp-fixture")]
+#[path = "journey_tests/handoff_lane.rs"]
+mod handoff_lane;
+
 #[cfg(all(feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/native_claude_tests.rs"]
 mod native_claude_tests;

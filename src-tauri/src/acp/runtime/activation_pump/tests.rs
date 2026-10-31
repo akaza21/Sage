@@ -118,6 +118,11 @@ fn initialize_new_session_commits_exact_effective_identity_before_ready() {
             EgressToken::protocol_notification(),
         );
         let model = AdapterModel {
+            context_limits: crate::acp::context_handoff::budget::ModelContextLimits {
+                model_window_bytes: Some(32_000),
+                reported_max_bytes: Some(30_000),
+                auto_compact_bytes: Some(28_000),
+            },
             id: ModelId::new("modelId", "m1").unwrap(),
             name: RequiredText::new("modelName", "Model One").unwrap(),
             is_default: true,
@@ -201,6 +206,9 @@ fn initialize_new_session_commits_exact_effective_identity_before_ready() {
         assert_eq!(committed[0].session_id, session_id());
         assert_eq!(committed[0].runtime_epoch.get(), 7);
         assert_eq!(committed[0].external_session_id.as_str(), "external-1");
+        assert_eq!(committed[0].model_context.model_window_bytes, Some(32_000));
+        assert_eq!(committed[0].model_context.reported_max_bytes, Some(30_000));
+        assert_eq!(committed[0].model_context.auto_compact_bytes, Some(28_000));
         assert!(committed[0].capabilities_json.contains("\"cancel\":false"));
     });
 }
@@ -551,6 +559,7 @@ fn models_limit_plus_one_fails_before_retaining_or_committing() {
     runtime().block_on(async {
         let advertised = capabilities(true, true);
         let model = AdapterModel {
+            context_limits: Default::default(),
             id: ModelId::new("modelId", "m").unwrap(),
             name: RequiredText::new("modelName", "model").unwrap(),
             is_default: false,

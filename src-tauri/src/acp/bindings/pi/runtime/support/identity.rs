@@ -261,6 +261,7 @@ pub(super) fn model_event(
             model.id.clone()
         };
         output.push(AdapterModel {
+            context_limits: model.context_limits,
             id: RequiredText::new("modelId", id).map_err(|_| AdapterRuntimeError::Frame)?,
             name: RequiredText::new("modelName", name).map_err(|_| AdapterRuntimeError::Frame)?,
             is_default,

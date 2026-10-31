@@ -158,16 +158,11 @@ pub(super) fn send(
         prompt,
         now_millis: crate::persistence::now_millis(),
     };
-    crate::acp::store::context_handoff::freeze_prompt(
-        &mut *state.database.write_connection().map_err(|_| {
-            prompt_not_dispatched(AcpIpcError::RecoveryRequired {
-                message: safe_message("Storage recovery is required before sending."),
-            })
-        })?,
-        &mut command,
-    )
-    .map_err(super::errors::store_error)
-    .map_err(prompt_not_dispatched)?;
+    state
+        .acp
+        .freeze_handoff_prompt(&mut command)
+        .map_err(super::errors::store_error)
+        .map_err(prompt_not_dispatched)?;
     state
         .acp
         .send_characterization(command)

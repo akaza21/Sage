@@ -1,4 +1,29 @@
 // Derived from pingdotgg/t3code (commit 08a463e), Copyright (c) 2026 T3 Tools Inc., MIT; see THIRD-PARTY-NOTICES.md.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ModelContextLimits {
+    pub model_window_bytes: Option<u32>,
+    pub reported_max_bytes: Option<u32>,
+    pub auto_compact_bytes: Option<u32>,
+}
+
+impl ModelContextLimits {
+    /// Capacities are conservative byte ceilings; no tokens-to-bytes expansion.
+    pub(crate) fn from_model(value: &serde_json::Value) -> Self {
+        let positive = |key| {
+            value
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok())
+                .filter(|value| *value > 0)
+        };
+        Self {
+            model_window_bytes: positive("contextWindow"),
+            reported_max_bytes: positive("modelContextWindow"),
+            auto_compact_bytes: positive("autoCompactThreshold"),
+        }
+    }
+}
+
 pub(crate) struct BudgetInput<'a> {
     pub configured_byte_cap: u64,
     pub user_text: &'a str,

@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn late_admitted_model_capacity_bounds_the_real_handoff_freeze() {
+    let mut adapter = fixture_runtime();
+    initialize(&mut adapter);
+    let owner = crate::acp::scheduler::RuntimeOwner {
+        project_id: SageProjectId::parse("project").unwrap(),
+        chat_id: crate::acp::contract::SageChatId::parse("chat").unwrap(),
+        session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    let channel = std::sync::Arc::new(crate::acp::session_config::ConfigChannel::default());
+    channel.reserve(owner.clone());
+    channel.publish(&owner);
+    let mut runtime = crate::acp::bindings::runtime::NativeRuntime::new(adapter);
+    runtime.attach_config(owner.clone(), channel.clone());
+    let start = runtime
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: Some(RequiredText::new("modelId", "requested-alias").unwrap()),
+        })
+        .unwrap();
+    runtime.ingest(&frame(json!({"id":request_id(&start),"result":{"thread":{"id":"thread-1"},"model":"small"}})), &Mapper).unwrap();
+    let list = request_id(&runtime.model_config_hydration().unwrap().unwrap());
+    runtime
+        .ingest(
+            &frame(json!({"id":list,"result":{"data":[{
+        "id":"small","displayName":"Small","isDefault":true,"contextWindow":18000,
+        "modelContextWindow":17500,"autoCompactThreshold":17000,"supportedReasoningEfforts":[]
+    }],"nextCursor":null}})),
+            &Mapper,
+        )
+        .unwrap();
+    let model = channel
+        .snapshot(&owner)
+        .unwrap()
+        .config
+        .confirmed_model
+        .unwrap();
+    assert_eq!(model.context_limits.model_window_bytes, Some(18_000));
+    assert_eq!(model.context_limits.reported_max_bytes, Some(17_500));
+    assert_eq!(model.context_limits.auto_compact_bytes, Some(17_000));
+    let (mut connection, mut command) =
+        crate::acp::store::session_replace_tests::prepared_handoff_with_model(Some(
+            RequiredText::new("modelId", "requested-alias").unwrap(),
+        ));
+    command.prompt = Prompt::new("prompt", "x".repeat(2_000)).unwrap();
+    assert!(matches!(
+        crate::acp::store::context_handoff::freeze_prompt_with_model_context(
+            &mut connection,
+            &mut command,
+            Some(&model)
+        ),
+        Err(crate::acp::store::StoreError::HandoffBudgetExceeded)
+    ));
+    assert_eq!(command.prompt.as_str().len(), 2_000);
+}
+
+#[test]
 fn effort_reset_metadata_is_absent_without_an_advertised_catalog_default() {
     for default in [None, Some("unsupported")] {
         let mut runtime = fixture_runtime();

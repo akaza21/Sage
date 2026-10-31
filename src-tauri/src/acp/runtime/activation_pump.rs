@@ -20,6 +20,7 @@ mod capabilities;
 mod coordinator_journal;
 mod ingress;
 mod intent;
+mod model_context;
 mod parts;
 
 use intent::{digest, validate_intent};

@@ -182,6 +182,7 @@ fn fixture(result: Result<(), HostError>) -> (AppState, ExistingGoalRequest, Arc
         complete_activation(
             &mut connection,
             CompleteActivationCommand {
+                model_context: Default::default(),
                 project_id: project_id.clone(),
                 chat_id: chat_id.clone(),
                 session_id: session.session_id.clone(),

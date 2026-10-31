@@ -30,6 +30,7 @@ pub(crate) struct ClaudeCapabilityOffer {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClaudeModel {
+    pub context_limits: crate::acp::context_handoff::budget::ModelContextLimits,
     pub id: RequiredText<512>,
     pub label: SafeText<512>,
 }
@@ -93,6 +94,8 @@ impl ClaudeCapabilityOffer {
                     return Err(CapabilityError::MalformedModel);
                 }
                 models.push(ClaudeModel {
+                    context_limits:
+                        crate::acp::context_handoff::budget::ModelContextLimits::from_model(entry),
                     id: RequiredText::new("modelId", id)?,
                     label: normalized_text("modelLabel", label)?,
                 });
