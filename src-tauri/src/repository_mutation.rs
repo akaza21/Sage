@@ -177,7 +177,13 @@ fn validate_resource_identity(workspace: &Workspace, resource: &ResourceRef) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsStr, fs, path::Path, process::Command};
+    use std::{
+        ffi::OsStr,
+        fs,
+        path::Path,
+        process::Command,
+        sync::{Arc, OnceLock},
+    };
 
     use uuid::Uuid;
 
@@ -194,6 +200,19 @@ mod tests {
                 .unwrap()
                 .success()
         );
+    }
+
+    /// Whether `pid` still names a process, zombies included. Signal 0 only
+    /// checks for existence, and a child's pid is freed only once it is reaped.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn process_exists(pid: u32) -> bool {
+        let pid = libc::pid_t::try_from(pid).expect("process ids fit in pid_t");
+        // SAFETY: signal 0 sends nothing; `kill` only reports whether the
+        // process exists and whether we may signal it.
+        if unsafe { libc::kill(pid, 0) } == 0 {
+            return true;
+        }
+        std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
     }
 
     fn create_file_symlink(target: &Path, link: &Path) -> bool {
@@ -1029,6 +1048,9 @@ mod tests {
 
     #[test]
     fn a_post_spawn_git_deadline_reaps_before_return_and_never_mutates_later() {
+        /// Long enough for a child that outlived the call to show its write.
+        const AFTER_RETURN: Duration = Duration::from_millis(200);
+
         let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-q"]);
@@ -1036,22 +1058,36 @@ mod tests {
         let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
         let resource = workspace.resource("timeout.txt").unwrap();
         let runtime = tokio::runtime::Runtime::new().unwrap();
+        let spawned = Arc::new(OnceLock::new());
+        let policy = repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3))
+            .with_spawned_hook({
+                let spawned = Arc::clone(&spawned);
+                move |pid| {
+                    spawned.set(pid).expect("`git add` spawns once");
+                }
+            });
 
         let error = runtime
             .block_on(mutate_file_with_process_policy(
                 &workspace,
                 &resource,
                 GitFileMutationAction::Stage,
-                repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3)),
+                policy,
             ))
             .unwrap_err();
 
-        // `GitEffectUnknown` is only returned once the killed child has been
-        // reaped, so the call itself proves the first half of the contract.
-        // The child may or may not have staged the file before the kill
-        // landed (the effect is unknown by design); whichever it did, nothing
-        // may change after the call returns.
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            let pid = *spawned.get().expect("`git add` was spawned");
+            assert!(
+                !process_exists(pid),
+                "the call returned before the killed `git add` ({pid}) was reaped"
+            );
+        }
+        // The kill can land before or after `git add` writes the index, so the
+        // effect before return is unknown by contract. Either way the state
+        // must be coherent and must not change after the call returns.
         let observe = || {
             let status = runtime.block_on(repository::status(&workspace)).unwrap();
             let [change] = status.changes.as_slice() else {
@@ -1067,7 +1103,7 @@ mod tests {
             ),
             "the killed `git add` left a partial state: {immediate:?}"
         );
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(AFTER_RETURN);
         assert_eq!(observe(), immediate);
         fs::remove_dir_all(root).unwrap();
     }
