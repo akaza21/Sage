@@ -178,3 +178,8 @@ Read:
 
 The base installer must not grow a bundled Node runtime, Chromium, Monaco,
 libgit2, a VS Code extension host, or built-in harness runtimes.
+
+## License
+
+Sage is licensed under the [Apache License, Version 2.0](LICENSE). See
+[NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
