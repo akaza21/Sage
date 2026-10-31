@@ -315,7 +315,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       if (!frame || !content) return null;
       return {
         frameOutline: getComputedStyle(frame).outlineWidth,
-        frameShadow: getComputedStyle(frame).boxShadow,
+        // The frame is an overlay above the sticky gutter, so it draws on
+        // the editor's ::after (file-editor-surface.css).
+        frameShadow: getComputedStyle(frame, "::after").boxShadow,
         contentOutline: getComputedStyle(content).outlineWidth,
       };
     });
