@@ -16,16 +16,19 @@
 //!
 //! This defends against untrusted repository content: a cloned, downloaded,
 //! extracted or synced folder whose `.git` config tries to run commands when
-//! Sage runs Git there. Only Git data inside the opened root is admitted, and
-//! no watched path may be a symlink or junction, so every location Git reads
-//! is reached through the identity-checked root handle.
+//! Sage runs Git there. Only the root's own `.git` directory is admitted, as
+//! both git dir and common dir, and it may not be a symlink or junction, so
+//! every location Git reads is a fixed name below the identity-checked root
+//! handle. A `.git` file or `commondir` pointer is refused, because it could
+//! route through an intermediate directory that is later replaced by a link
+//! outside the root without changing any watched bytes.
 //!
 //! A hostile process writing `.git/config` concurrently, between this check
 //! and the spawn, is out of scope: it already runs with the user's full
 //! privileges, and closing that window would need Git to read its config from
 //! a validated snapshot. The next call sees the change, because watched files
-//! are compared by their bytes. Admitting Git data outside the root through
-//! retained handles is tracked in issue #87.
+//! are compared by their bytes. Admitting `.git` files, linked worktrees and
+//! Git data outside the root is tracked in issue #87.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -43,6 +46,7 @@ use crate::{
 
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority};
 
+const GIT_DIR_NAME: &str = ".git";
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
 /// Larger watched files are refused rather than read on every call.
@@ -59,12 +63,13 @@ static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::
 /// The repository admission inspected. Admitted Git calls run with these
 /// explicit locations, so they open exactly this repository.
 ///
-/// Only a repository whose git dir and work tree sit inside the opened root
-/// is admitted, and both locations are relative to it. The child's working
+/// Only a repository whose work tree is the opened root and whose git data is
+/// the root's own `.git` directory is admitted, and both locations are
+/// relative to it. The child's working
 /// directory is the identity-checked root handle, so a directory swapped in
 /// at the root's name, or a move of the root, cannot redirect them. Git data
-/// outside the root (a linked worktree, or a root nested below the top level)
-/// has no such handle and is refused.
+/// reached any other way (a `gitdir:` file, a `commondir` pointer, a linked
+/// worktree, or a root nested below the top level) is refused.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AdmittedRepository {
     git_dir: PathBuf,
@@ -77,15 +82,20 @@ impl AdmittedRepository {
         if location.work_tree.canonicalize()? != root {
             return Ok(Err(RepositoryLayout::NestedRoot));
         }
-        let git_dir = location.git_dir.canonicalize()?;
-        let common_dir = location.common_dir.canonicalize()?;
-        match (git_dir.strip_prefix(&root), common_dir.starts_with(&root)) {
-            (Ok(git_dir), true) if !git_dir.as_os_str().is_empty() => Ok(Ok(Self {
-                git_dir: git_dir.to_path_buf(),
-                work_tree: PathBuf::from(Component::CurDir.as_os_str()),
-            })),
-            _ => Ok(Err(RepositoryLayout::ExternalGitDir)),
+        // Only the root's own `.git` directory is admitted, as both the git
+        // dir and the common dir. A `gitdir:` file or a `commondir` pointer
+        // can name a path through an intermediate directory that is later
+        // swapped for a link outside the root without changing any watched
+        // bytes.
+        let git_dir = PathBuf::from(GIT_DIR_NAME);
+        let own = root.join(&git_dir);
+        if location.git_dir.canonicalize()? != own || location.common_dir.canonicalize()? != own {
+            return Ok(Err(RepositoryLayout::ExternalGitDir));
         }
+        Ok(Ok(Self {
+            git_dir,
+            work_tree: PathBuf::from(Component::CurDir.as_os_str()),
+        }))
     }
 
     pub(super) fn git_dir(&self) -> &Path {
@@ -204,7 +214,7 @@ impl Probe {
         // mid-probe invalidates the result on the next call.
         let ancestors = root
             .ancestors()
-            .map(|directory| watch(directory.join(".git")))
+            .map(|directory| watch(directory.join(GIT_DIR_NAME)))
             .collect::<Vec<_>>();
         let location = probe_git(
             root,

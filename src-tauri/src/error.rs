@@ -4,14 +4,15 @@ pub enum GitContainmentState {
     PotentiallyRunning,
 }
 
-/// A repository layout Sage refuses because Git would read repository data
-/// from outside the opened folder, where Sage holds no handle on it.
+/// A repository layout Sage refuses because Git would reach repository data
+/// other than the opened folder's own `.git` directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryLayout {
     /// The opened folder is below the repository's top level.
     NestedRoot,
-    /// The repository's Git data lives outside the opened folder, as in a
-    /// linked worktree or a `gitdir:` file pointing elsewhere.
+    /// The repository's Git data is not the opened folder's own `.git`
+    /// directory, as with a linked worktree, a `gitdir:` file or a
+    /// `commondir` pointer.
     ExternalGitDir,
 }
 
@@ -22,7 +23,7 @@ impl RepositoryLayout {
                 "This folder is inside a parent Git repository. Open the repository root to use Git."
             }
             Self::ExternalGitDir => {
-                "This folder's Git data is stored outside it, as in a linked worktree. Open the repository root to use Git."
+                "This folder's Git data is not its own .git directory, as in a linked worktree or submodule. Open the repository root to use Git."
             }
         }
     }

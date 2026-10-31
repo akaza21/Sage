@@ -514,6 +514,8 @@ fn only_git_data_inside_the_root_is_admitted() {
         work_tree: work_tree.to_path_buf(),
     };
     let inside = root.join(".git");
+    let elsewhere_in_root = root.join("metadata").join("repo.git");
+    fs::create_dir_all(&elsewhere_in_root).unwrap();
 
     let exact = AdmittedRepository::inside(&root, &location(&inside, &inside, &root))
         .unwrap()
@@ -521,7 +523,12 @@ fn only_git_data_inside_the_root_is_admitted() {
     assert_eq!(exact.git_dir(), Path::new(".git"));
     assert_eq!(exact.work_tree(), Path::new("."));
 
-    for (git_dir, common_dir) in [(&outside, &outside), (&inside, &outside)] {
+    for (git_dir, common_dir) in [
+        (&outside, &outside),
+        (&inside, &outside),
+        (&elsewhere_in_root, &elsewhere_in_root),
+        (&inside, &elsewhere_in_root),
+    ] {
         assert_eq!(
             AdmittedRepository::inside(&root, &location(git_dir, common_dir, &root)).unwrap(),
             Err(RepositoryLayout::ExternalGitDir)
@@ -531,6 +538,58 @@ fn only_git_data_inside_the_root_is_admitted() {
         AdmittedRepository::inside(&root.join(".git"), &location(&inside, &inside, &root)).unwrap(),
         Err(RepositoryLayout::NestedRoot)
     );
+}
+
+/// A `gitdir:` file names its target through an intermediate directory that
+/// could later be replaced by a link outside the root with the `.git` bytes
+/// unchanged, so it is refused even while the target sits inside the root.
+#[test]
+fn a_gitdir_file_is_refused_even_when_it_points_inside_the_root() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    let metadata = root.join("metadata");
+    fs::create_dir_all(&metadata).unwrap();
+    fs::rename(root.join(".git"), metadata.join("repo.git")).unwrap();
+    fs::write(root.join(".git"), "gitdir: metadata/repo.git\n").unwrap();
+    // Control: Git itself opens this layout.
+    git(&root, &["status", "--porcelain"]);
+
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+}
+
+/// A `commondir` file redirects the shared config the same way.
+#[test]
+fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    let common = root.join("metadata").join("common.git");
+    fs::create_dir_all(common.parent().unwrap()).unwrap();
+    let status = Command::new("git")
+        .args(["clone", "-q", "--bare"])
+        .arg(&root)
+        .arg(&common)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    fs::write(
+        root.join(".git").join("commondir"),
+        "../metadata/common.git\n",
+    )
+    .unwrap();
+    // Control: Git itself reads the pointed-to common dir.
+    git(&root, &["rev-parse", "--git-common-dir"]);
+
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
 }
 
 #[test]
