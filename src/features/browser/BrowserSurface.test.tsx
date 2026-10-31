@@ -148,6 +148,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("focuses Find from menu and shortcut, submits the query, and restores its launcher on Escape", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  const launcher = screen.getByRole("button", { name: "More options" });
+  fireEvent.click(launcher);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
+  const query = screen.getByRole("textbox", { name: "Find text" });
+  expect(query).toHaveFocus();
+  fireEvent.change(query, { target: { value: "needle" } });
+  fireEvent.submit(query.closest("form")!);
+  await waitFor(() =>
+    expect(browserFind).toHaveBeenLastCalledWith(tab.id, "start", "needle"),
+  );
+  fireEvent.keyDown(query, { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "Find text" })).toBeNull();
+  expect(launcher).toHaveFocus();
+  const address = screen.getByRole("textbox", { name: "Address or search" });
+  address.focus();
+  fireEvent.keyDown(address, { key: "f", ctrlKey: true });
+  expect(screen.getByRole("textbox", { name: "Find text" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Find text" }), {
+    key: "Escape",
+  });
+  expect(address).toHaveFocus();
+});
+
 it("routes Browser settings to Agent settings with the originating tab", async () => {
   render(<BrowserSurface tab={tab} />);
   await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));

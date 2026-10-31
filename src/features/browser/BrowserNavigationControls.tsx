@@ -9,6 +9,7 @@ import {
 
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -26,7 +27,10 @@ import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
-import { useDismissOnOutsidePointer } from "./browserPopover";
+import {
+  useBoundedBrowserPopover,
+  useDismissOnOutsidePointer,
+} from "./browserPopover";
 
 interface Props {
   navigation: BrowserNavigation | null;
@@ -82,6 +86,8 @@ export function BrowserNavigationControls({
   const addressText = useAddressText(editing, page, address);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  useBoundedBrowserPopover(menuOpen, menu);
   useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
   useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useLayoutEffect(() => {
@@ -106,6 +112,11 @@ export function BrowserNavigationControls({
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!menuOpen) return;
+    if (event.key === "Tab") {
+      setMenuOpen(false);
+      menuTrigger.current?.focus();
+      return;
+    }
     if (event.key === "Escape") {
       // The menu is the innermost layer: Escape must not reach the pane.
       event.preventDefault();
@@ -208,6 +219,8 @@ export function BrowserNavigationControls({
           ref={menuTrigger}
           type="button"
           aria-label="More options"
+          aria-haspopup="menu"
+          aria-controls={menuId}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((value) => !value)}
         >
@@ -215,6 +228,7 @@ export function BrowserNavigationControls({
         </button>
         {menuOpen ? (
           <div
+            id={menuId}
             ref={menu}
             className="browser-surface__menu"
             role="menu"
@@ -341,9 +355,20 @@ export function BrowserFindControls({
   onFind: (action: "start" | "previous" | "next") => void;
   onClose: () => void;
 }) {
+  useLayoutEffect(() => {
+    findField.current?.focus();
+    findField.current?.select();
+  }, [findField]);
   return (
     <form
       className="browser-surface__find"
+      aria-label="Find in page"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         onFind("start");

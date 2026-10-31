@@ -49,7 +49,6 @@ export function performBrowserShortcut(
       break;
     case "find":
       actions.findOpen();
-      requestAnimationFrame(() => actions.find()?.focus());
       break;
     case "zoomIn":
       actions.zoom(25);

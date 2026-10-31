@@ -4,11 +4,15 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useId,
   useRef,
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
-import { useDismissOnOutsidePointer } from "./browserPopover";
+import {
+  useBoundedBrowserPopover,
+  useDismissOnOutsidePointer,
+} from "./browserPopover";
 import {
   activeDownloadProgress,
   isActiveDownload,
@@ -34,6 +38,8 @@ export function BrowserDownloadsControl({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
+  const popoverId = useId();
+  useBoundedBrowserPopover(open, popover);
   const active = downloads.filter(isActiveDownload).length;
   const progress = activeDownloadProgress(downloads);
   useDismissOnOutsidePointer(open, [root], onOpenChange);
@@ -54,6 +60,10 @@ export function BrowserDownloadsControl({
       data-active={active > 0 || undefined}
       data-indeterminate={(active > 0 && progress === null) || undefined}
       onKeyDown={onKeyDown}
+      onBlur={(event) => {
+        if (open && !event.currentTarget.contains(event.relatedTarget))
+          onOpenChange(false);
+      }}
     >
       <button
         ref={trigger}
@@ -61,6 +71,7 @@ export function BrowserDownloadsControl({
         className="browser-downloads__trigger"
         aria-label={active ? `Downloads, ${active} active` : "Downloads"}
         aria-haspopup="dialog"
+        aria-controls={popoverId}
         aria-expanded={open}
         style={
           progress === null
@@ -76,6 +87,7 @@ export function BrowserDownloadsControl({
       {open ? (
         <div
           ref={popover}
+          id={popoverId}
           className="browser-downloads__popover"
           role="dialog"
           aria-label="Downloads"

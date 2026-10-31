@@ -1,4 +1,43 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+
+const POPOVER_EDGE_CLEARANCE = 8;
+
+/** Bound the entire popup, including its heading, to the visible browser pane. */
+export function useBoundedBrowserPopover(
+  open: boolean,
+  popup: RefObject<HTMLElement | null>,
+) {
+  useLayoutEffect(() => {
+    const element = popup.current;
+    const pane = element?.closest(".browser-surface");
+    if (!open || !element) return;
+    const measure = () => {
+      const bounds = pane?.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+      const bottom = Math.min(
+        window.innerHeight,
+        bounds?.bottom ?? window.innerHeight,
+      );
+      const left = Math.max(0, bounds?.left ?? 0);
+      element.style.setProperty(
+        "--browser-popup-max-height",
+        `${Math.max(0, bottom - rect.top - POPOVER_EDGE_CLEARANCE)}px`,
+      );
+      element.style.setProperty(
+        "--browser-popup-max-width",
+        `${Math.max(0, rect.right - left - POPOVER_EDGE_CLEARANCE)}px`,
+      );
+    };
+    measure();
+    const observer = pane ? new ResizeObserver(measure) : null;
+    if (pane) observer?.observe(pane);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [open, popup]);
+}
 
 /**
  * Closes an open toolbar popover when a pointer goes down outside every one

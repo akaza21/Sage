@@ -97,3 +97,16 @@ it("reports the menu as open so the page can hide, and closes it on an outside p
   expect(screen.queryByRole("menu")).toBeNull();
   expect(onMenuOpenChange).toHaveBeenLastCalledWith(false);
 });
+
+it("dismisses a menu on Tab and exposes its popup relationship", () => {
+  render(<Pane onExpandedChange={vi.fn()} />);
+  const trigger = screen.getByRole("button", { name: "More options" });
+  fireEvent.click(trigger);
+  const menu = screen.getByRole("menu");
+  expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+  expect(trigger).toHaveAttribute("aria-controls", menu.id);
+  fireEvent.keyDown(screen.getByRole("menuitem", { name: "Downloads" }), {
+    key: "Tab",
+  });
+  expect(screen.queryByRole("menu")).toBeNull();
+});

@@ -70,6 +70,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const surface = useRef<HTMLElement>(null);
   const addressField = useRef<HTMLInputElement>(null);
   const findField = useRef<HTMLInputElement>(null);
+  const findLauncher = useRef<HTMLElement | null>(null);
   const screenshotEpoch = useRef(0);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);
   const latestNavigationRevision = useRef<bigint>(-1n);
@@ -176,7 +177,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  const covered = downloadsOpen || menuOpen;
+  const covered = downloadsOpen || menuOpen || findOpen;
   useBrowserPlacement(tab.id, frame, surface, setError, covered);
   async function navigate() {
     try {
@@ -261,7 +262,20 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
 
   function closeFind() {
     setFindOpen(false);
+    if (findLauncher.current?.isConnected) findLauncher.current.focus();
+    else addressField.current?.focus();
     void pageAction(() => browserFind(tab.id, "stop"));
+  }
+
+  function openFind() {
+    if (!findOpen) {
+      const active = document.activeElement;
+      findLauncher.current = active instanceof HTMLElement ? active : null;
+      setFindOpen(true);
+    } else {
+      findField.current?.focus();
+      findField.current?.select();
+    }
   }
 
   function openHistory() {
@@ -276,7 +290,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       address: addressField.current,
       find: () => findField.current,
       control: (command) => void control(command),
-      findOpen: () => setFindOpen(true),
+      findOpen: openFind,
       zoom: changeZoom,
       zoomPercent: navigation?.zoomPercent ?? 100,
       newTab: () => void openBrowser(),
@@ -300,7 +314,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onNavigate={() => void navigate()}
           onControl={(action) => void control(action)}
           onError={setError}
-          onFind={() => setFindOpen(true)}
+          onFind={openFind}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
           onScreenshot={() => void copyScreenshot()}
           onZoom={changeZoom}
