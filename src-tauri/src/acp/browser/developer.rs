@@ -41,6 +41,25 @@ const EVALUATE: &[&str] = &[
 /// port releases it after each call and when a grant ends.
 pub const DEVELOPER_OBJECT_GROUP: &str = "sage-developer-mode";
 
+/// The longest a developer-mode evaluation may run before V8 terminates it;
+/// below the 30 s the port waits, so a slow script ends before Sage stops
+/// waiting for it.
+pub const EVALUATE_TIMEOUT_MS: u64 = 25_000;
+
+/// Whether this command's completion, whenever it arrives and whether or
+/// not anyone still waits for it, must release `DEVELOPER_OBJECT_GROUP`:
+/// a late result or exception would otherwise stay pinned in the page.
+pub fn releases_on_completion(method: &str, params: &str) -> bool {
+    method == "Runtime.evaluate"
+        && serde_json::from_str::<Value>(params)
+            .is_ok_and(|params| params["objectGroup"] == DEVELOPER_OBJECT_GROUP)
+}
+
+/// Params for `Runtime.releaseObjectGroup` on developer mode's group.
+pub fn release_params() -> String {
+    serde_json::json!({ "objectGroup": DEVELOPER_OBJECT_GROUP }).to_string()
+}
+
 /// Every method developer mode sends, with the parameters it may carry.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("Runtime.evaluate", EVALUATE),

@@ -3,10 +3,14 @@
 //! The gate's grant and deny list are covered by the permission tests; here
 //! the command is already admitted.
 
+use std::time::{Duration, Instant};
+
 use serde_json::{Map, Value, json};
 
 use super::{Lane, handle};
+use crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP;
 use crate::acp::browser::{BrowserAction, BrowserCommand, BrowserFailure, BrowserResult};
+use crate::browser::devtools::transport::CdpTransport;
 
 fn cdp(lane: &mut Lane, method: &str, params: Value) -> Result<BrowserResult, BrowserFailure> {
     lane.run(BrowserCommand::Cdp {
@@ -73,4 +77,61 @@ fn a_result_over_the_cap_fails_and_a_bad_method_is_refused() {
         cdp(&mut lane, "Runtime.noSuchCommand", json!({})),
         Err(BrowserFailure::Unavailable)
     );
+}
+
+/// Starts an evaluation that outlives its caller's timeout and leaves a
+/// remote object in `group`, reachable from the page only through a WeakRef.
+fn evaluate_past_its_timeout(lane: &mut Lane, group: &str, marker: &str) {
+    let expression = format!(
+        "(() => {{ const held = {{ blob: new ArrayBuffer(1 << 20) }}; \
+         window.{marker} = new WeakRef(held); \
+         const end = Date.now() + 1500; while (Date.now() < end) {{}} return held; }})()"
+    );
+    let params = json!({"expression": expression, "objectGroup": group});
+    assert!(
+        lane.capability
+            .port_mut()
+            .transport
+            .call(
+                "Runtime.evaluate",
+                &params.to_string(),
+                65_536,
+                Duration::from_millis(200),
+            )
+            .is_err(),
+        "the caller stops waiting before the page answers"
+    );
+}
+
+fn collected(lane: &mut Lane, marker: &str) -> bool {
+    lane.capability
+        .port_mut()
+        .transport
+        .observe(
+            "HeapProfiler.collectGarbage",
+            "{}",
+            4096,
+            Duration::from_secs(5),
+        )
+        .expect("collect garbage");
+    lane.evaluate(&format!("window.{marker}.deref() === undefined")) == json!(true)
+}
+
+#[test]
+fn a_late_evaluation_answer_still_releases_its_objects() {
+    let mut lane = Lane::open("/form.html");
+    // Control: an evaluation outside developer mode's group keeps its object.
+    evaluate_past_its_timeout(&mut lane, "kept-by-test", "__kept");
+    evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__released");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while lane.capability.port_mut().transport.completion_releases() == 0 {
+        assert!(Instant::now() < deadline, "the late answer was released");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        lane.capability.port_mut().transport.completion_releases(),
+        1
+    );
+    assert!(!collected(&mut lane, "__kept"));
+    assert!(collected(&mut lane, "__released"));
 }

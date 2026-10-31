@@ -156,12 +156,9 @@ impl<T: CdpTransport> CdpPort<T> {
 /// Releases developer mode's object group without the dispatch permit:
 /// after every evaluation and when a grant ends (ADR-0009b).
 pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(transport: &T) {
-    let params = serde_json::json!({
-        "objectGroup": crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP,
-    });
     let _ = transport.observe(
         "Runtime.releaseObjectGroup",
-        &params.to_string(),
+        &crate::acp::browser::developer::release_params(),
         4096,
         Duration::from_secs(2),
     );

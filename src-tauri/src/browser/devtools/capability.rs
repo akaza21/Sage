@@ -239,6 +239,12 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                         "objectGroup".into(),
                         crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP.into(),
                     );
+                    let limit = crate::acp::browser::developer::EVALUATE_TIMEOUT_MS;
+                    let timeout = params
+                        .get("timeout")
+                        .and_then(serde_json::Value::as_u64)
+                        .map_or(limit, |asked| asked.min(limit));
+                    params.insert("timeout".into(), timeout.into());
                 }
                 let params =
                     serde_json::to_string(&params).map_err(|_| BrowserFailure::InvalidRequest)?;

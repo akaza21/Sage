@@ -4,9 +4,9 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    process::{Child, ChildStdout, Command, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -47,12 +47,18 @@ pub(super) struct Chromium {
     held_stamp: Mutex<Option<Result<DocumentStamp, BrowserFailure>>>,
     overlay_events: Arc<Mutex<VecDeque<Value>>>,
     profile: PathBuf,
+    /// Shared with the frame reader, which releases developer mode's object
+    /// group when an evaluation completes, as the WebView2 completion
+    /// callback does, even after the caller stopped waiting.
+    wire: Arc<Wire>,
 }
 
+#[path = "wire.rs"]
+mod wire;
+use wire::Wire;
+
 struct Link {
-    commands: ChildStdin,
     responses: Receiver<Value>,
-    next_id: u64,
 }
 
 impl Chromium {
@@ -93,19 +99,18 @@ impl Chromium {
             .stderr(Stdio::null())
             .spawn()
             .expect("launch Chromium");
-        let commands = child.stdin.take().expect("Chromium command pipe");
+        let wire = Arc::new(Wire::default());
+        *wire.commands.lock().expect("command pipe") =
+            Some(child.stdin.take().expect("Chromium command pipe"));
         let events = child.stdout.take().expect("Chromium response pipe");
         let (sender, responses) = mpsc::sync_channel(PENDING_RESPONSES);
         let overlay_events = Arc::new(Mutex::new(VecDeque::new()));
         let kept = overlay_events.clone();
-        thread::spawn(move || read_frames(events, sender, kept));
+        let reader_wire = wire.clone();
+        thread::spawn(move || read_frames(events, sender, kept, reader_wire));
         let mut chromium = Self {
             child,
-            link: Mutex::new(Link {
-                commands,
-                responses,
-                next_id: 0,
-            }),
+            link: Mutex::new(Link { responses }),
             session: String::new(),
             documents: Mutex::new(Vec::new()),
             issued: AtomicBool::new(false),
@@ -113,6 +118,7 @@ impl Chromium {
             held_stamp: Mutex::new(None),
             overlay_events,
             profile,
+            wire,
         };
         let target = chromium.setup(None, "Target.createTarget", json!({"url": "about:blank"}));
         let attached = chromium.setup(
@@ -140,6 +146,12 @@ impl Chromium {
 
     /// How many commands named `method` this transport has sent to the page,
     /// through `call` or `observe`.
+    /// How many times the frame reader released developer mode's object
+    /// group when an evaluation's answer arrived.
+    pub(super) fn completion_releases(&self) -> usize {
+        self.wire.late_releases.load(Ordering::SeqCst)
+    }
+
     pub(super) fn calls(&self, method: &str) -> usize {
         self.calls
             .lock()
@@ -196,18 +208,10 @@ impl Chromium {
     ) -> Result<String, BrowserFailure> {
         let params: Value =
             serde_json::from_str(params).map_err(|_| BrowserFailure::InvalidRequest)?;
-        let mut link = self.link.lock().map_err(|_| BrowserFailure::Unavailable)?;
-        link.next_id += 1;
-        let id = link.next_id;
-        let mut frame = json!({"id": id, "method": method, "params": params});
-        if let Some(session) = session {
-            frame["sessionId"] = session.into();
-        }
-        let mut bytes = frame.to_string().into_bytes();
-        bytes.push(0);
-        link.commands
-            .write_all(&bytes)
-            .map_err(|_| BrowserFailure::Unavailable)?;
+        let link = self.link.lock().map_err(|_| BrowserFailure::Unavailable)?;
+        let release =
+            crate::acp::browser::developer::releases_on_completion(method, &params.to_string());
+        let id = self.wire.write(session, method, params, release)?;
         let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -365,6 +369,7 @@ fn read_frames(
     mut events: ChildStdout,
     responses: SyncSender<Value>,
     overlay: Arc<Mutex<VecDeque<Value>>>,
+    wire: Arc<Wire>,
 ) {
     let mut pending = Vec::new();
     let mut chunk = vec![0u8; 65_536];
@@ -393,6 +398,9 @@ fn read_frames(
                 }
                 kept.push_back(message);
                 continue;
+            }
+            if let Some(id) = message["id"].as_u64() {
+                wire.answered(id);
             }
             if message.get("id").is_some() && responses.send(message).is_err() {
                 return;

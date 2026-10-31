@@ -85,6 +85,11 @@ pub(super) fn call_with_permit(
     if method.len() > 128 || params.len() > 16_384 {
         return Err(BrowserFailure::Capacity);
     }
+    // A developer-mode evaluation releases its object group from the
+    // completion callback itself, so a result or exception that arrives
+    // after Sage stopped waiting (revoke, timeout) is not left pinned.
+    let release_on_completion =
+        crate::acp::browser::developer::releases_on_completion(method, params);
     let method = wide(method);
     let params = wide(params);
     let attempt = IssueAttempt::new();
@@ -99,6 +104,7 @@ pub(super) fn call_with_permit(
                 let core = unsafe { platform.controller().CoreWebView2() }
                     .map_err(|_| BrowserFailure::Unavailable)?;
                 let completed_sender = sender.clone();
+                let release_core = release_on_completion.then(|| core.clone());
                 let completed = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
                     move |outcome, json| {
                         let _ = completed_sender.try_send(if json.len() > max_result_bytes {
@@ -108,6 +114,9 @@ pub(super) fn call_with_permit(
                         } else {
                             Err(BrowserFailure::Unavailable)
                         });
+                        if let Some(core) = release_core {
+                            release_developer_objects(&core);
+                        }
                         Ok(())
                     },
                 ));
@@ -169,6 +178,17 @@ pub(super) fn call_with_permit(
         return Err(BrowserFailure::Capacity);
     }
     Ok(result)
+}
+
+/// Fire-and-forget `Runtime.releaseObjectGroup` on developer mode's group,
+/// from the UI thread, outside any permit.
+fn release_developer_objects(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
+    let method = wide("Runtime.releaseObjectGroup");
+    let params = wide(&crate::acp::browser::developer::release_params());
+    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+    let _ = unsafe {
+        core.CallDevToolsProtocolMethod(PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &done)
+    };
 }
 
 fn wide(value: &str) -> Vec<u16> {

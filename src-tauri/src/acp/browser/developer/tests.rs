@@ -201,3 +201,15 @@ fn a_listed_method_refuses_any_parameter_it_does_not_list() {
         );
     }
 }
+
+#[test]
+fn only_an_evaluation_in_sages_group_releases_when_it_completes() {
+    let ours = json!({"expression": "1", "objectGroup": DEVELOPER_OBJECT_GROUP}).to_string();
+    let other = json!({"expression": "1", "objectGroup": "page"}).to_string();
+    assert!(releases_on_completion("Runtime.evaluate", &ours));
+    assert!(!releases_on_completion("Runtime.evaluate", &other));
+    assert!(!releases_on_completion("Runtime.evaluate", "{}"));
+    assert!(!releases_on_completion("Page.reload", &ours));
+    let release: Value = serde_json::from_str(&release_params()).unwrap();
+    assert_eq!(release, json!({"objectGroup": DEVELOPER_OBJECT_GROUP}));
+}

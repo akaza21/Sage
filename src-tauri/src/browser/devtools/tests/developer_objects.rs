@@ -1,7 +1,7 @@
 //! Developer-mode evaluations never leave results pinned in the page
 //! (ADR-0009b): by value, in Sage's group, released after every call.
 use super::*;
-use crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP;
+use crate::acp::browser::developer::{DEVELOPER_OBJECT_GROUP, EVALUATE_TIMEOUT_MS};
 use std::time::Duration;
 
 #[derive(Clone, Default)]
@@ -40,14 +40,18 @@ impl DevtoolsPort for RecordingPort {
 }
 
 fn evaluate(scope: &BrowserScope) -> BrowserRequest {
+    evaluate_with(
+        scope,
+        serde_json::json!({"expression": "new ArrayBuffer(8)"}),
+    )
+}
+
+fn evaluate_with(scope: &BrowserScope, params: serde_json::Value) -> BrowserRequest {
     BrowserRequest {
         scope: scope.clone(),
         command: BrowserCommand::Cdp {
             method: "Runtime.evaluate".into(),
-            params: serde_json::json!({"expression": "new ArrayBuffer(8)"})
-                .as_object()
-                .cloned()
-                .unwrap(),
+            params: params.as_object().cloned().unwrap(),
         },
     }
 }
@@ -76,7 +80,30 @@ fn an_evaluation_runs_by_value_in_sages_group_and_is_released_whatever_happens()
         assert_eq!(raw[0].0, "Runtime.evaluate");
         assert_eq!(raw[0].1["returnByValue"], true);
         assert_eq!(raw[0].1["objectGroup"], DEVELOPER_OBJECT_GROUP);
+        assert_eq!(raw[0].1["timeout"], EVALUATE_TIMEOUT_MS);
         assert_eq!(*port.releases.lock().unwrap(), 1, "{fail:?}");
+    }
+}
+
+#[test]
+fn an_evaluation_never_runs_longer_than_the_bound() {
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    for (asked, sent) in [
+        (100, 100),
+        (EVALUATE_TIMEOUT_MS, EVALUATE_TIMEOUT_MS),
+        (EVALUATE_TIMEOUT_MS * 40, EVALUATE_TIMEOUT_MS),
+    ] {
+        let port = RecordingPort::default();
+        let mut capability = DevtoolsCapability::new(scope.clone(), port.clone());
+        let request = evaluate_with(
+            &scope,
+            serde_json::json!({"expression": "1", "timeout": asked}),
+        );
+        capability.perform(&request).unwrap();
+        assert_eq!(port.raw.lock().unwrap()[0].1["timeout"], sent, "{asked}");
     }
 }
 
