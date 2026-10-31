@@ -39,7 +39,7 @@ async function runVctipTeardownAdapterFixture({
   try {
     await writeFile(
       rootHelper,
-      `const {spawn}=require("node:child_process");const fs=require("node:fs");const childPidPath=process.argv[2];const childReadyPath=childPidPath+".ready";const naturalExitTriggerPath=process.argv[3]||"";const child=spawn(process.execPath,["-e",${childSource},childReadyPath,naturalExitTriggerPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(childPidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForChildReady(){if(fs.existsSync(childReadyPath))process.exit(${rootExitCode});if(Date.now()>=deadline)throw new Error("child-ready handshake timed out");setTimeout(waitForChildReady,10);})();`,
+      `const {spawn}=require("node:child_process");const fs=require("node:fs");const childPidPath=process.argv[2];process.on("uncaughtException",(error)=>{fs.writeFileSync(childPidPath+".error",String(error&&error.stack||error));process.exit(70)});const childReadyPath=childPidPath+".ready";const naturalExitTriggerPath=process.argv[3]||"";const child=spawn(process.execPath,["-e",${childSource},childReadyPath,naturalExitTriggerPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(childPidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForChildReady(){if(fs.existsSync(childReadyPath))process.exit(${rootExitCode});if(Date.now()>=deadline)throw new Error("child-ready handshake timed out");setTimeout(waitForChildReady,10);})();`,
     );
     await writeFile(
       driver,
@@ -55,7 +55,7 @@ async function runVctipTeardownAdapterFixture({
         `  $job = [SageValidation.CargoJob]::Start($NodePath, @($RootHelper,$ChildPidPath,([string]$triggerPath)), $FixtureRoot, @('PATH=' + $env:PATH), 4, [ref]$stdout, [ref]$stderr)`,
         `  $deadline = [DateTime]::UtcNow.AddSeconds(3)`,
         `  while ($job.RootRunning -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }`,
-        `  if ($job.RootRunning -or -not (Test-Path -LiteralPath $ChildPidPath) -or -not (Test-Path -LiteralPath ($ChildPidPath + '.ready'))) { throw 'root/child fixture did not become ready' }`,
+        `  if ($job.RootRunning -or -not (Test-Path -LiteralPath $ChildPidPath) -or -not (Test-Path -LiteralPath ($ChildPidPath + '.ready'))) { $rootError = if (Test-Path -LiteralPath ($ChildPidPath + '.error')) { [IO.File]::ReadAllText($ChildPidPath + '.error') } else { '' }; $rootExit = if ($job.RootRunning) { 'running' } else { [string]$job.ExitCode() }; throw ('root/child fixture did not become ready (root: {0}, child.pid: {1}, ready: {2}) {3}' -f $rootExit, (Test-Path -LiteralPath $ChildPidPath), (Test-Path -LiteralPath ($ChildPidPath + '.ready')), $rootError) }`,
         `  $member = [uint32]([IO.File]::ReadAllText($ChildPidPath).Trim())`,
         `  $adapter = $job.GetType().GetMethod('EnableVctipTeardownTestAdapter', [Reflection.BindingFlags]::Instance -bor [Reflection.BindingFlags]::NonPublic)`,
         `  if ($null -eq $adapter) { throw 'compiled VCTIP test adapter was unavailable' }`,
