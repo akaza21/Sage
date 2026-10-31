@@ -36,7 +36,6 @@ pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
 pub(crate) mod popups;
-pub(crate) mod preferences;
 mod profile;
 mod shortcuts;
 pub(crate) mod site_permissions;

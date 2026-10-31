@@ -6,6 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useWorkbenchStore } from "../app/store";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
@@ -96,7 +97,11 @@ function EditorContinuityKeeper({
     const state = useWorkbenchStore.getState();
     const active =
       state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
-    if (active && isAgentArtifactTabKind(active.kind)) return;
+    if (
+      active &&
+      (isAgentArtifactTabKind(active.kind) || active.kind === "settings")
+    )
+      return;
     const continuity = lastArtifactTabId(state.tabs, lastArtifactId.current);
     if (continuity && continuity !== state.activeTabId) {
       void state.activateTab(continuity);
@@ -188,6 +193,12 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
+  useEffect(() => {
+    // A resource menu may open Settings while the Agent canvas is visible.
+    return useSettingsPageRequest.subscribe(({ page }) => {
+      if (page) setWindowMode("editor");
+    });
+  }, []);
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
     useAgentDesktopSidebarWidths(agentArtifactExpanded);

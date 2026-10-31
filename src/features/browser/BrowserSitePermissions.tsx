@@ -39,6 +39,7 @@ export function BrowserSitePermissions({
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
+        if (!mounted) return;
         unlisten = await listen<BrowserPermissionSnapshot>(
           "browser:permissions",
           (event) => {
@@ -48,6 +49,10 @@ export function BrowserSitePermissions({
             }
           },
         );
+        if (!mounted) {
+          unlisten();
+          return;
+        }
         const initial = await browserPermissionStatus(tabId);
         if (mounted && !sawEvent) setSnapshot(initial);
       })

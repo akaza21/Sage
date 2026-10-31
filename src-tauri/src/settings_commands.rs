@@ -1,5 +1,7 @@
 use tauri::State;
 
+pub(crate) mod browser_preferences;
+
 use crate::{
     settings_store::{EditorSettings, SessionAccessModes, UiAppearance},
     state::AppState,
