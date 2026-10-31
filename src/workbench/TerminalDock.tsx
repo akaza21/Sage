@@ -15,6 +15,27 @@ import { utf8ByteLength } from "../domain/text";
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
 
+/** Resolve CSS roles to concrete colors, including aliases and color-mix. */
+function terminalTheme(element: HTMLElement) {
+  const probe = document.createElement("span");
+  probe.hidden = true;
+  element.append(probe);
+  const color = (token: string) => {
+    probe.style.color = `var(${token})`;
+    return getComputedStyle(probe).color;
+  };
+  const theme = {
+    background: color("--color-canvas"),
+    foreground: color("--color-text-primary"),
+    cursor: color("--color-text-emphasis"),
+    cursorAccent: color("--color-canvas"),
+    selectionBackground: color("--color-selection"),
+    selectionForeground: color("--color-text-emphasis"),
+  };
+  probe.remove();
+  return theme;
+}
+
 function errorCode(error: unknown): unknown {
   return error && typeof error === "object" && "code" in error
     ? (error as { code?: unknown }).code
@@ -80,14 +101,24 @@ export function TerminalDock({
       fontSize: 12,
       lineHeight: 1.3,
       scrollback: 1_000,
-      theme: {
-        background: "#141414",
-        foreground: "#dedede",
-        cursor: "#dedede",
-        selectionBackground: "#444444",
-      },
+      theme: terminalTheme(element),
     });
     terminal.open(element);
+    const themeObserver = new MutationObserver(() => {
+      terminal.options.theme = terminalTheme(element);
+    });
+    const themeHosts = [
+      document.documentElement,
+      document.body,
+      element.closest(".workbench"),
+    ];
+    for (const host of themeHosts) {
+      if (host)
+        themeObserver.observe(host, {
+          attributes: true,
+          attributeFilter: ["style", "class", "data-theme"],
+        });
+    }
     const initial = dimensionsFor(element);
     terminal.resize(initial.columns, initial.rows);
 
@@ -227,6 +258,7 @@ export function TerminalDock({
     terminal.focus();
     return () => {
       stopped = true;
+      themeObserver.disconnect();
       observer.disconnect();
       window.removeEventListener("resize", refreshDimensions);
       inputListener.dispose();
