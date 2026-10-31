@@ -323,9 +323,13 @@ pub(crate) async fn set(
             Action::Off => state
                 .annotate
                 .run(announce, |mode| mode.leave(&overlay, &tab_id, Exit::Reveal)),
-            Action::Cancel => state
-                .annotate
-                .run(announce, |mode| mode.cancel(&overlay, &tab_id)),
+            Action::Cancel => {
+                let result = state.annotate.run(announce, |mode| {
+                    mode.cancel(&overlay, &tab_id, state.annotate.is_covered(&tab_id))
+                });
+                zoom::show_deferred(&app, &tab_id);
+                result
+            }
             Action::Confirm => {
                 let comment = comment.unwrap_or_default();
                 let ordinal = ordinal.ok_or("browser element ordinal rejected")?;

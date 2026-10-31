@@ -22,7 +22,9 @@ pub(crate) async fn browser_set_bounds(
         return Err("invalid browser bounds".into());
     }
     let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
-    let webview = tabs.handle(&tab_id).ok_or("browser tab unavailable")?;
+    let tab = tabs.entries.get(&tab_id).ok_or("browser tab unavailable")?;
+    let webview = &tab.handle;
+    let visibility = tab.visibility.clone();
     webview
         .set_position(LogicalPosition::new(x, y))
         .and_then(|()| webview.set_size(LogicalSize::new(width, height)))
@@ -35,6 +37,7 @@ pub(crate) async fn browser_set_bounds(
     let shown = webview.clone();
     app.clone()
         .run_on_main_thread(move || {
+            visibility.place();
             // Placed again, the page is no longer covered by a popover.
             if app.state::<BrowserState>().annotate.placed(&tab_id)
                 && let Err(error) = shown.show()

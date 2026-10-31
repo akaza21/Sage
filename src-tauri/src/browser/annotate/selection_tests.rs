@@ -141,7 +141,7 @@ fn cancelling_shows_the_page_resumes_hovering_and_gives_it_focus_back() {
     let overlay = Overlay::default();
     let mut mode = picked(&overlay, "browser-1");
     assert_eq!(
-        mode.cancel(&overlay, "browser-1"),
+        mode.cancel(&overlay, "browser-1", false),
         (vec![on("browser-1")], Ok(()))
     );
     assert_eq!(mode.pending, None);
@@ -153,7 +153,7 @@ fn cancelling_shows_the_page_resumes_hovering_and_gives_it_focus_back() {
             "focus browser-1"
         ]
     );
-    assert_eq!(mode.cancel(&overlay, "browser-1"), (vec![], Ok(())));
+    assert_eq!(mode.cancel(&overlay, "browser-1", false), (vec![], Ok(())));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn confirming_hands_out_the_item_and_keeps_the_element_waiting_until_cancelled()
             .any(|call| call.starts_with("release"))
     );
     assert_eq!(
-        mode.cancel(&overlay, "browser-1"),
+        mode.cancel(&overlay, "browser-1", false),
         (vec![on("browser-1")], Ok(()))
     );
     assert_eq!(mode.pending, None);
@@ -217,7 +217,7 @@ fn a_page_that_fails_to_come_back_still_ends_the_wait_and_says_why() {
     let mut overlay = Overlay::default();
     let mut mode = picked(&overlay, "browser-1");
     overlay.refuse_release = true;
-    let (changes, released) = mode.cancel(&overlay, "browser-1");
+    let (changes, released) = mode.cancel(&overlay, "browser-1", false);
     assert_eq!(released, Err("release refused".into()));
     assert_eq!(changes[0].error.as_deref(), Some("release refused"));
     assert_eq!(mode.pending, None);
@@ -294,7 +294,7 @@ fn the_lock_free_frozen_copy_follows_the_waiting_element() {
     assert!(annotate.is_frozen("browser-4"));
     assert!(!annotate.is_frozen("browser-1"));
     annotate
-        .run(|_| (), |mode| mode.cancel(&overlay, "browser-4"))
+        .run(|_| (), |mode| mode.cancel(&overlay, "browser-4", false))
         .unwrap();
     assert!(!annotate.is_frozen("browser-4"));
     annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
@@ -325,7 +325,7 @@ fn the_page_is_marked_frozen_before_it_hides() {
 
     // A pick that fails after the mark settles the copy back.
     annotate
-        .run(|_| (), |mode| mode.cancel(&overlay, "browser-4"))
+        .run(|_| (), |mode| mode.cancel(&overlay, "browser-4", false))
         .unwrap();
     overlay.refuse_pick = true;
     annotate.pick(&overlay, "browser-4", 2, |_| ()).unwrap();
@@ -356,13 +356,13 @@ fn escape_drops_a_waiting_element_first_and_then_leaves_annotate() {
     let overlay = Overlay::default();
     let mut mode = picked(&overlay, "browser-1");
     assert_eq!(
-        mode.escape(&overlay, "browser-1"),
+        mode.escape(&overlay, "browser-1", false),
         (vec![on("browser-1")], Ok(()))
     );
     assert_eq!(mode.pending, None);
     assert_eq!(mode.tab.as_deref(), Some("browser-1"));
     assert_eq!(
-        mode.escape(&overlay, "browser-1"),
+        mode.escape(&overlay, "browser-1", false),
         (vec![off("browser-1")], Ok(()))
     );
     assert_eq!(mode.tab, None);
@@ -433,6 +433,139 @@ fn a_zoom_drops_a_waiting_element_and_resumes_hovering() {
 }
 
 #[test]
+fn cancelling_a_covered_selection_keeps_the_page_hidden_and_focus_in_the_chrome() {
+    let overlay = Overlay::default();
+    let mut mode = picked(&overlay, "browser-1");
+    assert_eq!(
+        mode.escape(&overlay, "browser-1", true),
+        (vec![on("browser-1")], Ok(()))
+    );
+    assert!(mode.pending.is_none());
+    assert_eq!(mode.tab.as_deref(), Some("browser-1"));
+    assert_eq!(
+        overlay.calls()[3..],
+        ["release browser-1 reveal=false resume=true"]
+    );
+}
+
+fn hide_during_zoom_release(cover: bool) {
+    use crate::browser::visibility::PageVisibility;
+    use std::sync::Arc;
+
+    let annotate = Arc::new(Annotate::default());
+    let visibility = Arc::new(PageVisibility::default());
+    visibility.place();
+    annotate.placed("browser-1");
+    let mut overlay = Overlay::default();
+    overlay.visibility = Some(visibility.clone());
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-1"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-1", 7, |_| ()).unwrap();
+    let hidden = annotate.clone();
+    overlay.before_release = Some(Box::new(move || {
+        // The real main-thread hide/cover happens after zoom sampled covered.
+        visibility.hide();
+        assert_eq!(
+            hidden.hiding("browser-1", cover),
+            if cover { None } else { Some(Exit::Hidden) }
+        );
+    }));
+    annotate.zoomed(&overlay, "browser-1", |_| ()).unwrap();
+    assert!(!annotate.is_frozen("browser-1"));
+    assert!(annotate.is_annotating("browser-1"));
+    assert_eq!(
+        overlay.calls()[3..],
+        ["release browser-1 reveal=true resume=true"]
+    );
+    assert!(!annotate.take_deferred_show("browser-1"));
+    if !cover {
+        // Even though zoom took pending, the queued Hidden exit still ends mode.
+        annotate
+            .run(
+                |_| (),
+                |mode| mode.leave(&overlay, "browser-1", Exit::Hidden),
+            )
+            .unwrap();
+        assert!(!annotate.is_annotating("browser-1"));
+        assert_eq!(
+            overlay.calls().last().map(String::as_str),
+            Some("stop browser-1")
+        );
+    }
+}
+
+#[test]
+fn a_real_hide_after_zoom_samples_the_cover_cannot_resurrect_the_tab() {
+    hide_during_zoom_release(false);
+}
+
+#[test]
+fn a_cover_after_zoom_samples_the_cover_cannot_reveal_or_focus_the_page() {
+    hide_during_zoom_release(true);
+}
+
+#[test]
+fn a_cover_opening_and_closing_after_the_zoom_sample_defers_the_skipped_show() {
+    use crate::browser::visibility::PageVisibility;
+    use std::sync::Arc;
+    let annotate = Arc::new(Annotate::default());
+    let visibility = Arc::new(PageVisibility::default());
+    visibility.place();
+    annotate.placed("browser-1");
+    let mut overlay = Overlay::default();
+    overlay.visibility = Some(visibility.clone());
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-1"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-1", 7, |_| ()).unwrap();
+    let covered = annotate.clone();
+    let hidden = visibility.clone();
+    overlay.before_release = Some(Box::new(move || {
+        hidden.hide();
+        covered.hiding("browser-1", true);
+    }));
+    let uncovered = annotate.clone();
+    overlay.after_release = Some(Box::new(move || {
+        visibility.place();
+        assert!(!uncovered.placed("browser-1"));
+    }));
+    annotate.zoomed(&overlay, "browser-1", |_| ()).unwrap();
+    assert!(!overlay.calls().iter().any(|call| call == "show browser-1"));
+    // The sample was uncovered, but release still skipped its show: the
+    // completion must finish the placement that happened during release.
+    assert!(annotate.take_deferred_show("browser-1"));
+    assert!(!annotate.take_deferred_show("browser-1"));
+}
+
+#[test]
+fn a_popover_closing_during_cancel_defers_its_show_until_the_selection_is_released() {
+    use std::sync::Arc;
+    let annotate = Arc::new(Annotate::default());
+    let mut overlay = Overlay::default();
+    annotate
+        .run(|_| (), |mode| mode.start(&overlay, "browser-1"))
+        .unwrap();
+    annotate.pick(&overlay, "browser-1", 7, |_| ()).unwrap();
+    annotate.hiding("browser-1", true);
+    let placed = annotate.clone();
+    overlay.before_release = Some(Box::new(move || {
+        assert!(!placed.placed("browser-1"));
+        assert!(!placed.take_deferred_show("browser-1"), "still frozen");
+    }));
+    annotate
+        .run(
+            |_| (),
+            |mode| mode.cancel(&overlay, "browser-1", annotate.is_covered("browser-1")),
+        )
+        .unwrap();
+    assert!(!annotate.is_frozen("browser-1"));
+    assert!(annotate.take_deferred_show("browser-1"));
+    assert!(!annotate.take_deferred_show("browser-1"));
+    assert!(annotate.is_annotating("browser-1"));
+}
+
+#[test]
 fn a_zoom_on_a_tab_that_does_not_annotate_changes_nothing() {
     let overlay = Overlay::default();
     let mut mode = AnnotateMode::default();
@@ -456,12 +589,11 @@ fn a_zoom_unfreezes_a_covered_page_so_placing_it_shows_it_again() {
     annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
     assert_eq!(annotate.hiding("browser-4", true), None);
     let announced = std::cell::RefCell::new(Vec::new());
-    let left_hidden = annotate
+    annotate
         .zoomed(&overlay, "browser-4", |change| {
             announced.borrow_mut().push(change)
         })
         .unwrap();
-    assert!(left_hidden);
     assert_eq!(announced.into_inner(), [on("browser-4")]);
     assert!(annotate.is_annotating("browser-4"));
     assert!(!annotate.is_frozen("browser-4"));

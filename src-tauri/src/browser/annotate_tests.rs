@@ -9,6 +9,9 @@ pub(super) struct Overlay {
     pub(super) watching: RefCell<BTreeSet<String>>,
     /// Asked when the page hides: whether it was already marked frozen.
     pub(super) probe: Option<Box<dyn Fn() -> bool>>,
+    pub(super) before_release: Option<Box<dyn Fn()>>,
+    pub(super) after_release: Option<Box<dyn Fn()>>,
+    pub(super) visibility: Option<std::sync::Arc<crate::browser::visibility::PageVisibility>>,
     refuse_start: bool,
     refuse_stop: bool,
     pub(super) refuse_pick: bool,
@@ -56,9 +59,21 @@ impl InspectOverlay for Overlay {
         Ok(selection::tests::selection(label))
     }
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String> {
+        if let Some(before_release) = &self.before_release {
+            before_release();
+        }
+        if reveal && let Some(visibility) = &self.visibility {
+            visibility.reveal(|| {
+                self.calls.borrow_mut().push(format!("show {label}"));
+                Ok(())
+            })?;
+        }
         self.calls
             .borrow_mut()
             .push(format!("release {label} reveal={reveal} resume={resume}"));
+        if let Some(after_release) = &self.after_release {
+            after_release();
+        }
         if self.refuse_release {
             return Err("release refused".into());
         }
@@ -66,6 +81,12 @@ impl InspectOverlay for Overlay {
     }
     fn focus(&self, label: &str, page: bool) -> Result<(), String> {
         let target = if page { label } else { "main" };
+        if page && let Some(visibility) = &self.visibility {
+            return visibility.reveal(|| {
+                self.calls.borrow_mut().push(format!("focus {target}"));
+                Ok(())
+            });
+        }
         self.calls.borrow_mut().push(format!("focus {target}"));
         Ok(())
     }

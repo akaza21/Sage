@@ -79,21 +79,18 @@ impl Annotate {
         !self.zoom_queued.swap(true, Ordering::AcqRel)
     }
 
-    /// `label`'s page zoom changed. Answers whether the page was left
-    /// hidden because a popover covered it.
+    /// `label`'s page zoom changed; release any waiting selection.
     pub(super) fn zoomed(
         &self,
         overlay: &impl InspectOverlay,
         label: &str,
         announce: impl Fn(AnnotateChange),
-    ) -> Result<bool, String> {
+    ) -> Result<(), String> {
         self.run(announce, |mode| {
             // Under the lock: a zoom after this point queues the next step.
             self.zoom_queued.store(false, Ordering::Release);
             let covered = self.is_covered(label);
-            let waiting = mode.pending.is_some();
-            let (changes, result) = mode.zoomed(overlay, label, covered);
-            (changes, result.map(|()| covered && waiting))
+            mode.zoomed(overlay, label, covered)
         })
     }
 }
@@ -137,26 +134,34 @@ pub(crate) fn zoomed(app: &AppHandle, label: &str) {
     std::thread::spawn(move || {
         let state = app.state::<BrowserState>();
         let overlay = NativeOverlay(&state, &app);
-        let left_hidden = state
+        let _ = state
             .annotate
             .zoomed(&overlay, &label, |change| emit(&app, change));
-        // The popover may have closed while this step waited: its placement
-        // found the page still frozen and put the show off.
-        let Ok(true) = left_hidden else {
-            return;
-        };
-        let Some(webview) = state.webview_for_tab(&label) else {
-            return;
-        };
-        let main = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            if main
-                .state::<BrowserState>()
-                .annotate
-                .take_deferred_show(&label)
-            {
-                let _ = webview.show();
-            }
-        });
+        // A cover may have opened AND closed after the sample. Drain any
+        // placement that found the page still frozen, regardless of that sample.
+        show_deferred(&app, &label);
+    });
+}
+
+/// A placement may have found the page frozen while zoom or cancellation
+/// released its selection. Finish that placement after the mode unfreezes.
+pub(super) fn show_deferred(app: &AppHandle, label: &str) {
+    let state = app.state::<BrowserState>();
+    let Some(webview) = state.webview_for_tab(label) else {
+        return;
+    };
+    let Some(visibility) = state.page_visibility_for_tab(label) else {
+        return;
+    };
+    let main = app.clone();
+    let label = label.to_owned();
+    let _ = app.run_on_main_thread(move || {
+        if main
+            .state::<BrowserState>()
+            .annotate
+            .take_deferred_show(&label)
+        {
+            let _ = visibility.reveal(|| webview.show().map_err(|error| error.to_string()));
+        }
     });
 }
