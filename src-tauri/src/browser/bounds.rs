@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use tauri::{LogicalPosition, LogicalSize, Manager, State};
+use tauri::{LogicalPosition, LogicalSize, Manager, State, Webview};
 
 use super::{BrowserState, BrowserTabs, page_controls::browser_hide, visibility::PageVisibility};
 
@@ -72,48 +72,93 @@ pub(crate) async fn browser_set_bounds(
         return Err("invalid browser bounds".into());
     }
     let (webview, visibility) = unlocked_tab(&state.tabs, &tab_id)?;
-    // Native getters wait on the main thread, whose WebView2 callbacks take
-    // `tabs`, so no native call may run while it is held.
-    let scale = webview
-        .window()
-        .scale_factor()
-        .map_err(|error| error.to_string())?;
-    let Some(frame) = snap_inward(
+    let target = NativeTarget {
+        state,
+        tab_id,
+        webview,
+        visibility,
+    };
+    place_or_hide(
+        &target,
         Frame {
             x,
             y,
             width,
             height,
         },
-        scale,
         PLATFORM_GRID,
-    ) else {
-        // Nothing of the frame is left to show, so the page must not stay
-        // visible at its previous bounds.
+    )
+    .await
+}
+
+/// The native effects of placing one tab's page.
+trait BoundsTarget {
+    fn scale(&self) -> Result<f64, String>;
+    fn place(&self, frame: Frame) -> Result<(), String>;
+    async fn hide(&self) -> Result<(), String>;
+}
+
+/// Places the page on the snapped frame, or hides it when nothing of the
+/// frame is left to show, so it never stays visible at its previous bounds.
+async fn place_or_hide(
+    target: &impl BoundsTarget,
+    css: Frame,
+    grid: PlacementGrid,
+) -> Result<(), String> {
+    match snap_inward(css, target.scale()?, grid) {
+        Some(frame) => target.place(frame),
+        None => target.hide().await,
+    }
+}
+
+struct NativeTarget<'a> {
+    state: State<'a, BrowserState>,
+    tab_id: String,
+    webview: Webview,
+    visibility: Arc<PageVisibility>,
+}
+
+impl BoundsTarget for NativeTarget<'_> {
+    // Native getters wait on the main thread, whose WebView2 callbacks take
+    // `tabs`, so the caller holds no lock here.
+    fn scale(&self) -> Result<f64, String> {
+        self.webview
+            .window()
+            .scale_factor()
+            .map_err(|error| error.to_string())
+    }
+
+    fn place(&self, frame: Frame) -> Result<(), String> {
+        let webview = &self.webview;
+        webview
+            .set_position(LogicalPosition::new(frame.x, frame.y))
+            .and_then(|()| webview.set_size(LogicalSize::new(frame.width, frame.height)))
+            .map_err(|error| error.to_string())?;
+        // A page frozen for an Annotate comment stays hidden until the comment
+        // is done. The check runs on the main thread, where Annotate's hide runs
+        // too and only after it marks the page frozen, so a show checked before
+        // the mark is always followed by that hide.
         let app = webview.app_handle().clone();
-        return browser_hide(app, state, tab_id, None).await;
-    };
-    webview
-        .set_position(LogicalPosition::new(frame.x, frame.y))
-        .and_then(|()| webview.set_size(LogicalSize::new(frame.width, frame.height)))
-        .map_err(|error| error.to_string())?;
-    // A page frozen for an Annotate comment stays hidden until the comment
-    // is done. The check runs on the main thread, where Annotate's hide runs
-    // too and only after it marks the page frozen, so a show checked before
-    // the mark is always followed by that hide.
-    let app = webview.app_handle().clone();
-    let shown = webview.clone();
-    app.clone()
-        .run_on_main_thread(move || {
-            visibility.place();
-            // Placed again, the page is no longer covered by a popover.
-            if app.state::<BrowserState>().annotate.placed(&tab_id)
-                && let Err(error) = shown.show()
-            {
-                eprintln!("browser show failed for {tab_id}: {error}");
-            }
-        })
-        .map_err(|error| error.to_string())
+        let shown = webview.clone();
+        let visibility = self.visibility.clone();
+        let tab_id = self.tab_id.clone();
+        app.clone()
+            .run_on_main_thread(move || {
+                visibility.place();
+                // Placed again, the page is no longer covered by a popover.
+                if app.state::<BrowserState>().annotate.placed(&tab_id)
+                    && let Err(error) = shown.show()
+                {
+                    eprintln!("browser show failed for {tab_id}: {error}");
+                }
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    async fn hide(&self) -> Result<(), String> {
+        let app = self.webview.app_handle().clone();
+        browser_hide(app, self.state.clone(), self.tab_id.clone(), None).await
+    }
 }
 
 /// Copies out `label`'s handle and placement flag, releasing `tabs` before
@@ -131,8 +176,51 @@ fn unlocked_tab<T: Clone>(
 mod tests {
     use std::sync::Mutex;
 
-    use super::{Frame, PlacementGrid, snap_inward, unlocked_tab};
+    use std::cell::RefCell;
+
+    use super::{BoundsTarget, Frame, PlacementGrid, place_or_hide, snap_inward, unlocked_tab};
     use crate::browser::BrowserTabs;
+
+    /// A page that records where it is and whether it can be seen.
+    struct FakePage {
+        scale: f64,
+        shown: RefCell<Option<Frame>>,
+    }
+
+    impl BoundsTarget for FakePage {
+        fn scale(&self) -> Result<f64, String> {
+            Ok(self.scale)
+        }
+
+        fn place(&self, frame: Frame) -> Result<(), String> {
+            *self.shown.borrow_mut() = Some(frame);
+            Ok(())
+        }
+
+        async fn hide(&self) -> Result<(), String> {
+            *self.shown.borrow_mut() = None;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_frame_that_snaps_to_nothing_hides_the_page_until_it_is_drawable_again() {
+        let page = FakePage {
+            scale: 1.25,
+            shown: RefCell::new(None),
+        };
+        let place = |css| {
+            tauri::async_runtime::block_on(place_or_hide(&page, css, PlacementGrid::DevicePixel))
+                .unwrap();
+        };
+        place(frame(8.0, 40.0, 320.0, 200.0));
+        assert_eq!(*page.shown.borrow(), Some(frame(8.0, 40.0, 320.0, 200.0)));
+        // At 125% a 1 px frame from x = 10.1 holds no whole device pixel.
+        place(frame(10.1, 40.0, 1.0, 200.0));
+        assert_eq!(*page.shown.borrow(), None);
+        place(frame(8.0, 40.0, 320.0, 200.0));
+        assert_eq!(*page.shown.borrow(), Some(frame(8.0, 40.0, 320.0, 200.0)));
+    }
 
     #[test]
     fn the_tab_lock_is_free_before_any_native_call() {
