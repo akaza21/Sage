@@ -903,7 +903,8 @@ if ($ToolIdentityAction) {
   $store = New-FootprintIdentityStore
   foreach ($item in @($owned.remembered)) { [void](Add-FootprintRememberedIdentity $store ([pscustomobject]@{ ProcessId = $item.processId; ExecutablePath = $item.executablePath; CreationDate = $item.creationDate })) }
   $root = [ordered]@{ processId = [int]$owned.processId; executablePath = [string]$owned.executablePath; creationDate = [string]$owned.creationDate }
-  Stop-FootprintTree $root $store 1 | ConvertTo-Json -Depth 5 -Compress
+  # Tool teardown follows cancellation/failure; there is no graceful work left to await.
+  Stop-FootprintTree $root $store 0 | ConvertTo-Json -Depth 5 -Compress
   exit 0
 }
 

@@ -376,7 +376,7 @@ function Invoke-FootprintTreeCore {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
     [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
-    [ValidateRange(1, 30)][int]$GraceSeconds = 1,
+    [ValidateRange(0, 30)][int]$GraceSeconds = 1,
     [Parameter(Mandatory)][scriptblock]$SnapshotProvider,
     [Parameter(Mandatory)][scriptblock]$StopProcessById,
     [Parameter(Mandatory)][scriptblock]$UtcNow,
@@ -396,13 +396,13 @@ function Invoke-FootprintTreeCore {
     if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
   }
   $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
-  do {
+  while ($GraceSeconds -gt 0 -and [DateTime](& $UtcNow) -lt $deadline) {
     $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
     foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
     $identityLost = $identityLost -or $plan.identityLost
     if ($plan.candidates.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = $identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
     & $Delay 100
-  } while ([DateTime](& $UtcNow) -lt $deadline)
+  }
   $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = $identityLost -or $plan.identityLost
@@ -452,7 +452,7 @@ function Stop-FootprintTree {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
     [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
-    [ValidateRange(1, 30)][int]$GraceSeconds = 1
+    [ValidateRange(0, 30)][int]$GraceSeconds = 1
   )
   return Invoke-FootprintTreeCore `
     $RootIdentity `

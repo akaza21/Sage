@@ -47,14 +47,38 @@ $childRow=[pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath='C:
 $reusedRootRow=[pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath='C:\Windows\System32\notepad.exe';CreationDate='2026-08-30T00:01:00.000Z'};
 $store=New-FootprintIdentityStore;
 [void](Add-FootprintRememberedIdentity $store $rootRow);
-function Invoke-TestFootprintTree($rootIdentity,$knownIdentities,$snapshotProvider,$stopProcessById,$utcNow,$delay){
+function Invoke-TestFootprintTree($rootIdentity,$knownIdentities,$snapshotProvider,$stopProcessById,$utcNow,$delay,$graceSeconds=1){
   $module=Get-Module ProcessIdentity;
   return & $module {
-    param($rootValue,$knownValue,$snapshotValue,$stopValue,$clockValue,$delayValue)
-    Invoke-FootprintTreeCore $rootValue $knownValue 1 $snapshotValue $stopValue $clockValue $delayValue
-  } $rootIdentity $knownIdentities $snapshotProvider $stopProcessById $utcNow $delay
+    param($rootValue,$knownValue,$snapshotValue,$stopValue,$clockValue,$delayValue,$graceValue)
+    Invoke-FootprintTreeCore $rootValue $knownValue $graceValue $snapshotValue $stopValue $clockValue $delayValue
+  } $rootIdentity $knownIdentities $snapshotProvider $stopProcessById $utcNow $delay $graceSeconds
 };
 `;
+
+test("zero-grace teardown reaches authenticated zero before a later PID reuse", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$script:rootAlive=$true;$script:childAlive=$true;$script:elapsed=0;
+$started=[DateTime]::Parse('2026-08-30T00:00:00Z');
+$snapshot={
+  $rows=@();
+  if($script:rootAlive){if($script:elapsed-eq0){$rows+=$rootRow}else{$rows+=$reusedRootRow}};
+  if($script:childAlive){$rows+=$childRow};
+  return $rows
+};
+$stop={param([int]$processId)if($processId-eq202){$script:childAlive=$false}elseif($processId-eq101){$script:rootAlive=$false}};
+$clock={return $started.AddMilliseconds($script:elapsed)};
+$delay={param([int]$milliseconds)$script:elapsed+=$milliseconds};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay 0;
+[ordered]@{forced=$result.forced;identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    forced: true,
+    identityLost: false,
+    remaining: [],
+    reused: [],
+  });
+});
 
 test("teardown ignores unrelated processes while retaining distinct remembered identities for one PID", () => {
   const observed = runPowerShellFixture(`${commonFixture}
