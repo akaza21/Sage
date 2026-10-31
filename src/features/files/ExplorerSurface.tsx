@@ -1,4 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { useWorkbenchStore } from "../../app/store";
@@ -9,8 +17,13 @@ import {
   sameResource,
 } from "../../domain/resourceIdentity";
 import type * as MatcherModule from "../../domain/pathGlobMatcher";
-import type { ProjectRootSummary } from "../../domain/workbench";
+import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
 import { ExplorerActions } from "./ExplorerActions";
+import {
+  ExplorerContextMenuContext,
+  createExplorerContextMenu,
+  isContextMenuKey,
+} from "./explorerContextMenu";
 import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
 import { flattenFileTree } from "./fileTree";
@@ -52,6 +65,30 @@ const RootTree = memo(function RootTree({
   }, [matcher]);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
+  const contextMenu = useContext(ExplorerContextMenuContext);
+  // Like VS Code, a right-click selects what it is on (without opening a
+  // File) and opens the actions for it there.
+  const openContextMenu = useCallback(
+    (resource: ResourceRef, row: HTMLElement): void => {
+      const state = useWorkbenchStore.getState();
+      if (!contextMenu || !state.project || state.projectTransitioning) {
+        return;
+      }
+      // The root heading selects as its click does (which also retries a
+      // listing that failed); a row without opening its File.
+      if (resource.relativePath === "") state.selectRoot(resource.rootId);
+      else state.selectDirectory(resource);
+      // Selection is refused while a rename or recycle runs: the menu would
+      // then show the actions of what was selected before.
+      if (
+        !sameResource(useWorkbenchStore.getState().selectedResource, resource)
+      ) {
+        return;
+      }
+      contextMenu.open(row);
+    },
+    [contextMenu],
+  );
   const rootSelected = sameResource(rootResource, selected);
   const tree = useMemo(
     () =>
@@ -93,6 +130,15 @@ const RootTree = memo(function RootTree({
         aria-current={rootSelected ? "page" : undefined}
         title={root.name}
         onClick={() => selectRoot(root.id)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (!isContextMenuKey(event)) return;
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
+        }}
       >
         <FileKindIcon path={root.name} entryKind="directory" />
         <span>{root.name}</span>
@@ -122,6 +168,7 @@ const RootTree = memo(function RootTree({
             onSelectDirectory={selectDirectory}
             onToggleDirectory={toggleDirectory}
             onOpenFile={openFile}
+            onContextMenu={openContextMenu}
           />
         );
       })}
@@ -150,8 +197,9 @@ export function ExplorerSurface() {
   const resourceTrashNotice = useWorkbenchStore(
     (state) => state.resourceTrashNotice,
   );
+  const [contextMenu] = useState(createExplorerContextMenu);
   return (
-    <>
+    <ExplorerContextMenuContext.Provider value={contextMenu}>
       <div className="sidebar__heading">
         <span>Explorer</span>
         <ExplorerActions />
@@ -183,6 +231,6 @@ export function ExplorerSurface() {
           <p className="sidebar__empty">Open a folder to see files.</p>
         )}
       </div>
-    </>
+    </ExplorerContextMenuContext.Provider>
   );
 }
