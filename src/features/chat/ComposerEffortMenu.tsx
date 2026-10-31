@@ -95,7 +95,7 @@ export default function ComposerEffortMenu({
       void onSetOption(option.id, { value: level.value });
   };
   if (index < 0) return null;
-  const label = levels[index].name;
+  const label = levels[position].name;
   return (
     <>
       <MenuPopover
@@ -104,7 +104,10 @@ export default function ComposerEffortMenu({
         role="dialog"
         open={open}
         triggerRef={panelTriggerRef}
-        onDismiss={onDismiss}
+        onDismiss={() => {
+          setDraft(null);
+          onDismiss();
+        }}
         className="composer__popover composer__effort-menu"
       >
         <div className="composer-effort__heading">
@@ -168,7 +171,7 @@ export default function ComposerEffortMenu({
             }}
             onPointerUp={finishDrag}
             onPointerCancel={() => setDraft(null)}
-            onBlur={finishDrag}
+            onBlur={() => setDraft(null)}
             onChange={(event) => {
               if (disabled || pending) return;
               const next = Number(event.currentTarget.value);
@@ -177,6 +180,10 @@ export default function ComposerEffortMenu({
               } else select(next);
             }}
             onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setDraft(null);
+                return;
+              }
               const position = {
                 ArrowLeft: index - 1,
                 ArrowDown: index - 1,

@@ -12,6 +12,25 @@ import { ComposerModelControls } from "./ComposerModelControls";
 
 afterEach(cleanup);
 
+it("previews the dragged level in its heading and cancels it with Escape", async () => {
+  const { onSetOption } = controls(effort("effort", ["low", "high"]));
+  fireEvent.click(screen.getByRole("button", { description: "Select effort" }));
+  const slider = await screen.findByRole("slider");
+  fireEvent.pointerDown(slider);
+  fireEvent.change(slider, { target: { value: "1" } });
+  expect(
+    screen.getByText("High", { selector: ".composer-effort__level" }),
+  ).toBeVisible();
+  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  fireEvent.keyDown(slider, { key: "Escape" });
+  expect(onSetOption).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { description: "Select effort" }));
+  expect(await screen.findByRole("slider")).toHaveAttribute(
+    "aria-valuetext",
+    "low",
+  );
+});
+
 function controls(
   option: AcpConfigOption | undefined,
   onSetOption = vi.fn().mockResolvedValue(undefined),

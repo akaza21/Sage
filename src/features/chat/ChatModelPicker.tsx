@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, useState } from "react";
 import { PickerOption } from "../../ui/PickerOption";
 import { composerModelName } from "./composerModelName";
 
@@ -24,8 +24,20 @@ export function ChatModelPicker({
   onSelect: (modelId: string) => void;
 }) {
   const id = useId();
-  const visible = models.slice(0, MAX_VISIBLE_MODELS);
-  const names = visible.map((model) => composerModelName(model.name));
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLocaleLowerCase();
+  const matches = needle
+    ? models.filter((model) =>
+        `${model.name} ${model.id} ${model.group ?? ""}`
+          .toLocaleLowerCase()
+          .includes(needle),
+      )
+    : models;
+  const visible = matches.slice(0, MAX_VISIBLE_MODELS);
+  const selected = !needle && models.find((model) => model.id === selectedId);
+  if (selected && !visible.includes(selected))
+    visible[visible.length - 1] = selected;
+  const names = models.map((model) => composerModelName(model.name));
   const nameCounts = new Map<string, number>();
   for (const name of names)
     nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
@@ -44,6 +56,27 @@ export function ChatModelPicker({
       <p id={`${id}-title`} className="composer-model-picker__title">
         Select model
       </p>
+      {models.length > MAX_VISIBLE_MODELS ? (
+        <input
+          type="search"
+          aria-label="Search models"
+          aria-controls={listboxId}
+          maxLength={128}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              document
+                .getElementById(listboxId)
+                ?.querySelector<HTMLElement>('[role="option"]:not(:disabled)')
+                ?.focus();
+            }
+            if (event.key !== "Escape" && event.key !== "Tab")
+              event.stopPropagation();
+          }}
+        />
+      ) : null}
       <div
         id={listboxId}
         className="composer-model-picker__list"
@@ -86,7 +119,11 @@ export function ChatModelPicker({
           );
         })}
       </div>
-      {models.length > MAX_VISIBLE_MODELS ? (
+      {!matches.length ? (
+        <p className="menu-empty" role="status">
+          No models match.
+        </p>
+      ) : matches.length > MAX_VISIBLE_MODELS ? (
         <p className="menu-empty" role="status">
           Showing first {MAX_VISIBLE_MODELS} models
         </p>

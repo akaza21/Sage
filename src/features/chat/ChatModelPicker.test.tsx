@@ -10,6 +10,36 @@ import { ChatModelPicker } from "./ChatModelPicker";
 
 afterEach(cleanup);
 
+it("finds an admitted model beyond the display cap and keeps its exact identity", () => {
+  let selection = "";
+  render(
+    <ChatModelPicker
+      listboxId="models"
+      models={Array.from({ length: 205 }, (_, index) => ({
+        id: `model-${index}`,
+        name: `Model ${index}`,
+      }))}
+      selectedId="model-204"
+      disabled={false}
+      onSelect={(id) => {
+        selection = id;
+      }}
+    />,
+  );
+  expect(screen.getByRole("option", { name: "Model 204" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  const query = screen.getByRole("searchbox", { name: "Search models" });
+  fireEvent.change(query, { target: { value: "Model 203" } });
+  fireEvent.click(screen.getByRole("option", { name: "Model 203" }));
+  expect(selection).toBe("model-203");
+  expect(screen.getAllByRole("option")).toHaveLength(1);
+  fireEvent.change(query, { target: { value: "absent" } });
+  expect(screen.queryAllByRole("option")).toHaveLength(0);
+  expect(screen.getByRole("status")).toHaveTextContent("No models match");
+});
+
 it("shows human names without changing the selected harness ID", () => {
   const onSelect = vi.fn();
   render(

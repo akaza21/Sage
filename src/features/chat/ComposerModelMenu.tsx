@@ -1,11 +1,7 @@
 import type { RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-model-identities.css";
-import {
-  ChatModelPicker,
-  MAX_VISIBLE_MODELS,
-  type ComposerModelChoice,
-} from "./ChatModelPicker";
+import { ChatModelPicker, type ComposerModelChoice } from "./ChatModelPicker";
 
 export default function ComposerModelMenu({
   triggerRef,
@@ -31,10 +27,7 @@ export default function ComposerModelMenu({
       restoreFocusOnTab
       triggerRef={triggerRef}
       initialFocus="selected"
-      focusKey={choices
-        .slice(0, MAX_VISIBLE_MODELS)
-        .map((model) => model.id)
-        .join("\0")}
+      focusKey={choices.map((model) => model.id).join("\0")}
       id={panelId + "-popover"}
       role="none"
       className="composer__popover composer__model-menu composer-model-picker"
