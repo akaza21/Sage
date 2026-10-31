@@ -19,6 +19,10 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import {
+  registerFileSurfaceCommands,
+  type FileSurfaceCommands,
+} from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
@@ -175,6 +179,34 @@ export function FileSurface({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
+
+  // The command palette (ED-2a) runs the same actions as the editor's keys.
+  const commandsRef = useRef<FileSurfaceCommands>({
+    available: () => false,
+    run: () => undefined,
+  });
+  useEffect(() => {
+    commandsRef.current = {
+      // Only what the keys would do now: the editor is showing, and the
+      // Markdown preview has no find or go to.
+      available: (command) =>
+        editor?.phase === "ready" && (command === "save" || !previewing),
+      run: (command) => {
+        if (command === "save") void saveActiveEditor();
+        else if (command === "find") openFindFromSurface();
+        else if (command === "replace") openFindFromSurface(true);
+        else if (command === "goToLine") openGoToLine();
+        else void goToLocalSymbol();
+      },
+    };
+  });
+  useEffect(() => {
+    if (readOnly) return;
+    return registerFileSurfaceCommands({
+      available: (command) => commandsRef.current.available(command),
+      run: (command) => commandsRef.current.run(command),
+    });
+  }, [readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(contentText(findContent), goToQuery);

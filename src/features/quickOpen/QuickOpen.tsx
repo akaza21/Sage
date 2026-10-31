@@ -10,6 +10,16 @@ import {
   type QuickOpenMatch,
   type QuickOpenResponse,
 } from "./quickOpenDomain";
+import {
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
+import {
+  filterCommands,
+  paletteCommands,
+  type PaletteCommand,
+} from "./paletteCommands";
 import { queryQuickOpen } from "./quickOpenGateway";
 import { recentFiles } from "./quickOpenState";
 import "./quick-open.css";
@@ -17,6 +27,8 @@ import "./quick-open.css";
 /** While the index is being refreshed, the same query is asked again. */
 const REFRESH_RETRY_MS = 150;
 const MAX_REFRESH_RETRIES = 40;
+/** How long a command has to move the focus before the box puts it back. */
+const COMMAND_FOCUS_GRACE_MS = 150;
 /** "Indexing…" shows only if the first answer takes longer than this. */
 const INDEXING_DELAY_MS = 120;
 
@@ -50,17 +62,37 @@ function Highlighted({
   );
 }
 
+/** Back to `previous`, or to the editor when that is gone. */
+function focusBack(previous: Element | null) {
+  const target =
+    previous instanceof HTMLElement &&
+    previous !== document.body &&
+    previous.isConnected
+      ? previous
+      : document.querySelector<HTMLElement>(".cm-content");
+  target?.focus();
+}
+
 function activeFile() {
   const state = useWorkbenchStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
   return tab?.kind === "file" ? tab.resource : undefined;
 }
 
-export default function QuickOpen({ onClose }: { onClose: () => void }) {
+export default function QuickOpen({
+  seed = "",
+  onClose,
+}: {
+  /** What the box starts with: ">" lists commands. */
+  seed?: string;
+  onClose: () => void;
+}) {
   const project = useWorkbenchStore((state) => state.project);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
+  // The command list depends on the active tab.
+  useWorkbenchStore((state) => state.activeTabId);
   const listId = useId();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(seed);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [indexing, setIndexing] = useState(false);
@@ -72,7 +104,12 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
   const pendingEnter = useRef(false);
   const list = useRef<HTMLUListElement | null>(null);
   const projectId = project?.id ?? null;
-  const { query, line, column } = parseQuickOpenInput(text);
+  // ">" lists the editor's commands instead of Files (ED-2a).
+  const commandMode = text.startsWith(">");
+  const commands = commandMode
+    ? filterCommands(paletteCommands(usesMetaModifier()), text.slice(1))
+    : [];
+  const { query, line, column } = parseQuickOpenInput(commandMode ? "" : text);
   // `:12` alone goes to a line of the active File; nothing is asked.
   const bareLine = query === "" && line !== null;
   const key = projectId ? requestKey(projectId, epoch, query) : "";
@@ -83,15 +120,7 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
     if (closed.current) return;
     closed.current = true;
     onClose();
-    if (!restoreFocus) return;
-    const previous = returnFocus.current;
-    const target =
-      previous instanceof HTMLElement &&
-      previous !== document.body &&
-      previous.isConnected
-        ? previous
-        : document.querySelector<HTMLElement>(".cm-content");
-    target?.focus();
+    if (restoreFocus) focusBack(returnFocus.current);
   };
 
   const open = (match: QuickOpenMatch | undefined) => {
@@ -116,13 +145,30 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
       void state.openFile(resource);
     }
   };
+  const runCommand = (command: PaletteCommand | undefined) => {
+    if (!command) return;
+    if (command.run === "files") {
+      setText("");
+      setSelectedKey(null);
+      return;
+    }
+    close(false);
+    command.run();
+    // A command that moves the focus has done so by then; one that didn't,
+    // or did nothing, gets it back where it was.
+    const previous = returnFocus.current;
+    setTimeout(() => {
+      const focused = document.activeElement;
+      if (!focused || focused === document.body) focusBack(previous);
+    }, COMMAND_FOCUS_GRACE_MS);
+  };
   const openLatest = useRef(open);
   useEffect(() => {
     openLatest.current = open;
   });
 
   useEffect(() => {
-    if (!projectId || bareLine) return;
+    if (!projectId || bareLine || commandMode) return;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let current = true;
     const indexingTimer = setTimeout(
@@ -181,13 +227,16 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
       clearTimeout(indexingTimer);
       clearTimeout(retry);
     };
-  }, [bareLine, epoch, projectId, query, session]);
+  }, [bareLine, commandMode, epoch, projectId, query, session]);
 
-  const results = bareLine ? [] : (answer?.results ?? []);
+  const results = bareLine || commandMode ? [] : (answer?.results ?? []);
+  const itemKeys = commandMode
+    ? commands.map((command) => command.id)
+    : results.map(matchKey);
   // The selection follows its File when a refreshed answer reorders the list.
-  const keyed = results.findIndex((match) => matchKey(match) === selectedKey);
+  const keyed = itemKeys.indexOf(selectedKey ?? "");
   const active = keyed >= 0 ? keyed : 0;
-  const activeKey = results[active] ? matchKey(results[active]) : null;
+  const activeKey = itemKeys[active] ?? null;
 
   useEffect(() => {
     list.current
@@ -202,20 +251,38 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
       return;
     }
-    if (event.key === "Escape") {
+    // The chords that open the box switch it between Files and commands.
+    const apple = usesMetaModifier();
+    const files = matchesPlatformChord(
+      keymapBinding("quickOpen"),
+      event,
+      apple,
+    );
+    if (
+      files ||
+      matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      setText(files ? "" : ">");
+      setSelectedKey(null);
+      pendingEnter.current = false;
+    } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      if (results.length === 0) return;
+      if (itemKeys.length === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
-      const next = results[(active + step + results.length) % results.length];
-      setSelectedKey(matchKey(next));
+      setSelectedKey(
+        itemKeys[(active + step + itemKeys.length) % itemKeys.length],
+      );
     } else if (event.key === "Enter") {
       // Ctrl/Cmd+Enter opens to the side where there is a split; there
       // isn't yet, so it opens in place too.
       event.preventDefault();
-      if (bareLine || answer?.key === key) open(results[active]);
+      if (commandMode) runCommand(commands[active]);
+      else if (bareLine || answer?.key === key) open(results[active]);
       // The list on screen answers an earlier request: open the first match
       // for this one once it arrives.
       else if (!error) pendingEnter.current = true;
@@ -223,7 +290,9 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
   };
 
   let status = "";
-  if (!projectId) status = "Open a Project to find its Files.";
+  if (commandMode) {
+    status = commands.length === 0 ? "No matching commands." : "";
+  } else if (!projectId) status = "Open a Project to find its Files.";
   else if (bareLine) {
     status = activeFile()
       ? `Press Enter to go to line ${line} in the active File.`
@@ -260,17 +329,17 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
         <input
           className="quick-open__input"
           role="combobox"
-          aria-label="Search Files by name"
+          aria-label={commandMode ? "Run a command" : "Search Files by name"}
           aria-autocomplete="list"
-          aria-expanded={results.length > 0}
+          aria-expanded={itemKeys.length > 0}
           aria-controls={listId}
           aria-activedescendant={
-            results.length > 0 ? `${listId}-${active}` : undefined
+            itemKeys.length > 0 ? `${listId}-${active}` : undefined
           }
           autoFocus
           spellCheck={false}
           autoComplete="off"
-          placeholder="Search Files by name (append :line to go to a line)"
+          placeholder="Search Files by name (:line goes to a line, > runs a command)"
           value={text}
           onChange={(event) => {
             const next = event.target.value;
@@ -287,9 +356,24 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
           className="quick-open__list"
           id={listId}
           role="listbox"
-          aria-label="Files"
+          aria-label={commandMode ? "Commands" : "Files"}
           tabIndex={-1}
         >
+          {commands.map((command, index) => (
+            <li
+              key={command.id}
+              id={`${listId}-${index}`}
+              className="quick-open__row"
+              role="option"
+              aria-selected={index === active}
+              onClick={() => runCommand(command)}
+            >
+              <span className="quick-open__name">{command.label}</span>
+              {command.shortcut ? (
+                <kbd className="quick-open__shortcut">{command.shortcut}</kbd>
+              ) : null}
+            </li>
+          ))}
           {results.map((match, index) => {
             const base = match.relativePath.lastIndexOf("/") + 1;
             return (
@@ -324,7 +408,7 @@ export default function QuickOpen({ onClose }: { onClose: () => void }) {
         <p className="quick-open__status" role="status">
           {status}
         </p>
-        {answer?.truncated && !bareLine ? (
+        {answer?.truncated && !bareLine && !commandMode ? (
           <p className="quick-open__status">
             Only the first {answer.indexedFiles.toLocaleString()} Files are
             searched.

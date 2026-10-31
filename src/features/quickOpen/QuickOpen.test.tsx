@@ -368,3 +368,72 @@ describe("Quick Open", () => {
     );
   });
 });
+
+describe("Quick Open's commands (ED-2a)", () => {
+  it("lists commands for >, filters them by word, and runs the chosen one", async () => {
+    const sent = fakeNative();
+    const setSidebarView = vi.fn();
+    const onClose = vi.fn();
+    useWorkbenchStore.setState({ setSidebarView });
+    render(<QuickOpen seed=">" onClose={onClose} />);
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveValue(">");
+    expect(options()).toContain("Show Search");
+    expect(options()).toContain("Go to File…Ctrl+P");
+
+    fireEvent.change(box, { target: { value: ">search show" } });
+    expect(options()).toEqual(["Show Search"]);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(setSidebarView).toHaveBeenCalledWith("search");
+    expect(onClose).toHaveBeenCalledOnce();
+    // Commands never ask the File index.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(sent).toEqual([]);
+  });
+
+  it("gives the focus back when a command doesn't take it", async () => {
+    fakeNative();
+    const before = document.createElement("button");
+    document.body.append(before);
+    before.focus();
+    useWorkbenchStore.setState({ setSidebarView: vi.fn() });
+    const { unmount } = render(
+      <QuickOpen seed=">show search" onClose={vi.fn()} />,
+    );
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveFocus();
+    fireEvent.keyDown(box, { key: "Enter" });
+    // The box would unmount here, leaving the focus nowhere.
+    unmount();
+    expect(document.activeElement).toBe(document.body);
+    await waitFor(() => expect(before).toHaveFocus());
+    before.remove();
+  });
+
+  it("switches between Files and commands with the chords that open it", () => {
+    fakeNative();
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.keyDown(input(), { key: "P", ctrlKey: true, shiftKey: true });
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveValue(">");
+    fireEvent.keyDown(box, { key: "p", ctrlKey: true });
+    expect(input()).toHaveValue("");
+  });
+
+  it("goes back to Files for Go to File, and says when nothing matches", async () => {
+    fakeNative();
+    const onClose = vi.fn();
+    render(<QuickOpen seed=">" onClose={onClose} />);
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    fireEvent.change(box, { target: { value: ">zzz" } });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No matching commands.",
+    );
+    fireEvent.change(box, { target: { value: ">go to file" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(input()).toHaveValue("");
+    fireEvent.change(input(), { target: { value: "app" } });
+    await waitFor(() => expect(options()).toHaveLength(2));
+  });
+});

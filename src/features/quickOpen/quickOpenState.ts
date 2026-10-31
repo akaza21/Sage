@@ -2,12 +2,30 @@ import { create } from "zustand";
 
 import type { ResourceRef } from "../../domain/workbench";
 
-/** Whether Quick Open is showing. Its UI loads on first open. */
-export const useQuickOpenStore = create<{ open: boolean }>(() => ({
-  open: false,
-}));
+/**
+ * Whether Quick Open is showing, and the text it starts with: ">" lists
+ * commands (ED-2a). Each opening has its own number, so a new one starts
+ * afresh. Its UI loads on first open.
+ */
+export const useQuickOpenStore = create<{
+  open: boolean;
+  seed: string;
+  opening: number;
+}>(() => ({ open: false, seed: "", opening: 0 }));
 
-export const openQuickOpen = () => useQuickOpenStore.setState({ open: true });
+const openWith = (seed: string) =>
+  useQuickOpenStore.setState((state) => ({
+    open: true,
+    seed,
+    opening: state.opening + 1,
+  }));
+
+/** Opens Quick Open on Files; while open, it stays as it is. */
+export const openQuickOpen = () => {
+  if (!useQuickOpenStore.getState().open) openWith("");
+};
+/** Opens Quick Open on the editor's commands. */
+export const openCommandPalette = () => openWith(">");
 export const closeQuickOpen = () => useQuickOpenStore.setState({ open: false });
 
 /** Quick Open sends at most this many recently opened Files. */

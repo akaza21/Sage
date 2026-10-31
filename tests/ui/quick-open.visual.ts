@@ -12,10 +12,13 @@ async function installNativeStandIn(page: Page, files: string[]) {
       await import("/src/features/quickOpen/quickOpenGateway.ts");
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const rootId = useWorkbenchStore.getState().project!.roots[0].id;
-    // Calls in the first 600 ms wait until then, as on a cold index (React
-    // runs the first query's effect twice in development).
-    const coldUntil = Date.now() + 600;
+    // Calls in the 600 ms after the first one wait until then, as on a cold
+    // index (React runs the first query's effect twice in development).
+    // Counted from the first call, not from here, so a slow first open of
+    // the box can't use the cold window up before it asks.
+    let coldUntil = 0;
     setQuickOpenInvoke(async (_command, args) => {
+      if (coldUntil === 0) coldUntil = Date.now() + 600;
       const request = args.request as {
         query: string;
         recent: Array<{ rootId: string; relativePath: string }>;
@@ -63,6 +66,57 @@ async function activeFile(page: Page) {
     );
   });
 }
+
+test.describe("Command palette (ED-2a)", () => {
+  test("opens with Ctrl/Cmd+Shift+P and runs the Editor's commands", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1380, height: 880 });
+    await openScenario(page, "editor", "editor");
+    await expect(page.locator(".cm-content")).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Quick Open" });
+    const box = dialog.getByRole("combobox", { name: "Run a command" });
+    const options = dialog.getByRole("option");
+
+    await page.keyboard.press("ControlOrMeta+Shift+p");
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue(">");
+    await box.fill(">go to line");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Go to Line…");
+    // Its own shortcut is shown (Control+G on every platform).
+    await expect(options.first().locator("kbd")).toHaveText("Ctrl+G");
+    await box.press("Enter");
+    await expect(dialog).toBeHidden();
+    await expect(
+      page.getByRole("textbox", { name: "Go to line" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("ControlOrMeta+Shift+p");
+    await box.fill(">show search");
+    await box.press("Enter");
+    await expect(dialog).toBeHidden();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
+          return useWorkbenchStore.getState().sidebarView;
+        }),
+      )
+      .toBe("search");
+
+    // Go to File turns the box back into Quick Open.
+    await page.keyboard.press("ControlOrMeta+Shift+p");
+    await box.fill(">file");
+    await box.press("Enter");
+    await expect(
+      dialog.getByRole("combobox", { name: "Search Files by name" }),
+    ).toHaveValue("");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+});
 
 test.describe("Quick Open", () => {
   test("opens with Ctrl/Cmd+P, finds, goes to a line, and opens a File", async ({

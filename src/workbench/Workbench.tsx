@@ -48,7 +48,10 @@ import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
 import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
-import { openQuickOpen } from "../features/quickOpen/quickOpenState";
+import {
+  openCommandPalette,
+  openQuickOpen,
+} from "../features/quickOpen/quickOpenState";
 
 registerWorkbenchSurfaces();
 
@@ -212,6 +215,13 @@ export function Workbench() {
       ) {
         event.preventDefault();
         openQuickOpen();
+      }
+      if (
+        windowMode === "editor" &&
+        matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
+      ) {
+        event.preventDefault();
+        openCommandPalette();
       }
       if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
         event.preventDefault();
