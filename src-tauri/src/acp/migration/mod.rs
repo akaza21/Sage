@@ -1,5 +1,8 @@
 mod backup;
 mod build_intent;
+mod chat_attention;
+#[cfg(test)]
+pub(crate) use chat_attention::assert_v19_upgrade as assert_attention_v19_upgrade_for_test;
 mod context_handoff;
 #[cfg(test)]
 mod context_handoff_tests;
@@ -122,9 +125,8 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         .as_ref()
         .map(|paths| MigrationLock::acquire(paths.parent()))
         .transpose()?;
-    if fingerprint::classify_connection(&opened.connection)? != SchemaClass::CurrentV20 {
-        workspace_changes::apply(&mut opened.connection)?;
-    }
+    workspace_changes::apply(&mut opened.connection)?;
+    chat_attention::apply(&mut opened.connection)?;
     context_handoff::apply(&mut opened.connection)?;
     Ok(opened)
 }
@@ -176,7 +178,10 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20 => {
+        SchemaClass::CurrentV18
+        | SchemaClass::CurrentV19
+        | SchemaClass::CurrentV20
+        | SchemaClass::CurrentV21 => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -334,7 +339,10 @@ fn checkpoint_source(
 fn verify_current(connection: &Connection) -> AppResult<()> {
     if !matches!(
         fingerprint::classify_connection(connection)?,
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20
+        SchemaClass::CurrentV18
+            | SchemaClass::CurrentV19
+            | SchemaClass::CurrentV20
+            | SchemaClass::CurrentV21
     ) {
         return invalid("database did not reach an exact current schema");
     }

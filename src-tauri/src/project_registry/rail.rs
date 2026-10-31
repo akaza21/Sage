@@ -83,6 +83,18 @@ pub(super) fn attach_rail_chats(
                 },
             )
             .collect();
+        let ids = project
+            .rail_chats
+            .iter()
+            .map(|chat| chat.id.clone())
+            .collect::<Vec<_>>();
+        let summaries =
+            crate::chat_attention::store::get(connection, &project.id, &ids).map_err(|_| {
+                crate::error::AppError::InvalidRequest("chat attention summary unavailable".into())
+            })?;
+        for (chat, summary) in project.rail_chats.iter_mut().zip(summaries) {
+            chat.status = Some(crate::chat_attention::store::rail_status(&summary).into());
+        }
         project.rail_chats_truncated = truncated;
     }
     Ok(())

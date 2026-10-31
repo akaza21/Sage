@@ -11,6 +11,10 @@ import {
   type FixtureState,
 } from "./agentTurnJourneyModel";
 import { journeySnapshot } from "./agentTurnJourneySnapshot";
+import {
+  installJourneyAttention,
+  journeyDetailPage,
+} from "./agentTurnJourneyAttention";
 
 function rejectWhenFull(total: number): void {
   if (total >= MAX_CAPTURED_REQUESTS) {
@@ -24,6 +28,7 @@ function rejectWhenFull(total: number): void {
 }
 
 export function installJourneyServices(state: FixtureState): () => void {
+  const restoreAttention = installJourneyAttention(state);
   const originalAcp = { ...acpDesktop };
   const originalDesktopListHarnessModels = desktop.listHarnessModels;
   const ports = getWorkbenchPorts();
@@ -41,7 +46,7 @@ export function installJourneyServices(state: FixtureState): () => void {
     if (!page || page.projectId !== request.projectId) {
       throw new Error("Journey page request crossed Project or Chat ownership");
     }
-    return structuredClone(page);
+    return journeyDetailPage(page, !request.cursor);
   };
   acpDesktop.subscribeProjectionChanges = async (listener) => {
     if (state.listeners.size >= MAX_PROJECTION_LISTENERS) {
@@ -132,6 +137,7 @@ export function installJourneyServices(state: FixtureState): () => void {
   });
 
   return () => {
+    restoreAttention();
     Object.assign(acpDesktop, originalAcp);
     ports.project.getBootstrapSnapshot = originalPorts.getBootstrapSnapshot;
     ports.project.persistProjectLayout = originalPorts.persistProjectLayout;

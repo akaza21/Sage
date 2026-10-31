@@ -365,6 +365,9 @@ pub struct SessionProjection {
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
     pub handoffs: Vec<super::context_handoff::HandoffSummary>,
+    /// Attention observed in the same durable snapshot as the latest transcript page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) observed_attention_position: Option<crate::chat_attention::contract::Position>,
     pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
     pub(crate) goal: super::goal::GoalState,
     pub project_id: SageProjectId,

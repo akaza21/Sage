@@ -113,6 +113,48 @@ fn temporary_chat_purge_removes_transition_receipts_and_their_quota_charge() {
 }
 
 #[test]
+fn deleting_side_chat_invalidates_parent_attention() {
+    let Fixture {
+        root,
+        database,
+        project,
+        side,
+    } = fixture();
+    let parent: String = database
+        .connection()
+        .query_row(
+            "SELECT json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE id=?1",
+            [&side],
+            |row| row.get(0),
+        )
+        .unwrap();
+    database
+        .connection()
+        .execute(
+            "INSERT INTO chat_attention(chat_id,pending_approvals) VALUES(?1,1)",
+            [&side],
+        )
+        .unwrap();
+    let before = crate::chat_attention::store::get(
+        &database.connection(),
+        &project,
+        std::slice::from_ref(&parent),
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(before.pending_approvals, 1);
+    database.remove_side_chat(&project, &side).unwrap();
+    let after = crate::chat_attention::store::get(&database.connection(), &project, &[parent])
+        .unwrap()
+        .remove(0);
+    assert_eq!(after.pending_approvals, 0);
+    assert!(after.activity_position > before.activity_position);
+    assert!(after.revision > before.revision);
+    drop(database);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn a_missing_history_guard_is_named_and_refuses_before_deleting_anything() {
     let Fixture {
         root,

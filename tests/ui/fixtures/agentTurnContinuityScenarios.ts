@@ -114,10 +114,8 @@ export function registerAgentTurnContinuityScenarios() {
     expect((await audit(page)).workbench).toMatchObject({
       activeTabId: JOURNEY_IDS.alpha,
       pinnedAgentChatOwner: JOURNEY_IDS.alpha,
-      // AP-A1: pane acknowledgements are kept only for displayed panes;
-      // the rail's own unread state below proves the background completion.
-      betaSeenFingerprint: null,
     });
+    expect((await audit(page)).workbench.betaReadPosition).not.toBeNull();
     const betaRailRow = page.locator(".project-chat-row").filter({
       has: page.getByRole("button", {
         name: /^Open chat Beta(?:, pinned)?$/,

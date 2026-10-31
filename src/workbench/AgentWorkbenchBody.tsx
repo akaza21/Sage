@@ -8,6 +8,7 @@ import { AgentToolsProvider } from "./AgentToolsProvider";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { useAgentRailStatus } from "./useAgentRailStatus";
 
 export function AgentWorkbenchBody({
   layout,
@@ -34,6 +35,7 @@ export function AgentWorkbenchBody({
   onOpenArtifactInEditor: (tabId: string) => void;
   onOpenTerminal?: () => void;
 }) {
+  useAgentRailStatus();
   const openSettings = useAgentSettingsState((state) => state.open);
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
     null,

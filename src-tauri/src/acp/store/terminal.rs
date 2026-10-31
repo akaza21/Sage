@@ -92,6 +92,11 @@ pub(crate) fn apply_session_terminal(
         )?,
         "chat",
     )?;
+    crate::chat_attention::store::refresh(
+        &transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     transaction
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;

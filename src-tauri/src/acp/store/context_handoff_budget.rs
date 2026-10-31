@@ -65,7 +65,12 @@ pub(super) fn populate(
          AND s.external_session_id IS NOT NULL AND e.state IN ('starting','running')
          ORDER BY t.ordinal DESC LIMIT 1",
         params![command.project_id.as_str(), command.chat_id.as_str(), command.session_id.as_str(), command.runtime_epoch.get() as i64],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?.max(0) as u64,
+                row.get::<_, Option<i64>>(1)?.map(|value| value.max(0) as u64),
+            ))
+        },
     ).optional()?;
     if let Some((occupancy, maximum)) = usage {
         budget.same_native_identity = true;

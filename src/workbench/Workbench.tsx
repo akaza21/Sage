@@ -22,7 +22,7 @@ import { TabStrip } from "./TabStrip";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
-import { useAgentRailStatus } from "./useAgentRailStatus";
+import { AttentionDetailVisible } from "../app/attentionDetailVisible";
 import {
   type AgentCenterDecision,
   agentCenterChatAction,
@@ -180,7 +180,6 @@ function RendererRecreationPacketCollector({
 }
 
 export function Workbench() {
-  useAgentRailStatus();
   const agentSettingsPage = useAgentSettingsState(
     (state) => state.page !== null,
   );
@@ -271,115 +270,124 @@ export function Workbench() {
             gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
           };
   return (
-    <main
-      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
-      style={workbenchGeometryStyle}
+    <AttentionDetailVisible
+      value={windowMode === "agent" && !agentSettingsPage}
     >
-      <TitleBar
-        mode={windowMode}
-        onModeChange={setWindowMode}
-        inert={resourceModal}
-        agentNavigationCollapsed={agentNavigationCollapsed}
-        onToggleAgentNavigation={() =>
-          setAgentNavigationCollapsed((collapsed) => !collapsed)
-        }
-      />
-      <AgentCenterKeeper windowMode={windowMode} />
-      <EditorContinuityKeeper windowMode={windowMode} />
-      <RendererRecreationPacketCollector windowMode={windowMode} />
-      {windowMode === "agent" ? (
-        <>
-          <Activity mode={agentSettingsPage ? "hidden" : "visible"}>
-            <LazyModuleBoundary
-              label="Agent workspace"
-              load={loadAgentWorkbenchBody}
-              render={(AgentWorkbenchBody) => (
-                <AgentWorkbenchBody
-                  layout={agentLayout}
-                  style={bodyStyle}
-                  drawerOpen={drawerOpen}
-                  navigationCollapsed={agentNavigationCollapsed}
-                  onExpandNavigation={() => setAgentNavigationCollapsed(false)}
-                  artifactExpanded={agentArtifactExpanded}
-                  onArtifactExpandedChange={changeAgentArtifact}
-                  onAgentLeftRailWidthChange={(width) =>
-                    changeAgentSidebarWidth("left", width)
-                  }
-                  onOpenTerminal={() => setTerminalOpen(true)}
-                  onAgentArtifactWidthChange={(width) =>
-                    changeAgentSidebarWidth("artifact", width)
-                  }
-                  onOpenArtifactInEditor={openArtifactInEditor}
-                />
-              )}
-            />
-          </Activity>
-          {agentSettingsPage ? (
-            <LazyModuleBoundary
-              label="Agent settings"
-              load={loadAgentSettings}
-              render={(AgentSettingsSurface) => <AgentSettingsSurface />}
-            />
-          ) : null}
-        </>
-      ) : (
-        <div className="workbench__body" style={bodyStyle}>
-          <RightSidebar compact={compact} railFirst />
-          {!compact ? (
-            <WorkbenchSidebarSplitter
-              ariaLabel="Resize Editor tool rail"
-              side="leading"
-              value={editorToolRailWidth}
-              width={EDITOR_TOOL_RAIL_WIDTH}
-              pointerOffsetAdjustment={EDITOR_ACTIVITY_BAR_WIDTH}
-              onChange={setEditorToolRailWidth}
-            />
-          ) : null}
-          <div
-            className="center-region"
-            inert={drawerOpen}
-            aria-hidden={drawerOpen || undefined}
-          >
-            <div className="workbench__tabs">
-              <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
-            </div>
-            <LazyModuleBoundary
-              label="Editor"
-              load={loadEditorCanvas}
-              render={(ActiveEditorCanvas) => (
-                <ActiveEditorCanvas
-                  onOpenAgent={() => setWindowMode("agent")}
-                />
-              )}
-            />
-          </div>
-        </div>
-      )}
-      {terminalOpen ? (
-        <LazyModuleBoundary
-          label="Terminal"
-          load={loadTerminalDock}
-          render={(TerminalDock) => (
-            <TerminalDock
-              setOpen={setTerminalOpen}
-              inert={resourceModal}
-              pinnedChatId={pinnedAgentChatOwner()}
-            />
-          )}
+      <main
+        className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
+        style={workbenchGeometryStyle}
+      >
+        <TitleBar
+          mode={windowMode}
+          onModeChange={setWindowMode}
+          inert={resourceModal}
+          agentNavigationCollapsed={agentNavigationCollapsed}
+          onToggleAgentNavigation={() =>
+            setAgentNavigationCollapsed((collapsed) => !collapsed)
+          }
         />
-      ) : null}
-      <StatusBar
-        inert={resourceModal}
-        railLeading={windowMode === "editor"}
-        showSidebarToggle={windowMode === "editor"}
-        showEditorSettings={windowMode === "editor"}
-        onOpenTerminal={
-          !terminalOpen && isTauriRuntime()
-            ? () => setTerminalOpen(true)
-            : undefined
-        }
-      />
-      <DirtyTabDialog />
-    </main>
+        <AgentCenterKeeper windowMode={windowMode} />
+        <EditorContinuityKeeper windowMode={windowMode} />
+        <RendererRecreationPacketCollector windowMode={windowMode} />
+        {windowMode === "agent" ? (
+          <>
+            <Activity mode={agentSettingsPage ? "hidden" : "visible"}>
+              <LazyModuleBoundary
+                label="Agent workspace"
+                load={loadAgentWorkbenchBody}
+                render={(AgentWorkbenchBody) => (
+                  <AgentWorkbenchBody
+                    layout={agentLayout}
+                    style={bodyStyle}
+                    drawerOpen={drawerOpen}
+                    navigationCollapsed={agentNavigationCollapsed}
+                    onExpandNavigation={() =>
+                      setAgentNavigationCollapsed(false)
+                    }
+                    artifactExpanded={agentArtifactExpanded}
+                    onArtifactExpandedChange={changeAgentArtifact}
+                    onAgentLeftRailWidthChange={(width) =>
+                      changeAgentSidebarWidth("left", width)
+                    }
+                    onOpenTerminal={() => setTerminalOpen(true)}
+                    onAgentArtifactWidthChange={(width) =>
+                      changeAgentSidebarWidth("artifact", width)
+                    }
+                    onOpenArtifactInEditor={openArtifactInEditor}
+                  />
+                )}
+              />
+            </Activity>
+            {agentSettingsPage ? (
+              <LazyModuleBoundary
+                label="Agent settings"
+                load={loadAgentSettings}
+                render={(AgentSettingsSurface) => <AgentSettingsSurface />}
+              />
+            ) : null}
+          </>
+        ) : (
+          <div className="workbench__body" style={bodyStyle}>
+            <RightSidebar compact={compact} railFirst />
+            {!compact ? (
+              <WorkbenchSidebarSplitter
+                ariaLabel="Resize Editor tool rail"
+                side="leading"
+                value={editorToolRailWidth}
+                width={EDITOR_TOOL_RAIL_WIDTH}
+                pointerOffsetAdjustment={EDITOR_ACTIVITY_BAR_WIDTH}
+                onChange={setEditorToolRailWidth}
+              />
+            ) : null}
+            <div
+              className="center-region"
+              inert={drawerOpen}
+              aria-hidden={drawerOpen || undefined}
+            >
+              <div className="workbench__tabs">
+                <TabStrip
+                  kinds={[...EDITOR_CANVAS_KINDS]}
+                  showNewChat={false}
+                />
+              </div>
+              <LazyModuleBoundary
+                label="Editor"
+                load={loadEditorCanvas}
+                render={(ActiveEditorCanvas) => (
+                  <ActiveEditorCanvas
+                    onOpenAgent={() => setWindowMode("agent")}
+                  />
+                )}
+              />
+            </div>
+          </div>
+        )}
+        {terminalOpen ? (
+          <LazyModuleBoundary
+            label="Terminal"
+            load={loadTerminalDock}
+            render={(TerminalDock) => (
+              <TerminalDock
+                setOpen={setTerminalOpen}
+                inert={resourceModal}
+                pinnedChatId={pinnedAgentChatOwner()}
+              />
+            )}
+          />
+        ) : null}
+        <StatusBar
+          inert={resourceModal}
+          railLeading={windowMode === "editor"}
+          showSidebarToggle={windowMode === "editor"}
+          showEditorSettings={windowMode === "editor"}
+          onOpenTerminal={
+            !terminalOpen && isTauriRuntime()
+              ? () => setTerminalOpen(true)
+              : undefined
+          }
+        />
+        <DirtyTabDialog />
+      </main>
+    </AttentionDetailVisible>
   );
 }

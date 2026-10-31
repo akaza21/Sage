@@ -3,7 +3,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::acp::{
     contract::{
         BoundedVec, EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText, SageAgentSessionId,
-        SageChatId, SageProjectId, SageRootId,
+        SageChatId, SageProjectId,
     },
     intent::{BindingId, CapabilitySnapshotV1, ModelId, PageCursor},
     lifecycle::Residency,
@@ -35,16 +35,34 @@ pub(crate) fn load_chat_page(
     chat_id: SageChatId,
     cursor: Option<PageCursor>,
 ) -> Result<AcpChatPage, StoreError> {
-    let (title, projection): (String, i64) = connection
+    let snapshot = connection.unchecked_transaction()?;
+    let page = load_chat_page_in(&snapshot, project_id, chat_id, cursor)?;
+    snapshot.commit()?;
+    Ok(page)
+}
+
+fn load_chat_page_in(
+    connection: &rusqlite::Connection,
+    project_id: SageProjectId,
+    chat_id: SageChatId,
+    cursor: Option<PageCursor>,
+) -> Result<AcpChatPage, StoreError> {
+    let (title, projection, attention): (String, i64, i64) = connection
         .query_row(
-            "SELECT title,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            "SELECT c.title,c.projection_revision,COALESCE(a.activity_position,0)
+             FROM chats c LEFT JOIN chat_attention a ON a.chat_id=c.id
+             WHERE c.project_id=?1 AND c.id=?2",
             params![project_id.as_str(), chat_id.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?
         .ok_or(StoreError::Conflict { resource: "chat" })?;
+    let observed_attention_position = cursor
+        .is_none()
+        .then(|| crate::chat_attention::store::position(attention))
+        .transpose()?;
     let sessions = load_sessions(connection, &project_id, &chat_id)?;
-    let project_roots = load_project_roots(connection, &project_id)?;
+    let project_roots = super::history_roots::load_project_roots(connection, &project_id)?;
     let current = connection
         .query_row(
             "SELECT session_id FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2",
@@ -86,6 +104,7 @@ pub(crate) fn load_chat_page(
             project_id.as_str(),
             chat_id.as_str(),
         )?,
+        observed_attention_position,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id: project_id.clone(),
@@ -116,6 +135,7 @@ pub(crate) fn load_chat_page(
     })?;
     let page = AcpChatPage {
         handoffs: empty_page.handoffs,
+        observed_attention_position,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id,
@@ -143,25 +163,6 @@ pub(crate) fn load_chat_page(
         });
     }
     Ok(page)
-}
-
-fn load_project_roots(
-    connection: &rusqlite::Connection,
-    project: &SageProjectId,
-) -> Result<Vec<SageRootId>, StoreError> {
-    let mut statement = connection
-        .prepare("SELECT id FROM project_roots WHERE project_id=?1 ORDER BY ordinal,id LIMIT 9")?;
-    let mut roots = Vec::with_capacity(8);
-    for row in statement.query_map([project.as_str()], |row| row.get::<_, String>(0))? {
-        if roots.len() == 8 {
-            return Err(StoreError::Corrupt("project root limit+1"));
-        }
-        roots.push(SageRootId::parse(row?).map_err(|_| StoreError::Corrupt("project root id"))?);
-    }
-    if roots.is_empty() {
-        return Err(StoreError::Corrupt("project root membership"));
-    }
-    Ok(roots)
 }
 
 fn load_sessions(

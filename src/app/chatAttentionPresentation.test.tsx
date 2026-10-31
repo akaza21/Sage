@@ -1,0 +1,188 @@
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { attention } from "../domain/chatAttention.fixture";
+import type { ChatAttentionV1 } from "../domain/chatAttention";
+import { page } from "../features/chat/acp/acpProjection.fixture";
+import {
+  chatAttention,
+  withPresentedAttention,
+} from "../services/chatAttention";
+import { usePresentedAttention } from "./chatAttentionPresentation";
+import { chatAttentionStore } from "./chatAttentionStore";
+import { useWorkbenchStore } from "./store";
+import { AcpChatProjection } from "../features/chat/acp/AcpChatProjection";
+
+const initial = useWorkbenchStore.getState();
+
+afterEach(() => {
+  cleanup();
+  chatAttentionStore.disconnect();
+  vi.restoreAllMocks();
+  useWorkbenchStore.setState(initial, true);
+});
+
+it("attention acknowledges a successfully presented empty foreground detail", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const empty = attention({
+    activityPosition: "0",
+    revision: "0",
+    terminalPosition: null,
+    terminalState: null,
+    turnState: null,
+  });
+  vi.spyOn(chatAttention, "get").mockResolvedValue([empty]);
+  vi.spyOn(chatAttention, "subscribe").mockResolvedValue(() => undefined);
+  const ack = vi
+    .spyOn(chatAttention, "ack")
+    .mockResolvedValue({ ...empty, readPosition: "0", revision: "1" });
+  const detail = withPresentedAttention(
+    { ...page("completed"), turns: [] },
+    "0",
+  );
+  await chatAttentionStore.connect([
+    { projectId: "project-1", chatIds: ["chat-1"] },
+  ]);
+  render(
+    <AcpChatProjection
+      page={detail}
+      active
+      focused
+      emptyState={<p>Start a chat</p>}
+    />,
+  );
+  await waitFor(() =>
+    expect(ack).toHaveBeenCalledWith("project-1", "chat-1", "0"),
+  );
+});
+
+it("attention integration preserves native titles without token-driven rail recency", () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Project", roots: [] },
+    projectTransitioning: false,
+    tabs: [
+      {
+        id: "chat-1",
+        kind: "chat",
+        title: "Chat: Chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+        updatedAt: 1,
+      },
+    ],
+  });
+  const { rerender } = renderHook(
+    ({ detail }) => usePresentedAttention(detail, false),
+    { initialProps: { detail: page("running") } },
+  );
+  expect(useWorkbenchStore.getState().tabs[0]).toMatchObject({
+    title: "Durable chat",
+    updatedAt: 2,
+  });
+  const tabs = useWorkbenchStore.getState().tabs;
+  const next = page("running");
+  next.turns[0].updatedAt = 999;
+  rerender({ detail: next });
+  expect(useWorkbenchStore.getState().tabs).toBe(tabs);
+});
+
+it("attention acknowledges a presented page after delayed summary bootstrap", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const get = vi.spyOn(chatAttention, "get").mockResolvedValue([attention()]);
+  const detail = withPresentedAttention(page("completed"), "1");
+  let finish!: (rows: ChatAttentionV1[]) => void;
+  get.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.spyOn(chatAttention, "subscribe").mockResolvedValue(() => undefined);
+  const ack = vi
+    .spyOn(chatAttention, "ack")
+    .mockResolvedValue(attention({ readPosition: "1", revision: "4" }));
+  const connecting = chatAttentionStore.connect([
+    { projectId: "project-1", chatIds: ["chat-1"] },
+  ]);
+  await Promise.resolve();
+  renderHook(() => usePresentedAttention(detail, true));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  expect(ack).not.toHaveBeenCalled();
+  await act(async () => {
+    finish([attention({ activityPosition: "3", revision: "3" })]);
+    await connecting;
+  });
+  await waitFor(() =>
+    expect(ack).toHaveBeenCalledWith("project-1", "chat-1", "1"),
+  );
+  expect(ack).toHaveBeenCalledTimes(1);
+});
+
+it("attention stays quiet while a focused chat streams", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Project", roots: [] },
+    projectTransitioning: false,
+    tabs: [
+      {
+        id: "chat-1",
+        kind: "chat",
+        title: "Durable chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+        updatedAt: 2,
+      },
+    ],
+  });
+  const read = attention({ readPosition: "1", activityPosition: "1" });
+  const get = vi.spyOn(chatAttention, "get").mockResolvedValue([read]);
+  vi.spyOn(chatAttention, "subscribe").mockResolvedValue(() => undefined);
+  const ack = vi.spyOn(chatAttention, "ack").mockResolvedValue(read);
+  const detail = withPresentedAttention(page("running"), "1");
+  await chatAttentionStore.connect([
+    { projectId: "project-1", chatIds: ["chat-1"] },
+  ]);
+  const { rerender } = renderHook(
+    ({ current }) => usePresentedAttention(current, true),
+    { initialProps: { current: detail } },
+  );
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const loadsBefore = get.mock.calls.length;
+  let notices = 0;
+  const unsubscribe = chatAttentionStore.subscribe(() => {
+    notices += 1;
+  });
+  let tabWrites = 0;
+  const unwatch = useWorkbenchStore.subscribe((state, previous) => {
+    if (state.tabs !== previous.tabs) tabWrites += 1;
+  });
+  // 200 streamed projection pages, each a new object as merges produce.
+  for (let token = 0; token < 200; token += 1) {
+    const streamed = {
+      ...detail,
+      projectionRevision: String(13 + token),
+      turns: detail.turns.map((turn) => ({
+        ...turn,
+        items: turn.items.map((item) => ({
+          ...item,
+          payload: { ...item.payload, text: `token ${token}` },
+        })),
+      })),
+    } as unknown as typeof detail;
+    rerender({ current: streamed });
+  }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  unsubscribe();
+  unwatch();
+  expect(get).toHaveBeenCalledTimes(loadsBefore);
+  expect(ack).not.toHaveBeenCalled();
+  expect(notices).toBe(0);
+  expect(tabWrites).toBe(0);
+});

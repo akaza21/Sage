@@ -1,11 +1,9 @@
 import { memo, useMemo } from "react";
-import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { ResourceRef } from "../../../domain/workbench";
 import { AnswerActions } from "../AnswerActions";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
-import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
 import {
@@ -25,7 +23,7 @@ import { BrowserOperations } from "./BrowserOperations";
 import { terminalTurnStates } from "./statusSemantics";
 import { TranscriptPart } from "../lazyParts";
 import { isSideChatId } from "../../../workbench/sideChatState";
-import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
+import type { AcpChatTurnProps } from "./acpChatPresentationTypes";
 
 export const AcpTranscriptTurn = memo(
   function Turn({
@@ -38,19 +36,7 @@ export const AcpTranscriptTurn = memo(
     onRetry,
     inherited = false,
     answerActions = inherited,
-  }: {
-    page: AcpChatPage;
-    turn: TurnProjection;
-    /** A fork's read-only parent Turn: never interactive or quotable. */
-    inherited?: boolean;
-    /** Earlier/inherited answers retain Copy (s2/f0066). */
-    answerActions?: boolean;
-    rootLabels?: Readonly<Record<string, string>>;
-    workspaceChanges?: readonly TurnWorkspaceChange[];
-    workspaceIncomplete?: boolean;
-    onOpenResource?: AcpChatPresentationProps["onOpenResource"];
-    onRetry?: () => void;
-  }) {
+  }: AcpChatTurnProps) {
     const primary = turn.items.filter(
       (item) => item.origin === "primary" && item.kind !== "fileChangeDiff",
     );

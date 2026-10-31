@@ -62,7 +62,7 @@ function Pane({
   extra?: ReactNode;
 }) {
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const approval = useApprovalSlot(turn(items), "chat-1", composerRef, {
+  const approval = useApprovalSlot(turn(items), composerRef, {
     focused,
     onCancelTurn: () => undefined,
   });

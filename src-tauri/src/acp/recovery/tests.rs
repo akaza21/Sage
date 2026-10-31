@@ -69,6 +69,7 @@ fn restart_recovery_commits_delivery_unknown_and_converges_to_cold_zero_runtime(
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0);",
     ).unwrap();
 
+    install_attention_fixture(&connection);
     let report = recover_after_restart(&mut connection, 50).unwrap();
     assert_eq!(report.recovered_sessions, 1);
     assert_eq!(
@@ -207,6 +208,7 @@ fn recovery_connection() -> Connection {
          INSERT INTO acp_store_usage VALUES(1,0,0,0,0);",
     ).unwrap();
     crate::acp::store::handoff_fixture::create(&connection);
+    install_attention_fixture(&connection);
     connection
 }
 
@@ -249,7 +251,7 @@ fn add_second_live_tree(connection: &Connection) {
     connection
         .execute_batch(
             "INSERT INTO chats VALUES('chat-two','project-one',0,0);
-             INSERT INTO agent_sessions VALUES('session-two','project-one','chat-two','active','hot',0,0,0,NULL);
+             INSERT INTO agent_sessions(id,project_id,chat_id,state,residency,revision,projection_revision,updated_at,terminal_at) VALUES('session-two','project-one','chat-two','active','hot',0,0,0,NULL);
              INSERT INTO chat_session_heads VALUES('session-two');
              INSERT INTO session_runtime_epochs VALUES('session-two',1,'running',NULL,NULL,1);
              INSERT INTO acp_session_usage VALUES('session-two',0,0,0,0);",
@@ -291,4 +293,17 @@ fn zero_process_recovery_leaves_a_concurrent_live_tree_running() {
     let report = recover_runtime_after_zero_process(&mut connection, command).unwrap();
     assert_eq!(report.recovered_sessions, 1);
     assert_eq!(running_trees(&connection), ["session-one"]);
+}
+
+fn install_attention_fixture(connection: &Connection) {
+    connection.execute_batch("ALTER TABLE agent_sessions ADD COLUMN ordinal INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE turns ADD COLUMN ordinal INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE server_requests ADD COLUMN project_id TEXT;
+        ALTER TABLE server_requests ADD COLUMN chat_id TEXT;
+        ALTER TABLE server_requests ADD COLUMN normalized_payload_json TEXT;
+        CREATE TABLE workbench_tabs(id TEXT, project_id TEXT, kind TEXT, metadata_json TEXT);
+        CREATE TABLE chat_lineage(child_project_id TEXT,child_chat_id TEXT,parent_project_id TEXT,parent_chat_id TEXT,relation TEXT);") .unwrap();
+    connection
+        .execute_batch(include_str!("../../../migrations/020_chat_attention.sql"))
+        .unwrap();
 }

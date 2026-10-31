@@ -162,12 +162,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     { closeSession, endSession },
     composerRef,
   );
-  const approval = useApprovalSlot(
-    activeAcpTurn,
-    chatId ?? activeTabId,
-    composerRef,
-    { focused, onCancelTurn: cancelTurn ?? undefined },
-  );
+  const approval = useApprovalSlot(activeAcpTurn, composerRef, {
+    focused,
+    onCancelTurn: cancelTurn ?? undefined,
+  });
   useRendererRecreationFocus(surfaceRef, focused ? acpPage : null);
   useComposerFocusHotkey(composerRef, composerHotkeyEnabled);
   const { showJumpToLatest, updateFollowEnd, jumpToLatest } = useFollowEnd({

@@ -151,12 +151,20 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
         expected.pragma_update(None, "user_version", 19)?;
     }
     if version >= 20 {
-        expected.execute_batch(super::super::context_handoff::V20)?;
+        expected.execute_batch(super::super::chat_attention::V20)?;
         expected.execute(
             "INSERT INTO schema_migrations(version,applied_at) VALUES(20,0)",
             [],
         )?;
         expected.pragma_update(None, "user_version", 20)?;
+    }
+    if version >= 21 {
+        expected.execute_batch(super::super::context_handoff::V21)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES(21,0)",
+            [],
+        )?;
+        expected.pragma_update(None, "user_version", 21)?;
     }
     Ok(expected)
 }

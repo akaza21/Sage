@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn v19_upgrade_preserves_history_and_heads() {
+fn v20_upgrade_preserves_history_and_heads() {
     let mut connection = Connection::open_in_memory().unwrap();
     schema_upgrade::build_fresh_v18(&mut connection).unwrap();
     workspace_changes::apply(&mut connection).unwrap();
@@ -12,10 +12,11 @@ fn v19_upgrade_preserves_history_and_heads() {
         INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at,terminal_at,exit_kind) VALUES('project','chat','session',1,'exited',1,2,'parked');
         INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,created_at,updated_at,terminal_at) VALUES('turn','project','chat','session',1,0,'intent','completed','correlated',1,2,2);
         INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,kind,lifecycle,payload_json,payload_bytes,payload_digest,created_at,updated_at,terminal_at) VALUES('item','project','chat','session','turn',1,0,'primary','text','completed','{"kind":"text","payload":{"text":"prompt"}}',43,'b2bf66ef982a206f5552f31203f5825ec8155829efc5a4d0f63ba817a6dbe9fe',1,2,2);"#).unwrap();
+    chat_attention::apply(&mut connection).unwrap();
     context_handoff::apply(&mut connection).unwrap();
     assert_eq!(
         fingerprint::classify_connection(&connection).unwrap(),
-        SchemaClass::CurrentV20
+        SchemaClass::CurrentV21
     );
     assert_eq!(
         connection

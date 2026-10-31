@@ -239,6 +239,11 @@ pub(super) fn prepare_turn_in(
         )?,
         "chat",
     )?;
+    crate::chat_attention::store::refresh(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     Ok(PreparedTurn {
         turn_id,
         item_id,

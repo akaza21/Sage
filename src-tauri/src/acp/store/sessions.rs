@@ -334,7 +334,8 @@ pub(super) fn update_chat(
             ],
         )?,
         "chat",
-    )
+    )?;
+    crate::chat_attention::store::refresh(transaction, project.as_str(), chat.as_str())
 }
 
 pub(super) fn ensure_one(changed: usize, resource: &'static str) -> Result<(), StoreError> {

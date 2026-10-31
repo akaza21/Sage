@@ -202,6 +202,8 @@ impl Database {
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
         transaction.pragma_update(None, "defer_foreign_keys", true)?;
+        crate::chat_attention::store::removing_side_chat(&transaction, project, chat)
+            .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
         let guards = history_guards(&transaction)?;
         for (name, _) in &guards {
             transaction.execute_batch(&format!("DROP TRIGGER \"{name}\""))?;

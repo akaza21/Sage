@@ -5,6 +5,7 @@ use uuid::Uuid;
 use super::*;
 use crate::domain::{ProjectLayoutRequest, ProjectSwitchRequest};
 
+mod attention;
 mod welcome;
 
 fn legacy_welcome_session(database: &Database) -> String {

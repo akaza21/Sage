@@ -2,6 +2,12 @@ import { Search, Settings, SquarePen } from "../ui/leanIcons";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
+import {
+  chatAttentionStore,
+  useChatAttention,
+} from "../app/chatAttentionStore";
+import { attentionStatus } from "../domain/chatAttention";
+import { useAttentionDetailVisible } from "../app/attentionDetailVisible";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
@@ -13,24 +19,16 @@ import {
   subscribeChatSearchFolderRequest,
 } from "../features/chatSearch/chatSearchScope";
 import {
-  ackSessionRailUnread,
-  pinSessionRailIds,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
 import {
-  collectAgentRailPinIds,
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
 import { AgentRailSections } from "./AgentRailSections";
 import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
-import {
-  clearAgentRailUnread,
-  useAgentRailInteractions,
-} from "./agentRailInteractions";
+import { useAgentRailInteractions } from "./agentRailInteractions";
 import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
 const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
   () => import("./AgentRailArchiveNotice"),
@@ -78,6 +76,8 @@ export function LeftSidebar({
   const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const interactions = useAgentRailInteractions();
+  const attention = useChatAttention();
+  const detailVisible = useAttentionDetailVisible();
   const openSettings = useAgentSettingsState((state) => state.open);
   const loadRepositoryInventory = useWorkbenchStore(
     (state) => state.loadRepositoryInventory,
@@ -107,43 +107,31 @@ export function LeftSidebar({
         projects,
         currentProjectId: project?.id ?? null,
         currentChats: tabs.filter((tab) => tab.kind === "chat"),
-      }),
-    [project?.id, projects, tabs],
+      }).map((group) => ({
+        ...group,
+        chats: group.chats.map((chat) => {
+          const summary = attention.get(chat.id);
+          return summary
+            ? { ...chat, status: attentionStatus(summary).status }
+            : chat;
+        }),
+      })),
+    [project?.id, projects, tabs, attention],
   );
   const prefs = useAgentRailViewPrefs();
-  pinSessionRailIds(collectAgentRailPinIds(groups, project?.id ?? null));
   const unreadByChatId: Record<string, boolean> = {};
   for (const group of groups) {
     for (const chat of group.chats) {
-      unreadByChatId[chat.id] =
-        interactions.unread.has(chat.id) ||
-        sessionRailUnreadVisible({
-          focused: group.id === project?.id && chat.id === activeTabId,
-          status: chat.status,
-          updatedAt: chat.updatedAt,
-          seenFingerprint: seenSessionRailFingerprint(chat.id),
-        });
+      unreadByChatId[chat.id] = sessionRailUnreadVisible(
+        attention.get(chat.id),
+        detailVisible && group.id === project?.id && chat.id === activeTabId,
+      );
     }
   }
   const sections = useMemo(() => deriveAgentRailSections(groups), [groups]);
 
   const markAllRead = () => {
-    clearAgentRailUnread();
-    for (const group of groups) {
-      for (const chat of group.chats) {
-        const fingerprint = sessionRailFingerprint(chat.status, chat.updatedAt);
-        if (
-          sessionRailUnreadVisible({
-            focused: group.id === project?.id && chat.id === activeTabId,
-            status: chat.status,
-            updatedAt: chat.updatedAt,
-            seenFingerprint: seenSessionRailFingerprint(chat.id),
-          })
-        ) {
-          ackSessionRailUnread(chat.id, fingerprint);
-        }
-      }
-    }
+    void chatAttentionStore.markAllRead();
     setRailTick((tick) => tick + 1);
   };
 

@@ -6,7 +6,10 @@ import type {
   ProjectLayoutRequest,
   WorkbenchTab,
 } from "../domain/workbench";
-import { assertBrowserChatRenameIdentity } from "./browserChat";
+import {
+  assertBrowserChatRenameIdentity,
+  createBrowserChatTab,
+} from "./browserChat";
 import {
   appendBrowserSimulatorTurn,
   BrowserGitMutationUnavailableError,
@@ -28,6 +31,13 @@ function messages(count: number, text = "x"): ChatMessage[] {
 }
 
 const request = { sessionId: "session", modelId: "sim-fast", text: "hello" };
+
+it("creates honestly untitled and unpinned browser chats", () => {
+  expect(createBrowserChatTab([], 12)).toMatchObject({
+    title: "Chat: Chat",
+    pinned: false,
+  });
+});
 
 describe("browser repository mutations", () => {
   it("reports file rename as a typed native-only operation", async () => {

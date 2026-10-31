@@ -3,7 +3,10 @@ use super::*;
 pub(super) const V19: &str = include_str!("../../../migrations/019_turn_workspace_changes.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
-    if fingerprint::classify_connection(connection)? == SchemaClass::CurrentV19 {
+    if matches!(
+        fingerprint::classify_connection(connection)?,
+        SchemaClass::CurrentV19 | SchemaClass::CurrentV20 | SchemaClass::CurrentV21
+    ) {
         return Ok(());
     }
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV18 {
@@ -96,7 +99,7 @@ mod tests {
             let opened = open_or_migrate(&path).unwrap();
             assert_eq!(
                 fingerprint::classify_connection(&opened).unwrap(),
-                SchemaClass::CurrentV20
+                SchemaClass::CurrentV21
             );
             let row: (String,String,String,i64,i64,i64) = opened.query_row("SELECT s.state,t.state,i.payload_json,u.payload_bytes,p.payload_bytes,g.shared_payload_bytes FROM agent_sessions s JOIN turns t ON t.session_id=s.id JOIN items i ON i.turn_id=t.id JOIN acp_session_usage u ON u.session_id=s.id JOIN acp_project_usage p ON p.project_id=s.project_id CROSS JOIN acp_store_usage g",[],|row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?))).unwrap();
             assert_eq!(

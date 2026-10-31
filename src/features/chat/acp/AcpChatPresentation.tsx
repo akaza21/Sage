@@ -1,3 +1,4 @@
+import { usePresentedAttention } from "../../../app/chatAttentionPresentation";
 import { Fragment, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
@@ -19,6 +20,7 @@ export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 
 export function AcpChatPresentation({
   page,
+  focused = false,
   onOpenResource,
   hasEarlier,
   loadingEarlier,
@@ -29,6 +31,7 @@ export function AcpChatPresentation({
   onRetry,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
+  usePresentedAttention(page, focused);
   const { changes: workspaceChanges, incompleteTurnIds } =
     useTurnWorkspaceChanges(page, isTauriRuntime());
   const navigationRef = useRef<TurnListHost | null>(null);

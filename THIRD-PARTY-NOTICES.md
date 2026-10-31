@@ -4,11 +4,17 @@
 
 Source: pingdotgg/t3code, commit `08a463e`. License: MIT.
 
-Adapted modules:
+Adapted and ported modules:
 - `packages/provider-core/src/server/handoffBudget.ts` -> `src-tauri/src/acp/context_handoff/{budget,history,render}.rs`.
 - `apps/server/src/orchestration-v2/ProviderSessionTransitionPolicy.ts` -> `src-tauri/src/acp/service/session_transition.rs`.
 - `apps/server/src/orchestration-v2/ContextHandoffDelivery.ts` -> `src-tauri/src/acp/context_handoff/delivery.rs` and `src-tauri/src/acp/store/context_handoff.rs`.
 - `apps/server/src/orchestration-v2/ContextHandoffBudget.test.ts` -> `src-tauri/src/acp/context_handoff/tests.rs`, `src-tauri/src/acp/store/session_replace_tests.rs` and `src-tauri/src/acp/fixture/handoff_external_tests.rs`.
+- `src-tauri/src/chat_attention/snapshot.rs` and `src-tauri/src/chat_attention/store.rs`: quiet semantic summaries and owned child-input rollup, from `packages/client-runtime/src/state/threadShell.ts` (`sameApartFromStreaming`, `quietThreadShellAtomFamily`, `childThreadInputsAtomFamily`).
+- `src/domain/chatAttention.ts`: visit/unseen terminal rules and request/running/failure precedence, from `apps/web/src/components/Sidebar.logic.ts` (`resolveThreadLastVisitedAt`, `hasUnseenCompletion`, `hasUnseenFailure`, `resolveSidebarThreadStatus`).
+- `src-tauri/src/chat_attention/store.rs`: the corresponding native sidebar-status projection from `apps/web/src/components/Sidebar.logic.ts`.
+- `tests/ui/fixtures/agentTurnJourneyAttention.ts`: the bounded browser-service fixture counterpart of quiet semantic summaries from `packages/client-runtime/src/state/threadShell.ts`.
+
+Full upstream LICENSE:
 
 MIT License
 

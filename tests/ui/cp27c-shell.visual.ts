@@ -408,6 +408,28 @@ for (const width of [480, 720]) {
         const longTitle = `Chat: ${"Long title ".repeat(20).trim()}`;
         await page.evaluate(async (title) => {
           const { useWorkbenchStore } = await import("/src/app/store.ts");
+          const { acpProjectionStoreFor } =
+            await import("/src/app/acpProjectionRegistry.ts");
+          const { acpDesktop } = await import("/src/services/acpDesktop.ts");
+          const chats = useWorkbenchStore
+            .getState()
+            .tabs.filter((tab) => tab.kind === "chat");
+          // The projection title is canonical and mirrors into the tab, so
+          // the long title must come from every native source, including
+          // the page a remounted Agent view reloads.
+          const load = acpDesktop.getChatPage;
+          acpDesktop.getChatPage = async (...request) => ({
+            ...(await load(...request)),
+            title,
+          });
+          for (const chat of chats) {
+            const current = acpProjectionStoreFor(chat.id as never).getState();
+            if (current.page && current.scope)
+              current.applyAuthoritativePage(current.scope, {
+                ...current.page,
+                title,
+              });
+          }
           useWorkbenchStore.setState((state) => ({
             tabs: state.tabs.map((tab) =>
               tab.kind === "chat" ? { ...tab, title } : tab,

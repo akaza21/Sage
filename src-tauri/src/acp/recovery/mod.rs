@@ -189,6 +189,11 @@ fn recover_candidate(
         )?,
         "chat",
     )?;
+    crate::chat_attention::store::refresh(
+        &transaction,
+        candidate.project_id.as_str(),
+        candidate.chat_id.as_str(),
+    )?;
     transaction
         .commit()
         .map_err(|_| StoreError::CommitUnknown)?;

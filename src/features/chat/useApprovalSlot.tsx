@@ -15,7 +15,6 @@ import type {
 } from "../../domain/acp";
 import { acpDesktop } from "../../services/acpDesktop";
 import { awaitingPermission } from "./acp/statusSemantics";
-import { setChatAwaitingApproval } from "./acp/awaitingApproval";
 import { ApprovalPart } from "./lazyParts";
 
 type PermissionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
@@ -164,13 +163,11 @@ class ApprovalBoundary extends Component<
 
 /**
  * A pending approval in the live turn takes the composer slot. The composer
- * stays mounted (hidden) so its draft survives, and the rail is told which
- * visible chat awaits approval. A card that cannot load restores the
+ * stays mounted (hidden) so its draft survives. A card that cannot load restores the
  * composer, whose Stop control still ends the Turn.
  */
 export function useApprovalSlot(
   turn: TurnProjection | null | undefined,
-  chatId: string | null,
   composerRef: RefObject<HTMLTextAreaElement | null>,
   {
     focused = true,
@@ -196,11 +193,6 @@ export function useApprovalSlot(
     },
     [composerRef],
   );
-  useEffect(() => {
-    if (!chatId) return;
-    setChatAwaitingApproval(chatId, awaiting);
-    return () => setChatAwaitingApproval(chatId, false);
-  }, [chatId, awaiting]);
   const holdsSlot = awaiting && !failed;
   useEffect(() => {
     // The unmounted prompt dropped focus to the body; hand it back to the

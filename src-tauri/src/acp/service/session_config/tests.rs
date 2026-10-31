@@ -151,6 +151,7 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
     .unwrap();
     let mut page = AcpChatPage {
         handoffs: Vec::new(),
+        observed_attention_position: None,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id: owner.project_id.clone(),

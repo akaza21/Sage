@@ -35,11 +35,18 @@ impl AcpService {
         let host = setup.service.host_for(&other).unwrap();
         let scheduler = setup.service.lane_for(&other).unwrap().scheduler;
         assert_eq!(scheduler.active().unwrap().tree, other);
+        // The diagnostic ledger is single-slot: the first published lane owns it
+        // and later lanes cannot overwrite it.
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
-        let identity = setup
-            .service
-            .codex_runtime_identity()
-            .expect("other native process identity");
+        assert_eq!(
+            setup
+                .service
+                .codex_runtime_identity()
+                .expect("first native process identity")
+                .owner
+                .session_id,
+            first.session_id.as_str()
+        );
 
         // A newly selected admitted model is explicitly classified fresh.
         let model = crate::acp::intent::ModelId::new("modelId", "fixture-model").unwrap();
@@ -89,11 +96,10 @@ impl AcpService {
         );
         assert!(Arc::ptr_eq(&host, &setup.service.host_for(&other).unwrap()));
         assert_eq!(scheduler.active().unwrap().tree, other);
+        // Only the transitioned owner's diagnostic is cleared; the other lane
+        // keeps its own host, scheduler tree and process (proven by its next turn).
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
-        assert_eq!(
-            setup.service.codex_runtime_identity().as_ref(),
-            Some(&identity)
-        );
+        assert!(setup.service.codex_runtime_identity().is_none());
 
         setup
             .service

@@ -98,6 +98,7 @@ export function mergeProjectionPage(
   incoming: AcpChatPage,
 ): AcpChatPage {
   return normalizeProjectionPage({
+    ...current,
     ...incoming,
     currentSessionId: incoming.currentSessionId ?? current.currentSessionId,
     sessions: mergeById(current.sessions, incoming.sessions),

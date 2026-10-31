@@ -19,7 +19,6 @@ import {
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
@@ -118,7 +117,6 @@ export function AgentChatPanes({
     }
   }, [compact, pairedId, splitRequested]);
   pinAcpProjectionIds(displayedIds);
-  pinUnreadAckIds(displayedIds);
 
   useLayoutEffect(() => {
     pinAgentChatOwner(focusedId);
@@ -245,7 +243,6 @@ export function AgentChatPanes({
                 <AgentChatPane
                   tab={tab}
                   focused={id === focusedId}
-                  snapshot={id === focusedId ? focusedSnapshot : undefined}
                   onFocus={() => void activateTab(id)}
                 />
                 {split && index === 0 ? (
