@@ -172,13 +172,16 @@ mod tests {
     /// Makes `git add new.txt` wait in a clean filter, after it has taken
     /// `index.lock` and before it writes the index. A process stopped by a
     /// zero timeout then never stages the File, however fast the machine.
-    /// The filter leaves the repository folder so a leftover `sleep` can't
-    /// hold it open on Windows.
+    /// The filter is required, so a missing shell fails the test instead of
+    /// quietly skipping the wait. It leaves the repository folder, so a
+    /// leftover filter outliving a killed add doesn't hold it as its working
+    /// folder.
     fn hold_staging_of_new_file(root: &Path) {
         git(
             root,
             &["config", "filter.sage-slow.clean", "cd / && sleep 2 && cat"],
         );
+        git(root, &["config", "filter.sage-slow.required", "true"]);
         fs::create_dir_all(root.join(".git/info")).unwrap();
         fs::write(
             root.join(".git/info/attributes"),
@@ -709,7 +712,7 @@ mod tests {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 result => result.unwrap(),
             }
-            git(&root, &["config", "--unset", "filter.sage-slow.clean"]);
+            git(&root, &["config", "--remove-section", "filter.sage-slow"]);
             let recovered = mutate_git_file_inner_with_process_policy(
                 &state,
                 request,
