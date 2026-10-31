@@ -120,9 +120,12 @@ export function TabStrip({
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
-  const repositories = useWorkbenchStore((state) => state.repositories);
   const gitDecorations = useGitDecorationsModule(
     useEditorSettingsStore((store) => store.settings["git.decorations"]),
+  );
+  // Only while marks show, so a status change elsewhere leaves the strip be.
+  const repositories = useWorkbenchStore((state) =>
+    gitDecorations ? state.repositories : null,
   );
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
   const visibleTabs = kinds
@@ -154,7 +157,10 @@ export function TabStrip({
           const active = tab.id === activeTabId;
           // EP-13: File tabs carry the File's Git status, as in VS Code.
           const git =
-            gitDecorations && tab.kind === "file" && tab.resource
+            gitDecorations &&
+            repositories &&
+            tab.kind === "file" &&
+            tab.resource
               ? gitDecorations.resourceGitDecoration(repositories, tab.resource)
               : undefined;
 

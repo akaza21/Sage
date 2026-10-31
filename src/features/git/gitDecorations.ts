@@ -148,7 +148,7 @@ export function gitDecorationAt(
   );
 }
 
-/** The mark for an open File or Diff tab. */
+/** The mark for an open File tab. */
 export function resourceGitDecoration(
   repositories: ProjectRepositoryStatus,
   resource: ResourceRef,
