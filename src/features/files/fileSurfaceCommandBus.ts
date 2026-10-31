@@ -2,27 +2,36 @@
 export type FileSurfaceCommand =
   "find" | "replace" | "goToLine" | "goToSymbol" | "save";
 
-type Runner = (command: FileSurfaceCommand) => void;
+export interface FileSurfaceCommands {
+  /** Whether `command` would do something now. */
+  available: (command: FileSurfaceCommand) => boolean;
+  run: (command: FileSurfaceCommand) => void;
+}
 
 // The File surfaces showing, latest last; the latest one runs a command.
-const runners: Runner[] = [];
+const surfaces: FileSurfaceCommands[] = [];
 
 /** Registers the File editor that is showing; returns its removal. */
-export function registerFileSurfaceCommands(runner: Runner): () => void {
-  runners.push(runner);
+export function registerFileSurfaceCommands(
+  commands: FileSurfaceCommands,
+): () => void {
+  surfaces.push(commands);
   return () => {
-    const at = runners.lastIndexOf(runner);
-    if (at >= 0) runners.splice(at, 1);
+    const at = surfaces.lastIndexOf(commands);
+    if (at >= 0) surfaces.splice(at, 1);
   };
 }
 
-export function hasFileSurface(): boolean {
-  return runners.length > 0;
+export function fileSurfaceCommandAvailable(
+  command: FileSurfaceCommand,
+): boolean {
+  return surfaces.at(-1)?.available(command) ?? false;
 }
 
-/** Runs `command` in the File editor showing, if there is one. */
+/** Runs `command` in the File editor showing, if it can. */
 export function runFileSurfaceCommand(command: FileSurfaceCommand): boolean {
-  const runner = runners.at(-1);
-  runner?.(command);
-  return runner !== undefined;
+  const surface = surfaces.at(-1);
+  if (!surface?.available(command)) return false;
+  surface.run(command);
+  return true;
 }

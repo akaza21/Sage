@@ -134,7 +134,7 @@
         "entry": "src/features/quickOpen/QuickOpen.tsx",
         "maxGzipBytes": 8192,
         "maxCssGzipBytes": 800,
-        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3311 B and CSS 698 B; the JS cap is the ticket's 8 KB."
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
       }
     ],
     "windowsInstallerMb": 45,

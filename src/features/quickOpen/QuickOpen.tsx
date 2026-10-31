@@ -10,6 +10,10 @@ import {
   type QuickOpenMatch,
   type QuickOpenResponse,
 } from "./quickOpenDomain";
+import {
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import {
   filterCommands,
@@ -23,6 +27,8 @@ import "./quick-open.css";
 /** While the index is being refreshed, the same query is asked again. */
 const REFRESH_RETRY_MS = 150;
 const MAX_REFRESH_RETRIES = 40;
+/** How long a command has to move the focus before the box puts it back. */
+const COMMAND_FOCUS_GRACE_MS = 150;
 /** "Indexing…" shows only if the first answer takes longer than this. */
 const INDEXING_DELAY_MS = 120;
 
@@ -56,6 +62,17 @@ function Highlighted({
   );
 }
 
+/** Back to `previous`, or to the editor when that is gone. */
+function focusBack(previous: Element | null) {
+  const target =
+    previous instanceof HTMLElement &&
+    previous !== document.body &&
+    previous.isConnected
+      ? previous
+      : document.querySelector<HTMLElement>(".cm-content");
+  target?.focus();
+}
+
 function activeFile() {
   const state = useWorkbenchStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
@@ -72,6 +89,8 @@ export default function QuickOpen({
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
+  // The command list depends on the active tab.
+  useWorkbenchStore((state) => state.activeTabId);
   const listId = useId();
   const [text, setText] = useState(seed);
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -101,15 +120,7 @@ export default function QuickOpen({
     if (closed.current) return;
     closed.current = true;
     onClose();
-    if (!restoreFocus) return;
-    const previous = returnFocus.current;
-    const target =
-      previous instanceof HTMLElement &&
-      previous !== document.body &&
-      previous.isConnected
-        ? previous
-        : document.querySelector<HTMLElement>(".cm-content");
-    target?.focus();
+    if (restoreFocus) focusBack(returnFocus.current);
   };
 
   const open = (match: QuickOpenMatch | undefined) => {
@@ -141,8 +152,15 @@ export default function QuickOpen({
       setSelectedKey(null);
       return;
     }
-    close(!command.takesFocus);
+    close(false);
     command.run();
+    // A command that moves the focus has done so by then; one that didn't,
+    // or did nothing, gets it back where it was.
+    const previous = returnFocus.current;
+    setTimeout(() => {
+      const focused = document.activeElement;
+      if (!focused || focused === document.body) focusBack(previous);
+    }, COMMAND_FOCUS_GRACE_MS);
   };
   const openLatest = useRef(open);
   useEffect(() => {
@@ -233,7 +251,23 @@ export default function QuickOpen({
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
       return;
     }
-    if (event.key === "Escape") {
+    // The chords that open the box switch it between Files and commands.
+    const apple = usesMetaModifier();
+    const files = matchesPlatformChord(
+      keymapBinding("quickOpen"),
+      event,
+      apple,
+    );
+    if (
+      files ||
+      matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      setText(files ? "" : ">");
+      setSelectedKey(null);
+      pendingEnter.current = false;
+    } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {

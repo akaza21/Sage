@@ -20,16 +20,28 @@ afterEach(() => {
 const labels = () => paletteCommands(false).map((command) => command.label);
 
 describe("palette commands", () => {
-  it("offers the File editor's commands only while one is showing", () => {
+  it("offers the File editor's commands only while they would do something", () => {
     expect(labels()).not.toContain("Find");
-    const runner = vi.fn();
-    const unregister = registerFileSurfaceCommands(runner);
-    const find = paletteCommands(false).find((item) => item.label === "Find");
-    expect(find?.shortcut).toBe("Ctrl+F");
-    if (typeof find?.run === "function") find.run();
-    expect(runner).toHaveBeenCalledWith("find");
-    unregister();
-    expect(labels()).not.toContain("Find");
+    const run = vi.fn();
+    let previewing = false;
+    const unregister = registerFileSurfaceCommands({
+      available: (command) => command === "save" || !previewing,
+      run,
+    });
+    try {
+      const find = paletteCommands(false).find((item) => item.label === "Find");
+      expect(find?.shortcut).toBe("Ctrl+F");
+      if (typeof find?.run === "function") find.run();
+      expect(run).toHaveBeenCalledWith("find");
+      // A Markdown preview has no find or go to, but can still be saved.
+      previewing = true;
+      expect(labels()).not.toContain("Find");
+      expect(labels()).not.toContain("Go to Line…");
+      expect(labels()).toContain("Save File");
+    } finally {
+      unregister();
+    }
+    expect(labels()).not.toContain("Save File");
   });
 
   it("shows macOS shortcuts on macOS", () => {
@@ -55,6 +67,25 @@ describe("palette commands", () => {
       ],
       activeTabId: "file:a",
     });
+    expect(labels()).toContain("Close Editor");
+  });
+
+  it("leaves out Open Settings while Settings is the active tab", () => {
+    expect(labels()).toContain("Open Settings");
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "settings:appearance",
+          kind: "settings",
+          title: "Settings",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "settings:appearance",
+    });
+    expect(labels()).not.toContain("Open Settings");
     expect(labels()).toContain("Close Editor");
   });
 

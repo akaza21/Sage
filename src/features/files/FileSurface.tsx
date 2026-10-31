@@ -21,7 +21,7 @@ import {
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import {
   registerFileSurfaceCommands,
-  type FileSurfaceCommand,
+  type FileSurfaceCommands,
 } from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
@@ -181,22 +181,31 @@ export function FileSurface({
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
 
   // The command palette (ED-2a) runs the same actions as the editor's keys.
-  const runCommandRef = useRef<(command: FileSurfaceCommand) => void>(() => {});
+  const commandsRef = useRef<FileSurfaceCommands>({
+    available: () => false,
+    run: () => undefined,
+  });
   useEffect(() => {
-    runCommandRef.current = (command) => {
-      if (command === "save") void saveActiveEditor();
-      else if (previewing) return;
-      else if (command === "find") openFindFromSurface();
-      else if (command === "replace") openFindFromSurface(true);
-      else if (command === "goToLine") openGoToLine();
-      else void goToLocalSymbol();
+    commandsRef.current = {
+      // Only what the keys would do now: the editor is showing, and the
+      // Markdown preview has no find or go to.
+      available: (command) =>
+        editor?.phase === "ready" && (command === "save" || !previewing),
+      run: (command) => {
+        if (command === "save") void saveActiveEditor();
+        else if (command === "find") openFindFromSurface();
+        else if (command === "replace") openFindFromSurface(true);
+        else if (command === "goToLine") openGoToLine();
+        else void goToLocalSymbol();
+      },
     };
   });
   useEffect(() => {
     if (readOnly) return;
-    return registerFileSurfaceCommands((command) =>
-      runCommandRef.current(command),
-    );
+    return registerFileSurfaceCommands({
+      available: (command) => commandsRef.current.available(command),
+      run: (command) => commandsRef.current.run(command),
+    });
   }, [readOnly]);
 
   function submitGoToLine() {

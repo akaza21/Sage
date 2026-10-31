@@ -391,6 +391,35 @@ describe("Quick Open's commands (ED-2a)", () => {
     expect(sent).toEqual([]);
   });
 
+  it("gives the focus back when a command doesn't take it", async () => {
+    fakeNative();
+    const before = document.createElement("button");
+    document.body.append(before);
+    before.focus();
+    useWorkbenchStore.setState({ setSidebarView: vi.fn() });
+    const { unmount } = render(
+      <QuickOpen seed=">show search" onClose={vi.fn()} />,
+    );
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveFocus();
+    fireEvent.keyDown(box, { key: "Enter" });
+    // The box would unmount here, leaving the focus nowhere.
+    unmount();
+    expect(document.activeElement).toBe(document.body);
+    await waitFor(() => expect(before).toHaveFocus());
+    before.remove();
+  });
+
+  it("switches between Files and commands with the chords that open it", () => {
+    fakeNative();
+    render(<QuickOpen onClose={vi.fn()} />);
+    fireEvent.keyDown(input(), { key: "P", ctrlKey: true, shiftKey: true });
+    const box = screen.getByRole("combobox", { name: "Run a command" });
+    expect(box).toHaveValue(">");
+    fireEvent.keyDown(box, { key: "p", ctrlKey: true });
+    expect(input()).toHaveValue("");
+  });
+
   it("goes back to Files for Go to File, and says when nothing matches", async () => {
     fakeNative();
     const onClose = vi.fn();

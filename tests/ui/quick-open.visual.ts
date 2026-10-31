@@ -12,10 +12,13 @@ async function installNativeStandIn(page: Page, files: string[]) {
       await import("/src/features/quickOpen/quickOpenGateway.ts");
     const { useWorkbenchStore } = await import("/src/app/store.ts");
     const rootId = useWorkbenchStore.getState().project!.roots[0].id;
-    // Calls in the first 600 ms wait until then, as on a cold index (React
-    // runs the first query's effect twice in development).
-    const coldUntil = Date.now() + 600;
+    // Calls in the 600 ms after the first one wait until then, as on a cold
+    // index (React runs the first query's effect twice in development).
+    // Counted from the first call, not from here, so a slow first open of
+    // the box can't use the cold window up before it asks.
+    let coldUntil = 0;
     setQuickOpenInvoke(async (_command, args) => {
+      if (coldUntil === 0) coldUntil = Date.now() + 600;
       const request = args.request as {
         query: string;
         recent: Array<{ rootId: string; relativePath: string }>;

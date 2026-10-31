@@ -4,11 +4,15 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
+import type { TabKind } from "../../domain/chat";
 import {
-  hasFileSurface,
+  fileSurfaceCommandAvailable,
   runFileSurfaceCommand,
   type FileSurfaceCommand,
 } from "../files/fileSurfaceCommandBus";
+
+const isEditorTab = (kind: TabKind) =>
+  kind === "file" || kind === "diff" || kind === "settings";
 
 export interface PaletteCommand {
   id: string;
@@ -17,20 +21,18 @@ export interface PaletteCommand {
   shortcut: string | null;
   /** "files" switches Quick Open back to Files instead of running. */
   run: (() => void) | "files";
-  /** Whether running it moves the focus itself, so the box shouldn't. */
-  takesFocus: boolean;
 }
 
 function shortcutOf(id: string, apple: boolean) {
   return formatKeymapChords(keymapBinding(id), apple)[0] ?? null;
 }
 
-const FILE_COMMANDS: Array<[FileSurfaceCommand, string, string, boolean]> = [
-  ["goToLine", "Go to Line…", "goToLine", true],
-  ["goToSymbol", "Go to Symbol in File…", "goToSymbol", true],
-  ["find", "Find", "find", true],
-  ["replace", "Replace", "replace", true],
-  ["save", "Save File", "save", false],
+const FILE_COMMANDS: Array<[FileSurfaceCommand, string]> = [
+  ["goToLine", "Go to Line…"],
+  ["goToSymbol", "Go to Symbol in File…"],
+  ["find", "Find"],
+  ["replace", "Replace"],
+  ["save", "Save File"],
 ];
 
 const VIEWS: Array<[SidebarView, string]> = [
@@ -50,19 +52,16 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       label: "Go to File…",
       shortcut: shortcutOf("quickOpen", apple),
       run: "files",
-      takesFocus: true,
     },
   ];
-  if (hasFileSurface()) {
-    for (const [command, label, binding, takesFocus] of FILE_COMMANDS) {
-      commands.push({
-        id: command,
-        label,
-        shortcut: shortcutOf(binding, apple),
-        run: () => void runFileSurfaceCommand(command),
-        takesFocus,
-      });
-    }
+  for (const [command, label] of FILE_COMMANDS) {
+    if (!fileSurfaceCommandAvailable(command)) continue;
+    commands.push({
+      id: command,
+      label,
+      shortcut: shortcutOf(command, apple),
+      run: () => void runFileSurfaceCommand(command),
+    });
   }
   for (const [view, label] of VIEWS) {
     commands.push({
@@ -70,28 +69,27 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       label,
       shortcut: null,
       run: () => useWorkbenchStore.getState().setSidebarView(view),
-      takesFocus: false,
     });
   }
-  commands.push({
-    id: "openSettings",
-    label: "Open Settings",
-    shortcut: shortcutOf("openSettings", apple),
-    run: () => void useWorkbenchStore.getState().openSettings(),
-    takesFocus: true,
-  });
-  if (
-    activeTab &&
-    (activeTab.kind === "file" ||
-      activeTab.kind === "diff" ||
-      activeTab.kind === "settings")
-  ) {
+  if (activeTab?.kind !== "settings") {
+    commands.push({
+      id: "openSettings",
+      label: "Open Settings",
+      shortcut: shortcutOf("openSettings", apple),
+      run: () => void useWorkbenchStore.getState().openSettings(),
+    });
+  }
+  if (activeTab && isEditorTab(activeTab.kind)) {
     commands.push({
       id: "closeEditor",
       label: "Close Editor",
       shortcut: null,
-      run: () => useWorkbenchStore.getState().closeTab(activeTab.id),
-      takesFocus: false,
+      // The tab active when it runs, which the list may not have seen.
+      run: () => {
+        const state = useWorkbenchStore.getState();
+        const tab = state.tabs.find((item) => item.id === state.activeTabId);
+        if (tab && isEditorTab(tab.kind)) state.closeTab(tab.id);
+      },
     });
   }
   return commands;
