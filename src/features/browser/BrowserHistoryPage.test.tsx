@@ -197,11 +197,11 @@ it("keeps a visit and reports the error when removal fails", async () => {
 
 function fullPages() {
   let start = 100_000;
-  browserHistoryPage.mockImplementation(async () => {
-    const visits = Array.from({ length: HISTORY_PAGE_SIZE }, (_, index) =>
+  browserHistoryPage.mockImplementation(async ({ limit }) => {
+    const visits = Array.from({ length: limit }, (_, index) =>
       visit(start - index, NOW - (start - index)),
     );
-    start -= HISTORY_PAGE_SIZE;
+    start -= limit;
     return { visits, next: { visitedAt: 1, id: start } };
   });
 }
@@ -238,6 +238,55 @@ it("holds at most its bound of visits and then asks for a narrower search", asyn
   const calls = browserHistoryPage.mock.calls.length;
   act(() => result.current.loadMore());
   expect(browserHistoryPage).toHaveBeenCalledTimes(calls);
+});
+
+it("asks only for what still fits, so no visit is skipped past the bound", async () => {
+  fullPages();
+  const { result } = renderHook(() => useBrowsingHistory(""));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.remove(result.current.visits[0]));
+  await waitFor(() =>
+    expect(result.current.visits).toHaveLength(HISTORY_PAGE_SIZE - 1),
+  );
+  while (result.current.canLoadMore) {
+    const before = result.current.visits.length;
+    act(() => result.current.loadMore());
+    await waitFor(() =>
+      expect(result.current.visits.length).toBeGreaterThan(before),
+    );
+  }
+  expect(result.current.visits).toHaveLength(HISTORY_MAX_LOADED);
+  expect(browserHistoryPage.mock.lastCall?.[0].limit).toBe(1);
+});
+
+it("never appends an older page to a list fetched again since", async () => {
+  let release: (page: Page) => void = () => {};
+  browserHistoryPage
+    .mockResolvedValueOnce({
+      visits: [visit(9, NOW)],
+      next: { visitedAt: NOW, id: 9 },
+    })
+    .mockReturnValueOnce(
+      new Promise<Page>((resolve) => {
+        release = resolve;
+      }),
+    )
+    .mockResolvedValueOnce({ visits: [visit(20, NOW)], next: null });
+  const { result, rerender } = renderHook(
+    ({ search }) => useBrowsingHistory(search),
+    { initialProps: { search: "" } },
+  );
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => result.current.loadMore());
+  // The search changes and clears before it runs: the list is fetched anew.
+  rerender({ search: "x" });
+  rerender({ search: "" });
+  await waitFor(() =>
+    expect(result.current.visits.map(({ id }) => id)).toEqual([20]),
+  );
+  await act(async () => release({ visits: [visit(8, NOW - 1)], next: null }));
+  expect(result.current.visits.map(({ id }) => id)).toEqual([20]);
+  expect(result.current.loadingMore).toBe(false);
 });
 
 it("closes on Escape and on its close button", () => {

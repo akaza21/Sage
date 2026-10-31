@@ -11,9 +11,10 @@
 //! rather than stalling navigation.
 
 use std::{
+    collections::VecDeque,
     path::PathBuf,
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock, PoisonError,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel},
     },
@@ -33,6 +34,8 @@ use writer::{Write, Writer};
 pub(crate) const FILE_NAME: &str = "browsing-history.db";
 /// Pending messages the worker may lag behind by before visits are dropped.
 const QUEUE: usize = 256;
+/// Tabs remembered as having lost their latest visit.
+const MAX_LOST_TABS: usize = 32;
 /// The most queued writes one transaction takes.
 const MAX_BATCH: usize = 64;
 /// How long a reader waits for the worker before giving up.
@@ -70,6 +73,10 @@ struct Shared {
     queue: OnceLock<SyncSender<Request>>,
     dropped: AtomicU64,
     stopped: AtomicBool,
+    /// Tabs whose latest visit was dropped from a full queue. Until one of
+    /// them records a visit again, its titles and same-document changes
+    /// would land on its previous visit, so they are treated as below.
+    lost: Mutex<VecDeque<String>>,
 }
 
 /// The handle tabs record into and commands read through. Cloning shares
@@ -85,6 +92,7 @@ impl BrowsingHistory {
             queue: OnceLock::new(),
             dropped: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
+            lost: Mutex::default(),
         })))
     }
 
@@ -105,30 +113,40 @@ impl BrowsingHistory {
     }
 
     fn record(&self, tab: &str, url: &str, title: Option<&str>, same_document: bool) {
-        self.write(Write::Visit {
+        let Some(shared) = &self.0 else {
+            return;
+        };
+        // A same-document change after a lost visit is a visit of its own.
+        let same_document = same_document && !shared.is_lost(tab);
+        let queued = self.write(Write::Visit {
             tab: tab.to_owned(),
             url: url.to_owned(),
             title: title.map(str::to_owned),
             visited_at: now_ms(),
             same_document,
         });
+        shared.set_lost(tab, !queued);
     }
 
     /// Tab `tab`'s page reported `title`; it names that tab's latest
     /// visit. Never blocks.
     pub(super) fn record_title(&self, tab: &str, title: &str) {
+        if self.0.as_ref().is_some_and(|shared| shared.is_lost(tab)) {
+            return;
+        }
         self.write(Write::Title {
             tab: tab.to_owned(),
             title: title.to_owned(),
         });
     }
 
-    fn write(&self, write: Write) {
+    /// Queues `write` without waiting; false when it was dropped.
+    fn write(&self, write: Write) -> bool {
         let Some(shared) = &self.0 else {
-            return;
+            return false;
         };
         match shared.queue().try_send(Request::Write(write)) {
-            Ok(()) => {}
+            Ok(()) => return true,
             Err(TrySendError::Full(_)) => {
                 let dropped = shared.dropped.fetch_add(1, Ordering::Relaxed) + 1;
                 if dropped.is_power_of_two() {
@@ -141,6 +159,7 @@ impl BrowsingHistory {
                 }
             }
         }
+        false
     }
 
     /// Newest-first visits whose URL or title contains `search`. Blocks
@@ -192,6 +211,25 @@ impl BrowsingHistory {
 }
 
 impl Shared {
+    fn is_lost(&self, tab: &str) -> bool {
+        self.lost
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|lost| lost == tab)
+    }
+
+    fn set_lost(&self, tab: &str, lost: bool) {
+        let mut tabs = self.lost.lock().unwrap_or_else(PoisonError::into_inner);
+        tabs.retain(|other| other != tab);
+        if lost {
+            if tabs.len() == MAX_LOST_TABS {
+                tabs.pop_front();
+            }
+            tabs.push_back(tab.to_owned());
+        }
+    }
+
     fn queue(&self) -> &SyncSender<Request> {
         self.queue.get_or_init(|| {
             let (sender, receiver) = sync_channel(QUEUE);

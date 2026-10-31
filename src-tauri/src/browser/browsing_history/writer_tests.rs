@@ -206,3 +206,40 @@ fn pruning_runs_on_the_first_write_and_then_every_few_hundred_visits() {
             .is_empty()
     );
 }
+
+#[test]
+fn a_removed_visits_id_is_never_reused_for_a_later_visit() {
+    let mut connection = store::open(":memory:").unwrap();
+    let mut writer = Writer::default();
+    writer
+        .apply(
+            &mut connection,
+            &[
+                visit("browser-1", "https://a.example/", NOW),
+                visit("browser-2", "https://b.example/", NOW + 1),
+            ],
+            NOW,
+        )
+        .unwrap();
+    let newest = store::page(&connection, "", None, 1).unwrap().visits[0].id;
+    assert_eq!(store::remove(&connection, &[newest]).unwrap(), 1);
+    // Tab one's new visit must not take tab two's freed id, or tab two's
+    // next title would rename it.
+    writer
+        .apply(
+            &mut connection,
+            &[
+                visit("browser-1", "https://c.example/", NOW + 2),
+                title("browser-2", "Bravo"),
+            ],
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(
+        rows(&connection),
+        [
+            row("https://a.example/", None),
+            row("https://c.example/", None)
+        ]
+    );
+}

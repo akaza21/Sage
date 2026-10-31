@@ -13,6 +13,19 @@ impl<T> BrowserTabs<T> {
         navigation_id: u64,
         url: Option<&str>,
     ) -> bool {
+        self.commit_navigation(label, navigation_id, url, true)
+    }
+
+    /// `finish_navigation`, recording a visit only when `visit` is set: a
+    /// load that failed yet moved the screen commits its URL for the tab
+    /// but is not a page the user visited.
+    pub(super) fn commit_navigation(
+        &mut self,
+        label: &str,
+        navigation_id: u64,
+        url: Option<&str>,
+        visit: bool,
+    ) -> bool {
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
         };
@@ -31,6 +44,7 @@ impl<T> BrowserTabs<T> {
             // A reload, a redirect back to the page already shown, or
             // entering the address already shown is not a new visit.
             if let Some(url) = url
+                && visit
                 && previous.as_deref() != Some(url)
             {
                 self.browsing_history.record_visit(label, url);

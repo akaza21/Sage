@@ -154,8 +154,14 @@ impl<T> BrowserTabs<T> {
             outcome = shown.map_or(Outcome::Failed(reason), Outcome::Committed);
         }
         let settled = match outcome {
+            // A failure that moved the screen is not a visit.
             Outcome::Committed(url) => self
-                .finish_navigation(label, navigation_id, Some(url))
+                .commit_navigation(
+                    label,
+                    navigation_id,
+                    Some(url),
+                    unexplained_failure.is_none(),
+                )
                 .then_some(if own_commit {
                     Settled::Committed
                 } else {

@@ -32,6 +32,9 @@ export interface BrowsingHistoryView {
 /** What Rust answered for one search. */
 interface Listing {
   search: string;
+  /** Bumped on every fresh first page, so a page fetched for an earlier
+   * listing is never appended to a newer one. */
+  generation: number;
   visits: BrowserVisit[];
   next: BrowserHistoryCursor | null;
   error: string | null;
@@ -48,13 +51,12 @@ function message(cause: unknown): string {
  */
 export function useBrowsingHistory(search: string): BrowsingHistoryView {
   const [listing, setListing] = useState<Listing | null>(null);
-  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
-  const latest = useRef(search);
+  const generation = useRef(0);
 
   useEffect(() => {
-    latest.current = search;
     let live = true;
     const run = () => {
       browserHistoryPage({ search, before: null, limit: HISTORY_PAGE_SIZE })
@@ -69,7 +71,8 @@ export function useBrowsingHistory(search: string): BrowsingHistoryView {
         )
         .then((answer) => {
           if (live) {
-            setListing(answer);
+            generation.current += 1;
+            setListing({ ...answer, generation: generation.current });
             setActionError(null);
           }
         });
@@ -87,35 +90,33 @@ export function useBrowsingHistory(search: string): BrowsingHistoryView {
   const visits = current?.visits ?? [];
   const next = current?.next ?? null;
   const canLoadMore = next !== null && visits.length < HISTORY_MAX_LOADED;
-  const busy = loadingMore === search;
+  const busy = current !== null && loadingMore === current.generation;
 
   const loadMore = useCallback(() => {
     if (!current || !current.next || busy) return;
-    if (current.visits.length >= HISTORY_MAX_LOADED) return;
-    const owner = current.search;
+    // Only what still fits, so the cursor never skips visits not kept.
+    const room = HISTORY_MAX_LOADED - current.visits.length;
+    if (room <= 0) return;
+    const owner = current.generation;
     setLoadingMore(owner);
     browserHistoryPage({
-      search: owner,
+      search: current.search,
       before: current.next,
-      limit: HISTORY_PAGE_SIZE,
+      limit: Math.min(HISTORY_PAGE_SIZE, room),
     })
-      .then((page) => {
-        if (latest.current !== owner) return;
+      .then((page) =>
         setListing((loaded) =>
-          loaded?.search === owner
+          loaded?.generation === owner
             ? {
                 ...loaded,
-                visits: [...loaded.visits, ...page.visits].slice(
-                  0,
-                  HISTORY_MAX_LOADED,
-                ),
+                visits: [...loaded.visits, ...page.visits],
                 next: page.next,
               }
             : loaded,
-        );
-      })
+        ),
+      )
       .catch((cause) => {
-        if (latest.current === owner) setActionError(message(cause));
+        if (generation.current === owner) setActionError(message(cause));
       })
       .finally(() =>
         setLoadingMore((loading) => (loading === owner ? null : loading)),

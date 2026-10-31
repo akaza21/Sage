@@ -106,3 +106,26 @@ fn a_same_document_change_adopted_when_a_navigation_is_abandoned_moves_the_visit
     );
     assert_eq!(visits(&history), [visit("https://a.example/#moved", None)]);
 }
+
+#[test]
+fn a_failed_load_that_moved_the_screen_is_not_a_visit() {
+    // A certificate interstitial, say: no commit evidence, Source() moved.
+    let (mut tabs, history) = recorded_tab();
+    assert!(tabs.start_navigation("browser-1", 1, "https://bank.example/"));
+    assert!(tabs.finish_navigation("browser-1", 1, Some("https://bank.example/")));
+    assert!(tabs.start_navigation("browser-1", 2, "https://evil.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            navigation::outcome::Completion {
+                success: false,
+                web_error: 12,
+                source: Some("https://evil.example/"),
+            }
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    assert!(!tabs.set_document_title("browser-1", "https://evil.example/", "Evil"));
+    assert_eq!(visits(&history), [visit("https://bank.example/", None)]);
+}

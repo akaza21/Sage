@@ -213,15 +213,18 @@ pub(crate) async fn browser_clear_data(
                         .into(),
                 );
                 let completion_app = app.clone();
+                let completion_history_error = history_error.clone();
                 tauri::async_runtime::spawn(async move {
                     let completion_state = completion_app.state::<BrowserState>();
                     let completion = tauri::async_runtime::spawn_blocking(move || {
                         wait_for_pending_clear(receiver, std::time::Duration::from_secs(60))
                     })
                     .await;
+                    // The profile cleared but history did not: not a success.
                     let result = completion
                         .map_err(|error| error.to_string())
-                        .and_then(|callback| callback);
+                        .and_then(|callback| callback)
+                        .and(completion_history_error.map_or(Ok(()), Err));
                     if let Err(error) = complete_pending_clear(
                         &completion_state.clearing_data,
                         result,
@@ -265,13 +268,36 @@ pub(crate) async fn browser_clear_data(
     Ok(result)
 }
 
+/// Adds a history failure to the result. Browsing data is not cleared
+/// while its history remains, so the clear no longer reports success.
 fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
     if let Some(error) = error {
+        result.cleared = false;
         result.error = Some(match result.error.take() {
             Some(first) => format!("{first} {error}"),
             None => error,
         });
     }
+}
+
+#[cfg(test)]
+#[test]
+fn a_history_failure_turns_a_clear_into_a_failure_and_keeps_the_first_error() {
+    let mut result = ClearBrowsingDataResult {
+        closed_tab_ids: Vec::new(),
+        cleared: true,
+        pending: false,
+        error: None,
+    };
+    append_error(&mut result, None);
+    assert!(result.cleared);
+    result.error = Some("Cookies were not cleared.".into());
+    append_error(&mut result, Some("History was not cleared.".into()));
+    assert!(!result.cleared);
+    assert_eq!(
+        result.error.as_deref(),
+        Some("Cookies were not cleared. History was not cleared.")
+    );
 }
 
 #[cfg(all(test, windows))]

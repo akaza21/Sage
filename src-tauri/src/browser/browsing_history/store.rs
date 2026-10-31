@@ -58,9 +58,11 @@ pub(super) fn open(path: &str) -> rusqlite::Result<Connection> {
     // every page load is not.
     connection.pragma_update(None, "synchronous", "NORMAL")?;
     connection.pragma_update(None, "busy_timeout", 5_000)?;
+    // AUTOINCREMENT: the writer names a tab's latest visit by id, so a
+    // removed visit's id must never come back as another tab's row.
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_visits (
-           id INTEGER PRIMARY KEY,
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
            url TEXT NOT NULL CHECK (length(url) BETWEEN 1 AND 2048),
            title TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 256),
            visited_at INTEGER NOT NULL CHECK (visited_at >= 0)
