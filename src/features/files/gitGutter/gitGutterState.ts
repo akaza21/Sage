@@ -5,6 +5,7 @@ import {
   type ChangeSpec,
   type EditorState,
   type Text,
+  type Transaction,
 } from "@codemirror/state";
 
 import {
@@ -35,12 +36,17 @@ export interface GutterState {
   /** The staged text, or null when the File has no markers. */
   base: string | null;
   hunks: readonly GutterHunk[];
+  /** Past the worker's hunk cap only the first changes are listed. */
+  truncated: boolean;
   /** The hunk whose peek is open. */
   peek: number | null;
 }
 
 export const setGutterBase = StateEffect.define<string | null>();
-export const setGutterHunks = StateEffect.define<readonly GutterHunk[]>();
+export const setGutterHunks = StateEffect.define<{
+  hunks: readonly GutterHunk[];
+  truncated: boolean;
+}>();
 export const setGutterPeek = StateEffect.define<number | null>();
 
 const KINDS: Record<number, HunkKind> = {
@@ -49,7 +55,21 @@ const KINDS: Record<number, HunkKind> = {
   [HUNK_DELETED]: "deleted",
 };
 
-const EMPTY: GutterState = { base: null, hunks: [], peek: null };
+function replacesDocument(transaction: Transaction) {
+  const length = transaction.startState.doc.length;
+  let whole = false;
+  transaction.changes.iterChangedRanges((from, to) => {
+    if (length > 0 && from === 0 && to === length) whole = true;
+  });
+  return whole;
+}
+
+const EMPTY: GutterState = {
+  base: null,
+  hunks: [],
+  truncated: false,
+  peek: null,
+};
 
 function mapHunk(hunk: GutterHunk, changes: ChangeDesc): GutterHunk {
   const from = changes.mapPos(hunk.from, hunk.kind === "deleted" ? 1 : -1);
@@ -62,23 +82,36 @@ export const gutterField = StateField.define<GutterState>({
   update(value, transaction) {
     let next = value;
     if (transaction.docChanged && value.hunks.length > 0) {
-      // Any edit closes the peek: its staged text no longer lines up.
+      // Any edit closes the peek: its staged text no longer lines up. A
+      // whole-document replace (an outside reload) would stretch every hunk
+      // over the document, so the markers wait for the next diff instead.
       next = {
         ...value,
-        hunks: value.hunks.map((hunk) => mapHunk(hunk, transaction.changes)),
+        hunks: replacesDocument(transaction)
+          ? []
+          : value.hunks.map((hunk) => mapHunk(hunk, transaction.changes)),
         peek: null,
       };
     }
     for (const effect of transaction.effects) {
       if (effect.is(setGutterBase)) {
-        next =
-          effect.value === null
-            ? EMPTY
-            : { ...next, base: effect.value, peek: null };
+        // Hunk offsets point into the old staged text, so they go with it.
+        next = effect.value === null ? EMPTY : { ...EMPTY, base: effect.value };
       } else if (effect.is(setGutterHunks)) {
-        if (next.base !== null) next = { ...next, hunks: effect.value };
-        if (next.peek !== null && next.peek >= next.hunks.length)
-          next = { ...next, peek: null };
+        if (next.base === null) continue;
+        // An open peek stays on its change, or closes if that change is gone.
+        const open = next.peek === null ? undefined : next.hunks[next.peek];
+        const peek = open
+          ? effect.value.hunks.findIndex(
+              (hunk) => hunk.from === open.from && hunk.kind === open.kind,
+            )
+          : -1;
+        next = {
+          ...next,
+          hunks: effect.value.hunks,
+          truncated: effect.value.truncated,
+          peek: peek === -1 ? null : peek,
+        };
       } else if (effect.is(setGutterPeek)) {
         next = { ...next, peek: effect.value };
       }

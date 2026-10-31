@@ -56,7 +56,7 @@ export function createGutterBaseCache(
       const known = lastOid.get(key) ?? null;
       const cached = known === null ? undefined : texts.get(known);
       const answer = await read(resource, cached === undefined ? null : known);
-      if (answer.state === "none") {
+      if (answer.state === "unavailable") {
         lastOid.delete(key);
         return null;
       }

@@ -55,6 +55,8 @@ export class GitGutterPeek extends WidgetType {
   constructor(
     private readonly index: number,
     private readonly total: number,
+    /** The worker listed only the first `total` changes. */
+    private readonly more: boolean,
     /** Staged text the change replaced; null for added lines. */
     private readonly staged: string | null,
     private readonly canRevert: boolean,
@@ -67,6 +69,7 @@ export class GitGutterPeek extends WidgetType {
     return (
       other.index === this.index &&
       other.total === this.total &&
+      other.more === this.more &&
       other.staged === this.staged &&
       other.canRevert === this.canRevert
     );
@@ -76,7 +79,7 @@ export class GitGutterPeek extends WidgetType {
     const root = document.createElement("div");
     root.className = "git-gutter-peek";
     root.setAttribute("role", "region");
-    const title = `Change ${this.index + 1} of ${this.total}`;
+    const title = `Change ${this.index + 1} of ${this.total.toLocaleString()}${this.more ? "+" : ""}`;
     root.setAttribute("aria-label", title);
     const header = document.createElement("div");
     header.className = "git-gutter-peek__header";

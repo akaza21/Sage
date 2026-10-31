@@ -1,38 +1,45 @@
+import type { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { useEffect, useState } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
-import { useWorkbenchStore } from "../../app/store";
-import { resourceKey } from "../../domain/resourceIdentity";
+import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
 import type { ResourceRef } from "../../domain/workbench";
 import type * as GitGutterModule from "./gitGutter";
 
 const loadGitGutter = () => import("./gitGutter");
 
-/**
- * The File's text while it is still the string it loaded as, which is then
- * the editor's document (a local edit makes the store hold the editor's
- * document instead). A lone "\r" reads differently in CodeMirror, so such
- * text is never offered.
- */
-function loadedText(): string | null {
-  // The File surface shows the active editor, so this is the view's File.
-  const editor = useWorkbenchStore.getState().activeEditor;
-  return editor?.phase === "ready" &&
-    typeof editor.content === "string" &&
-    !editor.content.includes("\r")
-    ? editor.content
-    : null;
+/** An editor, with the string and document it was first built from. */
+export interface GitGutterEditor {
+  view: EditorView;
+  text: string | null;
+  doc: Text;
 }
 
 /**
+ * The editor's text without building it: the string it loaded from, while
+ * its document is still the one built from that string. CodeMirror reads a
+ * lone "\r" as a break, so such a string never stands for the document.
+ */
+function knownText({ view, text, doc }: GitGutterEditor) {
+  return () =>
+    text !== null && view.state.doc === doc && !text.includes("\r")
+      ? text
+      : null;
+}
+
+const rootOf = (state: WorkbenchState, rootId: string) =>
+  state.repositories.roots.find((root) => root.rootId === rootId);
+
+/**
  * Change markers for an Editor File in a repository (EP-14). The staged text
- * reloads whenever the File's repository status changes (EP-12 keeps the
- * same object when nothing did), so a commit or stage made outside Sage
- * moves the markers. Agent panes pass `enabled: false`.
+ * reloads after every Git refresh, which EP-12 runs on any outside change to
+ * the index, even one that leaves the status unchanged (staging a second hunk
+ * of an already staged File). One load runs at a time. Agent panes pass
+ * `enabled: false`.
  */
 export function useGitGutter(
-  view: EditorView | null,
+  editor: GitGutterEditor | null,
   resource: ResourceRef | null,
   enabled: boolean,
 ) {
@@ -41,26 +48,23 @@ export function useGitGutter(
   );
   const rootId = resource?.rootId;
   const repository = useWorkbenchStore((state) =>
-    rootId === undefined
-      ? undefined
-      : state.repositories.roots.find((root) => root.rootId === rootId),
+    rootId === undefined ? undefined : rootOf(state, rootId)?.state,
   );
-  const active = enabled && setting && repository?.state === "repository";
+  const active = enabled && setting && repository === "repository";
   const [gutter, setGutter] = useState<{
-    view: EditorView;
     handle: GitGutterModule.GitGutter;
     module: typeof GitGutterModule;
   } | null>(null);
 
   useEffect(() => {
-    if (!view || !active) return;
+    if (!editor || !active) return;
     let current = true;
     let handle: GitGutterModule.GitGutter | null = null;
     void loadGitGutter()
       .then((module) => {
         if (!current) return;
-        handle = module.attachSharedGitGutter(view, loadedText);
-        setGutter({ view, handle, module });
+        handle = module.attachSharedGitGutter(editor.view, knownText(editor));
+        setGutter({ handle, module });
       })
       .catch(() => undefined);
     return () => {
@@ -68,23 +72,46 @@ export function useGitGutter(
       handle?.destroy();
       setGutter(null);
     };
-  }, [view, active]);
+  }, [editor, active]);
 
-  const key = resource ? resourceKey(resource) : null;
   useEffect(() => {
     if (!gutter || !resource) return;
     let current = true;
-    gutter.module
-      .gutterBases()
-      .load(resource)
-      .then(
-        (base) => current && gutter.handle.setBase(base),
-        () => current && gutter.handle.setBase(null),
-      );
+    let loading = false;
+    let again = false;
+    const load = () => {
+      if (loading) {
+        again = true;
+        return;
+      }
+      loading = true;
+      again = false;
+      void gutter.module
+        .gutterBases()
+        .load(resource)
+        .then(
+          (base) => current && gutter.handle.setBase(base),
+          () => current && gutter.handle.setBase(null),
+        )
+        .finally(() => {
+          loading = false;
+          if (current && again) load();
+        });
+    };
+    load();
+    // Store subscription, not a selector: refreshes re-render nothing here.
+    const unsubscribe = useWorkbenchStore.subscribe((state, previous) => {
+      const refreshed =
+        previous.repositoryRefreshing && !state.repositoryRefreshing;
+      if (
+        refreshed ||
+        rootOf(state, resource.rootId) !== rootOf(previous, resource.rootId)
+      )
+        load();
+    });
     return () => {
       current = false;
+      unsubscribe();
     };
-    // `repository` is the refresh signal; `resource` is named by `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gutter, key, repository]);
+  }, [gutter, resource]);
 }

@@ -92,8 +92,8 @@
       },
       {
         "entry": "src/features/files/gitGutter/index.ts",
-        "maxGzipBytes": 4050,
-        "reason": "Editor pack: change markers of a File in a repository (EP-14 gutter, change peek with Revert, staged-text cache, worker client). Measured 3684 B plus 10%."
+        "maxGzipBytes": 4368,
+        "reason": "Editor pack: change markers of a File in a repository (EP-14 gutter, change peek with Revert, staged-text cache, worker client). Measured 3971 B plus 10%."
       },
       {
         "entry": "src/features/files/editorLanguageJavaScript.ts",

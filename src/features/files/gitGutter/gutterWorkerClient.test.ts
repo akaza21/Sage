@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createGutterWorkerPool } from "./gutterWorkerClient";
+import {
+  GUTTER_WORKER_LINGER_MS,
+  createGutterWorkerPool,
+} from "./gutterWorkerClient";
 
 function fakeWorker() {
   return {
@@ -12,7 +15,8 @@ function fakeWorker() {
 }
 
 describe("gutter worker pool", () => {
-  it("shares one worker and stops it when the last editor closes", () => {
+  it("shares one worker and stops it a while after the last editor closes", () => {
+    vi.useFakeTimers();
     const workers: ReturnType<typeof fakeWorker>[] = [];
     const pool = createGutterWorkerPool(() => {
       const worker = fakeWorker();
@@ -28,7 +32,7 @@ describe("gutter worker pool", () => {
     expect(workers).toHaveLength(1);
 
     workers[0]!.onmessage?.({
-      data: { id: one.id, version: 1, hunks: [], truncated: false },
+      data: { id: one.id, version: 1, hunks: [] },
     } as MessageEvent);
     expect(first).toHaveBeenCalledTimes(1);
 
@@ -39,8 +43,17 @@ describe("gutter worker pool", () => {
       id: one.id,
     });
     two.close();
+    expect(workers[0]!.terminate).not.toHaveBeenCalled();
+    // A File opened meanwhile keeps the same worker.
+    const three = pool.connect(vi.fn());
+    vi.advanceTimersByTime(GUTTER_WORKER_LINGER_MS);
+    three.post({ type: "close", id: three.id });
+    expect(workers).toHaveLength(1);
+    three.close();
+    vi.advanceTimersByTime(GUTTER_WORKER_LINGER_MS);
     expect(workers[0]!.terminate).toHaveBeenCalled();
     expect(pool.running()).toBe(false);
+    vi.useRealTimers();
   });
 
   it("does not respawn a worker that failed", () => {

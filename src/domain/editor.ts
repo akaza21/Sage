@@ -79,7 +79,7 @@ export interface DiffHunk {
  * (EP-14). `unchanged` answers a request that named the current blob.
  */
 export type FileGitBase =
-  | { state: "none" }
+  | { state: "unavailable" }
   | { state: "unchanged"; oid: string }
   | { state: "ready"; oid: string; content: string };
 

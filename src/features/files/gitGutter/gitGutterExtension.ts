@@ -20,7 +20,11 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
-import { GitGutterPeek, type PeekActions } from "./gitGutterPeek";
+import {
+  GitGutterPeek,
+  MAX_PEEK_LINES,
+  type PeekActions,
+} from "./gitGutterPeek";
 import {
   gutterField,
   hunkAtLine,
@@ -134,6 +138,7 @@ function peekDecorations(editor: EditorState): DecorationSet {
   const peek = new GitGutterPeek(
     state.peek!,
     state.hunks.length,
+    state.truncated,
     stagedText(state.base, hunk),
     !editor.readOnly,
     actions,
@@ -150,7 +155,13 @@ function peekDecorations(editor: EditorState): DecorationSet {
     const line = Decoration.line({
       class: `git-gutter-peek-line git-gutter-peek-line--${hunk.kind}`,
     });
-    for (let position = hunk.from; position <= hunk.to;) {
+    // As many lines as the peek shows; a huge change is not decorated whole.
+    let position = hunk.from;
+    for (
+      let count = 0;
+      count < MAX_PEEK_LINES && position <= hunk.to;
+      count++
+    ) {
       const current = doc.lineAt(position);
       builder.add(current.from, current.from, line);
       position = current.to + 1;
@@ -197,11 +208,6 @@ const changeGutter = gutter({
   },
 });
 
-/**
- * Sends the worker the document once, then only the edits made since the
- * last message, each a pause after typing stops. A keystroke costs a
- * ChangeSet compose and a timer reset, never the text.
- */
 type ResultSink = { current: (result: GutterResult) => void };
 
 /**
@@ -216,6 +222,13 @@ function documentText(doc: Text, knownText: KnownText) {
   return known !== null && known.length === doc.length ? known : doc.toString();
 }
 
+/**
+ * Sends the worker the document once, then only the edits made since the
+ * last message, each a pause after typing stops. A keystroke costs a
+ * ChangeSet compose and a timer reset, never the text. One request is in
+ * flight at a time; edits made meanwhile go out together when it answers,
+ * so a slow diff never queues stale work.
+ */
 function driver(
   connection: GutterConnection,
   sink: ResultSink,
@@ -224,6 +237,7 @@ function driver(
   return ViewPlugin.define((view) => {
     let opened = false;
     let baseChanged = false;
+    let inFlight = false;
     let pending: ChangeSet | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let version = 0;
@@ -232,7 +246,8 @@ function driver(
     const flush = () => {
       timer = null;
       const { base } = view.state.field(gutterField);
-      if (base === null) return;
+      if (base === null || inFlight) return;
+      if (opened && !pending && !baseChanged) return;
       version += 1;
       if (!opened) {
         connection.post({
@@ -244,19 +259,15 @@ function driver(
         });
         opened = true;
       } else {
-        if (pending) {
-          connection.post({
-            type: "edit",
-            id: connection.id,
-            version,
-            changes: pending.toJSON(),
-          });
-        }
-        if (baseChanged) {
-          if (pending) version += 1;
-          connection.post({ type: "base", id: connection.id, version, base });
-        }
+        connection.post({
+          type: "update",
+          id: connection.id,
+          version,
+          changes: pending?.toJSON() ?? null,
+          base: baseChanged ? base : null,
+        });
       }
+      inFlight = true;
       pending = null;
       baseChanged = false;
       posted = view.state.doc;
@@ -267,18 +278,34 @@ function driver(
     };
 
     sink.current = (result) => {
-      if (result.version !== version || !posted) return;
-      let hunks = hunksFromLines(result.hunks, posted);
-      // Edits made while the worker ran: carry the result through them.
-      if (pending) {
-        const changes = pending;
-        hunks = hunks.map((hunk) => ({
-          ...hunk,
-          from: changes.mapPos(hunk.from, hunk.kind === "deleted" ? 1 : -1),
-          to: changes.mapPos(hunk.to, 1),
-        }));
+      if (result.version !== version) return;
+      inFlight = false;
+      if (result.lost) {
+        // The worker no longer has this File: send it whole again.
+        opened = false;
+        pending = null;
+        schedule();
+        return;
       }
-      view.dispatch({ effects: setGutterHunks.of(hunks) });
+      if (posted && !baseChanged) {
+        let hunks = hunksFromLines(result.hunks, posted);
+        // Edits made while the worker ran: carry the result through them.
+        if (pending) {
+          const changes = pending;
+          hunks = hunks.map((hunk) => ({
+            ...hunk,
+            from: changes.mapPos(hunk.from, hunk.kind === "deleted" ? 1 : -1),
+            to: changes.mapPos(hunk.to, 1),
+          }));
+        }
+        view.dispatch({
+          effects: setGutterHunks.of({
+            hunks,
+            truncated: result.truncated === true,
+          }),
+        });
+      }
+      if ((pending || baseChanged) && timer === null) schedule();
     };
 
     return {
@@ -288,17 +315,21 @@ function driver(
         if (after === null) {
           if (opened) connection.post({ type: "close", id: connection.id });
           opened = false;
+          inFlight = false;
           pending = null;
+          baseChanged = false;
           return;
         }
         if (update.docChanged && opened) {
           pending = pending ? pending.compose(update.changes) : update.changes;
         }
+        // A result computed against the old staged text must not land.
         if (before !== after) baseChanged = true;
         if (update.docChanged || before !== after) schedule();
       },
       destroy() {
         if (timer !== null) clearTimeout(timer);
+        sink.current = () => undefined;
       },
     };
   });

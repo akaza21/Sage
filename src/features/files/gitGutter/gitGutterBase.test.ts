@@ -58,7 +58,9 @@ describe("gutter base cache", () => {
   });
 
   it("forgets a File that has no staged text", async () => {
-    const read = vi.fn(async (): Promise<FileGitBase> => ({ state: "none" }));
+    const read = vi.fn(async (): Promise<FileGitBase> => ({
+      state: "unavailable",
+    }));
     const cache = createGutterBaseCache(read);
     expect(await cache.load(file("new.txt"))).toBeNull();
   });

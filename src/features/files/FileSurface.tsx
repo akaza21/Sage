@@ -30,7 +30,7 @@ import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
-import { useGitGutter } from "./useGitGutter";
+import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
 
 const LIMIT_EXCEEDED_STATUS =
   "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
@@ -115,18 +115,19 @@ export function FileSurface({
     editor?.phase === "ready" &&
     !!resource &&
     sameResource(editor.resource, resource);
-  // The view, with the File it was made for, so markers never cross Files.
-  const [editorView, setEditorView] = useState<{
-    view: EditorView;
-    key: string;
-  } | null>(null);
+  // The editor, with the File it was made for, so markers never cross Files.
+  const [gutterEditor, setGutterEditor] = useState<
+    (GitGutterEditor & { key: string }) | null
+  >(null);
   const onEditorView = useCallback(
-    (view: EditorView | null) =>
-      setEditorView(view && { view, key: activeResourceKey }),
+    (view: EditorView | null, text: string | null) =>
+      setGutterEditor(
+        view && { view, text, doc: view.state.doc, key: activeResourceKey },
+      ),
     [activeResourceKey],
   );
   useGitGutter(
-    editorView?.key === activeResourceKey ? editorView.view : null,
+    gutterEditor?.key === activeResourceKey ? gutterEditor : null,
     resource ?? null,
     editorShown,
   );

@@ -14,8 +14,6 @@ use crate::{
     workspace::Workspace,
 };
 
-/// Longest Git object id (SHA-256) the caller may echo back.
-const MAX_OID_BYTES: usize = 64;
 /// One `ls-files --stage` record: mode, id, stage and a capped path.
 const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;
 
@@ -24,7 +22,7 @@ const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;
 pub enum FileGitBase {
     /// No markers: untracked, ignored, conflicted, not a text blob, over the
     /// editable cap, or the root is not a repository top level.
-    None,
+    Unavailable,
     /// The staged blob is still `oid`, which the caller already holds.
     Unchanged {
         oid: String,
@@ -60,7 +58,7 @@ pub(crate) async fn file_git_base(
         repository_boundary(workspace.root()).await?,
         RepositoryBoundary::Exact
     ) {
-        return Ok(FileGitBase::None);
+        return Ok(FileGitBase::Unavailable);
     }
     // Sage runs Git with `--literal-pathspecs`, so the path is never a glob.
     let entry = run_git(
@@ -71,9 +69,9 @@ pub(crate) async fn file_git_base(
     .await?;
     ensure_success(&entry)?;
     let Some(oid) = staged_text_blob(&entry.stdout, &relative_path) else {
-        return Ok(FileGitBase::None);
+        return Ok(FileGitBase::Unavailable);
     };
-    if known_oid.is_some_and(|known| known.len() <= MAX_OID_BYTES && known == oid) {
+    if known_oid == Some(oid.as_str()) {
         return Ok(FileGitBase::Unchanged { oid });
     }
     let blob = run_git(
@@ -84,10 +82,10 @@ pub(crate) async fn file_git_base(
     .await?;
     ensure_success(&blob)?;
     if blob.stdout_truncated {
-        return Ok(FileGitBase::None);
+        return Ok(FileGitBase::Unavailable);
     }
     Ok(
-        text_content(blob.stdout).map_or(FileGitBase::None, |content| FileGitBase::Ready {
+        text_content(blob.stdout).map_or(FileGitBase::Unavailable, |content| FileGitBase::Ready {
             oid,
             content,
         }),
@@ -111,9 +109,13 @@ fn staged_text_blob(output: &[u8], path: &str) -> Option<String> {
         .then(|| oid.to_owned())
 }
 
-/// UTF-8 text without NUL bytes, as the editor would open it.
+/// The first line of a Git LFS pointer, which stands in for the real file.
+const LFS_POINTER_PREFIX: &[u8] = b"version https://git-lfs.github.com/spec/";
+
+/// UTF-8 text without NUL bytes, as the editor would open it. An LFS pointer
+/// is not the file's text, so comparing against it would mark every line.
 fn text_content(bytes: Vec<u8>) -> Option<String> {
-    if bytes.contains(&0) {
+    if bytes.contains(&0) || bytes.starts_with(LFS_POINTER_PREFIX) {
         return None;
     }
     String::from_utf8(bytes).ok()
@@ -164,7 +166,7 @@ mod tests {
     fn oid_of(base: &FileGitBase) -> String {
         match base {
             FileGitBase::Ready { oid, .. } | FileGitBase::Unchanged { oid } => oid.clone(),
-            FileGitBase::None => panic!("expected a base"),
+            FileGitBase::Unavailable => panic!("expected a base"),
         }
     }
 
@@ -211,9 +213,12 @@ mod tests {
         git(&root, &["add", ".gitignore", "bin.dat", "[weird].txt"]);
         git(&root, &["commit", "-q", "-m", "fixture"]);
 
-        assert_eq!(base(&workspace, "new.txt", None), FileGitBase::None);
-        assert_eq!(base(&workspace, "ignored.txt", None), FileGitBase::None);
-        assert_eq!(base(&workspace, "bin.dat", None), FileGitBase::None);
+        assert_eq!(base(&workspace, "new.txt", None), FileGitBase::Unavailable);
+        assert_eq!(
+            base(&workspace, "ignored.txt", None),
+            FileGitBase::Unavailable
+        );
+        assert_eq!(base(&workspace, "bin.dat", None), FileGitBase::Unavailable);
         // Glob characters in a name are taken literally.
         assert!(matches!(
             base(&workspace, "[weird].txt", None),
@@ -228,7 +233,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("a.txt"), "x\n").unwrap();
         let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
-        assert_eq!(base(&workspace, "a.txt", None), FileGitBase::None);
+        assert_eq!(base(&workspace, "a.txt", None), FileGitBase::Unavailable);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -269,5 +274,7 @@ mod tests {
         assert_eq!(text_content(b"hi".to_vec()), Some("hi".into()));
         assert_eq!(text_content(vec![b'a', 0]), None);
         assert_eq!(text_content(vec![0xff, 0xfe]), None);
+        let pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:00\nsize 3\n";
+        assert_eq!(text_content(pointer.to_vec()), None);
     }
 }

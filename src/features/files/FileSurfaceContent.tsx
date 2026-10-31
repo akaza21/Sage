@@ -106,7 +106,7 @@ export function FileSurfaceContent({
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
   onLimitExceeded: () => void;
-  onEditorView?: (view: EditorView | null) => void;
+  onEditorView?: (view: EditorView | null, text: string | null) => void;
   onEditorChange: (
     content: EditorContent,
     base?: EditorContentBase | null,

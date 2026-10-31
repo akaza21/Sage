@@ -7,8 +7,15 @@ import { diffLines } from "./lineDiff";
  */
 export type GutterRequest =
   | { type: "open"; id: number; version: number; base: string; doc: string }
-  | { type: "base"; id: number; version: number; base: string }
-  | { type: "edit"; id: number; version: number; changes: unknown }
+  | {
+      type: "update";
+      id: number;
+      version: number;
+      /** Edits since the last message, as `ChangeSet.toJSON()`. */
+      changes: unknown;
+      /** A new staged text, applied after the edits. */
+      base: string | null;
+    }
   | { type: "close"; id: number };
 
 /**
@@ -21,7 +28,9 @@ export interface GutterResult {
   version: number;
   hunks: number[];
   /** More hunks than `MAX_GUTTER_HUNKS`; only the first ones are listed. */
-  truncated: boolean;
+  truncated?: boolean;
+  /** The worker has no document for `id`; the editor must open it again. */
+  lost?: boolean;
 }
 
 export const HUNK_ADDED = 0;
@@ -110,7 +119,9 @@ export function createGutterWorkerCore() {
         added && removed ? HUNK_MODIFIED : added ? HUNK_ADDED : HUNK_DELETED,
       );
     }
-    return { id, version, hunks, truncated };
+    return truncated
+      ? { id, version, hunks, truncated }
+      : { id, version, hunks };
   }
 
   return {
@@ -123,16 +134,31 @@ export function createGutterWorkerCore() {
       if (request.type === "open") {
         entry = tracked(request.base, request.doc);
       } else if (!entry) {
-        return null;
-      } else if (request.type === "base") {
-        entry = tracked(request.base, entry.doc);
+        return {
+          id: request.id,
+          version: request.version,
+          hunks: [],
+          lost: true,
+        };
       } else {
         try {
-          entry = { ...entry, doc: applyChanges(entry.doc, request.changes) };
+          const doc =
+            request.changes === null
+              ? entry.doc
+              : applyChanges(entry.doc, request.changes);
+          entry =
+            request.base === null
+              ? { ...entry, doc }
+              : tracked(request.base, doc);
         } catch {
-          // Out of step with the editor: drop the File rather than mis-mark it.
+          // Out of step with the editor: drop the File so it is sent again.
           documents.delete(request.id);
-          return null;
+          return {
+            id: request.id,
+            version: request.version,
+            hunks: [],
+            lost: true,
+          };
         }
       }
       documents.set(request.id, entry);

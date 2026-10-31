@@ -133,6 +133,12 @@ describe("FileSurface change markers (EP-14)", () => {
     }));
     await waitFor(() => expect(getBase).toHaveBeenCalledTimes(2));
     expect(getBase).toHaveBeenLastCalledWith(resource, "oid-1");
+
+    // Staging another hunk can leave the status equal (EP-12 then keeps the
+    // root object); the finished refresh still reloads the staged text.
+    useWorkbenchStore.setState({ repositoryRefreshing: true });
+    useWorkbenchStore.setState({ repositoryRefreshing: false });
+    await waitFor(() => expect(getBase).toHaveBeenCalledTimes(3));
   });
 
   it("gives the Agent pane's read-only File no gutter and asks Git nothing", async () => {

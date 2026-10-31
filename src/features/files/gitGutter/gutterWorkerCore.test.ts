@@ -25,7 +25,6 @@ describe("gutter worker core", () => {
       id: 1,
       version: 1,
       hunks: [1, 2, 5, 8, HUNK_MODIFIED],
-      truncated: false,
     });
     expect(base.slice(5, 8)).toBe("two");
 
@@ -35,24 +34,37 @@ describe("gutter worker core", () => {
       doc.length,
     );
     expect(
-      core.handle({ type: "edit", id: 1, version: 2, changes: insert.toJSON() })
-        ?.hunks,
+      core.handle({
+        type: "update",
+        id: 1,
+        version: 2,
+        changes: insert.toJSON(),
+        base: null,
+      })?.hunks,
     ).toEqual([1, 2, 5, 8, HUNK_MODIFIED, 3, 4, 17, 17, HUNK_ADDED]);
 
     expect(
       core.handle({
-        type: "base",
+        type: "update",
         id: 1,
         version: 3,
+        changes: null,
         base: "zero\none\nTWO\nthree\nfour\n",
       })?.hunks,
     ).toEqual([0, 0, 0, 4, HUNK_DELETED]);
 
     expect(core.handle({ type: "close", id: 1 })).toBeNull();
     expect(core.size()).toBe(0);
+    // A File the worker lost is asked for again.
     expect(
-      core.handle({ type: "edit", id: 1, version: 4, changes: [] }),
-    ).toBeNull();
+      core.handle({
+        type: "update",
+        id: 1,
+        version: 4,
+        changes: [],
+        base: null,
+      }),
+    ).toMatchObject({ lost: true });
   });
 });
 

@@ -9,19 +9,29 @@ export interface GutterConnection {
 
 type Listener = (result: GutterResult) => void;
 
+/** Moving between Files keeps the worker; a File left closed stops it. */
+export const GUTTER_WORKER_LINGER_MS = 5_000;
+
 /**
  * One worker shared by every editor with a gutter (EP-14 budget). It starts
- * with the first connection and is terminated with the last, so no worker
- * runs while no File is open.
+ * with the first connection and is terminated a few seconds after the last
+ * closes, so switching Files does not reload it and no worker stays while no
+ * File is open.
  */
-export function createGutterWorkerPool(spawn: () => Worker) {
+export function createGutterWorkerPool(
+  spawn: () => Worker,
+  lingerMs = GUTTER_WORKER_LINGER_MS,
+) {
   let worker: Worker | null = null;
+  let stopTimer: ReturnType<typeof setTimeout> | null = null;
   // A worker that failed to load is not respawned for every edit.
   let failed = false;
   let nextId = 1;
   const listeners = new Map<number, Listener>();
 
   const stop = () => {
+    if (stopTimer !== null) clearTimeout(stopTimer);
+    stopTimer = null;
     worker?.terminate();
     worker = null;
   };
@@ -48,6 +58,8 @@ export function createGutterWorkerPool(spawn: () => Worker) {
     connect(listener: Listener): GutterConnection {
       const id = nextId++;
       listeners.set(id, listener);
+      if (stopTimer !== null) clearTimeout(stopTimer);
+      stopTimer = null;
       return {
         id,
         post: (request) => {
@@ -55,8 +67,9 @@ export function createGutterWorkerPool(spawn: () => Worker) {
         },
         close: () => {
           if (!listeners.delete(id)) return;
-          if (listeners.size === 0) stop();
-          else worker?.postMessage({ type: "close", id });
+          worker?.postMessage({ type: "close", id });
+          if (listeners.size === 0 && worker && stopTimer === null)
+            stopTimer = setTimeout(stop, lingerMs);
         },
       };
     },

@@ -93,8 +93,8 @@ pub struct SettingSpec {
     pub key: &'static str,
     pub kind: SettingKind,
     pub default: SettingValue,
-    /// The ticket that owns the setting. Only tests and the TypeScript mirror
-    /// read it.
+    /// The ticket that owns the setting, recorded here only; the parity test
+    /// requires every entry to name one.
     #[cfg_attr(
         not(test),
         expect(dead_code, reason = "documents ownership for the parity test")
