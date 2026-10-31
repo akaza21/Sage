@@ -192,8 +192,15 @@ export function useBrowserDevice({
     settled.current = (settledTab, failure) => {
       if (settledTab !== tabId) return;
       if (!failure) {
-        if (sent.current.tabId === tabId && sent.current.device !== UNCONFIRMED)
+        // The page now holds what was sent: it is known again, and the
+        // next open sends its device as usual.
+        if (
+          sent.current.tabId === tabId &&
+          sent.current.device !== UNCONFIRMED
+        ) {
           setUnconfirmed(false);
+          setAwaitingUser(false);
+        }
         return;
       }
       const { held, message, resetWaiting } = failure;

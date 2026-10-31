@@ -550,3 +550,38 @@ it("sends the first change after an Unconfirmed restore", async () => {
     expect(screen.queryByText("Unconfirmed")).not.toBeInTheDocument(),
   );
 });
+
+it("emulates again when reopened after an Unconfirmed tab was reset", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    device: null,
+    deviceUnconfirmed: true,
+  });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("toolbar", { name: "Device toolbar" });
+  fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
+  await waitFor(() =>
+    expect(browserSetDevice).toHaveBeenCalledWith(tab.id, null),
+  );
+  await act(async () => undefined);
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  );
+  await screen.findByRole("toolbar", { name: "Device toolbar" });
+  await waitFor(() =>
+    expect(browserSetDevice).toHaveBeenLastCalledWith(tab.id, {
+      preset: "responsive",
+      width: 842,
+      height: 862,
+      scalePercent: 100,
+    }),
+  );
+  expect(screen.queryByText("Unconfirmed")).not.toBeInTheDocument();
+});
