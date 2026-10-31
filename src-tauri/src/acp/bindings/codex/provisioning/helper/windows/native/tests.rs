@@ -2,14 +2,70 @@ use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use uuid::Uuid;
+use windows_sys::Win32::Foundation::LocalFree;
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Storage::FileSystem::CreateDirectoryW;
 
 use super::*;
+
+// This test-only declaration keeps the frozen windows-sys feature set intact.
+#[link(name = "advapi32")]
+unsafe extern "system" {
+    fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        string_descriptor: *const u16,
+        revision: u32,
+        descriptor: *mut *mut std::ffi::c_void,
+        byte_len: *mut u32,
+    ) -> i32;
+}
+
 struct TempRoot(PathBuf);
 
 impl TempRoot {
     fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("sage-{label}-{}", Uuid::new_v4()));
-        fs::create_dir(&path).unwrap();
+        // Preserve extended-length Windows paths for the direct Win32 call.
+        let parent = std::env::temp_dir().canonicalize().unwrap();
+        let path = parent.join(format!("sage-{label}-{}", Uuid::new_v4()));
+        // State authority requires WRITE_OWNER. Give the fixture owner that
+        // right explicitly, including on children, instead of assuming TEMP
+        // inherits Full Control on every Windows volume.
+        let sddl = "D:P(A;OICI;FA;;;OW)"
+            .encode_utf16()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: the terminated SDDL and writable output pointer remain live.
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    1,
+                    &mut descriptor,
+                    std::ptr::null_mut(),
+                )
+            },
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        let attributes = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor,
+            bInheritHandle: 0,
+        };
+        let wide_path = path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        // SAFETY: the terminated path and descriptor outlive this synchronous
+        // call, which copies the security descriptor onto the new directory.
+        let created = unsafe { CreateDirectoryW(wide_path.as_ptr(), &attributes) };
+        let error = std::io::Error::last_os_error();
+        // SAFETY: conversion allocated this descriptor with LocalAlloc, and
+        // CreateDirectoryW no longer borrows it after returning.
+        assert!(unsafe { LocalFree(descriptor) }.is_null());
+        assert_ne!(created, 0, "create fixture root: {error}");
         Self(path.canonicalize().unwrap())
     }
 }

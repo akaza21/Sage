@@ -361,6 +361,26 @@ export async function runAgentCanonicalTest(
       commandStaysInside: true,
       commandWraps: true,
     });
+    // Opening a nested disclosure can scroll its bounded parent before the
+    // new content lays out. Keep the fetch label at the canonical bottom.
+    const itemList = group.locator(":scope > .acp-tool-rollup__items");
+    await expect
+      .poll(() =>
+        itemList.evaluate((list) => {
+          const result = list.querySelector<HTMLElement>(
+            ':scope > [data-activity-kind="fetch"] [role="group"] > header > strong',
+          )!;
+          const offset =
+            result.getBoundingClientRect().bottom -
+            list.getBoundingClientRect().bottom;
+          list.scrollTop += offset;
+          return Math.abs(
+            result.getBoundingClientRect().bottom -
+              list.getBoundingClientRect().bottom,
+          );
+        }),
+      )
+      .toBeLessThanOrEqual(1);
     await expectNoViewportOverflow(page);
   }
   if (name === "agent-thinking-live") {

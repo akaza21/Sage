@@ -45,7 +45,8 @@ async function openChrome(
     { harness, state, status, tone, harnessStatus },
   );
   await chooseWindowMode(page, "Editor");
-  await expect(page.locator(".agent-task-header")).toHaveCount(0);
+  await expect(page.locator(".agent-task-header")).toHaveCount(1);
+  await expect(page.locator(".agent-task-header")).toBeHidden();
   await chooseWindowMode(page, "Agent");
   await settleChatProjections(page);
   const profile =

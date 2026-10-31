@@ -81,7 +81,10 @@ const { currentNonterminalTurn } = vi.hoisted(() => ({
   >(() => null),
 }));
 
-vi.mock("./acp/currentNonterminalTurn", () => ({ currentNonterminalTurn }));
+vi.mock(import("./acp/currentNonterminalTurn"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  currentNonterminalTurn,
+}));
 
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 

@@ -2,7 +2,7 @@ import { Text } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 
 import { MAX_GOTO_LINE_POSITION } from "./goToLine";
-import { admitCaretStatus, caretStatusLabel } from "./editorCaret";
+import { admitCaretStatus, caretStatusLabel } from "./goToLine";
 
 const doc = (text: string) => Text.of(text.split("\n"));
 

@@ -1,5 +1,6 @@
 import { useId } from "react";
 import {
+  LoaderCircle,
   ArrowRightLeft,
   Bot,
   Brain,
@@ -20,7 +21,6 @@ import { ToolItemDetails } from "./ToolItemDetails";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 import { toolDurationLabel } from "./toolActivityRollup";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ToolCommandFrame } from "./ToolCommandFrame";
 import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
 
@@ -215,5 +215,18 @@ function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
         onOpenResource={onOpenResource}
       />
     </article>
+  );
+}
+
+export function ToolRunningIndicator() {
+  return (
+    <span
+      className="acp-tool-running"
+      role="status"
+      aria-label="Running"
+      aria-live="off"
+    >
+      <LoaderCircle size={12} aria-hidden="true" />
+    </span>
   );
 }

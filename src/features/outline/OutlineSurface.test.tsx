@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument } from "../../domain/editor";
 import { OutlineSurface } from "./OutlineSurface";
-import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
+import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineCard";
 import { MAX_OUTLINE_SYMBOLS } from "./syntaxOutline";
 const OUTLINE_SETTLE_MS = 200;
 

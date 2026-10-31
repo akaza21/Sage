@@ -25,7 +25,7 @@ import { ChatHandoffControl } from "./ChatHandoffControl";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-import { bindingNoticeAllowed } from "./composerBindingNotice";
+import { bindingNoticeAllowed } from "./harnessAvailability";
 import { isNewProjectChat } from "./newProjectChat";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";

@@ -1,6 +1,6 @@
 import type { FormEventHandler, RefObject } from "react";
 
-import type { ChatUsage } from "./acp/chatUsage";
+import type { ChatUsage } from "./acp/currentNonterminalTurn";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type {
   AcpConfigValue,

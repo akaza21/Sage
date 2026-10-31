@@ -16,8 +16,10 @@ import type {
 import type { AcpChatPage } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
-import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
-import { currentChatUsage } from "./acp/chatUsage";
+import {
+  currentNonterminalTurn,
+  currentChatUsage,
+} from "./acp/currentNonterminalTurn";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 
 type SurfaceHarness = Pick<
@@ -362,9 +364,7 @@ export function useChatSurfaceModel({
         ? signInRequiredMessage(model.selectedHarness)
         : (acpActions.error ?? chatError),
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
-    modeChanging: model.useNativeAcp
-      ? (acpActions.modeChanging ?? false)
-      : false,
+    modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,
     activeAcpTurn,
     workingTurnCount,

@@ -9,12 +9,15 @@ import {
 } from "../../ui/leanIcons";
 import { useWorkbenchStore } from "../../app/store";
 import { resourceTitle, sameResource } from "../../domain/resourceIdentity";
-import { outlineKindLabel, outlineSummaryTitle } from "./outlineCard";
+import {
+  outlineKindLabel,
+  outlineSummaryTitle,
+  outlineAvailability,
+} from "./outlineCard";
 import { type OutlineSymbolKind, type SyntaxOutline } from "./syntaxOutline";
 import { useEffect, useState } from "react";
 import { type ResourceRef } from "../../domain/resource";
 import { contentText, type EditorContent } from "../files/editorContent";
-import { outlineAvailability } from "./outlineAvailability";
 
 const KIND_ICONS: Readonly<Record<OutlineSymbolKind, typeof Box>> = {
   function: SquareFunction,

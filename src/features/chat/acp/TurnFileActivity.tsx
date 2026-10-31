@@ -5,7 +5,7 @@ import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { projectTurnEditSummary } from "./chatEditSummary";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { FileChangeTotals } from "./FileChangeTotals";
-import { rootDisplayName } from "./rootDisplayName";
+import { rootDisplayName } from "./chatFileChip";
 import "./edited-files-card.css";
 
 export function TurnFileActivity({

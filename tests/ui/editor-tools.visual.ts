@@ -315,7 +315,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       if (!frame || !content) return null;
       return {
         frameOutline: getComputedStyle(frame).outlineWidth,
-        frameShadow: getComputedStyle(frame).boxShadow,
+        frameShadow: getComputedStyle(frame, "::after").boxShadow,
         contentOutline: getComputedStyle(content).outlineWidth,
       };
     });

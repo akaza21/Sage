@@ -19,7 +19,7 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
-import { rootDisplayName } from "./rootDisplayName";
+import { rootDisplayName } from "./chatFileChip";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;

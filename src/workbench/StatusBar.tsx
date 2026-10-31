@@ -4,7 +4,7 @@ import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";
 import { useWorkbenchStore } from "../app/store";
 import type { ProjectRepositoryStatus } from "../domain/workbench";
-import { caretStatusLabel } from "../features/files/editorCaret";
+import { caretStatusLabel } from "../features/files/goToLine";
 import { editorLanguageStatusLabel } from "../features/files/editorLanguage";
 
 function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {

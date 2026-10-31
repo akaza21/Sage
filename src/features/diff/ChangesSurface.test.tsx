@@ -98,3 +98,54 @@ it("holds a snapshot without rescanning streamed pages until explicit refresh", 
   expect(screen.queryByRole("table")).toBeNull();
   expect(screen.getByText("No changes in this scope.")).toBeVisible();
 });
+
+it("shows complete totals and hides them for unknown or partial counts", () => {
+  const page = snapshotPage();
+  const item = page.turns[0].items[0];
+  if (item.kind !== "fileChangeDiff") throw new Error("Missing edit fixture");
+  const first = { ...item.payload.changes[0], additions: 1, deletions: 2 };
+  const second = {
+    ...first,
+    resource: {
+      kind: "resource" as const,
+      resource: { rootId: "root-a", relativePath: "src/b.ts" },
+    },
+    additions: 3,
+    deletions: 5,
+  };
+  const withChanges = (
+    changes: typeof item.payload.changes,
+    truncated = false,
+  ) => ({
+    ...page,
+    turns: [
+      {
+        ...page.turns[0],
+        // Retained before/after pairs admit one File per authenticated Item.
+        items: changes.map((change, index) => ({
+          ...item,
+          id: `${item.id}-${index}` as typeof item.id,
+          ordinal: index + 1,
+          payload: { ...item.payload, changes: [change], truncated },
+        })),
+      },
+    ],
+  });
+  const view = render(<ChangesSurface page={withChanges([first, second])} />);
+  expect(screen.getByText("+4")).toBeVisible();
+  expect(screen.getByText("−7")).toBeVisible();
+
+  view.rerender(
+    <ChangesSurface
+      page={withChanges([first, { ...second, additions: null }])}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Refresh changes" }));
+  expect(screen.queryByText("+4")).toBeNull();
+  expect(screen.queryByText("−7")).toBeNull();
+
+  view.rerender(<ChangesSurface page={withChanges([first, second], true)} />);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh changes" }));
+  expect(screen.queryByText("+4")).toBeNull();
+  expect(screen.queryByText("−7")).toBeNull();
+});

@@ -22,6 +22,7 @@ import { consumeWindowsCargoJobFrames } from "./lib/check-windows-cargo-protocol
 import {
   createRustValidationCommands,
   resolveNpmInvocation,
+  PROCESS_LIMITS,
   VALIDATION_DEADLINES_MS,
 } from "./lib/check-plans.mjs";
 import { createDevPlan, parseDevArguments } from "./check-dev.mjs";
@@ -985,7 +986,8 @@ test("real command timeout terminates its spawned process tree without an orphan
           cwd: root,
           timeoutMs: 300,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
+          // Real OS queries need the same bounded settlement budget as production.
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },
@@ -1034,7 +1036,7 @@ test("leader exit cannot falsely prove descendant settlement", async () => {
           cwd: root,
           timeoutMs: 300,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_000,
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },
@@ -1076,7 +1078,7 @@ test("newline-free output is bounded and terminates the offending command", asyn
           cwd: root,
           timeoutMs: 5_000,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },

@@ -22,9 +22,8 @@ import {
   promptAttachmentItems,
   rootActivities,
 } from "./acpTurnState";
-import type { OpenResourceTarget } from "./ToolItem";
+import { ToolRunningIndicator, type OpenResourceTarget } from "./ToolItem";
 import { PrimaryActivities } from "./PrimaryActivities";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnHeader } from "./TurnHeader";
 import { TurnFailure } from "./TurnFailure";

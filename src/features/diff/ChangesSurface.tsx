@@ -49,21 +49,20 @@ export const ChangesSurface = memo(function ChangesSurface({
   const gitAvailable = repositories.roots.some(
     (root) => root.state === "repository",
   );
-  const countsKnown =
-    !result.truncated &&
-    result.entries.length > 0 &&
-    result.entries.every(
-      (entry) => entry.additions !== null && entry.deletions !== null,
-    );
-  const totals = countsKnown
-    ? result.entries.reduce(
-        (sum, entry) => ({
-          additions: sum.additions + entry.additions!,
-          deletions: sum.deletions + entry.deletions!,
-        }),
-        { additions: 0, deletions: 0 },
-      )
-    : null;
+  let totals =
+    !result.truncated && result.entries.length > 0
+      ? { additions: 0, deletions: 0 }
+      : null;
+  if (totals) {
+    for (const entry of result.entries) {
+      if (entry.additions === null || entry.deletions === null) {
+        totals = null;
+        break;
+      }
+      totals.additions += entry.additions;
+      totals.deletions += entry.deletions;
+    }
+  }
   return (
     <section className="changes-surface" aria-label="Chat changes">
       <div className="changes-surface__toolbar">

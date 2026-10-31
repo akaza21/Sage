@@ -20,7 +20,7 @@ import { PermissionItem } from "./PermissionItem";
 import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
-import { isWorkingTool, workingToolStatus } from "./workingTool";
+import { isWorkingTool, workingToolStatus } from "./statusSemantics";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
