@@ -118,7 +118,7 @@ impl AcpStore for CausalStore {
     }
 }
 
-pub(super) fn install_store(service: &mut AcpService, store: CausalStore) {
+pub(super) fn install_store(service: &mut AcpService, store: impl AcpStore + 'static) {
     service.journal.shutdown();
     service
         .journal_thread

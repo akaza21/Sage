@@ -37,6 +37,9 @@ mod bootstrap_support;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/bootstrap_tests.rs"]
 mod bootstrap_tests;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+#[path = "journey_tests/browser_reconnect_tests.rs"]
+mod browser_reconnect_tests;
 
 #[test]
 #[cfg(windows)]
