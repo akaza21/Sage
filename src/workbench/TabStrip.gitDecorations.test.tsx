@@ -69,7 +69,7 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
   render(<TabStrip showNewChat={false} />);
 
   const edited = await screen.findByRole("tab", { name: "a.ts, Modified" });
-  expect(edited).toHaveAttribute("title", "src/a.ts, Modified");
+  expect(edited).toHaveAttribute("title", "src/a.ts");
   expect(edited.querySelector(".git-badge")).toHaveTextContent("M");
   expect(
     screen
@@ -88,7 +88,9 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
     });
   });
   expect(screen.getAllByRole("tab", { name: "a.ts" })).toHaveLength(2);
-  expect(screen.getByRole("tab", { name: "b.ts, Untracked" })).toBeTruthy();
+  expect(
+    await screen.findByRole("tab", { name: "b.ts, Untracked" }),
+  ).toBeTruthy();
 
   act(() => {
     useEditorSettingsStore.setState({
@@ -98,8 +100,6 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
       },
     });
   });
-  expect(screen.getByRole("tab", { name: "b.ts" })).not.toHaveAttribute(
-    "title",
-    expect.stringContaining("Untracked"),
-  );
+  expect(screen.getByRole("tab", { name: "b.ts" })).toBeInTheDocument();
+  expect(document.querySelector(".git-badge")).toBeNull();
 });

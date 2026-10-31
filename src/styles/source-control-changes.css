@@ -177,29 +177,3 @@
   opacity: 0.45;
   cursor: default;
 }
-
-/* Git decoration tones (EP-13), shared by Explorer rows and tabs. */
-.git-tone--modified {
-  --git-tone: var(--color-warning);
-}
-
-.git-tone--added,
-.git-tone--untracked {
-  --git-tone: var(--color-success);
-}
-
-.git-tone--deleted,
-.git-tone--conflict {
-  --git-tone: var(--color-danger);
-}
-
-.git-badge {
-  flex: none;
-  min-width: 1ch;
-  margin-left: auto;
-  color: var(--git-tone);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--font-weight-semibold);
-  text-align: center;
-}

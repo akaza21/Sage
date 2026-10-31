@@ -9,10 +9,10 @@ import {
 } from "../ui/leanIcons";
 
 import {
-  useEffect,
+  lazy,
+  Suspense,
   useLayoutEffect,
   useRef,
-  useState,
   type WheelEvent,
 } from "react";
 
@@ -20,8 +20,6 @@ import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
-import { GitDecorationBadge } from "../features/git/GitDecorationBadge";
-import type * as GitDecorationsModule from "../features/git/gitDecorations";
 import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -55,29 +53,9 @@ function BrowserTabPresence({
   );
 }
 
-// Git marks (EP-13) load when the Editor's tab strip first shows, keeping them
-// off the startup path the Agent window shares.
-let gitDecorationsModule: typeof GitDecorationsModule | undefined;
-
-function useGitDecorationsModule(enabled: boolean) {
-  const [loaded, setLoaded] = useState(gitDecorationsModule);
-  useEffect(() => {
-    if (!enabled || loaded) return;
-    let live = true;
-    import("../features/git/gitDecorations").then(
-      (module) => {
-        gitDecorationsModule = module;
-        if (live) setLoaded(module);
-      },
-      (error: unknown) =>
-        console.warn("Tabs could not load Git decorations", error),
-    );
-    return () => {
-      live = false;
-    };
-  }, [enabled, loaded]);
-  return enabled ? loaded : undefined;
-}
+// A File tab's Git mark (EP-13) loads with the first decorated tab, keeping it
+// and its styles off the startup path the Agent window shares.
+const GitTabTitle = lazy(() => import("../features/git/GitTabTitle"));
 
 /**
  * A vertical wheel scrolls the strip sideways, as in VS Code. A trackpad pinch
@@ -120,12 +98,8 @@ export function TabStrip({
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
-  const gitDecorations = useGitDecorationsModule(
-    useEditorSettingsStore((store) => store.settings["git.decorations"]),
-  );
-  // Only while marks show, so a status change elsewhere leaves the strip be.
-  const repositories = useWorkbenchStore((state) =>
-    gitDecorations ? state.repositories : null,
+  const gitDecorations = useEditorSettingsStore(
+    (store) => store.settings["git.decorations"],
   );
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
   const visibleTabs = kinds
@@ -155,14 +129,6 @@ export function TabStrip({
         {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];
           const active = tab.id === activeTabId;
-          // EP-13: File tabs carry the File's Git status, as in VS Code.
-          const git =
-            gitDecorations &&
-            repositories &&
-            tab.kind === "file" &&
-            tab.resource
-              ? gitDecorations.resourceGitDecoration(repositories, tab.resource)
-              : undefined;
 
           return (
             <div
@@ -175,10 +141,7 @@ export function TabStrip({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                title={
-                  (tab.resource?.relativePath ?? tab.title) +
-                  (git ? `, ${git.label}` : "")
-                }
+                title={tab.resource?.relativePath ?? tab.title}
                 onClick={() => void activateTab(tab.id)}
               >
                 {tab.kind === "browser" ? (
@@ -198,19 +161,13 @@ export function TabStrip({
                 ) : (
                   <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                 )}
-                <span
-                  className={
-                    git ? `tab__title--git git-tone--${git.tone}` : undefined
-                  }
-                >
-                  {tab.title}
-                </span>
-                {git ? (
-                  <>
-                    <span className="sr-only">, {git.label}</span>
-                    <GitDecorationBadge decoration={git} />
-                  </>
-                ) : null}
+                {gitDecorations && tab.kind === "file" && tab.resource ? (
+                  <Suspense fallback={<span>{tab.title}</span>}>
+                    <GitTabTitle title={tab.title} resource={tab.resource} />
+                  </Suspense>
+                ) : (
+                  <span>{tab.title}</span>
+                )}
                 {tab.kind === "browser" ? (
                   <BrowserTabPresence
                     tabId={tab.id}

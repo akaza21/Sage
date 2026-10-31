@@ -124,6 +124,27 @@ describe("rootGitDecorations", () => {
     });
   });
 
+  it("marks a partial status as incomplete, not as a change count", () => {
+    // After a commit the index-only projection is clean but partial.
+    const clean = rootGitDecorations(root([], { truncated: true }));
+    expect(clean.files.size).toBe(0);
+    expect(clean.folders.get("")).toEqual({
+      tone: "unknown",
+      badge: "…",
+      label: "Git status is incomplete. Some changes may not be marked.",
+    });
+    // Line counts cut short with a few changes listed.
+    const partial = rootGitDecorations(
+      root([change("src/a.ts", "modified")], { truncated: true }),
+    );
+    expect(partial.folders.get("")).toMatchObject({
+      tone: "modified",
+      badge: "…",
+    });
+    expect(partial.folders.get("src")?.badge).toBe("•");
+    expect(partial.files.get("src/a.ts")?.badge).toBe("M");
+  });
+
   it("builds once per root object and reuses decoration objects", () => {
     const first = root([change("a.ts", "modified")]);
     expect(rootGitDecorations(first)).toBe(rootGitDecorations(first));

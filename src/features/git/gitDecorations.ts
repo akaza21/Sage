@@ -13,7 +13,7 @@ import { visibleChangeStatus } from "./conflictPresentation";
  * folder that holds one.
  */
 export type GitDecorationTone =
-  "conflict" | "modified" | "deleted" | "added" | "untracked";
+  "conflict" | "modified" | "deleted" | "added" | "untracked" | "unknown";
 
 export interface GitDecoration {
   tone: GitDecorationTone;
@@ -56,6 +56,7 @@ const FOLDER_DECORATIONS: Record<GitDecorationTone, GitDecoration> = {
   deleted: decoration("deleted", "•", "Contains changes"),
   added: decoration("added", "•", "Contains changes"),
   untracked: decoration("untracked", "•", "Contains changes"),
+  unknown: decoration("unknown", "•", "Contains changes"),
 };
 
 /** A folder takes the colour of its most pressing change. */
@@ -65,7 +66,11 @@ const TONE_RANK: Record<GitDecorationTone, number> = {
   deleted: 2,
   added: 1,
   untracked: 0,
+  unknown: -1,
 };
+
+/** Native `MAX_CHANGES`: Git status lists at most this many changes. */
+export const MAX_LISTED_CHANGES = 300;
 
 export function fileGitDecoration(change: FileChange): GitDecoration | null {
   if (isConflictedChange(change)) return FILE_DECORATIONS.conflict;
@@ -84,9 +89,9 @@ const EMPTY: RootGitDecorations = Object.freeze({
 });
 
 /**
- * The marks for one root. Git lists at most 300 changes (`MAX_CHANGES`); past
- * that the root shows a "many changes" count, since Files beyond the cap are
- * changed but unmarked.
+ * The marks for one root. Git lists at most 300 changes; past that the root
+ * shows a "many changes" count, since Files beyond the cap are changed but
+ * unmarked. Any other partial status marks the root as incomplete.
  */
 export function rootGitDecorations(
   root: RootRepositoryStatus,
@@ -123,13 +128,18 @@ export function rootGitDecorations(
     folders.set(folder, FOLDER_DECORATIONS[tone]);
   }
   if (root.truncated) {
-    const count = root.changes.length;
+    // A full list proves more changes exist; anything else (output or line
+    // counts cut short, an index-only projection) only that some may be
+    // missing.
+    const overflow = root.changes.length >= MAX_LISTED_CHANGES;
     folders.set(
       "",
       decoration(
-        folderTones.get("") ?? "modified",
-        `${count}+`,
-        `More than ${count} changes. Only the first ${count} are marked.`,
+        folderTones.get("") ?? "unknown",
+        overflow ? `${MAX_LISTED_CHANGES}+` : "…",
+        overflow
+          ? `More than ${MAX_LISTED_CHANGES} changes. Only the first ${MAX_LISTED_CHANGES} are marked.`
+          : "Git status is incomplete. Some changes may not be marked.",
       ),
     );
   }
