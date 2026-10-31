@@ -159,15 +159,19 @@ pub(crate) async fn browser_zoom(
     percent: u16,
 ) -> Result<(), String> {
     let scale = admitted_zoom(percent)?;
-    active_webview(&state, &tab_id)?
-        .set_zoom(scale)
-        .map_err(|error| error.to_string())?;
+    let webview = active_webview(&state, &tab_id)?;
+    webview.set_zoom(scale).map_err(|error| error.to_string())?;
     let updated = state
         .tabs
         .lock()
         .map_err(|error| error.to_string())?
         .set_zoom_percent(&tab_id, percent);
     if updated {
+        // WebView2 host-set ZoomFactor does not emit ZoomFactorChanged.
+        // Notify explicitly; the native event still covers Ctrl+wheel.
+        if state.annotate.is_annotating(&tab_id) {
+            super::annotate::zoom::zoomed(webview.app_handle(), &tab_id);
+        }
         Ok(())
     } else {
         Err("browser tab unavailable".into())

@@ -27,7 +27,11 @@ pub(crate) const HIDE_OUTLINE: (&str, &str) = ("Overlay.setShowHinge", "{}");
 /// failed, so the page never keeps a half-enabled overlay. The outline goes
 /// one round trip after hovering ends, so an outline still on its way from
 /// the last hover lands before it.
-const STOP: [(&str, &str); 5] = [
+const STOP: [(&str, &str); 6] = [
+    // Trusted-input Annotate may start before any Agent enabled DOM. Chromium
+    // rejects DOM.disable in that state, so make cleanup safe on a fresh page
+    // and on repeated starts while still surfacing actual transport failures.
+    ("DOM.enable", "{}"),
     (
         "Overlay.setInspectMode",
         r#"{"mode":"none","highlightConfig":{}}"#,
@@ -182,7 +186,10 @@ pub(crate) fn outline_params(box_model: &str, zoom: f64) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use super::*;
     use crate::browser::devtools::{snapshot::DocumentStamp, transport::Settled};
@@ -194,6 +201,7 @@ mod tests {
         calls: Mutex<Vec<(String, String, bool)>>,
         fail: Option<&'static str>,
         box_model: Option<&'static str>,
+        dom_enabled: AtomicBool,
     }
 
     impl Recorder {
@@ -213,6 +221,13 @@ mod tests {
                 .push((method.into(), params.into(), permitted));
             if self.fail == Some(method) {
                 return Err(BrowserFailure::Unavailable);
+            }
+            match method {
+                "DOM.enable" => self.dom_enabled.store(true, Ordering::Relaxed),
+                "DOM.disable" if !self.dom_enabled.swap(false, Ordering::Relaxed) => {
+                    return Err(BrowserFailure::Unavailable);
+                }
+                _ => {}
             }
             Ok(match (method, self.box_model) {
                 ("DOM.getBoxModel", Some(model)) => model.into(),
@@ -307,15 +322,23 @@ mod tests {
         assert_eq!(port.stop_inspect(), Err(BrowserFailure::Unavailable));
         assert_eq!(port.transport.methods(), STOP.map(|(method, _)| method));
         let calls = port.transport.calls.lock().unwrap();
-        assert_eq!(calls[0].1, r#"{"mode":"none","highlightConfig":{}}"#);
+        assert_eq!(calls[1].1, r#"{"mode":"none","highlightConfig":{}}"#);
         assert!(calls.iter().all(|(_, _, permitted)| !permitted));
     }
 
     #[test]
     fn stop_removes_the_outline_after_a_round_trip_and_before_the_overlay_goes() {
         let position = |step| STOP.iter().position(|entry| *entry == step).unwrap();
-        assert_eq!(position(HIDE_OUTLINE), 2);
+        assert_eq!(position(HIDE_OUTLINE), 3);
         assert!(position(("Overlay.disable", "{}")) > position(HIDE_OUTLINE));
+    }
+
+    #[test]
+    fn cleanup_succeeds_on_a_fresh_page_and_when_repeated() {
+        let port = port(None);
+        assert_eq!(port.stop_inspect(), Ok(()));
+        assert_eq!(port.stop_inspect(), Ok(()));
+        assert!(!port.transport.dom_enabled.load(Ordering::Relaxed));
     }
 
     #[test]

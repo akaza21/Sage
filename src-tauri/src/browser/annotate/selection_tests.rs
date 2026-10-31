@@ -83,7 +83,7 @@ fn area_selection_confirms_through_the_same_comment_and_escape_flow() {
         serde_json::to_value(item.unwrap()).unwrap()["target"],
         "area"
     );
-    mode.escape(&overlay, "browser-1").1.unwrap();
+    mode.escape(&overlay, "browser-1", false).1.unwrap();
     assert!(mode.pending.is_none());
     assert_eq!(mode.tab.as_deref(), Some("browser-1"));
 }

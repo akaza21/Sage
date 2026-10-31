@@ -39,6 +39,10 @@ pub(super) fn pick(
                 {
                     return (Vec::new(), Ok(()));
                 }
+                if state.annotate.is_covered(&label) {
+                    let _ = overlay.start(&label);
+                    return (Vec::new(), Ok(()));
+                }
                 mode.select_with(&overlay, &label, || {
                     let result = match input.target {
                         InputTarget::Area => overlay.area(

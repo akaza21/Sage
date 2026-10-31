@@ -133,7 +133,6 @@ impl InspectOverlay for NativeOverlay<'_> {
     }
 
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String> {
-        let webview = self.webview(label)?;
         let shown = if reveal {
             self.with_visible_page(label, |page| page.show())
         } else {
@@ -158,6 +157,9 @@ impl InspectOverlay for NativeOverlay<'_> {
     }
 
     fn clear_outline(&self, label: &str) -> Result<(), String> {
-        devtools::clear_annotate_outline(&self.webview(label)?).map_err(unavailable)
+        devtools::clear_annotate_outline(&self.webview(label)?).map_err(unavailable)?;
+        // Replace the scoped binding too: a pre-zoom mouseup may already be
+        // waiting for the mode lock. Its old lease must not capture afterward.
+        self.start(label)
     }
 }

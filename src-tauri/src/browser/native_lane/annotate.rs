@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::Lane;
 use crate::browser::{annotate, bounds, page_controls};
@@ -23,10 +23,47 @@ impl Lane {
         ))
     }
 
-    /// The same pick handler as Chromium's inspectNodeRequested event, followed
-    /// by a bounded wait for the completed selection rather than its freeze mark.
+    /// Sends trusted browser input through the production isolated-world picker,
+    /// then waits for the completed selection rather than only its freeze mark.
     pub fn pick_annotation(&self, tab: &str, backend_node_id: u64) -> Result<(), String> {
-        annotate::pick(&self.app, tab, backend_node_id);
+        let model = self.cdp(
+            tab,
+            "DOM.getBoxModel",
+            &json!({"backendNodeId": backend_node_id}),
+        )?;
+        let quad = model["model"]["content"]
+            .as_array()
+            .ok_or("no picked box")?;
+        let coordinate = |index: usize| {
+            quad.get(index)
+                .and_then(Value::as_f64)
+                .ok_or("invalid picked box")
+        };
+        let x = (coordinate(0)? + coordinate(4)?) / 2.0;
+        let y = (coordinate(1)? + coordinate(5)?) / 2.0;
+        self.drag_annotation(tab, x, y, x, y)
+    }
+
+    pub fn drag_annotation(
+        &self,
+        tab: &str,
+        x: f64,
+        y: f64,
+        end_x: f64,
+        end_y: f64,
+    ) -> Result<(), String> {
+        if self.state().annotate.is_frozen(tab) {
+            return Err("a browser selection is already waiting".into());
+        }
+        for (kind, x, y, buttons) in [
+            ("mousePressed", x, y, 1),
+            ("mouseMoved", end_x, end_y, 1),
+            ("mouseReleased", end_x, end_y, 0),
+        ] {
+            self.cdp(tab, "Input.dispatchMouseEvent", &json!({
+                "type": kind, "x": x, "y": y, "button": "left", "buttons": buttons, "clickCount": 1,
+            }))?;
+        }
         let deadline = Instant::now() + Duration::from_secs(10);
         while !self.state().annotate.is_frozen(tab) {
             if Instant::now() >= deadline {
@@ -35,6 +72,14 @@ impl Lane {
             thread::sleep(Duration::from_millis(10));
         }
         self.annotate_control(tab, "annotateFrame").map(|_| ())
+    }
+
+    pub fn zoom_browser(&self, tab: &str, percent: u16) -> Result<(), String> {
+        tauri::async_runtime::block_on(page_controls::browser_zoom(
+            self.state(),
+            tab.to_owned(),
+            percent,
+        ))
     }
 
     pub fn place_browser(&self, tab: &str) -> Result<(), String> {

@@ -85,3 +85,22 @@ it("stopping annotate releases clicks and cannot report a stale drag", () => {
   expect(click.stopImmediatePropagation).not.toHaveBeenCalled();
   expect(report).not.toHaveBeenCalled();
 });
+
+it("clearing a zoom outline cancels an in-progress area without ending annotate", () => {
+  const { mouse, report, stop } = install();
+  mouse("mousedown", 10, 20);
+  mouse("mousemove", 200, 150);
+  stop.clear();
+  mouse("mouseup", 200, 150);
+  expect(report).not.toHaveBeenCalled();
+  mouse("mousedown", 20, 30);
+  mouse("mouseup", 120, 130);
+  expect(JSON.parse(report.mock.calls[0]![0])).toEqual({
+    target: "area",
+    x: 20,
+    y: 30,
+    width: 100,
+    height: 100,
+  });
+  stop();
+});

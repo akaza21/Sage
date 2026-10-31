@@ -130,6 +130,7 @@ export default function installAnnotateDrag(report) {
       window.removeEventListener(name, listener, true);
     host.remove();
   };
+  stop.clear = cancel;
   stop.resume = () => {
     enabled = true;
     cancel();

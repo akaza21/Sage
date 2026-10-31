@@ -2,7 +2,6 @@ import type { StoreApi } from "zustand";
 
 import {
   attachedContextKey,
-  isBrowserElement,
   attachContextToDraft,
   MAX_ATTACHED_CONTEXTS_PER_TURN,
   type AttachedContext,
@@ -20,17 +19,8 @@ import { errorMessage } from "../domain/errors";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { WorkbenchState } from "./store";
 import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
-import { forgetBrowserCrop } from "./browserCropPreview";
+import { browserCropLifecycle } from "./browserCropLifecycle";
 import type { ChatContextAccess } from "./chatContextAccess";
-
-function releasePictures(
-  contexts: readonly AttachedContext[],
-  kept: readonly AttachedContext[],
-) {
-  for (const context of contexts)
-    if (isBrowserElement(context) && !kept.includes(context))
-      forgetBrowserCrop(context);
-}
 
 function normalizeEntry(entry: ChatOwnershipEntry | undefined) {
   return entry
@@ -86,7 +76,7 @@ export function createAttachedContextActions({
         (context) => attachedContextKey(context) !== contextKey,
       );
       if (attachedContext.length === entry.attachedContext.length) return false;
-      releasePictures(entry.attachedContext, attachedContext);
+      browserCropLifecycle.release?.(entry.attachedContext, attachedContext);
       set({
         chatUiById: {
           ...state.chatUiById,
@@ -109,7 +99,7 @@ export function createAttachedContextActions({
         (context) => !sentKeys.has(attachedContextKey(context)),
       );
       const updated = { ...entry, composerText: "", attachedContext };
-      releasePictures(entry.attachedContext, attachedContext);
+      browserCropLifecycle.release?.(entry.attachedContext, attachedContext);
       const active = activeChatId(state) === intent.chatId;
       set({
         chatUiById: { ...state.chatUiById, [intent.chatId]: updated },

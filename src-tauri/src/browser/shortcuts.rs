@@ -164,9 +164,8 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     .map_err(|error| error.to_string())?
 }
 
-/// Keeps Annotate on through every page zoom: Sage's zoom controls and
-/// shortcuts set the zoom factor, and Ctrl+wheel changes it in WebView2
-/// itself, so this one event covers them all.
+/// Handles user/runtime zoom such as Ctrl+wheel. Host-set zoom does not emit
+/// this event; `browser_zoom` notifies Annotate explicitly for Sage controls.
 #[cfg(windows)]
 fn watch_zoom(
     controller: &webview2_com_sys::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller,

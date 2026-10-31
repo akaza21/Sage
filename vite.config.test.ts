@@ -114,6 +114,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/outline/syntaxOutline.ts",
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
+  // Native file watchers start only when an editor document asks for one.
+  "src/ports/editorWatchSession.ts",
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
@@ -809,6 +811,8 @@ describe("desktop-native chunk topology", () => {
       "/src/workbench/SettingsSurface.tsx",
       "/src/workbench/SourceControlView.tsx",
       "/src/workbench/Workbench.tsx",
+      "/src/ports/editorWatchSession.ts",
+      "/src/app/browserCropPreview.ts",
     ]) {
       expect(
         ordinaryGraph.allModules.some((id) => id.endsWith(snapshotModule)),

@@ -1,10 +1,20 @@
-import type { BrowserElementContext } from "../domain/attachedContext";
+import {
+  isBrowserElement,
+  type BrowserElementContext,
+} from "../domain/attachedContext";
 import type { BrowserAnnotateCrop } from "../ports/nativeBrowserAnnotatePort";
+import { browserCropLifecycle } from "./browserCropLifecycle";
 
 // Each bounded draft owns its previews. Never retain a closed chat or evict
 // another draft's active picture to make room for the current chat.
 const previews = new WeakMap<BrowserElementContext, BrowserAnnotateCrop>();
 let slots: WeakRef<BrowserElementContext>[] = [];
+
+browserCropLifecycle.release = (contexts, kept) => {
+  for (const context of contexts)
+    if (isBrowserElement(context) && !kept.includes(context))
+      previews.delete(context);
+};
 
 export function rememberBrowserCrop(
   context: BrowserElementContext,
