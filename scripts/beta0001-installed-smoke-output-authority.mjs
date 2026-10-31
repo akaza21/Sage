@@ -269,13 +269,14 @@ export async function releaseInstalledSmokeOutputAuthority(authority) {
   if (!authorities.has(authority)) return;
   authorities.delete(authority);
   if (authority.child.exitCode !== null) return;
+  // The guardian holds no-delete handles on the output's ancestors until its
+  // process is gone, so wait for it to close even when it has to be stopped.
   await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      stopChild(authority.child);
-      resolve();
-    }, 5000);
+    const closed = setTimeout(resolve, 10_000);
+    const stop = setTimeout(() => stopChild(authority.child), 5000);
     authority.child.once("close", () => {
-      clearTimeout(timer);
+      clearTimeout(stop);
+      clearTimeout(closed);
       resolve();
     });
     authority.child.stdin.end("release\n");

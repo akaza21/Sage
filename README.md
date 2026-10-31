@@ -151,8 +151,12 @@ After the native prerequisites are installed:
 ```powershell
 npm run tauri dev
 cargo test --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+npm run gate:fast
 ```
+
+`--all-features` does not build: `cdp-lane` is unix-only and `native-lane` is
+Windows-only. The gate passes Clippy every feature that builds on your
+platform (`scripts/cargo-features.mjs`).
 
 ## Project boundaries
 

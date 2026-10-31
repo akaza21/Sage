@@ -45,7 +45,17 @@ jobs:
       - run: npm ci
       - name: Provision the bundled Chromium the smoke CLI drives
         run: npx playwright install chromium
+      # The Windows Cargo Job tests give each cargo command 10 s; install the
+      # rust-toolchain.toml toolchain first so no command waits on a download.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
       - name: Run the Windows budget lane
+        # The runner's TEMP is the 8.3 short path C:\Users\RUNNER~1\..., which
+        # the native-IDE journey scripts refuse as non-canonical.
+        # Point temp files at the runner's long-path temp directory instead.
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: npm run test:budgets:windows
 
   rust:
@@ -55,10 +65,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
+        # --all-features cannot build anywhere: cdp-lane is unix-only and
+        # native-lane is Windows-only. Clippy lints every feature that builds
+        # on the runner; the test phases leave out the two device lanes, which
+        # have their own runners. scripts/cargo-features.mjs derives both
+        # lists from Cargo.toml, and ci-rust-phase.node-test.mjs pins them.
+        include:
+          - os: windows-latest
+            lint-features: acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics,native-lane
+            test-features: acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics
+          - os: ubuntu-latest
+            lint-features: acp-fixture,acp-schema,cdp-lane,codex-provisioning-helper,custom-protocol,diagnostics
+            test-features: acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics
+          - os: macos-latest
+            lint-features: acp-fixture,acp-schema,cdp-lane,codex-provisioning-helper,custom-protocol,diagnostics
+            test-features: acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux Tauri dependencies
@@ -85,13 +106,13 @@ jobs:
       - name: Create Tauri frontend placeholder
         run: >-
           node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features ${{ matrix.lint-features }} -- -D warnings
       - name: Test Rust parallel phase
-        run: "cargo test --manifest-path src-tauri/Cargo.toml --all-features -- --skip repository_mutation_commands::tests:: --skip app_preview"
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} -- --skip repository_mutation_commands::tests:: --skip app_preview"
       - name: Test repository mutation commands serially
-        run: "cargo test --manifest-path src-tauri/Cargo.toml --all-features repository_mutation_commands::tests:: -- --test-threads=1"
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} repository_mutation_commands::tests:: -- --test-threads=1"
       - name: Test app preview serially
-        run: "cargo test --manifest-path src-tauri/Cargo.toml --all-features app_preview -- --test-threads=1"
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} app_preview -- --test-threads=1"
       - run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
 
   macos-shared-contracts:

@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -25,7 +19,10 @@ import {
   runAuthenticatedInstalledSmoke,
 } from "./beta0001-installed-smoke-handoff.mjs";
 import { INSTALLED_SMOKE_SETTLEMENT_TIMEOUT_MS } from "./beta0001-installed-smoke-settlement.mjs";
-import { stageInstalledSmokeTestSource } from "./beta0001-installed-smoke-test-source.mjs";
+import {
+  removeInstalledSmokeTestRoot,
+  stageInstalledSmokeTestSource,
+} from "./beta0001-installed-smoke-test-source.mjs";
 
 const SHA = "a".repeat(64);
 function fileIdentity(filePath) {
@@ -535,7 +532,7 @@ test("authenticated handoff binds signer and installed executable identity into 
     );
     assert.equal(processCalls, 2);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeInstalledSmokeTestRoot(root);
   }
 });
 
@@ -594,7 +591,7 @@ test("installed smoke rejects runner mutation after artifact handoff authenticat
     );
     assert.equal(processCalls, 0);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeInstalledSmokeTestRoot(root);
   }
 });
 
@@ -669,7 +666,7 @@ test("real PowerShell preflight settles an unsigned candidate without installer 
     );
     assert.equal(existsSync(path.join(root, "output", "installed")), false);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeInstalledSmokeTestRoot(root);
   }
 });
 

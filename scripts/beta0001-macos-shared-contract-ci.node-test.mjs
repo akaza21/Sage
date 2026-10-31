@@ -24,7 +24,7 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
 
   assert.match(
     rust,
-    /matrix:[\s\S]*?os:[\s\S]*?-\s*windows-latest[\s\S]*?-\s*ubuntu-latest[\s\S]*?-\s*macos-latest/,
+    /matrix:[\s\S]*?-\s*os:\s*windows-latest[\s\S]*?-\s*os:\s*ubuntu-latest[\s\S]*?-\s*os:\s*macos-latest/,
   );
   const placeholder =
     "node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\"";
@@ -35,13 +35,13 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
   assert.ok(
     rust.indexOf(placeholder) <
       rust.indexOf(
-        "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+        "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features ${{ matrix.lint-features }} -- -D warnings",
       ),
     "Rust frontend placeholder must be created before Clippy",
   );
   for (const command of [
     "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features ${{ matrix.lint-features }} -- -D warnings",
     "cargo check --manifest-path src-tauri/Cargo.toml --release --lib",
   ]) {
     assert.ok(
