@@ -33,10 +33,13 @@ it("keeps an image thumbnail available when native removal fails and its chip re
     label: "sample.png",
   };
   const revoke = vi.fn();
-  vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:preview",
-    revokeObjectURL: revoke,
-  });
+  vi.stubGlobal(
+    "URL",
+    class extends URL {
+      static createObjectURL = () => "blob:preview";
+      static revokeObjectURL = revoke;
+    },
+  );
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
     tabs: [
@@ -73,7 +76,7 @@ it("keeps an image thumbnail available when native removal fails and its chip re
         rejectRemoval = reject;
       }),
   );
-  const view = renderHook(
+  let view = renderHook(
     ({ contexts }) => useChatImageAttachments("chat-a", contexts),
     {
       initialProps: { contexts: [] as ImageAttachedContext[] },
@@ -85,9 +88,22 @@ it("keeps an image thumbnail available when native removal fails and its chip re
     ]),
   );
   view.rerender({ contexts: [image] });
+  expect(useWorkbenchStore.getState().chatUiById["chat-a"].error).toBeNull();
   expect(view.result.current.imagePreviews[image.artifactId]).toBe(
     "blob:preview",
   );
+
+  view.unmount();
+  view = renderHook(
+    ({ contexts }) => useChatImageAttachments("chat-a", contexts),
+    { initialProps: { contexts: [image] } },
+  );
+  expect(view.result.current.imagePreviews[image.artifactId]).toBe(
+    "blob:preview",
+  );
+  expect(
+    useWorkbenchStore.getState().chatUiById["chat-a"].attachedContext,
+  ).toEqual([image]);
 
   act(() => view.result.current.removeAttachedContext(image));
   view.rerender({ contexts: [] });
@@ -102,4 +118,9 @@ it("keeps an image thumbnail available when native removal fails and its chip re
     ),
   );
   expect(revoke).not.toHaveBeenCalledWith("blob:preview");
+  useWorkbenchStore.setState({
+    project: { id: "project-b", name: "B", roots: [] },
+  });
+  view.rerender({ contexts: [image] });
+  expect(view.result.current.imagePreviews[image.artifactId]).toBeUndefined();
 });

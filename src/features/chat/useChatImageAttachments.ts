@@ -5,136 +5,94 @@ import {
   type AttachedContext,
 } from "../../domain/attachedContext";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import type * as ImagePreviewCache from "./chatImagePreviewCache";
+
+let cache: typeof ImagePreviewCache | null = null;
+const EMPTY_PREVIEWS: Readonly<Record<string, string>> = {};
+const MAX_DRAFT_IMAGES = 4;
+const previewKey = (chatId: string) => {
+  const state = useWorkbenchStore.getState();
+  return JSON.stringify([state.project?.id, state.chatOwnershipEpoch, chatId]);
+};
 
 export function useChatImageAttachments(
   chatId: string | undefined,
   attachedContext: readonly AttachedContext[],
 ) {
-  const [imagePreviews, setImagePreviews] = useState<Record<string, string>>(
-    {},
-  );
+  const [, refresh] = useState(0);
   const [imageUploading, setImageUploading] = useState(false);
-  const imageUploadBusy = useRef(false);
-  const pendingRemovalIds = useRef(new Set<string>());
-  const imagePreviewMounted = useRef(true);
-  const imagePreviewsRef = useRef(imagePreviews);
-
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const removals = useRef(new Set<string>());
+  const owner = chatId ?? useWorkbenchStore.getState().activeTabId ?? "";
+  const key = previewKey(owner);
+  const notify = () => {
+    if (mounted.current) refresh((revision) => revision + 1);
+  };
   useEffect(() => {
-    const currentIds = new Set(
-      attachedContext
-        .filter((context) => context.kind === "image")
-        .map((context) => context.artifactId),
-    );
-    if (
-      !Object.keys(imagePreviewsRef.current).some(
-        (id) => !currentIds.has(id) && !pendingRemovalIds.current.has(id),
-      )
-    )
-      return;
-    queueMicrotask(() =>
-      setImagePreviews((current) => {
-        const stale = Object.entries(current).filter(
-          ([id]) => !currentIds.has(id) && !pendingRemovalIds.current.has(id),
-        );
-        if (stale.length === 0) return current;
-        for (const [, url] of stale) URL.revokeObjectURL(url);
-        return Object.fromEntries(
-          Object.entries(current).filter(
-            ([id]) => currentIds.has(id) || pendingRemovalIds.current.has(id),
-          ),
-        );
-      }),
-    );
-  }, [attachedContext]);
-
-  useEffect(() => {
-    imagePreviewsRef.current = imagePreviews;
-  }, [imagePreviews]);
-  useEffect(() => {
-    imagePreviewMounted.current = true;
+    mounted.current = true;
     return () => {
-      imagePreviewMounted.current = false;
-      for (const url of Object.values(imagePreviewsRef.current))
-        URL.revokeObjectURL(url);
+      mounted.current = false;
     };
   }, []);
 
   async function addImages(files: File[]) {
-    if (imageUploadBusy.current) return;
-    const state = useWorkbenchStore.getState();
-    const owner = chatId ?? state.activeTabId ?? undefined;
-    const intent = owner ? state.captureChatOwnership(owner) : null;
-    if (!intent || !isTauriRuntime()) return;
-    const existing = state.chatUiById[intent.chatId]?.attachedContext ?? [];
+    if (busy.current || !isTauriRuntime()) return;
+    const intent = useWorkbenchStore.getState().captureChatOwnership(owner);
     if (
-      existing.filter((context) => context.kind === "image").length +
+      !intent ||
+      attachedContext.filter((context) => context.kind === "image").length +
         files.length >
-      4
+        MAX_DRAFT_IMAGES
     )
       return;
-    imageUploadBusy.current = true;
+    busy.current = true;
     setImageUploading(true);
     try {
-      const { uploadChatImages } = await import("./chatImageTransfer");
-      await uploadChatImages(intent, files, (artifactId, file) => {
-        if (!imagePreviewMounted.current) return;
-        const url = URL.createObjectURL(file);
-        setImagePreviews((current) => ({ ...current, [artifactId]: url }));
-      });
-    } catch (error) {
+      cache = await import("./chatImagePreviewCache");
+      await cache.uploadDraftImages(intent, files, notify);
+    } catch {
       useWorkbenchStore.getState().setChatActionState(intent, {
         sending: false,
-        error:
-          error instanceof Error ? error.message : "Could not attach image.",
+        error: "Could not load image controls. Try again.",
       });
     } finally {
-      imageUploadBusy.current = false;
-      setImageUploading(false);
+      busy.current = false;
+      if (mounted.current) setImageUploading(false);
     }
   }
 
   function removeAttachedContext(context: AttachedContext) {
-    const contextKey = attachedContextKey(context);
     const state = useWorkbenchStore.getState();
-    const owner = chatId ?? state.activeTabId ?? undefined;
-    const intent = owner ? state.captureChatOwnership(owner) : null;
-    if (!intent) return;
-    const image = state.chatUiById[intent.chatId]?.attachedContext.find(
-      (context) =>
-        context.kind === "image" && attachedContextKey(context) === contextKey,
-    );
-    if (!image || image.kind !== "image") {
+    const intent = state.captureChatOwnership(owner);
+    const contextKey = attachedContextKey(context);
+    if (!intent || removals.current.has(contextKey)) return;
+    if (context.kind !== "image") {
       state.detachChatContext(intent, contextKey);
       return;
     }
-    pendingRemovalIds.current.add(image.artifactId);
-    if (!state.detachChatContext(intent, contextKey)) {
-      pendingRemovalIds.current.delete(image.artifactId);
-      return;
-    }
-    void import("./chatImageTransfer")
-      .then(({ removeChatImage }) => removeChatImage(intent, image.artifactId))
-      .then(() => {
-        pendingRemovalIds.current.delete(image.artifactId);
-        if (!imagePreviewMounted.current) return;
-        setImagePreviews((current) => {
-          const url = current[image.artifactId];
-          if (!url) return current;
-          URL.revokeObjectURL(url);
-          const next = { ...current };
-          delete next[image.artifactId];
-          return next;
-        });
+    removals.current.add(contextKey);
+    void import("./chatImagePreviewCache")
+      .then(async (runtime) => {
+        cache = runtime;
+        await runtime.removeDraftImage(intent, context);
+        notify();
       })
       .catch(() => {
-        pendingRemovalIds.current.delete(image.artifactId);
-        useWorkbenchStore.getState().attachChatContext(intent, image);
         useWorkbenchStore.getState().setChatActionState(intent, {
           sending: false,
-          error: "Could not retire the removed image.",
+          error: "Could not load image controls. Try again.",
         });
+      })
+      .finally(() => {
+        removals.current.delete(contextKey);
       });
   }
 
-  return { imagePreviews, imageUploading, addImages, removeAttachedContext };
+  return {
+    imagePreviews: cache?.readPreviews(key) ?? EMPTY_PREVIEWS,
+    imageUploading,
+    addImages,
+    removeAttachedContext,
+  };
 }
