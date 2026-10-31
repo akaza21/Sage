@@ -189,19 +189,7 @@
 .workbench--agent
   .agent-artifact-pane
   .tab:is(:hover, :focus-within, .tab--active)
-  /*
- * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
- * while the decoration chunk loads, so the mark never shifts the strip.
- */
-.tab__activate .git-badge,
-.tab__git-slot {
-  width: 1.25em;
-  flex: none;
-  margin-left: 0;
-  font-size: var(--font-size-xs);
-}
-
-.tab__close {
+  .tab__close {
   display: grid;
 }
 .workbench--agent .agent-artifact-pane .tab--active {
@@ -280,6 +268,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
+ * while the decoration chunk loads, so the mark never shifts the strip.
+ */
+.tab__activate .git-badge,
+.tab__git-slot {
+  width: 1.25em;
+  flex: none;
+  margin-left: 0;
+  font-size: var(--font-size-xs);
 }
 
 .tab__close {

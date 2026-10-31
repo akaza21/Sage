@@ -151,6 +151,23 @@ it("loads nothing while decorations are off or outside Git, then marks tabs once
   expect(chunk.state.imports).toBe(1);
 });
 
+it("loads nothing while decorations start off inside a Git repository, then marks tabs when turned on", async () => {
+  const { setDecorations } = await mountTabs({
+    decorations: false,
+    repository: changed,
+  });
+  expect(document.querySelector(".git-badge, .tab__git-slot")).toBeNull();
+  await releaseChunk();
+  expect(chunk.state.imports).toBe(0);
+  expect(tabA()).toHaveAccessibleName("a.ts");
+
+  setDecorations(true);
+  expect(
+    await screen.findByRole("tab", { name: "a.ts, Modified" }),
+  ).toBeInTheDocument();
+  expect(chunk.state.imports).toBe(1);
+});
+
 it("shows no marks or held room when decorations are turned off while they load", async () => {
   const { setDecorations } = await mountTabs({
     decorations: true,
