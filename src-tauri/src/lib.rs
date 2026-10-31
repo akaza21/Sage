@@ -196,6 +196,9 @@ pub fn run() {
             )
             .map_err(std::io::Error::other)?;
             app.manage(browser_state);
+            app.manage(browser::passwords::PasswordsState::new(
+                profile.durable_dir(),
+            ));
             let settings =
                 settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
             #[cfg(all(windows, feature = "acp-fixture"))]

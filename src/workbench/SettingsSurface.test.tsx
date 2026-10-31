@@ -39,7 +39,7 @@ describe("SettingsSurface", () => {
       within(nav)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Editor", "Keyboard", "Browser"]);
+    ).toEqual(["Editor", "Keyboard", "Browser", "Passwords"]);
     expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",

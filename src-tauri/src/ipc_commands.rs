@@ -162,6 +162,14 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
         browser::page_controls::browser_find,
+        browser::passwords::commands::browser_passwords,
+        browser::passwords::commands::browser_passwords_import_csv,
+        browser::passwords::commands::browser_passwords_delete_imported_file,
+        browser::passwords::commands::browser_passwords_update,
+        browser::passwords::commands::browser_passwords_delete,
+        browser::passwords::commands::browser_passwords_delete_all,
+        browser::passwords::commands::browser_passwords_reveal,
+        browser::passwords::commands::browser_passwords_copy,
         settings_commands::browser_preferences::browser_preferences,
         settings_commands::browser_preferences::browser_set_preferences
     ];

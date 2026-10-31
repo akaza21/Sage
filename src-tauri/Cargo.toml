@@ -38,6 +38,17 @@ tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt"] }
 url = "=2.5.8"
 uuid = { version = "=1.24.0", features = ["serde", "v4"] }
+# Saved browser passwords (BF-7b): AES-256-GCM sealing, zeroized plaintext
+# buffers, and a no-alloc CSV state machine that bounds every import record.
+# Pure Rust with no build scripts or C (aes-gcm adds aead, aes, cipher, ctr,
+# ghash, polyval, universal-hash, inout and opaque-debug; it reuses the lock's
+# crypto-common, generic-array and subtle). Nothing runs until the vault opens
+# on first use, so startup is unchanged. getrandom is already in the build
+# through Tauri.
+aes-gcm = { version = "=0.10.3", default-features = false, features = ["aes", "alloc", "zeroize"] }
+csv-core = "=0.1.13"
+getrandom = "=0.3.4"
+zeroize = "=1.9.1"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "=0.2.189"
@@ -54,14 +65,24 @@ webview2-com-sys = "=0.38.2"
 windows = { version = "=0.61.3", default-features = false, features = [
   "std",
   "Win32_Foundation",
+  "Win32_Security_Cryptography",
   "Win32_System_Com",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
   "Win32_UI_Shell",
   "Win32_UI_Shell_Common",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_System_WinRT",
+  "Foundation",
   "Media_SpeechRecognition",
+  "Security_Credentials_UI",
 ] }
 windows-core = { version = "=0.61.2", default-features = false, features = ["std"] }
+# Awaits the Windows Hello prompt's IAsyncOperation; already in the build
+# through `windows`.
+windows-future = { version = "=0.2.1", default-features = false }
 # Native lane only (`native-lane`): the loopback HTTPS fixture's self-signed
 # certificate and TLS server. Never in default or release builds.
 rcgen = { version = "=0.14.10", optional = true, default-features = false, features = ["crypto", "ring"] }

@@ -1,0 +1,376 @@
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
+use super::{
+    VaultError, VaultResult,
+    cipher::{Binding, VaultKey},
+    csv_import,
+    key_store::KeyProtector,
+    secret::Secret,
+    state::{PasswordsOverview, PasswordsState},
+    store::{MergeCounts, NewCredential, Source, Store},
+};
+
+/// Wraps a key by prefixing the account it belongs to, so a key file from
+/// another "account" fails to unwrap as DPAPI's would.
+struct TestProtector(u8);
+
+impl KeyProtector for TestProtector {
+    fn protect(&self, key: &[u8]) -> io::Result<Vec<u8>> {
+        Ok([&[self.0], key].concat())
+    }
+
+    fn unprotect(&self, wrapped: &[u8]) -> VaultResult<Zeroizing<Vec<u8>>> {
+        match wrapped.split_first() {
+            Some((account, key)) if *account == self.0 => Ok(Zeroizing::new(key.to_vec())),
+            _ => Err(VaultError::KeyLost),
+        }
+    }
+}
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("sage-passwords-{}", Uuid::new_v4()));
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn csv(&self, name: &str, contents: &str) -> PathBuf {
+        let path = self.0.join(name);
+        fs::write(&path, contents).unwrap();
+        path
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn state(directory: &Path, account: u8) -> PasswordsState {
+    PasswordsState::for_test(directory, Arc::new(TestProtector(account)))
+}
+
+fn credential(origin: &str, username: &str, password: &str) -> NewCredential {
+    NewCredential {
+        origin: origin.into(),
+        username: username.into(),
+        password: Secret::new(password.into()),
+    }
+}
+
+fn import(state: &PasswordsState, path: PathBuf) -> MergeCounts {
+    let parsed = csv_import::read_file(&path).unwrap();
+    state.import(path, &parsed).unwrap()
+}
+
+fn ready(overview: PasswordsOverview) -> super::store::CredentialPage {
+    match overview {
+        PasswordsOverview::Ready(page) => page,
+        PasswordsOverview::Unsupported => panic!("vault unsupported"),
+    }
+}
+
+const CHROME_CSV: &str = "name,url,username,password,note\n\
+    example.com,https://example.com/login,ada,first-secret,\n\
+    shop,https://shop.example:8443/,grace,second-secret,\n";
+
+#[test]
+fn a_sealed_password_opens_only_under_its_own_row_site_and_username() {
+    let key = VaultKey::generate().unwrap();
+    let binding = Binding {
+        id: "row-1",
+        origin: "https://example.com",
+        username: "ada",
+    };
+    let sealed = key.seal(&binding, &Secret::new("hunter2".into())).unwrap();
+    assert_eq!(key.open(&binding, &sealed).unwrap().expose(), "hunter2");
+    assert!(!sealed.windows(7).any(|window| window == b"hunter2"));
+    for moved in [
+        Binding {
+            id: "row-2",
+            ..binding
+        },
+        Binding {
+            origin: "https://evil.example",
+            ..binding
+        },
+        Binding {
+            username: "grace",
+            ..binding
+        },
+    ] {
+        assert!(matches!(
+            key.open(&moved, &sealed),
+            Err(VaultError::Corrupt)
+        ));
+    }
+    let mut tampered = sealed.clone();
+    *tampered.last_mut().unwrap() ^= 1;
+    assert!(matches!(
+        key.open(&binding, &tampered),
+        Err(VaultError::Corrupt)
+    ));
+    let other = VaultKey::generate().unwrap();
+    assert!(matches!(
+        other.open(&binding, &sealed),
+        Err(VaultError::Corrupt)
+    ));
+}
+
+#[test]
+fn merging_adds_new_rows_and_lets_the_newer_password_win() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    let first = [
+        credential("https://example.com", "ada", "one"),
+        credential("https://example.com", "grace", "two"),
+    ];
+    assert_eq!(
+        store.merge(&key, Source::Csv, &first).unwrap(),
+        MergeCounts {
+            added: 2,
+            updated: 0,
+            unchanged: 0
+        }
+    );
+    let second = [
+        credential("https://example.com", "ada", "one"),
+        credential("https://example.com", "grace", "three"),
+    ];
+    assert_eq!(
+        store.merge(&key, Source::Csv, &second).unwrap(),
+        MergeCounts {
+            added: 0,
+            updated: 1,
+            unchanged: 1
+        }
+    );
+    let page = store.page("").unwrap();
+    assert_eq!((page.total, page.matching), (2, 2));
+    let grace = page
+        .entries
+        .iter()
+        .find(|entry| entry.username == "grace")
+        .unwrap();
+    assert_eq!(store.password(&key, &grace.id).unwrap().expose(), "three");
+}
+
+#[test]
+fn search_matches_site_or_username_and_the_list_stays_capped() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    let many: Vec<_> = (0..super::store::MAX_LISTED + 5)
+        .map(|index| credential(&format!("https://site{index}.example"), "user", "pw"))
+        .chain([credential("https://mail.example", "Ada.Lovelace", "pw")])
+        .collect();
+    store.merge(&key, Source::Csv, &many).unwrap();
+    let all = store.page("").unwrap();
+    assert_eq!(all.total, super::store::MAX_LISTED + 6);
+    assert_eq!(all.matching, all.total);
+    assert_eq!(all.entries.len(), super::store::MAX_LISTED as usize);
+    let by_username = store.page("  ada.LOVE ").unwrap();
+    assert_eq!(by_username.matching, 1);
+    assert_eq!(by_username.entries[0].origin, "https://mail.example");
+    assert_eq!(store.page("site12.").unwrap().matching, 1);
+    assert_eq!(store.page("nothing").unwrap().entries, []);
+}
+
+#[test]
+fn editing_a_username_reseals_and_refuses_a_taken_one() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    store
+        .merge(
+            &key,
+            Source::Csv,
+            &[
+                credential("https://example.com", "ada", "one"),
+                credential("https://example.com", "grace", "two"),
+            ],
+        )
+        .unwrap();
+    let page = store.page("").unwrap();
+    let ada = page
+        .entries
+        .iter()
+        .find(|entry| entry.username == "ada")
+        .unwrap();
+    store
+        .update(&key, &ada.id, "ada@example.com", None)
+        .unwrap();
+    assert_eq!(store.password(&key, &ada.id).unwrap().expose(), "one");
+    store
+        .update(
+            &key,
+            &ada.id,
+            "ada@example.com",
+            Some(&Secret::new("new".into())),
+        )
+        .unwrap();
+    assert_eq!(store.password(&key, &ada.id).unwrap().expose(), "new");
+    assert!(matches!(
+        store.update(&key, &ada.id, "grace", None),
+        Err(VaultError::Duplicate)
+    ));
+    assert_eq!(store.password(&key, &ada.id).unwrap().expose(), "new");
+    store.delete(&ada.id).unwrap();
+    assert!(matches!(store.delete(&ada.id), Err(VaultError::NotFound)));
+    assert!(matches!(
+        store.password(&key, &ada.id),
+        Err(VaultError::NotFound)
+    ));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn the_vault_is_unsupported_without_an_os_key_store() {
+    let scratch = Scratch::new();
+    let state = PasswordsState::new(&scratch.0);
+    assert_eq!(state.overview("").unwrap(), PasswordsOverview::Unsupported);
+    assert!(matches!(state.delete_all(), Err(VaultError::Unsupported)));
+    assert!(fs::read_dir(&scratch.0).unwrap().next().is_none());
+}
+
+#[test]
+fn importing_a_csv_stores_only_sealed_passwords_and_a_wrapped_key() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let counts = import(&state, scratch.csv("passwords.csv", CHROME_CSV));
+    assert_eq!(
+        counts,
+        MergeCounts {
+            added: 2,
+            updated: 0,
+            unchanged: 0
+        }
+    );
+    let page = ready(state.overview("").unwrap());
+    let origins: Vec<_> = page
+        .entries
+        .iter()
+        .map(|entry| entry.origin.as_str())
+        .collect();
+    assert_eq!(
+        origins,
+        ["https://example.com", "https://shop.example:8443"]
+    );
+    for file in ["passwords.db", "passwords.key"] {
+        let bytes = fs::read(scratch.0.join("profile").join(file)).unwrap();
+        for secret in [&b"first-secret"[..], b"second-secret"] {
+            assert!(
+                !bytes.windows(secret.len()).any(|window| window == secret),
+                "{file}"
+            );
+        }
+    }
+    assert_eq!(
+        state.password(&page.entries[0].id).unwrap().expose(),
+        "first-secret"
+    );
+}
+
+#[test]
+fn a_lost_or_foreign_key_is_reported_and_delete_all_starts_again() {
+    let scratch = Scratch::new();
+    let directory = scratch.0.join("profile");
+    let id = {
+        let state = state(&directory, 1);
+        import(&state, scratch.csv("a.csv", CHROME_CSV));
+        ready(state.overview("").unwrap()).entries[0].id.clone()
+    };
+    let foreign = state(&directory, 2);
+    assert!(matches!(foreign.password(&id), Err(VaultError::KeyLost)));
+    fs::remove_file(directory.join("passwords.key")).unwrap();
+    let lost = state(&directory, 1);
+    assert!(matches!(lost.password(&id), Err(VaultError::KeyLost)));
+    let parsed = csv_import::read_file(&scratch.csv("b.csv", CHROME_CSV)).unwrap();
+    assert!(matches!(
+        lost.import(scratch.0.join("b.csv"), &parsed),
+        Err(VaultError::KeyLost)
+    ));
+    lost.delete_all().unwrap();
+    assert_eq!(ready(lost.overview("").unwrap()).total, 0);
+    assert_eq!(
+        import(&lost, scratch.csv("c.csv", CHROME_CSV)),
+        MergeCounts {
+            added: 2,
+            updated: 0,
+            unchanged: 0
+        }
+    );
+}
+
+#[test]
+fn only_the_last_imported_csv_can_be_deleted() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    assert!(matches!(
+        state.delete_imported_file(),
+        Err(VaultError::Invalid(_))
+    ));
+    let first = scratch.csv("first.csv", CHROME_CSV);
+    let second = scratch.csv("second.csv", CHROME_CSV);
+    import(&state, first.clone());
+    import(&state, second.clone());
+    state.delete_imported_file().unwrap();
+    assert!(first.exists());
+    assert!(!second.exists());
+    assert!(matches!(
+        state.delete_imported_file(),
+        Err(VaultError::Invalid(_))
+    ));
+}
+
+#[test]
+fn edits_are_bounded_before_the_vault_opens() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0, 1);
+    let id = Uuid::new_v4().to_string();
+    let long_username = "u".repeat(super::MAX_USERNAME_BYTES + 1);
+    assert!(matches!(
+        state.update(&id, &long_username, None),
+        Err(VaultError::Invalid(_))
+    ));
+    let empty = Secret::new(String::new());
+    assert!(matches!(
+        state.update(&id, "ada", Some(&empty)),
+        Err(VaultError::Invalid(_))
+    ));
+    let long = Secret::new("p".repeat(super::MAX_PASSWORD_BYTES + 1));
+    assert!(matches!(
+        state.update(&id, "ada", Some(&long)),
+        Err(VaultError::Invalid(_))
+    ));
+    assert!(matches!(
+        state.overview(&"q".repeat(257)),
+        Err(VaultError::Invalid(_))
+    ));
+    assert!(!scratch.0.join("passwords.db").exists());
+}
+
+#[test]
+fn reading_from_an_empty_vault_creates_no_key() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0, 1);
+    let id = Uuid::new_v4().to_string();
+    assert!(matches!(state.password(&id), Err(VaultError::NotFound)));
+    assert!(matches!(
+        state.check_readable(&id),
+        Err(VaultError::NotFound)
+    ));
+    assert!(matches!(
+        state.update(&id, "ada", None),
+        Err(VaultError::NotFound)
+    ));
+    assert!(!scratch.0.join("passwords.key").exists());
+}

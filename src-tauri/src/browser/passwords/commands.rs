@@ -1,0 +1,165 @@
+//! Passwords page commands (BF-7b-1). They run only for the main webview:
+//! the invoke guard in `ipc_commands.rs` rejects every browser tab first.
+//! Replies carry ids, sites, usernames and counts. Only Reveal returns a
+//! password, and Reveal and Copy first ask the OS to confirm the user.
+
+use serde::Serialize;
+use tauri::{AppHandle, State, Window};
+use tauri_plugin_dialog::DialogExt;
+use uuid::Uuid;
+
+use super::{
+    PasswordsState, VaultError, VaultResult, clipboard, confirm::confirm_user, csv_import,
+    secret::Secret, state::PasswordsOverview, store::MergeCounts,
+};
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImportReport {
+    #[serde(flatten)]
+    counts: MergeCounts,
+    skipped: u32,
+    file_name: String,
+}
+
+async fn blocking<T: Send + 'static>(
+    task: impl FnOnce() -> VaultResult<T> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
+}
+
+/// Ids are the vault's UUIDs; anything else names no saved password.
+fn credential_id(id: &str) -> Result<String, String> {
+    Uuid::parse_str(id)
+        .map(|id| id.to_string())
+        .map_err(|_| VaultError::NotFound.to_string())
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords(
+    state: State<'_, PasswordsState>,
+    query: String,
+) -> Result<PasswordsOverview, String> {
+    let passwords = state.inner().clone();
+    blocking(move || passwords.overview(&query)).await
+}
+
+/// Picks a CSV in the native file dialog and imports it. The path never
+/// crosses IPC; `None` means the dialog was cancelled.
+#[tauri::command]
+pub(crate) async fn browser_passwords_import_csv(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, PasswordsState>,
+) -> Result<Option<ImportReport>, String> {
+    let passwords = state.inner().clone();
+    if !passwords.supported() {
+        return Err(VaultError::Unsupported.to_string());
+    }
+    let dialog = app
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Import passwords from a CSV file")
+        .add_filter("CSV", &["csv"]);
+    blocking(move || {
+        let Some(selected) = dialog.blocking_pick_file() else {
+            return Ok(None);
+        };
+        let path = selected
+            .into_path()
+            .map_err(|_| VaultError::Invalid("Choose a file on this computer."))?;
+        let parsed = csv_import::read_file(&path)?;
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let counts = passwords.import(path, &parsed)?;
+        Ok(Some(ImportReport {
+            counts,
+            skipped: parsed.skipped,
+            file_name,
+        }))
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_delete_imported_file(
+    state: State<'_, PasswordsState>,
+) -> Result<(), String> {
+    let passwords = state.inner().clone();
+    blocking(move || passwords.delete_imported_file()).await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_update(
+    state: State<'_, PasswordsState>,
+    id: String,
+    username: String,
+    password: Option<Secret>,
+) -> Result<(), String> {
+    let id = credential_id(&id)?;
+    let passwords = state.inner().clone();
+    blocking(move || passwords.update(&id, &username, password.as_ref())).await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_delete(
+    state: State<'_, PasswordsState>,
+    id: String,
+) -> Result<(), String> {
+    let id = credential_id(&id)?;
+    let passwords = state.inner().clone();
+    blocking(move || passwords.delete(&id)).await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_delete_all(
+    state: State<'_, PasswordsState>,
+) -> Result<(), String> {
+    let passwords = state.inner().clone();
+    blocking(move || passwords.delete_all()).await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_reveal(
+    window: Window,
+    state: State<'_, PasswordsState>,
+    id: String,
+) -> Result<String, String> {
+    let id = credential_id(&id)?;
+    let passwords = state.inner().clone();
+    blocking(move || {
+        passwords.check_readable(&id)?;
+        confirm_user(&window, "Sage wants to show a saved password.")?;
+        Ok(passwords.password(&id)?.expose().to_owned())
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn browser_passwords_copy(
+    window: Window,
+    state: State<'_, PasswordsState>,
+    id: String,
+) -> Result<(), String> {
+    let id = credential_id(&id)?;
+    let passwords = state.inner().clone();
+    let sequence = blocking(move || {
+        passwords.check_readable(&id)?;
+        confirm_user(&window, "Sage wants to copy a saved password.")?;
+        clipboard::copy_concealed(&passwords.password(&id)?)
+    })
+    .await?;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(clipboard::CLEAR_AFTER).await;
+        let _ =
+            tauri::async_runtime::spawn_blocking(move || clipboard::clear_if_unchanged(sequence))
+                .await;
+    });
+    Ok(())
+}

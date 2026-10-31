@@ -35,6 +35,7 @@ pub mod native_lane;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
+pub(crate) mod passwords;
 pub(crate) mod popups;
 mod profile;
 mod shortcuts;
@@ -52,10 +53,8 @@ use history::BrowserHistory;
 #[cfg(test)]
 use history::MAX_BROWSER_HISTORY;
 #[cfg(test)]
-#[path = "clear_conformance_tests.rs"]
 mod clear_conformance_tests;
 #[cfg(test)]
-#[path = "policy_conformance_tests.rs"]
 mod policy_conformance_tests;
 use popups::PopupRequests;
 #[cfg(test)]

@@ -18,6 +18,12 @@ const SettingsBrowserPage = lazy(() =>
   })),
 );
 
+const SettingsPasswordsPage = lazy(() =>
+  import("./settings/SettingsPasswordsPage").then(
+    ({ SettingsPasswordsPage }) => ({ default: SettingsPasswordsPage }),
+  ),
+);
+
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
@@ -119,6 +125,16 @@ export function SettingsSurface() {
           }
         >
           <SettingsBrowserPage visible={visible} />
+        </Suspense>
+      ) : activePageId === "passwords" ? (
+        <Suspense
+          fallback={
+            <p className="settings-surface__loading" role="status">
+              Loading saved passwords…
+            </p>
+          }
+        >
+          <SettingsPasswordsPage visible={visible} />
         </Suspense>
       ) : (
         <SettingsEditorPage
