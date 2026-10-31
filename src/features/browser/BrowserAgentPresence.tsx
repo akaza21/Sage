@@ -3,11 +3,14 @@ import { Square } from "../../ui/leanIcons";
 /**
  * Who controls this tab, shown for as long as a chat's Agent is attached to
  * it. Stop ends the chat's browser authority; Take over pauses it until Hand
- * back, and the Agent's next call asks permission again.
+ * back, and the Agent's next call asks permission again. While the user's
+ * developer-mode approval is live, a red tag says so (ADR-0009b); Stop and
+ * Take over end it.
  */
 export function BrowserAgentPresence({
   pending,
   userControl,
+  developerMode = false,
   chatTitle,
   busy = false,
   onStop,
@@ -16,6 +19,7 @@ export function BrowserAgentPresence({
 }: {
   pending: boolean;
   userControl: boolean;
+  developerMode?: boolean;
   chatTitle: string;
   busy?: boolean;
   onStop: () => void;
@@ -32,6 +36,14 @@ export function BrowserAgentPresence({
       className="browser-surface__agent-presence"
       data-control={userControl ? "user" : "agent"}
     >
+      {developerMode && !userControl ? (
+        <span
+          className="browser-surface__agent-developer"
+          title="Developer mode is on: the Agent has full CDP access to this tab, including running scripts. Stop or Take over ends it."
+        >
+          Developer mode
+        </span>
+      ) : null}
       <span className="browser-surface__agent-presence-label" role="status">
         {`${label} · ${chatTitle}`}
       </span>

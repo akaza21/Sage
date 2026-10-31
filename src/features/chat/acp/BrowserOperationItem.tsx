@@ -58,6 +58,15 @@ function actionWords(operation: BrowserOperationProjection): ActionWords {
         completed: onOrigin("Read network"),
         imperative: onOrigin("read network"),
       };
+    case "cdp": {
+      // Rust's summary is "CDP Domain.command", the method already checked.
+      const method = operation.summary.replace(/^CDP /, "");
+      return {
+        ongoing: onOrigin(`Running ${method}`),
+        completed: onOrigin(`Ran ${method}`),
+        imperative: onOrigin(`run ${method}`),
+      };
+    }
     case "waitFor":
       return {
         ongoing: onOrigin("Waiting for page condition"),

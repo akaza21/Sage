@@ -34,6 +34,11 @@ pub(crate) trait DevtoolsPort {
         Err(BrowserFailure::Unavailable)
     }
     fn capture(&mut self, region: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure>;
+    /// Issues one developer-mode CDP command; the gate has already admitted
+    /// it. Returns the CDP `result` object as JSON.
+    fn raw(&mut self, _method: &str, _params: &str) -> Result<String, BrowserFailure> {
+        Err(BrowserFailure::Unavailable)
+    }
     fn matches(
         &mut self,
         condition: &WaitCondition,
@@ -220,6 +225,20 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                 condition,
                 timeout_ms,
             } => self.wait_for(condition, *timeout_ms),
+            BrowserCommand::Cdp { method, params } => {
+                let params =
+                    serde_json::to_string(params).map_err(|_| BrowserFailure::InvalidRequest)?;
+                let result = self.port.raw(method, &params)?;
+                // Script and DOM commands can change what handles point at.
+                self.handles
+                    .lock()
+                    .map_err(|_| BrowserFailure::Unavailable)?
+                    .clear();
+                Ok(BrowserResult::Cdp {
+                    result: serde_json::from_str(&result)
+                        .map_err(|_| BrowserFailure::Unavailable)?,
+                })
+            }
         }
     }
 }

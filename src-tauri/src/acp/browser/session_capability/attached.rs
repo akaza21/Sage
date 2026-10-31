@@ -6,11 +6,20 @@ use crate::acp::service::AcpService;
 pub(crate) trait BrowserSessionContext: Clone + Send + Sync + 'static {
     fn service(&self) -> &AcpService;
     fn settled_tab(&self, label: &str) -> Result<(String, u64), String>;
+    /// The store holding the developer-mode switch and audit log; without
+    /// one, developer mode stays off.
+    fn developer_settings(&self) -> Option<crate::settings_store::SettingsStore> {
+        None
+    }
 }
 
 impl BrowserSessionContext for AppHandle {
     fn service(&self) -> &AcpService {
         &self.state::<AppState>().inner().acp
+    }
+
+    fn developer_settings(&self) -> Option<crate::settings_store::SettingsStore> {
+        Some(self.state::<AppState>().settings.clone())
     }
 
     fn settled_tab(&self, label: &str) -> Result<(String, u64), String> {
@@ -99,6 +108,10 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
                 BrowserFailure::Denied
             })?;
         let native = self.native.port(&self.context, lease.clone());
+        let developer = self
+            .context
+            .developer_settings()
+            .map(|settings| super::developer::LeaseDeveloperPolicy::new(lease.clone(), settings));
         let label = lease.tab_label.clone();
         let decider = ServiceBrowserPermissionDecider {
             service,
@@ -111,20 +124,19 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
             request.command,
             crate::acp::browser::BrowserCommand::Act { .. }
                 | crate::acp::browser::BrowserCommand::Navigate { .. }
+                | crate::acp::browser::BrowserCommand::Cdp { .. }
         )
         .then(|| service.begin_browser_agent_action(&label));
-        with_session_owner_guards(
-            BrowserPermissionGate::new(native, decider, authority).with_tab_revision_guard(
-                move || {
-                    tab_context
-                        .settled_tab(&label)
-                        .is_ok_and(|(_, current)| current == revision)
-                },
-            ),
-            self.context.clone(),
-            owner,
-        )
-        .perform(request)
+        let mut gate = BrowserPermissionGate::new(native, decider, authority)
+            .with_tab_revision_guard(move || {
+                tab_context
+                    .settled_tab(&label)
+                    .is_ok_and(|(_, current)| current == revision)
+            });
+        if let Some(policy) = developer {
+            gate = gate.with_developer_mode(policy);
+        }
+        with_session_owner_guards(gate, self.context.clone(), owner).perform(request)
     }
 }
 

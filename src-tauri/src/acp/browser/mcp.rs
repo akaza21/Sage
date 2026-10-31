@@ -24,6 +24,8 @@ pub struct BrowserMcpServer<P: BrowserCapability> {
     connected: bool,
     accepted_connections: u8,
     operation_observer: Option<Box<dyn BrowserOperationObserver + Send>>,
+    /// Lists the developer-mode `cdp` tool while this answers true.
+    developer_tools: Option<Box<dyn Fn() -> bool + Send>>,
 }
 
 pub trait BrowserOperationObserver {
@@ -110,6 +112,7 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
                 connected: false,
                 accepted_connections: 0,
                 operation_observer: None,
+                developer_tools: None,
             },
             token,
         )
@@ -117,6 +120,12 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
 
     pub fn set_operation_observer(&mut self, observer: Box<dyn BrowserOperationObserver + Send>) {
         self.operation_observer = Some(observer);
+    }
+
+    /// Offers the `cdp` tool whenever `enabled` holds when tools are listed.
+    /// A call is still admitted only by the permission gate.
+    pub fn set_developer_tools(&mut self, enabled: Box<dyn Fn() -> bool + Send>) {
+        self.developer_tools = Some(enabled);
     }
 
     pub fn handle(&mut self, frame: &[u8]) -> Result<Vec<u8>, BrowserMcpError> {
@@ -156,7 +165,11 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
                 if !valid_tools_list_params(&envelope.params) {
                     return json_rpc_error(&envelope.id, -32602, "Invalid params");
                 }
-                json!({"tools":tools()})
+                let developer = self
+                    .developer_tools
+                    .as_ref()
+                    .is_some_and(|enabled| enabled());
+                json!({"tools":tools(developer)})
             }
             "tools/call" => match self.call(envelope.params) {
                 Ok(result) => result,
@@ -204,7 +217,7 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
             serde_json::from_value(params).map_err(|_| BrowserMcpError::InvalidRequest)?;
         let kind = match call.name.as_str() {
             "openTab" | "navigate" | "snapshotPage" | "act" | "waitFor" | "screenshot"
-            | "readConsole" | "readNetwork" => call.name,
+            | "readConsole" | "readNetwork" | "cdp" => call.name,
             _ => return Err(BrowserMcpError::InvalidRequest),
         };
         let mut arguments = call

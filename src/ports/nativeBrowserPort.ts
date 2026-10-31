@@ -204,6 +204,8 @@ export interface BrowserAgentControl {
   chatId: string;
   /** The user took the tab over; the Agent waits until Hand back. */
   userControl: boolean;
+  /** An approved developer-mode grant (full CDP) is live on the tab. */
+  developerMode: boolean;
 }
 
 /** Reads, takes over or hands back the tab; Rust answers with the state after it. */

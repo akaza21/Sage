@@ -194,6 +194,13 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
       "Clear browsing history, cookies, site data, and cache from the built-in browser.",
     group: "General",
   },
+  {
+    id: "browser.developerMode",
+    label: "Enable full CDP access",
+    description:
+      "Let agents use the full Chrome DevTools Protocol on a browser tab after you approve it.",
+    group: "Developer mode",
+  },
 ]);
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([

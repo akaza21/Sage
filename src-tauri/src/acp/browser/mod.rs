@@ -1,6 +1,7 @@
 pub(crate) mod attachment;
 mod bounds;
 mod contract;
+pub mod developer;
 mod fake;
 pub mod mcp;
 pub(crate) mod pause;

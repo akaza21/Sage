@@ -70,6 +70,20 @@ pub enum BrowserCommand {
         cursor: Option<u64>,
         limit: usize,
     },
+    /// Developer mode (ADR-0009b): one raw CDP command on the tab.
+    Cdp {
+        method: String,
+        #[serde(default)]
+        params: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
+impl BrowserCommand {
+    /// Whether this command needs a developer-mode grant rather than an
+    /// ordinary browser permission.
+    pub fn is_elevated(&self) -> bool {
+        matches!(self, Self::Cdp { .. })
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +245,9 @@ pub enum BrowserResult {
         next_cursor: u64,
         entries: Vec<NetworkEntry>,
     },
+    Cdp {
+        result: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -349,6 +366,11 @@ pub fn validate_request(request: &BrowserRequest) -> Result<(), BrowserFailure> 
             }
             admit_count(*limit, BROWSER_LIMITS.diagnostic_entries)?;
         }
+        BrowserCommand::Cdp { method, params } => {
+            super::developer::admit_method_shape(method)?;
+            let encoded = serde_json::to_vec(params).map_err(|_| BrowserFailure::InvalidRequest)?;
+            admit_count(encoded.len(), BROWSER_LIMITS.cdp_params_bytes)?;
+        }
     }
     Ok(())
 }
@@ -390,6 +412,10 @@ pub fn validate_result(result: &BrowserResult) -> Result<(), BrowserFailure> {
                 admit_text("key", &entry.method)?;
                 admit_text("url", &entry.url)?;
             }
+        }
+        BrowserResult::Cdp { result } => {
+            let encoded = serde_json::to_vec(result).map_err(|_| BrowserFailure::Unavailable)?;
+            admit_count(encoded.len(), BROWSER_LIMITS.cdp_result_bytes)?;
         }
     }
     let encoded = serde_json::to_vec(result).map_err(|_| BrowserFailure::Unavailable)?;

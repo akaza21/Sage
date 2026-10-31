@@ -1,9 +1,21 @@
 use crate::acp::limits::BROWSER_LIMITS;
 use serde_json::{Value, json};
 
-pub(super) fn tools() -> Vec<Value> {
-    ["openTab", "navigate", "snapshotPage", "act", "waitFor", "screenshot", "readConsole", "readNetwork"]
-        .into_iter().map(|name| {
+const TOOLS: [&str; 8] = [
+    "openTab",
+    "navigate",
+    "snapshotPage",
+    "act",
+    "waitFor",
+    "screenshot",
+    "readConsole",
+    "readNetwork",
+];
+
+/// The browser tools, with the developer-mode `cdp` tool when `developer`.
+pub(super) fn tools(developer: bool) -> Vec<Value> {
+    TOOLS.into_iter().chain(developer.then_some("cdp"))
+        .map(|name| {
             let scope = json!({"type":"object","description":"Optional. Omit scope or tabId to use this session's attached browser tab. A tabId N denotes canonical tab browser-N.","properties":{
                 "tabId":{"type":"integer","minimum":1,"description":"Numeric N from canonical browser-N, such as 2 for browser-2. Omit to use the attached tab."}},
                 "additionalProperties":false});
@@ -13,6 +25,7 @@ pub(super) fn tools() -> Vec<Value> {
                 "waitFor" => (json!({"condition":condition_schema(),"timeoutMs":{"type":"integer","minimum":1,"maximum":BROWSER_LIMITS.wait_timeout_ms}}), vec!["condition","timeoutMs"]),
                 "screenshot" => (json!({"region":region_schema()}), vec![]),
                 "readConsole" | "readNetwork" => (json!({"cursor":{"type":["integer","null"],"minimum":0},"limit":{"type":"integer","minimum":1,"maximum":BROWSER_LIMITS.diagnostic_entries}}), vec!["limit"]),
+                "cdp" => (json!({"method":{"type":"string","maxLength":128,"pattern":"^[A-Za-z0-9]+\\.[A-Za-z0-9]+$"},"params":{"type":"object"}}), vec!["method"]),
                 _ => (json!({}), vec![]),
             };
             let mut properties = fields.as_object().cloned().expect("schema object");
@@ -21,6 +34,8 @@ pub(super) fn tools() -> Vec<Value> {
             }
             let description = if name == "act" {
                 "Act on a handle from snapshotPage. Put kind and its fields directly in action; for filling, use action.kind=fill, action.handle, and action.value (not a nested action.fill object)."
+            } else if name == "cdp" {
+                "Developer mode: send one Chrome DevTools Protocol command, such as Runtime.evaluate, to this session's browser tab and get its raw result. The user must approve developer mode for this tab and site first; Stop, Take over or leaving the site ends it. Commands that reach other tabs, the whole browser profile or another site are refused, and Network.getCookies needs urls on this site. Params are at most 12 KiB of JSON; results over 256 KiB fail."
             } else if name == "openTab" {
                 "Open a visible Sage browser tab for this session. Call openTab when no tab is attached, then use the returned tabId for snapshotPage and other browser tools. HTTP(S) URL only; Sage asks permission before opening."
             } else {

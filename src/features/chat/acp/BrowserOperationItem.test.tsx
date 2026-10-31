@@ -200,3 +200,21 @@ it.each([
     ).toBeInTheDocument();
   },
 );
+
+it("names the CDP method a developer-mode call ran", () => {
+  render(
+    <BrowserOperationItem
+      operation={{
+        ...browserOperationFixture,
+        operation: "cdp",
+        summary: "CDP Runtime.evaluate",
+        resultSummary: "CDP command completed",
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("group", {
+      name: "Ran Runtime.evaluate on example.com · Completed",
+    }),
+  ).toBeInTheDocument();
+});

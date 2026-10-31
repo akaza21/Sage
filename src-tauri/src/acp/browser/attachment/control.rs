@@ -30,6 +30,7 @@ impl AttachmentLease {
                 authority.stop();
             }
             self.stop_retired();
+            self.end_developer_mode();
         }
     }
 }
@@ -41,6 +42,8 @@ pub(crate) struct AgentControl {
     pub(crate) project_id: SageProjectId,
     pub(crate) chat_id: SageChatId,
     pub(crate) user_control: bool,
+    /// An approved developer-mode grant is live on the tab (ADR-0009b).
+    pub(crate) developer_mode: bool,
 }
 
 impl BrowserAttachments {
@@ -53,6 +56,7 @@ impl BrowserAttachments {
                 project_id: project.clone(),
                 chat_id: chat.clone(),
                 user_control: lease.user_controls(),
+                developer_mode: lease.developer_mode_active(),
             })
         };
         if let Some(control) = self.entries.lock().ok().and_then(|entries| {
@@ -301,6 +305,7 @@ mod tests {
                 project_id: project.clone(),
                 chat_id: chat.clone(),
                 user_control,
+                developer_mode: false,
             })
         };
         assert_eq!(registry.agent_control("browser-8"), control(false));

@@ -1,5 +1,6 @@
 use tauri::State;
 
+pub(crate) mod browser_developer;
 pub(crate) mod browser_preferences;
 
 use crate::{

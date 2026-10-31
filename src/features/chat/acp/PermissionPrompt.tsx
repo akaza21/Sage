@@ -56,7 +56,13 @@ export function PermissionPrompt({
   /** The request in flight, or the one whose decision failed (negated). */
   const [sent, setSent] = useState<[string, boolean] | null>(null);
   const execute = item?.payload.category === "execute";
-  const question = execute ? "Allow this command?" : "Allow this action?";
+  /** A developer-mode card (ADR-0009b): full CDP for this tab and site. */
+  const developer = item?.payload.source === "browserDeveloper";
+  const question = developer
+    ? "Allow developer mode on this site?"
+    : execute
+      ? "Allow this command?"
+      : "Allow this action?";
   useEffect(() => {
     if (!item) return;
     // A Deny pressed on the loading fallback carries into the card.
@@ -85,12 +91,16 @@ export function PermissionPrompt({
   if (!item) return null;
   const initialFocus = focusState?.[0] === item.id ? focusState[1] : null;
   const { payload } = item;
-  const browser = payload.source === "browser";
+  const browser = payload.source === "browser" || developer;
   const choices: [PermissionDecision, string][] = [];
-  for (const kind of browser
-    ? ["allow_once", "origin"]
-    : new Set(payload.offeredOptionKinds))
-    if (kind === "allow_once") choices.push(["allowOnce", "Allow once"]);
+  for (const kind of developer
+    ? ["developer"]
+    : browser
+      ? ["allow_once", "origin"]
+      : new Set(payload.offeredOptionKinds))
+    if (kind === "developer")
+      choices.push(["allowDeveloperMode", "Allow developer mode"]);
+    else if (kind === "allow_once") choices.push(["allowOnce", "Allow once"]);
     else if (kind === "origin")
       choices.push(["allowForOriginSession", "Allow for this tab and origin"]);
     else if (kind === "allow_always")
@@ -152,6 +162,9 @@ export function PermissionPrompt({
           kind={browser ? "fetch" : (payload.category ?? "other")}
         />
         {browser ? "Browser" : (nouns[payload.category ?? ""] ?? "Permission")}
+        {developer ? (
+          <b className="acp-permission-prompt__elevated">Elevated</b>
+        ) : null}
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
         {onCancelTurn ? (
           // Always offered so the pane is never stranded, but quiet: the
@@ -176,6 +189,14 @@ export function PermissionPrompt({
       <Detail className="acp-permission-prompt__detail">
         {payload.summary}
       </Detail>
+      {developer ? (
+        <p className="acp-permission-prompt__risk">
+          The agent gets full Chrome DevTools Protocol access to this tab. It
+          can run its own scripts on the page and read this site&apos;s cookies
+          and session data until you stop it, take over or leave the site. Only
+          allow this for sites you trust.
+        </p>
+      ) : null}
       {sent?.[0] === item.id && !sent[1] ? (
         <p className="acp-permission__error" role="alert">
           This decision could not be sent. Try again, or cancel the Turn.
@@ -199,7 +220,7 @@ export function PermissionPrompt({
         {primary ? (
           <span className="acp-permission-prompt__split">
             <button
-              ref={primaryRef}
+              ref={developer ? undefined : primaryRef}
               className="button--compact"
               type="button"
               data-initial-focus={initialFocus || undefined}
@@ -207,7 +228,13 @@ export function PermissionPrompt({
               disabled={pending}
               onClick={() => resolve(primary[0])}
             >
-              {primary[1]} <kbd aria-label="Enter">⏎</kbd>
+              {primary[1]}
+              {developer ? null : (
+                <>
+                  {" "}
+                  <kbd aria-label="Enter">⏎</kbd>
+                </>
+              )}
             </button>
             {choices[1] ? (
               <button

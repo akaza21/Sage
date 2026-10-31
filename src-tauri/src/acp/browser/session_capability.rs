@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, Manager};
 pub(crate) mod attached;
+mod developer;
 mod open_tab_commit;
 mod tab;
 

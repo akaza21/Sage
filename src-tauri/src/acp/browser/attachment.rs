@@ -19,6 +19,7 @@ pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
+mod developer;
 mod popup;
 pub(crate) use control::AgentControl;
 pub(crate) use popup::AgentAction;
@@ -44,6 +45,9 @@ pub(crate) struct AttachmentLease {
     /// The tab that opened this one, for a popup that joined its opener's
     /// attachment: Take over, Hand back and Stop on the opener cover it.
     opener: Option<String>,
+    /// The developer-mode grant (ADR-0009b): the session and origin the
+    /// user approved, in memory only (`developer.rs`).
+    developer: Arc<Mutex<Option<developer::DeveloperGrant>>>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -78,6 +82,7 @@ impl AttachmentLease {
                 return Some(authority.clone());
             }
             authority.stop();
+            self.end_developer_mode();
         }
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
@@ -96,9 +101,11 @@ impl AttachmentLease {
         self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
+            self.end_developer_mode();
             return;
         };
         self.active.store(false, Ordering::Release);
+        self.end_developer_mode();
         if let Some((_, authority)) = slot.as_ref() {
             authority.stop();
         }
@@ -131,6 +138,7 @@ impl AttachmentLease {
 
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
+        self.end_developer_mode();
         self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
@@ -222,6 +230,7 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: None,
+                developer: Arc::default(),
             },
         );
         drop(entries);
@@ -312,6 +321,7 @@ impl BrowserAttachments {
                 .filter(|lease| lease.tab_label == tab_label)
             {
                 lease.retire_slot_authority();
+                lease.end_developer_mode_unless_on(url);
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }
@@ -322,6 +332,7 @@ impl BrowserAttachments {
                 .filter(|lease| lease.tab_label == tab_label)
             {
                 lease.retire_slot_authority();
+                lease.end_developer_mode_unless_on(url);
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }

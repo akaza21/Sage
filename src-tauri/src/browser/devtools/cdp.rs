@@ -81,7 +81,8 @@ pub(super) fn call_with_permit(
     permit: Option<BrowserDispatchPermit>,
     issued_marker: Option<Arc<AtomicBool>>,
 ) -> Result<String, BrowserFailure> {
-    if method.len() > 128 || params.len() > 8192 {
+    // Developer-mode params are admitted up to `cdp_params_bytes` of JSON.
+    if method.len() > 128 || params.len() > 16_384 {
         return Err(BrowserFailure::Capacity);
     }
     let method = wide(method);

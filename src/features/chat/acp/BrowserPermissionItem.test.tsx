@@ -164,4 +164,51 @@ describe("local browser permission card", () => {
       }),
     );
   });
+
+  it("asks for developer mode with only Allow developer mode and Deny, and Enter never approves", () => {
+    const resolve = vi
+      .spyOn(acpDesktop, "resolvePermissionDecision")
+      .mockResolvedValue({
+        source: "browser",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "1",
+        requestId: "request-developer",
+        decision: "allowDeveloperMode",
+        state: "resolvedAllowed",
+      });
+    const developerItem = {
+      ...browserItem,
+      id: "permission-developer",
+      payload: {
+        ...browserItem.payload,
+        requestId: "request-developer",
+        label: "Browser developer mode",
+        summary: "Browser developer mode on https://example.com",
+        source: "browserDeveloper",
+      },
+    } as Extract<AcpItem, { kind: "permissionRequest" }>;
+    render(<PermissionPrompt items={[developerItem]} />);
+    expect(screen.getByText("Allow developer mode on this site?")).toBeTruthy();
+    expect(screen.getByText("Elevated")).toBeTruthy();
+    expect(
+      screen.getByText(/read this site's cookies and session data/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "More allow options" }),
+    ).toBeNull();
+    const allow = screen.getByRole("button", { name: "Allow developer mode" });
+    expect(document.activeElement).not.toBe(allow);
+    expect(allow.querySelector("kbd")).toBeNull();
+    fireEvent.click(allow);
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "request-developer",
+        decision: "allowDeveloperMode",
+      }),
+    );
+  });
 });

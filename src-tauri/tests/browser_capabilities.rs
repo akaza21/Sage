@@ -85,6 +85,8 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::page_controls::browser_print",
         "settings_commands::browser_preferences::browser_preferences",
         "settings_commands::browser_preferences::browser_set_preferences",
+        "settings_commands::browser_developer::browser_developer_mode",
+        "settings_commands::browser_developer::browser_set_developer_mode",
         "acp::browser::attachment::attach_browser_tab",
         "acp::browser::attachment::detach_browser_tab",
         "acp::browser::attachment::stop_browser_tab",

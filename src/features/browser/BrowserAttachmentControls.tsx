@@ -9,6 +9,7 @@ import { parseBrowserPageContext } from "../../domain/attachedContext";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import { clearBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import { BrowserAgentPresence } from "./BrowserAgentPresence";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
 import {
   attachBrowserTab,
   browserAgentControl,
@@ -30,10 +31,34 @@ interface ChatChoice {
  * happens here: mounting (also after a reload), an Agent operation, a page
  * change, and attaching or detaching. Rust answers Take over and Hand back
  * with the state after them, so nothing here is a mirror that can go stale.
+ * Rust also says when something outside the tab changed it, such as the
+ * developer-mode switch going off.
  */
 function useBrowserAgentControl(tabId: string, refreshKey: string) {
   const [control, setControl] = useState<BrowserAgentControl | null>(null);
+  const [nativeChange, setNativeChange] = useState(0);
   const sequence = useRef(0);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let remove: (() => void) | undefined;
+    let disposed = false;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<{ tabId: string }>("browser:agent-control", (event) => {
+          if (event.payload.tabId === tabId)
+            setNativeChange((current) => current + 1);
+        }),
+      )
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else remove = unlisten;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      remove?.();
+    };
+  }, [tabId]);
   useEffect(() => {
     const current = ++sequence.current;
     void browserAgentControl(tabId, "agentControl")
@@ -43,7 +68,7 @@ function useBrowserAgentControl(tabId: string, refreshKey: string) {
       .catch(() => {
         if (current === sequence.current) setControl(null);
       });
-  }, [tabId, refreshKey]);
+  }, [tabId, refreshKey, nativeChange]);
   return {
     control,
     apply(next: BrowserAgentControl | null) {
@@ -107,6 +132,7 @@ export function BrowserToolbarPageActions({
             operation?.phase === "started" && operation.chatId === agent.chatId
           }
           userControl={agent.userControl}
+          developerMode={agent.developerMode}
           chatTitle={
             chats.find((chat) => chat.id === agent.chatId)?.title ?? "Chat"
           }

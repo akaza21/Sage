@@ -9,15 +9,13 @@ use crate::acp::{
         BrowserPermissionPrompt,
     },
     contract::{
-        RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
-        SageServerRequestId, SageTurnId,
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
     },
-    intent::{ExternalId, NormalizedPayload, ToolCategory},
     lifecycle::ServerRequestState,
-    runtime::{JournalLane, permissions::PermissionIntent},
+    runtime::JournalLane,
     store::{RequestStateCommand, StoreMutation},
 };
-use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -34,6 +32,9 @@ pub(super) struct PendingBrowserPermission {
     pub(super) owner: BrowserPermissionOwner,
     pub(super) sender: std::sync::mpsc::SyncSender<BrowserPermissionChoice>,
     pub(super) live: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    /// A developer-mode card, which only `AllowDeveloperMode` or `Deny`
+    /// answers.
+    pub(super) elevated: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -152,7 +153,7 @@ impl super::AcpService {
         choice: BrowserPermissionChoice,
     ) -> Result<BrowserPermissionDecisionResponse, crate::acp::runtime::HostError> {
         use crate::acp::runtime::HostError;
-        if self.permission_request_kind(&owner, &request_id)? != "browserPermission" {
+        if !is_browser_request_kind(&self.permission_request_kind(&owner, &request_id)?) {
             return Err(HostError::Intent);
         }
         let pending = {
@@ -168,6 +169,7 @@ impl super::AcpService {
                 || pending.owner.session_id != owner.session_id
                 || pending.owner.turn_id != owner.turn_id
                 || pending.owner.runtime_epoch != owner.runtime_epoch
+                || !choice_fits(pending.elevated, choice)
             {
                 return Err(HostError::Intent);
             }
@@ -190,6 +192,7 @@ impl super::AcpService {
             decision: match choice {
                 BrowserPermissionChoice::AllowOnce => "allowOnce",
                 BrowserPermissionChoice::AllowForOriginSession => "allowForOriginSession",
+                BrowserPermissionChoice::AllowDeveloperMode => "allowDeveloperMode",
                 BrowserPermissionChoice::Deny => "deny",
             },
             state: match choice {
@@ -217,6 +220,7 @@ impl super::AcpService {
                     | "screenshot"
                     | "readConsole"
                     | "readNetwork"
+                    | "cdp"
             )
             || !still_live()
             || !self.browser_turn_live(&owner)
@@ -242,6 +246,7 @@ impl super::AcpService {
                     owner: owner.clone(),
                     sender,
                     live: std::sync::Arc::clone(&live),
+                    elevated: prompt.operation == "cdp",
                 },
             );
         }
@@ -327,14 +332,14 @@ impl super::AcpService {
                 ServerRequestState::ResponseQueued,
                 ServerRequestState::ResolvedDeclined,
             ],
-            BrowserPermissionChoice::AllowOnce | BrowserPermissionChoice::AllowForOriginSession => {
-                &[
-                    ServerRequestState::AllowPending,
-                    ServerRequestState::AllowCommitted,
-                    ServerRequestState::ResponseQueued,
-                    ServerRequestState::ResolvedAllowed,
-                ]
-            }
+            BrowserPermissionChoice::AllowOnce
+            | BrowserPermissionChoice::AllowForOriginSession
+            | BrowserPermissionChoice::AllowDeveloperMode => &[
+                ServerRequestState::AllowPending,
+                ServerRequestState::AllowCommitted,
+                ServerRequestState::ResponseQueued,
+                ServerRequestState::ResolvedAllowed,
+            ],
         };
         for state in states {
             let now = crate::persistence::now_millis();
@@ -362,54 +367,10 @@ impl super::AcpService {
     }
 }
 
-fn local_intent(
-    owner: &BrowserPermissionOwner,
-    prompt: &BrowserPermissionPrompt,
-    request_id: &SageServerRequestId,
-) -> Option<PermissionIntent> {
-    let summary = SafeText::new(
-        "summary",
-        format!("Browser {} on {}", prompt.operation, prompt.origin),
-    )
-    .ok()?;
-    let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
-        category: ToolCategory::Mcp,
-        summary,
-        offered_option_kinds: None,
-        reason: None,
-    })
-    .ok()?;
-    let normalized_payload_digest = hex_digest(normalized_payload_json.as_bytes());
-    Some(PermissionIntent {
-        request_id: request_id.clone(),
-        project_id: owner.project_id.clone(),
-        chat_id: owner.chat_id.clone(),
-        session_id: owner.session_id.clone(),
-        turn_id: owner.turn_id.clone(),
-        runtime_epoch: owner.runtime_epoch,
-        binding_digest: owner.binding_digest.clone(),
-        external_request_id: ExternalId::new("externalRequestId", request_id.as_str()).ok()?,
-        kind: RequiredText::new("kind", "browserPermission").ok()?,
-        payload_digest: hex_digest(
-            format!(
-                "{}:{}:{}",
-                request_id.as_str(),
-                prompt.scope.tab_id,
-                prompt.origin
-            )
-            .as_bytes(),
-        ),
-        normalized_payload_digest,
-        normalized_payload_json,
-    })
-}
-
-fn hex_digest(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
+#[path = "browser_permission/intent.rs"]
+mod intent;
+pub(crate) use intent::is_browser_request_kind;
+use intent::{choice_fits, local_intent};
 
 #[cfg(test)]
 mod tests;

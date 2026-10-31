@@ -359,6 +359,12 @@ impl super::AcpService {
             })
     }
 
+    /// Ends every developer-mode grant, as the Settings switch going off
+    /// does, and returns the tabs that held one.
+    pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
+        self.browser_attachments.end_developer_mode()
+    }
+
     pub(crate) fn browser_agent_control(
         &self,
         label: &str,

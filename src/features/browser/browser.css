@@ -270,6 +270,14 @@
   color: var(--color-accent);
   font-size: var(--font-size-xs);
 }
+.browser-surface__agent-developer {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-danger);
+  white-space: nowrap;
+}
 .browser-surface__agent-presence-label {
   max-width: 120px;
   overflow: hidden;

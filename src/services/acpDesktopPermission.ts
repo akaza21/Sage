@@ -27,6 +27,7 @@ function safePermissionDecision(
         allowOnce: "resolvedAllowed",
         allowAlways: null,
         allowForOriginSession: "resolvedAllowed",
+        allowDeveloperMode: "resolvedAllowed",
         deny: "resolvedDeclined",
       }[request.decision]
     : {
@@ -34,6 +35,7 @@ function safePermissionDecision(
         allowOnce: "allowPending",
         allowAlways: "allowPending",
         allowForOriginSession: null,
+        allowDeveloperMode: null,
         deny: "declinePending",
       }[request.decision];
   if (
@@ -58,6 +60,7 @@ function safePermissionDecision(
       "allowOnce",
       "allowAlways",
       "allowForOriginSession",
+      "allowDeveloperMode",
       "deny",
     ] as const) ||
     !isOneOf(value.state, [

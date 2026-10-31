@@ -46,6 +46,7 @@ let rustAgentControl: {
   projectId: string;
   chatId: string;
   userControl: boolean;
+  developerMode: boolean;
 } | null = null;
 const stopBrowserTab = vi.fn(async (_tabId: string) => {
   rustAgentControl = null;
@@ -473,6 +474,7 @@ it("stops the tab's current authority even when presence names a previous chat",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -535,6 +537,7 @@ it("takes over the tab until the user hands it back", async () => {
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -601,6 +604,7 @@ it("offers Stop and Take over for as long as an Agent is attached, idle or not",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   render(<BrowserSurface tab={tab} />);
   expect(
@@ -626,6 +630,7 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
     projectId: "project-1",
     chatId: "chat-toolbar",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,

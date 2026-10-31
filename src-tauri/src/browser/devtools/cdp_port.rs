@@ -154,6 +154,15 @@ impl<T: CdpTransport> CdpPort<T> {
 }
 
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
+    fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
+        self.call(
+            method,
+            params,
+            BROWSER_LIMITS.cdp_result_bytes,
+            Duration::from_secs(30),
+        )
+    }
+
     fn navigate(&mut self, url: &str) -> Result<(String, u64), BrowserFailure> {
         let before = self.stamp()?;
         // This CDP call goes through the dispatch permit and marks Agent

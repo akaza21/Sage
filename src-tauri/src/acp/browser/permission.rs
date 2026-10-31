@@ -1,6 +1,7 @@
 //! Browser-specific permission gate. A UI-backed decider is required before admission.
 use super::{
     BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope,
+    developer::DeveloperModePolicy,
 };
 use std::sync::{
     Arc, Mutex,
@@ -11,6 +12,9 @@ use std::sync::{
 pub enum BrowserPermissionChoice {
     AllowOnce,
     AllowForOriginSession,
+    /// Developer mode for this chat session, tab and origin (ADR-0009b).
+    /// Only an elevated prompt admits it, and it admits nothing else.
+    AllowDeveloperMode,
     Deny,
 }
 
@@ -236,6 +240,7 @@ pub struct BrowserPermissionGate<P, D> {
     tab_is_current: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     owner_is_current: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     owner_witness: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    developer: Option<Arc<dyn DeveloperModePolicy>>,
 }
 
 impl<P, D> BrowserPermissionGate<P, D> {
@@ -247,7 +252,14 @@ impl<P, D> BrowserPermissionGate<P, D> {
             tab_is_current: None,
             owner_is_current: None,
             owner_witness: None,
+            developer: None,
         }
+    }
+
+    /// Admits elevated commands under `policy`; without it they are denied.
+    pub fn with_developer_mode(mut self, policy: Arc<dyn DeveloperModePolicy>) -> Self {
+        self.developer = Some(policy);
+        self
     }
 
     pub fn with_tab_revision_guard(
@@ -273,6 +285,24 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserCapabilit
     for BrowserPermissionGate<P, D>
 {
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
+        let BrowserCommand::Cdp { method, params } = &request.command else {
+            return self.perform_admitted(request, None);
+        };
+        self.perform_elevated(request, method, params)
+    }
+}
+
+impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissionGate<P, D> {
+    /// Asks, unless a grant already covers the request, then dispatches under
+    /// a permit. `elevated` carries the developer policy and the origin the
+    /// command was admitted for; an ordinary grant never covers it, and a
+    /// developer grant covers nothing else.
+    fn perform_admitted(
+        &mut self,
+        request: &BrowserRequest,
+        elevated: Option<(&dyn DeveloperModePolicy, &str)>,
+    ) -> Result<BrowserResult, BrowserFailure> {
+        let session = request.scope.session_id.as_str();
         let (revision, owner_generation, origin, already_granted) = {
             let state = self
                 .authority
@@ -288,19 +318,38 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserCapabilit
                 }
                 _ => state.origin.clone(),
             };
-            let granted = state.grant_origin.as_deref() == Some(origin.as_str());
+            let granted = match elevated {
+                Some((_, admitted)) if admitted != origin => return Err(BrowserFailure::Denied),
+                Some((developer, _)) => developer.granted(session, &origin),
+                None => state.grant_origin.as_deref() == Some(origin.as_str()),
+            };
             (state.revision, state.owner_generation, origin, granted)
         };
-        let choice = if already_granted {
-            BrowserPermissionChoice::AllowForOriginSession
-        } else {
-            self.decider.decide(&BrowserPermissionPrompt {
+        let choice = match (already_granted, elevated.is_some()) {
+            (true, true) => BrowserPermissionChoice::AllowDeveloperMode,
+            (true, false) => BrowserPermissionChoice::AllowForOriginSession,
+            (false, _) => self.decider.decide(&BrowserPermissionPrompt {
                 scope: request.scope.clone(),
                 origin: origin.clone(),
                 operation: operation(&request.command),
-            })
+            }),
         };
-        if choice == BrowserPermissionChoice::Deny {
+        let admitted = match choice {
+            BrowserPermissionChoice::AllowDeveloperMode => elevated.is_some(),
+            BrowserPermissionChoice::AllowOnce | BrowserPermissionChoice::AllowForOriginSession => {
+                elevated.is_none()
+            }
+            BrowserPermissionChoice::Deny => false,
+        };
+        if !admitted {
+            return Err(BrowserFailure::Denied);
+        }
+        // The attachment holds the grant, so Stop, Take over and a
+        // cross-origin commit end it whichever authority asked.
+        if let Some((developer, _)) = elevated
+            && !already_granted
+            && !developer.grant(session, &origin)
+        {
             return Err(BrowserFailure::Denied);
         }
         let permit = BrowserDispatchPermit {
@@ -381,8 +430,16 @@ fn operation(command: &BrowserCommand) -> &'static str {
         BrowserCommand::Screenshot { .. } => "screenshot",
         BrowserCommand::ReadConsole { .. } => "readConsole",
         BrowserCommand::ReadNetwork { .. } => "readNetwork",
+        BrowserCommand::Cdp { .. } => "cdp",
     }
 }
 
+#[path = "permission/developer.rs"]
+mod developer;
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "permission/developer_tests.rs"]
+mod developer_tests;
