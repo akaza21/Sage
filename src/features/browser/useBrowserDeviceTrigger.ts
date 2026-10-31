@@ -30,6 +30,10 @@ export function useBrowserDeviceTrigger(
   if (device.open && !loaded) setLoaded(true);
   return {
     open: device.tabId === tabId && device.open,
+    /** What the toolbar restores from the tab's status. */
+    restored: status?.deviceUnconfirmed
+      ? ("unconfirmed" as const)
+      : (status?.device ?? null),
     loaded,
     setOpen: (open: boolean) =>
       setDevice((current) =>

@@ -338,11 +338,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           <BrowserDeviceController
             tabId={tab.id}
             open={device.open}
-            restored={
-              status?.deviceUnconfirmed
-                ? "unconfirmed"
-                : (status?.device ?? null)
-            }
+            restored={device.restored}
             frame={frame}
             onOpenChange={device.setOpen}
             onError={setError}
