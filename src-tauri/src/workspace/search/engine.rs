@@ -19,6 +19,8 @@ pub struct SearchEngine {
     pub(super) limits: SearchLimits,
     /// Git's global excludes file, which the helper cannot resolve itself.
     pub(super) global_excludes: Option<PathBuf>,
+    /// Threads a root's search may use, the walk's included.
+    pub(super) threads: usize,
 }
 
 pub(super) struct SearchBudget {
@@ -43,6 +45,7 @@ impl SearchEngine {
         Self {
             limits,
             global_excludes: None,
+            threads: super::file_prefetch::search_threads(),
         }
     }
 

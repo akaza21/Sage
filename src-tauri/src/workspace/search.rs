@@ -3,11 +3,16 @@ mod contained_file;
 mod engine;
 mod engine_continue;
 mod engine_walk;
+mod file_prefetch;
 mod file_scan;
 mod helper_process;
 mod helper_protocol;
 mod literal_match;
+#[cfg(test)]
+mod parallel_tests;
 mod path_filter;
+#[cfg(test)]
+mod speed_bench;
 mod types;
 
 pub use helper_protocol::run_stdio_helper_if_requested;

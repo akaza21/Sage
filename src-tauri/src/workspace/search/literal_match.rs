@@ -1,13 +1,28 @@
+/// Characters outside ASCII whose lowercase form contains ASCII letters:
+/// LATIN CAPITAL LETTER I WITH DOT ABOVE (U+0130) folds to `i` plus a
+/// combining dot and KELVIN SIGN (U+212A) to `k`. Where neither appears, an
+/// ASCII query matches exactly where ASCII case folding says it does.
+const ASCII_FOLDING_SPECIALS: [&[u8]; 2] = ["\u{0130}".as_bytes(), "\u{212A}".as_bytes()];
+
 pub(super) fn literal_matches(
     line: &str,
     query: &str,
     case_sensitive: bool,
     whole_word: bool,
 ) -> Vec<(usize, usize)> {
+    // An ASCII line holds no special character, so ASCII folding gives what
+    // full lowercasing gives, without a folded copy of the line.
+    let ascii_folding = !case_sensitive && query.is_ascii() && line.is_ascii();
     let mut matches = Vec::new();
     let mut offset = 0;
     while offset < line.len() {
-        let Some((start, end)) = find_literal(&line[offset..], query, case_sensitive) else {
+        let found = if ascii_folding {
+            find_ascii_folded(&line.as_bytes()[offset..], query.as_bytes())
+                .map(|start| (start, start + query.len()))
+        } else {
+            find_literal(&line[offset..], query, case_sensitive)
+        };
+        let Some((start, end)) = found else {
             break;
         };
         let start = offset + start;
@@ -18,6 +33,39 @@ pub(super) fn literal_matches(
         offset = end;
     }
     matches
+}
+
+/// False only when no line of `content` can hold a match, so a File can be
+/// passed over without splitting it into lines. True is only a maybe.
+pub(super) fn file_may_match(content: &str, query: &str, case_sensitive: bool) -> bool {
+    let bytes = content.as_bytes();
+    if case_sensitive {
+        return memchr::memmem::find(bytes, query.as_bytes()).is_some();
+    }
+    if !query.is_ascii()
+        || ASCII_FOLDING_SPECIALS
+            .iter()
+            .any(|special| memchr::memmem::find(bytes, special).is_some())
+    {
+        return true;
+    }
+    find_ascii_folded(bytes, query.as_bytes()).is_some()
+}
+
+/// The first place `needle` occurs in `haystack`, ignoring ASCII case.
+fn find_ascii_folded(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    let (&first, rest) = needle.split_first()?;
+    let (lower, upper) = (first.to_ascii_lowercase(), first.to_ascii_uppercase());
+    let last_start = haystack.len().checked_sub(needle.len())?;
+    let mut from = 0;
+    while from <= last_start {
+        let start = from + memchr::memchr2(lower, upper, &haystack[from..=last_start])?;
+        if haystack[start + 1..start + needle.len()].eq_ignore_ascii_case(rest) {
+            return Some(start);
+        }
+        from = start + 1;
+    }
+    None
 }
 
 fn find_literal(line: &str, query: &str, case_sensitive: bool) -> Option<(usize, usize)> {
@@ -58,22 +106,4 @@ fn is_word_character(character: char) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::literal_matches;
-
-    #[test]
-    fn whole_word_uses_unicode_word_boundaries() {
-        assert_eq!(
-            literal_matches("éneedle needle needle_value", "needle", false, true),
-            vec![(9, 15)]
-        );
-    }
-
-    #[test]
-    fn insensitive_matching_keeps_original_byte_ranges() {
-        assert_eq!(
-            literal_matches("Straße STRASSE", "strasse", false, false),
-            vec![(8, 15)]
-        );
-    }
-}
+mod tests;
