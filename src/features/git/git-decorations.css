@@ -54,11 +54,3 @@
 .tab__title--git.git-tone--deleted {
   text-decoration: line-through;
 }
-
-.tab__activate .git-tone--unknown {
-  --git-tone: var(--color-text-muted);
-}
-
-.git-badge {
-  margin-left: 0;
-}

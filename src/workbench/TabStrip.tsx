@@ -18,7 +18,11 @@ import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
 import { BrowserFavicon } from "../features/browser/browserFavicon";
-import { useGitDecorationsUi } from "../features/git/useGitDecorationsUi";
+import {
+  resourceHasGitMark,
+  useGitDecorationsUi,
+} from "../features/git/gitDecorationsGate";
+import type { ResourceRef } from "../domain/workbench";
 
 function BrowserTabPresence({
   tabId,
@@ -46,6 +50,14 @@ function BrowserTabPresence({
       </span>
     </span>
   );
+}
+
+/** The room a File tab's Git mark will take, held while the marks load. */
+function PendingGitMark({ resource }: { resource: ResourceRef }) {
+  const marked = useWorkbenchStore((state) =>
+    resourceHasGitMark(state.repositories, resource),
+  );
+  return marked ? <span className="tab__git-slot" aria-hidden="true" /> : null;
 }
 
 /**
@@ -95,13 +107,12 @@ export function TabStrip({
     (store) => store.settings["git.decorations"],
   );
   // EP-13: the marks load only while on and a repository root is open.
-  const git = useGitDecorationsUi(
-    useWorkbenchStore(
-      (state) =>
-        decorate &&
-        state.repositories.roots.some((root) => root.state === "repository"),
-    ),
+  const wantGit = useWorkbenchStore(
+    (state) =>
+      decorate &&
+      state.repositories.roots.some((root) => root.state === "repository"),
   );
+  const git = useGitDecorationsUi(wantGit);
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
   const visibleTabs = kinds
     ? orderedTabs(tabs).filter((tab) => kinds.includes(tab.kind))
@@ -165,7 +176,12 @@ export function TabStrip({
                 {git && tab.kind === "file" && tab.resource ? (
                   <git.GitTabTitle title={tab.title} resource={tab.resource} />
                 ) : (
-                  <span>{tab.title}</span>
+                  <>
+                    <span>{tab.title}</span>
+                    {wantGit && tab.kind === "file" && tab.resource ? (
+                      <PendingGitMark resource={tab.resource} />
+                    ) : null}
+                  </>
                 )}
                 {tab.kind === "browser" ? (
                   <BrowserTabPresence

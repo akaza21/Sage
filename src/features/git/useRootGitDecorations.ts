@@ -4,7 +4,7 @@ import type { RootGitDecorations } from "./gitDecorations";
 import {
   useGitDecorationsUi,
   type GitDecorationsUiModule,
-} from "./useGitDecorationsUi";
+} from "./gitDecorationsGate";
 
 export interface RootGitDecorationsView {
   decorations: RootGitDecorations;

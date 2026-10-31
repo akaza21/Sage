@@ -1,11 +1,10 @@
-import { isConflictedChange } from "../../domain/gitMutation";
 import type {
   FileChange,
   ProjectRepositoryStatus,
   RootRepositoryStatus,
 } from "../../domain/repository";
 import type { ResourceRef } from "../../domain/workbench";
-import { visibleChangeStatus } from "./conflictPresentation";
+import { markedGitState, type MarkedGitState } from "./gitDecorationsGate";
 
 /**
  * Git decorations for the Explorer and tabs (EP-13), as in VS Code: a coloured
@@ -39,8 +38,8 @@ function decoration(
   return Object.freeze({ tone, badge, label });
 }
 
-const FILE_DECORATIONS = {
-  conflict: decoration("conflict", "!", "Conflict"),
+const FILE_DECORATIONS: Record<MarkedGitState, GitDecoration> = {
+  conflicted: decoration("conflict", "!", "Conflict"),
   modified: decoration("modified", "M", "Modified"),
   typeChanged: decoration("modified", "T", "Type changed"),
   deleted: decoration("deleted", "D", "Deleted"),
@@ -48,7 +47,7 @@ const FILE_DECORATIONS = {
   renamed: decoration("added", "R", "Renamed"),
   copied: decoration("added", "C", "Copied"),
   untracked: decoration("untracked", "U", "Untracked"),
-} as const;
+};
 
 const FOLDER_DECORATIONS: Record<GitDecorationTone, GitDecoration> = {
   conflict: decoration("conflict", "•", "Contains conflicts"),
@@ -70,16 +69,8 @@ const TONE_RANK: Record<GitDecorationTone, number> = {
 };
 
 export function fileGitDecoration(change: FileChange): GitDecoration | null {
-  if (isConflictedChange(change)) return FILE_DECORATIONS.conflict;
-  // The post-commit index-only status leaves the working tree "unknown";
-  // the staged state is then what is known.
-  const state =
-    change.worktreeStatus === "unknown"
-      ? change.indexStatus
-      : visibleChangeStatus(change);
-  return state === "unchanged" || state === "unknown" || state === "conflicted"
-    ? null
-    : FILE_DECORATIONS[state];
+  const state = markedGitState(change);
+  return state ? FILE_DECORATIONS[state] : null;
 }
 
 /** Built once per refreshed root: refreshes keep unchanged roots (EP-12). */
