@@ -72,13 +72,17 @@ pub(crate) fn capture_page_context(
 }
 
 /// Clears the Agent's act marker, trying every step even after a failure,
-/// and turns the overlay off again unless the tab annotates.
+/// and turns the overlay off again unless the tab annotates. Also releases
+/// any developer-mode evaluation results still held (ADR-0009b), since this
+/// runs when the Agent's control of the tab ends.
 pub(crate) fn clear_agent_highlight(webview: &Webview) {
-    highlight::clear(&NativeTransport {
+    let transport = NativeTransport {
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
-    });
+    };
+    highlight::clear(&transport);
+    super::cdp_port::release_developer_objects(&transport);
 }
 
 /// Removes the user's Annotate hover outline, outside any Agent permit.

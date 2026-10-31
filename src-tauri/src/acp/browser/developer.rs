@@ -21,25 +21,29 @@ use serde_json::{Map, Value};
 
 use super::BrowserFailure;
 
+/// `Runtime.evaluate` parameters the Agent may set. Sage itself sets
+/// `returnByValue: true` and its own `objectGroup`, and releases that group
+/// after every call, so no result stays pinned in the page; previews and
+/// `serializationOptions` (whose `idOnly` overrides `returnByValue`) would
+/// keep remote objects alive, so they are not accepted.
 const EVALUATE: &[&str] = &[
     "expression",
-    "objectGroup",
     "silent",
-    "returnByValue",
-    "generatePreview",
     "userGesture",
     "awaitPromise",
     "throwOnSideEffect",
     "timeout",
     "disableBreaks",
     "replMode",
-    "serializationOptions",
 ];
+
+/// The object group every developer-mode evaluation runs in; the native
+/// port releases it after each call and when a grant ends.
+pub const DEVELOPER_OBJECT_GROUP: &str = "sage-developer-mode";
 
 /// Every method developer mode sends, with the parameters it may carry.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("Runtime.evaluate", EVALUATE),
-    ("Runtime.releaseObjectGroup", &["objectGroup"]),
     ("Runtime.getHeapUsage", &[]),
     (
         "Page.navigate",

@@ -361,8 +361,13 @@ impl super::AcpService {
 
     /// Ends every developer-mode grant, as the Settings switch going off
     /// does, and returns the tabs that held one.
+    /// Ends every grant and releases each tab's developer-mode objects.
     pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
-        self.browser_attachments.end_developer_mode()
+        let labels = self.browser_attachments.end_developer_mode();
+        for label in &labels {
+            self.clear_browser_highlight(label);
+        }
+        labels
     }
 
     pub(crate) fn browser_agent_control(

@@ -153,6 +153,20 @@ impl<T: CdpTransport> CdpPort<T> {
     }
 }
 
+/// Releases developer mode's object group without the dispatch permit:
+/// after every evaluation and when a grant ends (ADR-0009b).
+pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(transport: &T) {
+    let params = serde_json::json!({
+        "objectGroup": crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP,
+    });
+    let _ = transport.observe(
+        "Runtime.releaseObjectGroup",
+        &params.to_string(),
+        4096,
+        Duration::from_secs(2),
+    );
+}
+
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
     fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
         self.call(
@@ -161,6 +175,10 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             BROWSER_LIMITS.cdp_result_bytes,
             Duration::from_secs(30),
         )
+    }
+
+    fn release_developer_objects(&mut self) {
+        release_developer_objects(&self.transport);
     }
 
     fn navigate(&mut self, url: &str) -> Result<(String, u64), BrowserFailure> {

@@ -63,15 +63,11 @@ fn listed_main_frame_commands_pass_with_their_own_parameters() {
     for (method, value) in [
         (
             "Runtime.evaluate",
-            json!({"expression": "document.title", "returnByValue": true}),
+            json!({"expression": "document.title", "awaitPromise": false}),
         ),
         (
             "Runtime.evaluate",
             json!({"expression": "fetch('/a')", "awaitPromise": true}),
-        ),
-        (
-            "Runtime.releaseObjectGroup",
-            json!({"objectGroup": "agent"}),
         ),
         (
             "Page.navigate",
@@ -175,6 +171,27 @@ fn a_listed_method_refuses_any_parameter_it_does_not_list() {
         (
             "Page.captureScreenshot",
             json!({"format": "png", "frameId": "F2"}),
+        ),
+        // Results stay by value in Sage's own group, released every call.
+        (
+            "Runtime.evaluate",
+            json!({"expression": "new ArrayBuffer(1e8)", "returnByValue": false}),
+        ),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "x", "serializationOptions": {"serialization": "idOnly"}}),
+        ),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "x", "generatePreview": true}),
+        ),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "x", "objectGroup": "mine"}),
+        ),
+        (
+            "Runtime.releaseObjectGroup",
+            json!({"objectGroup": "sage-developer-mode"}),
         ),
     ] {
         assert_eq!(

@@ -39,6 +39,9 @@ pub(crate) trait DevtoolsPort {
     fn raw(&mut self, _method: &str, _params: &str) -> Result<String, BrowserFailure> {
         Err(BrowserFailure::Unavailable)
     }
+    /// Releases `DEVELOPER_OBJECT_GROUP` outside the dispatch permit, so it
+    /// runs even when the permit was revoked mid-call.
+    fn release_developer_objects(&mut self) {}
     fn matches(
         &mut self,
         condition: &WaitCondition,
@@ -226,9 +229,24 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                 timeout_ms,
             } => self.wait_for(condition, *timeout_ms),
             BrowserCommand::Cdp { method, params } => {
+                let evaluate = method == "Runtime.evaluate";
+                let mut params = params.clone();
+                if evaluate {
+                    // Results come back by value, in Sage's own group, which
+                    // is released below whatever the outcome.
+                    params.insert("returnByValue".into(), true.into());
+                    params.insert(
+                        "objectGroup".into(),
+                        crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP.into(),
+                    );
+                }
                 let params =
-                    serde_json::to_string(params).map_err(|_| BrowserFailure::InvalidRequest)?;
-                let result = self.port.raw(method, &params)?;
+                    serde_json::to_string(&params).map_err(|_| BrowserFailure::InvalidRequest)?;
+                let result = self.port.raw(method, &params);
+                if evaluate {
+                    self.port.release_developer_objects();
+                }
+                let result = result?;
                 // Script and DOM commands can change what handles point at.
                 self.handles
                     .lock()
