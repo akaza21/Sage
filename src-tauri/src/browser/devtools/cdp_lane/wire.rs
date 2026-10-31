@@ -80,3 +80,23 @@ impl Wire {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_answer_after_the_pipe_closed_releases_nothing_and_forgets_the_call() {
+        let wire = Wire::default();
+        assert_eq!(
+            wire.write(Some("page"), "Runtime.evaluate", json!({}), true),
+            Err(BrowserFailure::Unavailable)
+        );
+        assert_eq!(wire.release_on_answer.lock().unwrap().len(), 1);
+        wire.answered(1);
+        assert!(wire.release_on_answer.lock().unwrap().is_empty());
+        assert_eq!(wire.late_releases.load(Ordering::SeqCst), 0);
+        wire.answered(1);
+        assert_eq!(wire.late_releases.load(Ordering::SeqCst), 0);
+    }
+}

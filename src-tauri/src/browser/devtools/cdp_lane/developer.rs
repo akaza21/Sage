@@ -79,28 +79,35 @@ fn a_result_over_the_cap_fails_and_a_bad_method_is_refused() {
     );
 }
 
-/// Starts an evaluation that outlives its caller's timeout and leaves a
-/// remote object in `group`, reachable from the page only through a WeakRef.
+/// Starts an evaluation that awaits a promise the page holds, so the
+/// caller's timeout always comes first, and leaves a remote object in
+/// `group` that the page reaches only through a WeakRef. Settling the
+/// promise later sends the late answer.
 fn evaluate_past_its_timeout(lane: &mut Lane, group: &str, marker: &str) {
     let expression = format!(
-        "(() => {{ const held = {{ blob: new ArrayBuffer(1 << 20) }}; \
-         window.{marker} = new WeakRef(held); \
-         const end = Date.now() + 1500; while (Date.now() < end) {{}} return held; }})()"
+        "new Promise((resolve, reject) => {{ \
+         const held = {{ blob: new ArrayBuffer(1 << 20) }}; \
+         window.{marker} = {{ ref: new WeakRef(held), \
+         settle: (fail) => (fail ? reject(held) : resolve(held)) }}; }})"
     );
-    let params = json!({"expression": expression, "objectGroup": group});
-    assert!(
-        lane.capability
-            .port_mut()
-            .transport
-            .call(
-                "Runtime.evaluate",
-                &params.to_string(),
-                65_536,
-                Duration::from_millis(200),
-            )
-            .is_err(),
+    let params = json!({"expression": expression, "objectGroup": group, "awaitPromise": true});
+    assert_eq!(
+        lane.capability.port_mut().transport.call(
+            "Runtime.evaluate",
+            &params.to_string(),
+            65_536,
+            Duration::from_millis(200),
+        ),
+        Err(BrowserFailure::OutcomeUnknown),
         "the caller stops waiting before the page answers"
     );
+}
+
+fn settle(lane: &mut Lane, marker: &str, fail: bool) {
+    // The settle closure also holds the object, so it is dropped here.
+    lane.evaluate(&format!(
+        "window.{marker}.settle({fail}), window.{marker}.settle = null, true"
+    ));
 }
 
 fn collected(lane: &mut Lane, marker: &str) -> bool {
@@ -114,24 +121,44 @@ fn collected(lane: &mut Lane, marker: &str) -> bool {
             Duration::from_secs(5),
         )
         .expect("collect garbage");
-    lane.evaluate(&format!("window.{marker}.deref() === undefined")) == json!(true)
+    lane.evaluate(&format!("window.{marker}.ref.deref() === undefined")) == json!(true)
 }
 
-#[test]
-fn a_late_evaluation_answer_still_releases_its_objects() {
-    let mut lane = Lane::open("/form.html");
-    // Control: an evaluation outside developer mode's group keeps its object.
-    evaluate_past_its_timeout(&mut lane, "kept-by-test", "__kept");
-    evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__released");
+fn wait_for_releases(lane: &mut Lane, count: usize) {
     let deadline = Instant::now() + Duration::from_secs(10);
-    while lane.capability.port_mut().transport.completion_releases() == 0 {
+    while lane.capability.port_mut().transport.completion_releases() < count {
         assert!(Instant::now() < deadline, "the late answer was released");
         std::thread::sleep(Duration::from_millis(20));
     }
     assert_eq!(
         lane.capability.port_mut().transport.completion_releases(),
-        1
+        count
     );
+}
+
+#[test]
+fn a_late_evaluation_answer_still_releases_its_objects() {
+    let mut lane = Lane::open("/form.html");
+    // A late result, then a late exception, each in developer mode's group;
+    // the control's object, in another group, stays pinned.
+    evaluate_past_its_timeout(&mut lane, "kept-by-test", "__kept");
+    evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__result");
+    evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__thrown");
+    settle(&mut lane, "__kept", false);
+    settle(&mut lane, "__result", false);
+    wait_for_releases(&mut lane, 1);
+    settle(&mut lane, "__thrown", true);
+    wait_for_releases(&mut lane, 2);
     assert!(!collected(&mut lane, "__kept"));
-    assert!(collected(&mut lane, "__released"));
+    assert!(collected(&mut lane, "__result"));
+    assert!(collected(&mut lane, "__thrown"));
+}
+
+#[test]
+fn closing_with_an_evaluation_in_flight_ends_promptly() {
+    let mut lane = Lane::open("/form.html");
+    evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__pending");
+    let started = Instant::now();
+    drop(lane);
+    assert!(started.elapsed() < Duration::from_secs(10));
 }
