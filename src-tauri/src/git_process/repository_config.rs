@@ -41,9 +41,31 @@ type AdmissionSlot = Arc<tokio::sync::Mutex<Option<Admission>>>;
 
 static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::new(Mutex::default);
 
+/// The repository admission inspected. Admitted Git calls run with these
+/// explicit locations, so they open exactly this repository.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AdmittedRepository {
+    git_dir: PathBuf,
+    work_tree: PathBuf,
+}
+
+impl AdmittedRepository {
+    pub(super) fn git_dir(&self) -> &Path {
+        &self.git_dir
+    }
+
+    pub(super) fn work_tree(&self) -> &Path {
+        &self.work_tree
+    }
+}
+
 /// Fails with [`AppError::UnsafeRepositoryConfig`] when the repository that
-/// Git would open at `root` configures a command-running key.
-pub(super) async fn admit(root: &Path, authority: Option<&GitRootAuthority>) -> AppResult<()> {
+/// Git would open at `root` configures a command-running key. Otherwise
+/// returns that repository, or `None` when `root` is in no repository.
+pub(super) async fn admit(
+    root: &Path,
+    authority: Option<&GitRootAuthority>,
+) -> AppResult<Option<AdmittedRepository>> {
     let slot = admission_slot(root);
     // Holding the per-root lock makes concurrent first reads share one probe.
     let mut cached = slot.lock().await;
@@ -64,10 +86,14 @@ fn admission_slot(root: &Path) -> AdmissionSlot {
 }
 
 /// Returns the slot for `root`, first dropping every idle slot when the map is
-/// full. Slots in use stay, so an in-flight probe keeps its lock.
+/// full. Slots in use stay, so an in-flight probe keeps its lock. When every
+/// slot is in use, `root` gets a private slot, so its admission is not cached.
 fn slot_in(admissions: &mut HashMap<PathBuf, AdmissionSlot>, root: &Path) -> AdmissionSlot {
     if !admissions.contains_key(root) && admissions.len() >= MAX_CACHED_ROOTS {
         admissions.retain(|_, slot| Arc::strong_count(slot) > 1);
+        if admissions.len() >= MAX_CACHED_ROOTS {
+            return AdmissionSlot::default();
+        }
     }
     Arc::clone(admissions.entry(root.to_path_buf()).or_default())
 }
@@ -80,6 +106,7 @@ pub(crate) fn trust_for_test(root: &Path) {
     let slot = AdmissionSlot::new(tokio::sync::Mutex::new(Some(Admission {
         watched: Vec::new(),
         refusal: None,
+        repository: None,
     })));
     ADMISSIONS
         .lock()
@@ -90,6 +117,7 @@ pub(crate) fn trust_for_test(root: &Path) {
 struct Admission {
     watched: Vec<(PathBuf, Fingerprint)>,
     refusal: Option<String>,
+    repository: Option<AdmittedRepository>,
 }
 
 impl Admission {
@@ -99,10 +127,10 @@ impl Admission {
             .all(|(path, fingerprint)| Fingerprint::of(path) == *fingerprint)
     }
 
-    fn verdict(&self) -> AppResult<()> {
+    fn verdict(&self) -> AppResult<Option<AdmittedRepository>> {
         match &self.refusal {
             Some(message) => Err(AppError::UnsafeRepositoryConfig(message.clone())),
-            None => Ok(()),
+            None => Ok(self.repository.clone()),
         }
     }
 }
@@ -127,11 +155,13 @@ impl Probe {
         let location = probe_git(
             root,
             authority,
+            None,
             &[
                 "rev-parse",
                 "--path-format=absolute",
                 "--git-dir",
                 "--git-common-dir",
+                "--show-toplevel",
             ],
             MAX_LOCATION_BYTES,
         )
@@ -148,12 +178,19 @@ impl Probe {
                 admission: Admission {
                     watched: ancestors,
                     refusal: None,
+                    repository: None,
                 },
                 cacheable,
             });
         }
-        let (git_dir, common_dir) = parse_location(&location)?;
+        let Location {
+            git_dir,
+            common_dir,
+            work_tree,
+        } = Location::parse(&location)?;
         let (mut watched, cacheable) = discovery_path(ancestors, &git_dir);
+        let repository = AdmittedRepository { git_dir, work_tree };
+        let git_dir = &repository.git_dir;
         watched.extend(
             [
                 common_dir.join("config"),
@@ -172,6 +209,7 @@ impl Probe {
             let listing = probe_git(
                 root,
                 authority,
+                Some(&repository),
                 &["config", "--list", "--no-includes", "--name-only", "-z"],
                 MAX_CONFIG_LIST_BYTES,
             )
@@ -188,7 +226,11 @@ impl Probe {
             }
         };
         Ok(Self {
-            admission: Admission { watched, refusal },
+            admission: Admission {
+                watched,
+                refusal,
+                repository: Some(repository),
+            },
             cacheable,
         })
     }
@@ -200,6 +242,7 @@ const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git
 async fn probe_git(
     root: &Path,
     authority: Option<&GitRootAuthority>,
+    repository: Option<&AdmittedRepository>,
     args: &[&str],
     stdout_limit: usize,
 ) -> AppResult<GitOutput> {
@@ -210,6 +253,7 @@ async fn probe_git(
         stdout_limit,
         GitProcessPolicy::read(git_budget::READ),
         authority,
+        repository,
     )
     .await
 }
@@ -265,17 +309,30 @@ fn gitfile_target(entry: &Path, bytes: &[u8]) -> Option<PathBuf> {
     (!target.is_empty()).then(|| parent.join(target))
 }
 
-fn parse_location(output: &GitOutput) -> AppResult<(PathBuf, PathBuf)> {
-    let text = std::str::from_utf8(&output.stdout)
-        .map_err(|_| AppError::Git("Git directory path is not valid UTF-8".into()))?;
-    let mut lines = text.lines();
-    match (lines.next(), lines.next()) {
-        (Some(git_dir), Some(common_dir)) if !git_dir.is_empty() && !common_dir.is_empty() => {
-            Ok((PathBuf::from(git_dir), PathBuf::from(common_dir)))
+struct Location {
+    git_dir: PathBuf,
+    common_dir: PathBuf,
+    work_tree: PathBuf,
+}
+
+impl Location {
+    fn parse(output: &GitOutput) -> AppResult<Self> {
+        let text = std::str::from_utf8(&output.stdout)
+            .map_err(|_| AppError::Git("Git repository path is not valid UTF-8".into()))?;
+        let mut lines = text
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from);
+        match (lines.next(), lines.next(), lines.next()) {
+            (Some(git_dir), Some(common_dir), Some(work_tree)) => Ok(Self {
+                git_dir,
+                common_dir,
+                work_tree,
+            }),
+            _ => Err(AppError::Git(
+                "Git did not report the repository location".into(),
+            )),
         }
-        _ => Err(AppError::Git(
-            "Git did not report the repository directory".into(),
-        )),
     }
 }
 

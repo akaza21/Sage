@@ -438,3 +438,61 @@ fn the_cache_drops_idle_roots_once_full() {
     assert!(admissions.contains_key(Path::new("/held")));
     drop(held);
 }
+
+#[test]
+fn an_admitted_repository_cannot_drift_to_a_hostile_ancestor() {
+    let scratch = Scratch::new();
+    let outer = scratch.directory("outer");
+    let inner = outer.join("inner");
+    fs::create_dir(&inner).unwrap();
+    git(&inner, &["init", "-q"]);
+    assert!(
+        sage_git(&inner, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+
+    git(&outer, &["init", "-q"]);
+    git(&outer, &["config", "user.email", "sage@example.invalid"]);
+    git(&outer, &["config", "user.name", "Sage Test"]);
+    fs::write(outer.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+    fs::write(outer.join("a.txt"), "a\n").unwrap();
+    git(&outer, &["add", "--", ".gitattributes", "a.txt"]);
+    git(&outer, &["commit", "-q", "-m", "fixture"]);
+    let (sentinel, filter) = sentinel_filter(&outer);
+    git(&outer, &["config", "filter.sentinel.clean", &filter]);
+    // Same size as the committed content, so status has to hash it.
+    fs::write(outer.join("a.txt"), "b\n").unwrap();
+    // The inner repository's watched files are unchanged, but without HEAD
+    // discovery would now fall through to `outer`.
+    fs::remove_file(inner.join(".git").join("HEAD")).unwrap();
+
+    let result = sage_git(&inner, &["status", "--porcelain"]);
+    assert!(
+        result.as_ref().map_or(true, |output| !output.succeeded()),
+        "status ran against a repository admission did not inspect"
+    );
+    assert!(!sentinel.exists(), "the ancestor's filter ran");
+
+    // Control: unpinned discovery does reach the hostile ancestor.
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(&inner)
+        .args(["status", "--porcelain"])
+        .status()
+        .unwrap();
+    assert!(sentinel.exists(), "fixture ancestor is not live");
+}
+
+#[test]
+fn a_full_cache_of_active_roots_admits_without_caching() {
+    let mut admissions = HashMap::new();
+    let held = (0..MAX_CACHED_ROOTS)
+        .map(|index| slot_in(&mut admissions, &PathBuf::from(format!("/active-{index}"))))
+        .collect::<Vec<_>>();
+    let overflow = slot_in(&mut admissions, Path::new("/overflow"));
+    assert_eq!(admissions.len(), MAX_CACHED_ROOTS);
+    assert!(!admissions.contains_key(Path::new("/overflow")));
+    assert_eq!(Arc::strong_count(&overflow), 1);
+    drop(held);
+}

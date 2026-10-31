@@ -231,19 +231,28 @@ async fn run_inner(
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
-    repository_config::admit(root, root_authority.as_ref()).await?;
-    run_admitted(root, args, stdout_limit, policy, root_authority).await
+    let repository = repository_config::admit(root, root_authority.as_ref()).await?;
+    run_admitted(
+        root,
+        args,
+        stdout_limit,
+        policy,
+        root_authority,
+        repository.as_ref(),
+    )
+    .await
 }
 
 /// Spawns Git without the repository-config admission check. Only the
 /// admission probes call this directly; every other caller goes through
-/// [`run_inner`].
+/// [`run_inner`]. `repository` pins Git to the repository admission inspected.
 async fn run_admitted(
     root: &Path,
     args: &[&str],
     stdout_limit: usize,
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
+    repository: Option<&repository_config::AdmittedRepository>,
 ) -> AppResult<GitOutput> {
     #[cfg(test)]
     let registry = policy
@@ -258,7 +267,7 @@ async fn run_admitted(
     let reaper_lease =
         containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
-    let mut command = configured_command(root, args, root_authority.as_ref());
+    let mut command = configured_command(root, args, root_authority.as_ref(), repository);
     #[cfg(test)]
     if let Some(hook) = &policy.before_spawn_hook {
         hook();
@@ -394,6 +403,7 @@ fn configured_command(
     root: &Path,
     args: &[&str],
     root_authority: Option<&GitRootAuthority>,
+    repository: Option<&repository_config::AdmittedRepository>,
 ) -> Command {
     let mut command = Command::new("git");
     command
@@ -431,6 +441,13 @@ fn configured_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if let Some(repository) = repository {
+        // Explicit locations stop discovery, so Git cannot drift to another
+        // repository (an ancestor, say) between admission and this spawn.
+        command
+            .env("GIT_DIR", repository.git_dir())
+            .env("GIT_WORK_TREE", repository.work_tree());
+    }
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
     command
