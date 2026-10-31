@@ -23,10 +23,8 @@ export interface ChatTextMessage {
   previewLimited: boolean;
 }
 
-// Keyed by the immutable projection Turn, so a streaming update recomputes
-// only the Turn that changed and dropped Turns are collected with it.
-const cache = new WeakMap<TurnProjection, readonly ChatTextMessage[]>();
-const expandedCache = new WeakMap<TurnProjection, readonly ChatTextMessage[]>();
+// Immutable items share lazy Markdown projections across visibility and streaming changes.
+const cache = new WeakMap<TextItem, ChatTextMessage>();
 
 function flatten(spans: readonly InlineFormat[]): string {
   return spans
@@ -87,9 +85,6 @@ export function chatTurnText(
   turn: TurnProjection,
   expanded = false,
 ): readonly ChatTextMessage[] {
-  const projectionCache = expanded ? expandedCache : cache;
-  const cached = projectionCache.get(turn);
-  if (cached) return cached;
   const primary = turn.items.filter(
     (item): item is TextItem =>
       item.kind === "text" && item.origin === "primary",
@@ -115,9 +110,11 @@ export function chatTurnText(
           (item === answer || expanded || !terminalTurnStates.has(turn.state))),
     )
     .map((item) => {
+      const cached = cache.get(item);
+      if (cached) return cached;
       let rendered: ReturnType<typeof segments> | undefined;
       const read = () => (rendered ??= segments(item.payload.text));
-      return {
+      const message = {
         itemId: item.id,
         role: item.payload.role as "user" | "assistant",
         sourceChars: Math.min(
@@ -131,7 +128,8 @@ export function chatTurnText(
           return read().previewLimited;
         },
       };
+      cache.set(item, message);
+      return message;
     });
-  projectionCache.set(turn, messages);
   return messages;
 }

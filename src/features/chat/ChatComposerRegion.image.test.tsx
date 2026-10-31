@@ -83,7 +83,7 @@ describe("composer image input", () => {
       text: "日本語",
       onSubmit: (event) => {
         event.preventDefault();
-        submitted.push((event.currentTarget.querySelector("textarea")!).value);
+        submitted.push(event.currentTarget.querySelector("textarea")!.value);
       },
     });
     const prompt = screen.getByRole("textbox", { name: "Message agent" });
