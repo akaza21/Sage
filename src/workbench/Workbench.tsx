@@ -46,6 +46,7 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
+import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
 import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 
@@ -304,7 +305,9 @@ export function Workbench() {
         />
       ) : (
         <div className="workbench__body" style={bodyStyle}>
-          <RightSidebar compact={compact} railFirst />
+          <ExplorerReleasesOpenFiles.Provider value={true}>
+            <RightSidebar compact={compact} railFirst />
+          </ExplorerReleasesOpenFiles.Provider>
           {!compact ? (
             <WorkbenchSidebarSplitter
               ariaLabel="Resize Editor tool rail"

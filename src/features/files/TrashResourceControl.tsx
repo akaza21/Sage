@@ -1,5 +1,5 @@
 import { Trash2 } from "../../ui/leanIcons";
-import { type FormEvent, type RefObject } from "react";
+import { useContext, type FormEvent, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { sameOrDescendantResource } from "../../domain/resourceIdentity";
@@ -7,6 +7,7 @@ import type { ResourceRef, TrashResourceKind } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { trashName } from "../../ui/trashName";
 import { useExplorerActionDialog } from "./explorerActionDialogController";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 
 interface TrashResourceControlProps {
   source: ResourceRef | null;
@@ -34,8 +35,11 @@ export function TrashResourceControl({
   const clearError = useWorkbenchStore(
     (state) => state.clearResourceTrashError,
   );
+  // In the Editor an open File is closed for the move.
+  const releasesOpenFile =
+    useContext(ExplorerReleasesOpenFiles) && kind === "file";
   const sourceOpen = useWorkbenchStore((state) =>
-    source
+    source && !releasesOpenFile
       ? state.tabs.some(
           (tab) =>
             (tab.kind === "file" || tab.kind === "diff") &&
@@ -53,7 +57,9 @@ export function TrashResourceControl({
     event.preventDefault();
     if (!dialog.target || inFlight) return;
     await dialog.runWithTarget((target) =>
-      trashProjectResource(target.source, target.kind),
+      releasesOpenFile && target.kind === "file"
+        ? trashProjectResource(target.source, target.kind, true)
+        : trashProjectResource(target.source, target.kind),
     );
   };
 

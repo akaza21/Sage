@@ -1,11 +1,16 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
   type RefObject,
 } from "react";
 
+import {
+  fileHasUnsavedChanges,
+  UNSAVED_FILE_REASON,
+} from "../../app/openFileRelease";
 import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
 import {
   parentResource,
@@ -14,6 +19,7 @@ import {
   sameResource,
 } from "../../domain/resourceIdentity";
 import type { ResourceRef, TrashResourceKind } from "../../domain/workbench";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 
 export type ExplorerSelectionAction =
   | { kind: "file"; source: ResourceRef }
@@ -27,6 +33,7 @@ type ExplorerSelectionState = Pick<
 
 export function explorerSelectionAction(
   state: ExplorerSelectionState,
+  releaseOpenFiles = false,
 ): ExplorerSelectionAction {
   const source = state.selectedResource;
   if (!source || source.relativePath.length === 0) {
@@ -55,6 +62,13 @@ export function explorerSelectionAction(
     };
   }
 
+  if (entry.kind === "file" && releaseOpenFiles) {
+    // An open File is closed for the move and reopened after it.
+    return fileHasUnsavedChanges(state, source)
+      ? { kind: "unavailable", reason: UNSAVED_FILE_REASON }
+      : { kind: "file", source };
+  }
+
   const sourceOpen =
     state.tabs.some(
       (tab) =>
@@ -67,7 +81,6 @@ export function explorerSelectionAction(
       reason: "Close this resource before renaming or recycling it.",
     };
   }
-
   if (entry.kind === "file") return { kind: "file", source };
 
   const folderListing = state.directoryListings[resourceKey(source)];
@@ -109,6 +122,7 @@ export interface ExplorerActionDialogController {
 function targetIsCurrent(
   state: WorkbenchState,
   target: CapturedExplorerActionTarget,
+  releaseOpenFiles: boolean,
 ) {
   if (
     state.projectTransitioning ||
@@ -118,7 +132,7 @@ function targetIsCurrent(
   ) {
     return false;
   }
-  const action = explorerSelectionAction(state);
+  const action = explorerSelectionAction(state, releaseOpenFiles);
   return (
     action.kind === target.kind && sameResource(action.source, target.source)
   );
@@ -139,6 +153,7 @@ export function useExplorerActionDialog({
   const targetRef = useRef<CapturedExplorerActionTarget | null>(null);
   const closingRef = useRef(false);
   const ownMutationRef = useRef(false);
+  const releaseOpenFiles = useContext(ExplorerReleasesOpenFiles);
 
   const closeDialog = useCallback(
     (restoreFocus = true, force = false) => {
@@ -163,30 +178,39 @@ export function useExplorerActionDialog({
         projectGeneration: state.projectGeneration,
         transitionEpoch: state.nativeTransitionEpoch,
       };
-      if (!targetIsCurrent(state, captured)) return false;
+      if (!targetIsCurrent(state, captured, releaseOpenFiles)) return false;
       closingRef.current = false;
       clearError();
       targetRef.current = captured;
       setTarget(captured);
       return true;
     },
-    [clearError],
+    [clearError, releaseOpenFiles],
   );
 
   useEffect(() => {
     if (!target) return;
     return useWorkbenchStore.subscribe((state) => {
-      if (!ownMutationRef.current && !targetIsCurrent(state, target)) {
+      if (
+        !ownMutationRef.current &&
+        !targetIsCurrent(state, target, releaseOpenFiles)
+      ) {
         closeDialog(false, true);
       }
     });
-  }, [closeDialog, target]);
+  }, [closeDialog, releaseOpenFiles, target]);
 
   const runWithTarget = useCallback(
     async (mutation: (value: ExplorerActionTarget) => Promise<boolean>) => {
       const captured = targetRef.current;
       if (!captured || inFlight) return null;
-      if (!targetIsCurrent(useWorkbenchStore.getState(), captured)) {
+      if (
+        !targetIsCurrent(
+          useWorkbenchStore.getState(),
+          captured,
+          releaseOpenFiles,
+        )
+      ) {
         closeDialog(false, true);
         return null;
       }
@@ -203,12 +227,18 @@ export function useExplorerActionDialog({
       }
 
       if (succeeded) closeDialog(true, true);
-      else if (!targetIsCurrent(useWorkbenchStore.getState(), captured)) {
+      else if (
+        !targetIsCurrent(
+          useWorkbenchStore.getState(),
+          captured,
+          releaseOpenFiles,
+        )
+      ) {
         closeDialog(false, true);
       }
       return succeeded;
     },
-    [closeDialog, inFlight],
+    [closeDialog, inFlight, releaseOpenFiles],
   );
 
   return { target, openDialog, closeDialog, runWithTarget };

@@ -20,6 +20,11 @@ import {
 } from "../features/files/folderRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
+import {
+  releaseCleanFile,
+  restoreReleasedFile,
+  UNSAVED_FILE_REASON,
+} from "./openFileRelease";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import {
@@ -36,9 +41,12 @@ export interface FileRenameSlice {
   fileRenameNotice: string | null;
   fileRenameRequestGeneration: number;
   clearFileRenameError: () => void;
+  /** With `releaseOpenFile`, a clean open source File is closed for the
+   * rename and reopened at the new name. */
   renameProjectFile: (
     source: ResourceRef,
     basename: string,
+    releaseOpenFile?: boolean,
   ) => Promise<boolean>;
   renameProjectFolder: (
     source: ResourceRef,
@@ -361,8 +369,34 @@ export const createFileRenameSlice: StateCreator<
 
     clearFileRenameError: () => set({ fileRenameError: null }),
 
-    renameProjectFile: (source, basename) =>
-      renameProjectResource("file", source, basename),
+    renameProjectFile: async (source, basename, releaseOpenFile = false) => {
+      if (!releaseOpenFile) {
+        return renameProjectResource("file", source, basename);
+      }
+      let target: ResourceRef;
+      try {
+        target = renameTargetResource(source, basename);
+      } catch {
+        // The rename itself reports the invalid name.
+        return renameProjectResource("file", source, basename);
+      }
+      const projectId = get().project?.id;
+      const released = releaseCleanFile(get, set, source);
+      if (released === "unsaved") {
+        set({ fileRenameError: UNSAVED_FILE_REASON });
+        return false;
+      }
+      const renamed = await renameProjectResource("file", source, basename);
+      // The selection moves to the target only when the rename is confirmed;
+      // otherwise where the File is now is unknown, and Explorer refreshes.
+      const reopen = renamed
+        ? sameResource(get().selectedResource, target) && target
+        : source;
+      if (released && projectId && reopen) {
+        await restoreReleasedFile(get, set, projectId, reopen, released);
+      }
+      return renamed;
+    },
     renameProjectFolder: (source, basename) =>
       renameProjectResource("folder", source, basename),
   };
