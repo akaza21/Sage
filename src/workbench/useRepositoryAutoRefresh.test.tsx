@@ -8,7 +8,7 @@ import { desktop } from "../services/desktop";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
 
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../ports/nativeInvoke")>()),
+  ...((await importOriginal()) as object),
   isTauriRuntime: () => true,
 }));
 
@@ -33,7 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  useWorkbenchStore.setState({ project: null });
+  useWorkbenchStore.setState({ project: null, projectTransitioning: false });
   setAutoRefresh(true);
   vi.useRealTimers();
 });
@@ -50,6 +50,21 @@ describe("useRepositoryAutoRefresh", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(stamp).toHaveBeenCalledTimes(calls);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("tries again once a busy store is free", async () => {
+    setAutoRefresh(true);
+    const status = vi
+      .spyOn(desktop, "getRepositoryStatus")
+      .mockResolvedValue({ roots: [], truncated: false, elapsedMs: 1 });
+    useWorkbenchStore.setState({ projectTransitioning: true });
+    renderHook(() => useRepositoryAutoRefresh());
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(400);
+    expect(status).not.toHaveBeenCalled();
+    useWorkbenchStore.setState({ projectTransitioning: false });
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(status).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing with the setting off", async () => {

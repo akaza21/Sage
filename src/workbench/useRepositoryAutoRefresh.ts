@@ -18,15 +18,16 @@ export function useRepositoryAutoRefresh() {
     // The browser runtime has no watcher and a fixed repository.
     if (!enabled || !projectId || !isTauriRuntime()) return;
     return startRepositoryAutoRefresh({
-      refresh: () => useWorkbenchStore.getState().refreshRepository(),
+      refresh: async () => {
+        // The store counts each refresh it starts; a busy store starts none.
+        const before = useWorkbenchStore.getState().repositoryRequestGeneration;
+        await useWorkbenchStore.getState().refreshRepository();
+        return (
+          useWorkbenchStore.getState().repositoryRequestGeneration !== before
+        );
+      },
       changeStamp: () => desktop.getRepositoryChangeStamp(),
       subscribeNotices: subscribeWorkspaceNotifySearch,
-      subscribeRefreshing: (listener) =>
-        useWorkbenchStore.subscribe((state, previous) => {
-          if (state.repositoryRefreshing !== previous.repositoryRefreshing) {
-            listener(state.repositoryRefreshing);
-          }
-        }),
       // macOS watches folders, which misses edits made in place.
       pollAlways: usesMetaModifier(),
     });

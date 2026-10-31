@@ -56,8 +56,9 @@ pub async fn get_repository_change_stamp(state: State<'_, AppState>) -> Result<S
     .map_err(|error| error.to_string())
 }
 
-/// Changes whenever `HEAD`, the index, the current branch, its remote
-/// branches, packed refs or an in-progress merge or rebase change.
+/// Changes whenever `HEAD`, the index, the config, a branch, a remote branch,
+/// packed refs or an in-progress merge or rebase change. Ref folders count as
+/// well: Git writes each ref through a lock file renamed into its folder.
 pub(crate) fn change_stamp(root: &Path) -> u64 {
     let mut hasher = DefaultHasher::new();
     let dot_git = root.join(".git");
@@ -73,25 +74,31 @@ pub(crate) fn change_stamp(root: &Path) -> u64 {
     for name in CHECKOUT_FILES {
         hash_metadata(&mut hasher, &git_dir.join(name));
     }
-    for name in ["packed-refs", "FETCH_HEAD"] {
+    for name in ["packed-refs", "FETCH_HEAD", "config", "refs/heads"] {
         hash_metadata(&mut hasher, &common.join(name));
+    }
+    let mut remotes = fs::read_dir(common.join("refs/remotes"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    remotes.sort();
+    remotes.truncate(MAX_REMOTES);
+    for remote in &remotes {
+        hash_metadata(&mut hasher, remote);
     }
     if let Some(branch) = read_pointer(&git_dir.join("HEAD"))
         .as_deref()
         .and_then(|head| head.strip_prefix("ref: refs/heads/"))
         .filter(|branch| safe_ref_path(branch))
     {
+        // A branch in a folder (`feature/one`) changes that folder only.
         hash_metadata(&mut hasher, &common.join("refs/heads").join(branch));
-        if let Ok(remotes) = fs::read_dir(common.join("refs/remotes")) {
-            let mut remotes = remotes
-                .flatten()
-                .take(MAX_REMOTES)
-                .map(|entry| entry.path())
-                .collect::<Vec<_>>();
-            remotes.sort();
-            for remote in remotes {
-                hash_metadata(&mut hasher, &remote.join(branch));
-            }
+        for remote in &remotes {
+            hash_metadata(&mut hasher, &remote.join(branch));
         }
     }
     hasher.finish()
@@ -124,7 +131,11 @@ fn git_dir(root: &Path, dot_git: &Path) -> Option<PathBuf> {
         return None;
     }
     let pointer = read_pointer(dot_git)?;
-    let target = Path::new(pointer.strip_prefix("gitdir:")?.trim());
+    let target = pointer.strip_prefix("gitdir:")?.trim();
+    // A network share would be reached every second.
+    if target.starts_with("\\\\") || target.starts_with("//") {
+        return None;
+    }
     Some(root.join(target))
 }
 
@@ -136,6 +147,10 @@ fn common_dir(git_dir: &Path) -> PathBuf {
 
 /// The first line of a small text file.
 fn read_pointer(path: &Path) -> Option<String> {
+    // Opening a pipe would block.
+    if !fs::metadata(path).ok()?.is_file() {
+        return None;
+    }
     let mut text = String::new();
     fs::File::open(path)
         .ok()?
@@ -208,6 +223,9 @@ mod tests {
             ("index", "staged"),
             ("refs/heads/main", "commit b\n"),
             ("refs/remotes/origin/main", "fetched\n"),
+            ("refs/remotes/origin/release", "pushed\n"),
+            ("refs/heads/other", "branch\n"),
+            ("config", "[core]\n"),
             ("packed-refs", "# packed\n"),
             ("MERGE_HEAD", "c\n"),
             ("HEAD", "ref: refs/heads/topic\n"),
@@ -255,6 +273,19 @@ mod tests {
         write(&worktree_git.join("index"), "staged");
         assert_ne!(change_stamp(worktree.path()), after_branch);
         drop(main);
+    }
+
+    #[test]
+    fn network_gitdir_pointers_are_not_followed() {
+        let temp = TempTree::new();
+        write(
+            &temp.path().join(".git"),
+            "gitdir: //server/share/repo.git\n",
+        );
+        let dot_git = temp.path().join(".git");
+        assert_eq!(git_dir(temp.path(), &dot_git), None);
+        write(&dot_git, "gitdir: \\\\server\\share\n");
+        assert_eq!(git_dir(temp.path(), &dot_git), None);
     }
 
     #[test]

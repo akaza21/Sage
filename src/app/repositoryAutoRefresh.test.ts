@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceNotifyNotice } from "../features/files/workspaceNotifyCompose";
 import {
   MAX_POLL_MS,
+  MAX_WAIT_MS,
   MIN_POLL_MS,
   REFRESH_DEBOUNCE_MS,
   STAMP_INTERVAL_MS,
@@ -12,11 +13,10 @@ import {
 
 let visibility: DocumentVisibilityState = "visible";
 let notify: ((notice: WorkspaceNotifyNotice) => void) | null = null;
-let refreshing: ((busy: boolean) => void) | null = null;
 let stamp = "a";
 let stop: (() => void) | null = null;
 
-const refresh = vi.fn(() => Promise.resolve());
+const refresh = vi.fn(() => Promise.resolve(true));
 const changeStamp = vi.fn(() => Promise.resolve(stamp));
 
 function notice(relativePath = "src/a.ts", kind = "modified") {
@@ -38,10 +38,6 @@ function start(pollAlways = false) {
       notify = listener;
       return () => (notify = null);
     },
-    subscribeRefreshing: (listener) => {
-      refreshing = listener;
-      return () => (refreshing = null);
-    },
     pollAlways,
   });
 }
@@ -57,7 +53,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   visibility = "visible";
   stamp = "a";
-  refresh.mockReset().mockImplementation(() => Promise.resolve());
+  refresh.mockReset().mockImplementation(() => Promise.resolve(true));
   changeStamp.mockClear();
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
@@ -93,7 +89,7 @@ describe("repository auto refresh", () => {
   it("runs one refresh at a time and one more for changes during it", async () => {
     let finish = () => undefined as void;
     refresh.mockImplementation(
-      () => new Promise<void>((resolve) => (finish = resolve)),
+      () => new Promise<boolean>((resolve) => (finish = () => resolve(true))),
     );
     start();
     notice();
@@ -130,7 +126,8 @@ describe("repository auto refresh", () => {
     expect(changeStamp.mock.calls.length).toBeGreaterThanOrEqual(5);
     expect(refresh).not.toHaveBeenCalled();
     stamp = "b";
-    await advance(STAMP_INTERVAL_MS + REFRESH_DEBOUNCE_MS);
+    // No debounce for a stamp change: within one tick, well under 1 s.
+    await advance(STAMP_INTERVAL_MS + 10);
     expect(refresh).toHaveBeenCalledTimes(1);
     await advance(STAMP_INTERVAL_MS * 5);
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -169,23 +166,26 @@ describe("repository auto refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("drops an ask that a refresh started after it already answered", async () => {
+  it("refreshes within the longest wait while changes keep coming", async () => {
     start();
-    notice();
-    refreshing?.(true);
-    refreshing?.(false);
-    await advance(REFRESH_DEBOUNCE_MS * 2);
-    expect(refresh).not.toHaveBeenCalled();
+    for (let elapsed = 0; elapsed < MAX_WAIT_MS * 2; elapsed += 100) {
+      notice(`target/${elapsed}.o`);
+      await advance(100);
+    }
+    expect(refresh.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(refresh.mock.calls.length).toBeLessThanOrEqual(3);
   });
 
-  it("keeps an ask that came in while another refresh ran", async () => {
+  it("tries again when the store was too busy to refresh", async () => {
+    refresh.mockResolvedValueOnce(false);
     start();
-    refreshing?.(true);
-    await advance(1);
     notice();
-    refreshing?.(false);
     await advance(REFRESH_DEBOUNCE_MS);
     expect(refresh).toHaveBeenCalledTimes(1);
+    await advance(STAMP_INTERVAL_MS + REFRESH_DEBOUNCE_MS);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    await advance(STAMP_INTERVAL_MS * 3);
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it("polls only where the watcher can miss edits, paced by Git", async () => {
@@ -216,7 +216,6 @@ describe("repository auto refresh", () => {
     stop = null;
     expect(vi.getTimerCount()).toBe(0);
     expect(notify).toBeNull();
-    expect(refreshing).toBeNull();
     window.dispatchEvent(new Event("focus"));
     await advance(MAX_POLL_MS);
     expect(refresh).not.toHaveBeenCalled();
