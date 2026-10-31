@@ -496,3 +496,58 @@ fn a_full_cache_of_active_roots_admits_without_caching() {
     assert_eq!(Arc::strong_count(&overflow), 1);
     drop(held);
 }
+
+#[test]
+fn relative_paths_climb_to_the_shared_ancestor() {
+    let cases = [
+        ("/a/repo", "/a/repo/.git", ".git"),
+        ("/a/repo", "/a/repo", "."),
+        ("/a/repo/sub", "/a/repo/.git", "../.git"),
+        ("/a/repo/sub/deep", "/a/repo", "../.."),
+        (
+            "/a/wt",
+            "/a/main/.git/worktrees/wt",
+            "../main/.git/worktrees/wt",
+        ),
+    ];
+    for (base, target, expected) in cases {
+        assert_eq!(
+            relative_path(Path::new(base), Path::new(target)),
+            Some(PathBuf::from(expected)),
+            "{base} -> {target}"
+        );
+    }
+}
+
+#[test]
+fn a_linked_worktree_is_pinned_and_admitted() {
+    let scratch = Scratch::new();
+    let main = scratch.repository("main");
+    git(&main, &["config", "user.email", "sage@example.invalid"]);
+    git(&main, &["config", "user.name", "Sage Test"]);
+    git(&main, &["commit", "-q", "--allow-empty", "-m", "x"]);
+    let worktree = scratch.base.join("linked");
+    git(
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            &worktree.to_string_lossy(),
+            "-b",
+            "linked",
+        ],
+    );
+    let output = sage_git(
+        &worktree,
+        &["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
+    )
+    .unwrap();
+    assert!(output.succeeded());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.ends_with("linked\n"), "{text}");
+
+    git(&main, &["config", "core.sshCommand", "touch ssh-ran"]);
+    let message = refusal(sage_git(&worktree, &["status", "--porcelain"]));
+    assert!(message.contains("core.sshcommand"), "{message}");
+}

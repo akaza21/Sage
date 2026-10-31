@@ -94,6 +94,65 @@ fn pre_spawn_root_rebind_never_redirects_child_path_resolution() {
 }
 
 #[test]
+fn pre_spawn_root_rebind_never_runs_the_replacement_repository_config() {
+    let base = std::env::temp_dir().join(format!("sage-git-pre-spawn-config-{}", Uuid::new_v4()));
+    let root = base.join("repo");
+    fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "-q"]);
+    let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+    let moved = base.join("original");
+    let sentinel = base.join("filter-ran");
+    let filter = format!(
+        "touch \"{}\"; cat",
+        sentinel.to_string_lossy().replace('\\', "/")
+    );
+    let swapped = Arc::new(AtomicBool::new(false));
+    let hook_root = root.clone();
+    let hook_moved = moved.clone();
+    let hook_swapped = Arc::clone(&swapped);
+    let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
+        // Runs after admission inspected the original repository.
+        if fs::rename(&hook_root, &hook_moved).is_ok() {
+            hook_swapped.store(true, Ordering::SeqCst);
+            fs::create_dir(&hook_root).unwrap();
+            git(&hook_root, &["init", "-q"]);
+            git(
+                &hook_root,
+                &["config", "user.email", "replacement@example.invalid"],
+            );
+            git(&hook_root, &["config", "user.name", "Replacement"]);
+            fs::write(hook_root.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+            fs::write(hook_root.join("a.txt"), "a\n").unwrap();
+            git(&hook_root, &["add", "--", ".gitattributes", "a.txt"]);
+            git(&hook_root, &["commit", "-q", "-m", "replacement"]);
+            git(&hook_root, &["config", "filter.sentinel.clean", &filter]);
+            // Same size as the committed content, so status has to hash it.
+            fs::write(hook_root.join("a.txt"), "b\n").unwrap();
+        }
+    });
+
+    let _ = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(run_git_with_policy(
+            &workspace,
+            &["status", "--porcelain"],
+            64 * 1024,
+            policy,
+        ));
+
+    if swapped.load(Ordering::SeqCst) {
+        assert!(
+            !sentinel.exists(),
+            "the replacement repository's filter ran"
+        );
+        // Control: Git does run the replacement's filter when unpinned.
+        git(&root, &["status", "--porcelain"]);
+        assert!(sentinel.exists(), "fixture filter is not live");
+    }
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
 fn post_update_ref_rebind_remains_effect_unknown_and_never_targets_replacement() {
     let base = std::env::temp_dir().join(format!("sage-git-root-rebind-{}", Uuid::new_v4()));
     let root = base.join("repo");

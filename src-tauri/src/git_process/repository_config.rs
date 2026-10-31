@@ -17,7 +17,7 @@ use std::{
     fmt::Write as _,
     fs,
     io::{self, Read as _},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
@@ -42,7 +42,10 @@ type AdmissionSlot = Arc<tokio::sync::Mutex<Option<Admission>>>;
 static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::new(Mutex::default);
 
 /// The repository admission inspected. Admitted Git calls run with these
-/// explicit locations, so they open exactly this repository.
+/// explicit locations, so they open exactly this repository. Both are
+/// relative to the root: the child's working directory is the identity-checked
+/// root handle, so a path swapped in at the root's name after admission cannot
+/// redirect them the way an absolute path could.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AdmittedRepository {
     git_dir: PathBuf,
@@ -50,6 +53,19 @@ pub(super) struct AdmittedRepository {
 }
 
 impl AdmittedRepository {
+    fn relative_to(root: &Path, git_dir: &Path, work_tree: &Path) -> AppResult<Self> {
+        let root = root.canonicalize()?;
+        let relative = |target: &Path| -> AppResult<PathBuf> {
+            relative_path(&root, &target.canonicalize()?).ok_or_else(|| {
+                AppError::Git("Git reported a repository Sage cannot reach from the root".into())
+            })
+        };
+        Ok(Self {
+            git_dir: relative(git_dir)?,
+            work_tree: relative(work_tree)?,
+        })
+    }
+
     pub(super) fn git_dir(&self) -> &Path {
         &self.git_dir
     }
@@ -189,8 +205,7 @@ impl Probe {
             work_tree,
         } = Location::parse(&location)?;
         let (mut watched, cacheable) = discovery_path(ancestors, &git_dir);
-        let repository = AdmittedRepository { git_dir, work_tree };
-        let git_dir = &repository.git_dir;
+        let repository = AdmittedRepository::relative_to(root, &git_dir, &work_tree)?;
         watched.extend(
             [
                 common_dir.join("config"),
@@ -256,6 +271,26 @@ async fn probe_git(
         repository,
     )
     .await
+}
+
+/// `target` as a path relative to `base`, or `None` when they share no root
+/// (another drive on Windows). Both must be canonical.
+fn relative_path(base: &Path, target: &Path) -> Option<PathBuf> {
+    let shared = base
+        .components()
+        .zip(target.components())
+        .take_while(|(base, target)| base == target)
+        .count();
+    if shared == 0 {
+        return None;
+    }
+    let up = base.components().count() - shared;
+    let mut relative = std::iter::repeat_n(Component::ParentDir, up).collect::<PathBuf>();
+    relative.extend(target.components().skip(shared));
+    if relative.as_os_str().is_empty() {
+        relative.push(Component::CurDir);
+    }
+    Some(relative)
 }
 
 fn watch(path: PathBuf) -> (PathBuf, Fingerprint) {
