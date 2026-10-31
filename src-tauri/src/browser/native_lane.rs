@@ -373,6 +373,7 @@ impl Lane {
     /// Adopts a native popup as the chrome does (`browser_popup_ack`).
     pub fn acknowledge_popup(&self, popup: &NativePopup) -> Result<(), String> {
         popups::browser_popup_ack(
+            self.app.clone(),
             self.state(),
             popup.id,
             popup.opener.clone(),

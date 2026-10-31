@@ -7,6 +7,8 @@ use uuid::Uuid;
 use super::*;
 use crate::acp::limits::LIMITS;
 
+mod rollback;
+
 fn database_with_project() -> (Database, String, String) {
     let database = Database::open(Path::new(":memory:")).unwrap();
     let root = std::env::temp_dir().join(format!("sage-bootstrap-chat-{}", Uuid::new_v4()));
@@ -75,6 +77,62 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     assert_eq!(snapshot.messages[1].text, "preserved chat answer");
     drop(reopened);
     fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn popup_insertion_reorders_occupied_positions_atomically_and_only_once() {
+    let (database, project_id, _) = database_with_project();
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let mut request = ProjectLayoutRequest {
+        project_id,
+        tabs: snapshot.tabs,
+        active_tab_id: snapshot.active_tab_id,
+        selected_root_id: None,
+        selected_resource: None,
+    };
+    let mut browser = request.tabs[0].clone();
+    browser.id = "browser-1".into();
+    browser.kind = "browser".into();
+    browser.title = "Opener".into();
+    browser.position = request.tabs.len() as i64;
+    request.tabs.push(browser.clone());
+    let mut following = browser.clone();
+    following.id = "browser-3".into();
+    following.position += 1;
+    request.tabs.push(following);
+    database.persist_project_layout(&request).unwrap();
+    browser.id = "browser-2".into();
+    browser.title = "Popup".into();
+    request.tabs.insert(request.tabs.len() - 1, browser);
+    for (position, tab) in request.tabs.iter_mut().enumerate() {
+        tab.position = position as i64;
+    }
+    request.active_tab_id = Some("browser-2".into());
+    database.persist_project_layout(&request).unwrap();
+    database.persist_project_layout(&request).unwrap();
+    let restored = database.bootstrap_snapshot().unwrap();
+    assert_eq!(restored.tabs.len(), request.tabs.len());
+    assert_eq!(
+        restored
+            .tabs
+            .iter()
+            .map(|tab| (&tab.id, tab.position))
+            .collect::<Vec<_>>(),
+        request
+            .tabs
+            .iter()
+            .map(|tab| (&tab.id, tab.position))
+            .collect::<Vec<_>>()
+    );
+    request.tabs.reverse();
+    for (position, tab) in request.tabs.iter_mut().enumerate() {
+        tab.position = position as i64;
+    }
+    database.persist_project_layout(&request).unwrap();
+    assert_eq!(
+        database.bootstrap_snapshot().unwrap().tabs[0].id,
+        "browser-3"
+    );
 }
 
 fn seed_closed_simulator_history(

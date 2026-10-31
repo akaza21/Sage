@@ -1,10 +1,11 @@
-//! Back, forward, reload and stop for a browser tab, and the Annotate
-//! actions, which answer with a value.
+//! Back, forward, reload and stop for a browser tab, the user's take over
+//! and hand back of Agent control, and the Annotate actions, which answer
+//! with a value.
 
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
-use tauri::{AppHandle, State, Webview};
+use tauri::{AppHandle, Manager, State, Webview};
 #[cfg(windows)]
 use windows_core::BOOL;
 
@@ -19,10 +20,51 @@ pub(crate) async fn browser_control(
     comment: Option<String>,
     ordinal: Option<u8>,
 ) -> Result<Option<serde_json::Value>, String> {
+    if let Some(change) = match action.as_str() {
+        "agentControl" => Some(None),
+        "agentTakeOver" => Some(Some(true)),
+        "agentHandBack" => Some(Some(false)),
+        _ => None,
+    } {
+        return agent_control(&app, &state, &tab_id, change).map(Some);
+    }
     if let Some(action) = super::super::annotate::action(&action) {
         return super::super::annotate::set(app, tab_id, action, comment, ordinal).await;
     }
     history_control(state, tab_id, action).await.map(|()| None)
+}
+
+/// Rust owns who controls a tab; the chrome shows what this answers: the
+/// tab's live Agent attachment and whether the user took it over, or null.
+/// `take` takes over (`Some(true)`) or hands back (`Some(false)`) first.
+/// Handing back a tab whose attachment ended is not an error.
+fn agent_control(
+    app: &AppHandle,
+    state: &BrowserState,
+    tab_id: &str,
+    take: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    if state.webview_for_tab(tab_id).is_none() {
+        return Err("browser tab unavailable".into());
+    }
+    let acp = &app.state::<crate::state::AppState>().acp;
+    match take {
+        Some(true) if !acp.take_over_browser_tab(tab_id) => {
+            return Err("No Agent is using this tab".into());
+        }
+        Some(true) => {
+            state.user_took_over(tab_id);
+            for child in acp.browser_joined_popups(tab_id) {
+                state.user_took_over(&child);
+            }
+        }
+        Some(false) => {
+            acp.hand_back_browser_tab(tab_id);
+        }
+        _ => {}
+    }
+    serde_json::to_value(acp.browser_agent_control(tab_id))
+        .map_err(|_| "browser tab unavailable".into())
 }
 
 async fn history_control(

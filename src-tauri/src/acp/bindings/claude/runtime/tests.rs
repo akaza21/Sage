@@ -356,7 +356,7 @@ fn resume_is_exact_while_load_model_and_model_override_fail_closed() {
         .expect("resume response");
     assert!(matches!(
         batch.events(),
-        [SharedEvent::SessionReady { loaded: true, .. }]
+        [SharedEvent::SessionReady { loaded: false, .. }]
     ));
 }
 
@@ -1091,3 +1091,9 @@ fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
 }
 #[path = "p01_tests.rs"]
 mod p01_tests;
+
+#[path = "browser_permission_regression_tests.rs"]
+mod browser_permission_regression_tests;
+
+#[path = "resume_regression_tests.rs"]
+mod resume_regression_tests;

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use serde_json::{Value, json};
 
@@ -72,6 +75,8 @@ struct ActiveSession {
     translator: ClaudeTranslator,
     turn: Option<TurnIntent>,
     config: crate::acp::session_config::SessionConfig,
+    /// Request-scoped cancellation interpretation for bounded late-response replay.
+    cancelled_prompt_errors: BTreeSet<u64>,
 }
 
 #[derive(Clone)]
@@ -79,6 +84,7 @@ struct TurnIntent {
     external_turn_id: ExternalId,
     client_message_id: RequiredText<512>,
     request_id: u64,
+    cancel_written: bool,
 }
 
 enum PendingRequest {

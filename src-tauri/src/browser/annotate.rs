@@ -137,6 +137,23 @@ impl Annotate {
         tab_number(label).is_some_and(|number| self.frozen.load(Ordering::Acquire) == number)
     }
 
+    /// Runs `disable` only while `label` does not annotate and no Annotate
+    /// change is under way, holding the mode lock so a start cannot run its
+    /// enables between the check and `disable`. It never waits: a busy lock
+    /// means Annotate is changing, and then `disable` is skipped. Returns
+    /// whether `disable` ran. Never call it on the main thread.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn disable_unless_annotating(&self, label: &str, disable: impl FnOnce()) -> bool {
+        let Ok(mode) = self.mode.try_lock() else {
+            return false;
+        };
+        if mode.tab.as_deref() == Some(label) {
+            return false;
+        }
+        disable();
+        true
+    }
+
     /// Marks `label`'s page frozen ahead of the hide that freezes it; the
     /// next change settles the copy again.
     fn freeze(&self, label: &str) {

@@ -286,7 +286,6 @@ impl EgressToken {
         )
     }
 
-    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     pub(crate) fn is_cancel(&self) -> bool {
         self.is_control() && (self.request_id().is_some() || self.is_notification())
     }

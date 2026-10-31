@@ -158,9 +158,7 @@ pub(crate) fn navigation_admitted(app: &AppHandle, tab_id: &str, uri: &str) -> b
         let tab_id = tab_id.to_owned();
         tauri::async_runtime::spawn(async move {
             let state = close_app.state::<BrowserState>();
-            if let Err(error) =
-                super::super::lifecycle::close_browser_tab(&close_app, &state, tab_id).await
-            {
+            if let Err(error) = super::cleanup::abandon_child(&close_app, &state, &tab_id).await {
                 eprintln!("browser abandoned popup close failed: {error}");
             }
         });

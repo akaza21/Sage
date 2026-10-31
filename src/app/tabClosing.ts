@@ -7,6 +7,9 @@ import { closeTab as closeTabState } from "./tabState";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
 import { errorMessage } from "../domain/errors";
 import { closeBrowser } from "../ports/nativeBrowserPort";
+import { pinnedAgentChatOwner } from "./agentChatOwner";
+import { useAcpProjectionStore } from "./acpProjectionStore";
+import { isAcpProjectionPinned } from "./acpProjectionRegistry";
 
 const browserClosesInFlight = new Set<string>();
 const browsersAlreadyClosed = new Set<string>();
@@ -46,7 +49,13 @@ export function reconcileNativeClosedBrowserTabs(
     selectedRootId: next?.resource?.rootId ?? state.selectedRootId,
     activeEditor: state.activeTabId === activeTabId ? state.activeEditor : null,
   });
-  if (next?.kind === "chat" && state.activeTabId !== activeTabId) {
+  if (
+    next?.kind === "chat" &&
+    state.activeTabId !== activeTabId &&
+    !isAcpProjectionPinned(next.id) &&
+    pinnedAgentChatOwner() !== next.id &&
+    useAcpProjectionStore.getState().scope?.chatId !== next.id
+  ) {
     void get().activateChat(next.id, tabs);
   }
 }

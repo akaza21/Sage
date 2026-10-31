@@ -126,6 +126,8 @@ fn read_required(pipe: &mut impl MessagePipe, maximum: usize) -> Result<Vec<u8>,
 
 #[cfg(windows)]
 mod windows;
+#[cfg(all(windows, test, feature = "acp-fixture", debug_assertions))]
+pub(crate) use windows::connect_for_test;
 #[cfg(windows)]
 pub use windows::{BrowserMcpPipeHost, run_stdio_helper_if_requested};
 

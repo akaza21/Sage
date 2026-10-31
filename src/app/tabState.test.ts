@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkbenchTab } from "../domain/workbench";
-import { closeTab, nextActiveTabId, orderedTabs } from "./tabState";
+import { closeTab, orderedTabs } from "./tabState";
 
 const tabs: WorkbenchTab[] = [
   {
@@ -41,11 +41,16 @@ describe("tab state", () => {
   });
 
   it("activates the next tab when the current tab closes", () => {
-    expect(nextActiveTabId(tabs, "chat", "chat")).toBe("file");
+    const closed = closeTab(tabs, "chat", "chat");
+    expect(closed.activeTabId).toBe("file");
+    expect(closed.tabs.map((tab) => [tab.id, tab.position])).toEqual([
+      ["diff", 0],
+      ["file", 1],
+    ]);
   });
 
   it("keeps the active tab when another tab closes", () => {
-    expect(nextActiveTabId(tabs, "chat", "file")).toBe("chat");
+    expect(closeTab(tabs, "chat", "file").activeTabId).toBe("chat");
   });
 
   it("does not silently close a dirty file", () => {

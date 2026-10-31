@@ -14,7 +14,7 @@ use super::{
 };
 
 mod act;
-mod highlight;
+pub(super) mod highlight;
 pub(super) mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
@@ -87,6 +87,9 @@ impl<T: CdpTransport> CdpPort<T> {
         format: &'static str,
         scale: f64,
     ) -> Result<(u32, u32, String), BrowserFailure> {
+        // No capture shows the Agent's act marker, even one taken while an
+        // act is under way.
+        highlight::clear(&self.transport);
         let metrics = self.call(
             "Page.getLayoutMetrics",
             "{}",
@@ -233,6 +236,10 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
             height,
             jpeg_base64: data,
         })
+    }
+
+    fn stopped(&self) -> bool {
+        self.transport.stopped()
     }
 
     fn matches(
