@@ -275,6 +275,21 @@ mod tests {
     }
 
     #[test]
+    fn push_refspec_branch_names_cannot_carry_refspec_or_revision_syntax() {
+        for name in ["topic:main", "topic^", "topic~1", "topic@{1}", "-main"] {
+            assert!(
+                !repository_branches::valid_branch_name(name),
+                "{name} must not be admitted as a pushable branch"
+            );
+        }
+        assert!(repository_branches::valid_branch_name("+main"));
+        assert_eq!(
+            exact_branch_refspec("+main"),
+            "refs/heads/+main:refs/heads/+main"
+        );
+    }
+
+    #[test]
     fn push_rejects_detached_head() {
         let (bare, work, workspace) = local_remote_pair();
         git(&work, &["checkout", "--detach", "-q"]);
