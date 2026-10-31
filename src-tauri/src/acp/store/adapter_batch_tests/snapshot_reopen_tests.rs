@@ -416,50 +416,65 @@ fn populated_pair_and_durable_diff_ref_reopen_without_git_or_disk_fallback() {
 
 #[test]
 fn historical_snapshot_command_reads_original_pair_after_head_replacement_and_rejects_forgery() {
-    tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap().block_on(async {
-        let (database, directory, _path, owner, root_id) = file_backed_fixture();
-        let reference = {
-            let mut connection = database.connection();
-            apply_adapter_inbound_batch(&mut connection,
-                reopen_pair_batch_for_root(&owner, &root_id, "reopen-file", "original old\n", "original new\n")).unwrap();
-            let reference = reopen_reference_in(&owner, &connection, &root_id, 1, "original old\n", "original new\n");
-            connection.execute("UPDATE session_runtime_epochs SET state='exited',terminal_at=14 WHERE session_id=?1", [owner.session_id.as_str()]).unwrap();
-            let terminal = apply_session_terminal(&mut connection, SessionTerminalCommand {
-                project_id: owner.project_id.clone(), chat_id: owner.chat_id.clone(), session_id: owner.session_id.clone(),
-                terminal: crate::acp::lifecycle::SessionState::Failed, now_millis: 14,
-            }).unwrap();
-            start_session(&mut connection, StartSessionCommand {
-                project_id: owner.project_id.clone(), chat_id: owner.chat_id.clone(), expected_projection_revision: terminal.projection_revision,
-                client_intent_id: ClientIntentId::new(), binding_id: BindingId::new("binding", "codex-app-server").unwrap(),
-                binding_digest: "a".repeat(64), harness_version: None, model_id: None, now_millis: 15,
-            }).unwrap();
-            reference
-        };
-        let state = crate::state::AppState::new(database);
-        let page = state.acp.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None).unwrap();
-        assert_ne!(page.current_session_id.as_ref().unwrap().as_str(), reference.session_id);
-        let mut wire = serde_json::to_value(&reference).unwrap();
-        wire["projectGeneration"] = serde_json::json!("0");
-        wire["expectedProjectionRevision"] = serde_json::json!(page.projection_revision.get().to_string());
-        let request = serde_json::from_value(wire.clone()).unwrap();
-        let before = state.database.connection().total_changes();
-        let result = crate::commands::acp::file_snapshot::get_acp_file_snapshot_inner(&state, request).await.unwrap();
-        assert_eq!((result.old_text.as_str(), result.new_text.as_str()), ("original old\n", "original new\n"));
-        for (field, value) in [
-            ("projectId", "foreign"), ("chatId", "foreign"), ("sessionId", "foreign"),
-            ("turnId", "foreign"), ("itemId", "foreign"), ("rootId", "foreign"),
-            ("contentDigest", &"b".repeat(64)), ("relativePath", "src/other.rs"),
-            ("runtimeEpoch", "2"), ("snapshotRevision", "2"), ("projectGeneration", "1"),
-            ("expectedProjectionRevision", "0"),
-        ] {
-            let mut forged = wire.clone();
-            forged[field] = serde_json::json!(value);
-            assert!(crate::commands::acp::file_snapshot::get_acp_file_snapshot_inner(&state, serde_json::from_value(forged).unwrap()).await.is_err(), "accepted forged {field}");
-        }
-        assert_eq!(state.database.connection().total_changes(), before);
-        drop(state);
-        fs::remove_dir_all(directory).unwrap();
-    });
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let (state, directory, owner, reference) = historical_snapshot_state();
+            let page = state
+                .acp
+                .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+                .unwrap();
+            assert_ne!(
+                page.current_session_id.as_ref().unwrap().as_str(),
+                reference.session_id
+            );
+            let mut wire = serde_json::to_value(&reference).unwrap();
+            wire["projectGeneration"] = serde_json::json!("0");
+            wire["expectedProjectionRevision"] =
+                serde_json::json!(page.projection_revision.get().to_string());
+            let request = serde_json::from_value(wire.clone()).unwrap();
+            let before = state.database.connection().total_changes();
+            let result =
+                crate::commands::acp::file_snapshot::get_acp_file_snapshot_inner(&state, request)
+                    .await
+                    .unwrap();
+            assert_eq!(
+                (result.old_text.as_str(), result.new_text.as_str()),
+                ("original old\n", "original new\n")
+            );
+            for (field, value) in [
+                ("projectId", "foreign"),
+                ("chatId", "foreign"),
+                ("sessionId", "foreign"),
+                ("turnId", "foreign"),
+                ("itemId", "foreign"),
+                ("rootId", "foreign"),
+                ("contentDigest", &"b".repeat(64)),
+                ("relativePath", "src/other.rs"),
+                ("runtimeEpoch", "2"),
+                ("snapshotRevision", "2"),
+                ("projectGeneration", "1"),
+                ("expectedProjectionRevision", "0"),
+            ] {
+                let mut forged = wire.clone();
+                forged[field] = serde_json::json!(value);
+                assert!(
+                    crate::commands::acp::file_snapshot::get_acp_file_snapshot_inner(
+                        &state,
+                        serde_json::from_value(forged).unwrap()
+                    )
+                    .await
+                    .is_err(),
+                    "accepted forged {field}"
+                );
+            }
+            assert_eq!(state.database.connection().total_changes(), before);
+            drop(state);
+            fs::remove_dir_all(directory).unwrap();
+        });
 }
 
 #[test]
@@ -631,3 +646,66 @@ fn new_pair_shares_aggregate_accounting_without_double_charge() {
     assert!(used > 0);
     assert!(LIMITS.wire.item_bytes_per_turn as i64 >= used);
 }
+
+fn historical_snapshot_state() -> (
+    crate::state::AppState,
+    PathBuf,
+    AdapterStoreOwner,
+    crate::acp::file_diff::DiffRef,
+) {
+    let (database, directory, _path, owner, root_id) = file_backed_fixture();
+    let reference = {
+        let mut connection = database.connection();
+        apply_adapter_inbound_batch(
+            &mut connection,
+            reopen_pair_batch_for_root(
+                &owner,
+                &root_id,
+                "reopen-file",
+                "original old\n",
+                "original new\n",
+            ),
+        )
+        .unwrap();
+        let reference = reopen_reference_in(
+            &owner,
+            &connection,
+            &root_id,
+            1,
+            "original old\n",
+            "original new\n",
+        );
+        connection.execute("UPDATE session_runtime_epochs SET state='exited',terminal_at=14 WHERE session_id=?1", [owner.session_id.as_str()]).unwrap();
+        let terminal = apply_session_terminal(
+            &mut connection,
+            SessionTerminalCommand {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                session_id: owner.session_id.clone(),
+                terminal: crate::acp::lifecycle::SessionState::Failed,
+                now_millis: 14,
+            },
+        )
+        .unwrap();
+        start_session(
+            &mut connection,
+            StartSessionCommand {
+                project_id: owner.project_id.clone(),
+                chat_id: owner.chat_id.clone(),
+                expected_projection_revision: terminal.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                binding_id: BindingId::new("binding", "codex-app-server").unwrap(),
+                binding_digest: "a".repeat(64),
+                harness_version: None,
+                model_id: None,
+                now_millis: 15,
+            },
+        )
+        .unwrap();
+        reference
+    };
+    let state = crate::state::AppState::new(database);
+    (state, directory, owner, reference)
+}
+
+mod component_bridge;

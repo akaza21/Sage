@@ -71,7 +71,9 @@ fn verify_snapshot_owner(
             expected_revision.get() as i64, diff_ref.turn_id, diff_ref.runtime_epoch as i64, diff_ref.item_id],
         |row| row.get(0),
     ).map_err(|_| SnapshotReadError::Corrupt)?;
-    if !retained { return Err(SnapshotReadError::Stale); }
+    if !retained {
+        return Err(SnapshotReadError::Stale);
+    }
     Ok(())
 }
 
