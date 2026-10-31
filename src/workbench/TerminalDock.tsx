@@ -36,27 +36,25 @@ interface Dimensions {
  * right edge, so its width stays free. Before xterm lays out, nothing changes.
  */
 function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
-  const size = (selector: string) =>
-    element.querySelector<HTMLElement>(selector) ?? {
-      offsetWidth: 0,
-      offsetHeight: 0,
-    };
-  const screen = size(".xterm-screen");
+  // Fractional sizes: a rounded screen width can admit one column too many.
+  const box = (selector: string) =>
+    element.querySelector(selector)?.getBoundingClientRect() ?? new DOMRect();
+  const screen = box(".xterm-screen");
   const fit = (space: number, cells: number, cell: number, max: number) =>
     cell > 0
       ? Math.max(1, Math.min(max, Math.floor((space * cells) / cell)))
       : cells;
   return {
     columns: fit(
-      element.clientWidth - size(".scrollbar.vertical").offsetWidth,
+      element.clientWidth - box(".scrollbar.vertical").width,
       terminal.cols,
-      screen.offsetWidth,
+      screen.width,
       TERMINAL_MAX_COLUMNS,
     ),
     rows: fit(
       element.clientHeight,
       terminal.rows,
-      screen.offsetHeight,
+      screen.height,
       TERMINAL_MAX_ROWS,
     ),
   };

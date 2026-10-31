@@ -21,6 +21,8 @@ const xterm = vi.hoisted(() => ({
   refresh: vi.fn(),
   data: null as ((data: string) => void) | null,
   options: null as Record<string, unknown> | null,
+  measured: true,
+  scrollbar: 0,
 }));
 let resizeCallback: (() => void) | null = null;
 
@@ -45,16 +47,20 @@ vi.mock("@xterm/xterm", () => ({
       xterm.options = options;
     }
     open(parent: HTMLElement) {
-      // xterm's screen is exactly cols by rows cells of 8 by 16 px.
+      // xterm's screen is exactly cols by rows cells of 8 by 16 px, with an
+      // overlay scrollbar of xterm.scrollbar px.
       const screen = document.createElement("div");
       screen.className = "xterm-screen";
-      Object.defineProperty(screen, "offsetWidth", {
-        get: () => this.cols * 8,
-      });
-      Object.defineProperty(screen, "offsetHeight", {
-        get: () => this.rows * 16,
-      });
-      parent.append(screen);
+      screen.getBoundingClientRect = () =>
+        DOMRect.fromRect({
+          width: xterm.measured ? this.cols * 8 : 0,
+          height: xterm.measured ? this.rows * 16 : 0,
+        });
+      const scrollbar = document.createElement("div");
+      scrollbar.className = "scrollbar vertical";
+      scrollbar.getBoundingClientRect = () =>
+        DOMRect.fromRect({ width: xterm.scrollbar, height: 0 });
+      parent.append(screen, scrollbar);
     }
     resize(columns: number, rows: number) {
       this.cols = columns;
@@ -77,6 +83,8 @@ vi.mock("@xterm/xterm", () => ({
 
 import { TerminalDock } from "./TerminalDock";
 
+import { TerminalDockForWorkbench } from "./TerminalDockShell";
+
 function setScreenSize(width: number, height: number) {
   const screen = document.querySelector(".terminal-dock__screen");
   expect(screen).not.toBeNull();
@@ -89,7 +97,6 @@ function setScreenSize(width: number, height: number) {
     value: height,
   });
 }
-import { TerminalDockForWorkbench } from "./TerminalDockShell";
 
 const initialWorkbenchState = useWorkbenchStore.getState();
 const scope = {
@@ -104,6 +111,8 @@ const handle = {
 };
 
 beforeEach(() => {
+  xterm.measured = true;
+  xterm.scrollbar = 0;
   Object.values(native).forEach((mock) => mock.mockReset());
   native.create.mockResolvedValue(handle);
   native.read.mockImplementation(() => new Promise(() => undefined));
@@ -293,6 +302,39 @@ it("keeps a measured grid inside the native size limits", async () => {
   await waitFor(() =>
     expect(native.resize).toHaveBeenCalledWith(scope, handle, 500, 1),
   );
+});
+
+it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={() => undefined}
+    />,
+  );
+  xterm.scrollbar = 14;
+  setScreenSize(800, 160);
+  resizeCallback?.();
+  await waitFor(() =>
+    expect(native.resize).toHaveBeenCalledWith(scope, handle, 98, 10),
+  );
+});
+
+it("keeps the grid until xterm has laid out its screen", async () => {
+  xterm.measured = false;
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={() => undefined}
+    />,
+  );
+  setScreenSize(800, 160);
+  resizeCallback?.();
+  await waitFor(() => expect(native.resize).toHaveBeenCalledTimes(1));
+  expect(native.resize).toHaveBeenLastCalledWith(scope, handle, 1, 1);
 });
 
 it("closes every owned session when the focused chat changes", async () => {
