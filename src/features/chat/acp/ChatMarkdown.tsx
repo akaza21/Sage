@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
+import { FileKindIcon } from "../../files/FileKindIcon";
 import type { ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import { acpDesktop } from "../../../services/acpDesktop";
@@ -167,7 +168,8 @@ export function ChatMarkdown({
           })();
         }}
       >
-        {document.fileLinks[index].label}
+        <FileKindIcon path={link.resource.relativePath} />
+        <span>{document.fileLinks[index].label}</span>
       </button>
     );
   };

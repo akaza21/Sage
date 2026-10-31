@@ -322,9 +322,14 @@ describe("ChatMarkdown code blocks", () => {
       />,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open README.md" }),
+    const fileLink = await screen.findByRole("button", {
+      name: "Open README.md",
+    });
+    expect(fileLink.querySelector(".file-kind-icon--markdown")).toHaveAttribute(
+      "aria-hidden",
+      "true",
     );
+    fireEvent.click(fileLink);
     expect(acpDesktop.resolveChatFileReference).toHaveBeenCalledWith(
       "project-a",
       "README.md:12",
