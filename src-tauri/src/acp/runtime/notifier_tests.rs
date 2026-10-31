@@ -140,7 +140,6 @@ fn committed_event_is_observed_only_after_commit_and_drained_once() {
         assert_eq!(task.await.unwrap(), Ok(PublishOutcome::Scheduled));
         sink.wait_for_entries(1).await;
         sink.release(1);
-        tokio::task::yield_now().await;
 
         assert!(!sink.observed_before_commit.load(Ordering::SeqCst));
         assert_eq!(*lock(&sink.revisions), vec![1]);
@@ -162,21 +161,23 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             notifier.publish_committed(event("p", "c", "s", 4)),
             Ok(PublishOutcome::Scheduled)
         );
+        // Each check runs while the sink holds a delivery in flight: the
+        // notifier compares against the in-flight revision and forgets it once
+        // delivery settles, after which any event would be scheduled.
         sink.wait_for_entries(1).await;
-        sink.release(1);
-        tokio::task::yield_now().await;
         // Only the child epoch moved; the revision is the same.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Scheduled)
         );
-        sink.wait_for_entries(2).await;
         sink.release(1);
-        tokio::task::yield_now().await;
+        sink.wait_for_entries(2).await;
+        // The child epoch is now in flight: repeating it is a duplicate.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
+        sink.release(1);
         assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
@@ -206,7 +207,6 @@ fn same_tuple_coalesces_to_greatest_revision_in_one_pending_slot() {
 
         sink.release(2);
         sink.wait_for_entries(2).await;
-        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![1, 3]);
         assert_eq!(notifier.scheduled_wakes(), 1);
         notifier.shutdown().await;
@@ -235,7 +235,6 @@ fn an_in_flight_greatest_revision_rejects_duplicate_and_older_revisions() {
         );
 
         sink.release(1);
-        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![3]);
         assert_eq!(notifier.scheduled_wakes(), 1);
         notifier.shutdown().await;
@@ -311,7 +310,6 @@ fn project_switch_suppresses_background_notices_without_stopping_the_turn() {
         );
         sink.wait_for_entries(1).await;
         sink.release(1);
-        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![1]);
         assert_eq!(notifier.recovery(), None);
         notifier.shutdown().await;
