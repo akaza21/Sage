@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { notePlace, resetEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
 import { registerFileSurfaceCommands } from "../files/fileSurfaceCommandBus";
 import { filterCommands, paletteCommands } from "./paletteCommands";
@@ -13,6 +14,7 @@ import {
 const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
+  resetEditorHistory();
   useWorkbenchStore.setState(initialState, true);
   closeQuickOpen();
 });
@@ -42,6 +44,36 @@ describe("palette commands", () => {
       unregister();
     }
     expect(labels()).not.toContain("Save File");
+  });
+
+  it("offers Go Back only when there is a place to go back to", () => {
+    expect(labels()).not.toContain("Go Back");
+    useWorkbenchStore.setState({
+      project: { id: "project" } as ReturnType<
+        typeof useWorkbenchStore.getState
+      >["project"],
+    });
+    const resource = (relativePath: string) => ({ rootId: "r", relativePath });
+    notePlace({
+      projectId: "project",
+      resource: resource("a"),
+      line: 1,
+      column: 1,
+    });
+    notePlace({
+      projectId: "project",
+      resource: resource("b"),
+      line: 1,
+      column: 1,
+    });
+    const back = paletteCommands(false).find(
+      (item) => item.label === "Go Back",
+    );
+    expect(back?.shortcut).toBe("Alt+Left");
+    expect(labels()).not.toContain("Go Forward");
+    expect(
+      paletteCommands(true).find((item) => item.label === "Go Back")?.shortcut,
+    ).toBe("Ctrl+-");
   });
 
   it("shows macOS shortcuts on macOS", () => {

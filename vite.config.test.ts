@@ -76,6 +76,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/event.js",
   // Releasing an open File's tabs for a move (ED-16) loads with that move.
   "src/app/openFileRelease.ts",
+  // Go back and Go forward (ED-2b) load with the first File, or the first key.
+  "src/app/editorHistory.ts",
   // Explorer's files.exclude matcher loads beside the startup bundle.
   "src/domain/pathGlobMatcher.ts",
   // The browser downloads popover body loads on its first open.

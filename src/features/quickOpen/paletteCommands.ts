@@ -1,6 +1,12 @@
 // The command palette's commands (ED-2a): a short list of what the Editor
 // can already do, each run exactly as its own key or button runs it.
 
+import {
+  canGoBack,
+  canGoForward,
+  goBack,
+  goForward,
+} from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
 import type { SidebarView } from "../../app/store";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
@@ -61,6 +67,22 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       label,
       shortcut: shortcutOf(command, apple),
       run: () => void runFileSurfaceCommand(command),
+    });
+  }
+  if (canGoBack()) {
+    commands.push({
+      id: "navigateBack",
+      label: "Go Back",
+      shortcut: shortcutOf("navigateBack", apple),
+      run: () => void goBack(),
+    });
+  }
+  if (canGoForward()) {
+    commands.push({
+      id: "navigateForward",
+      label: "Go Forward",
+      shortcut: shortcutOf("navigateForward", apple),
+      run: () => void goForward(),
     });
   }
   for (const [view, label] of VIEWS) {

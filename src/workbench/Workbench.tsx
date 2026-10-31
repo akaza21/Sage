@@ -44,6 +44,7 @@ import "./workbench-window-mode.css";
 import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
@@ -232,6 +233,7 @@ export function Workbench() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [resourceModal, windowMode]);
+  useEditorHistoryKeys(windowMode === "editor");
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
