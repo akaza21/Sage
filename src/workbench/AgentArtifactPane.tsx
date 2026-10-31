@@ -60,7 +60,7 @@ const AgentArtifactTabStrip = lazy(() =>
   })),
 );
 const AgentArtifactResourceView = lazy(() =>
-  import("./AgentArtifactResourceView").then((module) => ({
+  import("./AgentArtifactHeader").then((module) => ({
     default: module.AgentArtifactResourceView,
   })),
 );

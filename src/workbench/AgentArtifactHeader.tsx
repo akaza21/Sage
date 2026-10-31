@@ -1,20 +1,13 @@
-import {
-  ChevronLeft,
-  Copy,
-  SquareArrowOutUpRight,
-  Check,
-  ChevronDown,
-  ChevronRight,
-} from "../ui/leanIcons";
+import { SquareArrowOutUpRight, ChevronDown } from "../ui/leanIcons";
 
 import {
   lazy,
   Suspense,
-  useEffect,
   useId,
   useRef,
   useState,
   type Ref,
+  type ComponentProps,
 } from "react";
 
 import type { AcpChatPage } from "../domain/acpProjection";
@@ -28,13 +21,28 @@ import { openAgentArtifact } from "../app/openAgentArtifact";
 import { useWorkbenchStore } from "../app/store";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
+const ResourceView = lazy(() =>
+  import("./AgentArtifactResourceView").then((module) => ({
+    default: module.AgentArtifactResourceView,
+  })),
+);
+
+export function AgentArtifactResourceView(
+  props: Omit<ComponentProps<typeof ResourceView>, "Header">,
+) {
+  return <ResourceView {...props} Header={AgentArtifactHeader} />;
+}
 
 const AgentArtifactOpenMenu = lazy(() =>
   import("./AgentArtifactOpenMenu").then((module) => ({
     default: module.AgentArtifactOpenMenu,
   })),
 );
-const COPY_FEEDBACK_MS = 2_000;
+const AgentArtifactDetails = lazy(() =>
+  import("./AgentArtifactDetails").then((module) => ({
+    default: module.AgentArtifactDetails,
+  })),
+);
 
 export function AgentArtifactHeader({
   tab,
@@ -57,11 +65,8 @@ export function AgentArtifactHeader({
   fileActionsRef?: Ref<HTMLDivElement>;
   fileDetailsRef?: Ref<HTMLDivElement>;
 }) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
-    "idle",
-  );
-  const [copyFeedbackRevision, setCopyFeedbackRevision] = useState(0);
   const [openChoices, setOpenChoices] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState("");
   const savedSource = useAgentDiffSourceStore((state) =>
     state.sourceReturns.find(
@@ -75,17 +80,8 @@ export function AgentArtifactHeader({
   const generation = useWorkbenchStore((state) => state.projectGeneration);
   const openChoicesId = useId();
   const openChoicesTrigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (copyState === "idle") return;
-    const timeout = window.setTimeout(
-      () => setCopyState("idle"),
-      COPY_FEEDBACK_MS,
-    );
-    return () => window.clearTimeout(timeout);
-  }, [copyState, copyFeedbackRevision]);
   const [path] = artifactTabParts(tab);
   const stats = artifactChipStatsForTab(tab, page);
-  const canStep = position >= 0 && total > 1;
   async function navigateSaved(source: boolean) {
     setError("");
     try {
@@ -111,11 +107,8 @@ export function AgentArtifactHeader({
   async function copyPath() {
     try {
       await navigator.clipboard.writeText(path);
-      setCopyState("copied");
-      setCopyFeedbackRevision((revision) => revision + 1);
     } catch {
-      setCopyState("error");
-      setCopyFeedbackRevision((revision) => revision + 1);
+      setError("Could not copy path. Try again.");
     }
   }
 
@@ -152,75 +145,29 @@ export function AgentArtifactHeader({
             className="agent-artifact-header__file-actions"
           />
         ) : null}
-        <details className="agent-artifact-header__details">
+        <details
+          className="agent-artifact-header__details"
+          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+        >
           <summary
             aria-label="Resource details"
             title="View only · Resource details"
           >
             View only
           </summary>
-          <div className="agent-artifact-header__detail-body">
-            <div ref={fileDetailsRef} />
-            {admitted ? <span>Opened by Sage</span> : null}
-            <code>{path}</code>
-            <div className="agent-artifact-header__stepper">
-              <button
-                type="button"
-                aria-label="Previous artifact"
-                title="Previous artifact"
-                disabled={!canStep || position === 0}
-                onClick={() => onStep(-1)}
-              >
-                <ChevronLeft size={16} aria-hidden="true" />
-              </button>
-              <span aria-live="polite" aria-atomic="true">
-                {position >= 0
-                  ? `${position + 1} of ${total}`
-                  : "No artifact selected"}
-              </span>
-              <button
-                type="button"
-                aria-label="Next artifact"
-                title="Next artifact"
-                disabled={!canStep || position === total - 1}
-                onClick={() => onStep(1)}
-              >
-                <ChevronRight size={16} aria-hidden="true" />
-              </button>
-            </div>
-            {stats?.additionsLabel ? (
-              <span className="agent-artifact-header__additions">
-                {stats.additionsLabel}
-              </span>
-            ) : null}
-            {stats?.deletionsLabel ? (
-              <span className="agent-artifact-header__deletions">
-                {stats.deletionsLabel}
-              </span>
-            ) : null}
-            <button
-              className="agent-artifact-header__copy"
-              type="button"
-              aria-label={
-                copyState === "copied"
-                  ? "Path copied"
-                  : copyState === "error"
-                    ? "Could not copy path"
-                    : "Copy path"
-              }
-              title={
-                copyState === "error" ? "Could not copy path" : "Copy path"
-              }
-              onClick={() => void copyPath()}
-            >
-              {copyState === "copied" ? (
-                <Check size={16} aria-hidden="true" />
-              ) : (
-                <Copy size={16} aria-hidden="true" />
-              )}
-              <span>{copyState === "copied" ? "Copied" : "Copy path"}</span>
-            </button>
-          </div>
+          {detailsOpen ? (
+            <Suspense fallback={null}>
+              <AgentArtifactDetails
+                fileDetailsRef={fileDetailsRef}
+                admitted={admitted}
+                path={path}
+                position={position}
+                total={total}
+                onStep={onStep}
+                stats={stats}
+              />
+            </Suspense>
+          ) : null}
         </details>
         {tab.kind === "file" ? (
           <>

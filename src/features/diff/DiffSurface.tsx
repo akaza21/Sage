@@ -3,18 +3,22 @@ import { useEffect } from "react";
 
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import { snapshotProjectionRevision } from "../../app/snapshotProjection";
 import { diffCacheKey } from "../../domain/diffIdentity";
 import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import { DiffHunks } from "./DiffHunks";
+import { DiffHunks, completeDiffCounts } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
-import { useAgentArtifactGitDiff } from "../../workbench/useAgentArtifactGitDiff";
+import type { useAgentArtifactGitDiff } from "../../workbench/useAgentArtifactGitDiff";
+import { useAgentChangesScopes } from "../../workbench/agentChangesStateScopes";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { openAgentSnapshotSource } from "../../app/agentDiffSource";
+const loadScopedGitDiff = () =>
+  import("../../workbench/useAgentArtifactGitDiff").then((module) => ({
+    default: module.AgentDiffSurface,
+  }));
 
 export function DiffSurface({
   tab,
@@ -23,56 +27,35 @@ export function DiffSurface({
   tab: WorkbenchTab;
   readOnly?: boolean;
 }) {
-  return tab.diffRef ? (
-    <SnapshotDiffSurface tab={tab} commentEnabled={readOnly} />
+  const generation = useWorkbenchStore((state) => state.projectGeneration);
+  const scoped = useAgentChangesScopes((state) =>
+    state.gitScopes.some(
+      (entry) => entry.tabId === tab.id && entry.generation === generation,
+    ),
+  );
+  return tab.diffRef || scoped ? (
+    <LazyModuleBoundary
+      load={loadScopedGitDiff}
+      label="Diff"
+      render={(Surface) => (
+        <Surface tab={tab} readOnly={readOnly} Document={DiffDocument} />
+      )}
+    />
   ) : (
     <DiffDocument tab={tab} unavailable={isSnapshotDiffTab(tab)} />
   );
 }
 
-function SnapshotDiffSurface({
-  tab,
-  commentEnabled,
-}: {
-  tab: WorkbenchTab;
-  commentEnabled: boolean;
-}) {
-  const project = useWorkbenchStore((state) => state.project);
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
-  const ref = tab.diffRef!;
-  const live = acpProjectionStoreFor(ref.chatId)(
-    (projection) => projection.page?.currentSessionId === ref.sessionId,
-  );
-  const current = acpProjectionStoreFor(ref.chatId)(
-    (projection) =>
-      snapshotProjectionRevision(
-        { project, projectGeneration, projectTransitioning },
-        ref,
-        projection,
-      ) !== null,
-  );
-  return (
-    <DiffDocument
-      tab={tab}
-      unavailable={!current}
-      commentEnabled={commentEnabled && current && live}
-    />
-  );
-}
-
-function DiffDocument({
+export function DiffDocument({
   tab,
   unavailable = false,
   commentEnabled = false,
+  scopedGit,
 }: {
   tab: WorkbenchTab;
   unavailable?: boolean;
   commentEnabled?: boolean;
+  scopedGit?: ReturnType<typeof useAgentArtifactGitDiff>;
 }) {
   const focusedChatId = usePinnedAgentChatOwner();
   const captureChatOwnership = useWorkbenchStore(
@@ -93,13 +76,12 @@ function DiffDocument({
       ? state.diffs[diffCacheKey(tabRepository, tabResource, tab.diffRef)]
       : undefined,
   );
-  const scopedGit = useAgentArtifactGitDiff(tab);
   const diff = unavailable
     ? {
         phase: "error" as const,
         message: "This saved edit is unavailable for the current Chat session.",
       }
-    : (scopedGit.diff ?? cached);
+    : (scopedGit?.diff ?? cached);
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const change = isSnapshotDiffTab(tab)
@@ -107,19 +89,9 @@ function DiffDocument({
     : repositories.roots
         .flatMap((repository) => repository.changes)
         .find((candidate) => sameResource(candidate.resource, tabResource));
-  const visibleCounts =
-    diff?.phase === "ready" && !diff.value.binary && !diff.value.truncated
-      ? diff.value.hunks.reduce(
-          (counts, hunk) => {
-            for (const line of hunk.lines) {
-              if (line.kind === "added") counts.additions += 1;
-              if (line.kind === "removed") counts.deletions += 1;
-            }
-            return counts;
-          },
-          { additions: 0, deletions: 0 },
-        )
-      : null;
+  const visibleCounts = completeDiffCounts(
+    diff?.phase === "ready" ? diff.value : undefined,
+  );
   // A complete diff is what the body shows, so its counts win over Git status,
   // which can be older than the diff or come from a fixture with no hunks.
   const additions = visibleCounts?.additions ?? change?.additions;
@@ -139,7 +111,7 @@ function DiffDocument({
   const refreshDiff = () => {
     if (!tabResource || unavailable || !diff || diff.phase === "loading")
       return;
-    if (scopedGit.scope) {
+    if (scopedGit?.scope) {
       scopedGit.refresh();
       return;
     }
@@ -153,7 +125,7 @@ function DiffDocument({
   };
 
   useEffect(() => {
-    if (tabResource && !unavailable && !scopedGit.scope) {
+    if (tabResource && !unavailable && !scopedGit?.scope) {
       if (tab.diffRef) void loadDiff(tabResource, tabRepository, tab.diffRef);
       else void loadDiff(tabResource, tabRepository);
     }
@@ -163,7 +135,7 @@ function DiffDocument({
     tabRepository,
     tab.diffRef,
     unavailable,
-    scopedGit.scope,
+    scopedGit?.scope,
   ]);
 
   return (
@@ -185,9 +157,9 @@ function DiffDocument({
         <span className="diff-toolbar__scope">
           {isSnapshotDiffTab(tab)
             ? "Saved agent change"
-            : scopedGit.scope === "staged"
+            : scopedGit?.scope === "staged"
               ? "Staged changes"
-              : scopedGit.scope === "unstaged"
+              : scopedGit?.scope === "unstaged"
                 ? "Unstaged changes"
                 : "Changes since HEAD (or initial tree)"}
         </span>

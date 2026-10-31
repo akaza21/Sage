@@ -254,7 +254,7 @@ it.each(["staged", "unstaged"] as const)(
       ),
     );
     expect(
-      screen.getByText(
+      await screen.findByText(
         scope === "staged" ? "Staged changes" : "Unstaged changes",
       ),
     ).toBeVisible();

@@ -65,7 +65,7 @@ export function FileEditorHeader({
             </span>,
             slot.details,
           )
-        ) : (
+        ) : slot?.actions ? null : (
           <span>
             View only · UTF-8 · {lineEnding.toUpperCase()} ·{" "}
             {diskByteLen.toLocaleString()} disk bytes

@@ -858,14 +858,14 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
-  it("renders a truthful artifact header and pins navigation through its ordered targets", () => {
+  it("renders a truthful artifact header and pins navigation through its ordered targets", async () => {
     admit("file:app");
     openPreviewSession();
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
     fireEvent.click(screen.getByLabelText("Resource details"));
-    expect(screen.getByText("Opened by Sage")).toBeVisible();
+    expect(await screen.findByText("Opened by Sage")).toBeVisible();
     expect(screen.getByText("View only")).toBeVisible();
     expect(screen.getByText("src/app.ts")).toBeVisible();
     expect(screen.getByText("1 of 2")).toHaveAttribute("aria-live", "polite");
@@ -907,7 +907,7 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
     fireEvent.click(screen.getByLabelText("Resource details"));
-    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Copy path" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("src/app.ts"));
     expect(
       screen.getByRole("button", { name: "Path copied" }),
@@ -916,9 +916,10 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open in Editor" })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
-    expect(screen.getByRole("button", { name: "Copy path" })).toHaveTextContent(
-      "Copy path",
-    );
+    fireEvent.click(screen.getByLabelText("Resource details"));
+    expect(
+      await screen.findByRole("button", { name: "Copy path" }),
+    ).toHaveTextContent("Copy path");
   });
 
   it("opens an Agent file in Editor from the File pane Open menu", async () => {

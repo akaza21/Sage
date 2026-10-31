@@ -49,10 +49,10 @@ interface AgentArtifactFollowStore {
 export function validAgentArtifactTarget(
   target: AgentArtifactTarget | null | undefined,
 ): target is AgentArtifactTarget {
-  return Boolean(
-    target &&
+  return (
+    !!target &&
     (target.kind === "preview" ||
-      (target.kind === "tab" && isShortId(target.tabId))),
+      (target.kind === "tab" && isShortId(target.tabId)))
   );
 }
 
@@ -60,10 +60,12 @@ export function sameAgentArtifactTarget(
   left: AgentArtifactTarget | null | undefined,
   right: AgentArtifactTarget | null | undefined,
 ): boolean {
-  if (!left || !right || left.kind !== right.kind) return false;
-  if (left.kind === "preview" && right.kind === "preview") return true;
   return (
-    left.kind === "tab" && right.kind === "tab" && left.tabId === right.tabId
+    !!left &&
+    !!right &&
+    left.kind === right.kind &&
+    (left.kind === "preview" ||
+      (right.kind === "tab" && left.tabId === right.tabId))
   );
 }
 

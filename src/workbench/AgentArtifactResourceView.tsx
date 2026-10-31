@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode, Ref } from "react";
 import type { WorkbenchTab } from "../domain/workbench";
 import { useRetainedElement } from "../ui/useRetainedElement";
-import { AgentArtifactHeader } from "./AgentArtifactHeader";
+import type { AgentArtifactHeader } from "./AgentArtifactHeader";
 import { AgentArtifactFileHeaderBridge } from "./useAgentArtifactHeaderSlot";
 import {
   renderFileOrDiffCanvas,
@@ -16,6 +16,7 @@ export function AgentArtifactResourceView({
   panelId,
   canvasRef,
   children,
+  Header,
 }: {
   tab: WorkbenchTab | null;
   showResource: boolean;
@@ -26,13 +27,14 @@ export function AgentArtifactResourceView({
   panelId: string;
   canvasRef: Ref<HTMLDivElement>;
   children: ReactNode;
+  Header: typeof AgentArtifactHeader;
 }) {
   const [actions, setActions] = useRetainedElement<HTMLDivElement>();
   const [details, setDetails] = useRetainedElement<HTMLDivElement>();
   return (
     <>
       {tab && tab.kind !== "browser" ? (
-        <AgentArtifactHeader
+        <Header
           key={tab.id}
           tab={tab}
           {...header}

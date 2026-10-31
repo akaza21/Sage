@@ -1,14 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
-import { openAgentArtifact } from "../../app/openAgentArtifact";
-import { openAgentSnapshotSource } from "../../app/agentDiffSource";
-import { resourceTabUpdate } from "../../app/resourceTabs";
-import { useAgentArtifactAdmissionStore } from "../../app/agentArtifactAdmissionStore";
-import { useAgentArtifactFollowStore } from "../../app/agentArtifactFollowStore";
-import { useAgentChangesState } from "../../workbench/agentChangesState";
-import { useAgentChangesScopes } from "../../workbench/agentChangesStateScopes";
-import { sameResource } from "../../domain/resourceIdentity";
 import type { ChangesEntry } from "./agentChanges";
 import type { AcpChatPage } from "../../domain/acpProjection";
 import { resourceKey } from "../../domain/resourceIdentity";
@@ -41,107 +33,9 @@ export const ChangesSurface = memo(function ChangesSurface({
   const [revision, setRevision] = useState(0);
   async function openEntry(entry: ChangesEntry, source: boolean) {
     setError("");
-    const before = useWorkbenchStore.getState();
-    const changesOwner = useAgentChangesState.getState().owner;
-    if (
-      before.projectTransitioning ||
-      (before.project?.id !== page?.projectId && scope === "lastTurn")
-    )
-      return;
     try {
-      if (entry.diffRef) {
-        if (
-          !(source
-            ? await openAgentSnapshotSource(entry.diffRef)
-            : await openAgentArtifact({
-                owner: entry.diffRef,
-                target: "diff",
-                resource: entry.resource,
-                diffRef: entry.diffRef,
-              }))
-        )
-          setError(
-            "This saved change is no longer available. Refresh changes.",
-          );
-        return;
-      }
-      if (source) await before.openFile(entry.resource);
-      else {
-        if (
-          before.fileCreateInFlight ||
-          before.folderCreateInFlight ||
-          before.fileRenameInFlight ||
-          before.resourceTrashInFlight
-        )
-          return;
-        await before.flushActiveEditor();
-        const current = useWorkbenchStore.getState();
-        if (
-          current.projectTransitioning ||
-          current.projectGeneration !== before.projectGeneration ||
-          current.project?.id !== before.project?.id ||
-          !current.project?.roots.some(
-            (root) => root.id === entry.resource.rootId,
-          ) ||
-          useAgentChangesState.getState().owner !== changesOwner
-        )
-          return;
-        useWorkbenchStore.setState(
-          resourceTabUpdate(current, "diff", entry.resource),
-        );
-        const retained = useWorkbenchStore.getState().tabs;
-        for (const old of current.tabs)
-          if (!retained.some((tab) => tab.id === old.id)) {
-            useAgentArtifactAdmissionStore.getState().forget(old.id);
-            useAgentArtifactFollowStore.getState().forgetTab(old.id);
-          }
-      }
-      const state = useWorkbenchStore.getState();
-      if (
-        state.projectTransitioning ||
-        state.projectGeneration !== before.projectGeneration ||
-        state.project?.id !== before.project?.id ||
-        useAgentChangesState.getState().owner !== changesOwner
-      )
-        return;
-      const tab = state.tabs.find(
-        (candidate) =>
-          candidate.id === state.activeTabId &&
-          candidate.kind === (source ? "file" : "diff") &&
-          sameResource(candidate.resource, entry.resource) &&
-          !candidate.diffRef,
-      );
-      if (!tab) return;
-      if (!source && entry.gitScope) {
-        useAgentChangesScopes
-          .getState()
-          .setGitScope(tab, entry.gitScope, state.projectGeneration);
-        useWorkbenchStore.setState({ activeEditor: null });
-        void state.revealFile(entry.resource);
-      }
-      const owner = useAgentChangesState.getState().owner;
-      if (owner?.sessionId && owner.projectId === state.project?.id) {
-        const livePage = acpProjectionStoreFor(owner.chatId).getState().page;
-        if (
-          !livePage ||
-          livePage.projectId !== owner.projectId ||
-          livePage.chatId !== owner.chatId ||
-          livePage.currentSessionId !== owner.sessionId
-        )
-          return;
-        const displayOwner = {
-          projectId: livePage.projectId,
-          chatId: livePage.chatId,
-          sessionId: livePage.currentSessionId,
-        };
-        useAgentArtifactAdmissionStore
-          .getState()
-          .admit({ owner: displayOwner, tabId: tab.id });
-        useAgentArtifactFollowStore
-          .getState()
-          .pin(displayOwner, { kind: "tab", tabId: tab.id });
-      }
-      useAgentChangesState.getState().select(false);
+      const { openChangesEntry } = await import("./changesNavigation");
+      await openChangesEntry(entry, source, page, scope);
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     }
@@ -281,7 +175,11 @@ export const ChangesSurface = memo(function ChangesSurface({
                 </span>
               </span>
             </button>
-            <div className="changes-surface__file-actions">
+            <div
+              className="changes-surface__toolbar"
+              role="group"
+              aria-label={`Actions for ${entry.resource.relativePath}`}
+            >
               <button
                 className="button button--compact"
                 type="button"
