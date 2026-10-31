@@ -255,15 +255,32 @@ fn diagnostic_home_paths_keep_adjacent_command_operators() {
 
 #[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
-    let input = "0AKIA".repeat(65_536);
-    let started = std::time::Instant::now();
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
-        assert_eq!(
-            redact("test", &input, input.len() * 10, mode).unwrap(),
-            input
-        );
+    // Compare the cost of 4x the input against 1x rather than against a wall
+    // clock, which a loaded CI runner or a debug build can exceed: linear work
+    // scales by about 4, quadratic by 16. The fastest of three runs filters
+    // out scheduler noise.
+    fn fastest_redaction(repeats: usize) -> std::time::Duration {
+        let input = "0AKIA".repeat(repeats);
+        (0..3)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+                    assert_eq!(
+                        redact("test", &input, input.len() * 10, mode).unwrap(),
+                        input
+                    );
+                }
+                started.elapsed()
+            })
+            .min()
+            .unwrap()
     }
-    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    let small = fastest_redaction(16_384);
+    let large = fastest_redaction(65_536);
+    assert!(
+        large < small * 8,
+        "4x the input took {large:?} against {small:?}: worse than linear"
+    );
 }
 
 #[test]

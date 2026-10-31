@@ -17,7 +17,9 @@ jobs:
   frontend:
     name: Frontend and policy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Measured on ubuntu-latest: Vitest alone takes about 12 minutes (425
+    # files), before the budget lanes, build and policy checks.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,7 +63,10 @@ jobs:
   rust:
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # A cold-cache run builds and runs the parallel test phase in about 20
+    # minutes on ubuntu-latest, before Clippy, the serial phases and the
+    # release check.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
