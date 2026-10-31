@@ -8,15 +8,14 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
-    sync::atomic::{AtomicBool, Ordering},
 };
 
 use csv_core::{ReadRecordResult, Reader};
 use zeroize::Zeroizing;
 
 use super::{
-    MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult, origin::credential_origin,
-    secret::Secret, store::NewCredential,
+    Cancellation, MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
+    origin::credential_origin, secret::Secret, store::NewCredential,
 };
 
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -38,7 +37,7 @@ pub(super) struct ParsedCsv {
     pub(super) skipped: u32,
 }
 
-pub(super) fn read_file(path: &Path, cancel: &AtomicBool) -> VaultResult<ParsedCsv> {
+pub(super) fn read_file(path: &Path, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
     let file = File::open(path)?;
     if file.metadata()?.len() > MAX_FILE_BYTES {
         return Err(too_large());
@@ -48,7 +47,7 @@ pub(super) fn read_file(path: &Path, cancel: &AtomicBool) -> VaultResult<ParsedC
 
 /// Reads `source`, checking `cancel` before every read of at most
 /// `READ_BYTES`.
-pub(super) fn read(source: impl Read, cancel: &AtomicBool) -> VaultResult<ParsedCsv> {
+pub(super) fn read(source: impl Read, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
     let mut records = Records::new(source, cancel);
     let columns = match records.next()? {
         Some(Row::Fields(header)) => Columns::from_header(&header)?,
@@ -163,7 +162,7 @@ enum Row<'a> {
 
 struct Records<'c, R> {
     source: R,
-    cancel: &'c AtomicBool,
+    cancel: &'c dyn Cancellation,
     parser: Reader,
     input: Zeroizing<Vec<u8>>,
     start: usize,
@@ -174,7 +173,7 @@ struct Records<'c, R> {
 }
 
 impl<'c, R: Read> Records<'c, R> {
-    fn new(source: R, cancel: &'c AtomicBool) -> Self {
+    fn new(source: R, cancel: &'c dyn Cancellation) -> Self {
         Self {
             source,
             cancel,
@@ -190,7 +189,7 @@ impl<'c, R: Read> Records<'c, R> {
 
     /// Reads the next chunk; an empty chunk tells the parser the file ended.
     fn refill(&mut self) -> VaultResult<()> {
-        if self.cancel.load(Ordering::Relaxed) {
+        if self.cancel.cancelled() {
             return Err(VaultError::Cancelled);
         }
         let read = loop {

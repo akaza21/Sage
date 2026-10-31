@@ -228,3 +228,13 @@ it("cancels a running import and says nothing was saved", async () => {
   expect(native.cancelImport).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
 });
+
+it("cancels a running import when the page closes", async () => {
+  native.importCsv.mockReturnValue(new Promise(() => {}));
+  const { unmount } = render(<SettingsPasswordsPage visible={all()} />);
+  await screen.findByText("No saved passwords");
+  fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+  await screen.findByRole("button", { name: "Cancel import" });
+  unmount();
+  expect(native.cancelImport).toHaveBeenCalledTimes(1);
+});

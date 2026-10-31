@@ -1,14 +1,17 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    sync::{Arc, atomic::AtomicBool},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use super::{
-    VaultError, VaultResult,
+    Cancellation, VaultError, VaultResult,
     cipher::{Binding, VaultKey},
     key_store::KeyProtector,
     secret::Secret,
@@ -391,6 +394,61 @@ fn a_cancelled_merge_saves_nothing() {
         Err(VaultError::Cancelled)
     ));
     assert_eq!(store.page("").unwrap().total, 0);
+}
+
+/// Cancels once `remaining` more rows have been checked.
+struct CancelAfter(AtomicUsize);
+
+impl Cancellation for CancelAfter {
+    fn cancelled(&self) -> bool {
+        self.0
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+                left.checked_sub(1)
+            })
+            .is_err()
+    }
+}
+
+#[test]
+fn a_merge_cancelled_partway_rolls_back_every_row_it_wrote() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    merge(
+        &mut store,
+        &key,
+        &[credential("https://a.example", "ada", "old")],
+    );
+    let ada = store.page("").unwrap().entries[0].id.clone();
+    let rows = [
+        credential("https://a.example", "ada", "changed"),
+        credential("https://b.example", "grace", "new"),
+        credential("https://c.example", "alan", "new"),
+    ];
+    assert!(matches!(
+        store.merge(&key, Source::Csv, &rows, &CancelAfter(AtomicUsize::new(2))),
+        Err(VaultError::Cancelled)
+    ));
+    let page = store.page("").unwrap();
+    assert_eq!((page.total, page.entries.len()), (1, 1));
+    assert_eq!(store.password(&key, &ada).unwrap().expose(), "old");
+}
+
+#[test]
+fn only_one_import_runs_and_its_cancel_never_reaches_the_next() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let csv = scratch.csv("passwords.csv", CHROME_CSV);
+    state.cancel_import();
+    {
+        let running = state.hold_import().unwrap();
+        assert!(matches!(
+            state.import(csv.clone()),
+            Err(VaultError::Invalid(_))
+        ));
+        state.cancel_import();
+        assert!(running.cancel.load(Ordering::Relaxed));
+    }
+    assert_eq!(import(&state, csv).added, 2);
 }
 
 #[test]

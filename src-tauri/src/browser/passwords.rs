@@ -64,3 +64,15 @@ pub(crate) enum VaultError {
 }
 
 type VaultResult<T> = Result<T, VaultError>;
+
+/// Whether the operation that owns this signal was cancelled. Long imports
+/// check it between reads and between rows.
+trait Cancellation {
+    fn cancelled(&self) -> bool;
+}
+
+impl Cancellation for std::sync::atomic::AtomicBool {
+    fn cancelled(&self) -> bool {
+        self.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}

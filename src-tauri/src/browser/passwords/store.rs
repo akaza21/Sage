@@ -1,14 +1,11 @@
-use std::{
-    path::Path,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 use uuid::Uuid;
 
 use super::{
-    VaultError, VaultResult,
+    Cancellation, VaultError, VaultResult,
     cipher::{Binding, VaultKey},
     secret::Secret,
 };
@@ -191,13 +188,13 @@ impl Store {
         key: &VaultKey,
         source: Source,
         credentials: &[NewCredential],
-        cancel: &AtomicBool,
+        cancel: &dyn Cancellation,
     ) -> VaultResult<MergeCounts> {
         let transaction = self.0.transaction()?;
         let mut counts = MergeCounts::default();
         for credential in credentials {
             // Dropping the transaction rolls every row back.
-            if cancel.load(Ordering::Relaxed) {
+            if cancel.cancelled() {
                 return Err(VaultError::Cancelled);
             }
             let existing = transaction

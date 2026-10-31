@@ -41,8 +41,33 @@ struct Shared {
     vault: Mutex<Option<Vault>>,
     /// The CSV the last import read, kept so the page can offer to delete it.
     imported_file: Mutex<Option<PathBuf>>,
-    /// Set by Cancel; checked between reads and between rows of an import.
-    cancel_import: AtomicBool,
+    /// The running import's own cancel flag, if one is running. Only one
+    /// import runs at a time, so Cancel can never reach a later import.
+    running_import: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+/// Admits one import and withdraws it when the import ends, however it ends.
+pub(super) struct RunningImport<'s> {
+    slot: &'s Mutex<Option<Arc<AtomicBool>>>,
+    pub(super) cancel: Arc<AtomicBool>,
+}
+
+impl<'s> RunningImport<'s> {
+    fn admit(slot: &'s Mutex<Option<Arc<AtomicBool>>>) -> VaultResult<Self> {
+        let mut running = lock(slot);
+        if running.is_some() {
+            return Err(VaultError::Invalid("An import is already running."));
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *running = Some(Arc::clone(&cancel));
+        Ok(Self { slot, cancel })
+    }
+}
+
+impl Drop for RunningImport<'_> {
+    fn drop(&mut self) {
+        lock(self.slot).take();
+    }
 }
 
 struct Vault {
@@ -66,13 +91,19 @@ impl PasswordsState {
             protector,
             vault: Mutex::new(None),
             imported_file: Mutex::new(None),
-            cancel_import: AtomicBool::new(false),
+            running_import: Mutex::new(None),
         }))
     }
 
     #[cfg(test)]
     pub(super) fn for_test(directory: &Path, protector: Arc<dyn KeyProtector>) -> Self {
         Self::with_protector(directory, Some(protector))
+    }
+
+    /// Holds the import slot as a running import would.
+    #[cfg(test)]
+    pub(super) fn hold_import(&self) -> VaultResult<RunningImport<'_>> {
+        RunningImport::admit(&self.0.running_import)
     }
 
     pub(crate) fn supported(&self) -> bool {
@@ -105,9 +136,10 @@ impl PasswordsState {
 
     /// Reads `file` and merges it into the vault in one transaction. Returns
     /// the merge counts and how many rows could not be used.
+    /// Refuses while another import is running.
     pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
-        let cancel = &self.0.cancel_import;
-        cancel.store(false, Ordering::Relaxed);
+        let running = RunningImport::admit(&self.0.running_import)?;
+        let cancel = running.cancel.as_ref();
         let parsed = csv_import::read_file(&file, cancel)?;
         let counts = self.with_vault(|vault| {
             let Vault {
@@ -122,8 +154,11 @@ impl PasswordsState {
         Ok((counts, parsed.skipped))
     }
 
+    /// Cancels the running import, if any; a later import starts afresh.
     pub(crate) fn cancel_import(&self) {
-        self.0.cancel_import.store(true, Ordering::Relaxed);
+        if let Some(cancel) = lock(&self.0.running_import).as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
     }
 
     /// Deletes the CSV the last import read: it holds every password in

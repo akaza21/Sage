@@ -1,6 +1,5 @@
 use std::{iter, ptr, slice, sync::mpsc};
 
-use sha2::{Digest, Sha256};
 use windows::Win32::{
     Foundation::{GlobalFree, HANDLE, HGLOBAL},
     System::{
@@ -15,6 +14,7 @@ use windows::Win32::{
 use windows_core::PCWSTR;
 use zeroize::Zeroizing;
 
+use super::CopiedText;
 use crate::browser::passwords::{VaultError, VaultResult, secret::Secret};
 
 /// Formats whose presence asks Windows to keep the copy out of clipboard
@@ -24,24 +24,6 @@ const EXCLUSIONS: [&str; 3] = [
     "CanIncludeInClipboardHistory",
     "CanUploadToCloudClipboard",
 ];
-const SALT_LEN: usize = 16;
-
-/// A salted fingerprint of the copied text, so the later clear empties the
-/// clipboard only if it still holds exactly that text. Nothing that can
-/// recover the password is kept.
-pub(in crate::browser::passwords) struct CopiedText {
-    salt: [u8; SALT_LEN],
-    digest: [u8; 32],
-}
-
-fn fingerprint(salt: &[u8; SALT_LEN], text: &[u8]) -> [u8; 32] {
-    Sha256::new()
-        .chain_update(salt)
-        .chain_update(text)
-        .finalize()
-        .into()
-}
-
 fn io_error(error: windows_core::Error) -> VaultError {
     VaultError::Io(error.into())
 }
@@ -122,8 +104,6 @@ pub(in crate::browser::passwords) fn copy_concealed(
     owner: &tauri::Window,
     password: Secret,
 ) -> VaultResult<CopiedText> {
-    let mut salt = [0; SALT_LEN];
-    getrandom::fill(&mut salt).map_err(|_| VaultError::Random)?;
     with_clipboard(owner, move || {
         let text = Zeroizing::new(wide(password.expose()));
         let bytes: Zeroizing<Vec<u8>> =
@@ -135,37 +115,33 @@ pub(in crate::browser::passwords) fn copy_concealed(
             let _ = unsafe { EmptyClipboard() };
             return Err(error);
         }
-        Ok(CopiedText {
-            salt,
-            digest: fingerprint(&salt, &bytes),
-        })
+        CopiedText::new(&bytes)
     })
 }
 
-/// The clipboard's current Unicode text as bytes, if it has any.
+/// Whether the clipboard's Unicode text is still `copied`. Reads at most
+/// the copy's own length, and nothing when the clipboard holds less.
 ///
 /// # Safety
 /// The clipboard must be open on this thread.
-unsafe fn current_text() -> Option<Zeroizing<Vec<u8>>> {
+unsafe fn still_holds(copied: &CopiedText) -> bool {
     // SAFETY: the caller holds the clipboard open; the handle stays valid
     // until it closes, and is read only within `GlobalSize`.
     unsafe {
-        let handle = GetClipboardData(u32::from(CF_UNICODETEXT.0)).ok()?;
+        let Ok(handle) = GetClipboardData(u32::from(CF_UNICODETEXT.0)) else {
+            return false;
+        };
         let memory = HGLOBAL(handle.0);
+        if GlobalSize(memory) < copied.len() {
+            return false;
+        }
         let source = GlobalLock(memory).cast::<u8>();
         if source.is_null() {
-            return None;
+            return false;
         }
-        let bytes = slice::from_raw_parts(source, GlobalSize(memory));
-        // The allocation may be larger than the text; keep it up to and
-        // including the NUL terminator, as `copy_concealed` wrote it.
-        let end = bytes
-            .chunks_exact(2)
-            .position(|unit| unit == [0, 0])
-            .map_or(bytes.len(), |index| (index + 1) * 2);
-        let text = Zeroizing::new(bytes[..end].to_vec());
+        let held = copied.matches(slice::from_raw_parts(source, copied.len()));
         let _ = GlobalUnlock(memory);
-        Some(text)
+        held
     }
 }
 
@@ -176,9 +152,7 @@ pub(in crate::browser::passwords) fn clear_if_unchanged(
 ) -> VaultResult<()> {
     with_clipboard(owner, move || {
         // SAFETY: the clipboard is open on this thread.
-        let unchanged = unsafe { current_text() }
-            .is_some_and(|text| fingerprint(&copied.salt, &text) == copied.digest);
-        if unchanged {
+        if unsafe { still_holds(&copied) } {
             // SAFETY: as above.
             unsafe { EmptyClipboard() }.map_err(io_error)?;
         }

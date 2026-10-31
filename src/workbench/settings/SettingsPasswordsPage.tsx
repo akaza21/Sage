@@ -36,6 +36,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
   const cancelRequested = useRef(false);
+  const importRunning = useRef(false);
   const [overview, setOverview] = useState<PasswordsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -91,6 +92,8 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // Leaving the page stops an import nobody is waiting on.
+      if (importRunning.current) void passwordsCancelImport();
       for (const timer of timers.values()) window.clearTimeout(timer);
       timers.clear();
     };
@@ -167,6 +170,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
 
   const importCsv = () => {
     cancelRequested.current = false;
+    importRunning.current = true;
     setImporting(true);
     void run(async () => {
       const report = await importPasswordsCsv();
@@ -176,7 +180,10 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
       } else if (cancelRequested.current) {
         setNotice("Import cancelled. Nothing was saved.");
       }
-    }).finally(() => setImporting(false));
+    }).finally(() => {
+      importRunning.current = false;
+      if (mounted.current) setImporting(false);
+    });
   };
 
   const cancelImport = () => {
