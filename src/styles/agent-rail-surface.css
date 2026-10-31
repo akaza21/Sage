@@ -96,7 +96,7 @@
 .workbench--agent .project-row,
 .workbench--agent .project-chat-row {
   min-height: 28px;
-  height: 28px;
+  height: auto;
 }
 
 .workbench--agent .project-chats,
@@ -110,7 +110,7 @@
 }
 
 .workbench--agent .project-chat-row {
-  grid-template-rows: 28px;
+  grid-template-rows: auto auto;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -133,11 +133,21 @@
   grid-template-columns: minmax(0, 1fr) 24px;
 }
 
-.workbench--agent .project-chat__identity,
-.workbench--agent .project-chat__context,
-.workbench--agent .project-row__branch,
-.workbench--agent .project-row__count {
+.workbench--agent .project-chat__identity {
   display: none;
+}
+
+.workbench--agent .project-chat__context {
+  padding-inline-start: var(--space-2);
+}
+
+.workbench--agent .project-chat__workspace {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.workbench--agent .project-chat__git {
+  max-width: 50%;
 }
 
 .workbench--agent .project-chats {
