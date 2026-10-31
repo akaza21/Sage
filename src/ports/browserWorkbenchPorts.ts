@@ -114,6 +114,7 @@ const editor: EditorPort = {
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
+  getRepositoryChangeStamp: async () => "browser",
   getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),

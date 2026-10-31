@@ -98,13 +98,15 @@ describe("SettingsSurface", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Default: 13px")).toBeInTheDocument();
     expect(screen.getByText("Default: 2 spaces")).toBeInTheDocument();
-    expect(screen.getAllByText("Default: On")).toHaveLength(6);
+    expect(screen.getAllByText("Default: On")).toHaveLength(7);
     expect(screen.getAllByText("Default: Off")).toHaveLength(2);
     expect(screen.getByText("Default: Alt")).toBeInTheDocument();
     expect(screen.getByText("Default: Dimmed")).toBeInTheDocument();
     const files = screen.getByRole("group", { name: "Files" });
     const search = screen.getByRole("group", { name: "Search" });
     expect(within(search).getByLabelText("Use ignore files")).toBeChecked();
+    const git = screen.getByRole("group", { name: "Git" });
+    expect(within(git).getByLabelText("Auto refresh")).toBeChecked();
     const ignored = within(files).getByLabelText("Ignored files in Explorer");
     expect(
       within(ignored)

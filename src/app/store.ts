@@ -62,6 +62,7 @@ import {
   type FileNavigationSlice,
 } from "./fileNavigationSlice";
 import { closeWorkbenchTab } from "./tabClosing";
+import { shareRepositoryStatus } from "./shareRepositoryStatus";
 import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
 
 export type SidebarView =
@@ -352,7 +353,10 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           get().repositoryRequestGeneration === requestGeneration
         ) {
           set((state) => ({
-            repositories,
+            repositories: shareRepositoryStatus(
+              state.repositories,
+              repositories,
+            ),
             repositoryRefreshing: false,
             repositoryRefreshSuperseded: false,
             repositoryCommitError:

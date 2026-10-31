@@ -200,6 +200,12 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         ]),
         ticket: "EP-06",
     },
+    SettingSpec {
+        key: "git.autoRefresh",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-12",
+    },
 ];
 
 /// Every registry key with its current value; keys never go missing.
@@ -448,7 +454,7 @@ mod tests {
         for spec in EDITOR_SETTINGS {
             assert!(keys.insert(spec.key), "duplicate key {}", spec.key);
             assert!(
-                ["editor.", "explorer.", "files.", "search."]
+                ["editor.", "explorer.", "files.", "git.", "search."]
                     .iter()
                     .any(|prefix| spec.key.starts_with(prefix)),
                 "{}",
@@ -723,6 +729,7 @@ mod tests {
                     "**/.DS_Store",
                     "**/Thumbs.db",
                 ],
+                "git.autoRefresh": true,
             })
         );
     }

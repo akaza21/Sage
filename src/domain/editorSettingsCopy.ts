@@ -111,4 +111,10 @@ export const EDITOR_SETTING_COPY: Readonly<
     description:
       "Glob patterns for files and folders that Explorer and Search leave out, such as **/dist or **/*.log.",
   },
+  "git.autoRefresh": {
+    group: "Git",
+    label: "Auto refresh",
+    description:
+      "Updates Source Control when files or Git state change outside Sage, such as a commit from a terminal.",
+  },
 };
