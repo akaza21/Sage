@@ -15,7 +15,6 @@ import type {
 import { validateResourceTrashResult } from "../features/files/resourceTrashContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { trashName } from "../ui/trashName";
-import { moveReleasingFile, UNSAVED_FILE_REASON } from "./openFileRelease";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
@@ -135,13 +134,14 @@ export const createResourceTrashSlice: StateCreator<
     if (kind !== "file" || !releaseOpenFile) {
       return trashResource(set, get, source, kind);
     }
+    const { moveReleasingFile } = await import("./openFileRelease");
     return moveReleasingFile(
       get,
       set,
       source,
       () => trashResource(set, get, source, kind),
       () => ({ kind: "gone" }),
-      () => set({ resourceTrashError: UNSAVED_FILE_REASON }),
+      (reason) => set({ resourceTrashError: reason }),
     );
   },
 });

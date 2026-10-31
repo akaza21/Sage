@@ -12,12 +12,14 @@ import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import { resourceTabUpdate } from "./resourceTabs";
 import type { WorkbenchState } from "./store";
 import { orderedTabs } from "./tabState";
+import {
+  fileHasUnsavedChanges,
+  tabsShowing,
+  UNSAVED_FILE_REASON,
+} from "./unsavedFile";
 
 type GetState = StoreApi<WorkbenchState>["getState"];
 type SetState = StoreApi<WorkbenchState>["setState"];
-
-export const UNSAVED_FILE_REASON =
-  "Save or revert this File before renaming or recycling it.";
 
 /** The tabs released for a move, as they were, to settle them afterwards. */
 export interface ReleasedFile {
@@ -38,22 +40,6 @@ export type ReleaseOutcome =
   | { kind: "failed" }
   | { kind: "renamed"; target: ResourceRef }
   | { kind: "gone" };
-
-/** File and Diff tabs that show exactly this File. */
-function tabsShowing(tabs: readonly WorkbenchTab[], source: ResourceRef) {
-  return tabs.filter(
-    (tab) =>
-      (tab.kind === "file" || tab.kind === "diff") &&
-      sameResource(tab.resource, source),
-  );
-}
-
-export function fileHasUnsavedChanges(
-  state: Pick<WorkbenchState, "tabs">,
-  source: ResourceRef,
-): boolean {
-  return tabsShowing(state.tabs, source).some((tab) => tab.dirty);
-}
 
 /** The same conditions under which rename and recycle refuse to start. */
 function moveCannotStart(state: WorkbenchState, source: ResourceRef) {
@@ -243,18 +229,22 @@ async function reopenAt(
   });
 }
 
-/** Runs a move of `source` with its clean open tabs released around it. */
+/**
+ * Runs a move of `source` with its clean open tabs released around it. The
+ * stores load this module only when a move releases tabs, which keeps it off
+ * the startup path.
+ */
 export async function moveReleasingFile(
   get: GetState,
   set: SetState,
   source: ResourceRef,
   move: () => Promise<boolean>,
   moved: () => ReleaseOutcome,
-  reportUnsaved: () => void,
+  reportUnsaved: (reason: string) => void,
 ): Promise<boolean> {
   const released = await releaseCleanFile(get, set, source);
   if (released === "unsaved") {
-    reportUnsaved();
+    reportUnsaved(UNSAVED_FILE_REASON);
     return false;
   }
   const ok = await move();

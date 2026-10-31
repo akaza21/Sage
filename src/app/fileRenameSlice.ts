@@ -20,7 +20,6 @@ import {
 } from "../features/files/folderRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
-import { moveReleasingFile, UNSAVED_FILE_REASON } from "./openFileRelease";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import {
@@ -376,6 +375,7 @@ export const createFileRenameSlice: StateCreator<
         // The rename itself reports the invalid name.
         return renameProjectResource("file", source, basename);
       }
+      const { moveReleasingFile } = await import("./openFileRelease");
       return moveReleasingFile(
         get,
         set,
@@ -387,7 +387,7 @@ export const createFileRenameSlice: StateCreator<
           sameResource(get().selectedResource, target)
             ? { kind: "renamed", target }
             : { kind: "gone" },
-        () => set({ fileRenameError: UNSAVED_FILE_REASON }),
+        (reason) => set({ fileRenameError: reason }),
       );
     },
     renameProjectFolder: (source, basename) =>

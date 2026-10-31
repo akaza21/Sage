@@ -9,7 +9,7 @@ import type {
 } from "../domain/workbench";
 import { explorerSelectionAction } from "../features/files/explorerActionDialogController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { UNSAVED_FILE_REASON } from "./openFileRelease";
+import { UNSAVED_FILE_REASON } from "./unsavedFile";
 import { resourceTabUpdate } from "./resourceTabs";
 import { useWorkbenchStore } from "./store";
 

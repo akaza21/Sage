@@ -10,7 +10,7 @@ import {
 import {
   fileHasUnsavedChanges,
   UNSAVED_FILE_REASON,
-} from "../../app/openFileRelease";
+} from "../../app/unsavedFile";
 import { useWorkbenchStore, type WorkbenchState } from "../../app/store";
 import {
   parentResource,
