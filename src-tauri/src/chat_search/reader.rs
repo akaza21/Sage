@@ -12,7 +12,7 @@ pub(super) fn with_snapshot<ResultValue>(
     let reader = database.chat_search_reader()?;
     let locked;
     let connection = if let Some(reader) = reader.as_ref() {
-        reader
+        &**reader
     } else {
         locked = database.connection();
         &locked

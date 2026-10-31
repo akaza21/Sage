@@ -24,7 +24,6 @@ mod hash_tests;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,

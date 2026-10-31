@@ -1,4 +1,4 @@
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::{Transaction, params};
 
 fn first_line_title(prompt: &str) -> Option<String> {
     let line = prompt
@@ -22,31 +22,21 @@ pub(crate) fn auto_title_first_prompt_in(
     prompt: &str,
     now: i64,
 ) -> rusqlite::Result<()> {
-    let previous: Option<String> = transaction
-        .query_row(
-            "SELECT title FROM chats WHERE project_id=?1 AND id=?2
-         AND NOT EXISTS (SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 LIMIT 1)",
-            params![project_id, chat_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(previous) = previous else {
-        return Ok(());
-    };
-    let default_title = matches!(previous.as_str(), "Chat: Chat" | "Chat: New project")
-        || previous
-            .strip_prefix("Chat: New chat ")
-            .is_some_and(|suffix| {
-                !suffix.is_empty() && suffix.bytes().all(|character| character.is_ascii_digit())
-            });
-    if !default_title {
+    let eligible: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chats c
+         WHERE c.project_id=?1 AND c.id=?2 AND c.title_is_default=1
+         AND NOT EXISTS(SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 LIMIT 1))",
+        params![project_id, chat_id],
+        |row| row.get(0),
+    )?;
+    if !eligible {
         return Ok(());
     }
     let Some(title) = first_line_title(prompt) else {
         return Ok(());
     };
     transaction.execute(
-        "UPDATE chats SET title=?3,updated_at=?4 WHERE project_id=?1 AND id=?2",
+        "UPDATE chats SET title=?3,updated_at=?4,title_is_default=0 WHERE project_id=?1 AND id=?2",
         params![project_id, chat_id, title, now],
     )?;
     transaction.execute("UPDATE workbench_tabs SET title=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND kind='chat'",
@@ -81,11 +71,11 @@ mod tests {
     #[test]
     fn renames_only_an_untitled_first_prompt_and_rolls_back_with_the_turn() {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER);
+        connection.execute_batch("CREATE TABLE chats(id TEXT,project_id TEXT,title TEXT,updated_at INTEGER,title_is_default INTEGER);
             CREATE TABLE turns(project_id TEXT,chat_id TEXT);
-            CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER);
-            INSERT INTO chats VALUES('chat','project','Chat: Chat',0);
-            INSERT INTO workbench_tabs VALUES('chat','project','chat','Chat: Chat',0);").unwrap();
+            CREATE TABLE workbench_tabs(id TEXT,project_id TEXT,kind TEXT,title TEXT,updated_at INTEGER,metadata_json TEXT);
+            INSERT INTO chats VALUES('chat','project','Chat: Chat',0,1);
+            INSERT INTO workbench_tabs VALUES('chat','project','chat','Chat: Chat',0,'{}');").unwrap();
         {
             let transaction = connection.transaction().unwrap();
             auto_title_first_prompt_in(&transaction, "project", "chat", "Fix sidebar\nDetails", 1)
@@ -117,9 +107,56 @@ mod tests {
                 "UPDATE chats SET title='Chat: Chat'; INSERT INTO turns VALUES('project','chat');",
             )
             .unwrap();
+        connection
+            .execute("UPDATE chats SET title_is_default=1", [])
+            .unwrap();
         let transaction = connection.transaction().unwrap();
         auto_title_first_prompt_in(&transaction, "project", "chat", "Second prompt", 3).unwrap();
         transaction.commit().unwrap();
         assert_eq!(read(&connection), "Chat: Chat");
+    }
+    #[test]
+    fn manually_named_default_text_is_not_guessed_to_be_untitled() {
+        let root = std::env::temp_dir().join(format!("sage-manual-title-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database =
+            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let snapshot = database.bootstrap_snapshot().unwrap();
+        let chat = snapshot.active_tab_id.clone().unwrap();
+        database
+            .rename_chat(&crate::domain::RenameChatRequest {
+                project_id: project.id.clone(),
+                chat_id: chat.clone(),
+                title: "Chat".into(),
+                current_layout: crate::domain::ProjectLayoutRequest {
+                    project_id: project.id.clone(),
+                    tabs: snapshot.tabs,
+                    active_tab_id: snapshot.active_tab_id,
+                    selected_root_id: snapshot.selected_root_id,
+                    selected_resource: snapshot.selected_resource,
+                },
+            })
+            .unwrap();
+        let mut connection = database.write_connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        auto_title_first_prompt_in(
+            &transaction,
+            &project.id,
+            &chat,
+            "Do not replace my title",
+            1,
+        )
+        .unwrap();
+        let title: String = transaction
+            .query_row("SELECT title FROM chats WHERE id=?1", [&chat], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(title, "Chat: Chat");
+        drop(transaction);
+        drop(connection);
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

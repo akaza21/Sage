@@ -1,4 +1,4 @@
-//! Bounded concurrent live runtimes (AP-B B2).
+//! Bounded concurrent live runtimes.
 //!
 //! Each lane is one complete copy of the formerly singleton live-runtime
 //! authority: one runtime slot, one one-tree scheduler, its session

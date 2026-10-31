@@ -1,5 +1,5 @@
 //! Launchable production Pi runtime: the read-only RPC translator plus the
-//! curated native launch of an admitted Pi package (AP-B B3).
+//! curated native launch of an admitted Pi package.
 
 use std::sync::Arc;
 

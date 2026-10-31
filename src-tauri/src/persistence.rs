@@ -51,7 +51,7 @@ impl WalConvergenceReceipt {
 #[derive(Debug, Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
-    search_path: Option<Arc<PathBuf>>,
+    search_reader: Option<Arc<Mutex<Connection>>>,
     physical_storage: Arc<PhysicalStorage>,
     _live_path_anchor: Arc<migration::LivePathAnchor>,
     image_artifact_root: Option<Arc<PathBuf>>,
@@ -83,7 +83,19 @@ impl Database {
         });
         let database = Self {
             connection: Arc::new(Mutex::new(connection)),
-            search_path: (path != Path::new(":memory:")).then(|| Arc::new(path.to_path_buf())),
+            search_reader: if path == Path::new(":memory:") {
+                None
+            } else {
+                live_path_anchor.verify_path(path)?;
+                let reader = Connection::open_with_flags(
+                    path,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )?;
+                reader.busy_timeout(crate::chat_search::READER_BUSY_TIMEOUT)?;
+                live_path_anchor.verify_path(path)?;
+                Some(Arc::new(Mutex::new(reader)))
+            },
             physical_storage,
             _live_path_anchor: Arc::new(live_path_anchor),
             image_artifact_root,
@@ -114,17 +126,17 @@ impl Database {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub(crate) fn chat_search_reader(&self) -> AppResult<Option<Connection>> {
-        self.search_path
+    pub(crate) fn chat_search_reader(
+        &self,
+    ) -> AppResult<Option<std::sync::MutexGuard<'_, Connection>>> {
+        self.search_reader
             .as_ref()
-            .map(|path| {
-                let connection = Connection::open_with_flags(
-                    path.as_path(),
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
-                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-                )?;
-                connection.busy_timeout(std::time::Duration::from_millis(250))?;
-                Ok(connection)
+            .map(|reader| {
+                reader.try_lock().map_err(|_| {
+                    crate::error::AppError::ResourceLimit(
+                        "Chat search is already reading a snapshot".into(),
+                    )
+                })
             })
             .transpose()
     }
@@ -198,7 +210,7 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 19);
+        assert_eq!(migration_count, 20);
         assert_eq!(project_count, 0);
     }
 
@@ -398,5 +410,34 @@ mod tests {
         drop(clone);
         std::fs::rename(&path, &moved).unwrap();
         let _ = std::fs::remove_dir_all(directory);
+    }
+    #[test]
+    fn cached_search_reader_refuses_concurrent_search_without_waiting() {
+        let root =
+            std::env::temp_dir().join(format!("sage-search-reader-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = Database::open(&root.join("sage.db")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap();
+        let held = database.chat_search_reader().unwrap().unwrap();
+        let shared = database.clone();
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let result = crate::chat_search::search_project_chats(
+                &shared,
+                &crate::chat_search::ProjectChatSearchRequest {
+                    project_id: project.id,
+                    project_generation: 0,
+                    expected_transition_epoch: 0,
+                    query: String::new(),
+                },
+            );
+            send.send(result.is_err()).unwrap();
+        });
+        let refused = receive.recv_timeout(std::time::Duration::from_secs(1));
+        drop(held);
+        worker.join().unwrap();
+        assert_eq!(refused, Ok(true));
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -178,3 +178,30 @@ fn binding_invalidation_cancels_every_live_operation() {
         operation.settle(Ok(()));
     }
 }
+
+#[test]
+fn ephemeral_waiters_keep_their_own_settlement_when_live_work_finishes() {
+    struct SettleBoth(Mutex<Option<(ActiveCodexOperation, ActiveCodexOperation)>>);
+    impl CodexOperationCancellation for SettleBoth {
+        fn request_parent_shutdown_until(&self, _: Instant) -> Result<(), CodexDiscoveryRunError> {
+            let (ephemeral, live) = self.0.lock().unwrap().take().unwrap();
+            ephemeral.settle(Ok(()));
+            live.settle(Err(CodexDiscoveryRunError::Cleanup));
+            Ok(())
+        }
+    }
+    let gate = CodexOperationGate::new();
+    let live_prepared = gate.prepare_live().unwrap();
+    let live = gate.begin(&live_prepared).unwrap();
+    let prepared = gate.prepare().unwrap();
+    let ephemeral = gate.begin(&prepared).unwrap();
+    let cancellation = Arc::new(SettleBoth(Mutex::new(None)));
+    ephemeral
+        .register_cancellation(cancellation.clone())
+        .unwrap();
+    *cancellation.0.lock().unwrap() = Some((ephemeral, live));
+    assert_eq!(
+        gate.invalidate_ephemeral_and_wait_until(Instant::now() + Duration::from_secs(5)),
+        Ok(())
+    );
+}

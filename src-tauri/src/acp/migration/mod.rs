@@ -20,6 +20,7 @@ mod schema_upgrade;
 mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
+mod title_provenance;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
@@ -90,6 +91,14 @@ pub(crate) struct LivePathAnchor {
     _anchor: Option<platform::SqlitePathAnchor>,
 }
 
+impl LivePathAnchor {
+    pub(crate) fn verify_path(&self, path: &Path) -> AppResult<()> {
+        self._anchor
+            .as_ref()
+            .map_or(Ok(()), |anchor| anchor.verify_path(path))
+    }
+}
+
 impl OpenedDatabase {
     pub(crate) fn into_parts(self) -> (Connection, LivePathAnchor) {
         (self.connection, self.live_path_anchor)
@@ -120,6 +129,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         .map(|paths| MigrationLock::acquire(paths.parent()))
         .transpose()?;
     workspace_changes::apply(&mut opened.connection)?;
+    title_provenance::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -170,7 +180,7 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 => {
+        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20 => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -328,7 +338,7 @@ fn checkpoint_source(
 fn verify_current(connection: &Connection) -> AppResult<()> {
     if !matches!(
         fingerprint::classify_connection(connection)?,
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19
+        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20
     ) {
         return invalid("database did not reach an exact current schema");
     }

@@ -26,11 +26,18 @@ pub(super) fn execute_envelope<S: AcpStore>(
         workspace_capture::discard(&envelope);
         return;
     }
-    let result = envelope
-        .workspace_result
-        .take()
-        .unwrap_or(Ok(()))
-        .and_then(|()| store.commit(&envelope.mutations));
+    if let Some(Err(error)) = envelope.workspace_result.take() {
+        tracing::warn!(
+            ?error,
+            "Workspace capture failed; committing terminal turn without evidence"
+        );
+        crate::turn_workspace::discard_rejected_staging(
+            envelope.workspace_database.as_ref(),
+            &envelope.mutations,
+            &Err(error),
+        );
+    }
+    let result = store.commit(&envelope.mutations);
     let store_commit_unknown = matches!(&result, Err(StoreError::CommitUnknown));
     crate::turn_workspace::discard_rejected_staging(
         envelope.workspace_database.as_ref(),

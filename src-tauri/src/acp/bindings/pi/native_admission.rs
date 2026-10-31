@@ -1,4 +1,4 @@
-//! Production Pi admission (AP-B B3).
+//! Production Pi admission.
 //!
 //! Curated installation metadata admits the npm-global
 //! `@earendil-works/pi-coding-agent` package through Node over its JSONL RPC
@@ -141,10 +141,10 @@ impl AdmittedPiBinding {
         }
     }
 
-    /// Re-hashes both launch files; any change after admission is drift.
+    /// Revalidates both launch fingerprints through the shared metadata-keyed hash cache.
     pub(crate) fn revalidate(&self) -> Result<(), PiAdmissionUnavailable> {
         let same = |path: &PathBuf, expected: &str| {
-            crate::harness_discovery::sha256_file(path).as_deref() == Some(expected)
+            crate::harness_discovery::cached_sha256_file(path).as_deref() == Some(expected)
         };
         if same(&self.launch.entrypoint_path, &self.launch.entrypoint_sha256)
             && same(&self.launch.node_path, &self.launch.node_sha256)

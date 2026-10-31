@@ -15,12 +15,16 @@ pub(super) type Prepare = dyn Fn(&crate::persistence::Database, &[StoreMutation]
 /// Retain the envelope's existing journal reservation while preparing optional
 /// Git evidence away from the shared actor. No worker queue: saturation skips
 /// the optional capture and commits the turn normally.
+// Reserve a short commit window after bounded Git evidence collection.
+const TERMINAL_COMMIT_RESERVE_MS: u64 = 500;
+
 pub(super) fn defer(
     queue: &Arc<Queue>,
     envelope: Envelope,
     prepare: &Arc<Prepare>,
 ) -> Option<Envelope> {
-    static WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+    static WORKERS: tokio::sync::Semaphore =
+        tokio::sync::Semaphore::const_new(crate::turn_workspace::MAX_CONCURRENT_CAPTURES);
     if envelope.workspace_result.is_some()
         || envelope.workspace_database.is_none()
         || !crate::turn_workspace::needs_terminal_capture(&envelope.mutations)
@@ -36,8 +40,8 @@ pub(super) fn defer(
             envelope
                 .deadline_millis
                 .saturating_sub(now_millis())
-                .saturating_sub(500)
-                .min(500),
+                .saturating_sub(TERMINAL_COMMIT_RESERVE_MS)
+                .min(crate::turn_workspace::CAPTURE_BUDGET_MILLIS),
         );
         prepare(
             envelope

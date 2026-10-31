@@ -44,7 +44,7 @@ pub(super) fn attach_rail_chats(
          FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
-         WHERE w.project_id = ?1 AND w.kind = 'chat' AND w.id NOT GLOB 'side-*'
+         WHERE w.project_id = ?1 AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0
          ORDER BY w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id
          LIMIT ?2",
     )?;

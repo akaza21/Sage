@@ -13,6 +13,8 @@ use version::class_for_version;
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 
 pub(super) const V10_LEGACY_SESSION_EVENTS: &str = "CREATE TABLE session_events (\n  id TEXT PRIMARY KEY,\n  session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,\n  sequence INTEGER NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  UNIQUE (session_id, sequence)\n) STRICT;\nCREATE INDEX idx_session_events_order\n  ON session_events(session_id, sequence);";
+// One sentinel row detects migration histories newer than this binary.
+const MAX_SCHEMA_VERSION: usize = 20;
 const MAX_SCHEMA_OBJECTS: usize = 128;
 const MAX_SCHEMA_BYTES: usize = 1_048_576;
 const MAX_COLUMNS: usize = 128;
@@ -42,6 +44,7 @@ pub(super) enum SchemaClass {
     CurrentV17,
     CurrentV18,
     CurrentV19,
+    CurrentV20,
 }
 
 impl SchemaClass {
@@ -118,11 +121,11 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
         return invalid("nonempty database has no exact Sage migration schema");
     }
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 20")?
-        .query_map([], |row| row.get::<_, i64>(0))?
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT ?1")?
+        .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     if versions.is_empty()
-        || versions.len() > 19
+        || versions.len() > MAX_SCHEMA_VERSION
         || versions
             .iter()
             .enumerate()

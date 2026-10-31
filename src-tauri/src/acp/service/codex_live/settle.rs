@@ -1,4 +1,4 @@
-//! B1: a turn whose host failed closed is always settled, and its lane freed.
+//!  a turn whose host failed closed is always settled, and its lane freed.
 //!
 //! A harness can refuse a prompt before writing it (for example Claude Code
 //! reporting that sign-in is required). The runtime host then fails closed and
@@ -19,7 +19,18 @@ impl Lane<'_> {
             "Harness refused the prompt; settling the turn and releasing the runtime"
         );
         self.retain_live_failure_recovery(owner, host, LiveHostRecoveryPhase::SendEffect);
-        let _ = self.shutdown_codex_recovery(close_deadline());
+        let recover = || {
+            let _ = self.shutdown_codex_recovery(close_deadline());
+        };
+        // Hand this thread to Tokio's blocking pool while preserving synchronous
+        // durable settlement; unrelated async commands can keep making progress.
+        if tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        }) {
+            tokio::task::block_in_place(recover);
+        } else {
+            recover();
+        }
     }
 
     pub(super) fn host_failed_closed(&self, host: &Arc<RuntimeHost>) -> bool {

@@ -503,7 +503,9 @@
         "tools/footprint-control/frontend/styles.css",
         "tools/footprint-control/src/main.rs",
         "tools/footprint-control/tauri.conf.json",
-        "tools/footprint-control/tauri.windows.package.conf.json"
+        "tools/footprint-control/tauri.windows.package.conf.json",
+        "src-tauri/src/acp/bindings/registry/tests.rs",
+        "src-tauri/src/acp/bindings/registry/pi_native_tests.rs"
       ]
     }
   ],

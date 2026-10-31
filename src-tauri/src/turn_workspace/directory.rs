@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, OpenOptions, ReadDir},
+    fs::{File, OpenOptions},
     path::{Component, Path, PathBuf},
 };
 
@@ -43,14 +43,6 @@ impl Directory {
         crate::workspace::leaf_identity(file, &file.metadata().ok()?)
             .ok()
             .map(|identity| identity.stable_bytes())
-    }
-
-    pub(super) fn entries(&self) -> Option<ReadDir> {
-        #[cfg(unix)]
-        let path = descriptor_path(self.anchors.last()?);
-        #[cfg(not(unix))]
-        let path = self.path.clone();
-        std::fs::read_dir(path).ok()
     }
 
     pub(super) fn metadata(&self, relative: &Path) -> Option<Option<std::fs::Metadata>> {
@@ -174,7 +166,12 @@ mod tests {
         .unwrap();
         let anchor = Directory::root(&root).unwrap();
         let child = anchor.child(Path::new("child")).unwrap();
-        assert_eq!(child.entries().unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_dir(descriptor_path(child.anchors.last().unwrap()))
+                .unwrap()
+                .count(),
+            1
+        );
         std::fs::rename(root.join("child"), root.join("old")).unwrap();
         std::os::unix::fs::symlink(root.join("outside"), root.join("child")).unwrap();
         assert!(anchor.metadata(Path::new("child/file")).is_none());

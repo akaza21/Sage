@@ -7,7 +7,9 @@ impl Lane<'_> {
         project: &crate::acp::contract::SageProjectId,
         chat: &crate::acp::contract::SageChatId,
     ) -> Result<(), CodexSessionError> {
-        if !chat.as_str().starts_with("side-") {
+        if !crate::side_chat_storage::is_temporary(&self.database.connection(), chat.as_str())
+            .map_err(|_| CodexSessionError::Recovery)?
+        {
             return Err(CodexSessionError::Intent);
         }
         self.revoke_browser_chat(project, chat);

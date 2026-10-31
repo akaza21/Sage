@@ -1,4 +1,4 @@
-//! Pi launch discovery (AP-B B3): the npm-global Pi package and the Node
+//! Pi launch discovery: the npm-global Pi package and the Node
 //! runtime that hosts its `dist/cli.js`. Paths stay native-only.
 
 use std::path::{Path, PathBuf};

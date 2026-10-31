@@ -25,6 +25,14 @@ pub(crate) fn remember(
     if exists {
         return Ok(false);
     }
+    let session_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE id=?1)",
+        [session],
+        |row| row.get(0),
+    )?;
+    if !session_exists {
+        return Ok(false);
+    }
     let active: i64 = transaction.query_row(
         "SELECT COUNT(*) FROM acp_turn_workspace_changes WHERE result_json IS NULL",
         [],
@@ -63,6 +71,15 @@ pub(crate) fn publish_baseline(
         .and_then(|mark| serde_json::to_string(&mark).ok())
         .filter(|json| json.len() <= MAX_PAYLOAD_BYTES / 2);
     connection.execute("UPDATE acp_turn_workspace_changes SET baseline_json=CASE WHEN length(CAST(?3 AS BLOB))+length(CAST(root_path AS BLOB))+length(CAST(root_id AS BLOB))<=payload_bytes/2 THEN ?3 ELSE NULL END WHERE session_id=?1 AND client_intent_id=?2 AND result_json IS NULL AND terminal_json IS NULL", params![session,key,json])?;
+    Ok(())
+}
+
+pub(crate) fn publish_baseline_failure(
+    connection: &Connection,
+    session: &str,
+    key: &str,
+) -> Result<(), StoreError> {
+    connection.execute("UPDATE acp_turn_workspace_changes SET baseline_json=?3 WHERE session_id=?1 AND client_intent_id=?2 AND result_json IS NULL AND terminal_json IS NULL", params![session,key,super::FAILED_BASELINE_JSON])?;
     Ok(())
 }
 
@@ -118,7 +135,7 @@ pub(crate) fn settle_terminal(
         } else {
             terminal
                 .and_then(|json| serde_json::from_str(&json).ok())
-                .unwrap_or_else(TurnWorkspaceChanges::untracked)
+                .unwrap_or_else(TurnWorkspaceChanges::incomplete)
         };
         let mut json = serde_json::to_string(&changes)
             .map_err(|_| StoreError::Corrupt("workspace summary encoding"))?;

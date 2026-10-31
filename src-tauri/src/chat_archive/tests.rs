@@ -537,3 +537,64 @@ fn refuses_to_archive_the_last_chat_on_a_non_active_project() {
     assert!(matches!(error, AppError::InvalidRequest(_)));
     fs::remove_dir_all(base).unwrap();
 }
+
+#[test]
+fn untouched_chat_keeps_first_prompt_title_after_archive_restore_and_reopen() {
+    let root = std::env::temp_dir().join(format!("sage-chat-title-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("sage.db");
+    let database = Database::open(&path).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let initial = database.bootstrap_snapshot().unwrap();
+    let chat = database
+        .create_chat(
+            &request(
+                &project.id,
+                initial.active_tab_id.as_deref().unwrap(),
+                &initial,
+            )
+            .current_layout,
+        )
+        .unwrap();
+    database
+        .archive_chat(&request(
+            &project.id,
+            &chat,
+            &database.bootstrap_snapshot().unwrap(),
+        ))
+        .unwrap();
+    drop(database);
+    let database = Database::open(&path).unwrap();
+    database
+        .restore_chat(&request(
+            &project.id,
+            &chat,
+            &database.bootstrap_snapshot().unwrap(),
+        ))
+        .unwrap();
+    {
+        let mut connection = database.write_connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        crate::chat_lifecycle::auto_title_first_prompt_in(
+            &transaction,
+            &project.id,
+            &chat,
+            "Restored work",
+            10,
+        )
+        .unwrap();
+        transaction.commit().unwrap();
+    }
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    assert_eq!(
+        snapshot
+            .tabs
+            .iter()
+            .find(|tab| tab.id == chat)
+            .unwrap()
+            .title,
+        "Chat: Restored work"
+    );
+    drop(database);
+    fs::remove_dir_all(root).unwrap();
+}

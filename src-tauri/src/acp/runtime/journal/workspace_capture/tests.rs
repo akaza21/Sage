@@ -481,3 +481,33 @@ impl Drop for CaptureActor {
         );
     }
 }
+
+#[test]
+fn optional_capture_errors_and_panics_never_prevent_terminal_commit() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    for panic in [false, true] {
+        let (committed, commits) = sync_channel(1);
+        let (handle, runner) = JournalHandle::new(RecordingStore(committed));
+        let handle = handle.with_workspace_tracking(capture_database());
+        let ticket = handle
+            .enqueue_one(JournalLane::Control, terminal("slow"), 0)
+            .unwrap();
+        let (cleanup, started, exited) = CaptureActor::start(
+            &handle,
+            runner,
+            Arc::new(move |_, _, _| {
+                assert!(!panic, "injected capture panic");
+                Err(StoreError::Corrupt("injected capture failure"))
+            }),
+        );
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        handle.close_when_drained();
+        cleanup.release();
+        assert!(ticket.blocking_committed().is_ok());
+        assert_eq!(
+            commits.recv_timeout(Duration::from_secs(5)).unwrap(),
+            "slow:terminal"
+        );
+        exited.recv_timeout(Duration::from_secs(5)).unwrap();
+    }
+}

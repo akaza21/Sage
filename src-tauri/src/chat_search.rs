@@ -1,3 +1,6 @@
+// Search must not wait behind long writers before its progress deadline starts.
+pub(crate) const READER_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+
 use std::{
     collections::HashMap,
     time::{Duration, Instant},
@@ -230,7 +233,7 @@ fn load_chats(
         "SELECT c.id,c.title,EXISTS(
            SELECT 1 FROM chat_tabs a WHERE a.project_id=c.project_id AND a.chat_id=c.id
          )
-         FROM chats c WHERE c.project_id=?1 AND c.id NOT GLOB 'side-*'
+         FROM chats c WHERE c.project_id=?1 AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
          ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC LIMIT ?2",
     )?;
     let rows = statement.query_map(params![project_id, limit], |row| {

@@ -25,7 +25,7 @@ impl Lane<'_> {
             Err(crate::acp::runtime::HostError::SignInRequired) => {
                 // The harness refused the prompt before any byte was written
                 // and its host failed closed. Settle the turn and free the
-                // lane now instead of leaving an uncancellable turn (B1).
+                // lane now instead of leaving an uncancellable turn .
                 self.settle_refused_prompt(owner, host);
                 Err(crate::acp::service::PromptSendError::unknown(
                     CodexSessionError::SignInRequired,

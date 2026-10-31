@@ -90,3 +90,20 @@ fn an_out_of_range_pi_is_unavailable_with_a_reason() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn installation_admission_does_not_invent_session_model_or_config_counts() {
+    let (discovery, root) = discovered("0.74.2");
+    let registry = crate::acp::bindings::registry::BindingRegistry::default();
+    registry.pi_admission().apply_discovery(discovery);
+    let record = registry.resolve(PI_BINDING_ID).unwrap();
+    let capabilities = record.supported_capabilities().unwrap();
+    assert_eq!(
+        (capabilities.model_count, capabilities.config_count),
+        (0, 0)
+    );
+    assert!(record.supported_capabilities().is_ok());
+    std::fs::write(root.join("node.exe"), b"changed synthetic node").unwrap();
+    assert!(record.supported_capabilities().is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}

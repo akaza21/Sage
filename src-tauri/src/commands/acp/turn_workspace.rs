@@ -1,4 +1,4 @@
-//! AP-B B5 IPC: a terminal turn's workspace (Git) changes.
+//! IPC: a terminal turn's workspace (Git) changes.
 
 use rusqlite::OptionalExtension;
 
@@ -39,46 +39,77 @@ pub struct TurnWorkspaceChangesResponse {
 /// Captures the workspace mark a prompt's turn is later diffed against.
 pub(super) async fn mark_before_prompt(
     state: &AppState,
-    transition: &crate::state::ActiveProjectContext<'_>,
-    client_intent_id: &crate::acp::contract::ClientIntentId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-) -> Result<(), AcpIpcError> {
-    let root = state
+    transition: crate::state::ActiveProjectContext<'_>,
+    client_intent_id: &ClientIntentId,
+    session_id: &SageAgentSessionId,
+) {
+    mark_before_prompt_with(
+        state,
+        transition,
+        client_intent_id,
+        session_id,
+        |path| async move { turn_workspace::capture_baseline(&path).await },
+    )
+    .await;
+}
+
+async fn mark_before_prompt_with<
+    F: std::future::Future<Output = turn_workspace::BaselineCapture>,
+>(
+    state: &AppState,
+    transition: crate::state::ActiveProjectContext<'_>,
+    client_intent_id: &ClientIntentId,
+    session_id: &SageAgentSessionId,
+    capture: impl FnOnce(std::path::PathBuf) -> F,
+) {
+    let root = state.database.selected_project_root_authority(&transition);
+    // Capturing Git evidence is optional and must never own the project lock.
+    drop(transition);
+    let Ok(root) = root else { return };
+    let registered = state
         .database
-        .selected_project_root_authority(transition)
-        .map_err(|_| AcpIpcError::Unavailable {
-            reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
-            message: safe_message("The selected project root is unavailable."),
-        })?;
-    let registered = {
-        let mut connection =
-            state
-                .database
-                .write_connection()
-                .map_err(|_| AcpIpcError::RecoveryRequired {
-                    message: safe_message("Workspace tracking could not be saved."),
-                })?;
-        turn_workspace::remember(
-            &mut connection,
-            session_id.as_str(),
-            client_intent_id.as_str(),
-            root.scope().2.as_str(),
-            root.as_path(),
-            None,
-        )
-        .map_err(store_error)?
-    };
-    if registered {
-        let mark = turn_workspace::capture(root.as_path()).await;
-        turn_workspace::publish_baseline(
-            &state.database.connection(),
-            session_id.as_str(),
-            client_intent_id.as_str(),
-            mark,
-        )
-        .map_err(store_error)?;
+        .write_connection()
+        .ok()
+        .and_then(|mut connection| {
+            turn_workspace::remember(
+                &mut connection,
+                session_id.as_str(),
+                client_intent_id.as_str(),
+                root.scope().2.as_str(),
+                root.as_path(),
+                None,
+            )
+            .ok()
+        });
+    if registered != Some(true) {
+        return;
     }
-    Ok(())
+    let captured = capture(root.as_path().to_path_buf()).await;
+    let connection = state.database.connection();
+    let result = match captured {
+        turn_workspace::BaselineCapture::Captured(mark) => turn_workspace::publish_baseline(
+            &connection,
+            session_id.as_str(),
+            client_intent_id.as_str(),
+            Some(*mark),
+        ),
+        turn_workspace::BaselineCapture::Unsupported => turn_workspace::publish_baseline(
+            &connection,
+            session_id.as_str(),
+            client_intent_id.as_str(),
+            None,
+        ),
+        turn_workspace::BaselineCapture::Failed => turn_workspace::publish_baseline_failure(
+            &connection,
+            session_id.as_str(),
+            client_intent_id.as_str(),
+        ),
+    };
+    drop(connection);
+    if let Err(error) = result {
+        tracing::warn!(?error, "Workspace baseline was not saved");
+        forget_unprepared(state, session_id, client_intent_id);
+    }
 }
 
 #[tauri::command]
@@ -131,3 +162,6 @@ pub async fn get_acp_turn_workspace_changes(
         changes: changes.changes,
     })
 }
+
+#[cfg(test)]
+mod tests;

@@ -14,6 +14,7 @@ use crate::acp::{
 const LIVE_OPERATIONS: usize = super::LIVE_RUNTIME_LANES;
 
 mod admission;
+mod invalidation;
 use admission::{AdmissionLease, AdmissionState};
 
 pub(super) trait CodexOperationCancellation: Send + Sync {
@@ -51,9 +52,12 @@ enum OperationClass {
     Live,
 }
 
+type Settlement = Arc<Mutex<Option<Result<(), CodexDiscoveryRunError>>>>;
+
 struct OperationSlot {
     id: u64,
     class: OperationClass,
+    settlement: Settlement,
     cancel_requested: bool,
     cancellation: Option<Arc<dyn CodexOperationCancellation>>,
 }
@@ -63,7 +67,6 @@ struct ActiveState {
     next_id: u64,
     // Bounded: at most `LIVE_OPERATIONS` operations, at most one ephemeral.
     running: Vec<OperationSlot>,
-    settlement: Option<Result<(), CodexDiscoveryRunError>>,
 }
 
 impl ActiveState {
@@ -217,8 +220,8 @@ impl CodexOperationGate {
             class: prepared.class,
             cancel_requested: false,
             cancellation: None,
+            settlement: Arc::new(Mutex::new(None)),
         });
-        active.settlement = None;
         Ok(ActiveCodexOperation {
             gate: Arc::clone(self),
             id,
@@ -258,174 +261,6 @@ impl CodexOperationGate {
 
     pub(super) fn current_epoch(&self) -> u64 {
         self.invalidation_epoch.load(Ordering::Acquire)
-    }
-
-    pub(super) fn invalidate(&self) {
-        let _ = self.invalidate_active().1;
-    }
-
-    #[cfg(test)]
-    pub(super) fn invalidate_and_wait(
-        &self,
-        timeout: Duration,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        let (was_running, cancellation) = self.invalidate_active();
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or(CodexDiscoveryRunError::Timeout)?;
-        cancellation.and(self.wait_until(deadline, was_running, None))
-    }
-
-    /// Project replacement owns this absolute deadline before cancellation is
-    /// dispatched. Invalidation and idle settlement both consume that one
-    /// budget; no later layer may mint a fresh relative timeout.
-    pub(super) fn invalidate_ephemeral_and_wait_until(
-        &self,
-        deadline: Instant,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        if Instant::now() >= deadline {
-            return Err(CodexDiscoveryRunError::Timeout);
-        }
-        self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-        let (was_running, cancellation) = {
-            let mut active = self
-                .active
-                .lock()
-                .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-            Self::request_ephemeral_cancel(&mut active)
-        };
-        // Cancellation may call back into gate observation, so it must run
-        // after releasing `active` and under the same caller-owned deadline.
-        if let Some(cancellation) = cancellation {
-            cancellation.request_parent_shutdown_until(deadline)?;
-        }
-        self.wait_until(deadline, was_running, Some(OperationClass::Ephemeral))
-    }
-
-    pub(super) fn shutdown(&self, timeout: Duration) -> Result<(), CodexDiscoveryRunError> {
-        self.shutting_down.store(true, Ordering::Release);
-        // Live sessions are parked by runtime shutdown. Waiting on them here
-        // spends the whole close budget before park can run.
-        let (was_running, cancellation) = self.invalidate_ephemeral();
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or(CodexDiscoveryRunError::Timeout)?;
-        cancellation.and(self.wait_until(deadline, was_running, Some(OperationClass::Ephemeral)))
-    }
-
-    fn request_ephemeral_cancel(
-        active: &mut ActiveState,
-    ) -> (bool, Option<Arc<dyn CodexOperationCancellation>>) {
-        match active
-            .running
-            .iter_mut()
-            .find(|slot| slot.class == OperationClass::Ephemeral)
-        {
-            Some(slot) => {
-                slot.cancel_requested = true;
-                (true, slot.cancellation.clone())
-            }
-            None => (false, None),
-        }
-    }
-
-    fn invalidate_ephemeral(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-        let (was_running, cancellation) = match self.active.lock() {
-            Ok(mut active) => Self::request_ephemeral_cancel(&mut active),
-            Err(_) => return (true, Err(CodexDiscoveryRunError::Cleanup)),
-        };
-        let deadline = Instant::now() + Duration::from_millis(1);
-        let result = cancellation.map_or(Ok(()), |value| {
-            value.request_parent_shutdown_until(deadline)
-        });
-        (was_running, result)
-    }
-
-    /// Invalidates the admitted binding: every running operation, ephemeral
-    /// or live, is asked to stop.
-    fn invalidate_active(&self) -> (bool, Result<(), CodexDiscoveryRunError>) {
-        let cancellations: Vec<_> = match self.active.lock() {
-            Ok(mut active) => {
-                self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-                if active.running.is_empty() {
-                    return (false, Ok(()));
-                }
-                active
-                    .running
-                    .iter_mut()
-                    .map(|slot| {
-                        slot.cancel_requested = true;
-                        slot.cancellation.clone()
-                    })
-                    .collect()
-            }
-            Err(_) => {
-                self.invalidation_epoch.fetch_add(1, Ordering::AcqRel);
-                return (true, Err(CodexDiscoveryRunError::Cleanup));
-            }
-        };
-        let deadline = Instant::now() + Duration::from_millis(1);
-        let result = cancellations
-            .into_iter()
-            .flatten()
-            .map(|cancellation| cancellation.request_parent_shutdown_until(deadline))
-            .fold(Ok(()), Result::and);
-        (true, result)
-    }
-
-    /// Waits until no operation of `class` (any class when `None`) runs.
-    fn wait_until(
-        &self,
-        deadline: Instant,
-        require_settlement: bool,
-        class: Option<OperationClass>,
-    ) -> Result<(), CodexDiscoveryRunError> {
-        if !require_settlement {
-            return Ok(());
-        }
-        let busy = |active: &ActiveState| match class {
-            Some(class) => active.has(class),
-            None => !active.running.is_empty(),
-        };
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-        while busy(&active) {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(CodexDiscoveryRunError::Timeout);
-            }
-            let (next, wait) = self
-                .active_changed
-                .wait_timeout(active, remaining)
-                .map_err(|_| CodexDiscoveryRunError::Cleanup)?;
-            active = next;
-            if wait.timed_out() && busy(&active) {
-                return Err(CodexDiscoveryRunError::Timeout);
-            }
-        }
-        active
-            .settlement
-            .take()
-            .unwrap_or(Err(CodexDiscoveryRunError::Cleanup))
-    }
-
-    fn finish_active(&self, id: u64, settlement: Result<(), CodexDiscoveryRunError>) {
-        let mut active = match self.active.lock() {
-            Ok(active) => active,
-            Err(poisoned) => {
-                let mut active = poisoned.into_inner();
-                active.running.retain(|slot| slot.id != id);
-                active.settlement = Some(Err(CodexDiscoveryRunError::Cleanup));
-                self.active_changed.notify_all();
-                return;
-            }
-        };
-        active.running.retain(|slot| slot.id != id);
-        active.settlement = Some(settlement);
-        self.active_changed.notify_all();
     }
 }
 

@@ -413,8 +413,9 @@ fn capture_skips_dependencies_and_ignored_directories_and_fails_closed_at_the_wa
     );
     std::fs::write(root.join(".gitignore"), "ignored/\n").unwrap();
     for directory in [
-        "node_modules/pkg",
+        "Node_Modules/pkg",
         "nested/node_modules/pkg",
+        "nested/.GIT/objects",
         "ignored/build",
     ] {
         std::fs::create_dir_all(root.join(directory)).unwrap();
@@ -430,7 +431,8 @@ fn capture_skips_dependencies_and_ignored_directories_and_fails_closed_at_the_wa
             mark.entries.keys().map(String::as_str).collect::<Vec<_>>(),
             [".gitignore", "visible.txt"]
         );
-        assert!(capture::capture_with_limit(&root, 2).await.is_none());
+        assert!(capture::capture_with_limit(&root, 2).await.is_some());
+        assert!(capture::capture_with_limit(&root, 1).await.is_none());
     });
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -503,5 +505,26 @@ fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
             }
         ]
     );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn non_git_baseline_is_unsupported_while_unreadable_root_is_failed() {
+    let root = temp_root();
+    tauri::async_runtime::block_on(async {
+        assert!(matches!(
+            capture_baseline(&root).await,
+            BaselineCapture::Unsupported
+        ));
+        assert!(matches!(
+            capture_baseline(&root.join("missing")).await,
+            BaselineCapture::Failed
+        ));
+        std::fs::write(root.join(".git"), "invalid Git metadata").unwrap();
+        assert!(matches!(
+            capture_baseline(&root).await,
+            BaselineCapture::Failed
+        ));
+    });
     std::fs::remove_dir_all(root).unwrap();
 }

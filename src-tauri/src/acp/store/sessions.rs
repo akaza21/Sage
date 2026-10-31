@@ -166,7 +166,7 @@ pub(crate) fn activate_session(
         }
     };
     let head:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2 AND session_id=?3)",params![command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str()],|row|row.get(0))?;
-    // Bounded concurrency (AP-B B2): at most `operational_live_trees` live
+    // Bounded concurrency: at most `operational_live_trees` live
     // epochs exist at once, and never two for one session.
     let (open, open_for_session): (i64, i64) = transaction.query_row(
         "SELECT COUNT(*), COALESCE(SUM(session_id=?1),0) FROM session_runtime_epochs

@@ -154,11 +154,16 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Choose a supported access mode before sending."),
         })
     })?;
-    // B5: shell edits never reach harness fileChange events, so the turn's
-    // workspace changes are diffed against this mark once it is terminal.
-    super::turn_workspace::mark_before_prompt(state, &transition, &client_intent_id, &session_id)
-        .await
-        .map_err(prompt_not_dispatched)?;
+    super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
+        .await;
+    // Capture can outlive a project switch. Reacquire authority before dispatch.
+    let _transition = match lock_acp_context(state, &project_id, project_generation).await {
+        Ok(transition) => transition,
+        Err(error) => {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            return Err(prompt_not_dispatched(error));
+        }
+    };
     let tracked_session = session_id.clone();
     let tracked_intent = client_intent_id.clone();
     let dispatch = state

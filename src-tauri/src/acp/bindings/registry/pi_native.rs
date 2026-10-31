@@ -1,4 +1,4 @@
-//! Curated registry record for the production, read-only Pi binding (B3).
+//! Curated registry record for the production, read-only Pi binding .
 
 use std::sync::Arc;
 
@@ -76,7 +76,8 @@ fn capabilities(
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
-        model_count: 2,
-        config_count: 2,
+        // Counts arrive from the native session handshake, not installation metadata.
+        model_count: 0,
+        config_count: 0,
     })
 }

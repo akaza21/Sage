@@ -331,3 +331,64 @@ fn terminal_summary_only_releases_reserved_payload_even_at_the_global_limit() {
         TurnWorkspaceChanges::untracked()
     );
 }
+
+#[test]
+fn absent_session_does_not_reserve_workspace_payload() {
+    let root = root();
+    let mut database = connection(&root.join("ledger.sqlite"));
+    assert!(!remember(&mut database, "absent", "intent", "root", &root, None).unwrap());
+    let usage: i64 = database
+        .query_row(
+            "SELECT shared_payload_bytes FROM acp_store_usage",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(usage, 0);
+    assert_eq!(
+        database
+            .query_row(
+                "SELECT COUNT(*) FROM acp_turn_workspace_changes",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    drop(database);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_baseline_is_incomplete_but_unsupported_workspace_has_no_notice() {
+    let mut connection = connection(Path::new(":memory:"));
+    remember(
+        &mut connection,
+        "a",
+        "unsupported",
+        "root",
+        Path::new("repo"),
+        None,
+    )
+    .unwrap();
+    terminal(&mut connection, "a", "unsupported");
+    assert_eq!(
+        load(&connection, "a", "unsupported", "root").unwrap(),
+        TurnWorkspaceChanges::untracked()
+    );
+    remember(
+        &mut connection,
+        "a",
+        "failed",
+        "root",
+        Path::new("repo"),
+        None,
+    )
+    .unwrap();
+    publish_baseline_failure(&connection, "a", "failed").unwrap();
+    terminal(&mut connection, "a", "failed");
+    assert_eq!(
+        load(&connection, "a", "failed", "root").unwrap(),
+        TurnWorkspaceChanges::incomplete()
+    );
+}

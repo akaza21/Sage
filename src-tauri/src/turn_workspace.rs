@@ -1,4 +1,4 @@
-//! AP-B B5: a turn's file changes from the workspace's Git state.
+//! a turn's file changes from the workspace's Git state.
 //!
 //! Harness `fileChange` events miss edits made by shell commands. Before a
 //! prompt is dispatched Sage records a bounded fingerprint of the root's dirty
@@ -12,14 +12,24 @@ use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
 
 /// Same cap as the WebView's Git changes list.
 pub(crate) const MAX_TURN_WORKSPACE_CHANGES: usize = 300;
+// Optional Git evidence has one short budget at either end of a turn.
+pub(crate) const CAPTURE_BUDGET_MILLIS: u64 = 2_000;
+// One capture per admitted live runtime, with no waiting queue.
+pub(crate) const MAX_CONCURRENT_CAPTURES: usize =
+    crate::acp::limits::LIMITS.process.operational_live_trees as usize;
 mod capture;
 mod directory;
 mod history;
 mod ledger;
 mod terminal_capture;
-pub(crate) use capture::{capture, capture_after};
+// A durable failure marker distinguishes missing evidence from unsupported workspaces.
+const FAILED_BASELINE_JSON: &str = r#"{"captureFailed":true}"#;
+#[cfg(test)]
+pub(crate) use capture::capture;
+pub(crate) use capture::{BaselineCapture, capture_after, capture_baseline};
 pub(crate) use ledger::{
-    forget_unprepared, invalidate_active, load, publish_baseline, remember, settle_terminal,
+    forget_unprepared, invalidate_active, load, publish_baseline, publish_baseline_failure,
+    remember, settle_terminal,
 };
 pub(crate) use terminal_capture::discard_rejected_staging;
 #[cfg(test)]
@@ -80,6 +90,13 @@ pub(crate) struct TurnWorkspaceChanges {
 }
 
 impl TurnWorkspaceChanges {
+    pub(crate) fn incomplete() -> Self {
+        Self {
+            truncated: true,
+            ..Self::untracked()
+        }
+    }
+
     pub(crate) fn untracked() -> Self {
         Self {
             tracked: false,

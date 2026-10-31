@@ -13,6 +13,7 @@ struct CaptureJob {
     root: String,
     before: Option<WorkspaceMark>,
     ambiguous: bool,
+    baseline_failed: bool,
 }
 
 type TerminalScope<'a> = (&'a str, &'a str, &'a str, u64, Option<&'a str>);
@@ -123,6 +124,7 @@ fn pending(connection: &Connection, session: &str) -> Result<Vec<CaptureJob>, St
                 session: session.to_owned(),
                 key: row.get(0)?,
                 root: row.get(1)?,
+                baseline_failed: baseline.as_deref() == Some(super::FAILED_BASELINE_JSON),
                 before: baseline.and_then(|json| serde_json::from_str(&json).ok()),
                 ambiguous: row.get(3)?,
             })
@@ -135,15 +137,25 @@ fn pending(connection: &Connection, session: &str) -> Result<Vec<CaptureJob>, St
 }
 
 fn snapshot(job: &CaptureJob, budget: Duration) -> Result<String, StoreError> {
-    let changes = if job.ambiguous {
+    let changes = if job.baseline_failed {
+        TurnWorkspaceChanges::incomplete()
+    } else if job.ambiguous {
         TurnWorkspaceChanges::untracked()
     } else if let Some(before) = &job.before {
         let root = job.root.clone();
         let baseline = before.clone();
         let now = bounded_snapshot(budget, move || {
-            tauri::async_runtime::block_on(capture_after(std::path::Path::new(&root), &baseline))
+            tauri::async_runtime::block_on(async {
+                tokio::time::timeout(
+                    budget,
+                    capture_after(std::path::Path::new(&root), &baseline),
+                )
+                .await
+                .ok()
+                .flatten()
+            })
         });
-        now.map_or_else(TurnWorkspaceChanges::untracked, |now| {
+        now.map_or_else(TurnWorkspaceChanges::incomplete, |now| {
             diff_marks(before, &now)
         })
     } else {
@@ -160,7 +172,9 @@ fn bounded_snapshot(
         std::sync::OnceLock::new();
     bounded_snapshot_with(
         WORKERS
-            .get_or_init(|| std::sync::Arc::new(tokio::sync::Semaphore::new(4)))
+            .get_or_init(|| {
+                std::sync::Arc::new(tokio::sync::Semaphore::new(super::MAX_CONCURRENT_CAPTURES))
+            })
             .clone(),
         budget,
         work,
@@ -308,6 +322,7 @@ mod tests {
             root: "root".to_owned(),
             before: None,
             ambiguous: false,
+            baseline_failed: false,
         };
         save(&connection, &job, "{}").unwrap();
         let result: (bool,i64) = connection.query_row("SELECT terminal_json IS NULL,length(baseline_json)+length(root_path)+length(root_id)+coalesce(length(terminal_json),0) FROM acp_turn_workspace_changes",[],|row| Ok((row.get(0)?,row.get(1)?))).unwrap();

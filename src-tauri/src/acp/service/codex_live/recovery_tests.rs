@@ -1656,3 +1656,45 @@ fn cancel_intent(owner: &RuntimeOwner) -> crate::acp::runtime::HostCancelIntent 
         now_millis: crate::persistence::now_millis(),
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
+    let (service, owner) = ready_runtime_fixture("refused-progress").await;
+    let trace = Arc::new(Mutex::new(OperationTrace::default()));
+    let (entered, waiting) = std::sync::mpsc::sync_channel(1);
+    let (release, released) = std::sync::mpsc::sync_channel(1);
+    let host = Arc::new(
+        crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::scripted(OperationFailure::SignIn, trace),
+            Arc::new(BlockingShutdownRecovery {
+                entered,
+                release: Mutex::new(released),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), host);
+    insert_sending_turn(&service, &owner);
+    let progress = tokio::spawn(async move {
+        loop {
+            if waiting.try_recv().is_ok() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        release.send(()).unwrap();
+    });
+    let failure = service
+        .send_session_turn(crate::acp::runtime::HostPromptIntent {
+            command: prepare_turn(&owner),
+            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        })
+        .unwrap_err();
+    progress.await.unwrap();
+    assert!(matches!(failure.error, CodexSessionError::SignInRequired));
+    assert!(turn_state(&service, &owner).is_terminal());
+    assert!(service.lane_for(&owner).is_none());
+    service.shutdown_blocking().unwrap();
+}
