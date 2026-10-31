@@ -8,6 +8,7 @@ pub(super) fn begin<T>(
     uri: &str,
 ) -> (bool, Vec<u64>) {
     let started = tabs.start_navigation(tab_id, navigation_id, uri);
+    permissions.navigation_started(tab_id, navigation_id);
     let denied = permissions.navigation_to(tab_id, uri);
     (started, denied)
 }

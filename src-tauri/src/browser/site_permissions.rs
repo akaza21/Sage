@@ -17,8 +17,8 @@ pub(crate) mod commands;
 mod native;
 #[cfg(windows)]
 pub(super) use native::{
-    cancel_tab_native, deny_navigation_native, navigation_settled_native, register_native,
-    resolve_native,
+    cancel_tab_native, deny_navigation_native, document_committed_native,
+    navigation_settled_native, register_native, resolve_native,
 };
 
 const MAX_PENDING_PERMISSIONS: usize = 8;
@@ -95,10 +95,13 @@ pub(super) struct SitePermissions {
     active_origin: BTreeMap<String, String>,
     closing_tabs: BTreeSet<String>,
     /// Tabs whose page held an Allow that has since ended and whose document
-    /// has not been replaced yet, so the page may still be using it. Cleared
-    /// only when a new document commits or the tab closes. At most one entry
-    /// per open tab.
-    stale_tabs: BTreeSet<String>,
+    /// has not been replaced yet, so the page may still be using it. The
+    /// value is the latest navigation that started after the mark: only that
+    /// navigation committing (a document or an error page) proves the old
+    /// page is gone. A late commit of a navigation already under way when the
+    /// Allow ended proves nothing. Cleared otherwise only once the tab's
+    /// native close succeeds. At most one entry per open tab.
+    stale_tabs: BTreeMap<String, Option<u64>>,
 }
 
 impl SitePermissions {
@@ -359,30 +362,49 @@ impl SitePermissions {
             .collect()
     }
 
-    /// Ends a closing tab's prompts. Saved answers belong to the site, not
-    /// the tab, so they stay.
-    /// Marks tabs whose page may still hold an Allow that just ended.
+    /// Marks tabs whose page may still hold an Allow that just ended. A tab
+    /// already marked starts over: navigations that began before this Allow
+    /// ended no longer count.
     pub(super) fn mark_stale<'a>(&mut self, tabs: impl IntoIterator<Item = &'a str>) {
-        self.stale_tabs.extend(tabs.into_iter().map(str::to_owned));
+        for tab in tabs {
+            self.stale_tabs.insert(tab.to_owned(), None);
+        }
     }
 
-    /// A new document committed in `tab_id`, so its old page and any access
-    /// it held are gone. Reports whether the tab had been stale.
-    pub(super) fn document_replaced(&mut self, tab_id: &str) -> bool {
-        self.stale_tabs.remove(tab_id)
+    /// `NavigationStarting` admitted `navigation_id` in `tab_id`. It
+    /// supersedes any earlier navigation, so it is the one whose commit can
+    /// clear a stale mark.
+    pub(super) fn navigation_started(&mut self, tab_id: &str, navigation_id: u64) {
+        if let Some(after) = self.stale_tabs.get_mut(tab_id) {
+            *after = Some(navigation_id);
+        }
+    }
+
+    /// `ContentLoading`: `navigation_id` committed a document or an error
+    /// page in `tab_id`. Clears the stale mark only when that navigation
+    /// started after the mark, so the old page and any access it held are
+    /// gone. Reports whether the mark cleared.
+    pub(super) fn document_committed(&mut self, tab_id: &str, navigation_id: u64) -> bool {
+        let replaced = self.stale_tabs.get(tab_id) == Some(&Some(navigation_id));
+        if replaced {
+            self.stale_tabs.remove(tab_id);
+        }
+        replaced
     }
 
     pub(super) fn is_stale(&self, tab_id: &str) -> bool {
-        self.stale_tabs.contains(tab_id)
+        self.stale_tabs.contains_key(tab_id)
     }
 
-    pub(super) fn stale_tabs(&self) -> &BTreeSet<String> {
-        &self.stale_tabs
+    pub(super) fn stale_tabs(&self) -> BTreeSet<String> {
+        self.stale_tabs.keys().cloned().collect()
     }
 
+    /// Ends a closing tab's prompts. Saved answers belong to the site, not
+    /// the tab, so they stay, and so does a stale mark: the page lives until
+    /// the native close succeeds (`finish_close`).
     pub(super) fn cancel_tab(&mut self, tab_id: &str) -> Vec<u64> {
         self.closing_tabs.insert(tab_id.to_owned());
-        self.stale_tabs.remove(tab_id);
         self.active_origin.remove(tab_id);
         let ids = self
             .pending
@@ -397,8 +419,11 @@ impl SitePermissions {
         ids
     }
 
+    /// The tab's native close succeeded: its page, and any access it held,
+    /// are gone.
     pub(super) fn finish_close(&mut self, tab_id: &str) {
         self.closing_tabs.remove(tab_id);
+        self.stale_tabs.remove(tab_id);
     }
 
     pub(super) fn pending(&self, tab_id: &str) -> Vec<PermissionPrompt> {

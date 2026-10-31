@@ -291,14 +291,61 @@ fn rows_that_no_longer_admit_are_deleted_on_load() {
 }
 
 #[test]
-fn a_stale_tab_clears_only_when_its_document_is_replaced_or_it_closes() {
+fn a_stale_tab_clears_only_when_a_navigation_started_after_the_mark_commits() {
     let mut permissions = SitePermissions::default();
+    // A navigation already under way when the Allow ends.
     permissions.mark_stale(["browser-1", "browser-2"]);
     assert!(permissions.is_stale("browser-1"));
-    assert!(!permissions.document_replaced("browser-3"));
-    assert!(permissions.document_replaced("browser-1"));
+    assert!(!permissions.document_committed("browser-3", 1));
+    // Its late commit proves nothing about the page that held the access.
+    assert!(!permissions.document_committed("browser-1", 4));
+    assert!(permissions.is_stale("browser-1"));
+    permissions.navigation_started("browser-1", 5);
+    assert!(!permissions.document_committed("browser-1", 4));
+    assert!(permissions.document_committed("browser-1", 5));
     assert!(!permissions.is_stale("browser-1"));
-    assert!(permissions.is_stale("browser-2"));
-    permissions.cancel_tab("browser-2");
+    assert_eq!(
+        permissions.stale_tabs(),
+        BTreeSet::from(["browser-2".to_owned()])
+    );
+}
+
+#[test]
+fn only_the_latest_navigation_after_the_mark_clears_it() {
+    let mut permissions = SitePermissions::default();
+    permissions.mark_stale(["browser-1"]);
+    permissions.navigation_started("browser-1", 5);
+    permissions.navigation_started("browser-1", 6);
+    assert!(!permissions.document_committed("browser-1", 5));
+    assert!(permissions.is_stale("browser-1"));
+    assert!(permissions.document_committed("browser-1", 6));
+}
+
+#[test]
+fn a_second_revocation_discards_navigations_started_before_it() {
+    let mut permissions = SitePermissions::default();
+    permissions.mark_stale(["browser-1"]);
+    permissions.navigation_started("browser-1", 5);
+    permissions.mark_stale(["browser-1"]);
+    assert!(!permissions.document_committed("browser-1", 5));
+    assert!(permissions.is_stale("browser-1"));
+}
+
+#[test]
+fn navigations_on_tabs_that_are_not_stale_mark_nothing() {
+    let mut permissions = SitePermissions::default();
+    permissions.navigation_started("browser-1", 5);
+    assert!(!permissions.document_committed("browser-1", 5));
+    assert!(permissions.stale_tabs().is_empty());
+}
+
+#[test]
+fn a_closing_tab_stays_stale_until_its_native_close_succeeds() {
+    let mut permissions = SitePermissions::default();
+    permissions.mark_stale(["browser-1"]);
+    permissions.cancel_tab("browser-1");
+    // Cancel or DevTools detach can still fail and leave the page alive.
+    assert!(permissions.is_stale("browser-1"));
+    permissions.finish_close("browser-1");
     assert!(permissions.stale_tabs().is_empty());
 }

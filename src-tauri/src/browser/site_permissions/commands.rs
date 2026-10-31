@@ -66,7 +66,7 @@ pub(crate) struct SiteSettingsView {
 fn site_settings(state: &BrowserState) -> Result<SiteSettingsView, String> {
     let (settings, stale) = {
         let permissions = state.permissions.lock().map_err(lock_error)?;
-        (permissions.decisions(), permissions.stale_tabs().clone())
+        (permissions.decisions(), permissions.stale_tabs())
     };
     let stale_sites = state
         .tabs
@@ -134,8 +134,9 @@ const RELOAD_CONFIRM_POLL: Duration = Duration::from_millis(50);
 
 /// Reloads `tabs` and waits, up to [`RELOAD_CONFIRM_TIMEOUT`], until each has
 /// committed a new document. `WebView::reload` only queues the reload, so
-/// only a committed document (which clears the tab's stale mark) proves the
-/// old page is gone. Tabs that do not get there stay marked.
+/// only the commit of a navigation that started after the mark (a document
+/// or an error page, which clears the tab's stale mark) proves the old page
+/// is gone. Tabs that do not get there stay marked.
 async fn reload_and_confirm(state: &BrowserState, tabs: Vec<(String, Webview)>) {
     if tabs.is_empty() {
         return;
@@ -266,12 +267,7 @@ pub(crate) async fn browser_site_reload_tabs(
     app: AppHandle,
     state: State<'_, BrowserState>,
 ) -> Result<SiteSettingsView, String> {
-    let stale = state
-        .permissions
-        .lock()
-        .map_err(lock_error)?
-        .stale_tabs()
-        .clone();
+    let stale = state.permissions.lock().map_err(lock_error)?.stale_tabs();
     let tabs = state
         .tabs
         .lock()

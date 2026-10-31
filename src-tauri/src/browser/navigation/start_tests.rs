@@ -35,3 +35,31 @@ fn same_id_redirect_start_revokes_old_origin_permission_before_resolution() {
     assert_eq!(denied, vec![prompt.id]);
     assert!(!permissions.resolve(prompt.id, "browser-1", Decision::Allow));
 }
+
+#[test]
+fn a_navigation_started_after_a_revocation_is_the_one_whose_commit_clears_it() {
+    let mut tabs = BrowserTabs::<usize>::new();
+    tabs.insert("browser-1".into(), 1, false);
+    let mut permissions = SitePermissions::default();
+    begin(
+        &mut tabs,
+        &mut permissions,
+        "browser-1",
+        3,
+        "https://a.example/",
+    );
+    permissions.mark_stale(["browser-1"]);
+    // Navigation 3 was already loading when the Allow ended.
+    assert!(!permissions.document_committed("browser-1", 3));
+    // The queued reload commits an error page (say a DNS failure): the old
+    // document is gone all the same.
+    begin(
+        &mut tabs,
+        &mut permissions,
+        "browser-1",
+        4,
+        "https://a.example/",
+    );
+    assert!(permissions.document_committed("browser-1", 4));
+    assert!(!permissions.is_stale("browser-1"));
+}

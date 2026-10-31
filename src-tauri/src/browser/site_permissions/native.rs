@@ -281,24 +281,26 @@ pub(crate) fn deny_navigation_native(app: &AppHandle, tab_id: &str, ids: Vec<u64
     deny_stale(app, tab_id, ids);
 }
 
-pub(crate) fn navigation_settled_native(
-    app: &AppHandle,
-    tab_id: &str,
-    source: Option<&str>,
-    new_document: bool,
-) {
-    let (ids, replaced) = app
+pub(crate) fn navigation_settled_native(app: &AppHandle, tab_id: &str, source: Option<&str>) {
+    let ids = app
         .state::<BrowserState>()
         .permissions
         .lock()
-        .map(|mut permissions| {
-            let ids = permissions.navigation_settled(tab_id, source);
-            (ids, new_document && permissions.document_replaced(tab_id))
-        })
+        .map(|mut permissions| permissions.navigation_settled(tab_id, source))
         .unwrap_or_default();
     deny_stale(app, tab_id, ids);
+}
+
+/// `ContentLoading` for `navigation_id`: a document or an error page
+/// committed. Reports the tab's cleared stale mark, if this commit proves it.
+pub(crate) fn document_committed_native(app: &AppHandle, tab_id: &str, navigation_id: u64) {
+    let state = app.state::<BrowserState>();
+    let replaced = state
+        .permissions
+        .lock()
+        .is_ok_and(|mut permissions| permissions.document_committed(tab_id, navigation_id));
     if replaced {
-        emit_site_settings(app, &app.state::<BrowserState>());
+        emit_site_settings(app, &state);
     }
 }
 
