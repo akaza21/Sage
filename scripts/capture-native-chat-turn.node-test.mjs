@@ -5,8 +5,7 @@ import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as dom from "./capture-native-chat-dom.mjs";
 import { paneSelector } from "./capture-native-chat-pane.mjs";
-import { parseArgs } from "./capture-native-chat-contract.mjs";
-import { parityWidths } from "./capture-native-chat-parity.mjs";
+import { captureWidths, parseArgs } from "./capture-native-chat-contract.mjs";
 import {
   nativeCases,
   truthfulAbsentStates,
@@ -703,7 +702,7 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
               : /unsupported-state/u,
             `${harness}/${state}/${width}`,
           );
-        } else if (!parityWidths(state).includes(width)) {
+        } else if (!captureWidths(state).includes(width)) {
           assert.ok(ids.has(`${harness}-${state}`));
           assert.throws(() => parseArgs(args), /state-width-unsupported/u);
         } else {
@@ -715,6 +714,21 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
       }
     }
   }
+});
+
+test("context-meter is refused where the narrow composer hides its meter", () => {
+  const args = (width) => [
+    "--harness",
+    "codex",
+    "--state",
+    "context-meter",
+    "--width",
+    String(width),
+  ];
+  for (const width of [1888, 720])
+    assert.equal(parseArgs(args(width)).caseId, "codex-context-meter");
+  assert.throws(() => parseArgs(args(480)), /state-width-unsupported/u);
+  assert.deepEqual(captureWidths("turn-completed"), [1888, 720, 480]);
 });
 
 test("blocked runs write their step timestamps to probe JSON without launching the app", async () => {

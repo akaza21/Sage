@@ -31,6 +31,32 @@ const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
 /** CP-30c chat-wide edit summary above the composer. */
 const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
 export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
+/**
+ * Prepare and submit controls, matched by role and exact accessible name.
+ * Each click admits exactly one match (clickExpression), so a renamed or
+ * duplicated control fails closed instead of driving the wrong one.
+ */
+export const NEW_TASK = 'button[aria-label="New task"]';
+export const HARNESS_PICKER = 'button[aria-label="Harness"]';
+export const ACCESS_OPTIONS = 'button[aria-label="Access options"]';
+export const SEND_MESSAGE = 'button[aria-label="Send message"]';
+export const COMPOSER_TEXT =
+  "Inspect the fixed synthetic native replay example.";
+/** Types the replay prompt into the focused Chat's composer through React. */
+export const COMPOSER_FILL = `(()=>{const input=document.querySelector('.agent-chat-pane--focused textarea[aria-label="Message agent"]');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,${JSON.stringify(COMPOSER_TEXT)});input.dispatchEvent(new Event("input",{bubbles:true}));return true})()`;
+export function harnessOption(id) {
+  if (!IDENTIFIER.test(id)) throw new Error("harness-identity");
+  return '[role="option"][data-option-id="' + id + '"]';
+}
+/** An access mode inside the anchored Access mode menu, never another menu. */
+export function accessModeOption(mode) {
+  if (!IDENTIFIER.test(mode)) throw new Error("access-mode-identity");
+  return (
+    '[role="menu"][aria-label="Access mode"] [role="menuitemradio"][data-option-id="' +
+    mode +
+    '"]'
+  );
+}
 /** Kinds whose matching node must also carry this accessible name. */
 // Wave 5 names the plan session mode "Plan mode" (ComposerAddActions.tsx).
 export const NAMED_KINDS = Object.freeze({ planEntry: "Plan mode" });

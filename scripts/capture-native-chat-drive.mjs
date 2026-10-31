@@ -25,6 +25,13 @@ import {
   isExpandable,
   expandExpression,
   COMPOSER_IDLE_CONTROL,
+  NEW_TASK,
+  HARNESS_PICKER,
+  harnessOption,
+  ACCESS_OPTIONS,
+  accessModeOption,
+  COMPOSER_FILL,
+  SEND_MESSAGE,
 } from "./capture-native-chat-dom.mjs";
 import { PARITY_STATE_NAMES } from "./capture-native-chat-parity.mjs";
 import { driveParitySteps } from "./capture-native-chat-parity-drive.mjs";
@@ -69,17 +76,8 @@ export async function prepareCaptureChat(
     return true;
   }, deadline);
   record("fresh-chat-start", previous);
-  const compact = await evaluate(
-    "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))",
-  );
-  if (compact)
-    await click(
-      cdp,
-      'button[aria-label="Open projects and chats"]',
-      deadline,
-      record,
-    );
-  await click(cdp, 'button[aria-label="New task"]', deadline, record);
+  // Agent navigation has no drawer at any capture width: New task is direct.
+  await click(cdp, NEW_TASK, deadline, record);
   let captureChat;
   await waitForState(async () => {
     const observation = await observe();
@@ -94,20 +92,8 @@ export async function prepareCaptureChat(
     throw new Error("capture-chat-archive-failed");
   await waitForState(() => evaluate(SINGLE_CAPTURE_PANE), deadline);
   record("fresh-chat-ready", await observe());
-  if (compact)
-    await click(
-      cdp,
-      'button[aria-label="Close projects and chats"]',
-      deadline,
-      record,
-    );
-  await click(cdp, 'button[aria-label="Harness"]', deadline, record);
-  await click(
-    cdp,
-    '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
-    deadline,
-    record,
-  );
+  await click(cdp, HARNESS_PICKER, deadline, record);
+  await click(cdp, harnessOption(HARNESS[harness].id), deadline, record);
   await waitForState(
     async () => (await observe()).selected === HARNESS[harness].id,
     deadline,
@@ -116,15 +102,25 @@ export async function prepareCaptureChat(
   return captureChat;
 }
 export async function driveCaptureChat(cdp, options, deadline, record) {
-  const OBSERVATION = observationFor(HARNESS[options.harness].binding);
-  const evaluate = boundedEvaluate(cdp, deadline);
-  const clickCapture = (selector) => click(cdp, selector, deadline, record);
   const captureChat = await prepareCaptureChat(
     cdp,
     options.harness,
     deadline,
     record,
   );
+  await driveCaptureState(cdp, options, captureChat, deadline, record);
+  return captureChat;
+}
+
+/**
+ * Drives the fresh capture Chat into `options.state`: submits the replayed
+ * Turn unless the state is idle, waits for what the state needs, then runs
+ * its actions or parity steps.
+ */
+async function driveCaptureState(cdp, options, captureChat, deadline, record) {
+  const OBSERVATION = observationFor(HARNESS[options.harness].binding);
+  const evaluate = boundedEvaluate(cdp, deadline);
+  const clickCapture = (selector) => click(cdp, selector, deadline, record);
   let submittedTurnId;
   const submit = async () => {
     return (submittedTurnId = await submitTurn(
@@ -141,8 +137,8 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       (mode) => mode === "ask",
     );
     if (!mode) throw new Error("approval-access-unavailable");
-    await clickCapture('button[aria-label="Access options"]');
-    await clickCapture('[role="menuitemradio"][data-option-id="' + mode + '"]');
+    await clickCapture(ACCESS_OPTIONS);
+    await clickCapture(accessModeOption(mode));
     await submit();
     await waitForState(
       async () => (await evaluate(OBSERVATION)).state === "completed",
@@ -168,6 +164,34 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       record,
       COMPOSER_IDLE_CONTROL[options.state],
     );
+  await runCaptureActions({
+    cdp,
+    options,
+    captureChat,
+    submittedTurnId,
+    submit,
+    deadline,
+    record,
+  });
+}
+
+/**
+ * Runs the state's actions, or its parity steps, against `submittedTurnId`.
+ * The browser conformance lane calls this directly on a settled fixture Turn,
+ * so it must not depend on the replay binding beyond live Turn actions.
+ */
+export async function runCaptureActions({
+  cdp,
+  options,
+  captureChat,
+  submittedTurnId,
+  submit,
+  deadline,
+  record,
+}) {
+  const OBSERVATION = observationFor(HARNESS[options.harness].binding);
+  const evaluate = boundedEvaluate(cdp, deadline);
+  const clickCapture = (selector) => click(cdp, selector, deadline, record);
   if (PARITY_STATE_NAMES.includes(options.state)) {
     await driveParitySteps({
       cdp,
@@ -180,7 +204,7 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
       deadline,
       record,
     });
-    return captureChat;
+    return;
   }
   for (const action of actionsFor(options.state, options.harness)) {
     let latest = await evaluate(OBSERVATION);
@@ -216,7 +240,6 @@ export async function driveCaptureChat(cdp, options, deadline, record) {
     await waitForState(() => evaluate(openExpression(selector)), deadline);
     record("disclosure-opened", latest);
   }
-  return captureChat;
 }
 
 export async function submitTurn(
@@ -229,15 +252,9 @@ export async function submitTurn(
 ) {
   const prior = await evaluate(observationExpression);
   record("composer-input-start", prior);
-  await waitForState(
-    () =>
-      evaluate(
-        '(()=>{const input=document.querySelector(\'.agent-chat-pane--focused textarea[aria-label="Message agent"]\');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,"Inspect the fixed synthetic native replay example.");input.dispatchEvent(new Event("input",{bubbles:true}));return true})()',
-      ),
-    deadline,
-  );
+  await waitForState(() => evaluate(COMPOSER_FILL), deadline);
   record("send-start", prior);
-  await clickCapture('button[aria-label="Send message"]');
+  await clickCapture(SEND_MESSAGE);
   record("send-clicked", prior);
   let submitted;
   await waitForState(async () => {

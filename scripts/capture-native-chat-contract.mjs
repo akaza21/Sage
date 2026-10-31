@@ -64,6 +64,15 @@ export function assertPrivacy(value) {
   )
     fail("privacy");
 }
+/**
+ * Base states whose witness the product hides at a capture width. The composer
+ * drops its context meter in containers up to 280 px wide
+ * (chat-container-controls.css), and the 480 window's chat column is one.
+ */
+const BASE_STATE_WIDTHS = Object.freeze({ "context-meter": [1888, 720] });
+export function captureWidths(state) {
+  return BASE_STATE_WIDTHS[state] ?? parityWidths(state);
+}
 export function parseArgs(args) {
   const values = {};
   if (args.length !== 6) fail("arguments");
@@ -91,7 +100,7 @@ export function parseArgs(args) {
   if (responsiveWidth && responsiveWidth !== width)
     fail("responsive-width-mismatch");
   // A surface the product hides below a pane width is not captured there.
-  if (!parityWidths(state).includes(width)) fail("state-width-unsupported");
+  if (!captureWidths(state).includes(width)) fail("state-width-unsupported");
   return {
     harness,
     state,
