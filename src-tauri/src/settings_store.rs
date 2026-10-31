@@ -13,7 +13,6 @@ mod browser_preferences;
 mod editor_settings;
 mod side_chat;
 pub use access::SessionAccessModes;
-pub use browser_download_folder::DownloadReservationRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 

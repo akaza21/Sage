@@ -7,8 +7,10 @@ use tauri::{AppHandle, Manager, Webview};
 use tauri_plugin_dialog::DialogExt;
 
 use super::{
-    super::{BrowserState, folder::Plan, worker},
-    PENDING, RESERVED, choice, complete_choice, emit_views,
+    super::{BrowserState, worker},
+    PENDING, RESERVED,
+    choice::{self, Step},
+    complete_choice, emit_views,
 };
 
 pub(super) fn plan_off_thread(
@@ -65,18 +67,24 @@ fn on_ui(
 }
 
 fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: choice::Planned) {
-    let choice::Planned {
-        plan,
-        revision,
-        reservation,
-    } = planned;
-    if let Some(reservation) = reservation {
-        // Tracked first, so every exit below releases it.
-        RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
-    }
+    let choice::Planned { step, revision } = planned;
+    let remember = matches!(step, Step::Ask { remember: true, .. });
+    let step = match step {
+        Step::Silent(reservation) => {
+            let path = reservation.path().to_owned();
+            // Tracked first, so every exit below releases it.
+            RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
+            Ok(path)
+        }
+        Step::Ask {
+            file_name,
+            directory,
+            ..
+        } => Err((file_name, directory)),
+    };
     let still_pending = PENDING.with_borrow_mut(|pending| {
         pending.get_mut(&id).is_some_and(|download| {
-            if matches!(plan, Plan::Ask { remember: true, .. }) {
+            if remember {
                 download.remember = Some(revision);
             }
             true
@@ -87,13 +95,11 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         complete_choice(app, tab_id, id, None);
         return;
     }
-    match plan {
-        Plan::Silent(reserved) => complete_choice(app, tab_id, id, Some(reserved.path)),
-        Plan::Ask {
-            file_name,
-            directory,
-            ..
-        } => open_save_dialog(app, webview, tab_id, id, file_name, directory),
+    match step {
+        Ok(path) => complete_choice(app, tab_id, id, Some(path)),
+        Err((file_name, directory)) => {
+            open_save_dialog(app, webview, tab_id, id, file_name, directory);
+        }
     }
 }
 

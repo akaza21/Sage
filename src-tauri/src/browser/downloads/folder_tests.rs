@@ -260,7 +260,7 @@ fn long_file_names_are_bounded_and_keep_their_extension() {
 fn every_destination_is_a_direct_child_of_the_folder() {
     let folder = Scratch::new("child");
     for name in ["../escape.txt", r"..\escape.txt", "/abs.txt", "C:evil.txt"] {
-        let Plan::Silent(Reserved { path, .. }) = plan(Some(&folder.0), name, None, free) else {
+        let Plan::Silent(Placeholder { path, .. }) = plan(Some(&folder.0), name, None, free) else {
             panic!("{name} asked");
         };
         assert_eq!(path.parent(), Some(folder.0.as_path()), "{name}");
@@ -324,17 +324,15 @@ fn downloads_differing_only_in_case_never_share_a_destination() {
 #[test]
 fn a_silent_save_reserves_its_name_on_disk() {
     let folder = Scratch::new("reserve");
-    let Plan::Silent(Reserved { path: first, .. }) = plan(Some(&folder.0), "a.txt", None, free)
-    else {
+    let Plan::Silent(first) = plan(Some(&folder.0), "a.txt", None, free) else {
         panic!("asked");
     };
-    assert_eq!(std::fs::metadata(&first).unwrap().len(), 0);
+    assert_eq!(std::fs::metadata(&first.path).unwrap().len(), 0);
     // Without any registry claim, the reservation alone moves the next one on.
-    let Plan::Silent(Reserved { path: second, .. }) = plan(Some(&folder.0), "a.txt", None, free)
-    else {
+    let Plan::Silent(second) = plan(Some(&folder.0), "a.txt", None, free) else {
         panic!("asked");
     };
-    assert_eq!(second, folder.0.join("a (1).txt"));
+    assert_eq!(second.path, folder.0.join("a (1).txt"));
 }
 
 #[test]

@@ -7,9 +7,9 @@ use super::{BrowserState, admit_url};
 
 mod close;
 pub(crate) mod folder;
-pub(crate) mod identity;
 #[cfg(windows)]
 mod native;
+pub(crate) mod placeholder;
 pub(crate) mod reservation;
 pub(crate) mod show;
 pub(crate) mod worker;

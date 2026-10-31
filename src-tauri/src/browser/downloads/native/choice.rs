@@ -16,28 +16,39 @@ use crate::{
     state::AppState,
 };
 
-/// A plan, the folder revision it was made against, and the placeholder a
-/// silent plan reserved.
+/// What to do with a download, decided on the worker. A silent save's
+/// placeholder is owned by its [`Reservation`] from the moment it exists.
+pub(super) enum Step {
+    Silent(Reservation),
+    Ask {
+        file_name: String,
+        remember: bool,
+        directory: Option<PathBuf>,
+    },
+}
+
+/// A step and the folder revision it was decided against.
 pub(super) struct Planned {
-    pub(super) plan: Plan,
+    pub(super) step: Step,
     pub(super) revision: i64,
-    pub(super) reservation: Option<Reservation>,
 }
 
 /// Silent save into the saved download folder, or the Save dialog. Runs on
 /// the download worker; the registry lock is held only to copy the claimed
 /// paths.
 pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>) -> Planned {
-    let settings = app.state::<AppState>().settings.clone();
-    let Ok(record) = settings.browser_download_folder_record() else {
+    let Ok(record) = app
+        .state::<AppState>()
+        .settings
+        .browser_download_folder_record()
+    else {
         return Planned {
-            plan: Plan::Ask {
+            step: Step::Ask {
                 file_name: folder::sanitize_file_name(suggested),
                 remember: false,
                 directory: None,
             },
             revision: -1,
-            reservation: None,
         };
     };
     let claimed = app
@@ -46,17 +57,23 @@ pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>
         .lock()
         .map(|registry| registry.claimed())
         .unwrap_or_default();
-    let plan = folder::plan(record.path.as_deref(), suggested, mime, |path| {
+    let step = match folder::plan(record.path.as_deref(), suggested, mime, |path| {
         claimed.contains(path)
-    });
-    let reservation = match &plan {
-        Plan::Silent(reserved) => Some(Reservation::adopt(settings, reserved.clone())),
-        Plan::Ask { .. } => None,
+    }) {
+        Plan::Silent(placeholder) => Step::Silent(Reservation::adopt(placeholder)),
+        Plan::Ask {
+            file_name,
+            remember,
+            directory,
+        } => Step::Ask {
+            file_name,
+            remember,
+            directory,
+        },
     };
     Planned {
-        plan,
+        step,
         revision: record.revision,
-        reservation,
     }
 }
 
