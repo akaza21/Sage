@@ -202,17 +202,64 @@ mod tests {
         );
     }
 
-    /// Whether `pid` still names a process, zombies included. Signal 0 only
-    /// checks for existence, and a child's pid is freed only once it is reaped.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn process_exists(pid: u32) -> bool {
-        let pid = libc::pid_t::try_from(pid).expect("process ids fit in pid_t");
-        // SAFETY: signal 0 sends nothing; `kill` only reports whether the
-        // process exists and whether we may signal it.
-        if unsafe { libc::kill(pid, 0) } == 0 {
-            return true;
+    /// Observes one spawned Git child through the OS, outside the code under
+    /// test, so a test can tell whether the child was settled before return.
+    struct ChildWatch {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        pid: libc::pid_t,
+        #[cfg(windows)]
+        process: std::os::windows::io::OwnedHandle,
+    }
+
+    impl ChildWatch {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        fn open(pid: u32) -> Self {
+            Self {
+                pid: libc::pid_t::try_from(pid).expect("process ids fit in pid_t"),
+            }
         }
-        std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+
+        /// Opened while the child is alive, so the handle pins its identity
+        /// and pid reuse cannot be mistaken for it.
+        #[cfg(windows)]
+        fn open(pid: u32) -> Self {
+            use std::os::windows::io::{FromRawHandle, OwnedHandle};
+            use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+
+            // SAFETY: OpenProcess takes no pointers; a null result is checked
+            // before the handle is owned.
+            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+            assert!(!handle.is_null(), "{}", std::io::Error::last_os_error());
+            Self {
+                // SAFETY: `handle` is a fresh, valid process handle that nothing
+                // else owns, so it is closed exactly once.
+                process: unsafe { OwnedHandle::from_raw_handle(handle) },
+            }
+        }
+
+        /// The child has been reaped. `waitpid` only considers this process's
+        /// own children, so a reused pid cannot read as settled: `ECHILD` means
+        /// the child was already waited for, `0` that it still runs, and its pid
+        /// that it exited but was never reaped.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        fn settled(&self) -> bool {
+            let mut status = 0;
+            // SAFETY: `status` is a valid, writable c_int for the call.
+            let waited = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+            waited == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD)
+        }
+
+        /// The child process has exited.
+        #[cfg(windows)]
+        fn settled(&self) -> bool {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::{
+                Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject,
+            };
+
+            // SAFETY: the owned handle is valid for the lifetime of `self`.
+            unsafe { WaitForSingleObject(self.process.as_raw_handle(), 0) == WAIT_OBJECT_0 }
+        }
     }
 
     fn create_file_symlink(target: &Path, link: &Path) -> bool {
@@ -1058,12 +1105,15 @@ mod tests {
         let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
         let resource = workspace.resource("timeout.txt").unwrap();
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let spawned = Arc::new(OnceLock::new());
+        let child = Arc::new(OnceLock::new());
         let policy = repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3))
             .with_spawned_hook({
-                let spawned = Arc::clone(&spawned);
+                let child = Arc::clone(&child);
                 move |pid| {
-                    spawned.set(pid).expect("`git add` spawns once");
+                    assert!(
+                        child.set(ChildWatch::open(pid)).is_ok(),
+                        "`git add` spawns once"
+                    );
                 }
             });
 
@@ -1077,14 +1127,10 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            let pid = *spawned.get().expect("`git add` was spawned");
-            assert!(
-                !process_exists(pid),
-                "the call returned before the killed `git add` ({pid}) was reaped"
-            );
-        }
+        assert!(
+            child.get().expect("`git add` was spawned").settled(),
+            "the call returned before the killed `git add` was settled"
+        );
         // The kill can land before or after `git add` writes the index, so the
         // effect before return is unknown by contract. Either way the state
         // must be coherent and must not change after the call returns.
