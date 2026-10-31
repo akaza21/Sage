@@ -52,7 +52,7 @@ async function runVctipTeardownAdapterFixture({
         `$stdout = $null; $stderr = $null; $job = $null`,
         `try {`,
         `  $triggerPath = if ($NaturalExitTrigger -eq 1) { $ChildPidPath + '.trigger' } else { $null }`,
-        `  $job = [SageValidation.CargoJob]::Start($NodePath, @($RootHelper,$ChildPidPath,([string]$triggerPath)), $FixtureRoot, @('PATH=' + $env:PATH), 4, [ref]$stdout, [ref]$stderr)`,
+        `  $job = [SageValidation.CargoJob]::Start($NodePath, @($RootHelper,$ChildPidPath,([string]$triggerPath)), $FixtureRoot, @('PATH=' + $env:PATH, 'SystemRoot=' + $env:SystemRoot), 4, [ref]$stdout, [ref]$stderr)`,
         `  $deadline = [DateTime]::UtcNow.AddSeconds(3)`,
         `  while ($job.RootRunning -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 5 }`,
         `  if ($job.RootRunning -or -not (Test-Path -LiteralPath $ChildPidPath) -or -not (Test-Path -LiteralPath ($ChildPidPath + '.ready'))) { $rootError = if (Test-Path -LiteralPath ($ChildPidPath + '.error')) { [IO.File]::ReadAllText($ChildPidPath + '.error') } else { '' }; $rootExit = if ($job.RootRunning) { 'running' } else { [string]$job.ExitCode() }; throw ('root/child fixture did not become ready (root: {0}, child.pid: {1}, ready: {2}) {3}' -f $rootExit, (Test-Path -LiteralPath $ChildPidPath), (Test-Path -LiteralPath ($ChildPidPath + '.ready')), $rootError) }`,
