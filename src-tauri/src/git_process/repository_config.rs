@@ -19,9 +19,12 @@
 //! Sage runs Git there. Only the root's own `.git` directory is admitted, as
 //! both git dir and common dir, and it may not be a symlink or junction, so
 //! every location Git reads is a fixed name below the identity-checked root
-//! handle. A `.git` file or `commondir` pointer is refused, because it could
-//! route through an intermediate directory that is later replaced by a link
-//! outside the root without changing any watched bytes.
+//! handle. A `.git` file, or a `commondir` or `gitdir` file inside `.git`, is
+//! refused by its presence, wherever it resolves: it could route through an
+//! intermediate directory or link that is later repointed outside the root
+//! without changing any watched bytes. Every cache hit re-checks that `.git`
+//! is still a plain directory (on Windows, not any reparse point) and that
+//! neither pointer file has appeared.
 //!
 //! A hostile process writing `.git/config` concurrently, between this check
 //! and the spawn, is out of scope: it already runs with the user's full
@@ -47,6 +50,8 @@ use crate::{
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority};
 
 const GIT_DIR_NAME: &str = ".git";
+/// Files inside a git dir that make Git read repository data from elsewhere.
+const POINTER_FILES: [&str; 2] = ["commondir", "gitdir"];
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
 /// Larger watched files are refused rather than read on every call.
@@ -262,23 +267,28 @@ impl Probe {
                 });
             }
         };
-        let Location {
-            git_dir,
-            common_dir,
-            ..
-        } = location;
-        watched.extend(
-            [
-                common_dir.join("config"),
-                git_dir.join("config.worktree"),
-                git_dir.join("commondir"),
-            ]
-            .into_iter()
-            .map(watch),
-        );
-        let refusal = if watched
+        let Location { git_dir, .. } = location;
+        // Git follows these files wherever they lead, and a link they pass
+        // through can be repointed without changing their bytes, so their
+        // mere presence is refused. Watching them keeps a cached admission
+        // from outliving one created later.
+        let pointers = POINTER_FILES
             .iter()
-            .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
+            .map(|name| watch(git_dir.join(name)))
+            .collect::<Vec<_>>();
+        let has_pointer = pointers
+            .iter()
+            .any(|(_, fingerprint)| *fingerprint != Fingerprint::Missing);
+        watched.extend(pointers);
+        watched.extend(
+            [git_dir.join("config"), git_dir.join("config.worktree")]
+                .into_iter()
+                .map(watch),
+        );
+        let refusal = if has_pointer
+            || watched
+                .iter()
+                .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
         {
             Some(Refusal::Layout(RepositoryLayout::ExternalGitDir))
         } else if watched
@@ -432,15 +442,14 @@ enum Fingerprint {
     Oversized,
     /// A FIFO, device or socket, which Git could block on; refused.
     Special,
-    /// A symlink or junction, which could lead outside the root; refused.
+    /// A symlink or reparse point, which could lead outside the root; refused.
     Link,
 }
 
 impl Fingerprint {
     fn of(path: &Path) -> Self {
         match fs::symlink_metadata(path) {
-            // Junctions count as symlinks on Windows.
-            Ok(metadata) if metadata.file_type().is_symlink() => return Self::Link,
+            Ok(metadata) if is_link(&metadata) => return Self::Link,
             Ok(_) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::Missing,
             Err(error) => return Self::Unreadable(error.kind()),
@@ -461,6 +470,21 @@ impl Fingerprint {
     fn is_unverifiable(&self) -> bool {
         matches!(self, Self::Oversized | Self::Special)
     }
+}
+
+/// A symlink, or on Windows any reparse point (junctions, mount points and
+/// placeholders alike), since Sage cannot tell where one leads.
+fn is_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    metadata.file_type().is_symlink()
 }
 
 /// Reads a file that was regular when checked. The handle is checked again so

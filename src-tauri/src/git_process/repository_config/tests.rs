@@ -592,6 +592,89 @@ fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
     ));
 }
 
+/// A `commondir` that aliases the root's own `.git` through a link passes a
+/// canonical-path check, and the link can later be repointed at hostile
+/// metadata without changing any watched bytes. Its presence is refused.
+#[cfg(unix)]
+#[test]
+fn a_commondir_alias_of_the_own_git_dir_is_refused() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    fs::write(root.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+    fs::write(root.join("a.txt"), "a\n").unwrap();
+    let (sentinel, tool) = sentinel_filter(&root);
+    let metadata = root.join("metadata");
+    fs::create_dir_all(&metadata).unwrap();
+    let alias = metadata.join("common.git");
+    std::os::unix::fs::symlink(root.join(".git"), &alias).unwrap();
+    fs::write(
+        root.join(".git").join("commondir"),
+        "../metadata/common.git\n",
+    )
+    .unwrap();
+    // Control: Git resolves the alias to the root's own git dir.
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        Path::new(String::from_utf8(output.stdout).unwrap().trim())
+            .canonicalize()
+            .unwrap(),
+        root.join(".git").canonicalize().unwrap()
+    );
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+
+    // Repoint the alias at external metadata carrying a filter.
+    let hostile = scratch.repository("hostile");
+    git(&hostile, &["config", "filter.sentinel.clean", &tool]);
+    fs::remove_file(&alias).unwrap();
+    std::os::unix::fs::symlink(hostile.join(".git"), &alias).unwrap();
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+    assert!(!sentinel.exists(), "the external filter ran");
+
+    // Control: plain Git now runs the external filter through the alias.
+    git(&root, &["add", "--", "a.txt"]);
+    assert!(sentinel.exists(), "the redirected filter is not live");
+}
+
+/// A pointer file created after admission invalidates the cached verdict.
+#[test]
+fn a_pointer_file_created_after_admission_is_refused() {
+    for name in POINTER_FILES {
+        let scratch = Scratch::new();
+        let root = scratch.repository("repo");
+        assert!(
+            sage_git(&root, &["status", "--porcelain"])
+                .unwrap()
+                .succeeded()
+        );
+        fs::write(root.join(".git").join(name), ".\n").unwrap();
+        assert!(
+            matches!(
+                sage_git(&root, &["status", "--porcelain"]),
+                Err(AppError::RepositoryOutsideRoot(
+                    RepositoryLayout::ExternalGitDir
+                ))
+            ),
+            "{name}"
+        );
+        assert_eq!(probes(&root), 2, "{name}");
+    }
+}
+
 #[test]
 fn a_linked_worktree_is_refused_before_git_runs() {
     let scratch = Scratch::new();
