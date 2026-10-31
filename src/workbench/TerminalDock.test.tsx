@@ -42,24 +42,20 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
-    cols = 1;
-    rows = 1;
+    cols = 80;
+    rows = 24;
     constructor(options: Record<string, unknown>) {
       xterm.options = options;
     }
     open(parent: HTMLElement) {
-      // Like xterm, the screen is cols by rows cells of whole device pixels
-      // (xterm.cell), rounded to CSS pixels, with an overlay scrollbar.
+      // Like xterm, the screen is cols by rows cells of xterm.cell CSS px,
+      // rounded to whole pixels, with an overlay scrollbar.
       const screen = document.createElement("div");
       screen.className = "xterm-screen";
       screen.getBoundingClientRect = () =>
         DOMRect.fromRect({
-          width: xterm.measured
-            ? Math.round((this.cols * xterm.cell[0]) / window.devicePixelRatio)
-            : 0,
-          height: xterm.measured
-            ? Math.round((this.rows * xterm.cell[1]) / window.devicePixelRatio)
-            : 0,
+          width: xterm.measured ? Math.round(this.cols * xterm.cell[0]) : 0,
+          height: xterm.measured ? Math.round(this.rows * xterm.cell[1]) : 0,
         });
       const scrollbar = document.createElement("div");
       scrollbar.className = "scrollbar vertical";
@@ -90,17 +86,23 @@ import { TerminalDock } from "./TerminalDock";
 
 import { TerminalDockForWorkbench } from "./TerminalDockShell";
 
+// The dock's screen box; it opens just large enough for xterm's 80 x 24.
+const space = { width: 645, height: 390 };
+for (const [property, axis] of [
+  ["clientWidth", "width"],
+  ["clientHeight", "height"],
+] as const) {
+  Object.defineProperty(HTMLElement.prototype, property, {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.classList.contains("terminal-dock__screen") ? space[axis] : 0;
+    },
+  });
+}
+
 function setScreenSize(width: number, height: number) {
-  const screen = document.querySelector(".terminal-dock__screen");
-  expect(screen).not.toBeNull();
-  Object.defineProperty(screen, "clientWidth", {
-    configurable: true,
-    value: width,
-  });
-  Object.defineProperty(screen, "clientHeight", {
-    configurable: true,
-    value: height,
-  });
+  space.width = width;
+  space.height = height;
 }
 
 const initialWorkbenchState = useWorkbenchStore.getState();
@@ -116,6 +118,7 @@ const handle = {
 };
 
 beforeEach(() => {
+  setScreenSize(645, 390);
   xterm.measured = true;
   xterm.scrollbar = 0;
   xterm.cell = [8, 16];
@@ -276,7 +279,7 @@ it("resizes the active terminal after a pane or DPI change", async () => {
       onStatus={() => undefined}
     />,
   );
-  setScreenSize(800, 160);
+  setScreenSize(804, 170);
   resizeCallback?.();
   await waitFor(() =>
     expect(native.resize).toHaveBeenCalledWith(scope, handle, 100, 10),
@@ -320,43 +323,32 @@ it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
     />,
   );
   xterm.scrollbar = 14;
-  setScreenSize(800, 160);
+  setScreenSize(804, 170);
   resizeCallback?.();
   await waitFor(() =>
     expect(native.resize).toHaveBeenCalledWith(scope, handle, 98, 10),
   );
 });
 
-it("recovers xterm's whole-pixel cell from a rounded screen at fractional scaling", async () => {
-  const ratio = window.devicePixelRatio;
-  Object.defineProperty(window, "devicePixelRatio", {
-    configurable: true,
-    value: 1.25,
-  });
-  try {
-    // A 9-device-pixel cell is 7.2 CSS px; one column rounds to 7 px.
-    xterm.cell = [9, 20];
-    render(
-      <TerminalDock
-        scope={scope}
-        session={handle}
-        ended={false}
-        onStatus={() => undefined}
-      />,
-    );
-    setScreenSize(700, 160);
-    resizeCallback?.();
-    await waitFor(() =>
-      expect(native.resize).toHaveBeenCalledWith(scope, handle, 97, 10),
-    );
-  } finally {
-    Object.defineProperty(window, "devicePixelRatio", {
-      configurable: true,
-      value: ratio,
-    });
-  }
+it("never admits a column that a fractional cell would clip", async () => {
+  // A 7.2 px cell: 80 columns render 576 px wide, 97 columns 698.4 px.
+  xterm.cell = [7.2, 16];
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={() => undefined}
+    />,
+  );
+  setScreenSize(700, 170);
+  resizeCallback?.();
+  await waitFor(() => expect(native.resize).toHaveBeenCalledTimes(2));
+  const [, , columns, rows] = native.resize.mock.lastCall ?? [];
+  expect(columns * 7.2).toBeLessThanOrEqual(700);
+  expect(columns).toBe(97);
+  expect(rows).toBe(10);
 });
-
 it("keeps the grid until xterm has laid out its screen", async () => {
   xterm.measured = false;
   render(
@@ -370,7 +362,7 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   setScreenSize(800, 160);
   resizeCallback?.();
   await waitFor(() => expect(native.resize).toHaveBeenCalledTimes(1));
-  expect(native.resize).toHaveBeenLastCalledWith(scope, handle, 1, 1);
+  expect(native.resize).toHaveBeenLastCalledWith(scope, handle, 80, 24);
 });
 
 it("closes every owned session when the focused chat changes", async () => {

@@ -31,25 +31,20 @@ interface Dimensions {
 }
 
 /**
- * The grid that fits `element`. xterm draws whole device pixels per cell and
- * rounds its screen to CSS pixels, so the cell is the screen's device width
- * over its cells, rounded back to whole pixels. xterm's vertical scrollbar
- * overlays the right edge, so its width stays free. Before xterm lays out,
- * the grid stays as it is.
+ * The grid that fits `element`. xterm sizes its screen to the cells' exact
+ * (fractional) width rounded to whole CSS pixels, so a cell is at most half a
+ * pixel more than the screen over its cells; fitting that bound never admits
+ * a column that would clip. xterm's vertical scrollbar overlays the right
+ * edge, so its width stays free. Before xterm lays out, the grid stays.
  */
 function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
   const box = (selector: string) =>
     element.querySelector(selector)?.getBoundingClientRect() ?? new DOMRect();
   const screen = box(".xterm-screen");
-  const fit = (space: number, cells: number, size: number, max: number) => {
-    const cell = Math.round((size * devicePixelRatio) / cells);
-    return cell > 0
-      ? Math.max(
-          1,
-          Math.min(max, Math.floor((space * devicePixelRatio) / cell)),
-        )
+  const fit = (space: number, cells: number, size: number, max: number) =>
+    size > 0
+      ? Math.max(1, Math.min(max, Math.floor((space * cells) / (size + 0.5))))
       : cells;
-  };
   return {
     columns: fit(
       element.clientWidth - box(".scrollbar.vertical").width,
