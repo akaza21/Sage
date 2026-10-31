@@ -68,9 +68,26 @@ function servePage(t, body) {
 
 function inertControls(labels) {
   return labels
-    .map((label) => `<button type="button">${label}</button>`)
+    .map((label) => {
+      if (["Agent", "Editor"].includes(label)) {
+        return `<label><input type="radio" name="mode" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">${label}</label>`;
+      }
+      if (label === "Open file README.md") {
+        return `<button role="treeitem" aria-label="${label}">README.md</button>`;
+      }
+      return `<button type="button">${label}</button>`;
+    })
     .join("");
 }
+
+const requiredControls = [
+  "Open file README.md",
+  "Search",
+  "Search files",
+  "Open settings",
+  "Agent",
+  "New task",
+];
 
 function serveUnready(t) {
   const site = createHttpServer((request, response) => {
@@ -207,20 +224,36 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      inertControls(["README.md", "Search files", "Agent", "New task"]),
+      inertControls(["Editor", ...requiredControls]),
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
     assert.equal(run.summary.fatal, null);
     assert.deepEqual(
-      run.summary.misses.filter((entry) =>
-        ["README.md", "Search files", "Agent", "New task"].includes(entry),
-      ),
+      run.summary.misses.filter((entry) => requiredControls.includes(entry)),
       [],
     );
     assert.deepEqual(
       run.summary.requiredMisses.map((entry) => entry.split(" -> ")[0]),
-      ["README.md", "Search files", "Agent", "New task"],
+      requiredControls,
+    );
+    assert.equal(run.code, 1);
+  },
+);
+
+test(
+  "a smoke run whose Settings entry is inert fails the required surface verdict",
+  { timeout: 180_000 },
+  async (t) => {
+    const site = await servePage(t, inertControls(["Open settings"]));
+    const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
+
+    assert.equal(run.summary.fatal, null);
+    assert.ok(!run.summary.misses.includes("Open settings"));
+    assert.ok(
+      run.summary.requiredMisses.some((entry) =>
+        entry.startsWith("Open settings -> "),
+      ),
     );
     assert.equal(run.code, 1);
   },
@@ -232,7 +265,7 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["README.md", "Search files", "Agent", "New task"])}<textarea></textarea>`,
+      `${inertControls(["Editor", ...requiredControls])}<section aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 
@@ -247,13 +280,38 @@ test(
 );
 
 test(
+  "a smoke run types in the focused Chat when two composers are visible",
+  { timeout: 180_000 },
+  async (t) => {
+    const site = await servePage(
+      t,
+      `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New task")])}
+      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New task</button>
+      <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" aria-label="Message agent"></textarea></section>
+      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea aria-label="Message agent"></textarea></section>`,
+    );
+    const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
+
+    assert.equal(run.summary.fatal, null);
+    assert.ok(!run.summary.misses.includes("composer"));
+    assert.ok(
+      !run.summary.requiredMisses.some((entry) => entry.startsWith("New task")),
+    );
+    assert.ok(run.summary.shots.includes("22-agent-composer-typed"));
+  },
+);
+
+test(
   "a page dense with matching controls still reaches a bounded verdict",
   { timeout: 180_000 },
   async (t) => {
-    const decoys = '<textarea style="display:none"></textarea>'.repeat(3_000);
+    const decoys =
+      '<textarea aria-label="Message agent" style="display:none"></textarea>'.repeat(
+        3_000,
+      );
     const site = await servePage(
       t,
-      `${inertControls(["README.md", "Search files", "Agent", "New task"])}${decoys}`,
+      `${inertControls(["Editor", ...requiredControls])}${decoys}`,
     );
     const started = Date.now();
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
@@ -389,6 +447,16 @@ test(
 
     assert.deepEqual(run.summary.misses, []);
     assert.deepEqual(run.summary.requiredMisses, []);
+    assert.deepEqual(run.summary.shots, [
+      "10-editor-welcome",
+      "11-editor-file-open",
+      "12-search",
+      "12-quick-open",
+      "13-settings",
+      "20-agent-panel",
+      "21-agent-new-chat",
+      "22-agent-composer-typed",
+    ]);
     assert.equal(run.summary.settled, true);
     assert.equal(processAlive(run.summary.devServerPid), false);
     assert.equal(await portAccepts("127.0.0.1", port), false);
