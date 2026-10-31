@@ -98,7 +98,7 @@ export const EDITOR_SETTING_COPY: Readonly<
     group: "Files",
     label: "Ignored files in Explorer",
     description:
-      "Shows files that ignore files ignore in a dimmed color, or hides them.",
+      "Shows files that ignore rules match in a dimmed color, or hides them.",
 
     choiceLabels: {
       dimmed: ["Dimmed", "Dimmed"],
