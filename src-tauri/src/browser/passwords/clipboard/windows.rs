@@ -14,7 +14,7 @@ use windows::Win32::{
 use windows_core::PCWSTR;
 use zeroize::Zeroizing;
 
-use super::CopiedText;
+use super::{CopiedText, fingerprint_then_write, random_salt};
 use crate::browser::passwords::{VaultError, VaultResult, secret::Secret};
 
 /// Formats whose presence asks Windows to keep the copy out of clipboard
@@ -108,14 +108,14 @@ pub(in crate::browser::passwords) fn copy_concealed(
         let text = Zeroizing::new(wide(password.expose()));
         let bytes: Zeroizing<Vec<u8>> =
             Zeroizing::new(text.iter().flat_map(|unit| unit.to_ne_bytes()).collect());
-        // SAFETY: the clipboard is open on this thread.
-        unsafe { EmptyClipboard() }.map_err(io_error)?;
-        if let Err(error) = write_concealed(&bytes) {
-            // SAFETY: still open; leaves nothing half-marked behind.
-            let _ = unsafe { EmptyClipboard() };
-            return Err(error);
-        }
-        CopiedText::new(&bytes)
+        fingerprint_then_write(&bytes, random_salt, |bytes| {
+            // SAFETY: the clipboard is open on this thread.
+            unsafe { EmptyClipboard() }.map_err(io_error)?;
+            write_concealed(bytes).inspect_err(|_| {
+                // SAFETY: still open; leaves nothing half-marked behind.
+                let _ = unsafe { EmptyClipboard() };
+            })
+        })
     })
 }
 

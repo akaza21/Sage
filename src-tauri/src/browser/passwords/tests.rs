@@ -2,9 +2,10 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Barrier,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    thread,
 };
 
 use uuid::Uuid;
@@ -71,7 +72,7 @@ fn credential(origin: &str, username: &str, password: &str) -> NewCredential {
 }
 
 fn import(state: &PasswordsState, path: PathBuf) -> MergeCounts {
-    state.import(path).unwrap().0
+    state.begin_import().unwrap().import(path).unwrap().0
 }
 
 fn merge(store: &mut Store, key: &VaultKey, credentials: &[NewCredential]) -> MergeCounts {
@@ -299,7 +300,8 @@ fn a_lost_or_foreign_key_is_reported_and_delete_all_starts_again() {
     let lost = state(&directory, 1);
     assert!(matches!(lost.password(&id), Err(VaultError::KeyLost)));
     assert!(matches!(
-        lost.import(scratch.csv("b.csv", CHROME_CSV)),
+        lost.begin_import()
+            .and_then(|run| run.import(scratch.csv("b.csv", CHROME_CSV))),
         Err(VaultError::KeyLost)
     ));
     lost.delete_all().unwrap();
@@ -434,21 +436,51 @@ fn a_merge_cancelled_partway_rolls_back_every_row_it_wrote() {
 }
 
 #[test]
-fn only_one_import_runs_and_its_cancel_never_reaches_the_next() {
+fn a_cancel_sent_while_the_file_is_being_chosen_stops_that_import() {
     let scratch = Scratch::new();
     let state = state(&scratch.0.join("profile"), 1);
     let csv = scratch.csv("passwords.csv", CHROME_CSV);
+    let run = state.begin_import().unwrap();
     state.cancel_import();
-    {
-        let running = state.hold_import().unwrap();
-        assert!(matches!(
-            state.import(csv.clone()),
-            Err(VaultError::Invalid(_))
-        ));
-        state.cancel_import();
-        assert!(running.cancel.load(Ordering::Relaxed));
-    }
+    assert!(run.cancelled());
+    assert!(matches!(
+        run.import(csv.clone()),
+        Err(VaultError::Cancelled)
+    ));
+    drop(run);
+    assert_eq!(ready(state.overview("").unwrap()).total, 0);
+    // The cancel belonged to that import alone.
     assert_eq!(import(&state, csv).added, 2);
+}
+
+#[test]
+fn concurrent_import_requests_admit_exactly_one() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let start = Barrier::new(8);
+    let runs: Vec<_> = thread::scope(|scope| {
+        let requests: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    start.wait();
+                    state.begin_import()
+                })
+            })
+            .collect();
+        requests
+            .into_iter()
+            .map(|request| request.join().unwrap())
+            .collect()
+    });
+    let admitted = runs.iter().filter(|run| run.is_ok()).count();
+    assert_eq!(admitted, 1);
+    assert!(
+        runs.iter()
+            .all(|run| run.is_ok() || matches!(run, Err(VaultError::Invalid(_))))
+    );
+    drop(runs);
+    state.cancel_import();
+    assert!(!state.begin_import().unwrap().cancelled());
 }
 
 #[test]

@@ -46,27 +46,41 @@ struct Shared {
     running_import: Mutex<Option<Arc<AtomicBool>>>,
 }
 
-/// Admits one import and withdraws it when the import ends, however it ends.
-pub(super) struct RunningImport<'s> {
-    slot: &'s Mutex<Option<Arc<AtomicBool>>>,
-    pub(super) cancel: Arc<AtomicBool>,
+/// One admitted import, reserved before its file is chosen so a Cancel sent
+/// while the file dialog is open still reaches it. Dropping it, however the
+/// import ends, lets the next one in.
+pub(super) struct ImportRun {
+    state: PasswordsState,
+    cancel: Arc<AtomicBool>,
 }
 
-impl<'s> RunningImport<'s> {
-    fn admit(slot: &'s Mutex<Option<Arc<AtomicBool>>>) -> VaultResult<Self> {
-        let mut running = lock(slot);
-        if running.is_some() {
-            return Err(VaultError::Invalid("An import is already running."));
-        }
-        let cancel = Arc::new(AtomicBool::new(false));
-        *running = Some(Arc::clone(&cancel));
-        Ok(Self { slot, cancel })
+impl ImportRun {
+    pub(super) fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    /// Reads `file` and merges it into the vault in one transaction. Returns
+    /// the merge counts and how many rows could not be used.
+    pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
+        let cancel = self.cancel.as_ref();
+        let parsed = csv_import::read_file(&file, cancel)?;
+        let counts = self.state.with_vault(|vault| {
+            let Vault {
+                store,
+                key_file,
+                key,
+            } = vault;
+            let key = unlocked(key, key_file, store, true)?;
+            store.merge(key, Source::Csv, &parsed.credentials, cancel)
+        })?;
+        *lock(&self.state.0.imported_file) = Some(file);
+        Ok((counts, parsed.skipped))
     }
 }
 
-impl Drop for RunningImport<'_> {
+impl Drop for ImportRun {
     fn drop(&mut self) {
-        lock(self.slot).take();
+        lock(&self.state.0.running_import).take();
     }
 }
 
@@ -100,12 +114,6 @@ impl PasswordsState {
         Self::with_protector(directory, Some(protector))
     }
 
-    /// Holds the import slot as a running import would.
-    #[cfg(test)]
-    pub(super) fn hold_import(&self) -> VaultResult<RunningImport<'_>> {
-        RunningImport::admit(&self.0.running_import)
-    }
-
     pub(crate) fn supported(&self) -> bool {
         self.0.protector.is_some()
     }
@@ -134,24 +142,21 @@ impl PasswordsState {
         self.with_vault(|vault| vault.store.page(query).map(PasswordsOverview::Ready))
     }
 
-    /// Reads `file` and merges it into the vault in one transaction. Returns
-    /// the merge counts and how many rows could not be used.
-    /// Refuses while another import is running.
-    pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
-        let running = RunningImport::admit(&self.0.running_import)?;
-        let cancel = running.cancel.as_ref();
-        let parsed = csv_import::read_file(&file, cancel)?;
-        let counts = self.with_vault(|vault| {
-            let Vault {
-                store,
-                key_file,
-                key,
-            } = vault;
-            let key = unlocked(key, key_file, store, true)?;
-            store.merge(key, Source::Csv, &parsed.credentials, cancel)
-        })?;
-        *lock(&self.0.imported_file) = Some(file);
-        Ok((counts, parsed.skipped))
+    /// Admits one import; refuses while another is running.
+    pub(super) fn begin_import(&self) -> VaultResult<ImportRun> {
+        if !self.supported() {
+            return Err(VaultError::Unsupported);
+        }
+        let mut running = lock(&self.0.running_import);
+        if running.is_some() {
+            return Err(VaultError::Invalid("An import is already running."));
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *running = Some(Arc::clone(&cancel));
+        Ok(ImportRun {
+            state: self.clone(),
+            cancel,
+        })
     }
 
     /// Cancels the running import, if any; a later import starts afresh.

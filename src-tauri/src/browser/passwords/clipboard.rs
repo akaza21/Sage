@@ -35,19 +35,31 @@ fn fingerprint(salt: &[u8; SALT_LEN], text: &[u8]) -> [u8; 32] {
         .into()
 }
 
-impl CopiedText {
-    /// Fingerprints `text`, the exact bytes put on the clipboard.
-    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-    fn new(text: &[u8]) -> VaultResult<Self> {
-        let mut salt = [0; SALT_LEN];
-        getrandom::fill(&mut salt).map_err(|_| VaultError::Random)?;
-        Ok(Self {
-            digest: fingerprint(&salt, text),
-            salt,
-            len: text.len(),
-        })
-    }
+/// Fingerprints `text` and only then hands it to `write`, so a failed salt
+/// draw can never leave a password on the clipboard with no clear scheduled.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn fingerprint_then_write(
+    text: &[u8],
+    draw_salt: impl FnOnce(&mut [u8; SALT_LEN]) -> VaultResult<()>,
+    write: impl FnOnce(&[u8]) -> VaultResult<()>,
+) -> VaultResult<CopiedText> {
+    let mut salt = [0; SALT_LEN];
+    draw_salt(&mut salt)?;
+    let copied = CopiedText {
+        digest: fingerprint(&salt, text),
+        salt,
+        len: text.len(),
+    };
+    write(text)?;
+    Ok(copied)
+}
 
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn random_salt(salt: &mut [u8; SALT_LEN]) -> VaultResult<()> {
+    getrandom::fill(salt).map_err(|_| VaultError::Random)
+}
+
+impl CopiedText {
     /// How many bytes of the clipboard the comparison needs.
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     fn len(&self) -> usize {
@@ -78,11 +90,32 @@ pub(super) fn clear_if_unchanged(_owner: &tauri::Window, _copied: CopiedText) ->
 
 #[cfg(test)]
 mod tests {
-    use super::CopiedText;
+    use std::cell::Cell;
+
+    use super::{CopiedText, VaultError, fingerprint_then_write, random_salt};
+
+    fn copied(text: &[u8]) -> CopiedText {
+        fingerprint_then_write(text, random_salt, |_| Ok(())).unwrap()
+    }
+
+    #[test]
+    fn a_failed_salt_draw_writes_nothing() {
+        let wrote = Cell::new(false);
+        let result = fingerprint_then_write(
+            b"p\0w\0\0\0",
+            |_| Err(VaultError::Random),
+            |_| {
+                wrote.set(true);
+                Ok(())
+            },
+        );
+        assert!(matches!(result, Err(VaultError::Random)));
+        assert!(!wrote.get());
+    }
 
     #[test]
     fn only_the_exact_copied_text_matches() {
-        let copied = CopiedText::new(b"p\0w\0\0\0").unwrap();
+        let copied = copied(b"p\0w\0\0\0");
         assert_eq!(copied.len(), 6);
         assert!(copied.matches(b"p\0w\0\0\0"));
         assert!(!copied.matches(b"p\0x\0\0\0"));

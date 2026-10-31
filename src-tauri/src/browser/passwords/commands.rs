@@ -55,10 +55,8 @@ pub(crate) async fn browser_passwords_import_csv(
     window: Window,
     state: State<'_, PasswordsState>,
 ) -> Result<Option<ImportReport>, String> {
-    let passwords = state.inner().clone();
-    if !passwords.supported() {
-        return Err(VaultError::Unsupported.to_string());
-    }
+    // Admitted before the dialog opens, so Cancel reaches it from the start.
+    let run = state.begin_import().map_err(|error| error.to_string())?;
     let dialog = app
         .dialog()
         .file()
@@ -69,6 +67,9 @@ pub(crate) async fn browser_passwords_import_csv(
         let Some(selected) = dialog.blocking_pick_file() else {
             return Ok(None);
         };
+        if run.cancelled() {
+            return Ok(None);
+        }
         let path = selected
             .into_path()
             .map_err(|_| VaultError::Invalid("Choose a file on this computer."))?;
@@ -76,7 +77,7 @@ pub(crate) async fn browser_passwords_import_csv(
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let (counts, skipped) = match passwords.import(path) {
+        let (counts, skipped) = match run.import(path) {
             Err(VaultError::Cancelled) => return Ok(None),
             imported => imported?,
         };
@@ -89,7 +90,8 @@ pub(crate) async fn browser_passwords_import_csv(
     .await
 }
 
-/// Stops a running import; it rolls back and saves nothing.
+/// Stops the running import, even while its file dialog is open; it rolls
+/// back and saves nothing.
 #[tauri::command]
 pub(crate) fn browser_passwords_cancel_import(state: State<'_, PasswordsState>) {
     state.cancel_import();
