@@ -23,6 +23,7 @@ const xterm = vi.hoisted(() => ({
   options: null as Record<string, unknown> | null,
   measured: true,
   scrollbar: 0,
+  cell: [8, 16],
 }));
 let resizeCallback: (() => void) | null = null;
 
@@ -47,14 +48,18 @@ vi.mock("@xterm/xterm", () => ({
       xterm.options = options;
     }
     open(parent: HTMLElement) {
-      // xterm's screen is exactly cols by rows cells of 8 by 16 px, with an
-      // overlay scrollbar of xterm.scrollbar px.
+      // Like xterm, the screen is cols by rows cells of whole device pixels
+      // (xterm.cell), rounded to CSS pixels, with an overlay scrollbar.
       const screen = document.createElement("div");
       screen.className = "xterm-screen";
       screen.getBoundingClientRect = () =>
         DOMRect.fromRect({
-          width: xterm.measured ? this.cols * 8 : 0,
-          height: xterm.measured ? this.rows * 16 : 0,
+          width: xterm.measured
+            ? Math.round((this.cols * xterm.cell[0]) / window.devicePixelRatio)
+            : 0,
+          height: xterm.measured
+            ? Math.round((this.rows * xterm.cell[1]) / window.devicePixelRatio)
+            : 0,
         });
       const scrollbar = document.createElement("div");
       scrollbar.className = "scrollbar vertical";
@@ -113,6 +118,7 @@ const handle = {
 beforeEach(() => {
   xterm.measured = true;
   xterm.scrollbar = 0;
+  xterm.cell = [8, 16];
   Object.values(native).forEach((mock) => mock.mockReset());
   native.create.mockResolvedValue(handle);
   native.read.mockImplementation(() => new Promise(() => undefined));
@@ -319,6 +325,36 @@ it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
   await waitFor(() =>
     expect(native.resize).toHaveBeenCalledWith(scope, handle, 98, 10),
   );
+});
+
+it("recovers xterm's whole-pixel cell from a rounded screen at fractional scaling", async () => {
+  const ratio = window.devicePixelRatio;
+  Object.defineProperty(window, "devicePixelRatio", {
+    configurable: true,
+    value: 1.25,
+  });
+  try {
+    // A 9-device-pixel cell is 7.2 CSS px; one column rounds to 7 px.
+    xterm.cell = [9, 20];
+    render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    setScreenSize(700, 160);
+    resizeCallback?.();
+    await waitFor(() =>
+      expect(native.resize).toHaveBeenCalledWith(scope, handle, 97, 10),
+    );
+  } finally {
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      value: ratio,
+    });
+  }
 });
 
 it("keeps the grid until xterm has laid out its screen", async () => {

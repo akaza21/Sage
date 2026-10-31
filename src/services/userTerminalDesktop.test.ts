@@ -8,6 +8,7 @@ import {
   createUserTerminal,
   readUserTerminal,
   resizeUserTerminal,
+  TERMINAL_INPUT_BYTES,
   writeUserTerminal,
   type UserTerminalScope,
 } from "./userTerminalDesktop";
@@ -55,7 +56,7 @@ it("decodes a bounded binary output page and preserves cursor strings", async ()
 
 it("rejects oversized input before invoking native", async () => {
   await expect(
-    writeUserTerminal(scope, handle, "x".repeat(4_097)),
+    writeUserTerminal(scope, handle, "x".repeat(TERMINAL_INPUT_BYTES + 1)),
   ).rejects.toThrow();
   expect(invokeNative).not.toHaveBeenCalled();
 });

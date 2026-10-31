@@ -31,19 +31,25 @@ interface Dimensions {
 }
 
 /**
- * The grid that fits `element`, from the cell size xterm rendered: its screen
- * is exactly `cols` by `rows` cells. xterm's vertical scrollbar overlays the
- * right edge, so its width stays free. Before xterm lays out, nothing changes.
+ * The grid that fits `element`. xterm draws whole device pixels per cell and
+ * rounds its screen to CSS pixels, so the cell is the screen's device width
+ * over its cells, rounded back to whole pixels. xterm's vertical scrollbar
+ * overlays the right edge, so its width stays free. Before xterm lays out,
+ * the grid stays as it is.
  */
 function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
-  // Fractional sizes: a rounded screen width can admit one column too many.
   const box = (selector: string) =>
     element.querySelector(selector)?.getBoundingClientRect() ?? new DOMRect();
   const screen = box(".xterm-screen");
-  const fit = (space: number, cells: number, cell: number, max: number) =>
-    cell > 0
-      ? Math.max(1, Math.min(max, Math.floor((space * cells) / cell)))
+  const fit = (space: number, cells: number, size: number, max: number) => {
+    const cell = Math.round((size * devicePixelRatio) / cells);
+    return cell > 0
+      ? Math.max(
+          1,
+          Math.min(max, Math.floor((space * devicePixelRatio) / cell)),
+        )
       : cells;
+  };
   return {
     columns: fit(
       element.clientWidth - box(".scrollbar.vertical").width,
@@ -97,7 +103,7 @@ export function TerminalDock({
     let inputSending = false;
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
-    let observedPixelRatio = window.devicePixelRatio;
+    let observedPixelRatio = devicePixelRatio;
     const terminal = new Terminal({
       cursorBlink: true,
       scrollback: SCROLLBACK_LINES,
@@ -175,10 +181,9 @@ export function TerminalDock({
       const started = Date.now();
       for (
         let delay = INPUT_RETRY_FIRST_DELAY_MS;
-        ;
+        !stopped;
         delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
       ) {
-        if (stopped) return;
         try {
           await writeUserTerminal(ownerScope, session, chunk);
           return;
@@ -234,8 +239,8 @@ export function TerminalDock({
     });
     const refreshDimensions = () => {
       if (stopped) return;
-      if (window.devicePixelRatio !== observedPixelRatio) {
-        observedPixelRatio = window.devicePixelRatio;
+      if (devicePixelRatio !== observedPixelRatio) {
+        observedPixelRatio = devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
       }
       const next = dimensionsFor(element, terminal);

@@ -36,7 +36,6 @@ export interface UserTerminalSession extends UserTerminalHandle {
 export interface UserTerminalPage {
   bytes: Uint8Array;
   nextCursor: string;
-  truncations: string;
   truncated: boolean;
 }
 
@@ -178,7 +177,6 @@ export async function readUserTerminal(
   return {
     bytes,
     nextCursor: decimal(response.nextCursor),
-    truncations: decimal(response.truncations),
     truncated: response.truncated,
   };
 }
