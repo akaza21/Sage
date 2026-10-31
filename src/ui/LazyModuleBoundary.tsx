@@ -76,16 +76,16 @@ type ModuleResult = { loader: ModuleLoader } & (
 );
 
 /** Resolve feature modules directly, avoiding nested Suspense retry throttling. */
-function ModuleSurface<Props extends object>({
+export function DeferredModuleSurface<Props extends object>({
   load,
   render,
   fallback,
-  attempt,
+  attempt = 0,
 }: {
   load: () => Promise<Module<Props>>;
   render: (Surface: ComponentType<Props>) => ReactNode;
   fallback: ReactNode;
-  attempt: number;
+  attempt?: number;
 }) {
   const loader = load as unknown as ModuleLoader;
   const [result, setResult] = useState<ModuleResult>(() => {
@@ -144,7 +144,7 @@ export function LazyModuleBoundary<Props extends object>({
       resetKey={attempt}
     >
       <Suspense fallback={fallback}>
-        <ModuleSurface
+        <DeferredModuleSurface
           key={attempt}
           load={load}
           render={render}

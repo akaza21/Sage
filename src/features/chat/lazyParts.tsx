@@ -1,8 +1,10 @@
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import {
+  DeferredModuleSurface,
+  LazyModuleBoundary,
+} from "../../ui/LazyModuleBoundary";
 import type { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
 
 import {
-  lazy,
   Suspense,
   useState,
   type ComponentProps,
@@ -27,7 +29,9 @@ type Components = Record<string, AnyComponent>;
 export function lazyParts<Chunk extends Components>(
   load: () => Promise<Chunk>,
 ) {
-  let parts: Partial<Record<keyof Chunk, AnyComponent>> = {};
+  let parts: Partial<
+    Record<keyof Chunk, () => Promise<{ default: AnyComponent }>>
+  > = {};
   let loaded: Chunk | null = null;
   let pending: Promise<Chunk> | null = null;
   const loadOnce = () =>
@@ -47,12 +51,15 @@ export function lazyParts<Chunk extends Components>(
     // Fix the subtree per mount.
     const [Ready] = useState<AnyComponent | undefined>(() => loaded?.[part]);
     if (Ready) return <Ready {...props} />;
-    const Loaded: AnyComponent = (parts[part] ??= lazy(() =>
-      loadOnce().then((chunk) => ({ default: chunk[part]! })),
-    ));
+    const loadPart = (parts[part] ??= () =>
+      loadOnce().then((chunk) => ({ default: chunk[part]! })));
     return (
       <Suspense fallback={fallback}>
-        <Loaded {...props} />
+        <DeferredModuleSurface
+          load={loadPart}
+          fallback={fallback}
+          render={(Surface) => <Surface {...props} />}
+        />
       </Suspense>
     );
   }
