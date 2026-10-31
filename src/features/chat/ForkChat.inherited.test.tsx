@@ -12,6 +12,7 @@ import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { ChatTranscript } from "./ChatTranscript";
+import { ForkDivider } from "./ForkChat";
 // The fork history and the fork transcript both import this chunk lazily at
 // once; the test module runner can hand the second import a namespace that
 // is still evaluating, so the chunk is evaluated up front (a browser import
@@ -28,6 +29,95 @@ vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
 afterEach(() => {
   cleanup();
   getGoalChatPage.mockReset();
+});
+
+it("reports missing fork provenance without remaining in a loading state", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "P", roots: [] },
+  });
+  render(<ForkDivider parentChatId="chat-parent" />);
+  expect(
+    await screen.findByText(
+      "Parent history or fork point is no longer available.",
+    ),
+  ).toHaveAttribute("role", "status");
+  expect(screen.queryByText("Loading inherited history…")).toBeNull();
+});
+
+it("retries an older-page failure as older browsing and keeps the fork history visible", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "P", roots: [] },
+    nativeTransitionEpoch: 3,
+  });
+  const parent = { ...page("completed"), chatId: "chat-parent" };
+  getGoalChatPage.mockResolvedValueOnce({
+    ...parent,
+    turns: turns("chat-parent", 3, "Cut"),
+    nextCursor: "older",
+  });
+  render(
+    <ForkDivider parentChatId="chat-parent" forkTurnId="chat-parent-turn-2" />,
+  );
+  expect(await screen.findByText("Cut 2")).toBeVisible();
+  getGoalChatPage.mockRejectedValueOnce(new Error("disk busy"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Load earlier parent history" }),
+  );
+  const retry = await screen.findByRole("button", {
+    name: "Retry inherited history",
+  });
+  expect(screen.getByText("Cut 2")).toBeVisible();
+  getGoalChatPage.mockResolvedValueOnce({
+    ...parent,
+    turns: turns("chat-parent", 2, "Older").map((turn) => ({
+      ...turn,
+      id: `${turn.id}-older` as typeof turn.id,
+      items: turn.items.map((item) => ({
+        ...item,
+        id: `${item.id}-older` as typeof item.id,
+      })),
+    })),
+    nextCursor: null,
+  });
+  fireEvent.click(retry);
+  expect(await screen.findByText("Older 1")).toBeVisible();
+  expect(screen.queryByText("Cut 2")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Retry inherited history" }),
+  ).toBeNull();
+});
+
+it("seeks a fork outside the latest page without inheriting later parent turns and recovers a failed read", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "P", roots: [] },
+    nativeTransitionEpoch: 3,
+  });
+  const parent = { ...page("completed"), chatId: "chat-parent" };
+  getGoalChatPage.mockRejectedValueOnce(new Error("disk busy"));
+  const view = render(
+    <ForkDivider parentChatId="chat-parent" forkTurnId="chat-parent-turn-2" />,
+  );
+  const retry = await screen.findByRole("button", {
+    name: "Retry inherited history",
+  });
+  getGoalChatPage.mockImplementation(async ({ cursor }) =>
+    cursor === null
+      ? {
+          ...parent,
+          turns: turns("chat-parent", 2, "Later parent"),
+          nextCursor: "older",
+        }
+      : {
+          ...parent,
+          turns: turns("chat-parent", 5, "Inherited"),
+          nextCursor: null,
+        },
+  );
+  fireEvent.click(retry);
+  expect(await screen.findByText("Inherited 2")).toBeVisible();
+  expect(screen.queryByText("Inherited 3")).toBeNull();
+  expect(screen.queryByText("Later parent 0")).toBeNull();
+  view.unmount();
 });
 
 function turns(chatId: string, count: number, text: string): TurnProjection[] {

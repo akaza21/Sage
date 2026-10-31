@@ -7,9 +7,8 @@ import {
 } from "../../app/chatTransitions";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { useWorkbenchStore } from "../../app/store";
-import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
+import type { AcpChatPage } from "../../domain/acp";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
@@ -280,28 +279,15 @@ export function ForkDivider({
     state.tabs.some((tab) => tab.kind === "chat" && tab.id === parentChatId),
   );
   const activateTab = useWorkbenchStore((state) => state.activateTab);
-  const inherited = useInheritedHistory(parentChatId, forkTurnId);
   return (
     <>
-      {inherited ? (
-        // Parent Turns are read-only except answer actions; the fork owns the sole navigator, find and virtual list.
-        <div
-          className="chat-fork-inherited"
-          aria-label="History from the parent chat"
-          role="group"
-        >
-          {inherited.earlier ? (
-            <p className="acp-history-notice">
-              Earlier history isn&apos;t shown.
-            </p>
-          ) : null}
-          <LazyModuleBoundary
-            label="Inherited history"
-            load={loadInheritedTurns}
-            render={(InheritedTurns) => <InheritedTurns page={inherited} />}
-          />
-        </div>
-      ) : null}
+      <LazyModuleBoundary
+        label="Inherited history"
+        load={loadInheritedHistory}
+        render={(History) => (
+          <History parentChatId={parentChatId} forkTurnId={forkTurnId} />
+        )}
+      />
       <div className="chat-fork-divider">
         <GitBranch size={14} />
         {open ? (
@@ -320,53 +306,7 @@ export function ForkDivider({
   );
 }
 
-/** At most this many inherited parent Turns render above the divider. */
-const MAX_INHERITED_TURNS = 20;
-
-const loadInheritedTurns = () =>
-  import("./acp/AcpChatPresentation").then(({ InheritedTurns }) => ({
-    default: InheritedTurns,
+const loadInheritedHistory = () =>
+  import("./InheritedChatHistory").then(({ InheritedChatHistory }) => ({
+    default: InheritedChatHistory,
   }));
-
-type Inherited = AcpChatPage & {
-  forkTurnId: string;
-  /** Parent Turns before the shown ones exist but are not rendered. */
-  earlier: boolean;
-};
-
-/** Read one parent page through the fork, capped at MAX_INHERITED_TURNS. Announce omitted history; show nothing if the fork predates the page. Keep the previous render during Project-transition re-fetches. */
-function useInheritedHistory(parentChatId: string, forkTurnId?: string) {
-  const projectId = useWorkbenchStore((state) => state.project?.id);
-  const generation = useWorkbenchStore((state) => state.nativeTransitionEpoch);
-  const [inherited, setInherited] = useState<Inherited | null>(null);
-  useEffect(() => {
-    if (!projectId || !forkTurnId) return;
-    let live = true;
-    void getGoalChatPage({
-      projectId: projectId as AcpChatPage["projectId"],
-      projectGeneration: String(generation) as ProjectGeneration,
-      chatId: parentChatId as AcpChatPage["chatId"],
-      cursor: null,
-    })
-      .then((page) => {
-        if (!live || page.chatId !== parentChatId) return;
-        const end = page.turns.findIndex((turn) => turn.id === forkTurnId) + 1;
-        if (!end) return setInherited(null);
-        const start = Math.max(0, end - MAX_INHERITED_TURNS);
-        setInherited({
-          ...page,
-          forkTurnId,
-          earlier: start > 0 || page.nextCursor !== null,
-          turns: page.turns.slice(start, end),
-        });
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [projectId, generation, parentChatId, forkTurnId]);
-  return inherited?.chatId === parentChatId &&
-    inherited.forkTurnId === forkTurnId
-    ? inherited
-    : null;
-}
