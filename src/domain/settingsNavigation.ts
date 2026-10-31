@@ -194,6 +194,13 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
       "Clear browsing history, cookies, site data, and cache from the built-in browser.",
     group: "General",
   },
+  {
+    id: "browser.sitePermissions",
+    label: "Site permissions",
+    description:
+      "Camera, microphone, location, notifications, and clipboard choices saved for each site.",
+    group: "Site permissions",
+  },
 ]);
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([

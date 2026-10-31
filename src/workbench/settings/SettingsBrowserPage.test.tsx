@@ -1,12 +1,22 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const getPreferences = vi.fn();
 const setPreferences = vi.fn();
+const siteSettings = vi.fn();
 const runtime = vi.hoisted(() => ({ desktop: true }));
 
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: () => runtime.desktop,
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => undefined),
 }));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => getPreferences(),
@@ -15,6 +25,9 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
 vi.mock("../../ports/nativeBrowserPort", () => ({
   browserClearData: vi.fn(),
   closeBrowser: vi.fn(),
+}));
+vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
+  browserSiteSettings: () => siteSettings(),
 }));
 
 import { resetBrowserPreferencesForTests } from "../../features/browser/browserPreferencesStore";
@@ -28,6 +41,9 @@ beforeEach(() => {
   runtime.desktop = true;
   getPreferences.mockResolvedValue({ showFullUrl: false });
   setPreferences.mockImplementation(async (value: unknown) => value);
+  siteSettings.mockResolvedValue([
+    { origin: "https://a.example", kind: "camera", decision: "allow" },
+  ]);
   resetBrowserPreferencesForTests();
 });
 
@@ -92,6 +108,30 @@ it("hides entries the search filtered out", () => {
   ).toBeVisible();
 });
 
+it("lists saved site permissions in their own group", async () => {
+  render(<SettingsBrowserPage visible={all()} />);
+  const group = screen.getByRole("group", { name: "Site permissions" });
+  const table = await within(group).findByRole("table");
+  expect(table).toHaveAccessibleDescription(
+    /apply to every browser tab and stay after Clear browsing data/,
+  );
+  expect(
+    within(table).getByRole("combobox", {
+      name: "Camera for https://a.example",
+    }),
+  ).toHaveValue("allow");
+});
+
+it("finds site permissions by the kinds they cover", () => {
+  render(
+    <SettingsBrowserPage
+      visible={matchingSettingsEntryIds("microphone", "browser")}
+    />,
+  );
+  expect(screen.getByRole("group", { name: "Site permissions" })).toBeVisible();
+  expect(screen.queryByRole("checkbox", { name: "Show full URL" })).toBeNull();
+});
+
 it("explains that browser settings need the desktop app", () => {
   runtime.desktop = false;
   render(<SettingsBrowserPage visible={all()} />);
@@ -100,4 +140,6 @@ it("explains that browser settings need the desktop app", () => {
   );
   expect(screen.queryByRole("checkbox")).toBeNull();
   expect(getPreferences).not.toHaveBeenCalled();
+  expect(screen.queryByRole("group", { name: "Site permissions" })).toBeNull();
+  expect(siteSettings).not.toHaveBeenCalled();
 });

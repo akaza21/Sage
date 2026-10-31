@@ -284,11 +284,3 @@ export function browserPermissionResolve(
 ): Promise<void> {
   return invokeNative("browser_permission_resolve", { tabId, id, allow });
 }
-
-export function browserPermissionRevoke(
-  tabId: string,
-  origin: string,
-  kind: BrowserPermissionKind,
-): Promise<void> {
-  return invokeNative("browser_permission_revoke", { tabId, origin, kind });
-}

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 
 import {
-  browserPermissionRevoke,
   browserPermissionResolve,
   browserPermissionStatus,
   type BrowserPermissionKind,
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
+import { browserSiteSettingReset } from "../../ports/nativeBrowserSiteSettingsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 const labels: Record<BrowserPermissionKind, string> = {
@@ -89,7 +89,7 @@ export function BrowserSitePermissions({
     setRevokeBusy(`${origin}:${kind}`);
     setError(null);
     try {
-      await browserPermissionRevoke(tabId, origin, kind);
+      await browserSiteSettingReset(origin, kind);
       setSnapshot((current) =>
         current
           ? {
@@ -149,7 +149,8 @@ export function BrowserSitePermissions({
           {expanded || showEmpty ? (
             <>
               <p>
-                Revoking a permission reloads the page to stop active access.
+                Saved for this site in every tab. Revoking an allowed permission
+                reloads the site to stop active access.
               </p>
               <ul>
                 {snapshot.decisions.map((decision) => (
@@ -175,7 +176,7 @@ export function BrowserSitePermissions({
           ) : null}
         </>
       ) : showEmpty ? (
-        <p>No site permissions saved for this tab.</p>
+        <p>No site permissions saved for this site.</p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </aside>

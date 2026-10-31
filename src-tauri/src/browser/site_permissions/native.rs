@@ -15,7 +15,10 @@ use webview2_com::{
 };
 use windows_core::{Interface, PWSTR};
 
-use super::{Decision, PermissionKind, RequestOutcome, snapshot};
+use super::{
+    Decision, PermissionKind, RequestOutcome,
+    commands::{emit_site_settings, snapshot},
+};
 use crate::browser::{BrowserState, admit_url};
 
 struct PendingPermission {
@@ -189,13 +192,15 @@ fn finish(app: &AppHandle, tab_id: &str, id: u64, decision: Decision, save: bool
             .and_then(|()| unsafe { entry.args.SetState(state) })
             .is_ok()
     });
+    let mut settled = Vec::new();
     let recorded = app
         .state::<BrowserState>()
         .permissions
         .lock()
         .is_ok_and(|mut permissions| {
             if save && origin_matches && configured {
-                if permissions.resolve(id, tab_id, decision) {
+                if let Some(others) = permissions.resolve_site(id, tab_id, decision) {
+                    settled = others;
                     true
                 } else {
                     permissions.cancel(id);
@@ -213,7 +218,17 @@ fn finish(app: &AppHandle, tab_id: &str, id: u64, decision: Decision, save: bool
     for entry in pending {
         let _ = unsafe { entry.deferral.Complete() };
     }
-    emit_snapshot(app, tab_id);
+    if save && configured && recorded && origin_matches {
+        // The saved answer settles the same site's prompts in other tabs.
+        for (other, other_tab) in settled {
+            finish(app, &other_tab, other, decision, false);
+        }
+        // A saved answer applies to the whole site, so every tab's drawer
+        // and Settings > Browser refresh.
+        emit_site_settings(app, &app.state::<BrowserState>());
+    } else {
+        emit_snapshot(app, tab_id);
+    }
     configured && recorded && origin_matches
 }
 

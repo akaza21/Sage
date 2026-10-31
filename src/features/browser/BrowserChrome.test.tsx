@@ -405,7 +405,7 @@ it("keeps this tab's site permissions one menu item away", async () => {
   const drawer = await screen.findByRole("complementary", {
     name: "Site settings",
   });
-  expect(drawer).toHaveTextContent("No site permissions saved for this tab.");
+  expect(drawer).toHaveTextContent("No site permissions saved for this site.");
   fireEvent.click(
     within(drawer).getByRole("button", { name: "Close site settings" }),
   );
