@@ -8,6 +8,8 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
+const INITIAL_FILE_ROWS = 3;
+
 export function TurnFileActivity({
   page,
   turn,
@@ -49,8 +51,15 @@ export function TurnFileActivity({
   const open =
     turn.sessionId === page.currentSessionId ? onOpenResource : undefined;
   const firstDiff = changes.find((change) => change.diffRef);
-  const visible = expanded ? changes : changes.slice(0, 3);
-  const unavailable = "Saved changes are unavailable for this file.";
+  const visible = expanded ? changes : changes.slice(0, INITIAL_FILE_ROWS);
+  const single = changes[0].resource;
+  const basename =
+    count === 1 &&
+    !incomplete &&
+    (single.kind === "resource" ? single.resource.relativePath : single.label)
+      .split(/[\\/]/)
+      .pop();
+  const unavailable = "No saved diff.";
   function view(change: (typeof changes)[number]) {
     if (!open || !change.diffRef || change.resource.kind !== "resource") return;
     open(
@@ -72,11 +81,14 @@ export function TurnFileActivity({
         </p>
       ) : null}
       <header className="acp-edited-files__header">
-        <FilePenLine size={16} aria-hidden="true" />
+        <span className="acp-edited-files__icon">
+          <FilePenLine size={16} aria-hidden="true" />
+        </span>
         <div className="acp-edited-files__heading">
-          <strong>
-            Edited {incomplete ? "at least " : ""}
-            {count} {count === 1 ? "file" : "files"}
+          <strong title={basename || undefined}>
+            {basename
+              ? `Edited ${basename}`
+              : `Edited ${incomplete ? "at least " : ""}${count} file${count === 1 ? "" : "s"}`}
           </strong>
           <FileChangeTotals
             changes={changes}
@@ -87,11 +99,7 @@ export function TurnFileActivity({
           <button
             type="button"
             disabled={!open || !firstDiff}
-            title={
-              !open || !firstDiff
-                ? unavailable
-                : "Open the first saved file diff"
-            }
+            title={open && firstDiff ? "Open saved diff" : unavailable}
             onClick={() => firstDiff && view(firstDiff)}
           >
             View changes
@@ -122,7 +130,7 @@ export function TurnFileActivity({
           );
         })}
       </ul>
-      {changes.length > 3 ? (
+      {changes.length > INITIAL_FILE_ROWS ? (
         <button
           className="acp-edited-files__more"
           type="button"
@@ -131,7 +139,7 @@ export function TurnFileActivity({
         >
           {expanded
             ? "Show fewer files"
-            : `Show ${changes.length - 3} more files`}
+            : `Show ${changes.length - INITIAL_FILE_ROWS} more files`}
           <ChevronDown size={12} aria-hidden="true" />
         </button>
       ) : null}

@@ -17,6 +17,32 @@ import { TurnFileActivity } from "./TurnFileActivity";
 
 afterEach(cleanup);
 
+it("names a single edited file by basename and opens its exact saved diff", () => {
+  const page = snapshotPage();
+  const opened: unknown[] = [];
+  render(
+    <TurnFileActivity
+      page={page}
+      turn={page.turns[0]}
+      onOpenResource={(...request) => opened.push(request)}
+    />,
+  );
+  expect(screen.getByText("Edited a.ts")).toHaveAttribute("title", "a.ts");
+  fireEvent.click(screen.getByRole("button", { name: "View changes" }));
+  expect(opened).toEqual([
+    [
+      snapshotResource,
+      "diff",
+      {
+        projectId: page.projectId,
+        chatId: page.chatId,
+        sessionId: page.turns[0].sessionId,
+      },
+      snapshotRef,
+    ],
+  ]);
+});
+
 it("qualifies same-path files across roots and preserves each saved diff identity", () => {
   const page = snapshotPage();
   const edit = page.turns[0].items[0];
@@ -115,7 +141,7 @@ it("shows real line counts and opens the originating saved Diff from the edit ca
     />,
   );
   const card = screen.getByRole("region", { name: "Edited files" });
-  expect(card).toHaveTextContent("Edited 1 file");
+  expect(card).toHaveTextContent("Edited a.ts");
   expect(within(card).getAllByLabelText("Line changes")[0]).toHaveTextContent(
     "+1-1",
   );
@@ -327,7 +353,7 @@ it.each([
         retentionIncomplete={false}
       />,
     );
-    const row = (await screen.findByText("Edited 1 file")).closest(
+    const row = (await screen.findByText("Edited a.ts")).closest(
       ".acp-edited-files",
     )!;
     expect(row).toBeVisible();

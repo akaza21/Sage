@@ -15,7 +15,13 @@
   padding: var(--space-3);
 }
 
-.acp-edited-files__header > svg {
+.acp-edited-files__icon {
+  display: grid;
+  width: var(--control-height-emphasis);
+  height: var(--control-height-emphasis);
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-plane-raised);
   flex: none;
   color: var(--color-text-muted);
 }
@@ -23,7 +29,7 @@
 .acp-edited-files__heading {
   display: grid;
   flex: 1;
-  min-width: 80px;
+  min-width: 0;
   gap: var(--space-1);
 }
 
@@ -80,7 +86,8 @@
   text-align: left;
 }
 
-.acp-edited-files__path {
+.acp-edited-files__path,
+.acp-edited-files__heading > strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

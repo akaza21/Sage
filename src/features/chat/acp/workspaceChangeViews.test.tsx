@@ -117,7 +117,7 @@ it("keeps a shell deletion after five more terminal turns and across session sel
       "region",
       { name: "Edited files" },
     ),
-  ).toHaveTextContent("Edited 1 file");
+  ).toHaveTextContent("Edited a.ts");
   expect(summary).toHaveTextContent("1 file changed");
   fireEvent.click(within(summary).getByRole("button"));
   expect(summary).toHaveTextContent("deleted");
@@ -150,7 +150,7 @@ it("shows the same shell-only ledger file in the chat summary, Edited files and 
     </>,
   );
   const card = await screen.findByRole("region", { name: "Edited files" });
-  expect(card).toHaveTextContent("Edited 1 file");
+  expect(card).toHaveTextContent("Edited shell.ts");
   expect(card).toHaveTextContent("shell.ts");
   expect(
     within(card).getByRole("button", { name: "View changes" }),
