@@ -1,3 +1,7 @@
+.acp-turn__attachments {
+  --chat-prompt-thumbnail-size: calc(var(--space-6) * 3);
+}
+
 .message-list__content {
   width: min(100%, 740px);
   margin-inline: auto;
@@ -81,10 +85,25 @@
 
 .message-list__content > .message--user,
 .message-list__content .acp-message--user {
+  position: relative;
+  margin-bottom: var(--control-height-compact);
   width: fit-content;
   max-width: min(82%, 560px);
   margin-right: max(calc((100% - 700px) / 2), 0px);
   margin-left: auto;
+}
+
+.acp-message--user > .chat-user-actions {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 0;
+  margin: 0;
+  opacity: 0;
+  animation: none;
+}
+
+.acp-message--user:is(:hover, :focus-within) > .chat-transcript-actions {
+  opacity: 1;
 }
 
 .message-list__content .acp-message--user {
@@ -105,8 +124,8 @@
 }
 
 .acp-turn__attachments .acp-image {
-  width: 88px;
-  height: 88px;
+  width: var(--chat-prompt-thumbnail-size);
+  height: var(--chat-prompt-thumbnail-size);
   padding: 0;
   border-radius: var(--radius-lg);
 }
@@ -115,7 +134,7 @@
 .acp-turn__attachments .acp-image__src {
   width: 100%;
   height: 100%;
-  max-height: 88px;
+  max-height: var(--chat-prompt-thumbnail-size);
   object-fit: contain;
 }
 
@@ -147,14 +166,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-}
-
-.chat-transcript-day::before,
-.chat-transcript-day::after {
-  height: 1px;
-  flex: 1 1 auto;
-  background: var(--color-border-subtle);
-  content: "";
 }
 
 .chat-transcript-work {
@@ -299,6 +310,7 @@
   opacity: 1;
 }
 
+.chat-user-actions,
 .chat-transcript-actions {
   display: flex;
   min-height: 28px;
@@ -309,6 +321,7 @@
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
+.chat-user-actions > button,
 .chat-transcript-actions > button {
   position: relative;
   display: inline-flex;
@@ -326,6 +339,7 @@
   cursor: pointer;
 }
 
+.chat-user-actions > button:hover,
 .chat-transcript-actions > button:hover {
   border-color: var(--color-border-subtle);
   color: var(--color-text-primary);
@@ -374,6 +388,7 @@
   opacity: 1;
 }
 
+.chat-user-actions > button:focus-visible,
 .chat-transcript-actions > button:focus-visible,
 .chat-transcript-work > summary:focus-visible {
   outline: var(--focus-ring);
@@ -431,11 +446,6 @@
 @media (forced-colors: active) {
   .chat-transcript-work[open] + .chat-transcript-work__groups > * {
     animation: none;
-  }
-
-  .chat-transcript-day::before,
-  .chat-transcript-day::after {
-    background: CanvasText;
   }
 
   .message-list__content .acp-message--user {

@@ -78,19 +78,6 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
   expect(within(row).getByRole("button", { name: "Copied" })).toBeVisible();
 });
 
-/** The menu a row's "…" opens, by its item labels. */
-async function moreItems(row: HTMLElement) {
-  fireEvent.click(
-    await within(row).findByRole("button", { name: "More actions" }),
-  );
-  const menu = await screen.findByRole("menu", { name: "Answer actions" });
-  const items = within(menu)
-    .getAllByRole("menuitem")
-    .map((item) => item.textContent);
-  fireEvent.keyDown(menu, { key: "Escape" });
-  return items;
-}
-
 const forkable = (projection: AcpChatPage): AcpChatPage => ({
   ...projection,
   sessions: [
@@ -111,10 +98,11 @@ it('puts "…" on an earlier answer, offering only Copy there (s2/f0066)', async
   const row = within(turnSection(1)).getByRole("group", {
     name: "Message actions",
   });
-  expect(await moreItems(row)).toEqual(["Copy"]);
-  fireEvent.click(within(row).getByRole("button", { name: "More actions" }));
+  expect(
+    within(row).queryByRole("button", { name: "More actions" }),
+  ).toBeNull();
   await act(async () => {
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Copy" }));
   });
   expect(writeText).toHaveBeenCalledWith("Normalized answer");
 });
@@ -137,7 +125,10 @@ it('keeps Copy and "…" usable on inherited fork answers, with no fork there (s
   for (const turn of container.querySelectorAll(".acp-turn"))
     expect(turn).toHaveAttribute("inert");
   for (const row of rows) expect(row.closest("[inert]")).toBeNull();
-  expect(await moreItems(rows[1])).toEqual(["Copy"]);
+  for (const row of rows)
+    expect(
+      within(row).queryByRole("button", { name: "More actions" }),
+    ).toBeNull();
   await act(async () => {
     fireEvent.click(within(rows[1]).getByRole("button", { name: "Copy" }));
   });
@@ -195,7 +186,7 @@ it("shows the answer's own time in the row, and none without a real time (s2/f00
   ).toBeNull();
 });
 
-it("retains the owner-requested Retry on a successful native answer", () => {
+it("omits recovery Retry on a successful answer and keeps it on a stopped answer", () => {
   const onRetry = vi.fn();
   const projection = page("completed");
   const { rerender } = render(
@@ -206,13 +197,22 @@ it("retains the owner-requested Retry on a successful native answer", () => {
       onRetry={onRetry}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  expect(onRetry).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  expect(onRetry).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
   rerender(
-    <ChatTranscriptFooter useNativeAcp page={projection} messages={[]} />,
+    <ChatTranscriptFooter
+      useNativeAcp
+      page={{
+        ...projection,
+        turns: [{ ...projection.turns[0], state: "cancelled" }],
+      }}
+      messages={[]}
+      onRetry={onRetry}
+    />,
   );
-  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetry).toHaveBeenCalledOnce();
 });
 
 it("gives the latest answer's footer the same timed row", () => {

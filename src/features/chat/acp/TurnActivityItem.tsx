@@ -13,6 +13,7 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
+import { AnswerActions } from "../AnswerActions";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
@@ -99,6 +100,13 @@ export const ItemView = memo(
                   : undefined
               }
             />
+            {item.payload.role === "user" ? (
+              <AnswerActions
+                user
+                text={item.payload.text}
+                createdAt={item.createdAt}
+              />
+            ) : null}
           </article>
         );
       }

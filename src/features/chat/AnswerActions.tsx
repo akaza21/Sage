@@ -12,6 +12,7 @@ export function AnswerActions({
   page,
   forkable = false,
   children,
+  user = false,
 }: {
   text: string;
   createdAt?: number;
@@ -20,6 +21,7 @@ export function AnswerActions({
   /** Only the latest answer can fork; its menu then offers the branch. */
   forkable?: boolean;
   children?: ReactNode;
+  user?: boolean;
 }) {
   const onCopyFeedback = useContext(AnswerCopyFeedback);
   const [copied, setCopied] = useState(false);
@@ -53,14 +55,14 @@ export function AnswerActions({
 
   return (
     <div
-      className="chat-transcript-actions"
+      className={user ? "chat-user-actions" : "chat-transcript-actions"}
       role="group"
-      aria-label="Message actions"
+      aria-label={user ? "User message actions" : "Message actions"}
     >
       <button
         type="button"
-        aria-label={copied ? "Copied" : "Copy"}
-        title={copied ? "Copied" : "Copy"}
+        aria-label={copied ? "Copied" : user ? "Copy message" : "Copy"}
+        title={copied ? "Copied" : user ? "Copy message" : "Copy"}
         onClick={() => void copyAnswer()}
       >
         <CopyIcon size={14} aria-hidden="true" />
