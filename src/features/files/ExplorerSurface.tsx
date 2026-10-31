@@ -18,8 +18,6 @@ import {
 } from "../../domain/resourceIdentity";
 import type * as MatcherModule from "../../domain/pathGlobMatcher";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
-import { GitDecorationBadge } from "../git/GitDecorationBadge";
-import { gitDecorationAt } from "../git/gitDecorations";
 import { useRootGitDecorations } from "../git/useRootGitDecorations";
 import { ExplorerActions } from "./ExplorerActions";
 import {
@@ -66,8 +64,8 @@ const RootTree = memo(function RootTree({
       void matcherLoaded.then((module) => module && setMatcher(module));
     }
   }, [matcher]);
-  const gitDecorations = useRootGitDecorations(root.id);
-  const rootGitDecoration = gitDecorationAt(gitDecorations, "", true);
+  const git = useRootGitDecorations(root.id);
+  const rootGitDecoration = git?.ui.gitDecorationAt(git.decorations, "", true);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const contextMenu = useContext(ExplorerContextMenuContext);
@@ -163,8 +161,8 @@ const RootTree = memo(function RootTree({
         <span className={`root-state root-state--${root.availability}`}>
           {root.availability === "available" ? "" : root.availability}
         </span>
-        {rootGitDecoration ? (
-          <GitDecorationBadge decoration={rootGitDecoration} />
+        {git && rootGitDecoration ? (
+          <git.ui.GitDecorationBadge decoration={rootGitDecoration} />
         ) : null}
       </button>
       {root.availability !== "available" ? (
@@ -186,11 +184,12 @@ const RootTree = memo(function RootTree({
             entry={entry}
             selected={isSelected}
             expanded={Boolean(expanded[key])}
-            gitDecoration={gitDecorationAt(
-              gitDecorations,
+            gitDecoration={git?.ui.gitDecorationAt(
+              git.decorations,
               entry.resource.relativePath,
               entry.kind === "directory",
             )}
+            GitBadge={git?.ui.GitDecorationBadge}
             onSelectDirectory={selectDirectory}
             onToggleDirectory={toggleDirectory}
             onOpenFile={openFile}

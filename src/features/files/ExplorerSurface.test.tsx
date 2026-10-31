@@ -348,7 +348,7 @@ it("hides what files.exclude names, .DS_Store by default", async () => {
   expect(shown()).toEqual(["Open file .DS_Store", "Open file main.ts"]);
 });
 
-it("marks changed Files and the folders holding them from the Git status (EP-13)", () => {
+it("marks changed Files and the folders holding them from the Git status (EP-13)", async () => {
   const root = childResource("root-a");
   const src = childResource("root-a", "src");
   const edited = childResource("root-a", "src/edited.ts");
@@ -430,7 +430,8 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
 
   render(<ExplorerSurface />);
 
-  const folder = screen.getByRole("treeitem", {
+  // The marks arrive with their lazy chunk.
+  const folder = await screen.findByRole("treeitem", {
     name: "Toggle folder src, Contains changes",
   });
   expect(folder).toHaveClass("tree__row--git", "git-tone--modified");
@@ -488,7 +489,7 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
   );
 });
 
-it("keeps unchanged Explorer rows from re-rendering when a refresh changes another File", () => {
+it("keeps unchanged Explorer rows from re-rendering when a refresh changes another File", async () => {
   const root = childResource("root-a");
   const a = childResource("root-a", "a.ts");
   const change = (relativePath: string) => ({
@@ -542,6 +543,7 @@ it("keeps unchanged Explorer rows from re-rendering when a refresh changes anoth
     expandedDirectories: {},
   });
   render(<ExplorerSurface />);
+  await screen.findByRole("treeitem", { name: "Open file a.ts, Modified" });
   const iconRenders = fileKindIcon.mock.calls.length;
   act(() => {
     useWorkbenchStore.setState({ repositories: repo(["a.ts", "b.ts"]) });

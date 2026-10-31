@@ -109,7 +109,9 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
-  // The Editor tab strip, with its Git marks (EP-13), loads with the Editor.
+  // Git marks (EP-13) load only while on and a repository is open.
+  "src/features/git/gitDecorationsUi.ts",
+  // The Editor tab strip loads with the Editor.
   "src/workbench/TabStrip.tsx",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",

@@ -3,7 +3,7 @@ import { forwardRef, memo } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
-import { GitDecorationBadge } from "../git/GitDecorationBadge";
+import type { GitDecorationBadge } from "../git/GitDecorationBadge";
 import type { GitDecoration } from "../git/gitDecorations";
 import { isContextMenuKey } from "./explorerContextMenu";
 import { FileKindIcon } from "./FileKindIcon";
@@ -15,6 +15,8 @@ interface ExplorerRowProps {
   expanded: boolean;
   /** Git status from the EP-12 store (EP-13); shared objects keep the memo. */
   gitDecoration?: GitDecoration;
+  /** The badge from the lazy decoration chunk, present with `gitDecoration`. */
+  GitBadge?: typeof GitDecorationBadge;
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
@@ -29,6 +31,7 @@ export const ExplorerRow = memo(
       selected,
       expanded,
       gitDecoration,
+      GitBadge,
       onSelectDirectory,
       onToggleDirectory,
       onOpenFile,
@@ -100,8 +103,8 @@ export const ExplorerRow = memo(
           entryKind={entryKind}
         />
         <span className="tree__name">{entry.name}</span>
-        {gitDecoration ? (
-          <GitDecorationBadge decoration={gitDecoration} />
+        {gitDecoration && GitBadge ? (
+          <GitBadge decoration={gitDecoration} />
         ) : null}
       </button>
     );

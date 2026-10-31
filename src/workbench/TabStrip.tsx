@@ -18,7 +18,7 @@ import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
 import { BrowserFavicon } from "../features/browser/browserFavicon";
-import GitTabTitle from "../features/git/GitTabTitle";
+import { useGitDecorationsUi } from "../features/git/useGitDecorationsUi";
 
 function BrowserTabPresence({
   tabId,
@@ -91,8 +91,16 @@ export function TabStrip({
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const project = useWorkbenchStore((state) => state.project);
-  const gitDecorations = useEditorSettingsStore(
+  const decorate = useEditorSettingsStore(
     (store) => store.settings["git.decorations"],
+  );
+  // EP-13: the marks load only while on and a repository root is open.
+  const git = useGitDecorationsUi(
+    useWorkbenchStore(
+      (state) =>
+        decorate &&
+        state.repositories.roots.some((root) => root.state === "repository"),
+    ),
   );
   const attachedChatCount = tabs.filter((tab) => tab.kind === "chat").length;
   const visibleTabs = kinds
@@ -154,8 +162,8 @@ export function TabStrip({
                 ) : (
                   <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                 )}
-                {gitDecorations && tab.kind === "file" && tab.resource ? (
-                  <GitTabTitle title={tab.title} resource={tab.resource} />
+                {git && tab.kind === "file" && tab.resource ? (
+                  <git.GitTabTitle title={tab.title} resource={tab.resource} />
                 ) : (
                   <span>{tab.title}</span>
                 )}

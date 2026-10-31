@@ -3,8 +3,15 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 
 const workbench = "src/workbench/Workbench.tsx";
-// The Editor's tab strip loads lazily with every Editor view.
-const tabStrip = "src/workbench/TabStrip.tsx";
+// Every Editor view loads these with it: the tab strip, and Explorer with its
+// glob matcher, which registeredSurfaces starts loading as the Editor opens.
+const editorBase = [
+  "index.html",
+  workbench,
+  "src/workbench/TabStrip.tsx",
+  "src/features/files/ExplorerSurface.tsx",
+  "src/domain/pathGlobMatcher.ts",
+];
 const MAX_MANIFEST_RECORDS = 4096;
 const MAX_MANIFEST_IMPORTS = 16384;
 export const WEB_BUNDLE_PATH_ROOTS = {
@@ -16,23 +23,11 @@ export const WEB_BUNDLE_PATH_ROOTS = {
     "src/features/chat/ChatSurface.tsx",
     "src/features/chat/acp/AcpChatPresentation.tsx",
   ],
-  editorShell: ["index.html", workbench, tabStrip],
-  editorDiff: [
-    "index.html",
-    workbench,
-    tabStrip,
-    "src/features/diff/DiffSurface.tsx",
-  ],
-  editorSearch: [
-    "index.html",
-    workbench,
-    tabStrip,
-    "src/features/search/SearchSurface.tsx",
-  ],
+  editorShell: editorBase,
+  editorDiff: [...editorBase, "src/features/diff/DiffSurface.tsx"],
+  editorSearch: [...editorBase, "src/features/search/SearchSurface.tsx"],
   editorFile: [
-    "index.html",
-    workbench,
-    tabStrip,
+    ...editorBase,
     "src/features/files/FileSurface.tsx",
     "src/features/files/CodeMirrorEditorRuntime.ts",
   ],
