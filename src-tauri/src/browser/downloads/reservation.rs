@@ -3,7 +3,8 @@
 //! - Dropping a [`Reservation`] anywhere (a canceled or failed download, a
 //!   tab closed while planning, a hand-back to a closed webview that never
 //!   runs) queues a delete of the placeholder through its own handle on the
-//!   download worker, only if it is still empty.
+//!   download worker, only if it is still empty (Windows; elsewhere the
+//!   placeholder is left, see [`super::placeholder`]).
 //! - [`Reservation::keep`] is for a download that finished there: the
 //!   handle is closed and the file left alone.
 //!
@@ -76,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_reservation_deletes_its_empty_placeholder() {
+    fn dropping_a_reservation_deletes_its_empty_placeholder_where_a_handle_can() {
         let scratch = Scratch::new("drop");
         let reservation =
             Reservation::adopt(unique_destination(&scratch.0, "file.bin", |_| false).unwrap());
@@ -86,7 +87,7 @@ mod tests {
         let closure = move || drop(reservation);
         drop(closure);
         worker::flush();
-        assert!(!path.exists());
+        assert_eq!(path.exists(), !cfg!(windows));
     }
 
     #[test]

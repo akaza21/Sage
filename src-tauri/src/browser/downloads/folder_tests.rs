@@ -378,3 +378,11 @@ fn office_add_ins_and_other_installers_are_dangerous() {
         assert!(is_dangerous(name), "{name}");
     }
 }
+
+#[test]
+fn the_write_probe_leaves_nothing_behind() {
+    let folder = Scratch::new("probe");
+    assert!(admit_folder(&folder.0).is_some());
+    let left: Vec<_> = std::fs::read_dir(&folder.0).unwrap().collect();
+    assert!(left.is_empty(), "{left:?}");
+}

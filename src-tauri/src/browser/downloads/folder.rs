@@ -9,10 +9,7 @@
 //! main-webview command, and no command takes a path from the renderer, a
 //! page or the Agent.
 
-use std::{
-    fs::OpenOptions,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 mod file_types;
 
@@ -101,15 +98,29 @@ pub(crate) fn admit_folder(path: &Path) -> Option<PathBuf> {
 /// bits do not say whether this user can write there (ACLs, read-only
 /// shares), so only a real create does.
 fn is_writable(folder: &Path) -> bool {
+    // A random (version 4 UUID) name, created exclusively, so no other
+    // program can predict it or have a file there.
     let probe = folder.join(format!(".sage-write-probe-{}", uuid::Uuid::new_v4()));
-    match OpenOptions::new().write(true).create_new(true).open(&probe) {
-        Ok(file) => {
-            drop(file);
-            let _ = std::fs::remove_file(&probe);
-            true
-        }
-        Err(_) => false,
-    }
+    let Ok(placeholder) = placeholder::create(&probe) else {
+        return false;
+    };
+    remove_probe(placeholder);
+    true
+}
+
+/// Windows deletes the probe through its own handle.
+#[cfg(windows)]
+fn remove_probe(probe: Placeholder) {
+    probe.delete_if_empty();
+}
+
+/// Unix has no delete-by-handle; the probe's random name stands in for
+/// one, as with `mkstemp`.
+#[cfg(not(windows))]
+fn remove_probe(probe: Placeholder) {
+    let path = probe.path.clone();
+    drop(probe);
+    let _ = std::fs::remove_file(path);
 }
 
 /// `std::fs::canonicalize` returns `\\?\C:\…` on Windows. WebView2 and the

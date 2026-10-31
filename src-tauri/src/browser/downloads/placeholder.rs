@@ -5,11 +5,9 @@
 //! only while that file is still empty, so it can never remove a different
 //! file that took the name. On Windows the delete is
 //! `SetFileInformationByHandle(FileDispositionInfo)` on that handle. Unix has
-//! no delete-by-handle: there the name is unlinked only if it still names
-//! the open file (device and inode compared against the live handle, which
-//! keeps the inode from being reused), leaving only the instant between that
-//! check and the unlink. The download handling itself is WebView2 code and
-//! runs on Windows; the Unix path keeps the shared code tested.
+//! no delete-by-handle, so there an unused placeholder is left in place
+//! rather than removed by name. The download handling itself is WebView2
+//! code and runs on Windows; the Unix build keeps the shared code tested.
 //!
 //! After a crash nothing is deleted automatically: an empty placeholder can
 //! be left behind, never a user's file removed.
@@ -94,20 +92,9 @@ fn delete(file: &File, _: &Path) -> bool {
     }
 }
 
-#[cfg(unix)]
-fn delete(file: &File, path: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    let (Ok(open), Ok(named)) = (file.metadata(), std::fs::symlink_metadata(path)) else {
-        return false;
-    };
-    named.is_file()
-        && named.dev() == open.dev()
-        && named.ino() == open.ino()
-        && named.len() == 0
-        && std::fs::remove_file(path).is_ok()
-}
-
-#[cfg(not(any(unix, windows)))]
+/// Without a delete-by-handle (Unix), nothing is deleted: removing by name
+/// could remove a file another program put there after any check.
+#[cfg(not(windows))]
 fn delete(_: &File, _: &Path) -> bool {
     false
 }
@@ -126,13 +113,16 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_placeholder_is_deleted_through_its_handle() {
+    fn an_empty_placeholder_is_deleted_through_its_handle_or_else_kept() {
         let directory = scratch("empty");
         let path = directory.join("a.bin");
         let placeholder = create(&path).unwrap();
         assert!(path.exists());
-        assert!(placeholder.delete_if_empty());
-        assert!(!path.exists());
+        let deleted = placeholder.delete_if_empty();
+        // Windows deletes through the handle; Unix, with no such delete,
+        // keeps the file rather than remove it by name.
+        assert_eq!(deleted, cfg!(windows));
+        assert_eq!(path.exists(), !cfg!(windows));
         std::fs::remove_dir_all(directory).unwrap();
     }
 
