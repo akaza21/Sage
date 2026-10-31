@@ -98,7 +98,11 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
       <p role="status">
         Mixed line endings · View only. The file is not normalized or saved.
       </p>
-      <button type="button" onClick={() => refresh.current()}>
+      <button
+        className="button button--compact"
+        type="button"
+        onClick={() => refresh.current()}
+      >
         Refresh file
       </button>
       {watchError ? <p role="status">{watchError}</p> : null}

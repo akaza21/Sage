@@ -16,7 +16,22 @@ export function FileMarkdownPreview({
       aria-label={asDiagram ? "Diagram preview" : "Markdown preview"}
     >
       {document ? (
-        <MarkdownBlocks document={document} />
+        <MarkdownBlocks
+          document={document}
+          renderCode={(block) =>
+            block.language.toLowerCase() === "mermaid" ? (
+              <MermaidFigureBoundary source={block.text} />
+            ) : (
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label={`${block.language || "Plain text"} code`}
+              >
+                <code>{block.text}</code>
+              </pre>
+            )
+          }
+        />
       ) : (
         <MermaidFigureBoundary source={source} />
       )}

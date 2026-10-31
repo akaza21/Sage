@@ -1,4 +1,5 @@
 .file-markdown-preview {
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: 16px 16px;
@@ -19,10 +20,17 @@
 }
 
 .file-markdown-preview pre {
+  max-width: 100%;
   overflow: auto;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.file-markdown-preview pre:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 .file-markdown-preview li > :is(ul, ol) {

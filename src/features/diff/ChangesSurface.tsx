@@ -91,6 +91,7 @@ export const ChangesSurface = memo(function ChangesSurface({
         ) : null}
         {
           <button
+            className="button button--compact"
             type="button"
             disabled={refreshing}
             onClick={() => {
