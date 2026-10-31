@@ -6,7 +6,10 @@ import {
   type BrowserPermissionKind,
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
-import { browserSiteSettingReset } from "../../ports/nativeBrowserSiteSettingsPort";
+import {
+  browserSiteReloadTabs,
+  browserSiteSettingReset,
+} from "../../ports/nativeBrowserSiteSettingsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 const labels: Record<BrowserPermissionKind, string> = {
@@ -16,6 +19,20 @@ const labels: Record<BrowserPermissionKind, string> = {
   notifications: "notifications",
   clipboardRead: "clipboard",
 };
+
+/** The strings in a site list from Rust; anything malformed is none. */
+function sites(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((site): site is string => typeof site === "string")
+    : [];
+}
+
+/** The sites a reset reports as not reloaded. */
+function reloadFailedSites(update: unknown): string[] {
+  return typeof update === "object" && update !== null
+    ? sites((update as { reloadFailed?: unknown }).reloadFailed)
+    : [];
+}
 
 export function BrowserSitePermissions({
   tabId,
@@ -31,6 +48,9 @@ export function BrowserSitePermissions({
   const [revokeBusy, setRevokeBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sites whose tabs did not reload after a revoke; their pages may keep
+  // access until they reload.
+  const [unreloaded, setUnreloaded] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -89,7 +109,12 @@ export function BrowserSitePermissions({
     setRevokeBusy(`${origin}:${kind}`);
     setError(null);
     try {
-      await browserSiteSettingReset(origin, kind);
+      const failed = reloadFailedSites(
+        await browserSiteSettingReset(origin, kind),
+      );
+      if (failed.length) {
+        setUnreloaded((current) => [...new Set([...current, ...failed])]);
+      }
       setSnapshot((current) =>
         current
           ? {
@@ -107,8 +132,21 @@ export function BrowserSitePermissions({
     }
   }
 
+  async function reloadAgain() {
+    setRevokeBusy("reload");
+    setError(null);
+    try {
+      setUnreloaded(sites(await browserSiteReloadTabs(unreloaded)));
+    } catch (cause) {
+      setError(String(cause).slice(0, 512));
+    } finally {
+      setRevokeBusy(null);
+    }
+  }
+
   if (
     !showEmpty &&
+    !unreloaded.length &&
     !snapshot?.pending.length &&
     !snapshot?.decisions.length &&
     !error
@@ -177,6 +215,19 @@ export function BrowserSitePermissions({
         </>
       ) : showEmpty ? (
         <p>No site permissions saved for this site.</p>
+      ) : null}
+      {unreloaded.length ? (
+        <p role="alert">
+          Revoked, but tabs on {unreloaded.join(", ")} could not reload and may
+          keep access until they do.{" "}
+          <button
+            type="button"
+            disabled={revokeBusy !== null}
+            onClick={() => void reloadAgain()}
+          >
+            Reload tabs
+          </button>
+        </p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </aside>

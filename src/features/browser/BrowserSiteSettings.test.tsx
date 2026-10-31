@@ -163,6 +163,39 @@ it("keeps a saved Block distinct from a failed reload and reloads again", async 
   expect(reloadTabs).toHaveBeenCalledTimes(2);
 });
 
+it("keeps an earlier failed reload after a later change succeeds", async () => {
+  set
+    .mockResolvedValueOnce({
+      settings: [{ ...camera, decision: "deny" }, location],
+      reloadFailed: ["https://a.example"],
+    })
+    .mockResolvedValueOnce({
+      settings: [
+        { ...camera, decision: "deny" },
+        { ...location, decision: "allow" },
+      ],
+      reloadFailed: [],
+    });
+  view();
+  fireEvent.change(
+    await screen.findByRole("combobox", {
+      name: "Camera for https://a.example",
+    }),
+    { target: { value: "deny" } },
+  );
+  await screen.findByRole("alert");
+  const other = screen.getByRole("combobox", {
+    name: "Location for https://b.example:8443",
+  });
+  await vi.waitFor(() => expect(other).toBeEnabled());
+  fireEvent.change(other, { target: { value: "allow" } });
+  await vi.waitFor(() => expect(other).toHaveValue("allow"));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Saved, but tabs on https://a.example could not reload",
+  );
+  expect(screen.getByRole("button", { name: "Reload tabs" })).toBeVisible();
+});
+
 it("subscribes before the first read so a change in between is kept", async () => {
   let registered!: () => void;
   let deliver!: (payload: unknown) => void;

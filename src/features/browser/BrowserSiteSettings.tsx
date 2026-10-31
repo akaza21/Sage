@@ -102,7 +102,13 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
     try {
       const update = admitSiteSettingsUpdate(await action());
       if (seen === events.current) setRows(update.settings);
-      setUnreloaded(update.reloadFailed);
+      // Earlier failures stay until Reload tabs confirms them; a later
+      // change elsewhere does not prove those tabs lost access.
+      if (update.reloadFailed.length) {
+        setUnreloaded((current) => [
+          ...new Set([...current, ...update.reloadFailed]),
+        ]);
+      }
     } catch {
       setError(SAVE_FAILURE);
     } finally {

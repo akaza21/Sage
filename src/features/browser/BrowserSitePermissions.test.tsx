@@ -21,9 +21,11 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPermissionResolve: (tabId: string, id: number, allow: boolean) =>
     resolve(tabId, id, allow),
 }));
+const reloadTabs = vi.fn();
 vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
   browserSiteSettingReset: (origin: string, kind: string) =>
     revoke(origin, kind),
+  browserSiteReloadTabs: (origins: string[]) => reloadTabs(origins),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
@@ -112,4 +114,36 @@ it("shows the saved site decisions and resets a site's camera access", async () 
   await waitFor(() =>
     expect(revoke).toHaveBeenCalledWith("https://a.example", "camera"),
   );
+});
+
+it("warns when a revoke saved but the site's tabs did not reload", async () => {
+  status.mockResolvedValueOnce({
+    tabId: "browser-1",
+    origin: "https://a.example",
+    pending: [],
+    decisions: [
+      { origin: "https://a.example", kind: "camera", decision: "allow" },
+    ],
+  });
+  revoke.mockResolvedValueOnce({
+    settings: [],
+    reloadFailed: ["https://a.example"],
+  });
+  reloadTabs.mockReset().mockResolvedValueOnce([]);
+  render(<BrowserSitePermissions tabId="browser-1" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Site permissions" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Revoke camera for https://a.example" }),
+  );
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Revoked, but tabs on https://a.example could not reload and may keep access until they do.",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reload tabs" }));
+  await waitFor(() =>
+    expect(reloadTabs).toHaveBeenCalledWith(["https://a.example"]),
+  );
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 });
