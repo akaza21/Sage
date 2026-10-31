@@ -171,12 +171,15 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             Ok(PublishOutcome::Scheduled)
         );
         sink.wait_for_entries(2).await;
-        sink.release(1);
-        tokio::task::yield_now().await;
+        // A repeat of the child epoch being delivered coalesces into it. Once
+        // that delivery settles the notifier is idle and would schedule the
+        // repeat again, so publish it while the delivery is still held.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
+        sink.release(1);
+        sink.wait_for_idle().await;
         assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
