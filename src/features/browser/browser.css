@@ -288,6 +288,13 @@
 .browser-surface__toolbar .browser-surface__agent-stop {
   width: 28px;
 }
+.browser-surface__toolbar .browser-surface__agent-handoff {
+  width: auto;
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+}
 .browser-surface__find {
   display: flex;
   align-items: center;

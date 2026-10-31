@@ -19,6 +19,7 @@ pub(crate) mod ignore_rules;
 pub(crate) mod name_order;
 pub(crate) mod notify;
 pub(crate) mod path_glob;
+pub(crate) mod path_index;
 pub(crate) mod resource_trash;
 pub(crate) mod search;
 mod text_read;

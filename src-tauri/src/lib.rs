@@ -52,6 +52,7 @@ mod repository_branch_delete_commands;
 mod repository_branch_rename;
 mod repository_branch_rename_commands;
 mod repository_branches;
+mod repository_change_stamp;
 mod repository_checkout;
 mod repository_checkout_commands;
 mod repository_cherry_pick_commands;

@@ -3,6 +3,8 @@ mod capability;
 mod cdp;
 #[cfg(all(test, unix, feature = "cdp-lane"))]
 mod cdp_lane;
+#[cfg(any(windows, test))]
+pub(crate) mod lanes;
 #[cfg(all(feature = "cdp-lane", not(unix)))]
 compile_error!("the cdp-lane feature runs headless Chromium and is unix-only");
 // The command layer links into the app only on Windows; elsewhere it builds for

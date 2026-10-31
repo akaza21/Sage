@@ -287,9 +287,9 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps pin lane-base measurements with only a 0.5 percent margin", async () => {
+test("committed path caps pin baselines and the documented initial merge exception at 0.5 percent", async () => {
   const baseline = {
-    initial: 103957,
+    initial: 105163,
     agentOneChat: 210654,
     editorShell: 187184,
     editorDiff: 190343,
@@ -311,6 +311,15 @@ test("committed path caps pin lane-base measurements with only a 0.5 percent mar
       ]),
     ),
   );
+  assert.deepEqual(budgets.measurement.webBundlePaths.integrationAdjustment, {
+    mergeParents: ["45f383ca", "894cd4ac"],
+    path: "initial",
+    previousLimitBytes: 104476,
+    measuredGzipBytes: 105163,
+    limitBytes: 105688,
+    reason:
+      "Combined PR30 popup cleanup and Editor/store integration adds 687 B (0.66%) over the prior initial-path limit. Keep the existing 0.5% measurement allowance; all other path, entry, initial-closure and core caps remain unchanged.",
+  });
   assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
   // Codex §7 Subagents (w8sub): measured 5,101 B + 10%.
   assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5612);

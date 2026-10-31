@@ -113,7 +113,7 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                                     .browser_navigation_started(&start_label);
                                 let clear_webview = start_webview.clone();
                                 std::thread::spawn(move || {
-                                    let _ = super::devtools::clear_agent_highlight(&clear_webview);
+                                    super::devtools::clear_agent_highlight(&clear_webview);
                                 });
                                 super::annotate::leave(
                                     &start_app,

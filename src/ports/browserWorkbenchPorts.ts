@@ -114,6 +114,7 @@ const editor: EditorPort = {
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
+  getRepositoryChangeStamp: async () => "browser",
   getFileDiff: (resource, scope) =>
     scope
       ? Promise.reject(

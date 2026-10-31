@@ -77,7 +77,7 @@ fn open_source(path: &Path) -> AppResult<File> {
     Ok(source)
 }
 
-fn rename_held(source: &File, target: &Path) -> AppResult<()> {
+fn rename_information(target: &Path) -> AppResult<(Vec<usize>, u32)> {
     use std::os::windows::ffi::OsStrExt;
 
     let name = target.as_os_str().encode_wide().collect::<Vec<_>>();
@@ -87,13 +87,12 @@ fn rename_held(source: &File, target: &Path) -> AppResult<()> {
         .ok_or_else(|| AppError::ResourceLimit("file rename name is too large".into()))?;
     let total = offset_of!(FILE_RENAME_INFO, FileName)
         .checked_add(name_bytes)
-        // Win32 path conversion reads a NUL-terminated string even though
-        // FileNameLength excludes that terminator. Keep it in the allocation.
-        .and_then(|bytes| bytes.checked_add(size_of::<u16>()))
+        .and_then(|length| length.checked_add(size_of::<u16>()))
         .ok_or_else(|| AppError::ResourceLimit("file rename request is too large".into()))?;
+    // FileNameLength excludes the NUL; the Win32 request must still own it.
     let mut storage = vec![0_usize; total.div_ceil(size_of::<usize>())];
     let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    // SAFETY: storage is aligned and sized for the header plus the UTF-16 name.
+    // SAFETY: aligned, zeroed storage holds the header, UTF-16 name and terminator.
     unsafe {
         (*information).Anonymous.ReplaceIfExists = false;
         (*information).RootDirectory = std::ptr::null_mut();
@@ -104,12 +103,21 @@ fn rename_held(source: &File, target: &Path) -> AppResult<()> {
             (*information).FileName.as_mut_ptr(),
             name.len(),
         );
+    }
+    let total = u32::try_from(total)
+        .map_err(|_| AppError::ResourceLimit("file rename request is too large".into()))?;
+    Ok((storage, total))
+}
+
+fn rename_held(source: &File, target: &Path) -> AppResult<()> {
+    let (mut storage, total) = rename_information(target)?;
+    // SAFETY: the request owns its aligned header and terminated UTF-16 name.
+    unsafe {
         if SetFileInformationByHandle(
             source.as_raw_handle(),
             FileRenameInfo,
-            information.cast(),
-            u32::try_from(total)
-                .map_err(|_| AppError::ResourceLimit("file rename request is too large".into()))?,
+            storage.as_mut_ptr().cast(),
+            total,
         ) == 0
         {
             return Err(std::io::Error::last_os_error().into());
@@ -230,4 +238,50 @@ where
         listing,
         target_identity_confirmed,
     })
+}
+
+#[cfg(test)]
+mod buffer_tests {
+    use super::*;
+    use std::os::windows::ffi::OsStrExt;
+
+    #[test]
+    fn rename_information_terminates_every_utf16_alignment() {
+        for suffix in ["", "a", "ab", "abc"] {
+            let path = std::path::PathBuf::from(format!(r"C:\fixture\lock-🔒{suffix}.txt"));
+            let expected = path.as_os_str().encode_wide().collect::<Vec<_>>();
+            let (storage, length) = rename_information(&path).unwrap();
+            let end = offset_of!(FILE_RENAME_INFO, FileName) + expected.len() * 2;
+            assert!(
+                length as usize >= end + 2,
+                "request must include its terminator"
+            );
+            assert!(storage.len() * size_of::<usize>() >= length as usize);
+            // SAFETY: the builder owns the header and the bounds above include the terminator.
+            unsafe {
+                let info = storage.as_ptr().cast::<FILE_RENAME_INFO>();
+                assert_eq!((*info).FileNameLength as usize, expected.len() * 2);
+                let name =
+                    std::slice::from_raw_parts((*info).FileName.as_ptr(), expected.len() + 1);
+                assert_eq!(&name[..expected.len()], expected);
+                assert_eq!(name[expected.len()], 0);
+            }
+        }
+    }
+
+    #[test]
+    fn held_rename_reaches_the_exact_target_for_every_alignment() {
+        let root = std::env::temp_dir().join(format!("sage-rename-nul-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        for suffix in ["", "a", "ab", "abc"] {
+            let before = root.join("before.txt");
+            let after = root.join(format!("after{suffix}.txt"));
+            std::fs::write(&before, b"retained").unwrap();
+            let source = open_source(&before).unwrap();
+            rename_held(&source, &after).unwrap();
+            assert!(!before.exists());
+            assert_eq!(std::fs::read(&after).unwrap(), b"retained");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

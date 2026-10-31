@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Link2,
-  MessageCircleQuestion,
-  Square,
-  Unlink2,
-} from "../../ui/leanIcons";
+import { Link2, MessageCircleQuestion, Unlink2 } from "../../ui/leanIcons";
 import {
   pinnedAgentChatOwner,
   usePinnedAgentChatOwner,
@@ -13,13 +8,16 @@ import { useWorkbenchStore } from "../../app/store";
 import { parseBrowserPageContext } from "../../domain/attachedContext";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import { clearBrowserAgentPresence } from "../../app/browserAgentActivityStore";
+import { BrowserAgentPresence } from "./BrowserAgentPresence";
 import {
   attachBrowserTab,
+  browserAgentControl,
   browserAttachmentStatus,
   browserPageContext,
   browserStatus,
   detachBrowserTab,
   stopBrowserTab,
+  type BrowserAgentControl,
 } from "../../ports/nativeBrowserPort";
 
 interface ChatChoice {
@@ -27,13 +25,41 @@ interface ChatChoice {
   title: string;
 }
 
+/**
+ * Who controls the tab, read from Rust whenever anything that can change it
+ * happens here: mounting (also after a reload), an Agent operation, a page
+ * change, and attaching or detaching. Rust answers Take over and Hand back
+ * with the state after them, so nothing here is a mirror that can go stale.
+ */
+function useBrowserAgentControl(tabId: string, refreshKey: string) {
+  const [control, setControl] = useState<BrowserAgentControl | null>(null);
+  const sequence = useRef(0);
+  useEffect(() => {
+    const current = ++sequence.current;
+    void browserAgentControl(tabId, "agentControl")
+      .then((next) => {
+        if (current === sequence.current) setControl(next ?? null);
+      })
+      .catch(() => {
+        if (current === sequence.current) setControl(null);
+      });
+  }, [tabId, refreshKey]);
+  return {
+    control,
+    apply(next: BrowserAgentControl | null) {
+      sequence.current += 1;
+      setControl(next);
+    },
+  };
+}
+
 export function BrowserToolbarPageActions({
   projectId,
   tabId,
   ready,
+  pageRevision,
   chats,
   operation,
-  chatTitle,
   attachmentEpoch,
   onStopped,
   onError,
@@ -41,26 +67,30 @@ export function BrowserToolbarPageActions({
   projectId: string | null;
   tabId: string;
   ready: boolean;
+  pageRevision: string;
   chats: readonly ChatChoice[];
   operation: BrowserOperationProjection | null;
-  chatTitle: string;
   attachmentEpoch: number;
   onStopped: () => void;
   onError: (message: string) => void;
 }) {
-  const [stopping, setStopping] = useState(false);
-  function stopAgent() {
-    if (stopping) return;
-    setStopping(true);
-    void stopBrowserTab(tabId)
-      .then(() => {
-        clearBrowserAgentPresence(tabId);
-        onStopped();
-      })
+  const [busy, setBusy] = useState(false);
+  const [attachments, setAttachments] = useState(0);
+  const { control, apply } = useBrowserAgentControl(
+    tabId,
+    `${attachmentEpoch}\0${attachments}\0${pageRevision}\0${operation?.operationId ?? ""}\0${operation?.updatedAt ?? ""}`,
+  );
+  const agent =
+    control && projectId && control.projectId === projectId ? control : null;
+  function run<T>(command: () => Promise<T>, after: (result: T) => void) {
+    if (busy) return;
+    setBusy(true);
+    void command()
+      .then(after)
       .catch((cause) => onError(String(cause).slice(0, 512)))
-      .finally(() => setStopping(false));
+      .finally(() => setBusy(false));
   }
-  if (!ready && !operation) return null;
+  if (!ready && !agent) return null;
   return (
     <div className="browser-surface__page-actions">
       <BrowserAttachmentControls
@@ -69,13 +99,34 @@ export function BrowserToolbarPageActions({
         tabId={tabId}
         ready={ready}
         chats={chats}
+        onChanged={() => setAttachments((current) => current + 1)}
       />
-      {operation && projectId ? (
+      {agent ? (
         <BrowserAgentPresence
-          operation={operation}
-          chatTitle={chatTitle}
-          busy={stopping}
-          onDetach={stopAgent}
+          pending={
+            operation?.phase === "started" && operation.chatId === agent.chatId
+          }
+          userControl={agent.userControl}
+          chatTitle={
+            chats.find((chat) => chat.id === agent.chatId)?.title ?? "Chat"
+          }
+          busy={busy}
+          onStop={() =>
+            run(
+              () => stopBrowserTab(tabId),
+              () => {
+                apply(null);
+                clearBrowserAgentPresence(tabId);
+                onStopped();
+              },
+            )
+          }
+          onTakeOver={() =>
+            run(() => browserAgentControl(tabId, "agentTakeOver"), apply)
+          }
+          onHandBack={() =>
+            run(() => browserAgentControl(tabId, "agentHandBack"), apply)
+          }
         />
       ) : null}
     </div>
@@ -87,11 +138,13 @@ export function BrowserAttachmentControls({
   tabId,
   ready,
   chats,
+  onChanged,
 }: {
   projectId: string | null;
   tabId: string;
   ready: boolean;
   chats: readonly ChatChoice[];
+  onChanged?: () => void;
 }) {
   const [chatId, setChatId] = useState("");
   const [attachedChat, setAttachedChat] = useState<string | null>(null);
@@ -128,6 +181,7 @@ export function BrowserAttachmentControls({
       await attachBrowserTab(projectId, chosen, tabId);
       attachmentRevision.current += 1;
       setAttachedChat(chosen);
+      onChanged?.();
     } catch {
       setError("Could not attach this tab to the selected chat.");
     } finally {
@@ -143,6 +197,7 @@ export function BrowserAttachmentControls({
       await detachBrowserTab(projectId, attachedChat);
       attachmentRevision.current += 1;
       setAttachedChat(null);
+      onChanged?.();
     } catch {
       setError("Could not detach this tab.");
     } finally {
@@ -253,38 +308,5 @@ function BrowserAskPageButton({
     >
       <MessageCircleQuestion size={16} aria-hidden="true" />
     </button>
-  );
-}
-
-export function BrowserAgentPresence({
-  operation,
-  chatTitle,
-  onDetach,
-  busy = false,
-}: {
-  operation: BrowserOperationProjection;
-  chatTitle: string;
-  onDetach: () => void;
-  busy?: boolean;
-}) {
-  return (
-    <div className="browser-surface__agent-presence">
-      <span className="browser-surface__agent-presence-label" role="status">
-        {operation.phase === "started"
-          ? "Agent has a browser action pending"
-          : "Agent used this tab"}
-        {` · ${chatTitle}`}
-      </span>
-      <button
-        type="button"
-        className="browser-surface__agent-stop"
-        aria-label="Stop / Take over"
-        title="Revoke this chat's browser authority and take over the tab."
-        disabled={busy}
-        onClick={onDetach}
-      >
-        <Square size={14} aria-hidden="true" />
-      </button>
-    </div>
   );
 }

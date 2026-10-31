@@ -39,6 +39,11 @@ pub(crate) trait DevtoolsPort {
         condition: &WaitCondition,
         remaining: Duration,
     ) -> Result<bool, BrowserFailure>;
+    /// Whether Stop, Take over or detach ended the dispatch, so a wait,
+    /// whose probes need no permit, stops probing the page.
+    fn stopped(&self) -> bool {
+        false
+    }
 }
 
 pub(crate) struct DevtoolsCapability<P> {
@@ -112,6 +117,9 @@ impl<P: DevtoolsPort> DevtoolsCapability<P> {
                 WaitStep::Cancelled => return Err(BrowserFailure::Denied),
                 WaitStep::TimedOut => return Ok(BrowserResult::WaitFor { matched: false }),
                 WaitStep::Probe => {}
+            }
+            if self.port.stopped() {
+                return Err(BrowserFailure::Denied);
             }
             let remaining = timeout_ms.saturating_sub(elapsed);
             if self.port.matches(

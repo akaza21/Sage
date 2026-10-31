@@ -4,7 +4,7 @@
     "webEntryJsGzipBytes": 130000,
     "webInitialStaticClosureGzipBytes": 130000,
     "webPathJsGzipBytes": {
-      "initial": 104476,
+      "initial": 105688,
       "agentOneChat": 211707,
       "editorShell": 188119,
       "editorDiff": 191294,
@@ -341,6 +341,12 @@
         "entry": "src/workbench/SourceControlView.tsx",
         "maxGzipBytes": 6808,
         "reason": "Editor Source Control tool and bounded changes list; loads only when Source Control is selected."
+      },
+      {
+        "entry": "src/features/quickOpen/QuickOpen.tsx",
+        "maxGzipBytes": 8192,
+        "maxCssGzipBytes": 800,
+        "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
       }
     ],
     "windowsInstallerMb": 45,
@@ -399,7 +405,15 @@
       "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference",
       "metric": "Sum node:zlib.gzipSync defaults per unique JavaScript asset in the union of the named Vite manifest roots' static-import closures. CSS and optional dynamic children are excluded.",
       "roots": "initial: index.html; Editor shell: initial + Workbench; Agent + one chat: Editor shell + AgentWorkbenchBody + ChatSurface + AcpChatPresentation; Editor Diff/Search: Editor shell + the respective Surface; Editor File: Editor shell + FileSurface + CodeMirrorEditorRuntime (language parsers remain optional). Folded roots use named chunk ownership pinned by vite.config.test.ts.",
-      "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure."
+      "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure.",
+      "integrationAdjustment": {
+        "mergeParents": ["45f383ca", "894cd4ac"],
+        "path": "initial",
+        "previousLimitBytes": 104476,
+        "measuredGzipBytes": 105163,
+        "limitBytes": 105688,
+        "reason": "Combined PR30 popup cleanup and Editor/store integration adds 687 B (0.66%) over the prior initial-path limit. Keep the existing 0.5% measurement allowance; all other path, entry, initial-closure and core caps remain unchanged."
+      }
     },
     "excludeHarnessProcesses": true,
     "excludeTerminalChildProcesses": true,

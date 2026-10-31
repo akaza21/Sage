@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useQuickOpenStore } from "../features/quickOpen/quickOpenState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
 import { LeftSidebar } from "./LeftSidebar";
 import { TitleBar } from "./TitleBar";
@@ -108,7 +109,7 @@ describe("TitleBar center chrome", () => {
     ).toBeEnabled();
   });
 
-  it("shows the focused session title in Agent and Search files in Editor", () => {
+  it("shows the focused session title in Agent and Quick Open's Search files in Editor", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
@@ -124,8 +125,8 @@ describe("TitleBar center chrome", () => {
     rerender(<TitleBar mode="editor" onModeChange={vi.fn()} />);
     expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Search files" }));
-    expect(useWorkbenchStore.getState().sidebarView).toBe("search");
-    expect(useWorkbenchStore.getState().sidebarOpen).toBe(true);
+    expect(useQuickOpenStore.getState().open).toBe(true);
+    useQuickOpenStore.setState({ open: false });
     expect(
       within(screen.getByRole("banner")).queryByRole("button", {
         name: "Search chats",

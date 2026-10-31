@@ -4,6 +4,7 @@ import type {
 } from "../domain/workbench";
 import { browserLiveTabs } from "../ports/nativeBrowserPort";
 import type { WorkbenchState } from "./store";
+import { positionTab } from "./tabState";
 
 export function currentProjectLayout(
   state: WorkbenchState,
@@ -11,7 +12,10 @@ export function currentProjectLayout(
   if (!state.project) return null;
   return {
     projectId: state.project.id,
-    tabs: state.tabs,
+    tabs:
+      new Set(state.tabs.map((tab) => tab.position)).size === state.tabs.length
+        ? state.tabs
+        : state.tabs.map(positionTab),
     activeTabId: state.activeTabId,
     selectedRootId: state.selectedRootId,
     selectedResource: state.selectedResource,

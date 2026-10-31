@@ -189,3 +189,46 @@ fn session_capability_owner_guard_denies_changed_binding() {
     assert!(!crate::acp::browser::session_capability::session_owner_precheck(&service, &rebound));
     assert!(crate::acp::browser::session_capability::session_owner_witness(&service, &owner));
 }
+
+#[test]
+fn browser_owner_lookup_respects_the_active_turn_in_every_runtime_lane() {
+    for index in 0..4 {
+        let (service, runtime_owner) =
+            super::super::super::permission::tests::support::service_with_pending_requests(
+                Arc::new(Mutex::new(Vec::new())),
+            );
+        let owner = service
+            .current_browser_owner(
+                &runtime_owner.project_id,
+                &runtime_owner.chat_id,
+                &runtime_owner.session_id,
+            )
+            .unwrap();
+        let tree = service
+            .lane_at(index)
+            .scheduler
+            .reserve_tree(runtime_owner)
+            .unwrap();
+        let turn = tree
+            .reserve_turn()
+            .unwrap()
+            .bind_retained(owner.turn_id.clone())
+            .unwrap();
+        assert!(
+            service.browser_owner_precheck_matches(&owner),
+            "lane {index}"
+        );
+        turn.terminal_committed().unwrap();
+        let _rotated = tree
+            .reserve_turn()
+            .unwrap()
+            .bind_retained(SageTurnId::parse("turn-after-rebind").unwrap())
+            .unwrap();
+        assert!(
+            service
+                .current_browser_owner(&owner.project_id, &owner.chat_id, &owner.session_id,)
+                .is_none(),
+            "lane {index} must not reuse the stale SQL turn"
+        );
+    }
+}

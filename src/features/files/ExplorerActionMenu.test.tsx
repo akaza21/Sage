@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import { childResource, resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { ExplorerSurface } from "./ExplorerSurface";
 
 const initialState = useWorkbenchStore.getState();
@@ -321,6 +322,64 @@ describe("ExplorerActionMenu", () => {
     expect(await screen.findByLabelText("File name")).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await vi.waitFor(() => expect(more).toHaveFocus());
+  });
+
+  it("renames and recycles an open File in the Editor, releasing its tab", async () => {
+    const source = childResource("root-a", "src/open.ts");
+    installSelection({ selected: source, kind: "file", open: true });
+    const renameProjectFile = vi.fn(async () => true);
+    const trashProjectResource = vi.fn(async () => true);
+    useWorkbenchStore.setState({ renameProjectFile, trashProjectResource });
+    render(
+      <ExplorerReleasesOpenFiles.Provider value={true}>
+        <ExplorerSurface />
+      </ExplorerReleasesOpenFiles.Provider>,
+    );
+
+    let { menu } = openMenu();
+    fireEvent.click(
+      within(menu).getByRole("menuitem", { name: "Rename File" }),
+    );
+    fireEvent.change(await screen.findByLabelText("File name"), {
+      target: { value: "renamed.ts" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    await vi.waitFor(() =>
+      expect(renameProjectFile).toHaveBeenCalledWith(
+        source,
+        "renamed.ts",
+        true,
+      ),
+    );
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    ({ menu } = openMenu());
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Move to/u }));
+    fireEvent.click(await screen.findByRole("button", { name: /Move to/u }));
+    await vi.waitFor(() =>
+      expect(trashProjectResource).toHaveBeenCalledWith(source, "file", true),
+    );
+  });
+
+  it("explains that an open File with unsaved changes must be saved first", () => {
+    const source = childResource("root-a", "src/open.ts");
+    installSelection({ selected: source, kind: "file", open: true });
+    useWorkbenchStore.setState((state) => ({
+      tabs: state.tabs.map((tab) => ({ ...tab, dirty: true })),
+    }));
+    render(
+      <ExplorerReleasesOpenFiles.Provider value={true}>
+        <ExplorerSurface />
+      </ExplorerReleasesOpenFiles.Provider>,
+    );
+    const { menu } = openMenu();
+    expect(
+      within(menu).getByRole("menuitem", {
+        name: "Save or revert this File before renaming or recycling it.",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
   });
 
   it("closes safely when the Project changes", async () => {

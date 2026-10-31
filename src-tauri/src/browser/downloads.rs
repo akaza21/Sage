@@ -339,6 +339,14 @@ impl BrowserState {
         }
     }
 
+    /// The user took over the tab: what it opens next is the user's, so a
+    /// popup from it no longer joins the Agent's attachment.
+    pub(super) fn user_took_over(&self, tab_id: &str) {
+        if let Ok(mut downloads) = self.downloads.lock() {
+            downloads.set_provenance(tab_id, NavigationProvenance::User);
+        }
+    }
+
     pub(super) fn user_navigation_finished(&self, tab_id: &str, id: u64, success: bool) {
         if let Ok(mut downloads) = self.downloads.lock() {
             downloads.finish_user_navigation(tab_id, id, success);

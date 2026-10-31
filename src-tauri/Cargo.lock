@@ -2808,6 +2808,7 @@ dependencies = [
  "jpeg-decoder",
  "libc",
  "log",
+ "memchr",
  "objc2",
  "objc2-foundation",
  "png 0.17.16",

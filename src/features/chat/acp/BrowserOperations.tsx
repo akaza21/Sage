@@ -36,6 +36,9 @@ export function BrowserOperations({
 
 type ActionWords = { ongoing: string; completed: string; imperative: string };
 
+/** Rust's result for a call refused while the user holds the tab (`browser_operation.rs`). */
+const USER_CONTROL_RESULT = "Paused: you took over this tab";
+
 function actionWords(operation: BrowserOperationProjection): ActionWords {
   let host = operation.origin;
   try {
@@ -138,26 +141,33 @@ function BrowserOperationItem({
   operation: BrowserOperationProjection;
 }) {
   const words = actionWords(operation);
+  const paused =
+    operation.phase === "denied" &&
+    operation.resultSummary === USER_CONTROL_RESULT;
   const title =
     operation.phase === "started"
       ? `${words.ongoing}…`
       : operation.phase === "completed"
         ? words.completed
-        : operation.phase === "denied"
-          ? `Blocked: ${words.imperative}`
-          : operation.phase === "failed"
-            ? `Couldn't ${words.imperative}`
-            : `${words.imperative[0].toUpperCase()}${words.imperative.slice(1)} — result unknown`;
+        : paused
+          ? `Paused: ${words.imperative}`
+          : operation.phase === "denied"
+            ? `Blocked: ${words.imperative}`
+            : operation.phase === "failed"
+              ? `Couldn't ${words.imperative}`
+              : `${words.imperative[0].toUpperCase()}${words.imperative.slice(1)} — result unknown`;
   const status =
     operation.phase === "outcomeUnknown"
       ? "Outcome unknown"
-      : operation.phase === "denied"
-        ? "Denied"
-        : operation.phase === "started"
-          ? "In progress"
-          : operation.phase === "failed"
-            ? "Failed"
-            : "Completed";
+      : paused
+        ? "Paused"
+        : operation.phase === "denied"
+          ? "Denied"
+          : operation.phase === "started"
+            ? "In progress"
+            : operation.phase === "failed"
+              ? "Failed"
+              : "Completed";
   const isFill =
     operation.operation === "act" && operation.summary.startsWith("Fill field");
   const isScreenshot = operation.operation === "screenshot";

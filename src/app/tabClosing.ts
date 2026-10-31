@@ -6,6 +6,9 @@ import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
 import { closeTab as closeTabState } from "./tabState";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
 import { closeBrowser } from "../ports/nativeBrowserPort";
+import { pinnedAgentChatOwner } from "./agentChatOwner";
+import { useAcpProjectionStore } from "./acpProjectionStore";
+import { isAcpProjectionPinned } from "./acpProjectionRegistry";
 
 export const BROWSER_CLOSE_ERROR =
   "Could not close the browser tab. Try again.";
@@ -48,7 +51,13 @@ export function reconcileNativeClosedBrowserTabs(
     selectedRootId: next?.resource?.rootId ?? state.selectedRootId,
     activeEditor: state.activeTabId === activeTabId ? state.activeEditor : null,
   });
-  if (next?.kind === "chat" && state.activeTabId !== activeTabId) {
+  if (
+    next?.kind === "chat" &&
+    state.activeTabId !== activeTabId &&
+    !isAcpProjectionPinned(next.id) &&
+    pinnedAgentChatOwner() !== next.id &&
+    useAcpProjectionStore.getState().scope?.chatId !== next.id
+  ) {
     void get().activateChat(next.id, tabs);
   }
 }

@@ -190,6 +190,9 @@ pub(super) async fn close_webview_on_main_thread(
             result,
             sender,
             |closed_label| {
+                if let Ok(mut popups) = state.popups.lock() {
+                    popups.forget_child(closed_label);
+                }
                 if notify_tab_closed {
                     finish_browser_tab_close(
                         &state.downloads,
@@ -241,6 +244,16 @@ pub(super) async fn open_browser_tab(
     url: Option<String>,
     agent: bool,
 ) -> Result<String, String> {
+    open_browser_tab_tracked(app, state, url, agent, |_| {}).await
+}
+
+pub(super) async fn open_browser_tab_tracked(
+    app: AppHandle,
+    state: &BrowserState,
+    url: Option<String>,
+    agent: bool,
+    created: impl FnOnce(&str),
+) -> Result<String, String> {
     let url = url
         .as_deref()
         .map(admit_url)
@@ -250,6 +263,7 @@ pub(super) async fn open_browser_tab(
     let (label, _opening) = open_with(&state.tabs, &state.clearing_data, url.is_some(), |label| {
         builder::create_tab_webview(&app, &window, &state.profile_dir, label, None)
     })?;
+    created(&label);
     hide_or_close(
         &state.tabs,
         &label,

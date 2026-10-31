@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
+import { watchEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -26,6 +27,10 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import {
+  registerFileSurfaceCommands,
+  type FileSurfaceCommands,
+} from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
@@ -92,6 +97,7 @@ export function FileSurface({
       editor?.phase === "ready" &&
       !!resource &&
       sameResource(editor.resource, resource),
+    !readOnly,
   );
 
   const reportLimitExceeded = useCallback(
@@ -187,6 +193,39 @@ export function FileSurface({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
+
+  // Go back and Go forward (ED-2b) follow the editable File's caret.
+  useEffect(() => {
+    if (!readOnly) watchEditorHistory();
+  }, [readOnly]);
+
+  // The command palette (ED-2a) runs the same actions as the editor's keys.
+  const commandsRef = useRef<FileSurfaceCommands>({
+    available: () => false,
+    run: () => undefined,
+  });
+  useEffect(() => {
+    commandsRef.current = {
+      // Only what the keys would do now: the editor is showing, and the
+      // Markdown preview has no find or go to.
+      available: (command) =>
+        editor?.phase === "ready" && (command === "save" || !previewing),
+      run: (command) => {
+        if (command === "save") void saveActiveEditor();
+        else if (command === "find") openFindFromSurface();
+        else if (command === "replace") openFindFromSurface(true);
+        else if (command === "goToLine") openGoToLine();
+        else void goToLocalSymbol();
+      },
+    };
+  });
+  useEffect(() => {
+    if (readOnly) return;
+    return registerFileSurfaceCommands({
+      available: (command) => commandsRef.current.available(command),
+      run: (command) => commandsRef.current.run(command),
+    });
+  }, [readOnly]);
 
   function submitGoToLine() {
     const selection = goToLineSelection(contentText(findContent), goToQuery);

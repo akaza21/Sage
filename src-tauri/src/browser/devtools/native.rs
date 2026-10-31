@@ -16,7 +16,7 @@ use super::{
     capability::DevtoolsCapability,
     cdp,
     cdp_port::{
-        CdpPort,
+        CdpPort, highlight,
         outcome::{dispatch_disconnected_failure, dispatch_timeout_failure},
         page_context::{self, CapturedPageContext},
         select::PickedNode,
@@ -71,15 +71,14 @@ pub(crate) fn capture_page_context(
     })
 }
 
-pub(crate) fn clear_agent_highlight(webview: &Webview) -> Result<(), BrowserFailure> {
-    cdp::call(
-        webview,
-        "Overlay.hideHighlight",
-        "{}",
-        4096,
-        Duration::from_secs(1),
-    )?;
-    Ok(())
+/// Clears the Agent's act marker, trying every step even after a failure,
+/// and turns the overlay off again unless the tab annotates.
+pub(crate) fn clear_agent_highlight(webview: &Webview) {
+    highlight::clear(&NativeTransport {
+        webview: webview.clone(),
+        permit: None,
+        issued: Arc::new(AtomicBool::new(false)),
+    });
 }
 
 /// Turns the user's Annotate hover highlight on or off, outside any Agent
@@ -212,12 +211,30 @@ impl CdpTransport for NativeTransport {
         self.issued.load(Ordering::Acquire)
     }
 
-    fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure> {
-        if self
-            .permit
+    fn stopped(&self) -> bool {
+        self.permit
             .as_ref()
             .is_some_and(|permit| !permit.is_live() && !permit.was_invalidated_by_navigation())
-        {
+    }
+
+    fn unless_annotating(&self, steps: &mut dyn FnMut()) {
+        self.webview
+            .app_handle()
+            .state::<BrowserState>()
+            .annotate
+            .disable_unless_annotating(self.webview.label(), steps);
+    }
+
+    fn annotating(&self) -> bool {
+        self.webview
+            .app_handle()
+            .state::<BrowserState>()
+            .annotate
+            .is_annotating(self.webview.label())
+    }
+
+    fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure> {
+        if self.stopped() {
             return Err(self.permit.as_ref().unwrap().revoked_failure());
         }
         let state = self.webview.app_handle().state::<BrowserState>();

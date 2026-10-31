@@ -15,6 +15,35 @@ function BrowserOperationItem({
 
 afterEach(cleanup);
 
+it("reads a call refused while the user holds the tab as paused, not blocked", () => {
+  const { rerender } = render(
+    <BrowserOperationItem
+      operation={{
+        ...browserOperationFixture,
+        phase: "denied",
+        resultSummary: "Paused: you took over this tab",
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("group", {
+      name: "Paused: click element on example.com · Paused",
+    }),
+  ).toBeInTheDocument();
+  rerender(
+    <BrowserOperationItem
+      operation={{
+        ...browserOperationFixture,
+        phase: "denied",
+        resultSummary: "Browser access denied",
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("group", { name: /^Blocked: .* · Denied$/ }),
+  ).toBeInTheDocument();
+});
+
 it("shows an agent browser action with its target and expandable redacted detail", () => {
   render(<BrowserOperationItem operation={browserOperationFixture} />);
   expect(

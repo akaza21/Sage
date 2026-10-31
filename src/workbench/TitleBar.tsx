@@ -12,6 +12,7 @@ import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { useRailChatId } from "./sideChatState";
+import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 import {
   collectChatTabIds,
   WORKBENCH_WINDOW_MODES,
@@ -77,7 +78,6 @@ export function TitleBar({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
   const openSettings = useWorkbenchStore((state) => state.openSettings);
   const chatSearchRef = useRef<HTMLButtonElement | null>(null);
   const chatSearchDisabled = !project || projectTransitioning;
@@ -147,9 +147,9 @@ export function TitleBar({
           <button
             className="title-bar__search"
             type="button"
-            title="Search files"
+            title={`Search files (${shortcutLabel("p", usesMetaModifier())})`}
             aria-label="Search files"
-            onClick={() => setSidebarView("search")}
+            onClick={openQuickOpen}
           >
             <FileSearch size={14} aria-hidden="true" />
             <span className="title-bar__search-label">Search files</span>

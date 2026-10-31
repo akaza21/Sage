@@ -1,5 +1,7 @@
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager};
+pub(crate) mod attached;
 mod open_tab_commit;
+mod tab;
 
 use crate::{
     acp::{
@@ -14,7 +16,10 @@ use crate::{
         contract::{SageAgentSessionId, SageChatId, SageProjectId},
         service::browser_permission::{BrowserPermissionOwner, ServiceBrowserPermissionDecider},
     },
-    browser::{BrowserState, devtools::NativeDevtools},
+    browser::{
+        BrowserState,
+        devtools::{NativeDevtools, lanes::AttachmentLanes},
+    },
     state::AppState,
 };
 
@@ -23,7 +28,7 @@ pub(crate) struct SessionBrowserCapability {
     project_id: SageProjectId,
     chat_id: SageChatId,
     session_id: SageAgentSessionId,
-    native: Option<(AttachmentLease, NativeDevtools)>,
+    native: AttachmentLanes<NativeDevtools>,
 }
 
 struct OpenTabPort {
@@ -31,17 +36,17 @@ struct OpenTabPort {
     owner: BrowserPermissionOwner,
 }
 
-pub(crate) fn with_session_owner_guards<R: Runtime, P, D>(
+pub(crate) fn with_session_owner_guards<C: attached::BrowserSessionContext, P, D>(
     gate: BrowserPermissionGate<P, D>,
-    app: AppHandle<R>,
+    context: C,
     owner: BrowserPermissionOwner,
 ) -> BrowserPermissionGate<P, D> {
-    let precheck_app = app.clone();
+    let precheck_context = context.clone();
     let precheck_owner = owner.clone();
     gate.with_owner_guard(move || {
-        session_owner_precheck(&precheck_app.state::<AppState>().acp, &precheck_owner)
+        session_owner_precheck(precheck_context.service(), &precheck_owner)
     })
-    .with_owner_witness(move || session_owner_witness(&app.state::<AppState>().acp, &owner))
+    .with_owner_witness(move || session_owner_witness(context.service(), &owner))
 }
 
 pub(crate) fn session_owner_precheck(
@@ -75,9 +80,16 @@ impl BrowserCapabilityDispatch for OpenTabPort {
             if !service.browser_owner_precheck_matches(&owner) {
                 return Err(BrowserFailure::Denied);
             }
+            let user_controls =
+                || service.browser_chat_under_user_control(&owner.project_id, &owner.chat_id);
             permit.with_live_lock(|| {
                 if !service.browser_owner_witness_matches(&owner) {
                     return Err(BrowserFailure::Denied);
+                }
+                // The user may have taken over a tab of this chat since the
+                // call was admitted.
+                if user_controls() {
+                    return Err(BrowserFailure::UserControl);
                 }
                 permit.mark_issued();
                 Ok(())
@@ -132,7 +144,7 @@ impl BrowserCapabilityDispatch for OpenTabPort {
             let service = &app.state::<AppState>().acp;
             open_tab_commit::complete_opened_tab(
                 || {
-                    permit.is_live()
+                    let owner_current = permit.is_live()
                         && service
                             .current_browser_owner(
                                 &owner.project_id,
@@ -143,7 +155,15 @@ impl BrowserCapabilityDispatch for OpenTabPort {
                                 current.turn_id == owner.turn_id
                                     && current.runtime_epoch == owner.runtime_epoch
                                     && current.binding_digest == owner.binding_digest
-                            })
+                            });
+                    // The tab was opened, so the call was issued: a take
+                    // over now closes it and reports `Denied`, never the
+                    // `UserControl` that would run it again on hand back.
+                    if !owner_current || user_controls() {
+                        Err(BrowserFailure::Denied)
+                    } else {
+                        Ok(())
+                    }
                 },
                 || {
                     if service.agent_browser_count(
@@ -198,35 +218,24 @@ impl SessionBrowserCapability {
             project_id,
             chat_id,
             session_id,
-            native: None,
+            native: AttachmentLanes::default(),
         }
     }
-}
 
-impl BrowserCapability for SessionBrowserCapability {
-    fn attached_tab_id(&self) -> Option<u64> {
-        let service = &self.app.state::<AppState>().acp;
-        service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)?;
-        service
-            .latest_agent_browser_attachment(
-                &self.project_id,
-                &self.chat_id,
-                self.session_id.as_str(),
-            )
-            .map(|lease| lease.tab_number)
-            .or_else(|| {
-                service
-                    .browser_attachment(&self.project_id, &self.chat_id)
-                    .map(|lease| lease.tab_number)
-            })
-    }
-
-    fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
+    fn perform_once(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
         if request.scope.session_id != self.session_id.as_str() {
             return Err(BrowserFailure::Denied);
         }
         let app_state = self.app.state::<AppState>();
         if let crate::acp::browser::BrowserCommand::OpenTab { url } = &request.command {
+            // While the user holds one of this chat's tabs the Agent waits;
+            // a parallel tab would route around the pause.
+            if app_state
+                .acp
+                .browser_chat_under_user_control(&self.project_id, &self.chat_id)
+            {
+                return Err(BrowserFailure::UserControl);
+            }
             if app_state.acp.agent_browser_count(
                 &self.project_id,
                 &self.chat_id,
@@ -252,66 +261,52 @@ impl BrowserCapability for SessionBrowserCapability {
             };
             return BrowserPermissionGate::new(port, decider, authority).perform(request);
         }
-        let lease = app_state
-            .acp
-            .browser_attachment(&self.project_id, &self.chat_id)
-            .filter(|lease| lease.tab_number == request.scope.tab_id)
+        Err(BrowserFailure::InvalidRequest)
+    }
+}
+
+impl BrowserCapability for SessionBrowserCapability {
+    fn attached_tab_id(&self) -> Option<u64> {
+        let service = &self.app.state::<AppState>().acp;
+        service.current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)?;
+        service
+            .latest_agent_browser_attachment(
+                &self.project_id,
+                &self.chat_id,
+                self.session_id.as_str(),
+            )
+            .map(|lease| lease.tab_number)
             .or_else(|| {
-                app_state.acp.agent_browser_attachment(
-                    &self.project_id,
-                    &self.chat_id,
-                    self.session_id.as_str(),
-                    request.scope.tab_id,
-                )
+                service
+                    .browser_attachment(&self.project_id, &self.chat_id)
+                    .map(|lease| lease.tab_number)
             })
-            .ok_or(BrowserFailure::NoAttachment)?;
-        if request.scope.tab_id != lease.tab_number {
-            return Err(BrowserFailure::Denied);
-        }
-        let browser = self.app.state::<BrowserState>();
-        let (url, revision) = browser
-            .settled_tab(&lease.tab_label)
-            .map_err(|_| BrowserFailure::Denied)?;
-        if url != lease.url || revision != lease.tab_revision {
-            return Err(BrowserFailure::Denied);
-        }
-        let authority = lease
-            .authority_for(&request.scope)
-            .ok_or(BrowserFailure::Denied)?;
-        let owner = app_state
-            .acp
-            .current_browser_owner(&self.project_id, &self.chat_id, &self.session_id)
-            .ok_or(BrowserFailure::Denied)?;
-        if !self
-            .native
-            .as_ref()
-            .is_some_and(|(cached, _)| cached.same_attachment(&lease) && cached.is_live())
-        {
-            self.native = Some((
-                lease.clone(),
-                NativeDevtools::for_tab(&browser, request.scope.clone())?,
-            ));
-        }
-        let native = &mut self.native.as_mut().ok_or(BrowserFailure::Unavailable)?.1;
-        let label = lease.tab_label.clone();
-        let decider = ServiceBrowserPermissionDecider {
-            service: &app_state.acp,
-            owner: owner.clone(),
-            authority: authority.clone(),
-            attachment: Some(lease),
-        };
+    }
+
+    /// Take over pauses the call and Hand back resumes it (`pause.rs`).
+    fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
         let app = self.app.clone();
-        with_session_owner_guards(
-            BrowserPermissionGate::new(native, decider, authority).with_tab_revision_guard(
-                move || {
-                    app.state::<BrowserState>()
-                        .settled_tab(&label)
-                        .is_ok_and(|(_, current)| current == revision)
-                },
-            ),
-            self.app.clone(),
-            owner,
-        )
-        .perform(request)
+        let (project, chat, session) = (
+            self.project_id.clone(),
+            self.chat_id.clone(),
+            self.session_id.clone(),
+        );
+        let open_tab = matches!(
+            request.command,
+            crate::acp::browser::BrowserCommand::OpenTab { .. }
+        );
+        if !open_tab {
+            return attached::AttachedSessionCapability::new(
+                app,
+                project,
+                chat,
+                session,
+                &mut self.native,
+            )
+            .perform(request);
+        }
+        attached::with_pause(&app, &project, &chat, &session, request, || {
+            self.perform_once(request)
+        })
     }
 }

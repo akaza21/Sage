@@ -80,6 +80,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
+  // Releasing an open File's tabs for a move (ED-16) loads with that move.
+  "src/app/openFileRelease.ts",
   // Explorer's files.exclude matcher loads beside the startup bundle.
   "src/domain/pathGlobMatcher.ts",
   // The browser downloads popover body loads on its first open.
@@ -132,6 +134,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/outline/syntaxOutline.ts",
   "src/features/preview/AgentPreviewPresentation.tsx",
   "src/features/preview/PreviewSurface.tsx",
+  // Quick Open (EP-08) loads on its first open, or while idle.
+  "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",

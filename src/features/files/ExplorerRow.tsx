@@ -3,6 +3,7 @@ import { forwardRef, memo } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { isContextMenuKey } from "./explorerContextMenu";
 import { FileKindIcon } from "./FileKindIcon";
 import type { VisibleWorkspaceEntry } from "./fileTree";
 
@@ -13,6 +14,8 @@ interface ExplorerRowProps {
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
+  /** A right-click, or the context-menu key, on the row (ED-18). */
+  onContextMenu?: (resource: ResourceRef, row: HTMLButtonElement) => void;
 }
 
 export const ExplorerRow = memo(
@@ -24,6 +27,7 @@ export const ExplorerRow = memo(
       onSelectDirectory,
       onToggleDirectory,
       onOpenFile,
+      onContextMenu,
     },
     ref,
   ) {
@@ -60,6 +64,17 @@ export const ExplorerRow = memo(
           } else {
             void onOpenFile(entry.resource);
           }
+        }}
+        onContextMenu={(event) => {
+          if (!onContextMenu) return;
+          // Never the webview's own menu (Reload, Inspect) over the tree.
+          event.preventDefault();
+          onContextMenu(entry.resource, event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (!onContextMenu || !isContextMenuKey(event)) return;
+          event.preventDefault();
+          onContextMenu(entry.resource, event.currentTarget);
         }}
       >
         {directory ? (

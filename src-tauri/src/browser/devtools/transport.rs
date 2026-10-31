@@ -43,6 +43,28 @@ pub(crate) trait CdpTransport {
     /// Whether an Agent command left this transport in the current dispatch.
     fn issued(&self) -> bool;
 
+    /// Whether the dispatch permit was stopped (Stop, Take over, detach)
+    /// rather than spent on a navigation; a transport with no permit is
+    /// never stopped. Loops that only read, such as a wait, end on it.
+    fn stopped(&self) -> bool {
+        false
+    }
+
+    /// Whether the user's Annotate overlay is on this page, which needs the
+    /// DOM and Overlay domains kept on. A lock-free read, for drawing only.
+    fn annotating(&self) -> bool {
+        false
+    }
+
+    /// Runs `steps` only while this page does not annotate and no Annotate
+    /// change is under way, so a start cannot enable its overlay between the
+    /// check and `steps`. It never waits; when Annotate is busy it skips.
+    fn unless_annotating(&self, steps: &mut dyn FnMut()) {
+        if !self.annotating() {
+            steps();
+        }
+    }
+
     /// Polls once for a settled document newer than `before`. `Ok(None)`
     /// means still loading; an error ends the navigation wait.
     fn settled(&self, before: DocumentStamp) -> Result<Option<Settled>, BrowserFailure>;

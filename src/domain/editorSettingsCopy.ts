@@ -92,13 +92,13 @@ export const EDITOR_SETTING_COPY: Readonly<
     group: "Search",
     label: "Use ignore files",
     description:
-      "Search skips files that .gitignore, .ignore and Git's exclude files ignore.",
+      "Search skips files that ignore rules match: .gitignore, .ignore and Git's exclude files.",
   },
   "explorer.showIgnored": {
     group: "Files",
     label: "Ignored files in Explorer",
     description:
-      "Shows files that ignore files ignore in a dimmed color, or hides them.",
+      "Shows files that ignore rules match in a dimmed color, or hides them.",
 
     choiceLabels: {
       dimmed: ["Dimmed", "Dimmed"],
@@ -110,5 +110,11 @@ export const EDITOR_SETTING_COPY: Readonly<
     label: "Exclude",
     description:
       "Glob patterns for files and folders that Explorer and Search leave out, such as **/dist or **/*.log.",
+  },
+  "git.autoRefresh": {
+    group: "Git",
+    label: "Auto refresh",
+    description:
+      "Updates Source Control when files or Git state change outside Sage, such as a commit from a terminal.",
   },
 };

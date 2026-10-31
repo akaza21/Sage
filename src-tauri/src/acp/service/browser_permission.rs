@@ -102,15 +102,26 @@ impl super::AcpService {
         session_id: &SageAgentSessionId,
     ) -> Option<BrowserPermissionOwner> {
         use rusqlite::OptionalExtension;
+        let active = self
+            .lanes()
+            .filter_map(|lane| lane.scheduler.active())
+            .find(|active| {
+                &active.tree.project_id == project_id
+                    && &active.tree.chat_id == chat_id
+                    && &active.tree.session_id == session_id
+            });
+        let turn_id = active.as_ref().and_then(|active| active.turn_id.as_ref());
         let (turn_id, epoch, digest): (String, i64, String) = self.database.connection().query_row(
             "SELECT t.id,t.runtime_epoch,s.binding_digest FROM turns t
              JOIN agent_sessions s ON s.id=t.session_id
              JOIN session_runtime_epochs e ON e.session_id=t.session_id AND e.runtime_epoch=t.runtime_epoch
              WHERE t.project_id=?1 AND t.chat_id=?2 AND t.session_id=?3
                AND s.state IN ('ready','active') AND e.state='running'
+               AND (?4 IS NULL OR t.id=?4)
+               AND t.state NOT IN ('queued','cancelling')
                AND t.state NOT IN ('completed','interrupted','cancelled','failed','deliveryUnknown')
              ORDER BY t.ordinal DESC LIMIT 1",
-            rusqlite::params![project_id.as_str(), chat_id.as_str(), session_id.as_str()],
+            rusqlite::params![project_id.as_str(), chat_id.as_str(), session_id.as_str(), turn_id.map(|id| id.as_str())],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).optional().ok()??;
         Some(BrowserPermissionOwner {

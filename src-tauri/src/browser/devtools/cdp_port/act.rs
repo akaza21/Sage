@@ -1,3 +1,7 @@
+//! Agent acts. The target is marked before the action runs, so the user sees
+//! what the Agent is about to click, type into or scroll, and the marker is
+//! cleared once the action returns.
+
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
@@ -17,25 +21,28 @@ pub(super) fn perform<T: CdpTransport>(
     }
     match action {
         BrowserAction::Key { key, .. } => {
-            port.call(
-                "DOM.focus",
-                &json!({"backendNodeId": backend_id}).to_string(),
-                4096,
-                Duration::from_secs(5),
-            )?;
-            if port.stamp()? != stamp {
-                return Err(BrowserFailure::StaleHandle);
-            }
             let text = if key.chars().count() == 1 {
                 key.as_str()
             } else {
                 ""
             };
-            for kind in ["keyDown", "keyUp"] {
-                port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
-            }
-            highlight::mark(port, stamp, backend_id);
-            Ok(true)
+            // Focus after the marker's lead, right before the keys, so the
+            // page has no extra time to move focus elsewhere.
+            marked(port, stamp, backend_id, |port| {
+                port.call(
+                    "DOM.focus",
+                    &json!({"backendNodeId": backend_id}).to_string(),
+                    4096,
+                    Duration::from_secs(5),
+                )?;
+                if port.stamp()? != stamp {
+                    return Err(BrowserFailure::StaleHandle);
+                }
+                for kind in ["keyDown", "keyUp"] {
+                    port.call("Input.dispatchKeyEvent", &json!({"type":kind,"key":key,"text": if kind == "keyDown" { text } else { "" }}).to_string(), 4096, Duration::from_secs(5))?;
+                }
+                Ok(true)
+            })
         }
         _ => {
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -84,12 +91,14 @@ pub(super) fn perform<T: CdpTransport>(
                 BrowserAction::Key { .. } => unreachable!(),
             };
             let params = json!({"objectId":object_id,"functionDeclaration":function,"arguments":arguments,"returnByValue":true});
-            let response = port.call(
-                "Runtime.callFunctionOn",
-                &params.to_string(),
-                4096,
-                Duration::from_secs(5),
-            );
+            let response = marked(port, stamp, backend_id, |port| {
+                port.call(
+                    "Runtime.callFunctionOn",
+                    &params.to_string(),
+                    4096,
+                    Duration::from_secs(5),
+                )
+            });
             let _ = port.call(
                 "Runtime.releaseObject",
                 &json!({"objectId":object_id}).to_string(),
@@ -101,11 +110,29 @@ pub(super) fn perform<T: CdpTransport>(
             if response.get("exceptionDetails").is_some() {
                 return Err(BrowserFailure::Unavailable);
             }
-            let applied = response["result"]["value"].as_bool().unwrap_or(false);
-            if applied {
-                highlight::mark(port, stamp, backend_id);
-            }
-            Ok(applied)
+            Ok(response["result"]["value"].as_bool().unwrap_or(false))
         }
     }
 }
+
+/// Runs `action` with its target marked: the marker shows for
+/// `highlight::LEAD` first and is cleared however the action ends. Marking
+/// is best effort and never fails or delays the action past that lead.
+fn marked<T: CdpTransport, R>(
+    port: &mut CdpPort<T>,
+    stamp: DocumentStamp,
+    backend_id: u64,
+    action: impl FnOnce(&mut CdpPort<T>) -> Result<R, BrowserFailure>,
+) -> Result<R, BrowserFailure> {
+    if !highlight::mark(port, stamp, backend_id) {
+        return action(port);
+    }
+    std::thread::sleep(highlight::LEAD);
+    let result = action(port);
+    highlight::clear(&port.transport);
+    result
+}
+
+#[cfg(test)]
+#[path = "act_tests.rs"]
+mod tests;

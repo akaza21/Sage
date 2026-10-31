@@ -145,7 +145,7 @@ describe("editing shortcuts", () => {
       }
     }
     expect(clashes).toEqual([]);
-    // The reserved Quick Open chord stays free too.
+    // Quick Open's chord stays free on the other platform's modifier too.
     for (const editing of EDITOR_EDITING_BINDINGS) {
       expect(
         matchesPlatformChord(

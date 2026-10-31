@@ -41,6 +41,58 @@ it("keeps unavailable browser creation local and never exposes invocation except
   }
 });
 
+it("keeps positions unique after closing and recreating a browser tab", async () => {
+  const original = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    project: { id: "project", name: "Project", roots: [] },
+    projectTransitioning: false,
+    tabs: [
+      {
+        id: "settings",
+        kind: "settings",
+        title: "Settings",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      },
+      {
+        id: "browser-1",
+        kind: "browser",
+        title: "Browser",
+        position: 1,
+        status: "closed",
+        pinned: false,
+        dirty: false,
+      },
+      {
+        id: "file-1",
+        kind: "file",
+        title: "File",
+        position: 2,
+        pinned: false,
+        dirty: false,
+      },
+    ],
+    activeTabId: "settings",
+    activeEditor: null,
+  });
+  Object.defineProperty(window, "__TAURI_INTERNALS__", {
+    configurable: true,
+    value: {},
+  });
+  try {
+    useWorkbenchStore.getState().closeTab("browser-1");
+    vi.mocked(openBrowser).mockResolvedValueOnce("browser-2");
+    await useWorkbenchStore.getState().openBrowser();
+    expect(
+      useWorkbenchStore.getState().tabs.map((tab) => tab.position),
+    ).toEqual([0, 1, 2]);
+  } finally {
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    useWorkbenchStore.setState(original);
+  }
+});
+
 it("closes a restored placeholder without a native browser handle", () => {
   const original = useWorkbenchStore.getState();
   vi.mocked(closeBrowser).mockClear();

@@ -1,5 +1,5 @@
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
-import { terminalTurnStates, turnStateLabels } from "./statusSemantics";
+import { getTurnStatusLabel, terminalTurnStates } from "./statusSemantics";
 
 export const MAX_LIVE_SNAPSHOT_TEXT = 280;
 
@@ -93,7 +93,7 @@ export function projectChatLiveSnapshot(
   }
   return {
     chatId,
-    statusLabel: turnStateLabels[turn.state],
+    statusLabel: getTurnStatusLabel(turn),
     statusTone: failedStates.has(turn.state)
       ? "failed"
       : waitingStates.has(turn.state)

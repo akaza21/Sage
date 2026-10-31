@@ -7,8 +7,6 @@ import {
   type CSSProperties,
 } from "react";
 import { useWorkbenchStore } from "../app/store";
-import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
-import { usesMetaModifier } from "../ui/shortcutLabel";
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
@@ -45,9 +43,14 @@ import "./workbench-window-mode.css";
 import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
+import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
+import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
+import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import { useWorkbenchKeys } from "./useWorkbenchKeys";
 
 registerWorkbenchSurfaces();
 
@@ -218,37 +221,15 @@ export function Workbench() {
     void useSessionAccessModeStore.getState().restore();
     void useUiAppearanceStore.getState().restore();
   }, []);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (resourceModal) return;
-      // Platform modifier only: Control+N on macOS is the editor's next line.
-      const apple = usesMetaModifier();
-      if (matchesPlatformChord(keymapBinding("toggleSidebar"), event, apple)) {
-        event.preventDefault();
-        if (windowMode === "agent")
-          setNavigation((value) => ({
-            narrow: narrowAgent,
-            collapsed: !(value.narrow === narrowAgent
-              ? value.collapsed
-              : narrowAgent),
-          }));
-        else useWorkbenchStore.getState().toggleSidebar();
-      }
-      if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
-        event.preventDefault();
-        if (windowMode === "agent") useAgentSettingsState.getState().open();
-        else void useWorkbenchStore.getState().openSettings();
-      }
-      if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
-        event.preventDefault();
-        useAgentSettingsState.getState().close();
-        setWindowMode("agent");
-        void useWorkbenchStore.getState().createChat();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [narrowAgent, resourceModal, windowMode]);
+  useWorkbenchKeys({
+    narrowAgent,
+    resourceModal,
+    windowMode,
+    setNavigation,
+    setWindowMode,
+  });
+  useEditorHistoryKeys(windowMode === "editor");
+  useRepositoryAutoRefresh();
   useEffect(() => {
     writeWorkbenchLayout({
       editorToolRailWidth,
@@ -356,7 +337,9 @@ export function Workbench() {
       ) : null}
       {windowMode === "editor" ? (
         <div className="workbench__body" style={bodyStyle}>
-          <RightSidebar compact={compact} railFirst />
+          <ExplorerReleasesOpenFiles.Provider value={true}>
+            <RightSidebar compact={compact} railFirst />
+          </ExplorerReleasesOpenFiles.Provider>
           {!compact ? (
             <WorkbenchSidebarSplitter
               ariaLabel="Resize Editor tool rail"
@@ -385,6 +368,7 @@ export function Workbench() {
               )}
             />
           </div>
+          <QuickOpenHost />
         </div>
       ) : null}
       {terminalOpen ? (

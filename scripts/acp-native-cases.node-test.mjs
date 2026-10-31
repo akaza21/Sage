@@ -222,7 +222,8 @@ test("curated Codex journeys hydrate Models and Goal before the first turn", () 
   const cases = [...source.matchAll(/r#"(\[.*?\])"#/gu)]
     .map((match) => JSON.parse(match[1]))
     .filter((steps) => steps.some(({ kind }) => kind === "codexTurnStart"));
-  assert.equal(cases.length, 6);
+  // Includes the partial-turn-at-shutdown journey's hydrated first turn.
+  assert.equal(cases.length, 7);
   for (const steps of cases) {
     assert.deepEqual(steps.slice(4, 9), [
       { op: "awaitClient", kind: "codexModelList" },

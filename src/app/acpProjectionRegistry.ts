@@ -13,6 +13,10 @@ export function pinnedAcpProjectionIds(): string[] {
   return [...pinnedIds];
 }
 
+export function isAcpProjectionPinned(chatId: string): boolean {
+  return pinnedIds.has(chatId);
+}
+
 export function pinAcpProjectionIds(ids: readonly string[]): void {
   pinnedIds.clear();
   for (const id of ids) {

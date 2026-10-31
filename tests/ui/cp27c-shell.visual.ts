@@ -138,8 +138,16 @@ async function editorControlsReachable(page: Page) {
     await expectHitTarget(find.getByRole("button", { name }), page);
   }
   await find.getByRole("button", { name: "Close find" }).click();
+  // The title-bar pill opens Quick Open (EP-08), which stays in the window.
   await search.click();
-  const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+  const quickOpen = page.getByRole("dialog", { name: "Quick Open" });
+  await expectContained(quickOpen, page);
+  await page.keyboard.press("Escape");
+  await expect(quickOpen).toHaveCount(0);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const drawer = page.locator(
+    '.workbench--editor .sidebar[role="dialog"][aria-label="Search project tools"]',
+  );
   // At 760px and below the tool sidebar is a modal drawer over the editor.
   await expectContained(drawer, page);
   await expectStatusBarTarget(

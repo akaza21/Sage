@@ -159,6 +159,7 @@ const editor: EditorPort = {
 
 const repository: RepositoryPort = {
   getRepositoryStatus: () => invokeNative("get_repository_status"),
+  getRepositoryChangeStamp: () => invokeNative("get_repository_change_stamp"),
   getFileDiff(resource, scope) {
     return invokeNative("get_file_diff", {
       resource,
