@@ -1,4 +1,5 @@
 // Derived from pingdotgg/t3code (commit 08a463e), Copyright (c) 2026 T3 Tools Inc., MIT; see THIRD-PARTY-NOTICES.md.
+// Upstream: packages/client-runtime/src/state/threadShell.ts.
 import { chatAttentionStore } from "../../../src/app/chatAttentionStore";
 import type { AcpChatPage } from "../../../src/domain/acp";
 import type {
@@ -7,13 +8,26 @@ import type {
 } from "../../../src/domain/chatAttention";
 import { attention } from "../../../src/domain/chatAttention.fixture";
 import { terminalTurnStates } from "../../../src/features/chat/acp/statusSemantics";
-import { chatAttention } from "../../../src/services/chatAttention";
+import {
+  chatAttention,
+  withPresentedAttention,
+} from "../../../src/services/chatAttention";
 import type { FixtureState } from "./agentTurnJourneyModel";
 
 const values = new Map<string, ChatAttentionV1>();
 const identities = new Map<string, string>();
 const terminals = new Map<string, string>();
 let listener: ((event: ChatAttentionEvent) => Promise<void>) | undefined;
+
+export function journeyDetailPage(
+  page: AcpChatPage,
+  latest: boolean,
+): AcpChatPage {
+  const detail = structuredClone(page);
+  return latest
+    ? withPresentedAttention(detail, values.get(page.chatId)?.activityPosition)
+    : detail;
+}
 
 export function publishJourneyAttention(page: AcpChatPage) {
   const previous = values.get(page.chatId);

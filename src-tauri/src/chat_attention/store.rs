@@ -1,4 +1,5 @@
 // Derived from pingdotgg/t3code (commit 08a463e), Copyright (c) 2026 T3 Tools Inc., MIT; see THIRD-PARTY-NOTICES.md.
+// Upstream: packages/client-runtime/src/state/threadShell.ts; apps/web/src/components/Sidebar.logic.ts.
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::de::DeserializeOwned;
 
@@ -185,7 +186,7 @@ fn parse<T: DeserializeOwned>(value: Option<String>) -> Result<Option<T>, StoreE
         .transpose()
 }
 
-pub(super) fn position(value: i64) -> Result<Position, StoreError> {
+pub(crate) fn position(value: i64) -> Result<Position, StoreError> {
     u64::try_from(value)
         .ok()
         .and_then(|value| Position::new(value).ok())

@@ -10,16 +10,13 @@ export function presentedAttentionPosition(page: object): string | undefined {
   return (page as { [observed]?: string })[observed];
 }
 
-export async function observeAttentionBeforeDetail<T extends object>(
-  projectId: string,
-  chatId: string,
-  load: () => Promise<T>,
-): Promise<T> {
-  const summary = await chatAttention.get(projectId, [chatId]);
-  const page = await load();
-  if (summary[0])
+export function withPresentedAttention<T extends object>(
+  page: T,
+  position: unknown,
+): T {
+  if (validPosition(position))
     Object.defineProperty(page, observed, {
-      value: summary[0].activityPosition,
+      value: position,
       enumerable: true,
     });
   return page;

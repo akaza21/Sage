@@ -10,7 +10,10 @@ import {
 } from "../../../src/domain/chatAttention";
 import { attention } from "../../../src/domain/chatAttention.fixture";
 import { acpDesktop } from "../../../src/services/acpDesktop";
-import { chatAttention } from "../../../src/services/chatAttention";
+import {
+  chatAttention,
+  withPresentedAttention,
+} from "../../../src/services/chatAttention";
 import {
   installAgentTurnJourneyFixture,
   runJourneyEvent,
@@ -93,7 +96,12 @@ export async function installAttentionJourneyFixture(reset: boolean) {
     if (fetches.length >= 64)
       throw new Error("Attention fixture transcript fetch bound");
     fetches.push(request.chatId);
-    return getPage(request);
+    const detail = await getPage(request);
+    if (request.cursor) return detail;
+    // Native returns the observed position from the same snapshot as the
+    // attention summary; here this fixture's rows are that summary.
+    const row = owned(request.projectId, request.chatId);
+    return withPresentedAttention({ ...detail }, row.activityPosition);
   };
   await chatAttentionStore.connect([
     {

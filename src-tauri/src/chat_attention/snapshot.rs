@@ -1,4 +1,5 @@
 // Derived from pingdotgg/t3code (commit 08a463e), Copyright (c) 2026 T3 Tools Inc., MIT; see THIRD-PARTY-NOTICES.md.
+// Upstream: packages/client-runtime/src/state/threadShell.ts.
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 

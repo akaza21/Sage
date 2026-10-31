@@ -834,6 +834,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         legacy: false,
     };
     let page = AcpChatPage {
+        observed_attention_position: None,
         session_config: None,
         goal: crate::acp::goal::GoalState::Unsupported,
         project_id,

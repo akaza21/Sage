@@ -107,6 +107,8 @@ pub(super) fn append_turn(
         )?,
         "simulator session disappeared during append",
     )?;
+    crate::chat_attention::store::refresh(transaction, &owner.project, &owner.chat)
+        .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
     Ok(owner.session)
 }
 

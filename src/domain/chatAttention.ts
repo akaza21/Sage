@@ -1,4 +1,5 @@
 // Derived from pingdotgg/t3code (commit 08a463e), Copyright (c) 2026 T3 Tools Inc., MIT; see THIRD-PARTY-NOTICES.md.
+// Upstream: apps/web/src/components/Sidebar.logic.ts.
 import type { AgentSessionState, TurnState } from "./acp";
 import type { SessionStatus } from "./workbench";
 

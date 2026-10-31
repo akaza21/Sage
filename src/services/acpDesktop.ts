@@ -24,7 +24,7 @@ import type {
   AgentDiffSnapshot,
   GetAgentDiffRequest,
 } from "../domain/agentDiff";
-import { observeAttentionBeforeDetail } from "./chatAttention";
+import { withPresentedAttention } from "./chatAttention";
 import { invokeNative } from "../ports/nativeInvoke";
 import { isTauriRuntime } from "../ports/desktopRuntime";
 import type { ResourceRef } from "../domain/workbench";
@@ -310,19 +310,22 @@ export const acpDesktop = {
     request: GetAcpChatPageRequest,
     decodeGoal?: (value: unknown) => AcpGoalState | null,
   ): Promise<AcpChatPage> {
-    const load = async () => {
-      const page = await invokeAcp("get_acp_chat_page", request);
-      const safe = safeAcpMutationResponse({ projection: page }, decodeGoal);
-      if (!safe)
-        throw new AcpDesktopError({
-          kind: "internal",
-          message: "ACP page returned an invalid bounded projection.",
-        });
-      return safe.projection;
-    };
+    const page = await invokeAcp<unknown, GetAcpChatPageRequest>(
+      "get_acp_chat_page",
+      request,
+    );
+    const safe = safeAcpMutationResponse({ projection: page }, decodeGoal);
+    if (!safe)
+      throw new AcpDesktopError({
+        kind: "internal",
+        message: "ACP page returned an invalid bounded projection.",
+      });
     return request.cursor
-      ? load()
-      : observeAttentionBeforeDetail(request.projectId, request.chatId, load);
+      ? safe.projection
+      : withPresentedAttention(
+          safe.projection,
+          isRecord(page) ? page.observedAttentionPosition : undefined,
+        );
   },
 
   startSession(request: StartAcpSessionRequest): Promise<AcpMutationResult> {

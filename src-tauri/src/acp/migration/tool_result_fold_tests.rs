@@ -365,11 +365,14 @@ fn the_fold_keeps_the_usage_ledger_and_activity_parents_consistent() {
 fn the_folded_history_projects_one_tool_call_per_tool() {
     let mut connection = seeded();
     schema_upgrade::apply_v11(&mut connection).unwrap();
-    // The page reads the v16 child-epoch table; this history predates it.
+    // Current pages read the v16 child epoch and v20 attention; this history predates both.
     connection
         .execute_batch(
             "CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,updated_at INTEGER);",
         )
+        .unwrap();
+    connection
+        .execute_batch(include_str!("../../../migrations/020_chat_attention.sql"))
         .unwrap();
     let page = load_chat_page(
         &connection,

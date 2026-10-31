@@ -11,7 +11,7 @@ import type { ChatAttentionV1 } from "../domain/chatAttention";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import {
   chatAttention,
-  observeAttentionBeforeDetail,
+  withPresentedAttention,
 } from "../services/chatAttention";
 import { usePresentedAttention } from "./chatAttentionPresentation";
 import { chatAttentionStore } from "./chatAttentionStore";
@@ -41,10 +41,9 @@ it("attention acknowledges a successfully presented empty foreground detail", as
   const ack = vi
     .spyOn(chatAttention, "ack")
     .mockResolvedValue({ ...empty, readPosition: "0", revision: "1" });
-  const detail = await observeAttentionBeforeDetail(
-    "project-1",
-    "chat-1",
-    async () => ({ ...page("completed"), turns: [] }),
+  const detail = withPresentedAttention(
+    { ...page("completed"), turns: [] },
+    "0",
   );
   await chatAttentionStore.connect([
     { projectId: "project-1", chatIds: ["chat-1"] },
@@ -96,11 +95,7 @@ it("attention integration preserves native titles without token-driven rail rece
 it("attention acknowledges a presented page after delayed summary bootstrap", async () => {
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
   const get = vi.spyOn(chatAttention, "get").mockResolvedValue([attention()]);
-  const detail = await observeAttentionBeforeDetail(
-    "project-1",
-    "chat-1",
-    async () => page("completed"),
-  );
+  const detail = withPresentedAttention(page("completed"), "1");
   let finish!: (rows: ChatAttentionV1[]) => void;
   get.mockImplementationOnce(
     () =>
@@ -150,11 +145,7 @@ it("attention stays quiet while a focused chat streams", async () => {
   const get = vi.spyOn(chatAttention, "get").mockResolvedValue([read]);
   vi.spyOn(chatAttention, "subscribe").mockResolvedValue(() => undefined);
   const ack = vi.spyOn(chatAttention, "ack").mockResolvedValue(read);
-  const detail = await observeAttentionBeforeDetail(
-    "project-1",
-    "chat-1",
-    async () => page("running"),
-  );
+  const detail = withPresentedAttention(page("running"), "1");
   await chatAttentionStore.connect([
     { projectId: "project-1", chatIds: ["chat-1"] },
   ]);

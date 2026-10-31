@@ -11,8 +11,10 @@ import {
   type FixtureState,
 } from "./agentTurnJourneyModel";
 import { journeySnapshot } from "./agentTurnJourneySnapshot";
-import { installJourneyAttention } from "./agentTurnJourneyAttention";
-import { observeAttentionBeforeDetail } from "../../../src/services/chatAttention";
+import {
+  installJourneyAttention,
+  journeyDetailPage,
+} from "./agentTurnJourneyAttention";
 
 function rejectWhenFull(total: number): void {
   if (total >= MAX_CAPTURED_REQUESTS) {
@@ -44,11 +46,7 @@ export function installJourneyServices(state: FixtureState): () => void {
     if (!page || page.projectId !== request.projectId) {
       throw new Error("Journey page request crossed Project or Chat ownership");
     }
-    return observeAttentionBeforeDetail(
-      request.projectId,
-      request.chatId,
-      async () => structuredClone(page),
-    );
+    return journeyDetailPage(page, !request.cursor);
   };
   acpDesktop.subscribeProjectionChanges = async (listener) => {
     if (state.listeners.size >= MAX_PROJECTION_LISTENERS) {
