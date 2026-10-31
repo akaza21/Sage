@@ -148,7 +148,10 @@ for (const harness of ["codex", "claude-code", "pi"]) {
       .getByRole("button", { name: "Hide projects and chats" })
       .press("Enter");
     await expect
-      .poll(async () => Math.round((await navigation.boundingBox())!.width))
+      .poll(async () => {
+        const bounds = await navigation.boundingBox();
+        return bounds ? Math.round(bounds.width) : null;
+      })
       .toBe(54);
     await expect(
       navigation.locator(".project-sidebar__icon-rail"),

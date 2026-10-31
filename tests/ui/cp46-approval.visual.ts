@@ -171,12 +171,17 @@ for (const width of [720, 480]) {
     await openScenario(page, "waiting", "agent");
     await settleChatProjections(page);
     const composer = page.locator("form.composer");
+    await expect(composer).toBeVisible();
     const before = (await composer.boundingBox())!;
     await applyApproval(page, "received");
     const prompt = page
       .locator(".acp-permission-prompt")
       .and(page.getByRole("group", { name: "Permission request" }));
     await expect(prompt).toBeVisible();
+    // The loading fallback shares the card's class and accessible group name.
+    await expect(
+      prompt.getByRole("button", { name: /Allow once/ }),
+    ).toBeVisible();
     const box = (await prompt.boundingBox())!;
     expect(Math.abs(box.width - before.width)).toBeLessThanOrEqual(2);
     expect(Math.abs(box.x - before.x)).toBeLessThanOrEqual(2);
