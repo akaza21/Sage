@@ -10,14 +10,8 @@ import type {
   RenameProjectFolderResult,
   ResourceRef,
 } from "../domain/workbench";
-import {
-  renameTargetResource,
-  validateFileRenameResult,
-} from "../features/files/fileRenameContract";
-import {
-  renameFolderTargetResource,
-  validateFolderRenameResult,
-} from "../features/files/fileRenameContract";
+import { renameTargetResource } from "../features/files/fileRenameContract";
+import { renameFolderTargetResource } from "../features/files/fileRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";
@@ -240,6 +234,8 @@ export const createFileRenameSlice: StateCreator<
     });
     try {
       await get().flushActiveEditor();
+      const { validateFileRenameResult, validateFolderRenameResult } =
+        await import("../features/files/fileRenameResult");
       if (
         !intentMatches(
           get(),

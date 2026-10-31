@@ -6,7 +6,6 @@ import {
   closeBrowser,
   openBrowser,
   browserPopupPending,
-  browserOpenPopup,
   type BrowserPopupIntent,
   type BrowserNavigation,
 } from "../ports/nativeBrowserPort";
@@ -25,8 +24,6 @@ import {
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
 import type { WorkbenchState } from "./store";
-import { positionTab } from "./tabState";
-import { popupAdoption, ackPopup } from "./browserPopupNative";
 
 export interface BrowserSlice {
   openBrowser: (url?: string) => Promise<void>;
@@ -69,69 +66,15 @@ export const createBrowserSlice: StateCreator<
       return;
     }
     processingPopups.add(intent.id);
-    const popup = popupAdoption(set, get, intent);
     try {
-      const projectId = get().project?.id;
-      const generation = get().projectGeneration;
-      if (!projectId || get().projectTransitioning)
-        return await popup.abandon();
-      await get().flushActiveEditor();
-      if (!matchesProjectIntent(get(), generation, projectId)) {
-        throw new Error("Project changed");
-      }
-      const opened = await browserOpenPopup(intent.id, intent.openerTabId);
-      popup.opened = opened;
-      if (
-        opened.openerTabId !== intent.openerTabId ||
-        !opened.tabId ||
-        !opened.url
-      )
-        throw new Error("Popup response invalid");
-      if (!matchesProjectIntent(get(), generation, projectId)) {
-        throw new Error("Project changed");
-      }
-      popup.inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
-      if (popup.inserted) {
-        const openerIndex = get().tabs.findIndex(
-          (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
-        );
-        if (openerIndex < 0) {
-          throw new Error("Popup opener closed");
-        }
-        set((state) => {
-          const tabs = [...state.tabs];
-          tabs.splice(openerIndex + 1, 0, {
-            id: opened.tabId,
-            kind: "browser",
-            title: browserTabTitle(opened.url) ?? "New tab",
-            position: openerIndex + 1,
-            pinned: false,
-            dirty: false,
-            openerTabId: opened.openerTabId,
-          });
-          return {
-            tabs: tabs.map(positionTab),
-            activeTabId: opened.tabId,
-            activeEditor: null,
-          };
-        });
-      }
-      popup.cleanupAttempted = true;
-      await ackPopup(set, get, intent.id, opened, popup.inserted);
+      const { adoptPopup } = await import("./browserPopupNative");
+      if (!(await adoptPopup(set, get, intent))) return;
       finishedPopups.add(intent.id);
       if (finishedPopups.size > 32) {
         const first = finishedPopups.values().next().value;
         if (first !== undefined) finishedPopups.delete(first);
       }
     } catch {
-      if (!popup.cleanupAttempted) {
-        try {
-          await popup.abandon();
-        } catch {
-          set({ error: "Could not close the browser popup. Try again." });
-          return;
-        }
-      }
       set({ error: "Could not open the browser popup. Try again." });
     } finally {
       processingPopups.delete(intent.id);

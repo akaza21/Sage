@@ -3,9 +3,13 @@ import type { StoreApi } from "zustand";
 import {
   browserPopupAbandon,
   browserPopupAck,
+  browserOpenPopup,
   type BrowserPopupIntent,
   type BrowserPopupOpen,
 } from "../ports/nativeBrowserPort";
+import { browserTabTitle } from "../domain/browserTabTitle";
+import { matchesProjectIntent } from "./projectIntent";
+import { positionTab } from "./tabState";
 import type { WorkbenchState } from "./store";
 import { reconcileNativeClosedBrowserTabs } from "./tabClosing";
 
@@ -61,5 +65,78 @@ export async function ackPopup(
   } catch (error) {
     await abandonOpenedPopup(set, get, id, opened, inserted);
     throw error;
+  }
+}
+
+/** Popup adoption is demand-loaded; startup only installs the event listeners. */
+export async function adoptPopup(
+  set: StoreApi<WorkbenchState>["setState"],
+  get: StoreApi<WorkbenchState>["getState"],
+  intent: BrowserPopupIntent,
+): Promise<boolean> {
+  const popup = popupAdoption(set, get, intent);
+  try {
+    const projectId = get().project?.id;
+    const generation = get().projectGeneration;
+    if (!projectId || get().projectTransitioning) {
+      await popup.abandon();
+      return false;
+    }
+    await get().flushActiveEditor();
+    if (!matchesProjectIntent(get(), generation, projectId)) {
+      throw new Error("Project changed");
+    }
+    const opened = await browserOpenPopup(intent.id, intent.openerTabId);
+    popup.opened = opened;
+    if (
+      opened.openerTabId !== intent.openerTabId ||
+      !opened.tabId ||
+      !opened.url
+    )
+      throw new Error("Popup response invalid");
+    if (!matchesProjectIntent(get(), generation, projectId)) {
+      throw new Error("Project changed");
+    }
+    popup.inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
+    if (popup.inserted) {
+      const openerIndex = get().tabs.findIndex(
+        (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
+      );
+      if (openerIndex < 0) {
+        throw new Error("Popup opener closed");
+      }
+      set((state) => {
+        const tabs = [...state.tabs];
+        tabs.splice(openerIndex + 1, 0, {
+          id: opened.tabId,
+          kind: "browser",
+          title: browserTabTitle(opened.url) ?? "New tab",
+          position: openerIndex + 1,
+          pinned: false,
+          dirty: false,
+          openerTabId: opened.openerTabId,
+        });
+        return {
+          tabs: tabs.map(positionTab),
+          activeTabId: opened.tabId,
+          activeEditor: null,
+        };
+      });
+    }
+    popup.cleanupAttempted = true;
+    await ackPopup(set, get, intent.id, opened, popup.inserted);
+    return true;
+  } catch {
+    if (!popup.cleanupAttempted) {
+      try {
+        await popup.abandon();
+      } catch {
+        set({ error: "Could not close the browser popup. Try again." });
+        return false;
+      }
+    }
+    set({ error: "Could not open the browser popup. Try again." });
+
+    return false;
   }
 }
