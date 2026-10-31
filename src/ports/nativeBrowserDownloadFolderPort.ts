@@ -36,3 +36,16 @@ export function admitDownloadFolder(input: unknown): BrowserDownloadFolder {
       : null;
   return { path, available: path !== null && source.available === true };
 }
+
+/**
+ * Calls `onChange` when Rust saves a folder outside the Settings buttons
+ * (the first download's Save dialog). Returns the unsubscribe function.
+ */
+export async function listenBrowserDownloadFolder(
+  onChange: (folder: BrowserDownloadFolder) => void,
+): Promise<() => void> {
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>("browser:download-folder", (event) =>
+    onChange(admitDownloadFolder(event.payload)),
+  );
+}

@@ -9,42 +9,50 @@ use super::super::{
     BrowserState, DownloadRegistry,
     folder::{self, Plan},
 };
-use crate::{settings_commands::browser_download_folder::remember_folder, state::AppState};
+use crate::{
+    settings_commands::browser_download_folder::{emit_folder_changed, remember_first_choice},
+    state::AppState,
+};
 
-/// Silent save into the saved download folder, or the Save dialog.
-pub(super) fn plan_download(app: &AppHandle, suggested: &str) -> Plan {
-    let stored = app
-        .state::<AppState>()
-        .settings
-        .browser_download_folder()
-        .ok()
-        .flatten();
-    app.state::<BrowserState>()
+/// A plan and the stored folder it was made against.
+pub(super) struct Planned {
+    pub(super) plan: Plan,
+    pub(super) expected: Option<PathBuf>,
+}
+
+/// Silent save into the saved download folder, or the Save dialog. Runs off
+/// the UI thread; the registry lock is held only to copy the claimed paths.
+pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>) -> Planned {
+    let Ok(stored) = app.state::<AppState>().settings.browser_download_folder() else {
+        return Planned {
+            plan: Plan::Ask {
+                file_name: folder::sanitize_file_name(suggested),
+                remember: false,
+                directory: None,
+            },
+            expected: None,
+        };
+    };
+    let claimed = app
+        .state::<BrowserState>()
         .downloads
         .lock()
-        .ok()
-        .map(|registry| folder::plan(stored.as_deref(), suggested, |path| registry.claims(path)))
-        .unwrap_or_else(|| Plan::Ask {
-            file_name: folder::sanitize_file_name(suggested),
-            remember: false,
-            directory: None,
-        })
+        .map(|registry| registry.claimed())
+        .unwrap_or_default();
+    Planned {
+        plan: folder::plan(stored.as_deref(), suggested, mime, |path| {
+            claimed.contains(path)
+        }),
+        expected: stored,
+    }
 }
 
 /// The first download's folder becomes the saved download folder, unless
-/// Settings saved a usable one while the Save dialog was open.
-pub(super) fn remember_choice(app: &AppHandle, chosen: &Path) {
+/// Settings changed it while the Save dialog was open.
+pub(super) fn remember_choice(app: &AppHandle, expected: Option<&Path>, chosen: &Path) {
     let settings = &app.state::<AppState>().settings;
-    let saved = settings
-        .browser_download_folder()
-        .ok()
-        .flatten()
-        .as_deref()
-        .and_then(folder::admit_folder);
-    if saved.is_none()
-        && let Some(folder) = folder::folder_of_choice(chosen)
-    {
-        let _ = remember_folder(settings, &folder);
+    if remember_first_choice(settings, expected, chosen) {
+        emit_folder_changed(app, settings);
     }
 }
 

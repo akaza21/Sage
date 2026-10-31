@@ -5,6 +5,7 @@ import {
   browserChooseDownloadFolder,
   browserDownloadFolder,
   browserResetDownloadFolder,
+  listenBrowserDownloadFolder,
   type BrowserDownloadFolder as Folder,
 } from "../../ports/nativeBrowserDownloadFolderPort";
 
@@ -40,8 +41,19 @@ export function BrowserDownloadFolder() {
       .finally(() => {
         if (live) setLoaded(true);
       });
+    let unlisten: (() => void) | undefined;
+    listenBrowserDownloadFolder((value) => {
+      if (live) setFolder(value);
+    }).then(
+      (stop) => {
+        if (live) unlisten = stop;
+        else stop();
+      },
+      () => undefined,
+    );
     return () => {
       live = false;
+      unlisten?.();
     };
   }, []);
 

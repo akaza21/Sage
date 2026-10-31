@@ -39,22 +39,40 @@ impl SettingsStore {
     }
 
     pub fn set_browser_download_folder(&self, folder: &Path) -> AppResult<()> {
-        let text = folder
-            .to_str()
-            .filter(|text| folder.is_absolute() && (1..=MAX_PATH_BYTES).contains(&text.len()))
-            .ok_or_else(|| {
-                AppError::InvalidRequest("download folder must be an absolute path".into())
-            })?;
+        let text = admitted_text(folder)?;
         let connection = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO browser_download_folder(singleton, path) VALUES (1, ?1)
-             ON CONFLICT(singleton) DO UPDATE SET path = excluded.path",
-            params![text],
-        )?;
-        Ok(())
+        write(&connection, text)
+    }
+
+    /// Saves `folder` only while the stored value is still `expected`, read
+    /// and written under one lock, so a folder chosen in Settings while a
+    /// first Save dialog was open is never replaced by that dialog's folder.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn set_browser_download_folder_if(
+        &self,
+        expected: Option<&Path>,
+        folder: &Path,
+    ) -> AppResult<bool> {
+        let text = admitted_text(folder)?;
+        let connection = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = connection
+            .query_row(
+                "SELECT path FROM browser_download_folder WHERE singleton = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if current.as_deref().map(Path::new) != expected {
+            return Ok(false);
+        }
+        write(&connection, text)?;
+        Ok(true)
     }
 
     pub fn clear_browser_download_folder(&self) -> AppResult<()> {
@@ -65,6 +83,22 @@ impl SettingsStore {
         connection.execute("DELETE FROM browser_download_folder", [])?;
         Ok(())
     }
+}
+
+fn admitted_text(folder: &Path) -> AppResult<&str> {
+    folder
+        .to_str()
+        .filter(|text| folder.is_absolute() && (1..=MAX_PATH_BYTES).contains(&text.len()))
+        .ok_or_else(|| AppError::InvalidRequest("download folder must be an absolute path".into()))
+}
+
+fn write(connection: &Connection, text: &str) -> AppResult<()> {
+    connection.execute(
+        "INSERT INTO browser_download_folder(singleton, path) VALUES (1, ?1)
+         ON CONFLICT(singleton) DO UPDATE SET path = excluded.path",
+        params![text],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -132,5 +166,24 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_conditional_save_keeps_a_folder_saved_in_the_meantime() {
+        let store = SettingsStore::in_memory().unwrap();
+        let first = std::env::temp_dir().join("first");
+        let settings = std::env::temp_dir().join("settings");
+        store.set_browser_download_folder(&settings).unwrap();
+        assert!(!store.set_browser_download_folder_if(None, &first).unwrap());
+        assert_eq!(
+            store.browser_download_folder().unwrap(),
+            Some(settings.clone())
+        );
+        assert!(
+            store
+                .set_browser_download_folder_if(Some(&settings), &first)
+                .unwrap()
+        );
+        assert_eq!(store.browser_download_folder().unwrap(), Some(first));
     }
 }

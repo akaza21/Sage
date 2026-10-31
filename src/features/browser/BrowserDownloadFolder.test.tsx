@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,6 +12,18 @@ const port = vi.hoisted(() => ({
   get: vi.fn(),
   choose: vi.fn(),
   reset: vi.fn(),
+  emit: null as ((payload: unknown) => void) | null,
+  unlisten: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (
+    _name: string,
+    handler: (event: { payload: unknown }) => void,
+  ) => {
+    port.emit = (payload) => handler({ payload });
+    return port.unlisten;
+  },
 }));
 
 vi.mock("../../ports/nativeBrowserDownloadFolderPort", async (actual) => ({
@@ -27,6 +40,7 @@ const FOLDER = "C:\\Users\\me\\Downloads\\Sage";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  port.emit = null;
   port.get.mockResolvedValue({ path: null, available: false });
   port.reset.mockResolvedValue({ path: null, available: false });
 });
@@ -111,4 +125,15 @@ it("admits only the fields Rust sends", () => {
     path: FOLDER,
     available: false,
   });
+});
+
+it("shows a folder the first download saved while Settings is open", async () => {
+  const { unmount } = render(<BrowserDownloadFolder />);
+  await screen.findByText(/Not set\. The next download asks/);
+  await waitFor(() => expect(port.emit).not.toBeNull());
+  act(() => port.emit?.({ path: FOLDER, available: true }));
+  expect(await screen.findByText(FOLDER)).toBeVisible();
+  expect(reset()).toBeEnabled();
+  unmount();
+  expect(port.unlisten).toHaveBeenCalledTimes(1);
 });

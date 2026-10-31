@@ -41,7 +41,10 @@ fn download(
         .begin("browser-one", "https://example.com/file", suggested)
         .unwrap();
     let stored = store.browser_download_folder().unwrap();
-    let plan = plan(stored.as_deref(), suggested, |path| registry.claims(path));
+    let claimed = registry.claimed();
+    let plan = plan(stored.as_deref(), suggested, None, |path| {
+        claimed.contains(path)
+    });
     let destination = match &plan {
         Plan::Silent(path) => Some(path.clone()),
         Plan::Ask { file_name, .. } => dialog_choice.map(|folder| folder.join(file_name)),
@@ -147,7 +150,7 @@ fn a_saved_path_that_became_a_file_asks_again() {
     let path = parent.0.join("downloads");
     std::fs::write(&path, b"not a folder").unwrap();
     assert!(matches!(
-        plan(Some(&path), "a.txt", free),
+        plan(Some(&path), "a.txt", None, free),
         Plan::Ask { remember: true, .. }
     ));
 }
@@ -188,7 +191,7 @@ fn dangerous_types_always_ask_and_keep_the_saved_folder() {
     // A stream colon cannot reach the file system, so the name is no
     // longer an executable.
     assert_eq!(
-        plan(Some(&saved.0), "stream.exe:zone", free),
+        plan(Some(&saved.0), "stream.exe:zone", None, free),
         Plan::Silent(saved.0.join("stream.exe_zone"))
     );
 }
@@ -250,7 +253,7 @@ fn long_file_names_are_bounded_and_keep_their_extension() {
 fn every_destination_is_a_direct_child_of_the_folder() {
     let folder = Scratch::new("child");
     for name in ["../escape.txt", r"..\escape.txt", "/abs.txt", "C:evil.txt"] {
-        let Plan::Silent(path) = plan(Some(&folder.0), name, free) else {
+        let Plan::Silent(path) = plan(Some(&folder.0), name, None, free) else {
             panic!("{name} asked");
         };
         assert_eq!(path.parent(), Some(folder.0.as_path()), "{name}");
@@ -260,7 +263,7 @@ fn every_destination_is_a_direct_child_of_the_folder() {
 #[test]
 fn a_relative_stored_folder_is_never_used() {
     assert!(matches!(
-        plan(Some(Path::new("downloads")), "a.txt", free),
+        plan(Some(Path::new("downloads")), "a.txt", None, free),
         Plan::Ask { remember: true, .. }
     ));
 }
@@ -290,7 +293,7 @@ fn a_read_only_saved_folder_asks_again() {
     std::fs::set_permissions(&folder.0, std::fs::Permissions::from_mode(0o555)).unwrap();
     // Root writes anywhere; the probe is still honest about that.
     let writable = is_writable(&folder.0);
-    let planned = plan(Some(&folder.0), "a.txt", free);
+    let planned = plan(Some(&folder.0), "a.txt", None, free);
     std::fs::set_permissions(&folder.0, std::fs::Permissions::from_mode(0o755)).unwrap();
     if writable {
         assert!(matches!(planned, Plan::Silent(_)));
@@ -309,4 +312,67 @@ fn downloads_differing_only_in_case_never_share_a_destination() {
     assert_eq!(first, Plan::Silent(folder.0.join("Report.pdf")));
     let (second, _) = download(&store, &mut registry, "report.pdf", None);
     assert_eq!(second, Plan::Silent(folder.0.join("report (1).pdf")));
+}
+
+#[test]
+fn a_silent_save_reserves_its_name_on_disk_and_release_removes_only_an_empty_placeholder() {
+    let folder = Scratch::new("reserve");
+    let Plan::Silent(first) = plan(Some(&folder.0), "a.txt", None, free) else {
+        panic!("asked");
+    };
+    assert_eq!(std::fs::metadata(&first).unwrap().len(), 0);
+    // Without any registry claim, the reservation alone moves the next one on.
+    let Plan::Silent(second) = plan(Some(&folder.0), "a.txt", None, free) else {
+        panic!("asked");
+    };
+    assert_eq!(second, folder.0.join("a (1).txt"));
+    release_reservation(&first);
+    assert!(!first.exists());
+    std::fs::write(&second, b"downloaded").unwrap();
+    release_reservation(&second);
+    assert_eq!(std::fs::read(&second).unwrap(), b"downloaded");
+}
+
+#[test]
+fn a_dangerous_content_type_asks_whatever_the_name_says() {
+    let folder = Scratch::new("mime");
+    for mime in [
+        "application/x-msdownload",
+        "Application/X-MSDownload; charset=binary",
+        "application/vnd.microsoft.portable-executable",
+        "application/x-msi",
+    ] {
+        assert!(
+            matches!(
+                plan(Some(&folder.0), "report.pdf", Some(mime), free),
+                Plan::Ask {
+                    remember: false,
+                    ..
+                }
+            ),
+            "{mime}"
+        );
+    }
+    assert!(matches!(
+        plan(Some(&folder.0), "report.pdf", Some("application/pdf"), free),
+        Plan::Silent(_)
+    ));
+}
+
+#[test]
+fn office_add_ins_and_other_installers_are_dangerous() {
+    for name in [
+        "addin.vsto",
+        "x.ocx",
+        "x.cab",
+        "x.appinstaller",
+        "x.msixbundle",
+        "x.settingcontent-ms",
+        "x.xlam",
+        "x.wsf",
+        "x.cpl",
+        "x.application",
+    ] {
+        assert!(is_dangerous(name), "{name}");
+    }
 }

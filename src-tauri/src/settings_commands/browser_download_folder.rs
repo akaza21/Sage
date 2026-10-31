@@ -6,11 +6,13 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
-    browser::downloads::folder::admit_folder, error::AppResult, settings_store::SettingsStore,
+    browser::downloads::folder::{admit_folder, folder_of_choice},
+    error::AppResult,
+    settings_store::SettingsStore,
     state::AppState,
 };
 
@@ -40,6 +42,32 @@ pub(crate) fn remember_folder(store: &SettingsStore, chosen: &Path) -> Result<()
         .set_browser_download_folder(&folder)
         .map_err(|error| error.to_string())
 }
+
+/// Saves the folder of the first download's Save-dialog choice, unless the
+/// stored folder changed since the download read it as `expected` (Settings
+/// chose one while the dialog was open). Returns whether it saved.
+// Called by the WebView2 download handler, which only Windows builds.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn remember_first_choice(
+    store: &SettingsStore,
+    expected: Option<&Path>,
+    chosen: &Path,
+) -> bool {
+    folder_of_choice(chosen).is_some_and(|folder| {
+        store
+            .set_browser_download_folder_if(expected, &folder)
+            .unwrap_or(false)
+    })
+}
+
+/// Tells an open Settings page that the download folder changed.
+pub(crate) fn emit_folder_changed(app: &AppHandle, store: &SettingsStore) {
+    if let Ok(view) = folder_view(store) {
+        let _ = app.emit_to("main", FOLDER_CHANGED, view);
+    }
+}
+
+pub(crate) const FOLDER_CHANGED: &str = "browser:download-folder";
 
 #[tauri::command]
 pub(crate) fn browser_download_folder(
@@ -71,6 +99,7 @@ pub(crate) async fn browser_choose_download_folder(
         .map_err(|error| error.to_string())?;
     if let Some(path) = picked.and_then(|file| file.into_path().ok()) {
         remember_folder(&state.settings, &path)?;
+        emit_folder_changed(&app, &state.settings);
     }
     folder_view(&state.settings).map_err(|error| error.to_string())
 }
@@ -146,5 +175,37 @@ mod tests {
         let view = folder_view(&store).unwrap();
         assert!(view.path.is_some());
         assert!(!view.available);
+    }
+
+    #[test]
+    fn the_first_save_choice_is_remembered_only_if_settings_did_not_change_meanwhile() {
+        let store = SettingsStore::in_memory().unwrap();
+        let dialog = scratch("first-dialog");
+        let settings = scratch("first-settings");
+        // The download read "nothing saved", then Settings chose a folder.
+        let expected = store.browser_download_folder().unwrap();
+        remember_folder(&store, &settings).unwrap();
+        assert!(!remember_first_choice(
+            &store,
+            expected.as_deref(),
+            &dialog.join("file.zip")
+        ));
+        assert_eq!(
+            store.browser_download_folder().unwrap(),
+            admit_folder(&settings)
+        );
+        // With nothing in between, the dialog's folder is saved.
+        store.clear_browser_download_folder().unwrap();
+        assert!(remember_first_choice(
+            &store,
+            None,
+            &dialog.join("file.zip")
+        ));
+        assert_eq!(
+            store.browser_download_folder().unwrap(),
+            admit_folder(&dialog)
+        );
+        std::fs::remove_dir_all(dialog).unwrap();
+        std::fs::remove_dir_all(settings).unwrap();
     }
 }

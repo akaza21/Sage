@@ -14,185 +14,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Extensions that run code, install software or point at something that
-/// does when opened from Explorer. Such a download always asks where to save.
-const DANGEROUS_EXTENSIONS: &[&str] = &[
-    "ade",
-    "adp",
-    "app",
-    "appinstaller",
-    "application",
-    "appref-ms",
-    "appx",
-    "appxbundle",
-    "asp",
-    "bas",
-    "bat",
-    "cer",
-    "chm",
-    "cmd",
-    "com",
-    "cpl",
-    "crt",
-    "csh",
-    "der",
-    "desktopthemepack",
-    "diagcab",
-    "dll",
-    "docm",
-    "dotm",
-    "exe",
-    "fxp",
-    "gadget",
-    "grp",
-    "hlp",
-    "hta",
-    "htt",
-    "img",
-    "inf",
-    "ins",
-    "iso",
-    "isp",
-    "its",
-    "jar",
-    "jnlp",
-    "js",
-    "jse",
-    "ksh",
-    "library-ms",
-    "lnk",
-    "mad",
-    "maf",
-    "mag",
-    "mam",
-    "maq",
-    "mar",
-    "mas",
-    "mat",
-    "mau",
-    "mav",
-    "maw",
-    "mcf",
-    "mda",
-    "mdb",
-    "mde",
-    "mdt",
-    "mdw",
-    "mdz",
-    "mht",
-    "mhtml",
-    "msc",
-    "msh",
-    "msh1",
-    "msh1xml",
-    "msh2",
-    "msh2xml",
-    "mshxml",
-    "msi",
-    "msix",
-    "msixbundle",
-    "msp",
-    "mst",
-    "msu",
-    "ops",
-    "osd",
-    "pcd",
-    "pif",
-    "pl",
-    "plg",
-    "potm",
-    "ppam",
-    "ppsm",
-    "pptm",
-    "prf",
-    "prg",
-    "printerexport",
-    "ps1",
-    "ps1xml",
-    "ps2",
-    "ps2xml",
-    "psc1",
-    "psc2",
-    "psd1",
-    "psdm1",
-    "psm1",
-    "pssc",
-    "py",
-    "pyc",
-    "pyo",
-    "pyw",
-    "pyz",
-    "pyzw",
-    "rdp",
-    "reg",
-    "scf",
-    "scr",
-    "sct",
-    "search-ms",
-    "settingcontent-ms",
-    "sh",
-    "shb",
-    "shs",
-    "sys",
-    "theme",
-    "themepack",
-    "url",
-    "vb",
-    "vbe",
-    "vbp",
-    "vbs",
-    "vhd",
-    "vhdx",
-    "vsmacros",
-    "vsw",
-    "webpnp",
-    "website",
-    "ws",
-    "wsb",
-    "wsc",
-    "wsf",
-    "wsh",
-    "xbap",
-    "xlam",
-    "xll",
-    "xlsm",
-    "xltm",
-    "xnk",
-];
+mod file_types;
 
-/// Windows device names that cannot be a file's stem.
-const RESERVED_STEMS: &[&str] = &[
-    "con",
-    "conin$",
-    "conout$",
-    "prn",
-    "aux",
-    "nul",
-    "com\u{b9}",
-    "com\u{b2}",
-    "com\u{b3}",
-    "lpt\u{b9}",
-    "lpt\u{b2}",
-    "lpt\u{b3}",
-    "com1",
-    "com2",
-    "com3",
-    "com4",
-    "com5",
-    "com6",
-    "com7",
-    "com8",
-    "com9",
-    "lpt1",
-    "lpt2",
-    "lpt3",
-    "lpt4",
-    "lpt5",
-    "lpt6",
-    "lpt7",
-    "lpt8",
-    "lpt9",
-];
+use file_types::RESERVED_STEMS;
+pub(crate) use file_types::{is_dangerous, is_dangerous_mime};
 
 const MAX_NAME_BYTES: usize = 200;
 const MAX_EXTENSION_BYTES: usize = 24;
@@ -216,9 +41,17 @@ pub(crate) enum Plan {
 }
 
 /// Decides between saving silently and asking. `stored` is the saved
-/// download folder as Settings recorded it; `taken` reports destinations
-/// already claimed by downloads still in flight.
-pub(crate) fn plan(stored: Option<&Path>, suggested: &str, taken: impl Fn(&Path) -> bool) -> Plan {
+/// download folder as Settings recorded it; `mime` is the server's content
+/// type; `taken` reports destinations already claimed by downloads still in
+/// flight. A `Silent` path has been reserved on disk (see
+/// [`unique_destination`]). This does file-system work, so it runs off the
+/// WebView2 UI thread.
+pub(crate) fn plan(
+    stored: Option<&Path>,
+    suggested: &str,
+    mime: Option<&str>,
+    taken: impl Fn(&Path) -> bool,
+) -> Plan {
     let file_name = sanitize_file_name(suggested);
     let Some(folder) = stored.and_then(admit_folder) else {
         return Plan::Ask {
@@ -227,7 +60,7 @@ pub(crate) fn plan(stored: Option<&Path>, suggested: &str, taken: impl Fn(&Path)
             directory: None,
         };
     };
-    if is_dangerous(&file_name) {
+    if is_dangerous(&file_name) || mime.is_some_and(is_dangerous_mime) {
         return Plan::Ask {
             file_name,
             remember: false,
@@ -302,15 +135,6 @@ fn simplified_verbatim_text(text: &str) -> Option<String> {
         .split('\\')
         .any(|part| part.ends_with('.') || part.ends_with(' '));
     (simple.len() < 260 && !rewritable).then_some(simple)
-}
-
-/// Whether a file name runs code or installs software when opened.
-pub(crate) fn is_dangerous(file_name: &str) -> bool {
-    let name = file_name.trim_end_matches(['.', ' ']);
-    name.rsplit_once('.').is_some_and(|(_, extension)| {
-        let extension = extension.to_ascii_lowercase();
-        DANGEROUS_EXTENSIONS.contains(&extension.as_str())
-    })
 }
 
 /// A single path component that is safe to create in the download folder:
@@ -388,45 +212,80 @@ fn split_extension(name: &str) -> (&str, &str) {
     }
 }
 
-/// `folder/name`, or `folder/stem (n).ext` for the first free `n`, never a
-/// path that already exists (a file, folder or link) or that another
-/// download in flight has claimed. The result is always a direct child of
-/// `folder`.
+/// Reserves `folder/name`, or `folder/stem (n).ext` for the first free `n`,
+/// by creating it empty with `create_new`, so no existing file, folder or
+/// link is ever reused and two downloads (or another program) cannot claim
+/// the same name. Any error other than "already exists" fails closed, and
+/// the download asks instead. The result is always a direct child of
+/// `folder`; WebView2 writes over the empty placeholder, and
+/// [`release_reservation`] removes it if the download never does.
 pub(crate) fn unique_destination(
     folder: &Path,
     file_name: &str,
     taken: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
     let (stem, extension) = split_extension(file_name);
-    (0..=MAX_SUFFIX).find_map(|attempt| {
+    for attempt in 0..=MAX_SUFFIX {
         let name = if attempt == 0 {
             file_name.to_owned()
         } else {
             format!("{stem} ({attempt}){extension}")
         };
         let candidate = folder.join(&name);
-        let free = candidate.parent() == Some(folder)
-            && candidate.file_name().and_then(|value| value.to_str()) == Some(name.as_str())
-            && std::fs::symlink_metadata(&candidate).is_err()
-            && !taken(&candidate);
-        free.then_some(candidate)
-    })
+        if candidate.parent() != Some(folder)
+            || candidate.file_name().and_then(|value| value.to_str()) != Some(name.as_str())
+        {
+            return None;
+        }
+        if taken(&candidate) {
+            continue;
+        }
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(_) => return Some(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// Removes a placeholder [`unique_destination`] reserved, but only while it
+/// is still an empty file: a finished or partly written download is kept.
+pub(crate) fn release_reservation(path: &Path) {
+    if std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() == 0) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Destinations of downloads still in flight, compared without case as on
+/// Windows and macOS file systems (a false match only costs a ` (n)`).
+#[derive(Debug, Default)]
+pub(crate) struct Claimed(Vec<String>);
+
+impl Claimed {
+    pub(crate) fn contains(&self, path: &Path) -> bool {
+        let path = path.to_string_lossy().to_lowercase();
+        self.0.contains(&path)
+    }
 }
 
 impl super::DownloadRegistry {
-    /// Whether a download still in flight is saving to `path`, so a silent
-    /// save picks another name instead of sharing its file.
-    pub(crate) fn claims(&self, path: &std::path::Path) -> bool {
-        // Case-insensitive, as on Windows and macOS file systems: a false
-        // match only costs a ` (n)` suffix.
-        let path = path.to_string_lossy().to_lowercase();
-        self.destinations.iter().any(|(id, destination)| {
-            destination.to_string_lossy().to_lowercase() == path
-                && self
-                    .entries
-                    .get(id)
-                    .is_some_and(|entry| super::is_active(entry.state))
-        })
+    pub(crate) fn claimed(&self) -> Claimed {
+        Claimed(
+            self.destinations
+                .iter()
+                .filter(|(id, _)| {
+                    self.entries
+                        .get(id)
+                        .is_some_and(|entry| super::is_active(entry.state))
+                })
+                .map(|(_, path)| path.to_string_lossy().to_lowercase())
+                .collect(),
+        )
     }
 }
 
