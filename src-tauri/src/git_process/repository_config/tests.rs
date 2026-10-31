@@ -9,7 +9,7 @@ use std::{
 use uuid::Uuid;
 
 use super::*;
-use crate::repository_public_error::MAX_PUBLIC_REPOSITORY_ERROR_BYTES;
+use crate::{error::RepositoryLayout, repository_public_error::MAX_PUBLIC_REPOSITORY_ERROR_BYTES};
 
 static PROBES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
 
@@ -292,7 +292,7 @@ fn a_repository_created_after_the_first_check_is_checked() {
 }
 
 #[test]
-fn a_root_inside_a_repository_is_checked_against_that_repository() {
+fn a_root_below_the_top_level_is_refused_before_git_runs() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     let nested = root.join("nested");
@@ -301,8 +301,12 @@ fn a_root_inside_a_repository_is_checked_against_that_repository() {
         &root,
         &["config", "diff.sentinel.textconv", "touch textconv-ran"],
     );
-    let message = refusal(sage_git(&nested, &["rev-parse", "--show-toplevel"]));
-    assert!(message.contains("diff.sentinel.textconv"), "{message}");
+    assert!(matches!(
+        sage_git(&nested, &["rev-parse", "--show-toplevel"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::NestedRoot
+        ))
+    ));
 }
 
 #[test]
@@ -498,25 +502,39 @@ fn a_full_cache_of_active_roots_admits_without_caching() {
 }
 
 #[test]
-fn locations_inside_the_root_are_relative_and_outside_absolute() {
+fn only_git_data_inside_the_root_is_admitted() {
     let scratch = Scratch::new();
     let root = scratch.directory("repo");
-    let inside = root.join(".git");
     let outside = scratch.directory("main").join(".git");
-    fs::create_dir_all(&inside).unwrap();
+    fs::create_dir_all(root.join(".git")).unwrap();
     fs::create_dir_all(&outside).unwrap();
+    let location = |git_dir: &Path, common_dir: &Path, work_tree: &Path| Location {
+        git_dir: git_dir.to_path_buf(),
+        common_dir: common_dir.to_path_buf(),
+        work_tree: work_tree.to_path_buf(),
+    };
+    let inside = root.join(".git");
 
-    let exact = AdmittedRepository::pinned_from(&root, &inside, &root).unwrap();
+    let exact = AdmittedRepository::inside(&root, &location(&inside, &inside, &root))
+        .unwrap()
+        .unwrap();
     assert_eq!(exact.git_dir(), Path::new(".git"));
     assert_eq!(exact.work_tree(), Path::new("."));
 
-    let linked = AdmittedRepository::pinned_from(&root, &outside, &root).unwrap();
-    assert_eq!(linked.git_dir(), outside.canonicalize().unwrap());
-    assert_eq!(linked.work_tree(), Path::new("."));
+    for (git_dir, common_dir) in [(&outside, &outside), (&inside, &outside)] {
+        assert_eq!(
+            AdmittedRepository::inside(&root, &location(git_dir, common_dir, &root)).unwrap(),
+            Err(RepositoryLayout::ExternalGitDir)
+        );
+    }
+    assert_eq!(
+        AdmittedRepository::inside(&root.join(".git"), &location(&inside, &inside, &root)).unwrap(),
+        Err(RepositoryLayout::NestedRoot)
+    );
 }
 
 #[test]
-fn a_linked_worktree_is_pinned_and_admitted() {
+fn a_linked_worktree_is_refused_before_git_runs() {
     let scratch = Scratch::new();
     let main = scratch.repository("main");
     git(&main, &["config", "user.email", "sage@example.invalid"]);
@@ -534,16 +552,16 @@ fn a_linked_worktree_is_pinned_and_admitted() {
             "linked",
         ],
     );
-    let output = sage_git(
-        &worktree,
-        &["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
-    )
-    .unwrap();
-    assert!(output.succeeded());
-    let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.ends_with("linked\n"), "{text}");
-
-    git(&main, &["config", "core.sshCommand", "touch ssh-ran"]);
-    let message = refusal(sage_git(&worktree, &["status", "--porcelain"]));
-    assert!(message.contains("core.sshcommand"), "{message}");
+    assert!(matches!(
+        sage_git(&worktree, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+    // The main repository itself is still admitted.
+    assert!(
+        sage_git(&main, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
 }

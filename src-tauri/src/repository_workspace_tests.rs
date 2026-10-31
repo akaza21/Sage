@@ -208,16 +208,14 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
 
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
     let moved = attacker.join("linked");
-    let swapped = Arc::new(AtomicBool::new(false));
-    let (hook_from, hook_to, hook_swapped) = (linked.clone(), moved.clone(), Arc::clone(&swapped));
+    let spawned = Arc::new(AtomicBool::new(false));
+    let (hook_from, hook_to, hook_spawned) = (linked.clone(), moved.clone(), Arc::clone(&spawned));
     let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
-        // Runs after admission and the identity check: the race is won.
-        if fs::rename(&hook_from, &hook_to).is_ok() {
-            hook_swapped.store(true, Ordering::SeqCst);
-        }
+        hook_spawned.store(true, Ordering::SeqCst);
+        fs::rename(&hook_from, &hook_to).unwrap();
     });
 
-    let _ = tokio::runtime::Runtime::new()
+    let result = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(run_git_with_policy(
             &workspace,
@@ -226,22 +224,86 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
             policy,
         ));
 
-    if swapped.load(Ordering::SeqCst) {
-        assert!(!sentinel.exists(), "the neighbouring git dir's filter ran");
-        // Control: a git dir relative to the moved worktree is the decoy.
-        let control = Command::new("git")
-            .arg("-C")
-            .arg(&moved)
-            .args([
-                "--git-dir=../main/.git/worktrees/linked",
-                "--work-tree=.",
-                "status",
-            ])
-            .output()
-            .unwrap();
-        assert!(control.status.success());
-        assert!(sentinel.exists(), "fixture decoy is not live");
-    }
+    // Git data outside the root has no retained handle, so admission refuses
+    // the worktree before any spawn the move could race.
+    assert!(matches!(
+        result,
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+    assert!(!spawned.load(Ordering::SeqCst));
+    assert!(!sentinel.exists());
+    // Control: a git dir relative to the moved worktree reaches the decoy.
+    fs::rename(&linked, &moved).unwrap();
+    let control = Command::new("git")
+        .arg("-C")
+        .arg(&moved)
+        .args([
+            "--git-dir=../main/.git/worktrees/linked",
+            "--work-tree=.",
+            "status",
+        ])
+        .output()
+        .unwrap();
+    assert!(control.status.success());
+    assert!(sentinel.exists(), "fixture decoy is not live");
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn replacing_a_nested_roots_ancestor_never_reaches_git() {
+    let base = std::env::temp_dir().join(format!("sage-git-nested-swap-{}", Uuid::new_v4()));
+    let repository = base.join("repo");
+    let root = repository.join("sub");
+    fs::create_dir_all(&root).unwrap();
+    git(&repository, &["init", "-q"]);
+    let base = base.canonicalize().unwrap();
+    let (repository, root) = (base.join("repo"), base.join("repo").join("sub"));
+    let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
+    let sentinel = base.join("filter-ran");
+    let filter = format!(
+        "touch \"{}\"; cat",
+        sentinel.to_string_lossy().replace('\\', "/")
+    );
+    let spawned = Arc::new(AtomicBool::new(false));
+    let (hook_repository, hook_base, hook_spawned) =
+        (repository.clone(), base.clone(), Arc::clone(&spawned));
+    let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
+        hook_spawned.store(true, Ordering::SeqCst);
+        fs::rename(&hook_repository, hook_base.join("original")).unwrap();
+        fs::create_dir_all(hook_repository.join("sub")).unwrap();
+        git(&hook_repository, &["init", "-q"]);
+        git(
+            &hook_repository,
+            &["config", "filter.sentinel.clean", &filter],
+        );
+    });
+
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(run_git_with_policy(
+            &workspace,
+            &["status", "--porcelain"],
+            64 * 1024,
+            policy,
+        ));
+
+    assert!(matches!(
+        result,
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::NestedRoot
+        ))
+    ));
+    assert!(!spawned.load(Ordering::SeqCst));
+    assert!(!sentinel.exists());
+    // The boundary still reports the nested state rather than a failure.
+    assert!(matches!(
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(crate::repository_workspace::repository_boundary(&workspace)),
+        Ok(repository::RepositoryBoundary::Nested)
+    ));
     fs::remove_dir_all(base).unwrap();
 }
 

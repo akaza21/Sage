@@ -22,7 +22,7 @@ use std::{
 };
 
 use crate::{
-    error::{AppError, AppResult},
+    error::{AppError, AppResult, RepositoryLayout},
     git_budget,
 };
 
@@ -44,13 +44,12 @@ static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::
 /// The repository admission inspected. Admitted Git calls run with these
 /// explicit locations, so they open exactly this repository.
 ///
-/// A location inside the root is relative: the child's working directory is
-/// the identity-checked root handle, so a directory swapped in at the root's
-/// name cannot redirect it. A location outside the root (a linked worktree's
-/// git dir, or the top level above a nested root) is absolute, so moving the
-/// root elsewhere cannot redirect it either. Renaming one of those outside
-/// directories also renames the root's path, which the spawn-time identity
-/// check refuses.
+/// Only a repository whose git dir and work tree sit inside the opened root
+/// is admitted, and both locations are relative to it. The child's working
+/// directory is the identity-checked root handle, so a directory swapped in
+/// at the root's name, or a move of the root, cannot redirect them. Git data
+/// outside the root (a linked worktree, or a root nested below the top level)
+/// has no such handle and is refused.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AdmittedRepository {
     git_dir: PathBuf,
@@ -58,22 +57,20 @@ pub(super) struct AdmittedRepository {
 }
 
 impl AdmittedRepository {
-    fn pinned_from(root: &Path, git_dir: &Path, work_tree: &Path) -> AppResult<Self> {
+    fn inside(root: &Path, location: &Location) -> AppResult<Result<Self, RepositoryLayout>> {
         let root = root.canonicalize()?;
-        let pin = |target: &Path| -> AppResult<PathBuf> {
-            let target = target.canonicalize()?;
-            Ok(match target.strip_prefix(&root) {
-                Ok(inside) if inside.as_os_str().is_empty() => {
-                    PathBuf::from(Component::CurDir.as_os_str())
-                }
-                Ok(inside) => inside.to_path_buf(),
-                Err(_) => target,
-            })
-        };
-        Ok(Self {
-            git_dir: pin(git_dir)?,
-            work_tree: pin(work_tree)?,
-        })
+        if location.work_tree.canonicalize()? != root {
+            return Ok(Err(RepositoryLayout::NestedRoot));
+        }
+        let git_dir = location.git_dir.canonicalize()?;
+        let common_dir = location.common_dir.canonicalize()?;
+        match (git_dir.strip_prefix(&root), common_dir.starts_with(&root)) {
+            (Ok(git_dir), true) if !git_dir.as_os_str().is_empty() => Ok(Ok(Self {
+                git_dir: git_dir.to_path_buf(),
+                work_tree: PathBuf::from(Component::CurDir.as_os_str()),
+            })),
+            _ => Ok(Err(RepositoryLayout::ExternalGitDir)),
+        }
     }
 
     pub(super) fn git_dir(&self) -> &Path {
@@ -142,8 +139,24 @@ pub(crate) fn trust_for_test(root: &Path) {
 
 struct Admission {
     watched: Vec<(PathBuf, Fingerprint)>,
-    refusal: Option<String>,
+    refusal: Option<Refusal>,
     repository: Option<AdmittedRepository>,
+}
+
+#[derive(Clone)]
+enum Refusal {
+    /// The public message naming the keys.
+    Config(String),
+    Layout(RepositoryLayout),
+}
+
+impl From<Refusal> for AppError {
+    fn from(refusal: Refusal) -> Self {
+        match refusal {
+            Refusal::Config(message) => Self::UnsafeRepositoryConfig(message),
+            Refusal::Layout(layout) => Self::RepositoryOutsideRoot(layout),
+        }
+    }
 }
 
 impl Admission {
@@ -155,7 +168,7 @@ impl Admission {
 
     fn verdict(&self) -> AppResult<Option<AdmittedRepository>> {
         match &self.refusal {
-            Some(message) => Err(AppError::UnsafeRepositoryConfig(message.clone())),
+            Some(refusal) => Err(refusal.clone().into()),
             None => Ok(self.repository.clone()),
         }
     }
@@ -209,13 +222,26 @@ impl Probe {
                 cacheable,
             });
         }
+        let location = Location::parse(&location)?;
+        let (mut watched, cacheable) = discovery_path(ancestors, &location.git_dir);
+        let repository = match AdmittedRepository::inside(root, &location)? {
+            Ok(repository) => repository,
+            Err(layout) => {
+                return Ok(Self {
+                    admission: Admission {
+                        watched,
+                        refusal: Some(Refusal::Layout(layout)),
+                        repository: None,
+                    },
+                    cacheable,
+                });
+            }
+        };
         let Location {
             git_dir,
             common_dir,
-            work_tree,
-        } = Location::parse(&location)?;
-        let (mut watched, cacheable) = discovery_path(ancestors, &git_dir);
-        let repository = AdmittedRepository::pinned_from(root, &git_dir, &work_tree)?;
+            ..
+        } = location;
         watched.extend(
             [
                 common_dir.join("config"),
@@ -229,7 +255,7 @@ impl Probe {
             .iter()
             .any(|(_, fingerprint)| fingerprint.is_unverifiable())
         {
-            Some(TOO_LARGE.to_owned())
+            Some(Refusal::Config(TOO_LARGE.to_owned()))
         } else {
             let listing = probe_git(
                 root,
@@ -245,9 +271,9 @@ impl Probe {
                 ));
             }
             if listing.stdout_truncated {
-                Some(TOO_LARGE.to_owned())
+                Some(Refusal::Config(TOO_LARGE.to_owned()))
             } else {
-                refusal_message(&listing.stdout)
+                refusal_message(&listing.stdout).map(Refusal::Config)
             }
         };
         Ok(Self {

@@ -683,6 +683,9 @@ fn rejects_worktree_git_path_files_and_directories() {
     );
     fs::write(linked.join("tracked.txt"), "staged\n").unwrap();
     git(&linked, &["add", "--", "tracked.txt"]);
+    // Admission refuses linked worktrees; trusting this one keeps testing the
+    // marker checks that sit underneath it.
+    crate::git_process::trust_repository_config_for_test(&linked);
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
     let head = git_stdout(&linked, &["rev-parse", "HEAD"]);
 
