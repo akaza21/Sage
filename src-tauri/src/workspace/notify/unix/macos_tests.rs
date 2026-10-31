@@ -1,17 +1,11 @@
 use super::*;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "sage-macos-review-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        // macOS clocks tick in microseconds, so a timestamp can repeat across
+        // parallel tests; a random name cannot.
+        let path = std::env::temp_dir().join(format!("sage-macos-review-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&path).unwrap();
         Self(path.canonicalize().unwrap())
     }
