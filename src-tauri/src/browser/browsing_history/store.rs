@@ -51,13 +51,6 @@ pub(crate) struct VisitPage {
     pub next: Option<Cursor>,
 }
 
-/// A visit waiting to be written.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct NewVisit {
-    pub url: String,
-    pub visited_at: i64,
-}
-
 pub(super) fn open(path: &str) -> rusqlite::Result<Connection> {
     let connection = Connection::open(path)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
@@ -73,57 +66,62 @@ pub(super) fn open(path: &str) -> rusqlite::Result<Connection> {
            visited_at INTEGER NOT NULL CHECK (visited_at >= 0)
          ) STRICT;
          CREATE INDEX IF NOT EXISTS browser_visits_by_time
-           ON browser_visits(visited_at);
-         CREATE INDEX IF NOT EXISTS browser_visits_by_url
-           ON browser_visits(url);",
+           ON browser_visits(visited_at);",
     )?;
     Ok(connection)
 }
 
-/// Writes a batch of visits and title updates in one transaction, then
-/// prunes past the count and age bounds. `now` is the newest time known to
-/// the caller.
-pub(super) fn write(
-    connection: &mut Connection,
-    batch: &[super::Write],
-    now: i64,
-) -> rusqlite::Result<()> {
-    let transaction = connection.transaction()?;
-    for write in batch {
-        match write {
-            super::Write::Visit(visit) => insert(&transaction, visit)?,
-            super::Write::Title { url, title } => set_title(&transaction, url, title)?,
-        }
-    }
-    prune(&transaction, now)?;
-    transaction.commit()
+/// Whether a visit may be stored; the schema refuses the rest anyway.
+pub(super) fn admissible(url: &str, visited_at: i64) -> bool {
+    !url.is_empty() && url.len() <= MAX_URL_BYTES && visited_at >= 0
 }
 
-fn insert(transaction: &Transaction<'_>, visit: &NewVisit) -> rusqlite::Result<()> {
-    if visit.url.is_empty() || visit.url.len() > MAX_URL_BYTES || visit.visited_at < 0 {
-        return Ok(());
-    }
-    transaction
-        .prepare_cached("INSERT INTO browser_visits(url, visited_at) VALUES (?1, ?2)")?
-        .execute(params![visit.url, visit.visited_at])?;
-    Ok(())
-}
-
-/// The newest visit to `url` takes the title the page reported after it
-/// committed.
-fn set_title(transaction: &Transaction<'_>, url: &str, title: &str) -> rusqlite::Result<()> {
+fn bounded_title(title: &str) -> Option<String> {
     let title = title.chars().take(MAX_TITLE_CHARS).collect::<String>();
-    let title = (!title.is_empty()).then_some(title);
+    (!title.is_empty()).then_some(title)
+}
+
+pub(super) fn insert(
+    transaction: &Transaction<'_>,
+    url: &str,
+    title: Option<&str>,
+    visited_at: i64,
+) -> rusqlite::Result<i64> {
     transaction
+        .prepare_cached("INSERT INTO browser_visits(url, title, visited_at) VALUES (?1, ?2, ?3)")?
+        .execute(params![url, title.and_then(bounded_title), visited_at])?;
+    Ok(transaction.last_insert_rowid())
+}
+
+/// Moves visit `id` to `url` (and `title`, when known), keeping its time.
+/// False when the visit no longer exists.
+pub(super) fn replace_url(
+    transaction: &Transaction<'_>,
+    id: i64,
+    url: &str,
+    title: Option<&str>,
+) -> rusqlite::Result<bool> {
+    let changed = transaction
         .prepare_cached(
-            "UPDATE browser_visits SET title = ?2
-             WHERE id = (SELECT max(id) FROM browser_visits WHERE url = ?1)",
+            "UPDATE browser_visits SET url = ?2, title = coalesce(?3, title) WHERE id = ?1",
         )?
-        .execute(params![url, title])?;
+        .execute(params![id, url, title.and_then(bounded_title)])?;
+    Ok(changed == 1)
+}
+
+pub(super) fn set_title(
+    transaction: &Transaction<'_>,
+    id: i64,
+    title: &str,
+) -> rusqlite::Result<()> {
+    transaction
+        .prepare_cached("UPDATE browser_visits SET title = ?2 WHERE id = ?1")?
+        .execute(params![id, bounded_title(title)])?;
     Ok(())
 }
 
-fn prune(transaction: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
+/// Removes visits past the age bound, then the oldest past the count bound.
+pub(super) fn prune(transaction: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
     transaction
         .prepare_cached("DELETE FROM browser_visits WHERE visited_at < ?1")?
         .execute(params![now.saturating_sub(RETENTION_MS)])?;

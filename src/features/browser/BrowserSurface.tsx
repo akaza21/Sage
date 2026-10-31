@@ -176,8 +176,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  const covered = downloadsOpen || menuOpen || historyOpen;
-  useBrowserPlacement(tab.id, frame, surface, setError, covered);
+  const covered = downloadsOpen || menuOpen;
+  useBrowserPlacement(tab.id, frame, surface, setError, covered, historyOpen);
   async function navigate() {
     try {
       setHistoryOpen(false);
@@ -266,7 +266,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     void pageAction(() => browserFind(tab.id, "stop"));
   }
 
-  useBrowserShortcuts(surface, tab.id, Boolean(navigation?.loading), (action) =>
+  // While History shows, Escape closes it rather than stopping the page.
+  const stoppable = Boolean(navigation?.loading) && !historyOpen;
+  useBrowserShortcuts(surface, tab.id, stoppable, (action) =>
     performBrowserShortcut(action, {
       address: addressField.current,
       find: () => findField.current,
@@ -375,7 +377,10 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
               setHistoryOpen(false);
               void pageAction(() => browserNavigate(tab.id, url));
             }}
-            onClose={() => setHistoryOpen(false)}
+            onClose={() => {
+              setHistoryOpen(false);
+              requestAnimationFrame(() => addressField.current?.focus());
+            }}
             clearDataControl={<BrowserClearData />}
           />
         </Suspense>

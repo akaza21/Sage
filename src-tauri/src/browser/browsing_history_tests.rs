@@ -13,9 +13,9 @@ fn urls(history: &BrowsingHistory, search: &str) -> Vec<String> {
 #[test]
 fn reads_see_every_visit_and_title_recorded_before_them() {
     let history = BrowsingHistory::in_memory();
-    history.record_visit("https://a.example/");
-    history.record_visit("https://b.example/");
-    history.record_title("https://b.example/", "Bravo");
+    history.record_visit("browser-1", "https://a.example/");
+    history.record_visit("browser-1", "https://b.example/");
+    history.record_title("browser-1", "Bravo");
     let page = history.page(String::new(), None, 10).unwrap();
     assert_eq!(
         page.visits
@@ -35,18 +35,18 @@ fn clearing_removes_visits_queued_before_it_and_keeps_later_ones() {
     let history = BrowsingHistory::in_memory();
     let recorder = history.clone();
     for index in 0..50 {
-        recorder.record_visit(&format!("https://{index}.example/"));
+        recorder.record_visit("browser-1", &format!("https://{index}.example/"));
     }
     assert_eq!(history.clear().unwrap(), 50);
-    recorder.record_visit("https://after.example/");
+    recorder.record_visit("browser-1", "https://after.example/");
     assert_eq!(urls(&history, ""), ["https://after.example/"]);
 }
 
 #[test]
 fn removing_and_searching_go_through_the_worker() {
     let history = BrowsingHistory::in_memory();
-    history.record_visit("https://docs.example/");
-    history.record_visit("https://news.example/");
+    history.record_visit("browser-1", "https://docs.example/");
+    history.record_visit("browser-1", "https://news.example/");
     assert_eq!(urls(&history, "docs"), ["https://docs.example/"]);
     let id = history
         .page("news".into(), None, 1)
@@ -61,8 +61,8 @@ fn removing_and_searching_go_through_the_worker() {
 #[test]
 fn a_disabled_handle_records_nothing_and_reports_reads_unavailable() {
     let history = BrowsingHistory::default();
-    history.record_visit("https://a.example/");
-    history.record_title("https://a.example/", "A");
+    history.record_visit("browser-1", "https://a.example/");
+    history.record_title("browser-1", "A");
     assert_eq!(
         history.page(String::new(), None, 1).unwrap_err(),
         UNAVAILABLE
@@ -77,7 +77,7 @@ fn a_store_that_cannot_open_drops_writes_and_fails_reads_without_panicking() {
         .join("nested")
         .join("browsing-history.db");
     let history = BrowsingHistory::open(missing);
-    history.record_visit("https://a.example/");
+    history.record_visit("browser-1", "https://a.example/");
     assert_eq!(
         history.page(String::new(), None, 1).unwrap_err(),
         UNAVAILABLE
@@ -90,7 +90,7 @@ fn recording_never_waits_for_the_disk() {
     let history = BrowsingHistory::in_memory();
     let started = std::time::Instant::now();
     for index in 0..(QUEUE * 4) {
-        history.record_visit(&format!("https://{index}.example/"));
+        history.record_visit("browser-1", &format!("https://{index}.example/"));
     }
     // Far more visits than the queue holds return at once: excess visits
     // are dropped, never waited on.

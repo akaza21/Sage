@@ -45,23 +45,22 @@ fn each_newly_committed_page_is_one_visit_named_by_its_title() {
 }
 
 #[test]
-fn same_document_changes_are_visits_and_back_lands_as_a_visit() {
+fn a_same_document_change_keeps_the_page_title_and_folds_into_a_fresh_visit() {
     let (mut tabs, history) = recorded_tab();
     assert!(tabs.start_navigation("browser-1", 1, "https://a.example/"));
     assert!(tabs.finish_navigation("browser-1", 1, Some("https://a.example/")));
+    assert!(tabs.set_document_title("browser-1", "https://a.example/", "Alpha"));
     assert!(tabs.source_changed("browser-1", "https://a.example/#two"));
     assert_eq!(
         tabs.traverse("browser-1", -1).unwrap(),
         "https://a.example/"
     );
     assert!(tabs.source_changed("browser-1", "https://a.example/"));
+    // Both changes land seconds after the visit, so they move it rather
+    // than add rows; the title stays with it.
     assert_eq!(
         visits(&history),
-        [
-            visit("https://a.example/", None),
-            visit("https://a.example/#two", None),
-            visit("https://a.example/", None),
-        ]
+        [visit("https://a.example/", Some("Alpha"))]
     );
 }
 
@@ -88,7 +87,7 @@ fn failed_cancelled_and_refused_navigations_record_nothing() {
 }
 
 #[test]
-fn a_same_document_change_adopted_when_a_navigation_is_abandoned_is_a_visit() {
+fn a_same_document_change_adopted_when_a_navigation_is_abandoned_moves_the_visit() {
     let (mut tabs, history) = recorded_tab();
     assert!(tabs.start_navigation("browser-1", 1, "https://a.example/"));
     assert!(tabs.finish_navigation("browser-1", 1, Some("https://a.example/")));
@@ -105,11 +104,5 @@ fn a_same_document_change_adopted_when_a_navigation_is_abandoned_is_a_visit() {
         ),
         Some(navigation::outcome::Settled::Abandoned)
     );
-    assert_eq!(
-        visits(&history),
-        [
-            visit("https://a.example/", None),
-            visit("https://a.example/#moved", None),
-        ]
-    );
+    assert_eq!(visits(&history), [visit("https://a.example/#moved", None)]);
 }

@@ -82,6 +82,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.
   "src/features/browser/BrowserElementChips.tsx",
+  // The History page loads on its first open (BF-7c).
+  "src/features/browser/BrowserHistoryPage.tsx",
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",

@@ -1,21 +1,15 @@
 use super::*;
-use crate::browser::browsing_history::Write;
 
 const DAY: i64 = 24 * 60 * 60 * 1000;
 const NOW: i64 = 1_800_000_000_000;
 
-fn visit(url: &str, visited_at: i64) -> Write {
-    Write::Visit(NewVisit {
-        url: url.into(),
-        visited_at,
-    })
-}
-
-fn title(url: &str, title: &str) -> Write {
-    Write::Title {
-        url: url.into(),
-        title: title.into(),
+/// Inserts `(url, title, visited_at)` rows in one transaction.
+fn seed(connection: &mut Connection, rows: &[(&str, Option<&str>, i64)]) {
+    let transaction = connection.transaction().unwrap();
+    for (url, title, visited_at) in rows {
+        insert(&transaction, url, *title, *visited_at).unwrap();
     }
+    transaction.commit().unwrap();
 }
 
 fn urls(page: &VisitPage) -> Vec<&str> {
@@ -26,20 +20,23 @@ fn memory() -> Connection {
     open(":memory:").unwrap()
 }
 
+fn count(connection: &Connection) -> i64 {
+    connection
+        .query_row("SELECT count(*) FROM browser_visits", [], |row| row.get(0))
+        .unwrap()
+}
+
 #[test]
-fn visits_read_newest_first_and_a_title_lands_on_the_latest_visit_to_its_url() {
+fn visits_read_newest_first_with_their_titles() {
     let mut connection = memory();
-    write(
+    seed(
         &mut connection,
         &[
-            visit("https://a.example/", NOW - 3),
-            visit("https://b.example/", NOW - 2),
-            visit("https://a.example/", NOW - 1),
-            title("https://a.example/", "Alpha"),
+            ("https://a.example/", None, NOW - 3),
+            ("https://b.example/", Some("Bravo"), NOW - 2),
+            ("https://a.example/", Some("Alpha"), NOW - 1),
         ],
-        NOW,
-    )
-    .unwrap();
+    );
     let page = page(&connection, "", None, 10).unwrap();
     assert_eq!(
         urls(&page),
@@ -56,12 +53,42 @@ fn visits_read_newest_first_and_a_title_lands_on_the_latest_visit_to_its_url() {
 }
 
 #[test]
+fn titles_and_url_replacement_target_one_row_by_id() {
+    let mut connection = memory();
+    let transaction = connection.transaction().unwrap();
+    let first = insert(&transaction, "https://a.example/", None, NOW - 2).unwrap();
+    let second = insert(&transaction, "https://a.example/", None, NOW - 1).unwrap();
+    set_title(&transaction, first, "First").unwrap();
+    set_title(&transaction, second, "").unwrap();
+    assert!(replace_url(&transaction, first, "https://a.example/#moved", None).unwrap());
+    assert!(!replace_url(&transaction, 9_999, "https://x.example/", None).unwrap());
+    transaction.commit().unwrap();
+    let page = page(&connection, "", None, 10).unwrap();
+    assert_eq!(
+        page.visits
+            .iter()
+            .map(|visit| (visit.url.as_str(), visit.title.as_deref(), visit.visited_at))
+            .collect::<Vec<_>>(),
+        [
+            ("https://a.example/", None, NOW - 1),
+            ("https://a.example/#moved", Some("First"), NOW - 2),
+        ]
+    );
+}
+
+#[test]
 fn pages_continue_strictly_after_the_cursor_even_within_one_millisecond() {
     let mut connection = memory();
-    let writes = (0..5)
-        .map(|index| visit(&format!("https://{index}.example/"), NOW))
+    let rows = (0..5)
+        .map(|index| format!("https://{index}.example/"))
         .collect::<Vec<_>>();
-    write(&mut connection, &writes, NOW).unwrap();
+    seed(
+        &mut connection,
+        &rows
+            .iter()
+            .map(|url| (url.as_str(), None, NOW))
+            .collect::<Vec<_>>(),
+    );
     let first = page(&connection, "", None, 2).unwrap();
     assert_eq!(urls(&first), ["https://4.example/", "https://3.example/"]);
     let second = page(&connection, "", first.next, 2).unwrap();
@@ -74,18 +101,15 @@ fn pages_continue_strictly_after_the_cursor_even_within_one_millisecond() {
 #[test]
 fn search_matches_url_or_title_case_insensitively_and_treats_wildcards_literally() {
     let mut connection = memory();
-    write(
+    seed(
         &mut connection,
         &[
-            visit("https://docs.example/guide", NOW - 4),
-            title("https://docs.example/guide", "Rust Guide"),
-            visit("https://news.example/100%25", NOW - 3),
-            visit("https://other.example/a_b", NOW - 2),
-            visit("https://other.example/axb", NOW - 1),
+            ("https://docs.example/guide", Some("Rust Guide"), NOW - 4),
+            ("https://news.example/100%25", None, NOW - 3),
+            ("https://other.example/a_b", None, NOW - 2),
+            ("https://other.example/axb", None, NOW - 1),
         ],
-        NOW,
-    )
-    .unwrap();
+    );
     assert_eq!(
         urls(&page(&connection, "rust", None, 10).unwrap()),
         ["https://docs.example/guide"]
@@ -113,15 +137,13 @@ fn search_matches_url_or_title_case_insensitively_and_treats_wildcards_literally
 #[test]
 fn remove_deletes_only_the_named_visits() {
     let mut connection = memory();
-    write(
+    seed(
         &mut connection,
         &[
-            visit("https://a.example/", NOW - 2),
-            visit("https://a.example/", NOW - 1),
+            ("https://a.example/", None, NOW - 2),
+            ("https://a.example/", None, NOW - 1),
         ],
-        NOW,
-    )
-    .unwrap();
+    );
     let before = page(&connection, "", None, 10).unwrap();
     assert_eq!(
         remove(&connection, &[before.visits[0].id, 9_999]).unwrap(),
@@ -135,83 +157,68 @@ fn remove_deletes_only_the_named_visits() {
 #[test]
 fn a_time_range_removal_keeps_visits_outside_it() {
     let mut connection = memory();
-    write(
+    seed(
         &mut connection,
         &[
-            visit("https://old.example/", NOW - 3 * DAY),
-            visit("https://edge.example/", NOW - DAY),
-            visit("https://new.example/", NOW - 1),
+            ("https://old.example/", None, NOW - 3 * DAY),
+            ("https://edge.example/", None, NOW - DAY),
+            ("https://new.example/", None, NOW - 1),
         ],
-        NOW,
-    )
-    .unwrap();
+    );
     assert_eq!(remove_range(&connection, NOW - DAY, NOW).unwrap(), 2);
     assert_eq!(
         urls(&page(&connection, "", None, 10).unwrap()),
         ["https://old.example/"]
     );
     assert_eq!(remove_range(&connection, i64::MIN, i64::MAX).unwrap(), 1);
-    assert!(page(&connection, "", None, 10).unwrap().visits.is_empty());
+    assert_eq!(count(&connection), 0);
 }
 
 #[test]
-fn writes_prune_by_age_and_by_count() {
+fn prune_removes_visits_past_the_age_and_count_bounds() {
     let mut connection = memory();
-    write(
-        &mut connection,
-        &[
-            visit("https://expired.example/", NOW - RETENTION_MS - 1),
-            visit("https://kept.example/", NOW - RETENTION_MS),
-        ],
-        NOW,
-    )
-    .unwrap();
-    assert_eq!(
-        urls(&page(&connection, "", None, 10).unwrap()),
-        ["https://kept.example/"]
-    );
-    let writes = (0..MAX_VISITS)
-        .map(|index| visit(&format!("https://{index}.example/"), NOW + index))
+    let kept = (0..MAX_VISITS)
+        .map(|index| format!("https://{index}.example/"))
         .collect::<Vec<_>>();
-    write(&mut connection, &writes, NOW).unwrap();
-    let count: i64 = connection
-        .query_row("SELECT count(*) FROM browser_visits", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(count, MAX_VISITS);
-    let newest = page(&connection, "", None, 1).unwrap();
-    assert_eq!(
-        urls(&newest),
-        [format!("https://{}.example/", MAX_VISITS - 1)]
+    let mut rows = vec![
+        ("https://expired.example/", None, NOW - RETENTION_MS - 1),
+        ("https://oldest.example/", None, NOW - RETENTION_MS),
+    ];
+    rows.extend(
+        kept.iter()
+            .enumerate()
+            .map(|(index, url)| (url.as_str(), None, NOW + index as i64)),
     );
+    seed(&mut connection, &rows);
+    let transaction = connection.transaction().unwrap();
+    prune(&transaction, NOW).unwrap();
+    transaction.commit().unwrap();
+    assert_eq!(count(&connection), MAX_VISITS);
     assert!(
-        page(&connection, "kept", None, 10)
+        page(&connection, "oldest", None, 10)
             .unwrap()
             .visits
             .is_empty()
     );
+    assert_eq!(
+        urls(&page(&connection, "", None, 1).unwrap()),
+        [format!("https://{}.example/", MAX_VISITS - 1)]
+    );
 }
 
 #[test]
-fn invalid_values_are_skipped_or_refused_by_the_schema() {
+fn values_are_bounded_and_the_schema_refuses_the_rest() {
     let mut connection = memory();
+    assert!(!admissible("", NOW));
+    assert!(!admissible(&"a".repeat(MAX_URL_BYTES + 1), NOW));
+    assert!(!admissible("https://a.example/", -1));
+    assert!(admissible("https://a.example/", NOW));
     let long_title = "t".repeat(MAX_TITLE_CHARS + 50);
-    write(
+    seed(
         &mut connection,
-        &[
-            visit("", NOW),
-            visit(
-                &format!("https://{}.example/", "a".repeat(MAX_URL_BYTES)),
-                NOW,
-            ),
-            visit("https://a.example/", -1),
-            visit("https://ok.example/", NOW),
-            title("https://ok.example/", &long_title),
-        ],
-        NOW,
-    )
-    .unwrap();
+        &[("https://ok.example/", Some(long_title.as_str()), NOW)],
+    );
     let page = page(&connection, "", None, 10).unwrap();
-    assert_eq!(urls(&page), ["https://ok.example/"]);
     assert_eq!(
         page.visits[0]
             .title
@@ -219,22 +226,13 @@ fn invalid_values_are_skipped_or_refused_by_the_schema() {
             .map(|title| title.chars().count()),
         Some(MAX_TITLE_CHARS)
     );
-    assert!(
-        connection
-            .execute(
-                "INSERT INTO browser_visits(url, visited_at) VALUES ('', 1)",
-                []
-            )
-            .is_err()
-    );
-    assert!(
-        connection
-            .execute(
-                "INSERT INTO browser_visits(url, title, visited_at) VALUES ('https://x/', '', 1)",
-                []
-            )
-            .is_err()
-    );
+    for statement in [
+        "INSERT INTO browser_visits(url, visited_at) VALUES ('', 1)",
+        "INSERT INTO browser_visits(url, title, visited_at) VALUES ('https://x/', '', 1)",
+        "INSERT INTO browser_visits(url, visited_at) VALUES ('https://x/', -1)",
+    ] {
+        assert!(connection.execute(statement, []).is_err(), "{statement}");
+    }
 }
 
 #[test]
@@ -244,12 +242,10 @@ fn the_history_file_persists_across_reopening() {
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("browsing-history.db");
     let path = path.to_str().unwrap();
-    write(
+    seed(
         &mut open(path).unwrap(),
-        &[visit("https://kept.example/", NOW)],
-        NOW,
-    )
-    .unwrap();
+        &[("https://kept.example/", None, NOW)],
+    );
     assert_eq!(
         urls(&page(&open(path).unwrap(), "", None, 10).unwrap()),
         ["https://kept.example/"]

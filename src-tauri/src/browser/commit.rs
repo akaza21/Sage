@@ -28,12 +28,12 @@ impl<T> BrowserTabs<T> {
             tab.loading = false;
         } else if tab.fallback_url.is_none() {
             let previous = std::mem::replace(&mut tab.committed_url, url.map(str::to_owned));
-            // A reload, or a redirect back to the page already shown, is
-            // not a new visit.
+            // A reload, a redirect back to the page already shown, or
+            // entering the address already shown is not a new visit.
             if let Some(url) = url
                 && previous.as_deref() != Some(url)
             {
-                self.browsing_history.record_visit(url);
+                self.browsing_history.record_visit(label, url);
             }
             tab.loading = false;
         }
@@ -68,7 +68,7 @@ impl<T> BrowserTabs<T> {
             return false;
         }
         if let Some(title) = &title {
-            self.browsing_history.record_title(url, title);
+            self.browsing_history.record_title(label, title);
         }
         tab.title = title;
         tab.revision = tab.revision.wrapping_add(1);
@@ -95,7 +95,8 @@ impl<T> BrowserTabs<T> {
             tab.loading = false;
         } else if tab.fallback_url.is_none() {
             tab.committed_url = Some(url.to_owned());
-            self.browsing_history.record_visit(url);
+            self.browsing_history
+                .record_same_document(label, url, tab.title.as_deref());
             tab.loading = false;
         } else {
             tab.loading = true;

@@ -178,17 +178,18 @@ pub(crate) async fn browser_clear_data(
             Err(error) => result.error = Some(error),
         }
     }
+    // Every tab is closed, so no visit can follow this; visits queued
+    // before it are removed with the rest. A history failure is reported
+    // but never stops the profile clear.
+    let mut history_error = None;
     if result.error.is_none() {
-        // Every tab is closed, so no visit can follow the clear; visits
-        // queued before it are removed with the rest.
         let history = state.browsing_history.clone();
-        if let Err(error) = tauri::async_runtime::spawn_blocking(move || history.clear())
+        history_error = tauri::async_runtime::spawn_blocking(move || history.clear())
             .await
             .map_err(|error| error.to_string())
             .and_then(|outcome| outcome)
-        {
-            result.error = Some(error);
-        }
+            .err()
+            .map(|error| format!("Browsing history was not cleared: {error}"));
     }
     if result.error.is_none() {
         #[cfg(windows)]
@@ -246,6 +247,7 @@ pub(crate) async fn browser_clear_data(
                     }
                 });
                 gate.disarm();
+                append_error(&mut result, history_error);
                 return Ok(result);
             }
         }
@@ -259,7 +261,17 @@ pub(crate) async fn browser_clear_data(
         result.error = Some(error);
         result.cleared = false;
     }
+    append_error(&mut result, history_error);
     Ok(result)
+}
+
+fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
+    if let Some(error) = error {
+        result.error = Some(match result.error.take() {
+            Some(first) => format!("{first} {error}"),
+            None => error,
+        });
+    }
 }
 
 #[cfg(all(test, windows))]

@@ -2,39 +2,13 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { BrowserVisit } from "../../ports/nativeBrowserPort";
 import { Globe, Search, X } from "../../ui/leanIcons";
 import { HISTORY_MAX_LOADED, useBrowsingHistory } from "./useBrowsingHistory";
+import { dayKey, historyDayLabel } from "./historyDays";
 import "./BrowserHistoryPage.css";
 
 const timeFormat = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
 });
-const dayFormat = new Intl.DateTimeFormat(undefined, {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-
-function dayKey(time: number): string {
-  const date = new Date(time);
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-/** "Today", "Yesterday" or the full local date, as Chrome heads its days. */
-export function historyDayLabel(time: number, now = Date.now()): string {
-  const today = new Date(now);
-  const yesterday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() - 1,
-  );
-  const key = dayKey(time);
-  const full = dayFormat.format(time);
-  if (key === dayKey(now)) return `Today - ${full}`;
-  if (key === dayKey(yesterday.getTime())) return `Yesterday - ${full}`;
-  return full;
-}
-
 function host(url: string): string {
   try {
     return new URL(url).host;

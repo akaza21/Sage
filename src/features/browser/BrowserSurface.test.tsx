@@ -31,6 +31,9 @@ const browserNavigate = vi.fn(
   async (_tabId: string, _url: string) => undefined,
 );
 const hideBrowser = vi.fn(async (_tabId: string) => undefined);
+const browserControl = vi.fn(
+  async (_tabId: string, _action: string) => undefined,
+);
 const coverBrowser = vi.fn(async (_tabId: string) => undefined);
 const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
@@ -94,7 +97,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     pending: [],
     decisions: [],
   })),
-  browserControl: vi.fn(),
+  browserControl: (tabId: string, action: string) =>
+    browserControl(tabId, action),
   browserAgentControl: (tabId: string, action: string) =>
     browserAgentControl(tabId, action),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
@@ -748,18 +752,20 @@ it("still hides the native page for real when the centre pane is hidden", async 
   center.remove();
 });
 
-it("opens History over the covered page and opens a chosen visit in this tab", async () => {
+it("hides the native page under History and opens a chosen visit in this tab", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
     DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
   );
   render(<BrowserSurface tab={tab} />);
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
-  coverBrowser.mockClear();
-  positionBrowser.mockClear();
+  hideBrowser.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
   const history = await screen.findByRole("region", { name: "History" });
-  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
+  positionBrowser.mockClear();
+  // History stays up indefinitely, so the page hides for real (ending
+  // Annotate, as a tab switch does) rather than being briefly covered.
+  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   expect(positionBrowser).not.toHaveBeenCalled();
   expect(browserHistoryPage).toHaveBeenCalledWith({
     search: "",
@@ -779,10 +785,18 @@ it("opens History over the covered page and opens a chosen visit in this tab", a
   );
   expect(screen.queryByRole("region", { name: "History" })).toBeNull();
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
-  expect(hideBrowser).not.toHaveBeenCalled();
 });
 
-it("opens History with Ctrl+H and closes it with Escape", async () => {
+it("opens History with Ctrl+H and closes it with Escape even while the page loads", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/path",
+    revision: "1",
+    loading: true,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
   render(<BrowserSurface tab={tab} />);
   const address = await screen.findByRole("textbox", {
     name: "Address or search",
@@ -794,4 +808,6 @@ it("opens History with Ctrl+H and closes it with Escape", async () => {
   await waitFor(() => expect(search).toHaveFocus());
   fireEvent.keyDown(search, { key: "Escape" });
   expect(screen.queryByRole("region", { name: "History" })).toBeNull();
+  expect(browserControl).not.toHaveBeenCalledWith(tab.id, "stop");
+  await waitFor(() => expect(address).toHaveFocus());
 });

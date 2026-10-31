@@ -14,7 +14,8 @@ import type {
   BrowserHistoryPage as Page,
   BrowserVisit,
 } from "../../ports/nativeBrowserPort";
-import { BrowserHistoryPage, historyDayLabel } from "./BrowserHistoryPage";
+import { BrowserHistoryPage } from "./BrowserHistoryPage";
+import { historyDayLabel } from "./historyDays";
 import {
   HISTORY_MAX_LOADED,
   HISTORY_PAGE_SIZE,

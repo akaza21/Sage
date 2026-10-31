@@ -11,15 +11,20 @@ export function useBrowserPlacement(
   surface: RefObject<HTMLElement | null>,
   onError: (message: string) => void,
   covered = false,
+  hidden = false,
 ) {
   // A popover opening or closing places the page again without the cleanup
   // below, whose hide would end Annotate.
   const coveredRef = useRef(covered);
+  // A page that replaces the browser for a while (History) hides it for
+  // real, ending Annotate, as a tab switch does.
+  const hiddenRef = useRef(hidden);
   const placeRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     coveredRef.current = covered;
+    hiddenRef.current = hidden;
     placeRef.current();
-  }, [covered]);
+  }, [covered, hidden]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -39,6 +44,10 @@ export function useBrowserPlacement(
         return;
       }
       // A toolbar popover covers it only for a moment, so Annotate stays on.
+      if (hiddenRef.current) {
+        void hideBrowser(tabId).catch(reportError);
+        return;
+      }
       if (coveredRef.current) {
         void coverBrowser(tabId).catch(reportError);
         return;

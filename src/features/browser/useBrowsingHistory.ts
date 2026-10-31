@@ -15,7 +15,7 @@ export const HISTORY_SEARCH_DELAY_MS = 200;
 
 export interface BrowsingHistoryView {
   visits: readonly BrowserVisit[];
-  /** True while the first page of the current search loads. */
+  /** True until the first page of the current search has answered. */
   loading: boolean;
   /** True while a further page loads. */
   loadingMore: boolean;
@@ -29,84 +29,114 @@ export interface BrowsingHistoryView {
   remove: (visit: BrowserVisit) => void;
 }
 
+/** What Rust answered for one search. */
+interface Listing {
+  search: string;
+  visits: BrowserVisit[];
+  next: BrowserHistoryCursor | null;
+  error: string | null;
+}
+
 function message(cause: unknown): string {
   return String(cause).slice(0, 512);
 }
 
 /**
  * The History page's data: newest-first visits matching `search`, paged
- * from Rust and bounded here. A response for an older search is dropped.
+ * from Rust and bounded here. Everything shown belongs to the search it
+ * was answered for, so an answer for an older search is never shown.
  */
 export function useBrowsingHistory(search: string): BrowsingHistoryView {
-  const [visits, setVisits] = useState<BrowserVisit[]>([]);
-  const [next, setNext] = useState<BrowserHistoryCursor | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
-  const epoch = useRef(0);
+  const latest = useRef(search);
 
   useEffect(() => {
-    const current = ++epoch.current;
-    setLoading(true);
-    setLoadingMore(false);
-    setError(null);
+    latest.current = search;
+    let live = true;
     const run = () => {
       browserHistoryPage({ search, before: null, limit: HISTORY_PAGE_SIZE })
-        .then((page) => {
-          if (current !== epoch.current) return;
-          setVisits(page.visits);
-          setNext(page.next);
-        })
-        .catch((cause) => {
-          if (current !== epoch.current) return;
-          setVisits([]);
-          setNext(null);
-          setError(message(cause));
-        })
-        .finally(() => {
-          if (current === epoch.current) setLoading(false);
+        .then(
+          (page) => ({ search, ...page, error: null }),
+          (cause) => ({
+            search,
+            visits: [],
+            next: null,
+            error: message(cause),
+          }),
+        )
+        .then((answer) => {
+          if (live) {
+            setListing(answer);
+            setActionError(null);
+          }
         });
     };
     // The unfiltered list loads at once; a search waits for typing to settle.
-    if (!search) {
-      run();
-      return;
-    }
-    const timer = setTimeout(run, HISTORY_SEARCH_DELAY_MS);
-    return () => clearTimeout(timer);
+    if (!search) run();
+    const timer = search ? setTimeout(run, HISTORY_SEARCH_DELAY_MS) : 0;
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [search]);
 
+  const current = listing?.search === search ? listing : null;
+  const visits = current?.visits ?? [];
+  const next = current?.next ?? null;
   const canLoadMore = next !== null && visits.length < HISTORY_MAX_LOADED;
+  const busy = loadingMore === search;
+
   const loadMore = useCallback(() => {
-    if (!next || loading || loadingMore) return;
-    if (visits.length >= HISTORY_MAX_LOADED) return;
-    const current = epoch.current;
-    setLoadingMore(true);
-    browserHistoryPage({ search, before: next, limit: HISTORY_PAGE_SIZE })
+    if (!current || !current.next || busy) return;
+    if (current.visits.length >= HISTORY_MAX_LOADED) return;
+    const owner = current.search;
+    setLoadingMore(owner);
+    browserHistoryPage({
+      search: owner,
+      before: current.next,
+      limit: HISTORY_PAGE_SIZE,
+    })
       .then((page) => {
-        if (current !== epoch.current) return;
-        setVisits((loaded) =>
-          [...loaded, ...page.visits].slice(0, HISTORY_MAX_LOADED),
+        if (latest.current !== owner) return;
+        setListing((loaded) =>
+          loaded?.search === owner
+            ? {
+                ...loaded,
+                visits: [...loaded.visits, ...page.visits].slice(
+                  0,
+                  HISTORY_MAX_LOADED,
+                ),
+                next: page.next,
+              }
+            : loaded,
         );
-        setNext(page.next);
       })
       .catch((cause) => {
-        if (current === epoch.current) setError(message(cause));
+        if (latest.current === owner) setActionError(message(cause));
       })
-      .finally(() => {
-        if (current === epoch.current) setLoadingMore(false);
-      });
-  }, [loading, loadingMore, next, search, visits.length]);
+      .finally(() =>
+        setLoadingMore((loading) => (loading === owner ? null : loading)),
+      );
+  }, [busy, current]);
 
   const remove = useCallback((visit: BrowserVisit) => {
     setRemoving((ids) => new Set(ids).add(visit.id));
-    setError(null);
+    setActionError(null);
     browserHistoryRemove([visit.id])
       .then(() =>
-        setVisits((loaded) => loaded.filter((item) => item.id !== visit.id)),
+        setListing((loaded) =>
+          loaded
+            ? {
+                ...loaded,
+                visits: loaded.visits.filter((item) => item.id !== visit.id),
+              }
+            : loaded,
+        ),
       )
-      .catch((cause) => setError(message(cause)))
+      .catch((cause) => setActionError(message(cause)))
       .finally(() =>
         setRemoving((ids) => {
           const remaining = new Set(ids);
@@ -118,11 +148,11 @@ export function useBrowsingHistory(search: string): BrowsingHistoryView {
 
   return {
     visits,
-    loading,
-    loadingMore,
+    loading: current === null,
+    loadingMore: busy,
     canLoadMore,
     truncated: next !== null && !canLoadMore,
-    error,
+    error: actionError ?? current?.error ?? null,
     removing,
     loadMore,
     remove,

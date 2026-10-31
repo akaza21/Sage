@@ -14,7 +14,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, OnceLock,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -24,9 +24,10 @@ use rusqlite::Connection;
 
 pub(crate) mod commands;
 mod store;
+mod writer;
 
-use store::NewVisit;
 pub(crate) use store::{Cursor, MAX_PAGE, MAX_REMOVE, MAX_SEARCH_CHARS, VisitPage};
+use writer::{Write, Writer};
 
 /// The history file, in the launch profile's durable directory.
 pub(crate) const FILE_NAME: &str = "browsing-history.db";
@@ -37,13 +38,6 @@ const MAX_BATCH: usize = 64;
 /// How long a reader waits for the worker before giving up.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
 const UNAVAILABLE: &str = "browsing history is unavailable";
-
-/// A write the worker applies in order.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Write {
-    Visit(NewVisit),
-    Title { url: String, title: String },
-}
 
 type Reply<T> = SyncSender<Result<T, String>>;
 
@@ -75,6 +69,7 @@ struct Shared {
     path: PathBuf,
     queue: OnceLock<SyncSender<Request>>,
     dropped: AtomicU64,
+    stopped: AtomicBool,
 }
 
 /// The handle tabs record into and commands read through. Cloning shares
@@ -89,6 +84,7 @@ impl BrowsingHistory {
             path,
             queue: OnceLock::new(),
             dropped: AtomicU64::new(0),
+            stopped: AtomicBool::new(false),
         })))
     }
 
@@ -97,18 +93,32 @@ impl BrowsingHistory {
         Self::open(PathBuf::from(":memory:"))
     }
 
-    /// A tab committed `url`. Never blocks.
-    pub(super) fn record_visit(&self, url: &str) {
-        self.write(Write::Visit(NewVisit {
-            url: url.to_owned(),
-            visited_at: now_ms(),
-        }));
+    /// Tab `tab` committed a new document at `url`. Never blocks.
+    pub(super) fn record_visit(&self, tab: &str, url: &str) {
+        self.record(tab, url, None, false);
     }
 
-    /// The page at `url` reported `title` after it committed. Never blocks.
-    pub(super) fn record_title(&self, url: &str, title: &str) {
-        self.write(Write::Title {
+    /// Tab `tab` moved within its document to `url` (pushState, fragment),
+    /// still titled `title`. Never blocks.
+    pub(super) fn record_same_document(&self, tab: &str, url: &str, title: Option<&str>) {
+        self.record(tab, url, title, true);
+    }
+
+    fn record(&self, tab: &str, url: &str, title: Option<&str>, same_document: bool) {
+        self.write(Write::Visit {
+            tab: tab.to_owned(),
             url: url.to_owned(),
+            title: title.map(str::to_owned),
+            visited_at: now_ms(),
+            same_document,
+        });
+    }
+
+    /// Tab `tab`'s page reported `title`; it names that tab's latest
+    /// visit. Never blocks.
+    pub(super) fn record_title(&self, tab: &str, title: &str) {
+        self.write(Write::Title {
+            tab: tab.to_owned(),
             title: title.to_owned(),
         });
     }
@@ -125,7 +135,11 @@ impl BrowsingHistory {
                     eprintln!("browsing history queue full; {dropped} writes dropped");
                 }
             }
-            Err(TrySendError::Disconnected(_)) => {}
+            Err(TrySendError::Disconnected(_)) => {
+                if !shared.stopped.swap(true, Ordering::Relaxed) {
+                    eprintln!("browsing history worker stopped; visits are not recorded");
+                }
+            }
         }
     }
 
@@ -207,6 +221,7 @@ fn now_ms() -> i64 {
 /// one transaction. It ends when every handle is gone.
 fn run(path: &std::path::Path, receiver: &Receiver<Request>) {
     let mut connection: Option<Connection> = None;
+    let mut writer = Writer::default();
     let mut writes = Vec::with_capacity(MAX_BATCH);
     while let Ok(first) = receiver.recv() {
         let mut next = Some(first);
@@ -219,12 +234,12 @@ fn run(path: &std::path::Path, receiver: &Receiver<Request>) {
                     }
                 }
                 Request::Read(read) => {
-                    flush(path, &mut connection, &mut writes);
+                    flush(path, &mut connection, &mut writer, &mut writes);
                     answer(path, &mut connection, read);
                 }
             }
         }
-        flush(path, &mut connection, &mut writes);
+        flush(path, &mut connection, &mut writer, &mut writes);
     }
 }
 
@@ -250,12 +265,17 @@ fn connect<'a>(
     connection.as_mut().ok_or_else(|| UNAVAILABLE.into())
 }
 
-fn flush(path: &std::path::Path, connection: &mut Option<Connection>, writes: &mut Vec<Write>) {
+fn flush(
+    path: &std::path::Path,
+    connection: &mut Option<Connection>,
+    writer: &mut Writer,
+    writes: &mut Vec<Write>,
+) {
     if writes.is_empty() {
         return;
     }
     if let Ok(connection) = connect(path, connection)
-        && let Err(error) = store::write(connection, writes, now_ms())
+        && let Err(error) = writer.apply(connection, writes, now_ms())
     {
         eprintln!("browsing history write failed: {error}");
     }

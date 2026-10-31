@@ -105,9 +105,6 @@ export interface BrowserHistoryPage {
   next: BrowserHistoryCursor | null;
 }
 
-/** The most visits one page or one removal may carry. */
-export const BROWSER_HISTORY_PAGE_LIMIT = 100;
-
 export function browserHistoryPage(query: {
   search: string;
   before: BrowserHistoryCursor | null;
