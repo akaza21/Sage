@@ -66,15 +66,20 @@ const CELLS = Object.freeze([
   ["agent-composer-context-known", "codex", "context-meter"],
 ]);
 
-function reserveFreePort() {
-  return new Promise((done, fail) => {
-    const probe = createServer();
-    probe.once("error", fail);
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address();
-      probe.close(() => done(port));
+/** Two distinct free loopback ports; both probes stay bound until both are read. */
+async function reserveFreePorts() {
+  const listen = () =>
+    new Promise((done, fail) => {
+      const probe = createServer();
+      probe.once("error", fail);
+      probe.listen(0, "127.0.0.1", () => done(probe));
     });
-  });
+  const probes = [await listen(), await listen()];
+  const ports = probes.map((probe) => probe.address().port);
+  await Promise.all(
+    probes.map((probe) => new Promise((done) => probe.close(done))),
+  );
+  return ports;
 }
 
 /** The capture options the CLI would admit, or null for a refused width. */
@@ -101,8 +106,8 @@ function admitted(harness, state, width) {
 
 let lane = null;
 test.before(async () => {
-  const url = `http://127.0.0.1:${await reserveFreePort()}/`;
-  const cdpPort = await reserveFreePort();
+  const [vitePort, cdpPort] = await reserveFreePorts();
+  const url = `http://127.0.0.1:${vitePort}/`;
   const server = await startDevServer(repositoryRoot, url);
   try {
     const browser = await chromium.launch({
@@ -120,8 +125,11 @@ test.before(async () => {
 });
 test.after(async () => {
   if (!lane) return;
-  await lane.browser.close();
-  assert.equal(await settleDevServer(lane.server), true);
+  try {
+    await lane.browser.close();
+  } finally {
+    assert.equal(await settleDevServer(lane.server), true);
+  }
 });
 
 /**
@@ -151,7 +159,15 @@ async function openCapture(t, scenario, options) {
   await page.locator("main.workbench").waitFor();
   const target = await discoverOwnedTarget(
     async () => {
-      const response = await fetch(`http://127.0.0.1:${lane.cdpPort}/json`);
+      let response;
+      try {
+        response = await fetch(`http://127.0.0.1:${lane.cdpPort}/json`, {
+          signal: AbortSignal.timeout(1_000),
+        });
+      } catch {
+        return undefined;
+      }
+      if (!response.ok) return undefined;
       return JSON.parse(await readBoundedResponse(response));
     },
     lane.cdpPort,
@@ -266,22 +282,46 @@ for (const width of WIDTHS)
     },
   );
 
+const PICKER = `document.querySelector('.agent-chat-pane--focused button[aria-label="Harness"]')`;
+for (const [drift, mutation] of [
+  [
+    "renamed",
+    `(()=>{const picker=${PICKER};picker?.setAttribute('aria-label','Agent');return Boolean(picker)})()`,
+  ],
+  [
+    "duplicated",
+    `(()=>{const picker=${PICKER};picker?.after(picker.cloneNode(true));return Boolean(picker)})()`,
+  ],
+])
+  test(
+    `a ${drift} capture control fails the lane instead of driving a guess`,
+    { timeout: OPEN_MS + DRIVE_MS },
+    async (t) => {
+      const options = admitted("codex", "harness-menu", 1888);
+      const capture = await openCapture(t, "agent-single", options);
+      assert.equal(await capture.evaluate(mutation), true);
+      await assert.rejects(
+        drive(capture, options, Date.now() + 2_000),
+        /state-timeout/u,
+      );
+      assert.equal((await reached(capture, options)).namedState, false);
+    },
+  );
+
 test(
-  "a renamed capture control fails the lane instead of driving another control",
-  { timeout: OPEN_MS + DRIVE_MS },
+  "the composer still hides its context meter at 480, which is why the CLI refuses it there",
+  { timeout: OPEN_MS },
   async (t) => {
-    const options = admitted("codex", "harness-menu", 1888);
-    const capture = await openCapture(t, "agent-single", options);
-    assert.equal(
-      await capture.evaluate(
-        `(()=>{const picker=document.querySelector('.agent-chat-pane--focused button[aria-label="Harness"]');picker?.setAttribute('aria-label','Agent');return Boolean(picker)})()`,
-      ),
-      true,
+    // parseArgs refuses context-meter at 480; open the Chat at that size.
+    const options = admitted("codex", "turn-completed", 480);
+    const capture = await openCapture(
+      t,
+      "agent-composer-context-known",
+      options,
     );
-    await assert.rejects(
-      drive(capture, options, Date.now() + 2_000),
-      /state-timeout/u,
-    );
-    assert.equal((await reached(capture, options)).namedState, false);
+    const observation = await capture.observe();
+    assert.equal(observation.visible.meter, false);
+    assert.equal(observation.controls.send, true);
+    assert.equal(admitted("codex", "context-meter", 480), null);
   },
 );

@@ -177,8 +177,8 @@ async function driveCaptureState(cdp, options, captureChat, deadline, record) {
 
 /**
  * Runs the state's actions, or its parity steps, against `submittedTurnId`.
- * The browser conformance lane calls this directly on a settled fixture Turn,
- * so it must not depend on the replay binding beyond live Turn actions.
+ * The browser conformance lane calls this directly on a settled fixture Turn;
+ * only live Turn actions check the replay binding.
  */
 export async function runCaptureActions({
   cdp,
