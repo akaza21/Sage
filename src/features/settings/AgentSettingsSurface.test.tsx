@@ -285,6 +285,15 @@ it("restores the real per-harness access default from its persistence boundary a
   fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
     target: { value: "workspaceWrite" },
   });
+  expect(stored).toEqual({});
+  fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+  expect(screen.getByRole("combobox", { name: "Default access" })).toHaveValue(
+    "readOnly",
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
+    target: { value: "workspaceWrite" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
   await useSessionAccessModeStore.getState().settle();
   first.unmount();
   useSessionAccessModeStore.setState({ ready: false, modes: {} });
@@ -365,6 +374,86 @@ it("finds access while leaving unsupported history unavailable", async () => {
     screen.getByRole("button", { name: "Browser: Browsing history" }),
   ).toBeDisabled();
   expect(screen.queryByRole("button", { name: /notification/i })).toBeNull();
+});
+
+it("discards workspace confirmation when the selected harness changes", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  const modes = [
+    ...harness.accessModes!,
+    {
+      id: "workspaceWrite" as const,
+      label: "Workspace edits",
+      description: "Write workspace files",
+    },
+  ];
+  useWorkbenchStore.setState({
+    harnesses: [
+      { ...harness, accessModes: modes },
+      {
+        ...harness,
+        id: "adapter-b",
+        bindingId: "binding-b",
+        accessModes: modes,
+      },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
+    target: { value: "workspaceWrite" },
+  });
+  expect(
+    screen.getByRole("dialog", { name: "Switch to Workspace edits?" }),
+  ).toBeVisible();
+  const { act } = await import("@testing-library/react");
+  await act(async () =>
+    useWorkbenchStore.setState({ selectedHarnessId: "adapter-b" }),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(useSessionAccessModeStore.getState().modes).toEqual({});
+});
+
+it("restores the prior confirmed access after a failed save and offers a confirmed retry", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...harness,
+        accessModes: [
+          ...harness.accessModes!,
+          {
+            id: "workspaceWrite",
+            label: "Workspace edits",
+            description: "Write workspace files",
+          },
+        ],
+      },
+    ],
+  });
+  const settings = getWorkbenchPorts().settings;
+  vi.spyOn(settings, "getSessionAccessModes").mockResolvedValue({
+    "binding-a": "readOnly",
+  });
+  vi.spyOn(settings, "setSessionAccessModes")
+    .mockRejectedValueOnce(new Error("disk unavailable"))
+    .mockImplementation(async (modes) => modes);
+  await useSessionAccessModeStore.getState().restore();
+  render(<AgentSettingsSurface />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Default access" }), {
+    target: { value: "workspaceWrite" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Permission mode could not be saved.",
+  );
+  expect(screen.getByRole("combobox", { name: "Default access" })).toHaveValue(
+    "readOnly",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Retry access save" }));
+  fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(useSessionAccessModeStore.getState().modes).toEqual({
+    "binding-a": "workspaceWrite",
+  });
 });
 
 it("keeps failed restores visible and sends foreign project identity to unarchive", async () => {

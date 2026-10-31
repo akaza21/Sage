@@ -1,3 +1,10 @@
+import { useId, useMemo, useRef, useState } from "react";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import {
+  SESSION_ACCESS_MODE_SCOPE,
+  type SessionAccessMode,
+} from "../../domain/sessionAccessMode";
+import { ModalDialog } from "../../ui/ModalDialog";
 import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { harnessAvailability } from "../chat/harnessAvailability";
@@ -26,6 +33,34 @@ export function AgentChatSettings() {
   );
   const disabled =
     !project || transitioning || phase === "checking" || phase === "waiting";
+  const confirmationId = useId();
+  const accessRef = useRef<HTMLSelectElement>(null);
+  const [confirmation, setConfirmation] = useState<{
+    harnessId: string;
+    generation: number;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failedMode, setFailedMode] = useState<SessionAccessMode | null>(null);
+  const generation = useWorkbenchStore((state) => state.projectGeneration);
+  if (
+    confirmation &&
+    (confirmation.harnessId !== harnessId ||
+      confirmation.generation !== generation ||
+      transitioning)
+  )
+    setConfirmation(null);
+  const writeAccess = async (mode: SessionAccessMode) => {
+    if (!harness?.bindingId || disabled) return;
+    setSaving(true);
+    access.setMode(harness.bindingId, mode);
+    const saved = await useSessionAccessModeStore.getState().settle();
+    setSaving(false);
+    setFailedMode(saved ? null : mode);
+  };
+  const dismissConfirmation = () => {
+    setConfirmation(null);
+    accessRef.current?.focus();
+  };
   const [filter, setFilter] = useState({ harnessId, query: "" });
   const query = filter.harnessId === harnessId ? filter.query : "";
   const choices = useMemo(() => {
@@ -130,9 +165,11 @@ export function AgentChatSettings() {
         >
           <select
             aria-label="Default access"
+            ref={accessRef}
             className="input"
             disabled={
               disabled ||
+              saving ||
               !access.ready ||
               !harness?.bindingId ||
               !access.candidates.length
@@ -142,8 +179,10 @@ export function AgentChatSettings() {
               const mode = access.candidates.find(
                 (candidate) => candidate.id === event.target.value,
               );
-              if (harness?.bindingId && mode)
-                access.setMode(harness.bindingId, mode.id);
+              if (!harness?.bindingId || !mode) return;
+              if (mode.id === "workspaceWrite" && access.effective !== mode.id)
+                setConfirmation({ harnessId: harness.id, generation });
+              else void writeAccess(mode.id);
             }}
           >
             <option value="" disabled>
@@ -155,8 +194,77 @@ export function AgentChatSettings() {
               </option>
             ))}
           </select>
+          {saving ? <p role="status">Saving access…</p> : null}
+          {access.error ? <p role="alert">{access.error}</p> : null}
+          {failedMode && access.error ? (
+            <button
+              className="button button--compact"
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                if (failedMode === "workspaceWrite" && harness)
+                  setConfirmation({ harnessId: harness.id, generation });
+                else void writeAccess(failedMode);
+              }}
+            >
+              Retry access save
+            </button>
+          ) : null}
         </SettingsRow>
       </div>
+      {confirmation &&
+      confirmation.harnessId === harnessId &&
+      confirmation.generation === generation &&
+      !transitioning ? (
+        <ModalDialog
+          labelledBy={confirmationId}
+          onDismiss={dismissConfirmation}
+          className="dialog--scrim"
+        >
+          <h2 id={confirmationId}>
+            Switch to{" "}
+            {
+              access.candidates.find((mode) => mode.id === "workspaceWrite")
+                ?.label
+            }
+            ?
+          </h2>
+          <p>
+            {
+              access.candidates.find((mode) => mode.id === "workspaceWrite")
+                ?.description
+            }
+          </p>
+          <p>{SESSION_ACCESS_MODE_SCOPE}</p>
+          <div className="dirty-dialog__actions">
+            <button
+              autoFocus
+              type="button"
+              className="button button--compact"
+              onClick={dismissConfirmation}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button button--compact"
+              onClick={() => {
+                const current = useWorkbenchStore.getState();
+                if (
+                  current.selectedHarnessId === confirmation.harnessId &&
+                  current.projectGeneration === confirmation.generation &&
+                  !current.projectTransitioning &&
+                  access.candidates.some((mode) => mode.id === "workspaceWrite")
+                )
+                  void writeAccess("workspaceWrite");
+                dismissConfirmation();
+              }}
+            >
+              Switch access
+            </button>
+          </div>
+        </ModalDialog>
+      ) : null}
       <LazyHarnessNotice />
       {!project ? (
         <p role="status">Open a project to select a harness and model.</p>
@@ -164,4 +272,3 @@ export function AgentChatSettings() {
     </>
   );
 }
-import { useMemo, useState } from "react";
