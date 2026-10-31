@@ -399,10 +399,18 @@ export function namedState(options, observation, captureChat) {
   return predicates;
 }
 /** `chatId` also admits that Chat's owned artifact pane (Subagents, Diff). */
-export function clickExpression(selector, chatId = null) {
+function singleEnabledControl(selector, chatId) {
   if (chatId !== null && !/^[A-Za-z0-9:_-]{1,128}$/u.test(chatId))
     throw new Error("chat-identity");
-  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
+  return `const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;`;
+}
+/** Clicks the single enabled owned match; false while none or several match. */
+export function clickExpression(selector, chatId = null) {
+  return `(()=>{${singleEnabledControl(selector, chatId)}elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
+}
+/** True exactly when clickExpression would click: one enabled owned match. */
+export function clickableExpression(selector, chatId = null) {
+  return `(()=>{${singleEnabledControl(selector, chatId)}return true})()`;
 }
 /** Opens the single matching disclosure summary; idempotent, true once open. */
 export function openExpression(selector) {

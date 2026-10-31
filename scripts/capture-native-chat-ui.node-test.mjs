@@ -22,16 +22,21 @@ import {
   waitForState,
 } from "./capture-native-chat-contract.mjs";
 import {
+  ACCESS_OPTIONS,
   AGENT_MODE,
   COMPOSER_FILL,
   HARNESS,
+  HARNESS_PICKER,
   NEW_TASK,
+  SEND_MESSAGE,
   accessModeOption,
+  clickExpression,
+  clickableExpression,
+  harnessOption,
   namedState,
   observationFor,
 } from "./capture-native-chat-dom.mjs";
 import { runCaptureActions } from "./capture-native-chat-drive.mjs";
-import { presentExpression } from "./capture-native-chat-parity-drive.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
@@ -258,27 +263,79 @@ for (const [scenario, harness, state] of CELLS)
     );
   }
 
+/** Each prepare/submit control resolves to one enabled match, as a click needs. */
+async function clickable(capture, selector) {
+  return capture.evaluate(clickableExpression(selector));
+}
+
 for (const width of WIDTHS)
   test(
-    `the prepare and submit controls resolve exactly once at ${width}`,
+    `the prepare and submit controls resolve to one enabled match at ${width}`,
     { timeout: OPEN_MS + DRIVE_MS },
     async (t) => {
-      const options = admitted("codex", "access-menu", width);
-      const capture = await openCapture(t, "agent-single", options);
+      const capture = await openCapture(
+        t,
+        "agent-single",
+        admitted("codex", "composer-idle", width),
+      );
       // New task is reachable without a navigation drawer at every width.
-      assert.equal(await capture.evaluate(presentExpression(NEW_TASK)), true);
-      await drive(capture, options);
-      for (const mode of ["readOnly", "workspaceWrite"])
-        assert.equal(
-          await capture.evaluate(presentExpression(accessModeOption(mode))),
-          true,
-          mode,
-        );
-      assert.equal(await capture.evaluate(COMPOSER_FILL), true);
+      for (const control of [NEW_TASK, HARNESS_PICKER, ACCESS_OPTIONS])
+        assert.equal(await clickable(capture, control), true, control);
+      const { selected } = await capture.observe();
+      assert.equal(
+        await capture.evaluate(clickExpression(HARNESS_PICKER)),
+        true,
+      );
       await waitForState(
-        async () => (await capture.observe()).controls.send === true,
+        () => clickable(capture, harnessOption(selected)),
         Date.now() + SETTLE_MS,
       );
+      await capture.evaluate(clickExpression(HARNESS_PICKER));
+      assert.equal(
+        await capture.evaluate(clickExpression(ACCESS_OPTIONS)),
+        true,
+      );
+      for (const mode of ["readOnly", "workspaceWrite"])
+        await waitForState(
+          () => clickable(capture, accessModeOption(mode)),
+          Date.now() + SETTLE_MS,
+        );
+      await capture.evaluate(clickExpression(ACCESS_OPTIONS));
+      assert.equal(await capture.evaluate(COMPOSER_FILL), true);
+      await waitForState(
+        () => clickable(capture, SEND_MESSAGE),
+        Date.now() + SETTLE_MS,
+      );
+    },
+  );
+
+const SEND = `document.querySelector('.agent-chat-pane--focused button[aria-label="Send message"]')`;
+for (const [drift, mutation] of [
+  [
+    "missing",
+    `(()=>{const send=${SEND};send?.remove();return Boolean(send)})()`,
+  ],
+  [
+    "duplicated",
+    `(()=>{const send=${SEND};send?.after(send.cloneNode(true));return Boolean(send)})()`,
+  ],
+])
+  test(
+    `a ${drift} Send control is not clickable, so submission fails closed`,
+    { timeout: OPEN_MS },
+    async (t) => {
+      const capture = await openCapture(
+        t,
+        "agent-single",
+        admitted("codex", "composer-idle", 1888),
+      );
+      assert.equal(await capture.evaluate(COMPOSER_FILL), true);
+      await waitForState(
+        () => clickable(capture, SEND_MESSAGE),
+        Date.now() + SETTLE_MS,
+      );
+      assert.equal(await capture.evaluate(mutation), true);
+      assert.equal(await clickable(capture, SEND_MESSAGE), false);
     },
   );
 
