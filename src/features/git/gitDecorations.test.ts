@@ -114,7 +114,9 @@ describe("rootGitDecorations", () => {
     const changes = Array.from({ length: 300 }, (_, index) =>
       change(`gen/file-${index}.ts`, "untracked"),
     );
-    const marks = rootGitDecorations(root(changes, { truncated: true }));
+    const marks = rootGitDecorations(
+      root(changes, { truncated: true, changesOverflowed: true }),
+    );
     expect(marks.files.size).toBe(300);
     expect(marks.folders.get("gen")?.badge).toBe("•");
     expect(marks.folders.get("")).toEqual({
@@ -143,6 +145,16 @@ describe("rootGitDecorations", () => {
     });
     expect(partial.folders.get("src")?.badge).toBe("•");
     expect(partial.files.get("src/a.ts")?.badge).toBe("M");
+    // Exactly 300 staged changes in the index-only projection: no count.
+    const full = rootGitDecorations(
+      root(
+        Array.from({ length: 300 }, (_, index) =>
+          change(`staged-${index}.ts`, "unchanged", "added"),
+        ),
+        { truncated: true },
+      ),
+    );
+    expect(full.folders.get("")).toMatchObject({ badge: "…" });
   });
 
   it("builds once per root object and reuses decoration objects", () => {

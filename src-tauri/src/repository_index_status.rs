@@ -105,6 +105,7 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         revert_in_progress: in_progress.revert,
         changes,
         truncated: true,
+        changes_overflowed: false,
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: Some(INDEX_ONLY_MESSAGE.into()),
     })

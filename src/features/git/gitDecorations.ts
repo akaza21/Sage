@@ -69,9 +69,6 @@ const TONE_RANK: Record<GitDecorationTone, number> = {
   unknown: -1,
 };
 
-/** Native `MAX_CHANGES`: Git status lists at most this many changes. */
-export const MAX_LISTED_CHANGES = 300;
-
 export function fileGitDecoration(change: FileChange): GitDecoration | null {
   if (isConflictedChange(change)) return FILE_DECORATIONS.conflict;
   const state = visibleChangeStatus(change);
@@ -89,9 +86,9 @@ const EMPTY: RootGitDecorations = Object.freeze({
 });
 
 /**
- * The marks for one root. Git lists at most 300 changes; past that the root
- * shows a "many changes" count, since Files beyond the cap are changed but
- * unmarked. Any other partial status marks the root as incomplete.
+ * The marks for one root. Native lists at most 300 changes; when it reports
+ * more, the root shows a "many changes" count, since Files beyond the cap are
+ * changed but unmarked. Any other partial status marks the root incomplete.
  */
 export function rootGitDecorations(
   root: RootRepositoryStatus,
@@ -128,17 +125,17 @@ export function rootGitDecorations(
     folders.set(folder, FOLDER_DECORATIONS[tone]);
   }
   if (root.truncated) {
-    // A full list proves more changes exist; anything else (output or line
-    // counts cut short, an index-only projection) only that some may be
-    // missing.
-    const overflow = root.changes.length >= MAX_LISTED_CHANGES;
+    // Only native's overflow flag proves more changes exist; any other cut
+    // (output or line counts cut short, an index-only projection) only that
+    // some may be missing.
+    const listed = root.changes.length;
     folders.set(
       "",
       decoration(
         folderTones.get("") ?? "unknown",
-        overflow ? `${MAX_LISTED_CHANGES}+` : "…",
-        overflow
-          ? `More than ${MAX_LISTED_CHANGES} changes. Only the first ${MAX_LISTED_CHANGES} are marked.`
+        root.changesOverflowed ? `${listed}+` : "…",
+        root.changesOverflowed
+          ? `More than ${listed} changes. Only the first ${listed} are marked.`
           : "Git status is incomplete. Some changes may not be marked.",
       ),
     );
