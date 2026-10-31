@@ -20,11 +20,7 @@ import {
 } from "../features/files/folderRenameContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { ProjectPort } from "../ports/workbenchPorts";
-import {
-  releaseCleanFile,
-  restoreReleasedFile,
-  UNSAVED_FILE_REASON,
-} from "./openFileRelease";
+import { moveReleasingFile, UNSAVED_FILE_REASON } from "./openFileRelease";
 import { currentProjectLayout } from "./projectProjection";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import {
@@ -380,22 +376,19 @@ export const createFileRenameSlice: StateCreator<
         // The rename itself reports the invalid name.
         return renameProjectResource("file", source, basename);
       }
-      const projectId = get().project?.id;
-      const released = releaseCleanFile(get, set, source);
-      if (released === "unsaved") {
-        set({ fileRenameError: UNSAVED_FILE_REASON });
-        return false;
-      }
-      const renamed = await renameProjectResource("file", source, basename);
-      // The selection moves to the target only when the rename is confirmed;
-      // otherwise where the File is now is unknown, and Explorer refreshes.
-      const reopen = renamed
-        ? sameResource(get().selectedResource, target) && target
-        : source;
-      if (released && projectId && reopen) {
-        await restoreReleasedFile(get, set, projectId, reopen, released);
-      }
-      return renamed;
+      return moveReleasingFile(
+        get,
+        set,
+        source,
+        () => renameProjectResource("file", source, basename),
+        // The selection moves to the target only when the rename is
+        // confirmed; otherwise where the File is now is unknown.
+        () =>
+          sameResource(get().selectedResource, target)
+            ? { kind: "renamed", target }
+            : { kind: "gone" },
+        () => set({ fileRenameError: UNSAVED_FILE_REASON }),
+      );
     },
     renameProjectFolder: (source, basename) =>
       renameProjectResource("folder", source, basename),

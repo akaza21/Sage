@@ -10,6 +10,7 @@ import type {
 import { explorerSelectionAction } from "../features/files/explorerActionDialogController";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { UNSAVED_FILE_REASON } from "./openFileRelease";
+import { resourceTabUpdate } from "./resourceTabs";
 import { useWorkbenchStore } from "./store";
 
 const projectPort = getWorkbenchPorts().project;
@@ -43,7 +44,10 @@ function fileTab(
   };
 }
 
-function snapshot(selected = target): BootstrapSnapshot {
+function snapshot(
+  selected = target,
+  tabs: WorkbenchTab[] = [chatTab],
+): BootstrapSnapshot {
   return {
     transitionEpoch: 6,
     projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -60,7 +64,7 @@ function snapshot(selected = target): BootstrapSnapshot {
         },
       ],
     },
-    tabs: [chatTab],
+    tabs,
     archivedChats: [],
     activeTabId: "chat-a",
     selectedRootId: "root-a",
@@ -183,7 +187,12 @@ describe("renaming an open File (ED-16)", () => {
 
   it("reopens the renamed File as the active tab when it was active", async () => {
     vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue(renamed());
-    const openFile = vi.fn(async () => {});
+    // Opening, without loading an editor.
+    const openFile = vi.fn(async (resource: typeof target) => {
+      useWorkbenchStore.setState((current) =>
+        resourceTabUpdate(current, "file", resource),
+      );
+    });
     useWorkbenchStore.setState({
       tabs: [chatTab, fileTab("file", 1)],
       activeTabId: fileTab("file", 1).id,
@@ -193,6 +202,8 @@ describe("renaming an open File (ED-16)", () => {
     const ok = await state().renameProjectFile(source, "new.ts", true);
     expect(ok).toBe(true);
     expect(openFile).toHaveBeenCalledWith(target);
+    const active = state().tabs.find((tab) => tab.id === state().activeTabId);
+    expect(active).toMatchObject({ resource: target, position: 1 });
   });
 
   it("refuses a File with unsaved changes and leaves its tab alone", async () => {
@@ -208,20 +219,33 @@ describe("renaming an open File (ED-16)", () => {
     expect(rename).not.toHaveBeenCalled();
   });
 
-  it("puts the File back when the rename fails", async () => {
+  it("puts the same tabs back when the rename fails", async () => {
     vi.spyOn(projectPort, "renameProjectFile").mockRejectedValue(
       new Error("Target already exists."),
     );
-    useWorkbenchStore.setState({ tabs: [chatTab, fileTab("file", 2)] });
+    const activateTab = vi.fn(async () => {});
+    const tabs = [chatTab, fileTab("file", 2), fileTab("diff", 3)];
+    useWorkbenchStore.setState({ tabs, activeTabId: tabs[1].id, activateTab });
 
     await expect(
       state().renameProjectFile(source, "new.ts", true),
     ).resolves.toBe(false);
     expect(state().fileRenameError).toContain("Target already exists.");
-    expect(resourceTabs()).toEqual([
-      expect.objectContaining({ kind: "file", resource: source, position: 2 }),
-    ]);
+    expect(resourceTabs()).toEqual([tabs[1], tabs[2]]);
+    expect(activateTab).toHaveBeenCalledWith(tabs[1].id);
     expect(state().selectedResource).toEqual(source);
+  });
+
+  it("leaves the tabs alone when the rename couldn't start anyway", async () => {
+    const rename = vi.spyOn(projectPort, "renameProjectFile");
+    const tabs = [chatTab, fileTab("file", 1)];
+    useWorkbenchStore.setState({ tabs, fileCreateInFlight: true });
+
+    await expect(
+      state().renameProjectFile(source, "new.ts", true),
+    ).resolves.toBe(false);
+    expect(state().tabs).toBe(tabs);
+    expect(rename).not.toHaveBeenCalled();
   });
 
   it("still requires the tab closed when the caller doesn't release it", async () => {
@@ -248,6 +272,35 @@ describe("recycling an open File (ED-16)", () => {
     ).resolves.toBe(true);
     expect(trash).toHaveBeenCalledOnce();
     expect(resourceTabs()).toEqual([]);
+  });
+
+  it("activates the neighbouring tab when the active File is recycled", async () => {
+    const other: WorkbenchTab = {
+      ...fileTab("file", 1),
+      id: "file:other",
+      title: "other.ts",
+      resource: { rootId: "root-a", relativePath: "src/other.ts" },
+    };
+    const result = trashed();
+    // Native restores the layout it was given, whose active tab was taken
+    // out, so it falls back to the first tab, the Chat.
+    result.snapshot = snapshot(parent, [chatTab, other]);
+    vi.spyOn(projectPort, "trashProjectResource").mockResolvedValue(result);
+    const activateTab = vi.fn(async (id: string) => {
+      useWorkbenchStore.setState({ activeTabId: id });
+    });
+    useWorkbenchStore.setState({
+      tabs: [chatTab, other, fileTab("file", 2)],
+      activeTabId: fileTab("file", 2).id,
+      activateTab,
+    });
+
+    await expect(
+      state().trashProjectResource(source, "file", true),
+    ).resolves.toBe(true);
+    // The tab before it, as closing it would have chosen.
+    expect(activateTab).toHaveBeenCalledWith("file:other");
+    expect(state().activeTabId).toBe("file:other");
   });
 
   it("puts the File back when the move fails", async () => {
