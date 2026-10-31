@@ -6,7 +6,6 @@ import { useWorkbenchStore } from "../app/store";
 import { subscribeWorkspaceNotifySearch } from "../features/files/workspaceNotifyCompose";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
-import { usesMetaModifier } from "../ui/shortcutLabel";
 
 /** Refreshes Git state on outside changes while `git.autoRefresh` is on. */
 export function useRepositoryAutoRefresh() {
@@ -28,8 +27,6 @@ export function useRepositoryAutoRefresh() {
       },
       changeStamp: () => desktop.getRepositoryChangeStamp(),
       subscribeNotices: subscribeWorkspaceNotifySearch,
-      // macOS watches folders, which misses edits made in place.
-      pollAlways: usesMetaModifier(),
     });
   }, [enabled, projectId]);
 }

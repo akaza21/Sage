@@ -30,7 +30,7 @@ function notice(relativePath = "src/a.ts", kind = "modified") {
   });
 }
 
-function start(pollAlways = false) {
+function start() {
   stop = startRepositoryAutoRefresh({
     refresh,
     changeStamp,
@@ -38,7 +38,6 @@ function start(pollAlways = false) {
       notify = listener;
       return () => (notify = null);
     },
-    pollAlways,
   });
 }
 
@@ -134,8 +133,11 @@ describe("repository auto refresh", () => {
   });
 
   it("keeps no timers and runs nothing while hidden", async () => {
-    start(true);
+    start();
+    // After an overflow the poll is armed too, so every timer is live here.
+    notice("", "resync");
     await advance(STAMP_INTERVAL_MS);
+    expect(refresh).toHaveBeenCalledTimes(1);
     setVisibility("hidden");
     await advance(0);
     expect(vi.getTimerCount()).toBe(0);
@@ -143,7 +145,7 @@ describe("repository auto refresh", () => {
     notice();
     stamp = "b";
     await advance(MAX_POLL_MS * 2);
-    expect(refresh).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(changeStamp).toHaveBeenCalledTimes(stamps);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -188,21 +190,17 @@ describe("repository auto refresh", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
-  it("polls only where the watcher can miss edits, paced by Git", async () => {
-    start(false);
-    await advance(MAX_POLL_MS * 2);
+  it("never polls Git while the watcher keeps up", async () => {
+    start();
+    await advance(MAX_POLL_MS * 4);
     expect(refresh).not.toHaveBeenCalled();
-    stop?.();
-    start(true);
-    await advance(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
-    expect(refresh).toHaveBeenCalledTimes(1);
     expect(pollDelay(5)).toBe(MIN_POLL_MS);
     expect(pollDelay(600)).toBe(6_000);
     expect(pollDelay(5_000)).toBe(MAX_POLL_MS);
   });
 
   it("starts polling after the watcher overflows", async () => {
-    start(false);
+    start();
     notice("", "resync");
     await advance(REFRESH_DEBOUNCE_MS);
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -211,7 +209,8 @@ describe("repository auto refresh", () => {
   });
 
   it("stops every trigger when stopped", async () => {
-    start(true);
+    start();
+    notice("", "resync");
     stop?.();
     stop = null;
     expect(vi.getTimerCount()).toBe(0);

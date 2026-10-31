@@ -1,8 +1,9 @@
 // Keeps Git state current without a click (EP-12), as VS Code does. Three
 // triggers ask for a refresh: a workspace change notice, a changed stamp of
-// the Git files a commit, checkout or stage touches (checked every second),
-// and, where the watcher can miss edits, a slow poll paced by how long Git
-// status takes. They share one debounce, which waits at most MAX_WAIT_MS so a
+// the Git files a commit, checkout or stage touches (checked every 750 ms),
+// and, once the watcher has overflowed and lost events, a slow poll paced by
+// how long Git status takes. Nothing polls Git otherwise, so an idle visible
+// window costs one cheap stamp per tick. They share one debounce, which waits at most MAX_WAIT_MS so a
 // busy build cannot hold a refresh back, and one refresh at a time. While the
 // window is hidden nothing runs; showing or focusing it refreshes once.
 
@@ -22,8 +23,6 @@ export interface RepositoryAutoRefreshDeps {
   subscribeNotices(
     listener: (notice: WorkspaceNotifyNotice) => void,
   ): () => void;
-  /** The watcher sees only some edits here (macOS watches folders). */
-  pollAlways: boolean;
 }
 
 /** Git rewrites these by the hundred in a rebase; the stamp covers the rest. */
@@ -44,7 +43,7 @@ export function startRepositoryAutoRefresh(
   let rerun = false;
   let stampInFlight = false;
   let lastStamp: string | null = null;
-  let polling = deps.pollAlways;
+  let polling = false;
   // How long the last refresh took, which paces the poll.
   let lastRefreshMs = 0;
   // When the oldest unanswered ask came in, which bounds the debounce.
