@@ -303,7 +303,7 @@ it("restores the tab's emulation from Rust when the surface remounts", async () 
 it("reports a failed apply and closes the toolbar Rust confirmed reset", async () => {
   browserSetDevice.mockRejectedValueOnce({
     message: "device toolbar could not update",
-    device: null,
+    held: { state: "known", device: null },
   });
   await openDevice();
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -321,26 +321,72 @@ it("reports a failed apply and closes the toolbar Rust confirmed reset", async (
   ).toBeEnabled();
 });
 
-it("keeps showing what Rust says may still be on after an unconfirmed reset", async () => {
-  const iphone = { preset: "iphone-se", width: 375, height: 667 };
+it("marks an unconfirmed reset instead of guessing which device is on", async () => {
   await openDevice();
   await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(1));
   browserSetDevice.mockRejectedValueOnce({
     message: "device toolbar could not update the page",
-    device: { ...iphone, scalePercent: 100 },
+    held: { state: "unconfirmed" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Dimensions:" }), {
+    target: { value: "pixel-7" },
+  });
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "device toolbar could not update the page",
+    "device toolbar could not update the page. The page may still be partly emulated",
   );
-  expect(
-    await screen.findByRole("toolbar", { name: "Device toolbar" }),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("combobox", { name: "Dimensions:" })).toHaveValue(
-    "iphone-se",
-  );
-  // The toolbar now matches the page, so nothing is sent again.
+  expect(screen.getByRole("status")).toHaveTextContent("Unconfirmed");
+  expect(screen.getByRole("toolbar", { name: "Device toolbar" })).toBeVisible();
   expect(browserSetDevice).toHaveBeenCalledTimes(2);
+  // The next change is sent whatever the toolbar shows, and clears the mark.
+  fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(3));
+  expect(browserSetDevice).toHaveBeenLastCalledWith(
+    tab.id,
+    expect.objectContaining({ preset: "pixel-7", width: 915, height: 412 }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Unconfirmed")).not.toBeInTheDocument(),
+  );
+});
+
+it("still sends a closed tab's reset when its pending apply fails unconfirmed", async () => {
+  const other: WorkbenchTab = { ...tab, id: "browser-2" };
+  browserStatus.mockImplementation(async (tabId: string) => ({
+    tabId,
+    url: "https://example.com/",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    device: null,
+  }));
+  let fail = () => {};
+  browserSetDevice.mockImplementationOnce(
+    () =>
+      new Promise<undefined>(
+        (_, reject) =>
+          (fail = () =>
+            reject({
+              message: "device toolbar could not update the page",
+              held: { state: "unconfirmed" },
+            })),
+      ),
+  );
+  const { rerender } = render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  );
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(1));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Close device toolbar" }),
+  );
+  rerender(<BrowserSurface tab={other} />);
+  await act(async () => fail());
+  await waitFor(() => expect(browserSetDevice).toHaveBeenCalledTimes(2));
+  expect(browserSetDevice).toHaveBeenLastCalledWith(tab.id, null);
 });
 
 it("never reapplies the device when unrelated surface state changes", async () => {

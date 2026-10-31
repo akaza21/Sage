@@ -1,7 +1,8 @@
 use serde_json::{Value, json};
 
 use super::{
-    DeviceEmulation, DeviceFailure, DeviceRequest, Left, PRESETS, RESPONSIVE, admit, apply_with,
+    DeviceEmulation, DeviceFailure, DeviceHeld, DeviceRequest, Left, PRESETS, RESPONSIVE, admit,
+    apply_with,
     emulation::{chrome_major, reset_commands},
     held_after,
 };
@@ -280,29 +281,32 @@ fn a_reset_tries_every_step_and_reports_an_unconfirmed_one() {
 
 #[test]
 fn the_toolbar_is_told_what_the_tab_holds_after_an_update() {
-    let iphone = admitted("iphone-se", 375, 667, 100);
     let pixel = admitted("pixel-7", 412, 915, 100);
     let failed = |left| Err(("refused".to_owned(), left));
     assert_eq!(
-        held_after(Some(pixel), Some(iphone), Ok(())),
-        Ok(Some(pixel))
+        held_after(Some(pixel), Ok(())),
+        Ok(DeviceHeld::Known(Some(pixel)))
     );
-    assert_eq!(held_after(None, Some(iphone), Ok(())), Ok(None));
+    assert_eq!(held_after(None, Ok(())), Ok(DeviceHeld::Known(None)));
     assert_eq!(
-        held_after(Some(pixel), Some(iphone), failed(Left::Reset)),
-        Err(DeviceFailure::new("refused", None))
+        held_after(Some(pixel), failed(Left::Reset)),
+        Err(DeviceFailure::new("refused", DeviceHeld::Known(None)))
+    );
+    // iPhone was on and the switch to Pixel failed with an unconfirmed
+    // reset: neither device is reported, only that the state is unknown.
+    for requested in [Some(pixel), None] {
+        assert_eq!(
+            held_after(requested, failed(Left::Unknown)),
+            Err(DeviceFailure::new("refused", DeviceHeld::Unconfirmed))
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(DeviceFailure::new("refused", DeviceHeld::Known(None))).unwrap(),
+        json!({"message": "refused", "held": {"state": "known", "device": null}})
     );
     assert_eq!(
-        held_after(Some(pixel), Some(iphone), failed(Left::Unknown)),
-        Err(DeviceFailure::new("refused", Some(pixel)))
-    );
-    assert_eq!(
-        held_after(None, Some(iphone), failed(Left::Unknown)),
-        Err(DeviceFailure::new("refused", Some(iphone)))
-    );
-    assert_eq!(
-        serde_json::to_value(DeviceFailure::new("refused", None)).unwrap(),
-        json!({"message": "refused", "device": null})
+        serde_json::to_value(DeviceFailure::new("refused", DeviceHeld::Unconfirmed)).unwrap(),
+        json!({"message": "refused", "held": {"state": "unconfirmed"}})
     );
 }
 
@@ -313,7 +317,7 @@ fn the_tab_holds_its_emulation_without_changing_the_page_revision() {
     let before = tabs.snapshot("browser-1").unwrap().revision;
     let device = admitted(RESPONSIVE, 400, 800, 100);
     let request = tabs.request_device("browser-1").unwrap();
-    assert!(tabs.settle_device("browser-1", request, Some(device)));
+    assert!(tabs.settle_device("browser-1", request, DeviceHeld::Known(Some(device))));
     let snapshot = tabs.snapshot("browser-1").unwrap();
     assert_eq!(snapshot.device, Some(device));
     assert_eq!(snapshot.revision, before);
@@ -322,8 +326,13 @@ fn the_tab_holds_its_emulation_without_changing_the_page_revision() {
         json!({"preset": "responsive", "width": 400, "height": 800, "scalePercent": 100})
     );
     let request = tabs.request_device("browser-1").unwrap();
-    assert!(tabs.settle_device("browser-1", request, None));
+    assert!(tabs.settle_device("browser-1", request, DeviceHeld::Known(None)));
     assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
+    let request = tabs.request_device("browser-1").unwrap();
+    assert!(tabs.settle_device("browser-1", request, DeviceHeld::Unconfirmed));
+    // An unconfirmed page is never restored as a device it may not hold.
+    assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
+    assert_eq!(tabs.device_held("browser-1"), DeviceHeld::Unconfirmed);
     assert_eq!(tabs.request_device("browser-2"), None);
 }
 
@@ -336,8 +345,8 @@ fn only_the_latest_overlapping_update_is_recorded() {
     assert!(!tabs.latest_device("browser-1", older));
     assert!(tabs.latest_device("browser-1", newer));
     let device = admitted("iphone-se", 375, 667, 100);
-    assert!(!tabs.settle_device("browser-1", older, Some(device)));
+    assert!(!tabs.settle_device("browser-1", older, DeviceHeld::Known(Some(device))));
     assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
-    assert!(tabs.settle_device("browser-1", newer, Some(device)));
+    assert!(tabs.settle_device("browser-1", newer, DeviceHeld::Known(Some(device))));
     assert_eq!(tabs.snapshot("browser-1").unwrap().device, Some(device));
 }

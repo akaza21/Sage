@@ -1,6 +1,6 @@
 use tauri::{Manager, State, Webview};
 
-use super::{DeviceEmulation, DeviceFailure, Left, held_after};
+use super::{DeviceEmulation, DeviceFailure, DeviceHeld, Left, held_after};
 use crate::browser::BrowserState;
 
 /// Applies or resets the tab's emulation. Updates apply one at a time, and
@@ -11,7 +11,8 @@ pub(super) async fn set(
     tab_id: String,
     device: Option<DeviceEmulation>,
 ) -> Result<(), DeviceFailure> {
-    let unavailable = |message: &str| DeviceFailure::new(message, None);
+    // The page was not reached, so what it holds is not known here.
+    let unavailable = |message: &str| DeviceFailure::new(message, DeviceHeld::Unconfirmed);
     let (webview, request) = {
         let mut tabs = state
             .tabs
@@ -32,21 +33,16 @@ pub(super) async fn set(
             .device_updates
             .lock()
             .map_err(|_| unavailable("device toolbar unavailable"))?;
-        let previous = {
-            let tabs = state
-                .tabs
-                .lock()
-                .map_err(|_| unavailable("browser unavailable"))?;
-            if !tabs.latest_device(&tab_id, request) {
-                return Ok(());
-            }
-            tabs.applied_device(&tab_id)
-        };
-        let held = held_after(device, previous, apply(&webview, device.as_ref()));
-        let recorded = match &held {
-            Ok(device) => *device,
-            Err(failure) => failure.device,
-        };
+        let latest = state
+            .tabs
+            .lock()
+            .map_err(|_| unavailable("browser unavailable"))?
+            .latest_device(&tab_id, request);
+        if !latest {
+            return Ok(());
+        }
+        let held = held_after(device, apply(&webview, device.as_ref()));
+        let recorded = held.as_ref().map_or_else(DeviceFailure::held, |held| *held);
         state
             .tabs
             .lock()

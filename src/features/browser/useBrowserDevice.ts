@@ -14,6 +14,9 @@ import {
   type BrowserDeviceSize,
 } from "./browserDevice";
 
+const UNCONFIRMED_HINT =
+  "The page may still be partly emulated; change or close the device toolbar to try again";
+
 /** Responsive before the pane is measured: it opens at the room it has. */
 const FIT = "fit";
 
@@ -24,6 +27,8 @@ export interface BrowserDeviceState {
   shown: boolean;
   /** The percent the device is drawn at; null while closed or unmeasured. */
   scalePercent: number | null;
+  /** A reset step failed: the page may not match what the toolbar shows. */
+  unconfirmed: boolean;
   change: (size: BrowserDeviceSize) => void;
 }
 
@@ -33,7 +38,12 @@ interface DeviceQueue {
   waiting: Map<string, BrowserDevice | null>;
 }
 
-type FailureHandler = (tabId: string, failure: BrowserDeviceFailure) => void;
+/** How an update ended: undefined when it applied. `resetWaiting` says a
+ * reset for the same tab is still queued and will report its own result. */
+type SettleHandler = (
+  tabId: string,
+  failure?: BrowserDeviceFailure & { resetWaiting: boolean },
+) => void;
 
 /** Sends updates to Rust one at a time. Each tab keeps only its latest
  * waiting update, so a drag queues one call while another tab's reset is
@@ -42,7 +52,7 @@ function enqueue(
   queue: DeviceQueue,
   tabId: string,
   device: BrowserDevice | null,
-  onFailure: FailureHandler,
+  onSettled: SettleHandler,
 ) {
   queue.waiting.delete(tabId);
   queue.waiting.set(tabId, device);
@@ -53,22 +63,29 @@ function enqueue(
       queue.waiting.delete(next);
       try {
         await browserSetDevice(next, update);
+        onSettled(next);
       } catch (cause) {
-        // Rust says what the tab holds now; a change still waiting for that
-        // tab would apply again what the failure just undid.
-        queue.waiting.delete(next);
-        onFailure(next, readDeviceFailure(cause));
+        // A waiting reset always goes: only it can clear what may be left.
+        // A waiting change would apply again what the failure just undid.
+        const resetWaiting = queue.waiting.get(next) === null;
+        if (!resetWaiting) queue.waiting.delete(next);
+        onSettled(next, { ...readDeviceFailure(cause), resetWaiting });
       }
     }
     queue.running = false;
   })();
 }
 
-function sameDevice(a: BrowserDevice | null, b: BrowserDevice | null) {
+/** Sent to Rust last when the page's state is not known: any update differs. */
+const UNCONFIRMED = "unconfirmed";
+type SentDevice = BrowserDevice | null | typeof UNCONFIRMED;
+
+function sameDevice(a: BrowserDevice | null, b: SentDevice) {
   return (
     a === b ||
     (a !== null &&
       b !== null &&
+      b !== UNCONFIRMED &&
       a.preset === b.preset &&
       a.width === b.width &&
       a.height === b.height &&
@@ -100,9 +117,11 @@ export function useBrowserDevice({
   const [size, setSize] = useState<BrowserDeviceSize | typeof FIT | null>(null);
   const [area, setArea] = useState<BrowserDeviceArea | null>(null);
   const [shownTab, setShownTab] = useState(tabId);
+  /** Whether a reset step failed on this tab since its last good update. */
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const queue = useRef<DeviceQueue>({ running: false, waiting: new Map() });
-  /** What was last asked of Rust, and for which tab. */
-  const sent = useRef<{ tabId: string; device: BrowserDevice | null }>({
+  /** What was last asked of Rust, or found on the page, and for which tab. */
+  const sent = useRef<{ tabId: string; device: SentDevice }>({
     tabId,
     device: null,
   });
@@ -112,6 +131,7 @@ export function useBrowserDevice({
     setShownTab(tabId);
     setSize(null);
     setArea(null);
+    setUnconfirmed(false);
   } else if (open && size === null) {
     setSize(
       restored
@@ -151,22 +171,35 @@ export function useBrowserDevice({
   const device = size === FIT ? null : size;
   const scalePercent = device && area ? fitScalePercent(device, area) : null;
 
-  // The latest render's handler, so a failure reads the current tab and
+  // The latest render's handler, so a result reads the current tab and
   // callbacks without making the apply effect depend on them.
-  const failed = useRef<FailureHandler>(() => undefined);
+  const settled = useRef<SettleHandler>(() => undefined);
   useEffect(() => {
-    failed.current = (failedTab, failure) => {
-      if (failedTab !== tabId) return;
-      onError(failure.message);
-      // Unreadable: the toolbar keeps what it shows.
-      if (failure.device === undefined) return;
-      sent.current = { tabId, device: failure.device };
-      if (failure.device === null) {
+    settled.current = (settledTab, failure) => {
+      if (settledTab !== tabId) return;
+      if (!failure) {
+        if (sent.current.tabId === tabId && sent.current.device !== UNCONFIRMED)
+          setUnconfirmed(false);
+        return;
+      }
+      const { held, message, resetWaiting } = failure;
+      if (held !== "unconfirmed") onError(message);
+      // A queued reset reports for itself; unreadable keeps what is shown.
+      if (resetWaiting || held === undefined) return;
+      sent.current = { tabId, device: held };
+      if (held === "unconfirmed") {
+        // Not a guess at what is on: the toolbar says so, and its next
+        // change or close is sent whatever it shows.
+        setUnconfirmed(true);
+        onError(`${message}. ${UNCONFIRMED_HINT}`);
+      } else if (held === null) {
+        setUnconfirmed(false);
         setSize(null);
         onOpenChange(false);
       } else {
-        // A close that failed reopens: the page may still be emulated.
-        const { preset, width, height } = failure.device;
+        // A failed close of a known device reopens on it.
+        const { preset, width, height } = held;
+        setUnconfirmed(false);
         setSize({ preset, width, height });
         onOpenChange(true);
       }
@@ -189,8 +222,8 @@ export function useBrowserDevice({
     const last = sent.current.tabId === tabId ? sent.current.device : null;
     if (sameDevice(wanted, last)) return;
     sent.current = { tabId, device: wanted };
-    enqueue(queue.current, tabId, wanted, (failedTab, failure) =>
-      failed.current(failedTab, failure),
+    enqueue(queue.current, tabId, wanted, (settledTab, failure) =>
+      settled.current(settledTab, failure),
     );
   }, [tabId, shown, preset, width, height, scalePercent]);
 
@@ -198,6 +231,7 @@ export function useBrowserDevice({
     size: device,
     shown,
     scalePercent,
+    unconfirmed,
     change: setSize,
   };
 }

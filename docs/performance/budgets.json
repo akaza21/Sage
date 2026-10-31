@@ -22,9 +22,9 @@
       },
       {
         "entry": "src/features/browser/BrowserDeviceController.tsx",
-        "maxGzipBytes": 3010,
-        "maxCssGzipBytes": 1060,
-        "reason": "Device toolbar (BF-7a): state, update queue, IPC, bar, grips and styles, off BrowserSurface; loads on Show device toolbar or a restored emulation. Measured JS 2734 B plus 10%."
+        "maxGzipBytes": 3310,
+        "maxCssGzipBytes": 1200,
+        "reason": "Device toolbar (BF-7a): state, update queue, IPC, bar, grips, tokens and styles, off BrowserSurface; loads on Show device toolbar or a restore. Measured JS 3006 B, CSS 1087 B plus 10%."
       },
       {
         "entry": "src/features/browser/BrowserNewTab.tsx",

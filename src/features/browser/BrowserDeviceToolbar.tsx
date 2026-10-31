@@ -14,6 +14,8 @@ import "./browser-device.css";
 interface ToolbarProps {
   size: BrowserDeviceSize;
   scalePercent: number | null;
+  /** The page may not match this size: a reset step failed. */
+  unconfirmed: boolean;
   onChange: (size: BrowserDeviceSize) => void;
   onClose: () => void;
 }
@@ -23,6 +25,7 @@ interface ToolbarProps {
 export function BrowserDeviceToolbar({
   size,
   scalePercent,
+  unconfirmed,
   onChange,
   onClose,
 }: ToolbarProps) {
@@ -70,12 +73,22 @@ export function BrowserDeviceToolbar({
         >
           <RotateCcw size={14} aria-hidden="true" />
         </button>
-        <span
-          className="browser-device-toolbar__scale"
-          title="Scaled to fit the pane"
-        >
-          {scalePercent === null ? "–" : `${scalePercent}%`}
-        </span>
+        {unconfirmed ? (
+          <span
+            className="browser-device-toolbar__scale"
+            role="status"
+            title="A reset failed, so the page may not match this size"
+          >
+            Unconfirmed
+          </span>
+        ) : (
+          <span
+            className="browser-device-toolbar__scale"
+            title="Scaled to fit the pane"
+          >
+            {scalePercent === null ? "–" : `${scalePercent}%`}
+          </span>
+        )}
       </div>
       <button
         type="button"

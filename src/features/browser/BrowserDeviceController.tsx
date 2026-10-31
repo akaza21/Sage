@@ -71,7 +71,7 @@ export function BrowserDeviceController({
     [],
   );
   if (!device.shown) return null;
-  const { size, scalePercent, change } = device;
+  const { size, scalePercent, unconfirmed, change } = device;
   // The row holds its height while Responsive measures the room it has.
   return (
     <div ref={findViewport} className="browser-surface__device-slot">
@@ -79,6 +79,7 @@ export function BrowserDeviceController({
         <BrowserDeviceToolbar
           size={size}
           scalePercent={scalePercent}
+          unconfirmed={unconfirmed}
           onChange={change}
           onClose={() => onOpenChange(false)}
         />

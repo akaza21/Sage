@@ -183,18 +183,47 @@ pub(crate) fn unavailable_reason() -> Option<&'static str> {
     UNAVAILABLE_REASON
 }
 
-/// A tab's device emulation: what is applied, and how many updates were
+/// What a tab's page holds, as far as Rust can confirm it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(tag = "state", content = "device", rename_all = "camelCase")]
+pub(crate) enum DeviceHeld {
+    /// The page holds this emulation, or none.
+    Known(Option<DeviceEmulation>),
+    /// A reset step failed, so some override may still be on.
+    Unconfirmed,
+}
+
+impl Default for DeviceHeld {
+    fn default() -> Self {
+        Self::Known(None)
+    }
+}
+
+/// A tab's device emulation: what the page holds, and how many updates were
 /// asked for, so only the latest request lands when two overlap.
 #[derive(Default)]
 pub(crate) struct TabDevice {
-    applied: Option<DeviceEmulation>,
+    held: DeviceHeld,
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     requests: u64,
 }
 
 impl TabDevice {
+    /// The emulation a remounted toolbar restores: only a confirmed one.
     pub(crate) fn applied(&self) -> Option<DeviceEmulation> {
-        self.applied
+        match self.held {
+            DeviceHeld::Known(device) => device,
+            DeviceHeld::Unconfirmed => None,
+        }
+    }
+}
+
+impl<T> super::BrowserTabs<T> {
+    /// What the tab's page holds; a missing tab holds nothing.
+    pub(super) fn device_held(&self, label: &str) -> DeviceHeld {
+        self.entries
+            .get(label)
+            .map_or_else(DeviceHeld::default, |tab| tab.device.held)
     }
 }
 
@@ -214,22 +243,12 @@ impl<T> super::BrowserTabs<T> {
             .is_some_and(|tab| tab.device.requests == request)
     }
 
-    /// What the tab holds now.
-    pub(super) fn applied_device(&self, label: &str) -> Option<DeviceEmulation> {
-        self.entries.get(label)?.device.applied
-    }
-
-    /// Records what `request` left applied, unless a later update owns the
+    /// Records what `request` left on the page, unless a later update owns the
     /// tab now. Returns whether it was recorded.
-    pub(super) fn settle_device(
-        &mut self,
-        label: &str,
-        request: u64,
-        applied: Option<DeviceEmulation>,
-    ) -> bool {
+    pub(super) fn settle_device(&mut self, label: &str, request: u64, held: DeviceHeld) -> bool {
         match self.entries.get_mut(label) {
             Some(tab) if tab.device.requests == request => {
-                tab.device.applied = applied;
+                tab.device.held = held;
                 true
             }
             _ => false,
@@ -240,19 +259,22 @@ impl<T> super::BrowserTabs<T> {
 /// Why an update failed, with what the tab holds after it, so the toolbar
 /// shows what the page has rather than what was asked for.
 #[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceFailure {
     message: String,
-    device: Option<DeviceEmulation>,
+    held: DeviceHeld,
 }
 
 impl DeviceFailure {
-    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-    fn new(message: impl Into<String>, device: Option<DeviceEmulation>) -> Self {
+    fn new(message: impl Into<String>, held: DeviceHeld) -> Self {
         Self {
             message: message.into(),
-            device,
+            held,
         }
+    }
+
+    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
+    pub(crate) fn held(&self) -> DeviceHeld {
+        self.held
     }
 }
 
@@ -269,13 +291,8 @@ pub(crate) async fn browser_set_device(
             let held = state
                 .tabs
                 .lock()
-                .ok()
-                .and_then(|tabs| tabs.snapshot(&tab_id))
-                .and_then(|snapshot| snapshot.device);
-            return Err(DeviceFailure {
-                message,
-                device: held,
-            });
+                .map_or(DeviceHeld::Unconfirmed, |tabs| tabs.device_held(&tab_id));
+            return Err(DeviceFailure::new(message, held));
         }
     };
     #[cfg(windows)]
@@ -285,25 +302,25 @@ pub(crate) async fn browser_set_device(
     #[cfg(not(windows))]
     {
         let _ = (tab_id, device);
-        Err(DeviceFailure {
-            message: UNAVAILABLE_REASON.unwrap_or_default().into(),
-            device: None,
-        })
+        Err(DeviceFailure::new(
+            UNAVAILABLE_REASON.unwrap_or_default(),
+            DeviceHeld::default(),
+        ))
     }
 }
 
-/// What the tab holds after an update: the request when it applied, nothing
-/// after a confirmed reset, and the most that may still be on otherwise.
+/// What the tab holds after an update: the request when it applied,
+/// nothing after a confirmed reset, and an unconfirmed state when a reset
+/// step failed, never a guess at which overrides are still on.
 #[cfg(any(windows, test))]
 pub(crate) fn held_after(
     requested: Option<DeviceEmulation>,
-    previous: Option<DeviceEmulation>,
     applied: Result<(), (String, Left)>,
-) -> Result<Option<DeviceEmulation>, DeviceFailure> {
+) -> Result<DeviceHeld, DeviceFailure> {
     match applied {
-        Ok(()) => Ok(requested),
-        Err((message, Left::Reset)) => Err(DeviceFailure::new(message, None)),
-        Err((message, Left::Unknown)) => Err(DeviceFailure::new(message, requested.or(previous))),
+        Ok(()) => Ok(DeviceHeld::Known(requested)),
+        Err((message, Left::Reset)) => Err(DeviceFailure::new(message, DeviceHeld::Known(None))),
+        Err((message, Left::Unknown)) => Err(DeviceFailure::new(message, DeviceHeld::Unconfirmed)),
     }
 }
 
