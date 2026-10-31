@@ -487,6 +487,37 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
+  it("ignores generated work and evidence paths without ignoring application source", () => {
+    const config = initialGroupConfig("serve", DESKTOP_NATIVE_BUILD_MODE);
+    const ignored = config.server?.watch?.ignored;
+    const ignores = (file: string) =>
+      (Array.isArray(ignored) ? ignored : [ignored]).some((matcher) =>
+        typeof matcher === "function"
+          ? matcher(file)
+          : typeof matcher === "string"
+            ? path.matchesGlob(file, matcher)
+            : matcher instanceof RegExp && matcher.test(file),
+      );
+    for (const generated of [
+      "work/landing-tmp/fixture/tsconfig.json",
+      "work/landing-tmp/fixture/index.html",
+      "output/ui-results/index.html",
+      "local-evidence/receipt.json",
+      "src-tauri/src/lib.rs",
+    ]) {
+      expect(ignores(path.join(root, generated)), generated).toBe(true);
+    }
+    for (const source of [
+      "index.html",
+      "tsconfig.json",
+      "src/app/store.ts",
+      "src/features/work/Surface.tsx",
+      "tests/ui/fixtures/visualScenarios.ts",
+    ]) {
+      expect(ignores(path.join(root, source)), source).toBe(false);
+    }
+  });
+
   it("keeps chat announcements, edit summaries and queued-tray sizing out of Editor closures", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     const chatOnly = [

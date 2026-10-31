@@ -15,6 +15,12 @@ const desktopWorkbenchRuntime = path.join(
   root,
   "src/ports/workbenchRuntime.desktop.ts",
 );
+const devWatchIgnoredRoots = new Set([
+  "src-tauri",
+  "work",
+  "output",
+  "local-evidence",
+]);
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
 
@@ -140,7 +146,12 @@ export default defineConfig(({ command, mode }) => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: (file: string) => {
+        const directory = path.relative(root, file).split(path.sep)[0] ?? "";
+        return devWatchIgnoredRoots.has(
+          process.platform === "win32" ? directory.toLowerCase() : directory,
+        );
+      },
     },
   },
   build: {
