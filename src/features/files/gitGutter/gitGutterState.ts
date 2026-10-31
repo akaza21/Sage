@@ -5,7 +5,6 @@ import {
   type ChangeSpec,
   type EditorState,
   type Text,
-  type Transaction,
 } from "@codemirror/state";
 
 import {
@@ -55,10 +54,10 @@ const KINDS: Record<number, HunkKind> = {
   [HUNK_DELETED]: "deleted",
 };
 
-function replacesDocument(transaction: Transaction) {
-  const length = transaction.startState.doc.length;
+/** True when `changes` replace all of a non-empty document of `length`. */
+export function replacesDocument(changes: ChangeDesc, length: number) {
   let whole = false;
-  transaction.changes.iterChangedRanges((from, to) => {
+  changes.iterChangedRanges((from, to) => {
     if (length > 0 && from === 0 && to === length) whole = true;
   });
   return whole;
@@ -87,7 +86,10 @@ export const gutterField = StateField.define<GutterState>({
       // over the document, so the markers wait for the next diff instead.
       next = {
         ...value,
-        hunks: replacesDocument(transaction)
+        hunks: replacesDocument(
+          transaction.changes,
+          transaction.startState.doc.length,
+        )
           ? []
           : value.hunks.map((hunk) => mapHunk(hunk, transaction.changes)),
         peek: null,

@@ -29,6 +29,7 @@ import {
   gutterField,
   hunkAtLine,
   hunksFromLines,
+  replacesDocument,
   revertChange,
   setGutterBase,
   setGutterHunks,
@@ -242,6 +243,9 @@ function driver(
     let timer: ReturnType<typeof setTimeout> | null = null;
     let version = 0;
     let posted: Text | null = null;
+    // The document was replaced whole after the last post: the answer to
+    // it would map onto unrelated text, so it is dropped for the next one.
+    let replaced = false;
 
     const flush = () => {
       timer = null;
@@ -270,6 +274,7 @@ function driver(
       inFlight = true;
       pending = null;
       baseChanged = false;
+      replaced = false;
       posted = view.state.doc;
     };
     const schedule = () => {
@@ -287,7 +292,7 @@ function driver(
         schedule();
         return;
       }
-      if (posted && !baseChanged) {
+      if (posted && !baseChanged && !replaced) {
         let hunks = hunksFromLines(result.hunks, posted);
         // Edits made while the worker ran: carry the result through them.
         if (pending) {
@@ -305,7 +310,7 @@ function driver(
           }),
         });
       }
-      if ((pending || baseChanged) && timer === null) schedule();
+      if ((pending || baseChanged || replaced) && timer === null) schedule();
     };
 
     return {
@@ -322,6 +327,16 @@ function driver(
         }
         if (update.docChanged && opened) {
           pending = pending ? pending.compose(update.changes) : update.changes;
+          if (
+            inFlight &&
+            update.transactions.some((transaction) =>
+              replacesDocument(
+                transaction.changes,
+                transaction.startState.doc.length,
+              ),
+            )
+          )
+            replaced = true;
         }
         // A result computed against the old staged text must not land.
         if (before !== after) baseChanged = true;

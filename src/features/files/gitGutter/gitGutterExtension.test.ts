@@ -344,4 +344,33 @@ describe("git gutter peek and reloads", () => {
     await settle();
     expect(kinds(view)).toEqual(["modified"]);
   });
+
+  it("drops a pending result when a reload replaces the document mid-diff", async () => {
+    const view = mount("a\nB\nc\n");
+    const { pool, posts, answer } = fakePool({ manual: true });
+    attachGitGutter(view, pool).setBase("a\nb\nc\n");
+    await settle();
+    expect(posts.map((post) => post.type)).toEqual(["open"]);
+    // The reload lands while the worker still holds the diff of "a B c".
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: "one\ntwo\nthree\n",
+      },
+    });
+    answer();
+    expect(kinds(view)).toEqual([]);
+    expect(revertHunk(view, 0)).toBe(false);
+    expect(view.state.doc.toString()).toBe("one\ntwo\nthree\n");
+    await settle();
+    answer();
+    expect(posts.map((post) => post.type)).toEqual(["open", "update"]);
+    expect(view.state.field(gutterField).hunks).toHaveLength(1);
+    expect(view.state.field(gutterField).hunks[0]).toMatchObject({
+      kind: "modified",
+      from: 0,
+      to: view.state.doc.length - 1,
+    });
+  });
 });
