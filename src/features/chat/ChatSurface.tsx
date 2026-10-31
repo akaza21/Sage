@@ -394,6 +394,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onRetryQueuedPrompt={(id) => updateQueuedPrompt(id, "queued")}
         onSteerQueuedPrompt={(id) => steerQueuedPrompt(id, acpActions.steer)}
       />
+      {acpActions.confirmationDialog}
     </section>
   );
 }

@@ -40,6 +40,17 @@ impl ClaudeRuntime {
             PendingRequest::Initialize => self.initialize_response(value),
             PendingRequest::NewSession => self.session_response(value, None, false),
             PendingRequest::ResumeSession(expected) => {
+                if value.get("error").is_some() {
+                    let error = &value["error"];
+                    if error.get("code").and_then(Value::as_i64).is_none()
+                        || error.get("message").and_then(Value::as_str).is_none()
+                        || value.get("result").is_some()
+                        || value.get("method").is_some()
+                    {
+                        return Err(AdapterRuntimeError::Frame);
+                    }
+                    return Err(AdapterRuntimeError::ResumeRefused);
+                }
                 self.session_response(value, Some(expected), true)
             }
             PendingRequest::CloseSession => {

@@ -3,8 +3,8 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
         EgressResolution,
     },
-    contract::{RequiredText, SafeText, SchemaVersionV1},
-    intent::{CapabilitySnapshotV1, NormalizedPayload},
+    contract::{RequiredText, SchemaVersionV1},
+    intent::CapabilitySnapshotV1,
 };
 
 use super::{Envelope, FixtureAdapter, State};
@@ -191,16 +191,6 @@ impl FixtureAdapter {
             return Err(AdapterRuntimeError::Operation);
         }
         self.state = State::Complete;
-        AdapterBatch::new(
-            vec![AdapterEvent::Error(NormalizedPayload::Error {
-                kind: None,
-                code: SafeText::new("errorCode", "fixtureResumeFailed")
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-                message: SafeText::new("errorMessage", "Fixture resume failed")
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
-                retryable: false,
-            })],
-            Vec::new(),
-        )
+        Err(AdapterRuntimeError::ResumeRefused)
     }
 }

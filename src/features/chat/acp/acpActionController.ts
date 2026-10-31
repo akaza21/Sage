@@ -15,7 +15,12 @@ import type {
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
-import { createAcpSessionActions, typedError } from "./acpSessionActions";
+import {
+  createAcpSessionActions,
+  configOwner,
+  definitePromptNonDispatch,
+  typedError,
+} from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
@@ -63,6 +68,7 @@ interface AcpActionDependencies {
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
   settleAccessMode?: () => Promise<boolean>;
+  confirmUnknownDelivery?: () => Promise<boolean>;
   applyAuthoritativePage: (
     scope: AcpProjectionScope,
     page: AcpChatPage,
@@ -87,19 +93,6 @@ type AcpActionPresentation = Pick<
   AcpActionState,
   "busy" | "cancellingTurnId" | "error"
 >;
-
-function configOwner(page: AcpChatPage): {
-  sessionId: string;
-  runtimeEpoch: string;
-} | null {
-  const config = page.sessionConfig;
-  return config
-    ? {
-        sessionId: config.sageAgentSessionId,
-        runtimeEpoch: config.runtimeEpoch,
-      }
-    : null;
-}
 
 function localFailure(message: string): AcpDesktopError {
   return new AcpDesktopError({ kind: "invalidRequest", message });
@@ -133,13 +126,6 @@ function requireSelectedSession(
     );
   }
   return session;
-}
-
-function definitePromptNonDispatch(error: AcpDesktopError): boolean {
-  if (error.failure.promptDispatch) {
-    return error.failure.promptDispatch === "notStarted";
-  }
-  return !["recoveryRequired", "internal"].includes(error.failure.kind);
 }
 
 export function createAcpActionController(dependencies: AcpActionDependencies) {
@@ -275,6 +261,9 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             );
           }
         }
+        if (!sameScope(dependencies.getContext(), captured)) {
+          return "ignoredStale";
+        }
         let session = currentSession(page);
         const deliverySession =
           session ??
@@ -291,15 +280,13 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
               handoff.targetSession === deliverySession?.id &&
               (handoff.state === "pending" || handoff.state === "unknown"),
           ) ?? false;
-        if (
-          ambiguous &&
-          !globalThis.confirm(
-            "Prior execution may have occurred. Replace the native session and explicitly retry this request?",
-          )
-        ) {
+        if (ambiguous && !(await dependencies.confirmUnknownDelivery?.())) {
           throw localFailure(
             "Delivery remains unknown. Nothing was resent; draft retained.",
           );
+        }
+        if (!sameScope(dependencies.getContext(), captured)) {
+          return "ignoredStale";
         }
         if (
           ambiguous ||
@@ -345,7 +332,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!applied) return "ignoredStale";
           page = applied;
           session = requireSelectedSession(
-            sessionById(page, session.id),
+            currentSession(page) ?? sessionById(page, session.id),
             bindingId,
             modelId,
           );

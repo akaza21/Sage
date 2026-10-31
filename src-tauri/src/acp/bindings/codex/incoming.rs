@@ -177,6 +177,8 @@ pub(crate) enum IngressDisposition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum IngressError {
+    #[error("the harness refused the correlated resume request")]
+    ResumeRefused,
     #[error("incoming frame exceeds its byte limit")]
     FrameBytes,
     #[error("incoming JSON is malformed or structurally over limit")]

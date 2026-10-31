@@ -363,10 +363,8 @@ fn resume_failure_cannot_issue_a_second_resume_or_prompt() {
         },
     );
 
-    let failed = adapter
-        .ingest(&frame("resumeFailure", serde_json::json!({})), &Mapper)
-        .unwrap();
-    assert!(matches!(failed.events(), [AdapterEvent::Error(_)]));
+    let failed = adapter.ingest(&frame("resumeFailure", serde_json::json!({})), &Mapper);
+    assert!(matches!(failed, Err(AdapterRuntimeError::ResumeRefused)));
     assert!(matches!(
         adapter.command(AdapterCommand::ResumeSession {
             external_session_id: external,

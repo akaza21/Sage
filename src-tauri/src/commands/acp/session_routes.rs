@@ -89,24 +89,41 @@ pub(crate) async fn activate_acp_session_inner(
         .map_err(|_| binding_unavailable())?;
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
-    state
+    let command = ActivateSessionCommand {
+        project_id: request.project_id,
+        chat_id: request.chat_id,
+        expected_projection_revision: request.expected_projection_revision,
+        client_intent_id: request.client_intent_id,
+        session_id: request.session_id,
+        runtime_epoch: request.runtime_epoch,
+        artifact_digest: String::new(),
+        now_millis: crate::persistence::now_millis(),
+    };
+    if let Err(error) = state
         .acp
-        .activate_session(
-            admitted,
-            ActivateSessionCommand {
-                project_id: request.project_id,
-                chat_id: request.chat_id,
-                expected_projection_revision: request.expected_projection_revision,
-                client_intent_id: request.client_intent_id,
-                session_id: request.session_id,
-                runtime_epoch: request.runtime_epoch,
-                artifact_digest: String::new(),
-                now_millis: crate::persistence::now_millis(),
-            },
-            project_root,
-        )
+        .activate_session(admitted, command.clone(), project_root)
         .await
-        .map_err(session_error)?;
+    {
+        let Some(retry) = state
+            .acp
+            .replace_refused_resume(&command)
+            .map_err(store_error)?
+        else {
+            return Err(session_error(error));
+        };
+        let admitted = state
+            .acp
+            .resolve_session_binding(&binding_id)
+            .map_err(|_| binding_unavailable())?;
+        let project_root = admitted
+            .project_root(&state.database, &transition)
+            .map_err(|_| binding_unavailable())?;
+        state
+            .acp
+            .activate_session(admitted, retry, project_root)
+            .await
+            .map_err(session_error)?;
+    }
     mutation_response(state, project_id, chat_id)
 }
 

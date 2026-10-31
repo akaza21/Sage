@@ -178,6 +178,7 @@ pub(super) fn config_for_model(
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {
     match error {
+        AdapterError::Ingress(IngressError::ResumeRefused) => AdapterRuntimeError::ResumeRefused,
         AdapterError::Ingress(IngressError::FrameBytes | IngressError::Malformed) => {
             AdapterRuntimeError::Frame
         }

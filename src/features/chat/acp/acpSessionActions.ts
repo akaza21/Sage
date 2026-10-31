@@ -52,6 +52,26 @@ interface SessionActionDependencies {
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
 }
 
+export function configOwner(page: AcpChatPage): {
+  sessionId: string;
+  runtimeEpoch: string;
+} | null {
+  const config = page.sessionConfig;
+  return config
+    ? {
+        sessionId: config.sageAgentSessionId,
+        runtimeEpoch: config.runtimeEpoch,
+      }
+    : null;
+}
+
+export function definitePromptNonDispatch(error: AcpDesktopError): boolean {
+  if (error.failure.promptDispatch) {
+    return error.failure.promptDispatch === "notStarted";
+  }
+  return !["recoveryRequired", "internal"].includes(error.failure.kind);
+}
+
 export function typedError(error: unknown): AcpDesktopError {
   if (error instanceof AcpDesktopError) return error;
   return new AcpDesktopError({

@@ -29,6 +29,7 @@ pub(crate) enum ActivationAbortCategory {
     LaunchFailure,
     AssemblyFailure,
     RuntimeHandoffFailure,
+    ResumeRefused,
 }
 
 impl ActivationAbortCategory {
@@ -37,6 +38,7 @@ impl ActivationAbortCategory {
             Self::LaunchFailure => "launchFailure",
             Self::AssemblyFailure => "assemblyFailure",
             Self::RuntimeHandoffFailure => "runtimeHandoffFailure",
+            Self::ResumeRefused => "resumeRefused",
         }
     }
 
@@ -46,6 +48,7 @@ impl ActivationAbortCategory {
             "launchFailure" => Some(Self::LaunchFailure),
             "assemblyFailure" => Some(Self::AssemblyFailure),
             "runtimeHandoffFailure" => Some(Self::RuntimeHandoffFailure),
+            "resumeRefused" => Some(Self::ResumeRefused),
             _ => None,
         }
     }

@@ -221,6 +221,7 @@ impl Lane<'_> {
                 driver.fail_before_runner();
                 match driver.take_zero_process_handoff_before(deadline) {
                     Ok(handoff) => {
+                        let category = handoff.cause.activation_abort_category(category);
                         let (pump, journal, _) = handoff.parts.into_parts();
                         drop(pump);
                         match journal.into_shutdown_handoff() {

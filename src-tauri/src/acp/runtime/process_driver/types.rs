@@ -29,12 +29,25 @@ pub(crate) enum TeardownCause {
     ProcessExit,
     ProtocolFailure,
     PumpFailure,
+    ResumeRefused,
     MandatoryDenyFailure,
     DeliveryUnknown,
     RefusedVersion {
         observed: crate::acp::contract::RequiredText<64>,
     },
     HostTermination,
+}
+
+impl TeardownCause {
+    pub(crate) fn activation_abort_category(
+        &self,
+        fallback: crate::acp::store::ActivationAbortCategory,
+    ) -> crate::acp::store::ActivationAbortCategory {
+        match self {
+            Self::ResumeRefused => crate::acp::store::ActivationAbortCategory::ResumeRefused,
+            _ => fallback,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +73,7 @@ impl From<TeardownCause> for crate::acp::lifecycle::TurnTerminalReason {
             TeardownCause::HostTermination => Self::CancelledByUser,
             TeardownCause::RefusedVersion { .. } => Self::RefusedVersion,
             TeardownCause::PumpFailure
+            | TeardownCause::ResumeRefused
             | TeardownCause::MandatoryDenyFailure
             | TeardownCause::DeliveryUnknown => Self::Other,
         }
@@ -202,6 +216,7 @@ pub(super) fn tree_exit(cause: TeardownCause) -> TreeExit {
         TeardownCause::HostTermination => TreeExit::Cancelled,
         TeardownCause::ProtocolFailure
         | TeardownCause::PumpFailure
+        | TeardownCause::ResumeRefused
         | TeardownCause::MandatoryDenyFailure
         | TeardownCause::DeliveryUnknown
         | TeardownCause::RefusedVersion { .. }

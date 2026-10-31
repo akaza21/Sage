@@ -14,7 +14,7 @@ pub(crate) struct BudgetInput<'a> {
 impl<'a> BudgetInput<'a> {
     pub(crate) fn fresh(user_text: &'a str) -> Self {
         Self {
-            configured_byte_cap: 16_000,
+            configured_byte_cap: crate::acp::limits::CONTEXT_HANDOFF_BYTE_CAP,
             user_text,
             images: 0,
             other_attachments: 0,

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod diagnostic;
 mod exit;
+mod failure;
 mod handoff;
 
 use crate::acp::{
@@ -346,31 +347,6 @@ where
                 Err(error) => return Err(self.pump_error(error)),
             }
         }
-    }
-
-    fn pump_error(&mut self, error: ActivationPumpError) -> ActivationDriverError {
-        if let Some(error) = self.latch_pending_exit() {
-            return error;
-        }
-        if matches!(
-            error,
-            ActivationPumpError::BootstrapRequired | ActivationPumpError::RecoveryRequired
-        ) {
-            self.state = State::ProjectionRecovery;
-            return ActivationDriverError::ProjectionRecoveryRequired;
-        }
-        self.latch(match error {
-            ActivationPumpError::Frame | ActivationPumpError::Intent => {
-                TeardownCause::ProtocolFailure
-            }
-            ActivationPumpError::RefusedVersion(observed) => {
-                TeardownCause::RefusedVersion { observed }
-            }
-            ActivationPumpError::Adapter(
-                crate::acp::bindings::adapter::AdapterRuntimeError::MandatoryDenyTeardown,
-            ) => TeardownCause::MandatoryDenyFailure,
-            _ => TeardownCause::PumpFailure,
-        })
     }
 
     fn log_frame_failure(

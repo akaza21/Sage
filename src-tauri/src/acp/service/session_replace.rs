@@ -19,6 +19,74 @@ use std::time::{Duration, Instant};
 mod tests;
 
 impl AcpService {
+    pub(crate) fn replace_refused_resume(
+        &self,
+        activation: &crate::acp::store::ActivateSessionCommand,
+    ) -> Result<Option<crate::acp::store::ActivateSessionCommand>, StoreError> {
+        let refused: bool = self.database.connection().query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_runtime_epochs e JOIN chat_session_heads h ON h.session_id=e.session_id
+             WHERE h.project_id=?1 AND h.chat_id=?2 AND e.session_id=?3 AND e.runtime_epoch=?4
+             AND e.state='aborted' AND e.exit_kind='resumeRefused'
+             AND e.runtime_epoch=(SELECT MAX(runtime_epoch) FROM session_runtime_epochs WHERE session_id=e.session_id))",
+            params![activation.project_id.as_str(), activation.chat_id.as_str(), activation.session_id.as_str(), activation.runtime_epoch.get() as i64], |row| row.get(0),
+        )?;
+        if !refused {
+            return Ok(None);
+        }
+        let page = self.load_chat_page(
+            activation.project_id.clone(),
+            activation.chat_id.clone(),
+            None,
+        )?;
+        let session = page
+            .sessions
+            .as_slice()
+            .iter()
+            .find(|session| session.id == activation.session_id)
+            .ok_or(StoreError::Corrupt("refused resume session"))?;
+        let (binding_digest, harness_version): (String, Option<String>) =
+            self.database.connection().query_row(
+                "SELECT binding_digest,harness_version FROM agent_sessions WHERE id=?1",
+                [activation.session_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+        let intent = crate::acp::contract::ClientIntentId::parse(uuid::Uuid::new_v4().to_string())
+            .map_err(|_| StoreError::Corrupt("resume handoff intent"))?;
+        let now_millis = crate::persistence::now_millis();
+        let command = ReplaceSessionCommand {
+            expected_head: Some(activation.session_id.clone()),
+            confirm_unknown_delivery: false,
+            start: crate::acp::store::StartSessionCommand {
+                project_id: activation.project_id.clone(),
+                chat_id: activation.chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: intent.clone(),
+                binding_id: session.binding_id.clone(),
+                binding_digest,
+                harness_version: harness_version
+                    .map(|value| crate::acp::contract::SafeText::new("harnessVersion", value))
+                    .transpose()
+                    .map_err(|_| StoreError::Corrupt("harness version"))?,
+                model_id: session.model_id.clone(),
+                now_millis,
+            },
+        };
+        self.transition_admitted_session(command.clone())?;
+        let result = session_replace::lookup(&self.database.connection(), &command)?
+            .ok_or(StoreError::Corrupt("resume handoff receipt"))?;
+        Ok(Some(crate::acp::store::ActivateSessionCommand {
+            project_id: activation.project_id.clone(),
+            chat_id: activation.chat_id.clone(),
+            expected_projection_revision: result.projection_revision,
+            client_intent_id: intent,
+            session_id: result.session_id,
+            runtime_epoch: crate::acp::contract::RuntimeEpoch::new(1)
+                .map_err(|_| StoreError::CounterExhausted)?,
+            artifact_digest: String::new(),
+            now_millis,
+        }))
+    }
+
     pub(crate) fn transition_session(
         &self,
         admitted: AdmittedBindingRecord<'_>,
@@ -37,7 +105,7 @@ impl AcpService {
         self.transition_admitted_session(command)
     }
 
-    pub(super) fn transition_admitted_session(
+    pub(crate) fn transition_admitted_session(
         &self,
         command: ReplaceSessionCommand,
     ) -> Result<(), StoreError> {
@@ -108,7 +176,12 @@ impl AcpService {
             resume_capability: current.is_some_and(|session| {
                 session.capabilities.resume_session || session.capabilities.load_session
             }),
-            resume_refused: false,
+            resume_refused: command.expected_head.as_ref().map(|head| {
+                self.database.connection().query_row(
+                    "SELECT exit_kind='resumeRefused' FROM session_runtime_epochs WHERE session_id=?1 ORDER BY runtime_epoch DESC LIMIT 1",
+                    [head.as_str()], |row| row.get::<_, Option<bool>>(0),
+                ).optional().map(|value| value.flatten().unwrap_or(false))
+            }).transpose()?.unwrap_or(false),
             ambiguous: crate::acp::store::context_handoff::latest_delivery_ambiguous(
                 &self.database.connection(),
                 command.start.project_id.as_str(),

@@ -150,10 +150,6 @@ fn prompt_byte_budget(command: &PrepareTurnCommand) -> Result<u64, StoreError> {
             }
         }
     }
-    budget.configured_byte_cap = std::env::var("SAGE_CONTEXT_HANDOFF_BYTE_CAP")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(16_000);
     let prompt_cost = serde_json::to_vec(command.prompt.as_str())
         .map_err(|_| StoreError::HandoffBudgetExceeded)?
         .len();

@@ -25,6 +25,8 @@ impl AdapterModel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum AdapterRuntimeError {
+    #[error("the harness definitively refused the correlated resume request")]
+    ResumeRefused,
     #[error("adapter operation is unavailable or invalid in the current state")]
     Operation,
     #[error("the harness rejected the correlated session configuration mutation")]

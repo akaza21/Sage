@@ -28,6 +28,16 @@ pub(super) struct HandoffJourney {
 }
 
 impl HandoffJourney {
+    pub(super) async fn from_environment(
+        case: ExternalCase,
+        deadline: FixtureDeadline,
+        environment: FixtureEnvironment,
+    ) -> Self {
+        Self {
+            prepared: Some(prepare_external_environment(case, deadline, environment).await),
+            deadline,
+        }
+    }
     pub(super) async fn new() -> Self {
         let deadline = FixtureDeadline::new();
         Self {
@@ -262,6 +272,37 @@ impl HandoffJourney {
             context_handoff::freeze_prompt(
                 &mut self.prepared().database.connection(),
                 &mut command
+            ),
+            Err(crate::acp::store::StoreError::Conflict {
+                resource: "handoffDeliveryUnknown"
+            })
+        ));
+        let prepared = self.prepared();
+        let page = load_chat_page(
+            &prepared.database.connection(),
+            prepared.project_id.clone(),
+            prepared.chat_id.clone(),
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            replace_session(
+                &mut prepared.database.connection(),
+                ReplaceSessionCommand {
+                    expected_head: page.current_session_id,
+                    confirm_unknown_delivery: false,
+                    start: StartSessionCommand {
+                        project_id: prepared.project_id.clone(),
+                        chat_id: prepared.chat_id.clone(),
+                        expected_projection_revision: page.projection_revision,
+                        client_intent_id: ClientIntentId::parse("unconfirmed-retry").unwrap(),
+                        binding_id: RequiredText::new("binding", "binding-b").unwrap(),
+                        binding_digest: hex(&FIXTURE_BINDING_DIGEST),
+                        harness_version: None,
+                        model_id: None,
+                        now_millis: prepared.now_millis,
+                    },
+                }
             ),
             Err(crate::acp::store::StoreError::Conflict {
                 resource: "handoffDeliveryUnknown"

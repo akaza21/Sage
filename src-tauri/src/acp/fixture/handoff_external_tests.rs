@@ -24,7 +24,7 @@ fn handoff_inline_reaches_fresh_native_session_once() {
 
 #[test]
 #[ignore = "requires the separately built, path-bound acp-adversarial-fixture"]
-fn handoff_zero_byte_retry_preserves_plan() {
+fn handoff_failed_nonempty_write_requires_confirmation_without_resend() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let mut journey = HandoffJourney::new().await;
         journey.complete().await;
@@ -33,16 +33,13 @@ fn handoff_zero_byte_retry_preserves_plan() {
             .await;
         let plan = journey.plan();
         assert_eq!(
-            journey.dispatch(SendObservation::ZeroBytes).await,
-            LiveWrite::ZeroBytes
+            journey.dispatch(SendObservation::PossibleBytes).await,
+            LiveWrite::PossibleBytes
         );
-        assert_eq!(journey.summary().state, HandoffState::Prepared);
-        assert_eq!(
-            journey.dispatch(SendObservation::ZeroBytes).await,
-            LiveWrite::ZeroBytes
-        );
+        assert_eq!(journey.summary().state, HandoffState::Unknown);
+        journey.assert_resend_refused();
         assert_eq!(journey.plan(), plan);
-        assert_eq!(journey.send_count(), 2);
+        assert_eq!(journey.send_count(), 1);
         journey.finish().await;
     });
 }

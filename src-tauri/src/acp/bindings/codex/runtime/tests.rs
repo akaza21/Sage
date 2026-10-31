@@ -27,6 +27,67 @@ mod browser_mcp_tests;
 mod fork_tests;
 mod model_identity;
 
+#[test]
+fn malformed_resume_errors_do_not_authorize_fresh_handoff() {
+    for error in [
+        Value::Null,
+        json!({}),
+        json!({"code":"bad","message":"missing"}),
+    ] {
+        let mut runtime = fixture_runtime();
+        initialize(&mut runtime);
+        let request = runtime
+            .command(AdapterCommand::ResumeSession {
+                external_session_id: ExternalId::new("external", "missing").unwrap(),
+                native_root: r"C:\repo".into(),
+                model: None,
+            })
+            .unwrap();
+        let id = request_id(&request);
+        assert_ne!(
+            runtime
+                .ingest(&frame(json!({"id":id,"error":error})), &Mapper)
+                .err()
+                .unwrap(),
+            AdapterRuntimeError::ResumeRefused
+        );
+    }
+}
+
+#[test]
+fn correlated_resume_rejection_is_distinct_from_foreign_responses() {
+    let mut runtime = fixture_runtime();
+    initialize(&mut runtime);
+    let request = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("external", "missing-thread").unwrap(),
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    let id = request_id(&request);
+    assert_ne!(
+        runtime
+            .ingest(
+                &frame(json!({"id":id+1,"error":{"code":-32000,"message":"missing"}})),
+                &Mapper
+            )
+            .err()
+            .unwrap(),
+        AdapterRuntimeError::ResumeRefused
+    );
+    assert_eq!(
+        runtime
+            .ingest(
+                &frame(json!({"id":id,"error":{"code":-32000,"message":"missing"}})),
+                &Mapper
+            )
+            .err()
+            .unwrap(),
+        AdapterRuntimeError::ResumeRefused
+    );
+}
+
 struct Mapper;
 
 impl ResourceMapper for Mapper {

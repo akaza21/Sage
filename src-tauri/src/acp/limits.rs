@@ -7,6 +7,7 @@ mod fixture;
 pub use fixture::{FIXTURE_LIMITS, FixtureLimits};
 
 pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
+pub(crate) const CONTEXT_HANDOFF_BYTE_CAP: u64 = 16_000;
 /// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.
 pub(crate) const DIFF_SIDE_BYTES_MAX: usize = 262_144;
 /// Retained immutable versions per Turn, including multiple versions of one item.

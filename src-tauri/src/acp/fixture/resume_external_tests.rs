@@ -24,6 +24,7 @@ use super::{
     test_support::{FixtureDeadline, launch_with_deadline},
 };
 
+mod handoff;
 mod setup;
 mod support;
 
@@ -39,17 +40,24 @@ const EXTERNAL_SESSION: &str = "fixture-persisted-session-1";
 #[ignore = "requires the separately built, path-bound acp-adversarial-fixture"]
 fn resume_cases_run_from_cold_through_supervisor_driver_and_sqlite() {
     for case in [ResumeCase::Success, ResumeCase::Failure] {
-        run_resume_case(case);
+        run_resume_case(case, false);
     }
 }
 
-fn run_resume_case(case: ResumeCase) {
+#[test]
+#[ignore = "requires the separately built, path-bound acp-adversarial-fixture"]
+fn resume_refusal_creates_fresh_handoff() {
+    run_resume_case(ResumeCase::Failure, true);
+}
+
+fn run_resume_case(case: ResumeCase, handoff: bool) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let deadline = FixtureDeadline::new();
         let FixtureEnvironment {
             temp_root,
             project_root,
             database,
+            database_path,
             project_id,
             chat_id,
             now_millis: now,
@@ -57,6 +65,7 @@ fn run_resume_case(case: ResumeCase) {
             journal_cleanup,
             scheduler,
             sessions,
+            publisher,
             started,
             ..
         } = tokio::time::timeout(
@@ -291,6 +300,54 @@ fn run_resume_case(case: ResumeCase) {
                 Err(_) => panic!("failed resume did not retain a teardown lease"),
             },
         };
+        if handoff {
+            assert_eq!(
+                zero_handoff.cause,
+                crate::acp::runtime::TeardownCause::ResumeRefused
+            );
+            lease
+                .abort_activation_after_zero_process(
+                    crate::acp::store::AbortActivationCommand {
+                        project_id: project_id.clone(),
+                        chat_id: chat_id.clone(),
+                        session_id: started.session_id.clone(),
+                        runtime_epoch: second_epoch,
+                        binding_digest: binding_hex,
+                        artifact_digest: artifact_hex,
+                        category: zero_handoff.cause.activation_abort_category(
+                            crate::acp::store::ActivationAbortCategory::RuntimeHandoffFailure,
+                        ),
+                        now_millis: now + 9,
+                    },
+                    proof,
+                )
+                .await
+                .unwrap();
+            assert_eq!(wire_counts.resume(), 1);
+            assert_eq!(wire_counts.prompt(), 0);
+            drop(lease);
+            drop(process_cleanup);
+            handoff::continue_after_refusal(
+                FixtureEnvironment {
+                    temp_root,
+                    project_root,
+                    database_path,
+                    database,
+                    project_id,
+                    chat_id,
+                    now_millis: now + 10,
+                    publisher,
+                    journal,
+                    journal_cleanup,
+                    scheduler,
+                    sessions,
+                    started,
+                },
+                deadline,
+            )
+            .await;
+            return;
+        }
         match case {
             ResumeCase::Success => {
                 tokio::time::timeout(
@@ -391,6 +448,7 @@ fn run_resume_case(case: ResumeCase) {
         drop(sessions);
         journal_cleanup.finish().unwrap();
         drop(journal);
+        drop(publisher);
         drop(database);
         temp_root.remove();
     });

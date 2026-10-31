@@ -253,6 +253,7 @@ impl Lane<'_> {
         host: Option<(Arc<RuntimeHost>, bool)>,
         active: Option<ActiveCodexOperation>,
     ) -> Result<(), CodexSessionError> {
+        let category = handoff.cause.activation_abort_category(category);
         let (_, journal, _) = handoff.parts.into_parts();
         let mut lease = match journal.into_teardown_lease() {
             Ok(lease) => lease,

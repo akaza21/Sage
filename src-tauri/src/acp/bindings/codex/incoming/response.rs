@@ -30,6 +30,14 @@ pub(super) fn response(
         );
     }
     if let Some(error) = object.get("error") {
+        if kind == RequestKind::Resume
+            && (error.get("code").and_then(Value::as_i64).is_none()
+                || error.get("message").and_then(Value::as_str).is_none()
+                || object.contains_key("result")
+                || object.contains_key("method"))
+        {
+            return Err(IngressError::Malformed);
+        }
         if matches!(
             kind,
             RequestKind::GoalGet | RequestKind::GoalPause | RequestKind::GoalClear
@@ -58,6 +66,7 @@ pub(super) fn response(
             debug_assert_eq!(removed, Some(kind));
         }
         return match kind {
+            RequestKind::Resume => Err(IngressError::ResumeRefused),
             RequestKind::TurnStart => match adapter.fail_turn_start(id).map_err(identity)? {
                 TurnStartFailure::Failed(turn) => Ok(IngressDisposition::Events(vec![
                     IncomingEvent::Error(payload),

@@ -122,6 +122,7 @@ async function nextMicrotask(): Promise<void> {
 function harness(
   initialPage: AcpChatPage,
   settleAccessMode?: () => Promise<boolean>,
+  confirmUnknownDelivery?: () => Promise<boolean>,
 ) {
   let context: AcpActionContext | null = {
     scope,
@@ -154,6 +155,7 @@ function harness(
   const controller = createAcpActionController({
     commands,
     getContext: () => context,
+    confirmUnknownDelivery,
     ...(settleAccessMode ? { settleAccessMode } : {}),
     applyAuthoritativePage: (_scope, authoritative) => {
       applied.push(authoritative);
@@ -200,85 +202,115 @@ describe("ACP action controller", () => {
   };
 
   it("unknownHandoffDeclinedRetryRetainsDraftWithoutNativeMutation", async () => {
-    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
-    try {
-      const initial = {
-        ...page("5", session("hot", "1", null)),
-        handoffs: [unknownHandoff],
-      };
-      const test = harness(initial);
-      await expect(
-        test.controller.submit("retry request", [], bindingId, modelId),
-      ).resolves.toBe("rejected");
-      expect(warning).toHaveBeenCalledWith(
-        expect.stringContaining("Prior execution may have occurred"),
-      );
-      expect(test.commands.transitionSession).not.toHaveBeenCalled();
-      expect(test.commands.sendTurn).not.toHaveBeenCalled();
-      expect(test.restored).toEqual([
-        { prompt: "retry request", attachedContext: [] },
-      ]);
-    } finally {
-      warning.mockRestore();
-    }
+    const warning = vi.fn(async () => false);
+    const initial = {
+      ...page("5", session("hot", "1", null)),
+      handoffs: [unknownHandoff],
+    };
+    const test = harness(initial, undefined, warning);
+    await expect(
+      test.controller.submit("retry request", [], bindingId, modelId),
+    ).resolves.toBe("rejected");
+    expect(warning).toHaveBeenCalledOnce();
+    expect(test.commands.transitionSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+    expect(test.restored).toEqual([
+      { prompt: "retry request", attachedContext: [] },
+    ]);
   });
 
   it("recoveredUnknownHandoffWithoutHeadStillRequiresExplicitRetry", async () => {
-    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
-    try {
-      const initial = {
-        ...page("5", null),
-        sessions: [session("cold", null, null)],
-        handoffs: [unknownHandoff],
-      };
-      const test = harness(initial);
-      await expect(
-        test.controller.submit("retry request", [], bindingId, modelId),
-      ).resolves.toBe("rejected");
-      expect(warning).toHaveBeenCalledOnce();
-      expect(test.commands.transitionSession).not.toHaveBeenCalled();
-      expect(test.commands.sendTurn).not.toHaveBeenCalled();
-    } finally {
-      warning.mockRestore();
-    }
+    const warning = vi.fn(async () => false);
+    const initial = {
+      ...page("5", null),
+      sessions: [session("cold", null, null)],
+      handoffs: [unknownHandoff],
+    };
+    const test = harness(initial, undefined, warning);
+    await expect(
+      test.controller.submit("retry request", [], bindingId, modelId),
+    ).resolves.toBe("rejected");
+    expect(warning).toHaveBeenCalledOnce();
+    expect(test.commands.transitionSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
   });
 
   it("confirmedUnknownHandoffReplacesBeforeSendingNewRequest", async () => {
-    const warning = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
-    try {
-      const test = harness({
+    const warning = vi.fn(async () => true);
+    const test = harness(
+      {
         ...page("5", session("hot", "1", null)),
         handoffs: [unknownHandoff],
-      });
-      const replacement = {
-        ...session("hot", "1", null),
-        id: "replacement" as SageAgentSessionId,
-      };
-      vi.mocked(test.commands.transitionSession).mockResolvedValue({
-        projection: page("6", replacement),
-      });
-      vi.mocked(test.commands.sendTurn).mockResolvedValue({
-        projection: page("7", replacement),
-      });
-      await expect(
-        test.controller.submit("new request", [], bindingId, modelId),
-      ).resolves.toBe("applied");
-      expect(test.commands.transitionSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          expectedHead: "session-a",
-          confirmUnknownDelivery: true,
-        }),
-      );
-      expect(test.commands.sendTurn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: "replacement",
-          prompt: "new request",
-        }),
-      );
-    } finally {
-      warning.mockRestore();
-    }
+      },
+      undefined,
+      warning,
+    );
+    const replacement = {
+      ...session("hot", "1", null),
+      id: "replacement" as SageAgentSessionId,
+    };
+    vi.mocked(test.commands.transitionSession).mockResolvedValue({
+      projection: page("6", replacement),
+    });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("7", replacement),
+    });
+    await expect(
+      test.controller.submit("new request", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.transitionSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedHead: "session-a",
+        confirmUnknownDelivery: true,
+      }),
+    );
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "replacement",
+        prompt: "new request",
+      }),
+    );
   });
+  it("confirmationCannotSendAfterTheChatScopeChanges", async () => {
+    const confirmation = deferred<boolean>();
+    const test = harness(
+      {
+        ...page("5", session("hot", "1", null)),
+        handoffs: [unknownHandoff],
+      },
+      undefined,
+      () => confirmation.promise,
+    );
+    const submitted = test.controller.submit("retry", [], bindingId, modelId);
+    await nextMicrotask();
+    test.setContext(null);
+    confirmation.resolve(true);
+    await expect(submitted).resolves.toBe("ignoredStale");
+    expect(test.commands.transitionSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+  });
+
+  it("accessSettlementCannotOpenConfirmationForAStaleChat", async () => {
+    const access = deferred<boolean>();
+    const warning = vi.fn(async () => true);
+    const test = harness(
+      {
+        ...page("5", session("hot", "1", null)),
+        handoffs: [unknownHandoff],
+      },
+      () => access.promise,
+      warning,
+    );
+    const submitted = test.controller.submit("retry", [], bindingId, modelId);
+    await nextMicrotask();
+    test.setContext(null);
+    access.resolve(true);
+    await expect(submitted).resolves.toBe("ignoredStale");
+    expect(warning).not.toHaveBeenCalled();
+    expect(test.commands.transitionSession).not.toHaveBeenCalled();
+    expect(test.commands.sendTurn).not.toHaveBeenCalled();
+  });
+
   it("switchUsesNativeTransitionAuthority", async () => {
     const current = session("hot", "2", null);
     const test = harness(page("10", current));
@@ -312,6 +344,26 @@ describe("ACP action controller", () => {
     expect(test.commands.startSession).not.toHaveBeenCalled();
     expect(test.commands.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "replacement", prompt: "continue" }),
+    );
+  });
+
+  it("sendsToTheFreshHeadReturnedAfterResumeRefusal", async () => {
+    const test = harness(page("5", session("cold", null, "2")));
+    const fresh = {
+      ...session("hot", "1", null),
+      id: "fresh" as SageAgentSessionId,
+    };
+    vi.mocked(test.commands.activateSession).mockResolvedValue({
+      projection: page("9", fresh),
+    });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("10", fresh),
+    });
+    await expect(
+      test.controller.submit("continue", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "fresh", prompt: "continue" }),
     );
   });
 

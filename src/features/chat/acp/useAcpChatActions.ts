@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useStore } from "zustand";
+import { useHandoffConfirmation } from "./useHandoffConfirmation";
 
 import { acpProjectionStoreFor } from "../../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../../app/sessionAccessModeStore";
@@ -99,6 +100,13 @@ export function useAcpChatActions(boundChatId?: string | null) {
   const modeOwnerMatches =
     modeErrorOwner?.sessionId === page?.sessionConfig?.sageAgentSessionId &&
     modeErrorOwner?.runtimeEpoch === page?.sessionConfig?.runtimeEpoch;
+  const confirmation = useHandoffConfirmation(
+    JSON.stringify([
+      boundChatId,
+      store.getState().scope,
+      page?.currentSessionId,
+    ]),
+  );
   const clearActiveChatError = useWorkbenchStore(
     (state) => state.clearActiveChatError,
   );
@@ -113,6 +121,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
     () =>
       createAcpActionController({
         getContext: () => currentContext(boundChatId),
+        confirmUnknownDelivery: confirmation.request,
         onUnscopedRefusal: (message) => {
           const workbench = useWorkbenchStore.getState();
           const ownership = workbench.captureChatOwnership(
@@ -190,11 +199,12 @@ export function useAcpChatActions(boundChatId?: string | null) {
           );
         },
       }),
-    [boundChatId],
+    [boundChatId, confirmation.request],
   );
 
   void projectionRevision;
   return {
+    confirmationDialog: confirmation.dialog,
     busy: sending,
     error: chatError,
     errorKind,
@@ -234,6 +244,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
       clearActiveChatError();
     },
   } satisfies {
+    confirmationDialog: ReactNode;
     busy: boolean;
     error: string | null;
     errorKind: AcpCommandFailure["kind"] | null;

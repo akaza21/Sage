@@ -361,6 +361,67 @@ fn resume_is_exact_while_load_model_and_model_override_fail_closed() {
 }
 
 #[test]
+fn malformed_resume_errors_do_not_authorize_fresh_handoff() {
+    for error in [
+        Value::Null,
+        json!({}),
+        json!({"code":"bad","message":"missing"}),
+    ] {
+        let mut runtime = ClaudeRuntime::fixture();
+        initialize(&mut runtime);
+        let request = runtime
+            .command(AdapterCommand::ResumeSession {
+                external_session_id: ExternalId::new("external", "missing").unwrap(),
+                native_root: r"C:/repo".into(),
+                model: None,
+            })
+            .unwrap();
+        let id = request_id(&request);
+        assert_ne!(
+            runtime
+                .ingest(&frame(json!({"id":id,"error":error})), &Mapper)
+                .err()
+                .unwrap(),
+            AdapterRuntimeError::ResumeRefused
+        );
+    }
+}
+
+#[test]
+fn correlated_resume_rejection_is_distinct_from_foreign_responses() {
+    let mut runtime = ClaudeRuntime::fixture();
+    initialize(&mut runtime);
+    let request = runtime
+        .command(AdapterCommand::ResumeSession {
+            external_session_id: ExternalId::new("external", "missing-session").unwrap(),
+            native_root: r"C:\fixture\root".into(),
+            model: None,
+        })
+        .unwrap();
+    let id = request_id(&request);
+    assert_ne!(
+        runtime
+            .ingest(
+                &frame(json!({"id":id+1,"error":{"code":-32000,"message":"missing"}})),
+                &Mapper
+            )
+            .err()
+            .unwrap(),
+        AdapterRuntimeError::ResumeRefused
+    );
+    assert_eq!(
+        runtime
+            .ingest(
+                &frame(json!({"id":id,"error":{"code":-32000,"message":"missing"}})),
+                &Mapper
+            )
+            .err()
+            .unwrap(),
+        AdapterRuntimeError::ResumeRefused
+    );
+}
+
+#[test]
 fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
