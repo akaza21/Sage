@@ -88,7 +88,7 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         return;
     }
     match plan {
-        Plan::Silent(path) => complete_choice(app, tab_id, id, Some(path)),
+        Plan::Silent(reserved) => complete_choice(app, tab_id, id, Some(reserved.path)),
         Plan::Ask {
             file_name,
             directory,

@@ -21,6 +21,22 @@ const MAX_PATH_BYTES: usize = 4096;
 const MAX_RESERVATIONS: i64 = 64;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
+    // Earlier development builds created these tables without a revision
+    // and without file identities; bring them to the current shape.
+    if has_table(connection, "browser_download_folder")?
+        && !has_column(connection, "browser_download_folder", "revision")?
+    {
+        connection.execute_batch(
+            "ALTER TABLE browser_download_folder RENAME TO browser_download_folder_v1;",
+        )?;
+    }
+    if has_table(connection, "browser_download_reservations")?
+        && !has_column(connection, "browser_download_reservations", "file_index")?
+    {
+        // Records without an identity cannot prove a file is Sage's, so
+        // their files are kept and the records dropped.
+        connection.execute_batch("DROP TABLE browser_download_reservations;")?;
+    }
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_download_folder (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -28,10 +44,50 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            revision INTEGER NOT NULL CHECK (revision >= 0)
          ) STRICT;
          CREATE TABLE IF NOT EXISTS browser_download_reservations (
-           path TEXT PRIMARY KEY CHECK (length(path) BETWEEN 1 AND 4096)
+           path TEXT PRIMARY KEY CHECK (length(path) BETWEEN 1 AND 4096),
+           volume INTEGER NOT NULL,
+           file_index INTEGER NOT NULL
          ) STRICT;",
     )?;
+    if has_table(connection, "browser_download_folder_v1")? {
+        connection.execute_batch(
+            "INSERT OR IGNORE INTO browser_download_folder(singleton, path, revision)
+               SELECT singleton, path, 1 FROM browser_download_folder_v1;
+             DROP TABLE browser_download_folder_v1;",
+        )?;
+    }
     Ok(())
+}
+
+fn has_table(connection: &Connection, table: &str) -> AppResult<bool> {
+    Ok(connection
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![table],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn has_column(connection: &Connection, table: &str, column: &str) -> AppResult<bool> {
+    Ok(connection
+        .query_row(
+            "SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2",
+            params![table, column],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+/// A placeholder a silent download reserved: its path and which file it is
+/// (volume and file index, or device and inode).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadReservationRecord {
+    pub path: PathBuf,
+    pub volume: u64,
+    pub file_index: u64,
 }
 
 /// The saved folder and the revision it was read at.
@@ -74,8 +130,11 @@ impl SettingsStore {
 
     /// Records a placeholder so a crash before its download settles does not
     /// leave it behind for good. Returns whether it was recorded.
-    pub fn record_download_reservation(&self, path: &Path) -> AppResult<bool> {
-        let text = admitted_text(path)?;
+    pub fn record_download_reservation(
+        &self,
+        record: &DownloadReservationRecord,
+    ) -> AppResult<bool> {
+        let text = admitted_text(&record.path)?;
         let connection = self.download_lock();
         let count: i64 = connection.query_row(
             "SELECT count(*) FROM browser_download_reservations",
@@ -85,9 +144,11 @@ impl SettingsStore {
         if count >= MAX_RESERVATIONS {
             return Ok(false);
         }
+        // SQLite integers are signed; the bits round-trip unchanged.
         connection.execute(
-            "INSERT OR IGNORE INTO browser_download_reservations(path) VALUES (?1)",
-            params![text],
+            "INSERT OR REPLACE INTO browser_download_reservations(path, volume, file_index)
+             VALUES (?1, ?2, ?3)",
+            params![text, record.volume as i64, record.file_index as i64],
         )?;
         Ok(true)
     }
@@ -103,15 +164,21 @@ impl SettingsStore {
         Ok(())
     }
 
-    /// Every recorded placeholder, removing the records.
-    pub fn take_download_reservations(&self) -> AppResult<Vec<PathBuf>> {
+    /// Every recorded placeholder. Records stay until their clean-up is
+    /// confirmed with [`Self::forget_download_reservation`].
+    pub fn download_reservations(&self) -> AppResult<Vec<DownloadReservationRecord>> {
         let connection = self.download_lock();
-        let paths = connection
-            .prepare("SELECT path FROM browser_download_reservations")?
-            .query_map([], |row| row.get::<_, String>(0))?
+        let records = connection
+            .prepare("SELECT path, volume, file_index FROM browser_download_reservations")?
+            .query_map([], |row| {
+                Ok(DownloadReservationRecord {
+                    path: PathBuf::from(row.get::<_, String>(0)?),
+                    volume: row.get::<_, i64>(1)? as u64,
+                    file_index: row.get::<_, i64>(2)? as u64,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
-        connection.execute("DELETE FROM browser_download_reservations", [])?;
-        Ok(paths.into_iter().map(PathBuf::from).collect())
+        Ok(records)
     }
 
     fn download_lock(&self) -> std::sync::MutexGuard<'_, Connection> {

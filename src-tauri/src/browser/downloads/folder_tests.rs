@@ -24,6 +24,13 @@ impl Drop for Scratch {
     }
 }
 
+fn silent_path(plan: &Plan) -> Option<PathBuf> {
+    match plan {
+        Plan::Silent(reserved) => Some(reserved.path.clone()),
+        Plan::Ask { .. } => None,
+    }
+}
+
 fn free(_: &Path) -> bool {
     false
 }
@@ -46,7 +53,7 @@ fn download(
         claimed.contains(path)
     });
     let destination = match &plan {
-        Plan::Silent(path) => Some(path.clone()),
+        Plan::Silent(reserved) => Some(reserved.path.clone()),
         Plan::Ask { file_name, .. } => dialog_choice.map(|folder| folder.join(file_name)),
     };
     if let Some(path) = &destination {
@@ -88,7 +95,7 @@ fn first_download_asks_then_later_downloads_save_silently_to_that_folder() {
     );
 
     let (second, _) = download(&store, &mut registry, "photo.png", None);
-    assert_eq!(second, Plan::Silent(chosen.0.join("photo.png")));
+    assert_eq!(silent_path(&second), Some(chosen.0.join("photo.png")));
 }
 
 #[test]
@@ -110,10 +117,10 @@ fn a_silent_save_never_overwrites_an_existing_file_or_an_in_flight_download() {
     std::fs::write(folder.0.join("data.csv"), b"keep me").unwrap();
 
     let (first, _) = download(&store, &mut registry, "data.csv", None);
-    assert_eq!(first, Plan::Silent(folder.0.join("data (1).csv")));
+    assert_eq!(silent_path(&first), Some(folder.0.join("data (1).csv")));
     // The first is still downloading; the next one takes the next number.
     let (second, _) = download(&store, &mut registry, "data.csv", None);
-    assert_eq!(second, Plan::Silent(folder.0.join("data (2).csv")));
+    assert_eq!(silent_path(&second), Some(folder.0.join("data (2).csv")));
     assert_eq!(
         std::fs::read(folder.0.join("data.csv")).unwrap(),
         b"keep me"
@@ -191,8 +198,8 @@ fn dangerous_types_always_ask_and_keep_the_saved_folder() {
     // A stream colon cannot reach the file system, so the name is no
     // longer an executable.
     assert_eq!(
-        plan(Some(&saved.0), "stream.exe:zone", None, free),
-        Plan::Silent(saved.0.join("stream.exe_zone"))
+        silent_path(&plan(Some(&saved.0), "stream.exe:zone", None, free)),
+        Some(saved.0.join("stream.exe_zone"))
     );
 }
 
@@ -253,7 +260,7 @@ fn long_file_names_are_bounded_and_keep_their_extension() {
 fn every_destination_is_a_direct_child_of_the_folder() {
     let folder = Scratch::new("child");
     for name in ["../escape.txt", r"..\escape.txt", "/abs.txt", "C:evil.txt"] {
-        let Plan::Silent(path) = plan(Some(&folder.0), name, None, free) else {
+        let Plan::Silent(Reserved { path, .. }) = plan(Some(&folder.0), name, None, free) else {
             panic!("{name} asked");
         };
         assert_eq!(path.parent(), Some(folder.0.as_path()), "{name}");
@@ -309,28 +316,25 @@ fn downloads_differing_only_in_case_never_share_a_destination() {
     let folder = Scratch::new("case");
     remember_folder(&store, &folder.0).unwrap();
     let (first, _) = download(&store, &mut registry, "Report.pdf", None);
-    assert_eq!(first, Plan::Silent(folder.0.join("Report.pdf")));
+    assert_eq!(silent_path(&first), Some(folder.0.join("Report.pdf")));
     let (second, _) = download(&store, &mut registry, "report.pdf", None);
-    assert_eq!(second, Plan::Silent(folder.0.join("report (1).pdf")));
+    assert_eq!(silent_path(&second), Some(folder.0.join("report (1).pdf")));
 }
 
 #[test]
-fn a_silent_save_reserves_its_name_on_disk_and_release_removes_only_an_empty_placeholder() {
+fn a_silent_save_reserves_its_name_on_disk() {
     let folder = Scratch::new("reserve");
-    let Plan::Silent(first) = plan(Some(&folder.0), "a.txt", None, free) else {
+    let Plan::Silent(Reserved { path: first, .. }) = plan(Some(&folder.0), "a.txt", None, free)
+    else {
         panic!("asked");
     };
     assert_eq!(std::fs::metadata(&first).unwrap().len(), 0);
     // Without any registry claim, the reservation alone moves the next one on.
-    let Plan::Silent(second) = plan(Some(&folder.0), "a.txt", None, free) else {
+    let Plan::Silent(Reserved { path: second, .. }) = plan(Some(&folder.0), "a.txt", None, free)
+    else {
         panic!("asked");
     };
     assert_eq!(second, folder.0.join("a (1).txt"));
-    release_reservation(&first);
-    assert!(!first.exists());
-    std::fs::write(&second, b"downloaded").unwrap();
-    release_reservation(&second);
-    assert_eq!(std::fs::read(&second).unwrap(), b"downloaded");
 }
 
 #[test]

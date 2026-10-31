@@ -50,7 +50,7 @@ pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>
         claimed.contains(path)
     });
     let reservation = match &plan {
-        Plan::Silent(path) => Some(Reservation::adopt(settings, path.clone())),
+        Plan::Silent(reserved) => Some(Reservation::adopt(settings, reserved.clone())),
         Plan::Ask { .. } => None,
     };
     Planned {

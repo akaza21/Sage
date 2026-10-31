@@ -52,7 +52,7 @@ fn a_relative_or_oversized_download_folder_is_refused() {
         "INSERT INTO browser_download_folder VALUES (1, '', 0)",
         "INSERT INTO browser_download_folder VALUES (2, '/x', 0)",
         "INSERT INTO browser_download_folder VALUES (1, '/x', -1)",
-        "INSERT INTO browser_download_reservations VALUES ('')",
+        "INSERT INTO browser_download_reservations VALUES ('', 0, 0)",
     ] {
         assert!(connection.execute(sql, []).is_err(), "{sql}");
     }
@@ -99,25 +99,84 @@ fn a_conditional_save_loses_to_any_change_since_it_read_even_a_change_back() {
     assert_eq!(store.browser_download_folder().unwrap(), Some(dialog));
 }
 
+fn record(path: PathBuf) -> DownloadReservationRecord {
+    DownloadReservationRecord {
+        path,
+        volume: u64::MAX,
+        file_index: 7,
+    }
+}
+
 #[test]
-fn reservations_are_recorded_bounded_and_taken_once() {
+fn reservations_are_recorded_bounded_and_kept_until_forgotten() {
     let store = SettingsStore::in_memory().unwrap();
     let base = std::env::temp_dir();
     for index in 0..MAX_RESERVATIONS {
         assert!(
             store
-                .record_download_reservation(&base.join(format!("r{index}")))
+                .record_download_reservation(&record(base.join(format!("r{index}"))))
                 .unwrap()
         );
     }
     assert!(
         !store
-            .record_download_reservation(&base.join("over"))
+            .record_download_reservation(&record(base.join("over")))
             .unwrap()
     );
     store.forget_download_reservation(&base.join("r0")).unwrap();
-    let taken = store.take_download_reservations().unwrap();
-    assert_eq!(taken.len() as i64, MAX_RESERVATIONS - 1);
-    assert!(!taken.contains(&base.join("r0")));
-    assert!(store.take_download_reservations().unwrap().is_empty());
+    let listed = store.download_reservations().unwrap();
+    assert_eq!(listed.len() as i64, MAX_RESERVATIONS - 1);
+    assert!(listed.contains(&record(base.join("r1"))));
+    assert!(!listed.iter().any(|entry| entry.path == base.join("r0")));
+    // Listing does not consume.
+    assert_eq!(store.download_reservations().unwrap(), listed);
+}
+
+#[test]
+fn tables_from_earlier_development_builds_are_migrated() {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-settings-download-migrate-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("settings.db");
+    {
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE browser_download_folder (
+                   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                   path TEXT NOT NULL CHECK (length(path) BETWEEN 1 AND 4096)
+                 ) STRICT;
+                 INSERT INTO browser_download_folder VALUES (1, '/saved');
+                 CREATE TABLE browser_download_reservations (
+                   path TEXT PRIMARY KEY CHECK (length(path) BETWEEN 1 AND 4096)
+                 ) STRICT;
+                 INSERT INTO browser_download_reservations VALUES ('/saved/a.bin');",
+            )
+            .unwrap();
+    }
+    let store = SettingsStore::open(&path).unwrap();
+    assert_eq!(
+        store.browser_download_folder_record().unwrap(),
+        DownloadFolderRecord {
+            path: Some(PathBuf::from("/saved")),
+            revision: 1
+        }
+    );
+    // Identity-less records are dropped (their files are kept).
+    assert!(store.download_reservations().unwrap().is_empty());
+    store.clear_browser_download_folder().unwrap();
+    assert_eq!(store.browser_download_folder_record().unwrap().revision, 2);
+    drop(store);
+    // Opening again leaves the migrated tables alone.
+    assert_eq!(
+        SettingsStore::open(&path)
+            .unwrap()
+            .browser_download_folder_record()
+            .unwrap()
+            .revision,
+        2
+    );
+    std::fs::remove_dir_all(directory).unwrap();
 }

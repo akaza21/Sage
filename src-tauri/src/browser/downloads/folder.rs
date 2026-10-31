@@ -16,6 +16,8 @@ use std::{
 
 mod file_types;
 
+use super::identity::{self, FileIdentity};
+
 use file_types::RESERVED_STEMS;
 pub(crate) use file_types::{is_dangerous, is_dangerous_mime};
 
@@ -29,8 +31,8 @@ const FALLBACK_NAME: &str = "download";
 /// What to do with a download that is about to start.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Plan {
-    /// Save here without asking.
-    Silent(PathBuf),
+    /// Save here without asking; the placeholder is already reserved.
+    Silent(Reserved),
     /// Show the Save dialog. `remember` saves the chosen folder as the
     /// download folder; `directory` opens the dialog there.
     Ask {
@@ -68,7 +70,7 @@ pub(crate) fn plan(
         };
     }
     match unique_destination(&folder, &file_name, taken) {
-        Some(path) => Plan::Silent(path),
+        Some(reserved) => Plan::Silent(reserved),
         None => Plan::Ask {
             file_name,
             remember: false,
@@ -212,18 +214,27 @@ fn split_extension(name: &str) -> (&str, &str) {
     }
 }
 
+/// A placeholder [`unique_destination`] created: its path and which file it
+/// is, so it is only ever removed while it is still that file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reserved {
+    pub(crate) path: PathBuf,
+    pub(crate) identity: FileIdentity,
+}
+
 /// Reserves `folder/name`, or `folder/stem (n).ext` for the first free `n`,
 /// by creating it empty with `create_new`, so no existing file, folder or
 /// link is ever reused and two downloads (or another program) cannot claim
 /// the same name. Any error other than "already exists" fails closed, and
 /// the download asks instead. The result is always a direct child of
-/// `folder`; WebView2 writes over the empty placeholder, and
-/// [`release_reservation`] removes it if the download never does.
+/// `folder`; WebView2 writes over (or renames onto) the empty placeholder,
+/// and [`super::reservation::Reservation`] removes it if the download never
+/// does.
 pub(crate) fn unique_destination(
     folder: &Path,
     file_name: &str,
     taken: impl Fn(&Path) -> bool,
-) -> Option<PathBuf> {
+) -> Option<Reserved> {
     let (stem, extension) = split_extension(file_name);
     for attempt in 0..=MAX_SUFFIX {
         let name = if attempt == 0 {
@@ -245,20 +256,23 @@ pub(crate) fn unique_destination(
             .create_new(true)
             .open(&candidate)
         {
-            Ok(_) => return Some(candidate),
+            Ok(file) => {
+                let Some(identity) = identity::of_file(&file) else {
+                    // Without an identity it could never be released safely.
+                    drop(file);
+                    let _ = std::fs::remove_file(&candidate);
+                    return None;
+                };
+                return Some(Reserved {
+                    path: candidate,
+                    identity,
+                });
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return None,
         }
     }
     None
-}
-
-/// Removes a placeholder [`unique_destination`] reserved, but only while it
-/// is still an empty file: a finished or partly written download is kept.
-pub(crate) fn release_reservation(path: &Path) {
-    if std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() == 0) {
-        let _ = std::fs::remove_file(path);
-    }
 }
 
 /// Destinations of downloads still in flight, compared without case as on
