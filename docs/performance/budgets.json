@@ -4,8 +4,8 @@
     "webEntryJsGzipBytes": 130000,
     "webInitialStaticClosureGzipBytes": 130000,
     "webPathJsGzipBytes": {
-      "initial": 104476,
-      "agentOneChat": 211707,
+      "initial": 104423,
+      "agentOneChat": 208434,
       "editorShell": 188119,
       "editorDiff": 191294,
       "editorSearch": 193942,

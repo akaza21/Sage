@@ -1,4 +1,4 @@
-import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
+import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,

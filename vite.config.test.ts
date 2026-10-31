@@ -76,6 +76,7 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
   "src/features/files/fileRenameResult.ts",
@@ -175,7 +176,6 @@ const REQUIRED_DYNAMIC_FACADES = [
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [
-  "src/features/settings/agentSettingsState.ts",
   ...REQUIRED_DYNAMIC_FACADES,
   "src/app/agentDiffAdmission.ts",
   "src/app/agentDiffLoad.ts",
@@ -918,6 +918,14 @@ describe("desktop-native chunk topology", () => {
     }
     expect(groupedGraph.allModules).toEqual(ordinaryGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(ordinaryGraph.initialModules);
+    expect(
+      closureForModule(
+        ordinaryGraph,
+        "src/workbench/AgentWorkbenchBody.tsx",
+      )?.some((id) =>
+        id.endsWith("/src/features/settings/agentSettingsState.ts"),
+      ),
+    ).toBe(true);
     expect(
       groupedGraph.allModules.some((id) => id.endsWith(BROWSER_FIXTURE_MODULE)),
     ).toBe(false);

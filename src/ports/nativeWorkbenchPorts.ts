@@ -21,7 +21,6 @@ import {
   type TrashProjectResourceRequest,
   type TrashProjectResourceResult,
 } from "../domain/workbench";
-import { startNativeEditorWatchSession } from "./editorWatchSession";
 import { invokeNative } from "./nativeInvoke";
 import { nativeSettingsPort } from "./nativeSettingsPort";
 import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
@@ -146,7 +145,11 @@ const editor: EditorPort = {
   discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument> {
     return invokeNative("discard_editor_buffer", { resource });
   },
-  watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription> {
+  async watchEditorDocument(
+    resource: ResourceRef,
+  ): Promise<EditorWatchSubscription> {
+    const { startNativeEditorWatchSession } =
+      await import("./editorWatchSession");
     return startNativeEditorWatchSession(resource);
   },
 };

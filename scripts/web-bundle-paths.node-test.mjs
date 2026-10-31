@@ -287,7 +287,7 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps pin the original baselines at 0.5 percent", async () => {
+test("committed path caps tighten startup and Agent within the original 0.5 percent ceilings", async () => {
   const baseline = {
     initial: 103957,
     agentOneChat: 210654,
@@ -302,15 +302,16 @@ test("committed path caps pin the original baselines at 0.5 percent", async () =
       "utf8",
     ),
   );
-  assert.deepEqual(
-    budgets.bundle.webPathJsGzipBytes,
-    Object.fromEntries(
+  assert.deepEqual(budgets.bundle.webPathJsGzipBytes, {
+    ...Object.fromEntries(
       Object.entries(baseline).map(([name, bytes]) => [
         name,
         Math.floor(bytes * 1.005),
       ]),
     ),
-  );
+    initial: 104423,
+    agentOneChat: 208434,
+  });
   assert.equal(
     budgets.measurement.webBundlePaths.integrationAdjustment,
     undefined,

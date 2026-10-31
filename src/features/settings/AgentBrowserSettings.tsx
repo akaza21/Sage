@@ -81,54 +81,50 @@ function LiveTabSettings({
   const [history, setHistory] = useState(false);
   const [downloads, setDownloads] = useState(false);
   return (
-    <>
-      <div className="agent-settings__card">
-        <SettingsRow
-          title="Site permissions"
-          description="Review and revoke permissions for this live tab. Revoking reloads the page."
+    <div className="agent-settings__card">
+      <SettingsRow
+        title="Site permissions"
+        description="Review and revoke permissions for this live tab. Revoking reloads the page."
+      >
+        <button
+          type="button"
+          className="button button--compact"
+          aria-expanded={permissions}
+          onClick={() => setPermissions(!permissions)}
         >
-          <button
-            type="button"
-            className="button button--compact"
-            aria-expanded={permissions}
-            onClick={() => setPermissions(!permissions)}
-          >
-            Manage site permissions
-          </button>
-        </SettingsRow>
-        {permissions ? (
-          <BrowserSitePermissions tabId={tabId} showEmpty />
-        ) : null}
-        <SettingsRow
-          title="Browsing history"
-          description="Recent pages visited by this browser tab."
+          Manage site permissions
+        </button>
+      </SettingsRow>
+      {permissions ? <BrowserSitePermissions tabId={tabId} showEmpty /> : null}
+      <SettingsRow
+        title="Browsing history"
+        description="Recent pages visited by this browser tab."
+      >
+        <button
+          type="button"
+          className="button button--compact"
+          aria-expanded={history}
+          onClick={() => setHistory(!history)}
         >
-          <button
-            type="button"
-            className="button button--compact"
-            aria-expanded={history}
-            onClick={() => setHistory(!history)}
-          >
-            Manage browsing history
-          </button>
-        </SettingsRow>
-        {history ? <BrowsingHistory tabId={tabId} /> : null}
-        <SettingsRow
-          title="Downloads"
-          description="Review downloads, cancel active downloads and show completed files in their folder."
+          Manage browsing history
+        </button>
+      </SettingsRow>
+      {history ? <BrowsingHistory tabId={tabId} /> : null}
+      <SettingsRow
+        title="Downloads"
+        description="Review downloads, cancel active downloads and show completed files in their folder."
+      >
+        <button
+          type="button"
+          className="button button--compact"
+          aria-expanded={downloads}
+          onClick={() => setDownloads(!downloads)}
         >
-          <button
-            type="button"
-            className="button button--compact"
-            aria-expanded={downloads}
-            onClick={() => setDownloads(!downloads)}
-          >
-            Manage downloads
-          </button>
-        </SettingsRow>
-        {downloads ? <LiveTabDownloads tabId={tabId} /> : null}
-      </div>
-    </>
+          Manage downloads
+        </button>
+      </SettingsRow>
+      {downloads ? <LiveTabDownloads tabId={tabId} /> : null}
+    </div>
   );
 }
 

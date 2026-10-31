@@ -122,15 +122,11 @@ export const ChangesSurface = memo(function ChangesSurface({
           </button>
         }
       </div>
-      {scope === "lastTurn" ? (
-        <p className="changes-surface__hint">
-          Last turn snapshot · Refresh to update
-        </p>
-      ) : (
-        <p className="changes-surface__hint">
-          Project Git changes · not attributed to this Chat
-        </p>
-      )}
+      <p className="changes-surface__hint">
+        {scope === "lastTurn"
+          ? "Last turn snapshot · Refresh to update"
+          : "Project Git changes · not attributed to this Chat"}
+      </p>
       {error ? <p role="alert">{error}</p> : null}
       {result.entries.length === 0 && !result.truncated ? (
         <p className="resource-state">No changes in this scope.</p>
