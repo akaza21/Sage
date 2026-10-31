@@ -1,6 +1,8 @@
+use std::sync::{Arc, Mutex};
+
 use tauri::{LogicalPosition, LogicalSize, Manager, State};
 
-use super::BrowserState;
+use super::{BrowserState, BrowserTabs, page_controls::browser_hide, visibility::PageVisibility};
 
 /// The smallest step the platform can place a child webview by.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -69,15 +71,14 @@ pub(crate) async fn browser_set_bounds(
     {
         return Err("invalid browser bounds".into());
     }
-    let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
-    let tab = tabs.entries.get(&tab_id).ok_or("browser tab unavailable")?;
-    let webview = &tab.handle;
-    let visibility = tab.visibility.clone();
+    let (webview, visibility) = unlocked_tab(&state.tabs, &tab_id)?;
+    // Native getters wait on the main thread, whose WebView2 callbacks take
+    // `tabs`, so no native call may run while it is held.
     let scale = webview
         .window()
         .scale_factor()
         .map_err(|error| error.to_string())?;
-    let frame = snap_inward(
+    let Some(frame) = snap_inward(
         Frame {
             x,
             y,
@@ -86,8 +87,12 @@ pub(crate) async fn browser_set_bounds(
         },
         scale,
         PLATFORM_GRID,
-    )
-    .ok_or("invalid browser bounds")?;
+    ) else {
+        // Nothing of the frame is left to show, so the page must not stay
+        // visible at its previous bounds.
+        let app = webview.app_handle().clone();
+        return browser_hide(app, state, tab_id, None).await;
+    };
     webview
         .set_position(LogicalPosition::new(frame.x, frame.y))
         .and_then(|()| webview.set_size(LogicalSize::new(frame.width, frame.height)))
@@ -111,9 +116,34 @@ pub(crate) async fn browser_set_bounds(
         .map_err(|error| error.to_string())
 }
 
+/// Copies out `label`'s handle and placement flag, releasing `tabs` before
+/// the caller touches the native webview.
+fn unlocked_tab<T: Clone>(
+    tabs: &Mutex<BrowserTabs<T>>,
+    label: &str,
+) -> Result<(T, Arc<PageVisibility>), String> {
+    let tabs = tabs.lock().map_err(|error| error.to_string())?;
+    let tab = tabs.entries.get(label).ok_or("browser tab unavailable")?;
+    Ok((tab.handle.clone(), tab.visibility.clone()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Frame, PlacementGrid, snap_inward};
+    use std::sync::Mutex;
+
+    use super::{Frame, PlacementGrid, snap_inward, unlocked_tab};
+    use crate::browser::BrowserTabs;
+
+    #[test]
+    fn the_tab_lock_is_free_before_any_native_call() {
+        let tabs = Mutex::new(BrowserTabs::<usize>::new());
+        tabs.lock().unwrap().insert("browser-1".into(), 7, false);
+        let (handle, _visibility) = unlocked_tab(&tabs, "browser-1").unwrap();
+        assert_eq!(handle, 7);
+        // A WebView2 callback taking the lock now must not wait on placement.
+        assert!(tabs.try_lock().is_ok());
+        assert!(unlocked_tab(&tabs, "browser-2").is_err());
+    }
 
     fn frame(x: f64, y: f64, width: f64, height: f64) -> Frame {
         Frame {
