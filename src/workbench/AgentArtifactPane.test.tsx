@@ -864,8 +864,9 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
+    fireEvent.click(screen.getByLabelText("Resource details"));
     expect(screen.getByText("Opened by Sage")).toBeVisible();
-    expect(screen.getByText("VIEW ONLY")).toBeVisible();
+    expect(screen.getByText("View only")).toBeVisible();
     expect(screen.getByText("src/app.ts")).toBeVisible();
     expect(screen.getByText("1 of 2")).toHaveAttribute("aria-live", "polite");
     expect(
@@ -875,7 +876,7 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next artifact" }));
     expect(screen.queryByText("2 of 2")).toBeNull();
     expect(screen.queryByText("Opened by Sage")).toBeNull();
-    expect(screen.queryByText("VIEW ONLY")).toBeNull();
+    expect(screen.queryByText("View only")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open in Editor" })).toBeNull();
     expect(
@@ -905,6 +906,7 @@ describe("Agent artifact file chips", () => {
     render(<AgentArtifactPane />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
+    fireEvent.click(screen.getByLabelText("Resource details"));
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("src/app.ts"));
     expect(

@@ -35,6 +35,7 @@ describe("AgentArtifactHeader", () => {
       />,
     );
 
+    fireEvent.click(screen.getByLabelText("Resource details"));
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);

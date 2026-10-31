@@ -13,6 +13,8 @@ import type { WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { DiffHunks } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
+import { useAgentArtifactGitDiff } from "../../workbench/useAgentArtifactGitDiff";
+import { openAgentSnapshotSource } from "../../app/agentDiffSource";
 
 export function DiffSurface({
   tab,
@@ -43,6 +45,9 @@ function SnapshotDiffSurface({
     (state) => state.projectTransitioning,
   );
   const ref = tab.diffRef!;
+  const live = acpProjectionStoreFor(ref.chatId)(
+    (projection) => projection.page?.currentSessionId === ref.sessionId,
+  );
   const current = acpProjectionStoreFor(ref.chatId)(
     (projection) =>
       snapshotProjectionRevision(
@@ -55,7 +60,7 @@ function SnapshotDiffSurface({
     <DiffDocument
       tab={tab}
       unavailable={!current}
-      commentEnabled={commentEnabled && current}
+      commentEnabled={commentEnabled && current && live}
     />
   );
 }
@@ -88,12 +93,13 @@ function DiffDocument({
       ? state.diffs[diffCacheKey(tabRepository, tabResource, tab.diffRef)]
       : undefined,
   );
+  const scopedGit = useAgentArtifactGitDiff(tab);
   const diff = unavailable
     ? {
         phase: "error" as const,
         message: "This saved edit is unavailable for the current Chat session.",
       }
-    : cached;
+    : (scopedGit.diff ?? cached);
   const loadDiff = useWorkbenchStore((state) => state.loadDiff);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const change = isSnapshotDiffTab(tab)
@@ -133,6 +139,10 @@ function DiffDocument({
   const refreshDiff = () => {
     if (!tabResource || unavailable || !diff || diff.phase === "loading")
       return;
+    if (scopedGit.scope) {
+      scopedGit.refresh();
+      return;
+    }
     const key = diffCacheKey(tabRepository, tabResource, tab.diffRef);
     useWorkbenchStore.setState((state) => {
       const diffs = { ...state.diffs };
@@ -143,11 +153,18 @@ function DiffDocument({
   };
 
   useEffect(() => {
-    if (tabResource && !unavailable) {
+    if (tabResource && !unavailable && !scopedGit.scope) {
       if (tab.diffRef) void loadDiff(tabResource, tabRepository, tab.diffRef);
       else void loadDiff(tabResource, tabRepository);
     }
-  }, [loadDiff, tabResource, tabRepository, tab.diffRef, unavailable]);
+  }, [
+    loadDiff,
+    tabResource,
+    tabRepository,
+    tab.diffRef,
+    unavailable,
+    scopedGit.scope,
+  ]);
 
   return (
     <section
@@ -168,7 +185,11 @@ function DiffDocument({
         <span className="diff-toolbar__scope">
           {isSnapshotDiffTab(tab)
             ? "Saved agent change"
-            : "Changes since HEAD (or initial tree)"}
+            : scopedGit.scope === "staged"
+              ? "Staged changes"
+              : scopedGit.scope === "unstaged"
+                ? "Unstaged changes"
+                : "Changes since HEAD (or initial tree)"}
         </span>
         <span className="diff-toolbar__hint">Read-only</span>
         <div
@@ -187,12 +208,17 @@ function DiffDocument({
               <RefreshCw size={14} aria-hidden="true" />
             </button>
           ) : null}
-          {tabResource && !isSnapshotDiffTab(tab) ? (
+          {tabResource &&
+          (!isSnapshotDiffTab(tab) || (tab.diffRef && !unavailable)) ? (
             <button
               type="button"
-              aria-label="Open file"
-              title="Open file"
-              onClick={() => void openFile(tabResource)}
+              aria-label={tab.diffRef ? "View live source" : "Open file"}
+              title={tab.diffRef ? "View live source" : "Open file"}
+              onClick={() =>
+                void (tab.diffRef
+                  ? openAgentSnapshotSource(tab.diffRef)
+                  : openFile(tabResource))
+              }
             >
               <FileText size={14} aria-hidden="true" />
             </button>

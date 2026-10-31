@@ -41,10 +41,6 @@ import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import {
-  renderFileOrDiffCanvas,
-  renderRegisteredCanvas,
-} from "./surfaceRegistry";
-import {
   useAgentArtifactFollowLifecycle,
   useExpandOnNewArtifact,
   useFocusedBrowse,
@@ -58,14 +54,14 @@ const SubagentSurface = lazy(() =>
     default: module.SubagentSurface,
   })),
 );
-const AgentArtifactHeader = lazy(() =>
-  import("./AgentArtifactHeader").then((module) => ({
-    default: module.AgentArtifactHeader,
-  })),
-);
 const AgentArtifactTabStrip = lazy(() =>
   import("./AgentArtifactTabStrip").then((module) => ({
     default: module.AgentArtifactTabStrip,
+  })),
+);
+const AgentArtifactResourceView = lazy(() =>
+  import("./AgentArtifactResourceView").then((module) => ({
+    default: module.AgentArtifactResourceView,
   })),
 );
 
@@ -359,50 +355,44 @@ export function AgentArtifactPane({
               }}
             />
           </header>
-          {activeArtifact && activeArtifact.kind !== "browser" ? (
-            <Suspense fallback={null}>
-              <AgentArtifactHeader
-                key={activeArtifact.id}
-                tab={activeArtifact}
-                admitted={activeArtifactAdmitted}
-                page={focusedOwner ? focusedPage : null}
-                position={selectedPosition}
-                total={availableTargets.length}
-                onStep={stepArtifact}
-                onOpenInEditor={() => onOpenInEditor?.(activeArtifact.id)}
-              />
-            </Suspense>
-          ) : null}
-          <div
-            id={panelId}
-            role="tabpanel"
-            aria-label="Selected resource"
-            ref={setCanvasNode}
-            className="agent-artifact-pane__canvas"
-          >
-            {changes.surface}
-            {subagentSelected && focusedPage && subagentTarget ? (
-              <Suspense fallback={<p role="status">Loading subagent view…</p>}>
-                <SubagentSurface
-                  page={focusedPage}
-                  projectGeneration={String(nativeTransitionEpoch)}
-                  itemId={subagentTarget.itemId}
-                  agentKey={subagentTarget.agentKey}
-                />
-              </Suspense>
-            ) : null}
-            {!previewSelected && activeArtifact
-              ? activeArtifact.kind === "browser"
-                ? renderRegisteredCanvas("browser", activeArtifact)
-                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
-              : null}
-            {!changes.selected &&
-            !subagentSelected &&
-            !previewSelected &&
-            !activeArtifact ? (
-              <AgentArtifactEmptyState titleId={emptyTitleId} />
-            ) : null}
-          </div>
+          <Suspense fallback={null}>
+            <AgentArtifactResourceView
+              tab={activeArtifact}
+              showResource={!previewSelected}
+              panelId={panelId}
+              canvasRef={setCanvasNode}
+              header={{
+                admitted: activeArtifactAdmitted,
+                page: focusedOwner ? focusedPage : null,
+                position: selectedPosition,
+                total: availableTargets.length,
+                onStep: stepArtifact,
+                onOpenInEditor: () => {
+                  if (activeArtifact) onOpenInEditor?.(activeArtifact.id);
+                },
+              }}
+            >
+              {changes.surface}
+              {subagentSelected && focusedPage && subagentTarget ? (
+                <Suspense
+                  fallback={<p role="status">Loading subagent view…</p>}
+                >
+                  <SubagentSurface
+                    page={focusedPage}
+                    projectGeneration={String(nativeTransitionEpoch)}
+                    itemId={subagentTarget.itemId}
+                    agentKey={subagentTarget.agentKey}
+                  />
+                </Suspense>
+              ) : null}
+              {!changes.selected &&
+              !subagentSelected &&
+              !previewSelected &&
+              !activeArtifact ? (
+                <AgentArtifactEmptyState titleId={emptyTitleId} />
+              ) : null}
+            </AgentArtifactResourceView>
+          </Suspense>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
         </aside>
       </RetainedActivity>

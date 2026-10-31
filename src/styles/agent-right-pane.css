@@ -1,7 +1,9 @@
 .agent-artifact-header {
+  container: agent-resource-header / inline-size;
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
 }
@@ -29,7 +31,68 @@
 }
 
 .agent-artifact-header__title-row {
+  min-height: var(--control-height-compact);
+  gap: var(--space-1);
+}
+
+.agent-artifact-header__title-row > :not(.agent-artifact-header__identity) {
+  flex-shrink: 0;
+}
+
+.agent-artifact-header__file-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.agent-artifact-header__details,
+.file-header__details {
+  position: relative;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.agent-artifact-header summary,
+.file-header__details summary {
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.agent-artifact-header summary:hover {
+  background: var(--color-surface-hover);
+}
+
+.agent-artifact-header__detail-body,
+.file-header__details[open] > span {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  right: 0;
+  display: grid;
   gap: var(--space-2);
+  width: max-content;
+  max-width: min(80vw, 40ch);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-secondary);
+  background: var(--color-plane-raised);
+  overflow-wrap: anywhere;
+}
+
+.agent-artifact-header__detail-body code {
+  white-space: normal;
+}
+
+.agent-artifact-header__title-row > button {
+  white-space: nowrap;
+}
+
+.agent-artifact-header :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 .agent-artifact-header__identity {
@@ -37,6 +100,19 @@
   flex: 1 1 auto;
   gap: 4px;
   color: var(--color-text-secondary);
+}
+
+.agent-artifact-header__live {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+@container agent-resource-header (max-width: 420px) {
+  .file-header__preview {
+    font-size: 0;
+    gap: 0;
+  }
 }
 
 .agent-artifact-header__identity strong {

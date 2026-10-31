@@ -134,6 +134,7 @@ export function FileSurfaceContent({
         canPreview={canPreviewMarkdown(path) || canPreviewDiagram(path)}
         previewing={previewing}
         agentMarkdown={agentMarkdown}
+        agentMode={reviewOnly}
         onTogglePreview={onTogglePreview}
       />
       <FileEditorNotices

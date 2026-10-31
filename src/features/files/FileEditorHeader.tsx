@@ -2,6 +2,9 @@ import { Eye, FilePenLine } from "../../ui/leanIcons";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import { FilePathChips } from "./FilePathChips";
 import { unsavedState } from "./fileSurfaceCommands";
+import { useContext } from "react";
+import { createPortal } from "react-dom";
+import { AgentArtifactHeaderSlot } from "../../workbench/useAgentArtifactHeaderSlot";
 
 interface FileEditorHeaderProps {
   path: string;
@@ -15,6 +18,7 @@ interface FileEditorHeaderProps {
   canPreview?: boolean;
   previewing?: boolean;
   agentMarkdown?: boolean;
+  agentMode?: boolean;
   onTogglePreview?: () => void;
 }
 
@@ -30,8 +34,10 @@ export function FileEditorHeader({
   canPreview = false,
   previewing = false,
   agentMarkdown = false,
+  agentMode = false,
   onTogglePreview,
 }: FileEditorHeaderProps) {
+  const slot = useContext(AgentArtifactHeaderSlot);
   const saveState = saving
     ? { label: "Saving…", accessibleLabel: "Saving file" }
     : persisting
@@ -43,15 +49,34 @@ export function FileEditorHeader({
         ? unsavedState(usesMetaModifier())
         : null;
 
-  return (
-    <header className="file-header">
-      <span className="file-header__path">
-        <FilePathChips path={path} projectName={projectName} />
-      </span>
-      <span className="file-header__metadata">
-        UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()} disk
-        bytes
-      </span>
+  const content = (
+    <>
+      {!agentMode || !slot?.actions ? (
+        <span className="file-header__path">
+          <FilePathChips path={path} projectName={projectName} />
+        </span>
+      ) : null}
+      {agentMode ? (
+        slot?.details ? (
+          createPortal(
+            <span>
+              View only · UTF-8 · {lineEnding.toUpperCase()} ·{" "}
+              {diskByteLen.toLocaleString()} disk bytes
+            </span>,
+            slot.details,
+          )
+        ) : (
+          <span>
+            View only · UTF-8 · {lineEnding.toUpperCase()} ·{" "}
+            {diskByteLen.toLocaleString()} disk bytes
+          </span>
+        )
+      ) : (
+        <span className="file-header__metadata">
+          UTF-8 · {lineEnding.toUpperCase()} · {diskByteLen.toLocaleString()}{" "}
+          disk bytes
+        </span>
+      )}
       {saveState || canPreview ? (
         <span className="file-header__actions">
           {saveState ? (
@@ -98,6 +123,11 @@ export function FileEditorHeader({
           ) : null}
         </span>
       ) : null}
-    </header>
+    </>
+  );
+  return agentMode && slot?.actions ? (
+    createPortal(content, slot.actions)
+  ) : (
+    <header className="file-header">{content}</header>
   );
 }
