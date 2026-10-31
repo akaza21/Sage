@@ -30,6 +30,19 @@ pub(in crate::acp::service) enum ClosedShutdownAuthority {
 }
 
 impl Lane<'_> {
+    pub(in crate::acp::service) fn has_replacement_park_recovery(&self) -> bool {
+        matches!(
+            self.codex_recovery
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref(),
+            Some(PendingCodexRecovery::LiveHost(LiveHostRecovery {
+                phase: LiveHostRecoveryPhase::ReplacementPark,
+                ..
+            }))
+        )
+    }
+
     pub(super) fn take_live_host_recovery(&self, owner: &RuntimeOwner) -> Option<LiveHostRecovery> {
         let mut retained = self
             .codex_recovery

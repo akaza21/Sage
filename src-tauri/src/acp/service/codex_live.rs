@@ -97,7 +97,7 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
+pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
     let cleanup = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
     let reserve = Duration::from_millis(
         LIMITS.deadlines_ms.tree_termination.saturating_mul(2)

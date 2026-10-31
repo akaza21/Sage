@@ -115,6 +115,21 @@ fn full_lanes_park_the_least_recent_idle_runtime_and_a_failed_park_retains_recov
             .clone();
         assert_eq!(parked.state, SessionState::Ready);
         assert_eq!(parked.residency, crate::acp::lifecycle::Residency::Cold);
+        assert_eq!(
+            parked.next_runtime_epoch,
+            Some(RuntimeEpoch::new(2).unwrap())
+        );
+        for owner in owners.iter().skip(1) {
+            let page = setup.page(owner);
+            let session = page
+                .sessions
+                .as_slice()
+                .iter()
+                .find(|session| session.id == owner.session_id)
+                .unwrap();
+            assert_eq!(session.residency, crate::acp::lifecycle::Residency::Hot);
+            assert_eq!(session.runtime_epoch, Some(owner.runtime_epoch));
+        }
         setup.send_and_wait_completed(&overflow).await;
         for owner in owners.iter().skip(1).chain(std::iter::once(&overflow)) {
             setup.close(owner);

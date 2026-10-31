@@ -912,6 +912,61 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
 }
 
 #[test]
+fn unsettled_replacement_park_preserves_its_owner_and_other_admission_capacity() {
+    let (service, owner) =
+        tauri::async_runtime::block_on(ready_runtime_fixture("replacement-capacity"));
+    let host = Arc::new(
+        RuntimeHost::start_with_shutdown_recovery(
+            TestRuntime::scripted(
+                OperationFailure::Shutdown,
+                Arc::new(Mutex::new(OperationTrace::default())),
+            ),
+            Arc::new(RetryingShutdownRecovery {
+                attempts: Arc::new(AtomicUsize::new(0)),
+                epoch: owner.runtime_epoch.get(),
+            }),
+        )
+        .unwrap(),
+    );
+    host.activate(owner.clone()).unwrap();
+    service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
+    service.lane_at(0).retain_live_failure_recovery(
+        owner.clone(),
+        host,
+        LiveHostRecoveryPhase::ReplacementPark,
+    );
+    let revision = service
+        .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+        .unwrap()
+        .projection_revision;
+    let newcomer = RuntimeOwner {
+        chat_id: SageChatId::parse("chat-newcomer").unwrap(),
+        session_id: crate::acp::contract::SageAgentSessionId::parse("session-newcomer").unwrap(),
+        ..owner.clone()
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (available, claim) = service.claim_activation_lane(&newcomer, deadline).unwrap();
+    assert!(available.runtime.is_empty());
+    assert!(service.lane_at(0).codex_recovery.lock().unwrap().is_some());
+    drop(claim);
+    let (held, claim) = service.claim_activation_lane(&owner, deadline).unwrap();
+    assert_eq!(held.runtime.owner(), Some(owner.clone()));
+    assert!(matches!(
+        held.runtime.for_owner(&owner),
+        Err(super::super::super::runtime_slot::RuntimeSlotError::Recovery)
+    ));
+    assert_eq!(
+        service
+            .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
+            .unwrap()
+            .projection_revision,
+        revision
+    );
+    drop(claim);
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
 fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
     let (service, owner) =
         tauri::async_runtime::block_on(ready_runtime_fixture("steer-ack-timeout"));

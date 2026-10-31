@@ -26,8 +26,10 @@ impl AcpService {
             session_id: command.session_id.clone(),
             runtime_epoch: command.runtime_epoch,
         };
-        let (lane, _claim) = self.claim_activation_lane(&owner)?;
-        lane.activate_session(admitted, command, project_root).await
+        let deadlines = super::codex_live::deadlines()?;
+        let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
+        lane.activate_session(admitted, command, project_root, deadlines)
+            .await
     }
 
     pub(crate) fn send_session_turn(

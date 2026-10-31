@@ -4,6 +4,10 @@ use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SagePro
 #[path = "live_lanes_test_engine.rs"]
 mod engine;
 
+fn activation_deadline() -> Instant {
+    Instant::now() + Duration::from_secs(5)
+}
+
 fn service() -> AcpService {
     let database =
         crate::persistence::Database::open(std::path::Path::new(":memory:")).expect("database");
@@ -37,7 +41,7 @@ fn concurrent_activations_claim_distinct_lanes_until_capacity_is_reached() {
     for index in 0..LIVE_RUNTIME_LANES {
         let candidate = owner(&format!("a{index}"), 1);
         let (lane, claim) = service
-            .claim_activation_lane(&candidate)
+            .claim_activation_lane(&candidate, activation_deadline())
             .expect("a free lane");
         lane.runtime.reserve_start(candidate.clone()).unwrap();
         assert_eq!(
@@ -47,13 +51,13 @@ fn concurrent_activations_claim_distinct_lanes_until_capacity_is_reached() {
         claims.push(claim);
     }
     assert!(matches!(
-        service.claim_activation_lane(&owner("overflow", 1)),
+        service.claim_activation_lane(&owner("overflow", 1), activation_deadline()),
         Err(CodexSessionError::Capacity)
     ));
     drop(claims);
     // Starting lanes are neither free, recoverable, nor idle: still bounded.
     assert!(matches!(
-        service.claim_activation_lane(&owner("overflow", 1)),
+        service.claim_activation_lane(&owner("overflow", 1), activation_deadline()),
         Err(CodexSessionError::Capacity)
     ));
 }
@@ -62,13 +66,19 @@ fn concurrent_activations_claim_distinct_lanes_until_capacity_is_reached() {
 fn a_reactivated_session_returns_to_the_lane_that_holds_its_older_epoch() {
     let service = service();
     let first = owner("same", 1);
-    let (lane, claim) = service.claim_activation_lane(&owner("other", 1)).unwrap();
+    let (lane, claim) = service
+        .claim_activation_lane(&owner("other", 1), activation_deadline())
+        .unwrap();
     drop(claim);
     drop(lane);
-    let (held, claim) = service.claim_activation_lane(&first).unwrap();
+    let (held, claim) = service
+        .claim_activation_lane(&first, activation_deadline())
+        .unwrap();
     held.runtime.reserve_start(first.clone()).unwrap();
     drop(claim);
-    let (again, _claim) = service.claim_activation_lane(&owner("same", 2)).unwrap();
+    let (again, _claim) = service
+        .claim_activation_lane(&owner("same", 2), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&again.runtime, &held.runtime));
 }
 
@@ -249,7 +259,9 @@ fn lru_eviction_skips_non_resumable_conversations_and_uses_the_oldest_resumable_
     let _leases: Vec<_> = (0..LIVE_RUNTIME_LANES)
         .map(|index| idle_lane(&service, index, index != 0))
         .collect();
-    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
 }
 
@@ -260,10 +272,12 @@ fn non_resumable_idle_conversations_report_capacity_instead_of_losing_context() 
         .map(|index| idle_lane(&service, index, false))
         .collect();
     assert!(matches!(
-        service.claim_activation_lane(&owner("new", 1)),
+        service.claim_activation_lane(&owner("new", 1), activation_deadline()),
         Err(CodexSessionError::Capacity)
     ));
-    let (same, _claim) = service.claim_activation_lane(&owner("idle-0", 1)).unwrap();
+    let (same, _claim) = service
+        .claim_activation_lane(&owner("idle-0", 1), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&same.runtime, &service.lanes[0].runtime));
 }
 
@@ -277,7 +291,9 @@ fn retained_recovery_cannot_starve_resumable_idle_capacity() {
     let _leases: Vec<_> = (1..LIVE_RUNTIME_LANES)
         .map(|index| idle_lane(&service, index, true))
         .collect();
-    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
 }
 
@@ -288,7 +304,9 @@ fn a_reserved_turn_is_never_an_idle_eviction_candidate() {
         .map(|index| idle_lane(&service, index, true))
         .collect();
     let _turn = leases[0].reserve_turn().unwrap();
-    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
 }
 
@@ -300,7 +318,9 @@ fn never_used_or_unavailable_idle_hosts_do_not_block_parkable_capacity() {
         .collect();
     let first = owner("idle-1", 1);
     service.lanes[1].runtime.mark_recovery(&first).unwrap();
-    let (lane, _claim) = service.claim_activation_lane(&owner("new", 1)).unwrap();
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[2].runtime));
 }
 

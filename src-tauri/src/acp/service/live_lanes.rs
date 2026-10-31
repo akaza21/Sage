@@ -14,6 +14,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use crate::acp::{
@@ -185,7 +186,13 @@ impl AcpService {
     pub(super) fn claim_activation_lane(
         &self,
         owner: &RuntimeOwner,
+        deadline: Instant,
     ) -> Result<(Lane<'_>, ActivationClaim<'_>), CodexSessionError> {
+        // Reclaim a failed replacement before evicting another idle chat.
+        // A same-session activation must keep its original revision and lane.
+        if !self.lanes.iter().any(|lane| lane.holds_session(owner)) {
+            self.reclaim_replacement_parks(deadline);
+        }
         let candidates = self.activation_candidates(owner);
         for index in candidates {
             let lane = &self.lanes[index];
@@ -202,6 +209,30 @@ impl AcpService {
             }
         }
         Err(CodexSessionError::Capacity)
+    }
+
+    fn reclaim_replacement_parks(&self, deadline: Instant) {
+        let deadline = deadline
+            .min(Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close));
+        for (index, lane) in self.lanes.iter().enumerate() {
+            if Instant::now() >= deadline {
+                break;
+            }
+            if !lane.has_recovery()
+                || lane
+                    .activating
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_err()
+            {
+                continue;
+            }
+            let _claim = ActivationClaim { lane };
+            let lane = self.lane_at(index);
+            if lane.has_replacement_park_recovery() {
+                // Failure keeps recovery authority and must not starve other lanes.
+                let _ = lane.shutdown_codex_recovery(deadline);
+            }
+        }
     }
 
     fn activation_candidates(&self, owner: &RuntimeOwner) -> Vec<usize> {
