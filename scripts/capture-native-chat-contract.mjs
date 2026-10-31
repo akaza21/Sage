@@ -68,6 +68,7 @@ export function assertPrivacy(value) {
  * Base states whose witness the product hides at a capture width. The composer
  * drops its context meter in containers up to 280 px wide
  * (chat-container-controls.css), and the 480 window's chat column is one.
+ * Codex hides it there too (CODEX-PARITY/reference/37-narrow-window-480-*).
  */
 const BASE_STATE_WIDTHS = Object.freeze({ "context-meter": [1888, 720] });
 export function captureWidths(state) {
