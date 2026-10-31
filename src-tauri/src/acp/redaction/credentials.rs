@@ -165,9 +165,30 @@ pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
         || contains_token(token)
 }
 
+#[cfg(test)]
+thread_local! {
+    static TOKEN_SCAN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Bytes `contains_token` has examined on this thread, so tests can bound
+/// its work structurally instead of by wall-clock time.
+#[cfg(test)]
+pub(crate) fn token_scan_bytes() -> usize {
+    TOKEN_SCAN_BYTES.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+fn record_token_scan(bytes: usize) {
+    TOKEN_SCAN_BYTES.with(|scanned| scanned.set(scanned.get() + bytes));
+}
+
+#[cfg(not(test))]
+fn record_token_scan(_bytes: usize) {}
+
 pub(crate) fn contains_token(value: &str) -> bool {
     let bytes = value.as_bytes();
     for index in 0..bytes.len() {
+        record_token_scan(1);
         if index > 0 && bytes[index - 1].is_ascii_alphabetic() {
             continue;
         }
@@ -183,6 +204,7 @@ pub(crate) fn contains_token(value: &str) -> bool {
                     uppercase && (byte.is_ascii_uppercase() || byte.is_ascii_digit()),
                 )
             });
+            record_token_scan(length);
             if length == 16 && uppercase {
                 return true;
             }
@@ -207,6 +229,7 @@ pub(crate) fn contains_token(value: &str) -> bool {
         let (length, alphanumeric) = tail.fold((0usize, false), |(length, alphanumeric), byte| {
             (length + 1, alphanumeric || byte.is_ascii_alphanumeric())
         });
+        record_token_scan(length);
         if length >= 3 && alphanumeric {
             return true;
         }

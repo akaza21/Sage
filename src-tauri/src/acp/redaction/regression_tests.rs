@@ -1,4 +1,4 @@
-use super::{Mode, redact};
+use super::{Mode, credentials::token_scan_bytes, redact};
 
 #[test]
 fn home_paths_hide_windows_names_and_preserve_posix_prose() {
@@ -255,15 +255,23 @@ fn diagnostic_home_paths_keep_adjacent_command_operators() {
 
 #[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
-    let input = "0AKIA".repeat(65_536);
-    let started = std::time::Instant::now();
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
-        assert_eq!(
-            redact("test", &input, input.len() * 10, mode).unwrap(),
-            input
-        );
-    }
-    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    const REPEATS: usize = 4_096;
+    let scanned = |repeats: usize| {
+        let input = "0AKIA".repeat(repeats);
+        let before = token_scan_bytes();
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            assert_eq!(
+                redact("test", &input, input.len() * 10, mode).unwrap(),
+                input
+            );
+        }
+        token_scan_bytes() - before
+    };
+    let [one, two, three] = [1, 2, 3].map(|factor| scanned(factor * REPEATS));
+    // Each further block of rejected AKIA candidates costs the same scan
+    // work, so the work grows linearly with the input, not quadratically.
+    assert!(one > 0);
+    assert_eq!(three - two, two - one);
 }
 
 #[test]
