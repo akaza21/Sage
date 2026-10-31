@@ -6,7 +6,6 @@ import { useWorkbenchStore } from "../app/store";
 import { subscribeWorkspaceNotifySearch } from "../features/files/workspaceNotifyCompose";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
-import { usesMetaModifier } from "../ui/shortcutLabel";
 
 /** Refreshes Git state on outside changes while `git.autoRefresh` is on. */
 export function useRepositoryAutoRefresh() {
@@ -20,16 +19,26 @@ export function useRepositoryAutoRefresh() {
     return startRepositoryAutoRefresh({
       refresh: async () => {
         // The store counts each refresh it starts; a busy store starts none.
-        const before = useWorkbenchStore.getState().repositoryRequestGeneration;
-        await useWorkbenchStore.getState().refreshRepository();
-        return (
-          useWorkbenchStore.getState().repositoryRequestGeneration !== before
-        );
+        // An unchanged status keeps its object (`shareRepositoryStatus`).
+        const before = useWorkbenchStore.getState();
+        await before.refreshRepository();
+        const after = useWorkbenchStore.getState();
+        if (
+          after.repositoryRequestGeneration ===
+          before.repositoryRequestGeneration
+        ) {
+          return "skipped";
+        }
+        return after.repositories === before.repositories
+          ? "unchanged"
+          : "changed";
       },
       changeStamp: () => desktop.getRepositoryChangeStamp(),
       subscribeNotices: subscribeWorkspaceNotifySearch,
-      // macOS watches folders, which misses edits made in place.
-      pollAlways: usesMetaModifier(),
+      // Only the Windows watcher sees every edit. macOS watches folders,
+      // which misses a file edited in place, and the Linux and macOS watchers
+      // stop at 64 folders, saying so only once, when the watch starts.
+      pollAlways: !/windows/i.test(navigator.userAgent),
     });
   }, [enabled, projectId]);
 }
