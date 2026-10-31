@@ -534,6 +534,7 @@ test.describe("ED02 picker visual states", () => {
 
   test("captures the modal-safe handoff target picker", async ({ page }) => {
     const workbench = await openScenario(page, "agent-picker-handoff", "agent");
+    await settleTranscriptAtEnd(page);
     const sourceChat = page.getByRole("region", {
       name: "Chat pane Source chat",
       exact: true,
