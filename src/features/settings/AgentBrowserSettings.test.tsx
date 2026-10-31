@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import { useAgentSettingsState } from "./agentSettingsState";
 import { AgentBrowserSettings } from "./AgentBrowserSettings";
+import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
   browserHistory,
@@ -79,6 +80,25 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initial, true);
   useAgentSettingsState.getState().close();
+});
+
+it("finds live browsing history by its setting label and focuses its real control", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+    { target: { value: "history" } },
+  );
+  const result = screen.getByRole("button", {
+    name: "Browser: Browsing history",
+  });
+  await waitFor(() => expect(result).toBeEnabled());
+  fireEvent.click(result);
+  const control = await screen.findByRole("button", {
+    name: "Manage browsing history",
+  });
+  await waitFor(() => expect(control).toHaveFocus());
+  fireEvent.click(control);
+  expect(await screen.findByText("https://example.com/visited")).toBeVisible();
 });
 
 it("scopes native history, permissions and downloads to the requested live browser tab", async () => {

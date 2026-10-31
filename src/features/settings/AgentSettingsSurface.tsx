@@ -61,39 +61,34 @@ const searchControls: readonly {
   page: AgentSettingsPage;
   label: string;
   aliases: string;
-  selector: string;
+  selector?: string;
   capability?: "browser" | "access";
 }[] = [
   {
     page: "Appearance",
     label: "Interface font size",
     aliases: "text",
-    selector: '[aria-label="Interface font size"]',
   },
   {
     page: "Appearance",
     label: "Interface density",
     aliases: "compact comfortable spacing",
-    selector: '[aria-label="Interface density"]',
   },
   {
     page: "Chats",
     label: "Default access",
     aliases: "permissions approval",
-    selector: '[aria-label="Default access"]',
     capability: "access",
   },
   {
     page: "Chats",
     label: "Current harness",
     aliases: "agent",
-    selector: '[aria-label="Current harness"]',
   },
   {
     page: "Chats",
     label: "Current model",
     aliases: "model",
-    selector: '[aria-label="Current model"]',
   },
   {
     page: "Browser",
@@ -149,14 +144,12 @@ export function AgentSettingsSurface() {
     const observer = new MutationObserver(() => {
       if (focus()) observer.disconnect();
     });
-    const pageElement = document.querySelector(".agent-settings__page");
-    if (pageElement)
-      observer.observe(pageElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["disabled"],
-      });
+    observer.observe(document.querySelector(".agent-settings__page")!, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["disabled"],
+    });
     const timer = window.setTimeout(
       () => observer.disconnect(),
       CONTROL_FOCUS_TIMEOUT_MS,
@@ -256,14 +249,17 @@ export function AgentSettingsSurface() {
             <button
               className="button button--compact"
               type="button"
-              key={control.selector}
+              key={control.label}
               disabled={
                 (control.capability === "browser" && !historyAvailable) ||
                 (control.capability === "access" && !accessAvailable)
               }
               onClick={() => {
                 open(control.page);
-                setFocusRequest({ selector: control.selector });
+                setFocusRequest({
+                  selector:
+                    control.selector ?? `[aria-label="${control.label}"]`,
+                });
               }}
             >
               {control.page}: {control.label}

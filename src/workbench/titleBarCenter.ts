@@ -16,53 +16,58 @@ interface AgentHistory {
 }
 const emptyHistory: AgentHistory = { scope: "", entries: [], index: -1 };
 
+function recordAgentDestination(previous: AgentHistory): AgentHistory {
+  const state = useWorkbenchStore.getState();
+  if (!state.project || state.projectTransitioning) {
+    return emptyHistory;
+  }
+  const scope = `${state.project.id}:${state.projectGeneration}:${state.nativeTransitionEpoch}`;
+  const chats = state.tabs.filter(
+    (tab) => tab.kind === "chat" && !tab.id.startsWith("side-"),
+  );
+  const settings = useAgentSettingsState.getState().page;
+  const chat = chats.find((tab) => tab.id === state.activeTabId) ?? chats[0];
+  const destination = settings
+    ? `settings:${settings}`
+    : chat
+      ? `chat:${chat.id}`
+      : null;
+  const current =
+    previous.scope === scope ? previous : { ...emptyHistory, scope };
+  const valid = (entry: string) =>
+    entry.startsWith("settings:") ||
+    chats.some((tab) => `chat:${tab.id}` === entry);
+  const before = current.entries.slice(0, current.index + 1).filter(valid);
+  const after = current.entries.slice(current.index + 1).filter(valid);
+  if (!destination || before.at(-1) === destination) {
+    if (before.length + after.length === current.entries.length) return current;
+    return {
+      scope,
+      entries: [...before, ...after],
+      index: before.length - 1,
+    };
+  }
+  const entries = [...before, destination].slice(-AGENT_HISTORY_LIMIT);
+  return { scope, entries, index: entries.length - 1 };
+}
+
 /** Disposable history of destinations already admitted in the current project. */
 export function useAgentNavigationHistory(enabled: boolean) {
-  const [history, setHistory] = useState(emptyHistory);
+  const [history, setHistory] = useState(() =>
+    enabled ? recordAgentDestination(emptyHistory) : emptyHistory,
+  );
+  const [observing, setObserving] = useState(enabled);
   const [busy, setBusy] = useState(false);
   const navigating = useRef(false);
+  if (observing !== enabled) {
+    setObserving(enabled);
+    if (enabled) setHistory(recordAgentDestination);
+  }
   const record = useCallback(() => {
-    if (navigating.current) return;
-    const state = useWorkbenchStore.getState();
-    if (!state.project || state.projectTransitioning) {
-      setHistory(emptyHistory);
-      return;
-    }
-    const scope = `${state.project.id}:${state.projectGeneration}:${state.nativeTransitionEpoch}`;
-    const chats = state.tabs.filter(
-      (tab) => tab.kind === "chat" && !tab.id.startsWith("side-"),
-    );
-    const settings = useAgentSettingsState.getState().page;
-    const chat = chats.find((tab) => tab.id === state.activeTabId) ?? chats[0];
-    const destination = settings
-      ? `settings:${settings}`
-      : chat
-        ? `chat:${chat.id}`
-        : null;
-    setHistory((previous) => {
-      const current =
-        previous.scope === scope ? previous : { ...emptyHistory, scope };
-      const valid = (entry: string) =>
-        entry.startsWith("settings:") ||
-        chats.some((tab) => `chat:${tab.id}` === entry);
-      const before = current.entries.slice(0, current.index + 1).filter(valid);
-      const after = current.entries.slice(current.index + 1).filter(valid);
-      if (!destination || before.at(-1) === destination) {
-        if (before.length + after.length === current.entries.length)
-          return current;
-        return {
-          scope,
-          entries: [...before, ...after],
-          index: before.length - 1,
-        };
-      }
-      const entries = [...before, destination].slice(-AGENT_HISTORY_LIMIT);
-      return { scope, entries, index: entries.length - 1 };
-    });
+    if (!navigating.current) setHistory(recordAgentDestination);
   }, []);
   useEffect(() => {
     if (!enabled) return;
-    record();
     const unsubscribeWorkbench = useWorkbenchStore.subscribe(
       (state, previous) => {
         if (

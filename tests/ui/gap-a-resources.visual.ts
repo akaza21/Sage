@@ -34,7 +34,8 @@ test("Files uses integrated controls and keeps focused row rings inside its scro
         .getState()
         .admit({ ...admission, tabId: tab.id });
   });
-  await page.locator(".agent-chat-pane").click();
+  const launcher = page.locator(".agent-chat-pane--focused textarea");
+  await launcher.focus();
   await page.keyboard.press("Control+p");
   const files = page.getByRole("dialog", { name: "Files", exact: true });
   await expect(files).toBeVisible();
@@ -104,10 +105,12 @@ test("Files uses integrated controls and keeps focused row rings inside its scro
   await expect(
     page.locator('.file-surface[aria-label$="file-23.ts"]'),
   ).toBeVisible();
+  await launcher.focus();
   await page.keyboard.press("Control+p");
   await expect(files).toBeVisible();
   await files.getByRole("button", { name: "Close", exact: true }).click();
   await expect(files).toHaveCount(0);
+  await expect(launcher).toBeFocused();
   await expectNoViewportOverflow(page);
 });
 
