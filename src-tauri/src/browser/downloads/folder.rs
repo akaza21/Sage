@@ -94,9 +94,9 @@ pub(crate) fn admit_folder(path: &Path) -> Option<PathBuf> {
     Some(canonical)
 }
 
-/// Creates and removes a uniquely named probe file. Directory permission
-/// bits do not say whether this user can write there (ACLs, read-only
-/// shares), so only a real create does.
+/// Windows creates a probe file and deletes it through its own handle, so
+/// nothing is ever deleted by name.
+#[cfg(windows)]
 fn is_writable(folder: &Path) -> bool {
     // A random (version 4 UUID) name, created exclusively, so no other
     // program can predict it or have a file there.
@@ -104,23 +104,34 @@ fn is_writable(folder: &Path) -> bool {
     let Ok(placeholder) = placeholder::create(&probe) else {
         return false;
     };
-    remove_probe(placeholder);
+    placeholder.delete_if_empty();
     true
 }
 
-/// Windows deletes the probe through its own handle.
-#[cfg(windows)]
-fn remove_probe(probe: Placeholder) {
-    probe.delete_if_empty();
+/// Unix cannot delete by handle, so it writes no probe at all and asks the
+/// kernel instead: may this process (by its effective ids) create entries in
+/// the folder? Nothing is created, so nothing is ever deleted.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn is_writable(folder: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(path) = std::ffi::CString::new(folder.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: `path` is a valid NUL-terminated string that outlives the call.
+    let result = unsafe {
+        libc::faccessat(
+            libc::AT_FDCWD,
+            path.as_ptr(),
+            libc::W_OK | libc::X_OK,
+            libc::AT_EACCESS,
+        )
+    };
+    result == 0
 }
 
-/// Unix has no delete-by-handle; the probe's random name stands in for
-/// one, as with `mkstemp`.
-#[cfg(not(windows))]
-fn remove_probe(probe: Placeholder) {
-    let path = probe.path.clone();
-    drop(probe);
-    let _ = std::fs::remove_file(path);
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+fn is_writable(folder: &Path) -> bool {
+    std::fs::metadata(folder).is_ok_and(|metadata| !metadata.permissions().readonly())
 }
 
 /// `std::fs::canonicalize` returns `\\?\C:\…` on Windows. WebView2 and the

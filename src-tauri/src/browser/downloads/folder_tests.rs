@@ -386,3 +386,20 @@ fn the_write_probe_leaves_nothing_behind() {
     let left: Vec<_> = std::fs::read_dir(&folder.0).unwrap().collect();
     assert!(left.is_empty(), "{left:?}");
 }
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn the_unix_write_check_creates_nothing_and_follows_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    let folder = Scratch::new("access");
+    assert!(is_writable(&folder.0));
+    std::fs::set_permissions(&folder.0, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let read_only = is_writable(&folder.0);
+    std::fs::set_permissions(&folder.0, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // SAFETY: geteuid has no preconditions.
+    let root = unsafe { libc::geteuid() } == 0;
+    assert_eq!(read_only, root, "only root may write to a 0o555 folder");
+    assert!(!is_writable(&folder.0.join("missing")));
+    let left: Vec<_> = std::fs::read_dir(&folder.0).unwrap().collect();
+    assert!(left.is_empty(), "{left:?}");
+}
