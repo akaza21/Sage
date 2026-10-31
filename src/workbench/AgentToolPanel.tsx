@@ -308,6 +308,7 @@ export function AgentToolPanel({
       <p>Only this Chat's resources · up to 128 recent files</p>
       <input
         ref={input}
+        className="input"
         aria-label="Filter chat files"
         placeholder="Search chat files"
         maxLength={256}
@@ -328,6 +329,7 @@ export function AgentToolPanel({
         {rows.map((entry) => (
           <button
             type="button"
+            className="button button--compact"
             key={resourceKey(entry.resource)}
             disabled={!entry.intent && !entry.tabId}
             title={
@@ -352,7 +354,11 @@ export function AgentToolPanel({
         ) : null}
       </div>
       {error ? <p role="alert">{error}</p> : null}
-      <button type="button" onClick={onDismiss}>
+      <button
+        className="button button--compact"
+        type="button"
+        onClick={onDismiss}
+      >
         Close
       </button>
     </ModalDialog>
