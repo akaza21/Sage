@@ -29,6 +29,7 @@ export function useEditorHistoryKeys(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
       const apple = usesMetaModifier();
       const forward = matchesPlatformChord(
         keymapBinding("navigateForward"),

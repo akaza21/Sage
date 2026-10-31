@@ -342,7 +342,7 @@ export function matchesPlatformChord(
     admits(chord.alt, event.altKey) &&
     (event.key.toLowerCase() === chord.key ||
       // Shift turns "-" into "_" on most layouts.
-      (chord.key === "-" && event.code === "Minus") ||
+      (chord.key === "-" && event.shiftKey && event.key === "_") ||
       (apple && event.altKey && optionLetter(event.code) === chord.key))
   );
 }

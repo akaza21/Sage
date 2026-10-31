@@ -40,29 +40,45 @@ function fileTab(resource: ResourceRef): WorkbenchTab {
   };
 }
 
-function showFile(resource: ResourceRef) {
+function showFile(resource: ResourceRef, phase = "ready") {
   useWorkbenchStore.setState({
     tabs: [fileTab(resource)],
     activeTabId: fileTab(resource).id,
     activeEditor: {
-      phase: "ready",
+      phase,
       resource,
     } as unknown as WorkbenchState["activeEditor"],
   });
 }
 
+const tallText = Text.of(Array.from({ length: 400 }, () => "xx"));
+/** The editor's caret on a line of the active File, as FileSurface reports it. */
+const caretAt = (line: number, editable = true) =>
+  useEditorCaretStore.getState().publish(tallText, (line - 1) * 3, editable);
+
 let opened: FileLocationNavigationRequest[] = [];
 let openable = true;
+let readable = true;
+// Like the real store: the target waits for the editor to apply it.
+let setsTarget = false;
 
 beforeEach(() => {
   opened = [];
   openable = true;
+  readable = true;
+  setsTarget = false;
   useWorkbenchStore.setState({
     project: { id: "project" } as WorkbenchState["project"],
     nativeTransitionEpoch: 4,
     openFileLocation: vi.fn(async (request: FileLocationNavigationRequest) => {
       opened.push(request);
-      if (openable) showFile(request.resource);
+      if (!openable) return;
+      showFile(request.resource, readable ? "ready" : "error");
+      if (setsTarget) {
+        useWorkbenchStore.setState({
+          fileNavigationTarget: { ...request, projectGeneration: 1 },
+        });
+      }
     }),
   });
 });
@@ -194,5 +210,104 @@ describe("editor history (ED-2b)", () => {
     showFile(a);
     useEditorCaretStore.getState().publish(Text.of(["x", "y"]), 0);
     expect(canGoBack()).toBe(false);
+  });
+
+  it("adds nothing while a Go Back arrives, then follows the caret again", async () => {
+    watchEditorHistory();
+    setsTarget = true;
+    showFile(a);
+    caretAt(1);
+    caretAt(200); // the first move settles where a opened
+    showFile(b);
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    caretAt(5);
+    await goBack();
+    expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 200 });
+    // a's editor mounts at its top, then the target is applied and taken.
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    caretAt(200);
+    useWorkbenchStore.setState({ fileNavigationTarget: null });
+    caretAt(203);
+    expect(canGoBack()).toBe(false);
+    expect(canGoForward()).toBe(true);
+    await goForward();
+    expect(opened.at(-1)).toMatchObject({ resource: b, lineNumber: 5 });
+  });
+
+  it("lets a later Go Back go when a target was never applied", async () => {
+    setsTarget = true;
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    notePlace(place(c, 1));
+    await goBack(); // b opens in its Markdown preview: nothing applies it
+    await goBack();
+    expect(opened.at(-1)?.resource).toEqual(a);
+    expect(canGoForward()).toBe(true);
+  });
+
+  it("drops a place whose File can't be read, so the next Go Back moves on", async () => {
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    notePlace(place(c, 1));
+    readable = false;
+    await goBack();
+    expect(opened.at(-1)?.resource).toEqual(b);
+    readable = true;
+    await goBack();
+    expect(opened.at(-1)?.resource).toEqual(a);
+    await goForward();
+    expect(opened.at(-1)?.resource).toEqual(c);
+  });
+
+  it("keeps the place when the Editor is busy for a moment", async () => {
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    openable = false;
+    useWorkbenchStore.setState({ fileRenameInFlight: true });
+    await goBack();
+    expect(canGoBack()).toBe(true);
+    expect(canGoForward()).toBe(false);
+  });
+
+  it("ignores the top-of-File caret of an editor coming back from another tab", async () => {
+    watchEditorHistory();
+    showFile(a);
+    caretAt(1);
+    caretAt(2);
+    caretAt(60);
+    useEditorCaretStore.getState().clear(); // a Diff tab, then a again
+    caretAt(1);
+    expect(canGoBack()).toBe(true);
+    await goBack();
+    expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 2 });
+  });
+
+  it("does not note a read-only File's caret", () => {
+    watchEditorHistory();
+    showFile(a);
+    caretAt(1, false);
+    showFile(b);
+    caretAt(1, false);
+    expect(canGoBack()).toBe(false);
+  });
+
+  it("keeps Go Forward when the File got shorter and the caret lands elsewhere", async () => {
+    watchEditorHistory();
+    setsTarget = true;
+    showFile(a);
+    caretAt(1);
+    caretAt(200);
+    showFile(b);
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    await goBack();
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    caretAt(50); // a now ends at line 50
+    useWorkbenchStore.setState({ fileNavigationTarget: null });
+    expect(canGoBack()).toBe(false);
+    expect(canGoForward()).toBe(true);
   });
 });

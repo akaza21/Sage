@@ -61,11 +61,21 @@ describe("editor history keys (ED-2b)", () => {
       false,
     );
     press({ key: "-", code: "Minus", ctrlKey: true });
-    press({ key: "_", code: "Minus", ctrlKey: true, shiftKey: true });
+    // On a German layout "-" sits on the Slash key.
+    press({ key: "_", code: "Slash", ctrlKey: true, shiftKey: true });
+    // Control+ß is on the Minus key there, and is not Go back.
+    press({ key: "ß", code: "Minus", ctrlKey: true });
     await vi.waitFor(() => {
       expect(history.goBack).toHaveBeenCalledTimes(1);
       expect(history.goForward).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("ignores the keys while an IME is composing", async () => {
+    renderHook(() => useEditorHistoryKeys(true));
+    press({ key: "ArrowLeft", altKey: true, isComposing: true });
+    await settle();
+    expect(history.goBack).not.toHaveBeenCalled();
   });
 
   it("leaves the chord to a text field or terminal", async () => {

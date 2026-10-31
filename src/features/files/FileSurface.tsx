@@ -85,6 +85,7 @@ export function FileSurface({
       editor?.phase === "ready" &&
       !!resource &&
       sameResource(editor.resource, resource),
+    !readOnly,
   );
 
   const reportLimitExceeded = useCallback(
