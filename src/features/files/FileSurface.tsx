@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
+import { watchEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -84,6 +85,7 @@ export function FileSurface({
       editor?.phase === "ready" &&
       !!resource &&
       sameResource(editor.resource, resource),
+    !readOnly,
   );
 
   const reportLimitExceeded = useCallback(
@@ -179,6 +181,11 @@ export function FileSurface({
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
+
+  // Go back and Go forward (ED-2b) follow the editable File's caret.
+  useEffect(() => {
+    if (!readOnly) watchEditorHistory();
+  }, [readOnly]);
 
   // The command palette (ED-2a) runs the same actions as the editor's keys.
   const commandsRef = useRef<FileSurfaceCommands>({
