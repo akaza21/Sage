@@ -123,7 +123,7 @@
 }
 
 .tree__row > svg:first-child {
-  transition: transform 90ms ease;
+  transition: transform var(--motion-duration-fast) ease;
 }
 
 .tree__chevron--expanded {

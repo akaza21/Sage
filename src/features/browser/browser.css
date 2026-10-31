@@ -489,12 +489,7 @@
   pointer-events: none;
 }
 .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
-  animation: browser-download-spin 1s linear infinite;
-}
-@keyframes browser-download-spin {
-  to {
-    transform: rotate(1turn);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {

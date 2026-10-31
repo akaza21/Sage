@@ -390,6 +390,7 @@
   --motion-duration-exit: 50ms; /* s3/f0004-f0005: closed within one 60 ms frame */
   --motion-duration-fade: 150ms; /* s3/f0021-f0024 send; s2/f0048 jump */
   --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
+  --motion-duration-indicator: 200ms; /* turn-navigator dash grow and tint */
 
   /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
@@ -702,6 +703,7 @@ textarea:disabled,
     --motion-duration-exit: 0ms;
     --motion-duration-fade: 0ms;
     --motion-duration-bounce: 0ms;
+    --motion-duration-indicator: 0ms;
   }
 
   *,
@@ -854,5 +856,13 @@ textarea:disabled,
   }
   50% {
     opacity: 0.35;
+  }
+}
+
+/* The one loading spinner rotation; surfaces pace it with
+   --motion-duration-spin so every indicator turns at the same speed. */
+@keyframes sage-spin {
+  to {
+    transform: rotate(1turn);
   }
 }

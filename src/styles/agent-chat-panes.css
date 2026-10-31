@@ -240,13 +240,7 @@
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: var(--radius-circle);
-  animation: agent-chat-chip-spin var(--motion-duration-spin) linear infinite;
-}
-
-@keyframes agent-chat-chip-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

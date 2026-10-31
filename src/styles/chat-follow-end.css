@@ -90,11 +90,11 @@
 }
 
 .chat-follow-end[data-mode="activity"] > svg {
-  animation-delay: 125ms;
+  animation-delay: calc(var(--motion-duration-bounce) / 8);
 }
 
 .chat-follow-end[data-mode="activity"]::after {
-  animation-delay: 250ms;
+  animation-delay: calc(var(--motion-duration-bounce) / 4);
 }
 
 @keyframes sage-dot-bounce {
