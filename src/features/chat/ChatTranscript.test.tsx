@@ -658,7 +658,7 @@ describe("ChatTranscript side chats", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
-  it("shows Thinking, not a Working header, while a side chat has only started", async () => {
+  it("shows neutral waiting feedback while a side chat awaits its first event", async () => {
     const side = page("running");
     side.chatId = SIDE as never;
     side.turns[0].items = [
@@ -672,7 +672,9 @@ describe("ChatTranscript side chats", () => {
       view(side, { id: "project-1", name: "Sage" }, false),
     );
     await settleLazyModules();
-    expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+    expect(screen.getByText("Waiting for response…")).toHaveClass(
+      "acp-live-shimmer",
+    );
     expect(container.textContent).not.toMatch(/Working/);
   });
 });

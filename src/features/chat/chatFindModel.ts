@@ -51,6 +51,7 @@ function foldedOffsets(text: string): number[] {
 export function findChatMatches(
   turns: readonly TurnProjection[],
   query: string,
+  expandedTurns: ReadonlySet<string> = new Set(),
 ): ChatFindResult {
   const result: ChatFindResult = {
     matches: [],
@@ -61,8 +62,14 @@ export function findChatMatches(
   const needle = query.toLowerCase();
   if (!needle) return result;
   let budget = MAX_CHAT_FIND_SCAN_CHARS;
+  let sourceBudget = MAX_CHAT_FIND_SCAN_CHARS;
   for (const turn of turns) {
-    for (const message of chatTurnText(turn)) {
+    for (const message of chatTurnText(turn, expandedTurns.has(turn.id))) {
+      if (message.sourceChars > sourceBudget) {
+        result.scanLimited = true;
+        return result;
+      }
+      sourceBudget -= message.sourceChars;
       if (message.previewLimited) result.previewLimited = true;
       for (const [segment, { text }] of message.segments.entries()) {
         if (budget < text.length) {

@@ -70,6 +70,18 @@ export function ChatFindSession({
   // the matches keep the reader's place instead of resetting to the first.
   const [selected, setSelected] = useState<{ query: string; key: string }>();
   const [revision, setRevision] = useState(0);
+  const [expandedKey, setExpandedKey] = useState("");
+  const readVisibleText = useCallback(() => {
+    setExpandedKey(
+      [
+        ...scrollport.querySelectorAll<HTMLDetailsElement>(
+          "details[data-worked-turn-id][open]",
+        ),
+      ]
+        .map((node) => node.dataset.workedTurnId!)
+        .join("\0"),
+    );
+  }, [scrollport]);
   useEffect(() => {
     const timer = setTimeout(
       () => setSettledQuery(query),
@@ -78,8 +90,9 @@ export function ChatFindSession({
     return () => clearTimeout(timer);
   }, [query]);
   const result = useMemo(
-    () => findChatMatches(turns, settledQuery),
-    [turns, settledQuery],
+    () =>
+      findChatMatches(turns, settledQuery, new Set(expandedKey.split("\0"))),
+    [turns, settledQuery, expandedKey],
   );
   const pending = query !== settledQuery;
   const matches = query && !pending ? result.matches : NO_MATCHES;
@@ -103,6 +116,7 @@ export function ChatFindSession({
     matches,
     current: index,
     revision,
+    onVisibilityChange: readVisibleText,
   });
   useEffect(() => {
     const surface = scrollport.closest(".chat-surface") ?? scrollport;

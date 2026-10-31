@@ -38,7 +38,6 @@ export function ChatTranscriptTurnSummary({
   turn,
   hasActivities,
   children,
-  thinkingPlaceholder = false,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
@@ -76,10 +75,10 @@ export function ChatTranscriptTurnSummary({
       </WorkedTurnTerminal>
     ) : null;
 
-  if (!terminal && !hasActivities && thinkingPlaceholder)
+  if (!terminal && !hasActivities)
     return (
-      <p className="acp-thought acp-live-shimmer" data-activity-kind="thought">
-        Thinking
+      <p className="acp-thought acp-live-shimmer" role="status">
+        {turn.state === "sending" ? "Starting agent…" : "Waiting for response…"}
       </p>
     );
   if (!terminal) {
@@ -95,6 +94,7 @@ export function ChatTranscriptTurnSummary({
     <>
       <details
         className="chat-transcript-work"
+        data-worked-turn-id={turn.id}
         open={expanded}
         onToggle={(event) => {
           if (event.currentTarget.open !== expanded)
@@ -142,14 +142,9 @@ export function ChatTranscriptFooter({
   if (!text.trim()) return null;
   // A native answer here is the latest Turn's, which is terminal
   // (lastAssistantItem); a legacy one retries only off native ACP.
-  const retryAction = page
-    ? page.turns.at(-1)?.state === "cancelled" ||
-      page.turns.at(-1)?.state === "interrupted"
-      ? onRetry
-      : undefined
-    : !useNativeAcp
-      ? onRetry
-      : undefined;
+  const stopped =
+    page && ["cancelled", "interrupted"].includes(page.turns.at(-1)!.state);
+  const retryAction = stopped || !useNativeAcp ? onRetry : undefined;
 
   return (
     <>

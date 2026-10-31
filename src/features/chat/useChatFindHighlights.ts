@@ -46,6 +46,7 @@ export function useChatFindHighlights({
   matches,
   current,
   revision,
+  onVisibilityChange,
 }: {
   scrollport: HTMLElement;
   navigationRef: RefObject<TurnListNavigation | null>;
@@ -53,6 +54,7 @@ export function useChatFindHighlights({
   current: number;
   /** Bumped by each step, so stepping onto the same match re-centres it. */
   revision: number;
+  onVisibilityChange?: () => void;
 }) {
   const owner = useRef(Symbol("chat-find"));
   const revealed = useRef("");
@@ -72,6 +74,7 @@ export function useChatFindHighlights({
     let frame: number | null = null;
     const paint = () => {
       frame = null;
+      onVisibilityChange?.();
       const ranges = chatMatchRanges(scrollport, matches);
       const focus = match ? ranges.get(match.key) : undefined;
       if (focus) ranges.delete(match!.key);
@@ -89,13 +92,25 @@ export function useChatFindHighlights({
     };
     // Text edits keep live Ranges valid; only mounting changes the set.
     const observer = new MutationObserver(schedule);
-    observer.observe(scrollport, { childList: true, subtree: true });
+    observer.observe(scrollport, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["open"],
+    });
     paint();
     return () => {
       observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [scrollport, navigationRef, matches, match, selection]);
+  }, [
+    scrollport,
+    navigationRef,
+    matches,
+    match,
+    selection,
+    onVisibilityChange,
+  ]);
   useEffect(() => {
     const identity = owner.current;
     return () => publishChatHighlights(identity, null);

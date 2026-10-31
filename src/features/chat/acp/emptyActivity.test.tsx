@@ -119,11 +119,12 @@ describe("empty turn activity", () => {
     expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
 
-  it("keeps Working visible while waiting for the first token", () => {
+  it("shows neutral waiting feedback until the first activity arrives", () => {
     const { container } = renderTurn("running", []);
-    expect(
-      container.querySelector(".chat-transcript-work--running"),
-    ).toBeVisible();
+    expect(screen.getByText("Waiting for response…")).toHaveAttribute(
+      "role",
+      "status",
+    );
     expect(container.querySelector("details.chat-transcript-work")).toBeNull();
   });
 

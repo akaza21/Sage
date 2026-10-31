@@ -1,6 +1,7 @@
 import type { AcpItem, TurnProjection } from "../../domain/acp";
 import {
   renderMarkdownPreview,
+  MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
   type InlineFormat,
 } from "../files/markdownPreview";
 import { terminalTurnStates } from "./acp/statusSemantics";
@@ -14,6 +15,7 @@ export interface ChatTextSegment {
 }
 
 export interface ChatTextMessage {
+  sourceChars: number;
   itemId: string;
   role: "user" | "assistant";
   segments: readonly ChatTextSegment[];
@@ -24,6 +26,7 @@ export interface ChatTextMessage {
 // Keyed by the immutable projection Turn, so a streaming update recomputes
 // only the Turn that changed and dropped Turns are collected with it.
 const cache = new WeakMap<TurnProjection, readonly ChatTextMessage[]>();
+const expandedCache = new WeakMap<TurnProjection, readonly ChatTextMessage[]>();
 
 function flatten(spans: readonly InlineFormat[]): string {
   return spans
@@ -80,8 +83,12 @@ function segments(source: string) {
 }
 
 /** The user prompt(s) and the presented final answer of one Turn. */
-export function chatTurnText(turn: TurnProjection): readonly ChatTextMessage[] {
-  const cached = cache.get(turn);
+export function chatTurnText(
+  turn: TurnProjection,
+  expanded = false,
+): readonly ChatTextMessage[] {
+  const projectionCache = expanded ? expandedCache : cache;
+  const cached = projectionCache.get(turn);
   if (cached) return cached;
   const primary = turn.items.filter(
     (item): item is TextItem =>
@@ -101,12 +108,30 @@ export function chatTurnText(turn: TurnProjection): readonly ChatTextMessage[] {
         .at(-1)
     : undefined;
   const messages = primary
-    .filter((item) => item.payload.role === "user" || item === answer)
-    .map((item) => ({
-      itemId: item.id,
-      role: item.payload.role as "user" | "assistant",
-      ...segments(item.payload.text),
-    }));
-  cache.set(turn, messages);
+    .filter(
+      (item) =>
+        item.payload.role === "user" ||
+        (item.payload.role === "assistant" &&
+          (item === answer || expanded || !terminalTurnStates.has(turn.state))),
+    )
+    .map((item) => {
+      let rendered: ReturnType<typeof segments> | undefined;
+      const read = () => (rendered ??= segments(item.payload.text));
+      return {
+        itemId: item.id,
+        role: item.payload.role as "user" | "assistant",
+        sourceChars: Math.min(
+          item.payload.text.length,
+          MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
+        ),
+        get segments() {
+          return read().segments;
+        },
+        get previewLimited() {
+          return read().previewLimited;
+        },
+      };
+    });
+  projectionCache.set(turn, messages);
   return messages;
 }

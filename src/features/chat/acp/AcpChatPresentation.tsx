@@ -7,7 +7,6 @@ import type { AgentDiffRef } from "../../../domain/agentDiff";
 import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { acpDesktop } from "../../../services/acpDesktop";
-import { isSideChatId } from "../../../workbench/sideChatState";
 import { AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
@@ -170,7 +169,6 @@ const Turn = memo(
             ))}
             <ChatTranscriptTurnSummary
               turn={turn}
-              thinkingPlaceholder={isSideChatId(page.chatId)}
               hasActivities={
                 workingItems.length > 0 ||
                 (turn.browserOperations?.length ?? 0) > 0 ||

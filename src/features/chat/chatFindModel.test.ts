@@ -17,6 +17,48 @@ function text(id: string, role: "user" | "assistant", value: string) {
 }
 
 describe("retained chat find", () => {
+  it("stops before parsing further live messages when source scanning reaches its budget", () => {
+    const current = {
+      ...turn(
+        Array.from(
+          { length: 21 },
+          (_, index) =>
+            ({
+              ...text(
+                `live-${index}`,
+                "assistant",
+                index === 20 ? "needle" : "x".repeat(256 * 1024),
+              ),
+              ordinal: index,
+            }) as AcpItem,
+        ),
+      ),
+      state: "running" as const,
+    };
+    const result = findChatMatches([current], "needle");
+    expect(result.matches).toEqual([]);
+    expect(result.scanLimited).toBe(true);
+  });
+  it("finds live prose and only exposes interim prose while Worked is expanded", () => {
+    const current = turn([
+      {
+        ...text("interim", "assistant", "visible needle"),
+        ordinal: 1,
+      } as AcpItem,
+      { ...text("final", "assistant", "final answer"), ordinal: 2 } as AcpItem,
+    ]);
+    expect(
+      findChatMatches([{ ...current, state: "running" }], "needle").matches.map(
+        (match) => match.itemId,
+      ),
+    ).toEqual(["interim"]);
+    expect(findChatMatches([current], "needle").matches).toEqual([]);
+    expect(
+      findChatMatches([current], "needle", new Set([current.id])).matches.map(
+        (match) => match.itemId,
+      ),
+    ).toEqual(["interim"]);
+  });
   it("gives every match a distinct key, even for identical text", () => {
     const current = turn([
       text("answer", "assistant", "needle\n\nneedle\n\n- needle needle"),
