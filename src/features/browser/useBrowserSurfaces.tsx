@@ -1,4 +1,15 @@
 import { useRef, useState, type RefObject } from "react";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+
+export function ClosedBrowserBoundary({ tabId }: { tabId: string }) {
+  return (
+    <LazyModuleBoundary
+      load={loadClosedBrowser}
+      label="Closed browser"
+      render={(Surface) => <Surface tabId={tabId} />}
+    />
+  );
+}
 
 /** Menu and native shortcuts share the same focus and dismissal lifecycle. */
 export function useBrowserFind(
@@ -27,9 +38,22 @@ export function useBrowserFind(
     },
     closeFind: () => {
       setFindOpen(false);
-      if (launcher.current?.isConnected) launcher.current.focus();
-      else address.current?.focus();
+      (launcher.current?.isConnected
+        ? launcher.current
+        : address.current
+      )?.focus();
       stop();
     },
   };
 }
+
+export const loadBrowserNewTab = () =>
+  import("./ClosedBrowserSurface").then((module) => module.loadBrowserNewTab());
+export const loadClosedBrowser = () =>
+  import("./ClosedBrowserSurface").then((module) => ({
+    default: module.ClosedBrowserSurface,
+  }));
+export const loadBrowserFind = () =>
+  import("./BrowserFindControls").then((module) => ({
+    default: module.BrowserFindControls,
+  }));

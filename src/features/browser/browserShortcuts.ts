@@ -14,6 +14,13 @@ export function dispatchBrowserChromeShortcut(
   dispatch: (action: BrowserShortcut) => void,
 ): void {
   if (!(event.target instanceof Node) || !root.contains(event.target)) return;
+  if (
+    event.key === "Escape" &&
+    (event.target as Element).closest?.(
+      "[role=menu],[role=dialog],.browser-surface__find",
+    )
+  )
+    return;
   const action = browserShortcutFor(event, loading);
   if (!action) return;
   event.preventDefault();
@@ -23,7 +30,6 @@ export function dispatchBrowserChromeShortcut(
 
 interface BrowserShortcutActions {
   address: HTMLInputElement | null;
-  find: () => HTMLInputElement | null;
   control: (action: "back" | "forward" | "reload" | "stop") => void;
   findOpen: () => void;
   zoom: (delta: number) => void;

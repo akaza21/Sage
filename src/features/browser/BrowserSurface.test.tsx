@@ -108,10 +108,10 @@ const tab: WorkbenchTab = {
   dirty: false,
 };
 
-it("shows a closed placeholder for a restored browser without contacting native state", () => {
+it("shows a closed placeholder for a restored browser without contacting native state", async () => {
   render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
   expect(
-    screen.getByText(/browser session closed when Sage restarted/i),
+    await screen.findByText(/browser session closed when Sage restarted/i),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Open new browser" }),
@@ -134,7 +134,9 @@ it("keeps a failed browser replacement retryable and prevents duplicate pending 
   });
   try {
     render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open new browser" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open new browser" }),
+    );
     const pending = screen.getByRole("button", { name: "Opening browser…" });
     expect(pending).toBeDisabled();
     fireEvent.click(pending);
@@ -186,7 +188,7 @@ it("focuses Find from menu and shortcut, submits the query, and restores its lau
   const launcher = screen.getByRole("button", { name: "More options" });
   fireEvent.click(launcher);
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
-  const query = screen.getByRole("textbox", { name: "Find text" });
+  const query = await screen.findByRole("textbox", { name: "Find text" });
   expect(query).toHaveFocus();
   fireEvent.change(query, { target: { value: "needle" } });
   fireEvent.submit(query.closest("form")!);
@@ -204,6 +206,28 @@ it("focuses Find from menu and shortcut, submits the query, and restores its lau
     key: "Escape",
   });
   expect(address).toHaveFocus();
+});
+
+it("closes Find locally on Escape while a page is loading", async () => {
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "https://example.com/",
+    revision: "1",
+    loading: true,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("button", { name: "Stop loading" });
+  const address = screen.getByRole("textbox", { name: "Address or search" });
+  address.focus();
+  fireEvent.keyDown(address, { key: "f", ctrlKey: true });
+  const query = await screen.findByRole("textbox", { name: "Find text" });
+  fireEvent.keyDown(query, { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "Find text" })).toBeNull();
+  expect(address).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Stop loading" })).toBeVisible();
 });
 
 it("routes Browser settings to Agent settings with the originating tab", async () => {

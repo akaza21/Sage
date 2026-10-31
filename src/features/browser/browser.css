@@ -317,47 +317,6 @@
   color: var(--color-accent);
   font-size: var(--font-size-xs);
 }
-.browser-surface__find {
-  position: absolute;
-  z-index: 6;
-  /* Native pages paint above HTML. Float inside the existing toolbar bounds
-     so Find stays visible while the page and its matches stay visible too. */
-  top: var(--space-1);
-  right: var(--space-2);
-  display: flex;
-  width: max-content;
-  max-width: calc(100% - var(--space-4));
-  align-items: center;
-  gap: var(--space-1);
-  border: 1px solid var(--browser-control-border);
-  border-radius: var(--radius-lg);
-  background: var(--browser-control-fill);
-  box-shadow: var(--browser-popover-shadow);
-}
-
-.browser-surface__find {
-  flex-wrap: nowrap;
-  padding: 4px 8px;
-}
-.browser-surface__find input {
-  flex: 1 1 120px;
-  min-width: 0;
-}
-.browser-surface__find :is(input, button) {
-  height: var(--control-height-compact);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--browser-control-border);
-  border-radius: var(--radius-sm);
-  color: var(--browser-control-text);
-  background: var(--browser-address-fill);
-}
-.browser-surface__find button:hover:not(:disabled) {
-  background: var(--browser-control-hover);
-}
-.browser-surface__find :focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: calc(-1 * var(--focus-ring-width));
-}
 .browser-surface__error {
   z-index: 1;
   padding: 4px 8px;

@@ -1,13 +1,11 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { ClosedBrowserSurface } from "./ClosedBrowserSurface";
 import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useWorkbenchStore } from "../../app/store";
 import { useBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../../domain/workbench";
 import {
   browserControl,
-  browserCaptureScreenshot,
   browserFind,
   browserHistory,
   browserNavigate,
@@ -27,23 +25,22 @@ import {
 } from "./browserAddress";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
-import { copyPngToClipboard } from "./browserClipboard";
 import { BrowserDrawers } from "./BrowserSitePermissions";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
-import {
-  BrowserFindControls,
-  BrowserNavigationControls,
-} from "./BrowserNavigationControls";
+import { BrowserNavigationControls } from "./BrowserNavigationControls";
 import {
   performBrowserShortcut,
   useBrowserShortcuts,
 } from "./browserShortcuts";
 import { useBrowserPlacement } from "./useBrowserPlacement";
-import { useBrowserFind } from "./useBrowserFind";
+import {
+  useBrowserFind,
+  loadBrowserNewTab,
+  ClosedBrowserBoundary,
+  loadBrowserFind,
+} from "./useBrowserSurfaces";
 import "./browser.css";
-import { loadBrowserNewTab } from "./browserNewTabLoader";
-
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
   const { favicon, url, title, revision, loading, error } = status;
@@ -53,7 +50,7 @@ function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
-  if (tab.status === "closed") return <ClosedBrowserSurface tabId={tab.id} />;
+  if (tab.status === "closed") return <ClosedBrowserBoundary tabId={tab.id} />;
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -220,16 +217,15 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     const revision = navigation?.revision;
     if (!revision) return;
     const epoch = screenshotEpoch.current;
+    const current = () => epoch === screenshotEpoch.current;
     setError(null);
     setScreenshotStatus("Capturing screenshot…");
     try {
-      const screenshot = await browserCaptureScreenshot(tab.id, revision);
-      if (epoch !== screenshotEpoch.current) return;
-      await copyPngToClipboard(screenshot.pngBase64);
-      if (epoch !== screenshotEpoch.current) return;
-      setScreenshotStatus("Screenshot copied to clipboard");
+      const { copyPageScreenshot } = await import("./browserClipboard");
+      if (await copyPageScreenshot(tab.id, revision, current))
+        setScreenshotStatus("Screenshot copied to clipboard");
     } catch (cause) {
-      if (epoch !== screenshotEpoch.current) return;
+      if (!current()) return;
       setScreenshotStatus(null);
       setError(
         `Screenshot could not be copied: ${String(cause).slice(0, 384)}`,
@@ -263,15 +259,14 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
 
   function openHistory() {
     setHistoryOpen(true);
-    void browserHistory(tab.id)
-      .then(setHistoryEntries)
-      .catch((cause) => setError(String(cause).slice(0, 512)));
+    void pageAction(async () =>
+      setHistoryEntries(await browserHistory(tab.id)),
+    );
   }
 
-  useBrowserShortcuts(surface, tab.id, Boolean(navigation?.loading), (action) =>
+  useBrowserShortcuts(surface, tab.id, !!navigation?.loading, (action) =>
     performBrowserShortcut(action, {
       address: addressField.current,
-      find: () => findField.current,
       control: (command) => void control(command),
       findOpen: openFind,
       zoom: changeZoom,
@@ -328,7 +323,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
               tabId={tab.id}
               ready={page !== null}
               chats={chats}
-              pageRevision={String(navigation?.revision ?? "")}
+              pageRevision={navigation?.revision ?? ""}
               operation={agentPresence}
               attachmentEpoch={attachmentEpoch}
               onStopped={() => setAttachmentEpoch((current) => current + 1)}
@@ -338,20 +333,27 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         />
       </div>
       {findOpen ? (
-        <BrowserFindControls
-          findField={findField}
-          findText={findText}
-          onFindTextChange={setFindText}
-          onFind={(action) =>
-            void pageAction(() =>
-              browserFind(
-                tab.id,
-                action,
-                action === "start" ? findText : undefined,
-              ),
-            )
-          }
-          onClose={closeFind}
+        <LazyModuleBoundary
+          load={loadBrowserFind}
+          label="Find in page"
+          fallback={null}
+          render={(BrowserFindControls) => (
+            <BrowserFindControls
+              findField={findField}
+              findText={findText}
+              onFindTextChange={setFindText}
+              onFind={(action) =>
+                void pageAction(() =>
+                  browserFind(
+                    tab.id,
+                    action,
+                    action === "start" ? findText : undefined,
+                  ),
+                )
+              }
+              onClose={closeFind}
+            />
+          )}
         />
       ) : null}
       {error ? (

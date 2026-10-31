@@ -424,7 +424,7 @@ it("groups supported page controls in an overflow menu without dead features", a
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
   expect(
-    screen.getByRole("textbox", { name: "Find text" }),
+    await screen.findByRole("textbox", { name: "Find text" }),
   ).toBeInTheDocument();
 });
 it("opens native print for the loaded tab from the menu", async () => {
@@ -628,7 +628,9 @@ it("contains browser chrome inside the Agent canvas and styles page actions", as
   expect(css).toMatch(
     /\.browser-surface__menu button\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
   );
-  expect(css).toMatch(/\.browser-surface__toolbar\s*\{[^}]*height:\s*44px;/s);
+  expect(css).toMatch(
+    /\.browser-surface__toolbar\s*\{[^}]*height:\s*var\(--browser-toolbar-height\);/s,
+  );
   expect(css).toMatch(
     /\.browser-surface__nav-group\s*\{[^}]*background:\s*var\(--browser-control-fill\);/s,
   );
@@ -749,7 +751,7 @@ it("offers committed origin, copy, external open, zoom and find on the active ta
   fireEvent.click(screen.getByRole("menuitem", { name: "Zoom in" }));
   await waitFor(() => expect(browserZoom).toHaveBeenCalledWith(tab.id, 125));
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+  fireEvent.change(await screen.findByRole("textbox", { name: "Find text" }), {
     target: { value: "example" },
   });
   fireEvent.click(screen.getByRole("button", { name: /^Find$/ }));
