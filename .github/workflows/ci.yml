@@ -35,15 +35,19 @@ on:
 permissions:
   contents: read
 
-# One run per branch: a new push, or a requested platform run, supersedes the
-# run already in flight for the same head.
+# One run per source branch: a new push, or a requested platform run,
+# supersedes the run already in flight for the same head. The key names the
+# repository the branch lives in, so a fork's branch never shares a group with
+# a branch of the same name here.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   plan:
     name: Plan lanes
+    # Draft pull requests run nothing until they are marked ready for review.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -60,8 +64,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
-          DRAFT: ${{ github.event.pull_request.draft }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          FORCED: ${{ github.event.forced }}
+          AFTER: ${{ github.sha }}
           PLATFORMS: ${{ inputs.platforms }}
           REPOSITORY: ${{ github.repository }}
           # Paths the Rust crate compiles in or reads in its tests.
@@ -70,21 +76,31 @@ jobs:
           set -euo pipefail
           frontend=true
           rust=true
+          # Both sides of a rename count, so moving a file out of a Rust path
+          # still runs Rust.
+          names='.filename, (.previous_filename // empty)'
           case "$EVENT" in
             pull_request)
-              if [ "$DRAFT" = "true" ]; then
-                frontend=false
-                rust=false
-              else
-                # The files API lists at most 3000 files; past that, assume Rust changed.
-                gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" \
-                  --jq '.[].filename' > changed-files
-                if [ "$(wc -l < changed-files)" -lt 3000 ] && ! grep -Eq "$RUST_PATHS" changed-files; then
-                  rust=false
-                fi
+              # The files API lists at most 3000 files.
+              gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files" \
+                --jq ".[] | $names" > changed-files
+              limit=3000
+              ;;
+            push)
+              # A new branch or a force push has no reliable base to compare.
+              if [ -n "${BEFORE//0/}" ] && [ "$FORCED" != "true" ]; then
+                # The compare API lists at most 300 files.
+                gh api "repos/$REPOSITORY/compare/$BEFORE...$AFTER" \
+                  --jq ".files[] | $names" > changed-files
+                limit=300
               fi
               ;;
           esac
+          # Past the API's file limit the list is incomplete, so Rust runs.
+          if [ -f changed-files ] && [ "$(wc -l < changed-files)" -lt "$limit" ] \
+            && ! grep -Eq "$RUST_PATHS" changed-files; then
+            rust=false
+          fi
 
           windows=false
           macos=false
@@ -176,7 +192,7 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
@@ -203,7 +219,9 @@ jobs:
 
   merge-gate:
     name: Merge gate
-    if: always()
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     needs:
       - plan
       - frontend
@@ -242,8 +260,10 @@ jobs:
             echo "- Frontend and policy: $FRONTEND"
             echo "- Rust on $RUST_OS: $RUST"
             echo "- Windows budget lane: $SMOKE_CLI"
-            if [ "$SMOKE_CLI_PLANNED" != "true" ]; then
-              echo
-              echo "Windows and macOS were not run here; request them with workflow_dispatch or record a local run."
-            fi
+            for platform in windows macos; do
+              case "$RUST_OS" in
+                *"$platform-latest"*) ;;
+                *) echo "- Not run on $platform: request it with workflow_dispatch or record a local run." ;;
+              esac
+            done
           } >> "$GITHUB_STEP_SUMMARY"

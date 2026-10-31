@@ -93,3 +93,58 @@ test("CI keeps hosted-runner spend bounded", async () => {
   }
   assert.match(jobBlock(workflow, "plan"), /case "\$\{PLATFORMS:-linux\}" in/);
 });
+
+test("CI plans Rust from both sides of every changed path", async () => {
+  const plan = jobBlock(await readFile(workflowPath, "utf8"), "plan");
+  const rustPaths = plan.match(/^ {10}RUST_PATHS: (.+)$/m);
+  assert.ok(rustPaths, "the plan job must name the Rust paths");
+  const rustPath = new RegExp(rustPaths[1]);
+
+  // Each changed-file listing emits a rename's old path as well as its new one.
+  assert.match(
+    plan,
+    /^ {10}names='\.filename, \(\.previous_filename \/\/ empty\)'$/m,
+  );
+  assert.match(
+    plan,
+    /pulls\/\$PR_NUMBER\/files" \\\n\s*--jq "\.\[\] \| \$names"/,
+  );
+  assert.match(
+    plan,
+    /compare\/\$BEFORE\.\.\.\$AFTER" \\\n\s*--jq "\.files\[\] \| \$names"/,
+  );
+
+  const renamedOutOfRust = {
+    filename: "src/app/moved.ts",
+    previous_filename: "src-tauri/src/moved.rs",
+  };
+  const listed = [
+    renamedOutOfRust.filename,
+    renamedOutOfRust.previous_filename,
+  ];
+  assert.ok(listed.some((file) => rustPath.test(file)));
+
+  for (const file of [
+    "src-tauri/src/lib.rs",
+    "testdata/acp/codex/config-v1.toml",
+    "tests/fixtures/harness-traces/claude-code/smoke/frames.jsonl",
+    "src/features/chat/acp/rendererRecreationPacket.ts",
+    "rust-toolchain.toml",
+    ".github/workflows/ci.yml",
+  ]) {
+    assert.ok(rustPath.test(file), `${file} must run Rust`);
+  }
+  for (const file of ["README.md", "src/app/App.tsx", "package.json"]) {
+    assert.ok(!rustPath.test(file), `${file} alone must not run Rust`);
+  }
+});
+
+test("draft pull requests start no jobs", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const notDraft =
+    "github.event_name != 'pull_request' || !github.event.pull_request.draft";
+  assert.ok(jobBlock(workflow, "plan").includes(`if: ${notDraft}`));
+  const mergeGate = jobBlock(workflow, "merge-gate");
+  assert.ok(mergeGate.includes("always() &&"));
+  assert.ok(mergeGate.includes(`(${notDraft})`));
+});
