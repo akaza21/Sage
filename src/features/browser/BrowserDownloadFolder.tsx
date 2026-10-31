@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   admitDownloadFolder,
@@ -27,23 +27,19 @@ export function BrowserDownloadFolder() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Every folder value applied bumps this, so the first snapshot can tell
+  // whether an event or a button reply arrived while it was in flight.
+  const version = useRef(0);
+  const apply = (value: Folder) => {
+    version.current += 1;
+    setFolder(value);
+  };
+
   useEffect(() => {
     let live = true;
-    browserDownloadFolder()
-      .then(
-        (value) => {
-          if (live) setFolder(admitDownloadFolder(value));
-        },
-        () => {
-          if (live) setError(LOAD_FAILURE);
-        },
-      )
-      .finally(() => {
-        if (live) setLoaded(true);
-      });
     let unlisten: (() => void) | undefined;
-    listenBrowserDownloadFolder((value) => {
-      if (live) setFolder(value);
+    const subscribe = listenBrowserDownloadFolder((value) => {
+      if (live) apply(value);
     }).then(
       (stop) => {
         if (live) unlisten = stop;
@@ -51,6 +47,25 @@ export function BrowserDownloadFolder() {
       },
       () => undefined,
     );
+    // Subscribe first, then read, so no change can fall between the two.
+    void subscribe.then(() => {
+      if (!live) return;
+      const seen = version.current;
+      browserDownloadFolder()
+        .then(
+          (value) => {
+            if (live && version.current === seen) {
+              apply(admitDownloadFolder(value));
+            }
+          },
+          () => {
+            if (live) setError(LOAD_FAILURE);
+          },
+        )
+        .finally(() => {
+          if (live) setLoaded(true);
+        });
+    });
     return () => {
       live = false;
       unlisten?.();
@@ -62,7 +77,7 @@ export function BrowserDownloadFolder() {
     setBusy(true);
     setError(null);
     try {
-      setFolder(admitDownloadFolder(await command()));
+      apply(admitDownloadFolder(await command()));
     } catch (caught) {
       setError(errorText(caught, SAVE_FAILURE));
     } finally {

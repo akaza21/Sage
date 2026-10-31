@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::BTreeMap,
-    path::{Path, PathBuf},
+    path::Path,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -18,7 +18,7 @@ use webview2_com::{
 };
 use windows_core::{HSTRING, Interface, PWSTR};
 
-use super::{BrowserState, DownloadView, folder};
+use super::{BrowserState, DownloadView, reservation::Reservation};
 
 mod ask;
 mod choice;
@@ -33,8 +33,8 @@ struct PendingDownload {
     app: AppHandle,
     tab_id: String,
     /// Save the chosen file's folder as the download folder once it starts,
-    /// if the stored folder is still the one read here.
-    remember: Option<Option<PathBuf>>,
+    /// if the stored folder is still at this revision.
+    remember: Option<i64>,
 }
 
 thread_local! {
@@ -42,7 +42,7 @@ thread_local! {
     static PENDING: RefCell<BTreeMap<u64, PendingDownload>> = const { RefCell::new(BTreeMap::new()) };
     static ACTIVE: RefCell<BTreeMap<u64, ICoreWebView2DownloadOperation>> = const { RefCell::new(BTreeMap::new()) };
     // Empty placeholders reserved for silent saves, released if unused.
-    static RESERVED: RefCell<BTreeMap<u64, PathBuf>> = const { RefCell::new(BTreeMap::new()) };
+    static RESERVED: RefCell<BTreeMap<u64, Reservation>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 fn emit_views(app: &AppHandle, tab_id: &str) {
@@ -231,12 +231,8 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
                     if install_progress(app.clone(), tab_id.to_owned(), id, &pending.operation)
                         .is_ok()
                     {
-                        if let Some(expected) = &pending.remember {
-                            choice::remember_choice(
-                                app,
-                                expected.as_deref(),
-                                Path::new(&path_text),
-                            );
+                        if let Some(revision) = pending.remember {
+                            choice::remember_choice(app, revision, Path::new(&path_text));
                         }
                         ACTIVE.with_borrow_mut(|active| {
                             active.insert(id, pending.operation);
@@ -275,13 +271,14 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
     emit_views(app, tab_id);
 }
 
-/// Drops the placeholder reserved for `id`, unless the download finished
-/// writing to it (`saved`).
+/// Lets go of the placeholder reserved for `id`: kept if the download
+/// finished writing to it (`saved`), otherwise released on the worker.
 fn release_reserved(id: u64, saved: Option<&Path>) {
-    if let Some(reserved) = RESERVED.with_borrow_mut(|reserved| reserved.remove(&id))
-        && saved != Some(reserved.as_path())
+    // A reservation not kept here is dropped, which releases it.
+    if let Some(reservation) = RESERVED.with_borrow_mut(|reserved| reserved.remove(&id))
+        && saved == Some(reservation.path())
     {
-        folder::release_reservation(&reserved);
+        reservation.keep();
     }
 }
 

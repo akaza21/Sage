@@ -9,7 +9,9 @@ mod close;
 pub(crate) mod folder;
 #[cfg(windows)]
 mod native;
+pub(crate) mod reservation;
 pub(crate) mod show;
+pub(crate) mod worker;
 pub(super) use close::cancel_tab_after_native;
 #[cfg(windows)]
 pub(super) use native::{cancel_native, register_native};

@@ -44,18 +44,14 @@ pub(crate) fn remember_folder(store: &SettingsStore, chosen: &Path) -> Result<()
 }
 
 /// Saves the folder of the first download's Save-dialog choice, unless the
-/// stored folder changed since the download read it as `expected` (Settings
-/// chose one while the dialog was open). Returns whether it saved.
+/// stored folder changed since the download read it at `revision` (Settings
+/// chose or reset one while the dialog was open). Returns whether it saved.
 // Called by the WebView2 download handler, which only Windows builds.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn remember_first_choice(
-    store: &SettingsStore,
-    expected: Option<&Path>,
-    chosen: &Path,
-) -> bool {
+pub(crate) fn remember_first_choice(store: &SettingsStore, revision: i64, chosen: &Path) -> bool {
     folder_of_choice(chosen).is_some_and(|folder| {
         store
-            .set_browser_download_folder_if(expected, &folder)
+            .set_browser_download_folder_if(revision, &folder)
             .unwrap_or(false)
     })
 }
@@ -182,23 +178,22 @@ mod tests {
         let store = SettingsStore::in_memory().unwrap();
         let dialog = scratch("first-dialog");
         let settings = scratch("first-settings");
-        // The download read "nothing saved", then Settings chose a folder.
-        let expected = store.browser_download_folder().unwrap();
+        // The download read "nothing saved"; Settings chose a folder and
+        // then reset it, so the store looks unchanged but is not.
+        let read = store.browser_download_folder_record().unwrap();
         remember_folder(&store, &settings).unwrap();
+        store.clear_browser_download_folder().unwrap();
         assert!(!remember_first_choice(
             &store,
-            expected.as_deref(),
+            read.revision,
             &dialog.join("file.zip")
         ));
-        assert_eq!(
-            store.browser_download_folder().unwrap(),
-            admit_folder(&settings)
-        );
+        assert_eq!(store.browser_download_folder().unwrap(), None);
         // With nothing in between, the dialog's folder is saved.
-        store.clear_browser_download_folder().unwrap();
+        let read = store.browser_download_folder_record().unwrap();
         assert!(remember_first_choice(
             &store,
-            None,
+            read.revision,
             &dialog.join("file.zip")
         ));
         assert_eq!(

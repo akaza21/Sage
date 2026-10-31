@@ -8,29 +8,36 @@ use tauri::{AppHandle, Manager};
 use super::super::{
     BrowserState, DownloadRegistry,
     folder::{self, Plan},
+    reservation::Reservation,
+    worker,
 };
 use crate::{
     settings_commands::browser_download_folder::{emit_folder_changed, remember_first_choice},
     state::AppState,
 };
 
-/// A plan and the stored folder it was made against.
+/// A plan, the folder revision it was made against, and the placeholder a
+/// silent plan reserved.
 pub(super) struct Planned {
     pub(super) plan: Plan,
-    pub(super) expected: Option<PathBuf>,
+    pub(super) revision: i64,
+    pub(super) reservation: Option<Reservation>,
 }
 
-/// Silent save into the saved download folder, or the Save dialog. Runs off
-/// the UI thread; the registry lock is held only to copy the claimed paths.
+/// Silent save into the saved download folder, or the Save dialog. Runs on
+/// the download worker; the registry lock is held only to copy the claimed
+/// paths.
 pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>) -> Planned {
-    let Ok(stored) = app.state::<AppState>().settings.browser_download_folder() else {
+    let settings = app.state::<AppState>().settings.clone();
+    let Ok(record) = settings.browser_download_folder_record() else {
         return Planned {
             plan: Plan::Ask {
                 file_name: folder::sanitize_file_name(suggested),
                 remember: false,
                 directory: None,
             },
-            expected: None,
+            revision: -1,
+            reservation: None,
         };
     };
     let claimed = app
@@ -39,21 +46,32 @@ pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>
         .lock()
         .map(|registry| registry.claimed())
         .unwrap_or_default();
+    let plan = folder::plan(record.path.as_deref(), suggested, mime, |path| {
+        claimed.contains(path)
+    });
+    let reservation = match &plan {
+        Plan::Silent(path) => Some(Reservation::adopt(settings, path.clone())),
+        Plan::Ask { .. } => None,
+    };
     Planned {
-        plan: folder::plan(stored.as_deref(), suggested, mime, |path| {
-            claimed.contains(path)
-        }),
-        expected: stored,
+        plan,
+        revision: record.revision,
+        reservation,
     }
 }
 
 /// The first download's folder becomes the saved download folder, unless
-/// Settings changed it while the Save dialog was open.
-pub(super) fn remember_choice(app: &AppHandle, expected: Option<&Path>, chosen: &Path) {
-    let settings = &app.state::<AppState>().settings;
-    if remember_first_choice(settings, expected, chosen) {
-        emit_folder_changed(app, settings);
-    }
+/// the folder changed (Settings) since the download read it. The folder
+/// checks and the store write run on the download worker.
+pub(super) fn remember_choice(app: &AppHandle, revision: i64, chosen: &Path) {
+    let app = app.clone();
+    let chosen = chosen.to_owned();
+    worker::submit(move || {
+        let settings = &app.state::<AppState>().settings;
+        if remember_first_choice(settings, revision, &chosen) {
+            emit_folder_changed(&app, settings);
+        }
+    });
 }
 
 pub(super) fn accept_destination(

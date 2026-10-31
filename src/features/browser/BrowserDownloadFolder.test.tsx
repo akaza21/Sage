@@ -137,3 +137,23 @@ it("shows a folder the first download saved while Settings is open", async () =>
   unmount();
   expect(port.unlisten).toHaveBeenCalledTimes(1);
 });
+
+it("subscribes before reading, and a late snapshot never overwrites a newer event", async () => {
+  let resolveSnapshot: (value: unknown) => void = () => undefined;
+  port.get.mockReturnValue(
+    new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    }),
+  );
+  render(<BrowserDownloadFolder />);
+  await waitFor(() => expect(port.get).toHaveBeenCalledTimes(1));
+  // The listener was registered before the read started.
+  expect(port.emit).not.toBeNull();
+  act(() => port.emit?.({ path: FOLDER, available: true }));
+  expect(await screen.findByText(FOLDER)).toBeVisible();
+  await act(async () => {
+    resolveSnapshot({ path: null, available: false });
+  });
+  expect(screen.getByText(FOLDER)).toBeVisible();
+  await waitFor(() => expect(change()).toBeEnabled());
+});

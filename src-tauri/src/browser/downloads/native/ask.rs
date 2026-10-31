@@ -1,5 +1,5 @@
-//! The second half of a download start: plan off the WebView2 UI thread,
-//! then save silently or show the Save dialog back on it.
+//! The second half of a download start: plan on the download worker, then
+//! save silently or show the Save dialog back on the WebView2 UI thread.
 
 use std::path::PathBuf;
 
@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, Webview};
 use tauri_plugin_dialog::DialogExt;
 
 use super::{
-    super::{BrowserState, folder::Plan},
+    super::{BrowserState, folder::Plan, worker},
     PENDING, RESERVED, choice, complete_choice, emit_views,
 };
 
@@ -22,18 +22,19 @@ pub(super) fn plan_off_thread(
     let worker_app = app.clone();
     let worker_webview = webview.clone();
     let worker_tab = tab_id.to_owned();
-    let spawned = std::thread::Builder::new()
-        .name("browser-download-plan".into())
-        .spawn(move || {
-            let planned = choice::plan_download(&worker_app, &file_name, mime.as_deref());
-            let ui_app = worker_app.clone();
-            let ui_webview = worker_webview.clone();
-            let ui_tab = worker_tab.clone();
-            on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
-                proceed(&ui_app, &ui_webview, &ui_tab, id, planned);
-            });
+    let queued = worker::submit(move || {
+        // A reserved placeholder is owned by `planned` from here on: if the
+        // hand-back below never runs, dropping it releases the file.
+        let planned = choice::plan_download(&worker_app, &file_name, mime.as_deref());
+        let ui_app = worker_app.clone();
+        let ui_webview = worker_webview.clone();
+        let ui_tab = worker_tab.clone();
+        on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
+            proceed(&ui_app, &ui_webview, &ui_tab, id, planned);
         });
-    if spawned.is_err() {
+    });
+    if !queued {
+        // The worker is busy with as many downloads as it queues: cancel.
         complete_choice(app, tab_id, id, None);
     }
 }
@@ -64,14 +65,19 @@ fn on_ui(
 }
 
 fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: choice::Planned) {
-    if let Plan::Silent(path) = &planned.plan {
-        // Track the placeholder first, so every exit below releases it.
-        RESERVED.with_borrow_mut(|reserved| reserved.insert(id, path.clone()));
+    let choice::Planned {
+        plan,
+        revision,
+        reservation,
+    } = planned;
+    if let Some(reservation) = reservation {
+        // Tracked first, so every exit below releases it.
+        RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
     }
     let still_pending = PENDING.with_borrow_mut(|pending| {
         pending.get_mut(&id).is_some_and(|download| {
-            if matches!(planned.plan, Plan::Ask { remember: true, .. }) {
-                download.remember = Some(planned.expected.clone());
+            if matches!(plan, Plan::Ask { remember: true, .. }) {
+                download.remember = Some(revision);
             }
             true
         })
@@ -81,7 +87,7 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         complete_choice(app, tab_id, id, None);
         return;
     }
-    match planned.plan {
+    match plan {
         Plan::Silent(path) => complete_choice(app, tab_id, id, Some(path)),
         Plan::Ask {
             file_name,
