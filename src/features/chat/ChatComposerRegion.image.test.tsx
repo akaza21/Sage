@@ -77,6 +77,27 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("keeps composition confirmation in the draft and sends only deliberate Enter", () => {
+    const submitted: string[] = [];
+    renderComposer({
+      text: "日本語",
+      onSubmit: (event) => {
+        event.preventDefault();
+        submitted.push((event.currentTarget.querySelector("textarea")!).value);
+      },
+    });
+    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    fireEvent.compositionStart(prompt);
+    fireEvent.keyDown(prompt, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(prompt, { key: "Enter", keyCode: 229 });
+    expect(submitted).toEqual([]);
+    expect(prompt).toHaveValue("日本語");
+    fireEvent.compositionEnd(prompt);
+    fireEvent.keyDown(prompt, { key: "Enter", shiftKey: true });
+    expect(submitted).toEqual([]);
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    expect(submitted).toEqual(["日本語"]);
+  });
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
     const prompt = screen.getByRole("textbox", { name: "Message agent" });

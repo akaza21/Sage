@@ -35,6 +35,8 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
 
+const IME_PROCESS_KEY_CODE = 229;
+
 export function ChatComposerRegion({
   hidden = false,
   composerRef,
@@ -291,6 +293,11 @@ export function ChatComposerRegion({
             onChange={(event) => onTextChange(event.target.value)}
             onBlur={dictation.cancel}
             onKeyDown={(event) => {
+              if (
+                event.nativeEvent.isComposing ||
+                event.nativeEvent.keyCode === IME_PROCESS_KEY_CODE
+              )
+                return;
               if (event.key === "Escape" && dictation.listening) {
                 event.preventDefault();
                 dictation.cancel();
