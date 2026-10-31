@@ -59,14 +59,11 @@ const caretAt = (line: number, editable = true) =>
 let opened: FileLocationNavigationRequest[] = [];
 let openable = true;
 let readable = true;
-// Like the real store: the target waits for the editor to apply it.
-let setsTarget = false;
 
 beforeEach(() => {
   opened = [];
   openable = true;
   readable = true;
-  setsTarget = false;
   useWorkbenchStore.setState({
     project: { id: "project" } as WorkbenchState["project"],
     nativeTransitionEpoch: 4,
@@ -74,11 +71,11 @@ beforeEach(() => {
       opened.push(request);
       if (!openable) return;
       showFile(request.resource, readable ? "ready" : "error");
-      if (setsTarget) {
-        useWorkbenchStore.setState({
-          fileNavigationTarget: { ...request, projectGeneration: 1 },
-        });
-      }
+      // Like the real store: the target waits for the editor to apply it,
+      // and is set even when the File failed to load.
+      useWorkbenchStore.setState({
+        fileNavigationTarget: { ...request, projectGeneration: 1 },
+      });
     }),
   });
 });
@@ -214,7 +211,6 @@ describe("editor history (ED-2b)", () => {
 
   it("adds nothing while a Go Back arrives, then follows the caret again", async () => {
     watchEditorHistory();
-    setsTarget = true;
     showFile(a);
     caretAt(1);
     caretAt(200); // the first move settles where a opened
@@ -237,7 +233,6 @@ describe("editor history (ED-2b)", () => {
   });
 
   it("lets a later Go Back go when a target was never applied", async () => {
-    setsTarget = true;
     notePlace(place(a, 1));
     notePlace(place(b, 1));
     notePlace(place(c, 1));
@@ -295,7 +290,6 @@ describe("editor history (ED-2b)", () => {
 
   it("keeps Go Forward when the File got shorter and the caret lands elsewhere", async () => {
     watchEditorHistory();
-    setsTarget = true;
     showFile(a);
     caretAt(1);
     caretAt(200);
@@ -309,5 +303,120 @@ describe("editor history (ED-2b)", () => {
     useWorkbenchStore.setState({ fileNavigationTarget: null });
     expect(canGoBack()).toBe(false);
     expect(canGoForward()).toBe(true);
+  });
+
+  it("ends a Go Back on the first move when nothing applies its target", async () => {
+    watchEditorHistory();
+    showFile(a);
+    caretAt(1);
+    caretAt(5);
+    showFile(b);
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    caretAt(2);
+    await goBack(); // a opens in its Markdown preview: no caret, no target taken
+    useEditorCaretStore.getState().clear(); // the preview closes
+    caretAt(1);
+    caretAt(3); // the user's first move
+    caretAt(300); // and a far one, noted as usual
+    expect(canGoBack()).toBe(true);
+    await goBack();
+    expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 3 });
+  });
+
+  it("stays put when a Go Back in the same File is refused for a moment", async () => {
+    notePlace(place(a, 1));
+    notePlace(place(a, 2));
+    notePlace(place(a, 300));
+    showFile(a);
+    openable = false;
+    useWorkbenchStore.setState({ fileCreateInFlight: true });
+    await goBack();
+    notePlace(place(a, 301)); // still where it was: not a far move
+    useWorkbenchStore.setState({ fileCreateInFlight: false });
+    openable = true;
+    await goBack();
+    expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 2 });
+    expect(canGoBack()).toBe(false);
+  });
+
+  it("starts afresh after a place that could not be opened", async () => {
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    readable = false;
+    await goBack(); // a is gone
+    readable = true;
+    expect(canGoForward()).toBe(true);
+    notePlace(place(c, 1)); // the user goes on elsewhere
+    expect(canGoForward()).toBe(false);
+    notePlace({ ...place(a, 1), projectId: "other" });
+    useWorkbenchStore.setState({
+      project: { id: "other" } as WorkbenchState["project"],
+    });
+    expect(canGoBack()).toBe(false);
+  });
+
+  it("closes the tab it opened for a File that is gone, and keeps one that was open", async () => {
+    const closeTab = vi.fn();
+    useWorkbenchStore.setState({ closeTab });
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    notePlace(place(c, 1));
+    readable = false;
+    await goBack();
+    expect(closeTab).toHaveBeenCalledWith(fileTab(b).id);
+    closeTab.mockClear();
+    showFile(a, "error");
+    await goBack();
+    expect(closeTab).not.toHaveBeenCalled();
+  });
+
+  it("ignores the left File's carets while the next one opens", async () => {
+    notePlace(place(a, 1));
+    notePlace(place(b, 1));
+    useWorkbenchStore.setState({
+      openFileLocation: vi.fn(
+        async (request: FileLocationNavigationRequest) => {
+          opened.push(request);
+          notePlace(place(b, 2)); // typed while b saved on the way out
+          showFile(request.resource);
+          useWorkbenchStore.setState({
+            fileNavigationTarget: { ...request, projectGeneration: 1 },
+          });
+        },
+      ),
+    });
+    await goBack();
+    expect(canGoBack()).toBe(false);
+    expect(canGoForward()).toBe(true);
+  });
+
+  it("finishes a Go Back whose target was taken before the open returned", async () => {
+    watchEditorHistory();
+    showFile(a);
+    caretAt(1);
+    caretAt(200);
+    showFile(b);
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    // As in the app: the editor takes the target before the open returns,
+    // and its carets follow.
+    useWorkbenchStore.setState({
+      openFileLocation: vi.fn(
+        async (request: FileLocationNavigationRequest) => {
+          opened.push(request);
+          showFile(request.resource);
+          useWorkbenchStore.setState({ fileNavigationTarget: null });
+        },
+      ),
+    });
+    await goBack();
+    useEditorCaretStore.getState().clear();
+    caretAt(1);
+    caretAt(200);
+    expect(canGoBack()).toBe(false);
+    expect(canGoForward()).toBe(true);
+    caretAt(400); // and the caret is followed again
+    expect(canGoBack()).toBe(true);
   });
 });

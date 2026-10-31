@@ -21,6 +21,8 @@ interface Trip {
   place: EditorPlace;
   /** Until `openFileLocation` returns, the File may still be opening. */
   opening: boolean;
+  /** A caret has moved in the File since it opened: the target landed. */
+  arrived: boolean;
 }
 
 export const MAX_EDITOR_PLACES = 50;
@@ -29,6 +31,7 @@ const FAR_LINES = 10;
 let back: EditorPlace[] = [];
 let forward: EditorPlace[] = [];
 let current: EditorPlace | null = null;
+let historyProject: string | null = null;
 // The editor puts the caret somewhere when a File opens, then a jump that
 // opened it moves it. Until the caret moves in it, a File's place is only
 // where it opened, and a jump there replaces it instead of leaving it behind.
@@ -75,6 +78,7 @@ export function resetEditorHistory() {
   back = [];
   forward = [];
   current = null;
+  historyProject = null;
   provisional = false;
   trip = null;
 }
@@ -86,24 +90,31 @@ const isTarget = (target: FileNavigationTarget | null, place: EditorPlace) =>
   target.columnNumber === place.column;
 
 export function notePlace(place: EditorPlace, remounted = false) {
-  if (current && current.projectId !== place.projectId) {
+  if (historyProject !== place.projectId) {
     back = [];
     forward = [];
     current = null;
     trip = null;
+    historyProject = place.projectId;
   }
   if (trip) {
-    // Until its target is applied, the File's carets are only it arriving.
-    const arriving =
-      trip.opening ||
-      isTarget(useWorkbenchStore.getState().fileNavigationTarget, trip.place);
-    if (arriving && sameResource(trip.place.resource, place.resource)) {
+    if (sameResource(trip.place.resource, place.resource)) {
+      // The File arriving: its editor mounting, then the target applied
+      // (or, if something kept it from applying, the user's first move).
       current = place;
+      if (!remounted) {
+        trip.arrived = true;
+        if (!trip.opening) trip = null;
+      }
       return;
     }
+    // The File being left can still report while it saves on the way out.
+    if (trip.opening) return;
     trip = null;
   }
   if (!current) {
+    // After a place that could not be opened: a new start.
+    forward = [];
     current = place;
     provisional = true;
     return;
@@ -146,6 +157,13 @@ export function canGoForward() {
 export const goBack = () => travel(true);
 export const goForward = () => travel(false);
 
+const fileTabOf = (resource: ResourceRef) =>
+  useWorkbenchStore
+    .getState()
+    .tabs.find(
+      (tab) => tab.kind === "file" && sameResource(tab.resource, resource),
+    );
+
 async function travel(backwards: boolean) {
   const from = backwards ? back : forward;
   const to = backwards ? forward : back;
@@ -159,8 +177,9 @@ async function travel(backwards: boolean) {
   if (left) to.push(left);
   current = target;
   provisional = false;
-  const thisTrip: Trip = { place: target, opening: true };
+  const thisTrip: Trip = { place: target, opening: true, arrived: false };
   trip = thisTrip;
+  const hadTab = !!fileTabOf(target.resource);
   await state.openFileLocation({
     projectId: target.projectId,
     transitionEpoch: state.nativeTransitionEpoch,
@@ -172,34 +191,45 @@ async function travel(backwards: boolean) {
   if (trip !== thisTrip) return;
   thisTrip.opening = false;
   const after = useWorkbenchStore.getState();
-  const active = after.tabs.find((tab) => tab.id === after.activeTabId);
   const editor = after.activeEditor;
-  if (!(
-    active?.kind === "file" && sameResource(active.resource, target.resource)
-  )) {
-    trip = null;
-    current = left;
-    if (left) to.pop();
-    // Busy for a moment (a save, a rename, a Project opening): keep the
-    // place for the next try. Otherwise it can't be opened: skip it.
-    if (
-      after.projectTransitioning ||
-      after.fileRenameInFlight ||
-      after.resourceTrashInFlight ||
-      after.fileCreateInFlight ||
-      after.folderCreateInFlight
-    ) {
-      from.push(target);
-    }
-  } else if (
-    editor?.phase !== "ready" ||
-    !sameResource(editor.resource, target.resource)
+  const active = after.tabs.find((tab) => tab.id === after.activeTabId);
+  const busy =
+    after.projectTransitioning ||
+    after.fileRenameInFlight ||
+    after.resourceTrashInFlight ||
+    after.fileCreateInFlight ||
+    after.folderCreateInFlight;
+  // The target is set even for a File that failed to load.
+  if (
+    editor?.phase === "error" &&
+    sameResource(editor.resource, target.resource)
   ) {
-    // Its File is gone or unreadable, and its tab says so: the place is
-    // dropped, so the next Go Back moves on.
+    // Its File is gone (renamed, deleted) or unreadable: the place is
+    // dropped, so the next Go Back moves on, with the tab opened for it.
     trip = null;
     current = null;
-  } else if (!isTarget(after.fileNavigationTarget, target)) {
-    trip = null; // Applied already.
+    const tab = fileTabOf(target.resource);
+    if (!hadTab && tab) after.closeTab(tab.id);
+    return;
   }
+  const opened =
+    active?.kind === "file" &&
+    sameResource(active.resource, target.resource) &&
+    // While the store is busy it refuses the open, and an already active
+    // tab proves nothing: then only the target, or its caret, shows it.
+    (thisTrip.arrived ||
+      isTarget(after.fileNavigationTarget, target) ||
+      !hadTab ||
+      !busy);
+  if (opened) {
+    // Its caret may still be on the way; the trip ends when it lands.
+    if (thisTrip.arrived) trip = null;
+    return;
+  }
+  // Nothing opened. Busy for a moment (a save, a rename, a Project
+  // opening): keep the place for the next try. Otherwise skip it.
+  trip = null;
+  current = left;
+  if (left) to.pop();
+  if (busy) from.push(target);
 }
