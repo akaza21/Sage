@@ -27,6 +27,33 @@ afterEach(() => {
 });
 
 describe("lazy code cards", () => {
+  it("announces denied clipboard access then clears transient feedback after a successful exact copy", async () => {
+    let denied = true;
+    let clipboard = "";
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: async (text: string) => {
+          if (denied) throw new Error("denied");
+          clipboard = text;
+        },
+      },
+    });
+    render(
+      <ChatCodeBlock language="unknown" source={"  exact\n\twhitespace\n"} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Copy failed");
+    denied = false;
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Copied"),
+    );
+    expect(clipboard).toBe("  exact\n\twhitespace\n");
+    await waitFor(
+      () => expect(screen.getByRole("status")).toBeEmptyDOMElement(),
+      { timeout: 2000 },
+    );
+  });
   it("keeps highlighted streaming prefixes until replacement spans are ready", async () => {
     const finish: ((spans: CodeSpan[]) => void)[] = [];
     vi.mocked(highlightCodeSource).mockImplementation(

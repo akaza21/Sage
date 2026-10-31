@@ -317,6 +317,7 @@
 }
 
 .acp-code-block {
+  position: relative;
   margin: var(--space-3) 0;
   overflow: hidden;
   border: 0;
@@ -341,6 +342,31 @@
   align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+.acp-code-block__actions > button {
+  opacity: 0;
+}
+
+.acp-code-block:is(:hover, :focus-within) .acp-code-block__actions > button {
+  opacity: 1;
+}
+
+.acp-code-block__feedback {
+  position: absolute;
+  inset-block-start: var(--control-height-compact);
+  inset-inline-end: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  pointer-events: none;
+}
+
+.acp-code-block pre:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: calc(
+    -1 * (var(--focus-ring-width) + var(--focus-ring-offset))
+  );
 }
 
 .acp-code-block__language {

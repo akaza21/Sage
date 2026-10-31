@@ -71,6 +71,10 @@
 .composer textarea::placeholder {
   color: var(--color-text-muted);
 }
+
+.composer:has(textarea:focus-visible) {
+  box-shadow: var(--composer-shadow), var(--focus-ring-inset);
+}
 .composer textarea:disabled {
   color: var(--color-text-disabled);
   cursor: not-allowed;
@@ -177,13 +181,13 @@
 
 .composer__toolbar {
   display: grid;
-  min-height: 40px;
+  min-height: calc(var(--control-height-default) + var(--space-2));
   flex: none;
   grid-template-areas: "controls mic meter send";
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px 8px 12px;
+  gap: var(--space-2);
+  padding: calc(var(--space-1) / 2) var(--space-2) var(--space-2) var(--space-3);
 }
 
 .composer__controls {
@@ -192,7 +196,7 @@
   grid-area: controls;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .composer__picker-trigger > svg:first-child {
@@ -351,7 +355,7 @@
 
 @media (max-height: 360px) {
   .composer textarea {
-    min-height: 40px;
+    min-height: calc(var(--control-height-default) + var(--space-2));
     max-height: 56px;
     padding-top: var(--space-2);
   }

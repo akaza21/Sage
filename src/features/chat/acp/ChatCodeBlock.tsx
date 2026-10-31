@@ -12,6 +12,7 @@ const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
   python: "py",
   rust: "rs",
 };
+const COPY_FEEDBACK_MS = 1_200;
 
 export function ChatCodeBlock({
   language,
@@ -37,6 +38,11 @@ export function ChatCodeBlock({
     status: string;
   } | null>(null);
   const status = copyState?.identity === identity ? copyState.status : "";
+  useEffect(() => {
+    if (!status) return;
+    const timer = window.setTimeout(() => setCopyState(null), COPY_FEEDBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [status, identity]);
   const CopyIcon = status === "Copied" ? Check : Copy;
   const [wrap, setWrap] = useState(wrapInitially);
   const [highlight, setHighlight] = useState<{
@@ -123,7 +129,9 @@ export function ChatCodeBlock({
           >
             <span className="acp-code-block__wrap-icon" aria-hidden="true" />
           </button>
-          <span role="status">{status}</span>
+          <span className="acp-code-block__feedback" role="status">
+            {status}
+          </span>
           <button
             type="button"
             aria-label="Copy code"
