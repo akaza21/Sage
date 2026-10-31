@@ -150,6 +150,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(window_memory::init())
         .setup(|app| {
             let disposable_root = std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT");
             let profile = resolve_launch_profile(

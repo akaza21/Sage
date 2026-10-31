@@ -15,6 +15,11 @@ fn next_memory_target(minimized: bool, last: Option<MemoryTarget>) -> Option<Mem
     (last != Some(target)).then_some(target)
 }
 
+#[cfg(any(windows, test))]
+fn created_webview_target(minimized: bool) -> Option<MemoryTarget> {
+    minimized.then_some(MemoryTarget::Low)
+}
+
 #[cfg(windows)]
 pub(crate) use native::handle_window_event;
 
@@ -24,6 +29,13 @@ pub(crate) fn handle_window_event(
     _label: &str,
     _event: &tauri::WindowEvent,
 ) {
+}
+
+pub(crate) fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    let builder = tauri::plugin::Builder::new("window-memory");
+    #[cfg(windows)]
+    let builder = builder.on_webview_ready(native::handle_webview_ready);
+    builder.build()
 }
 
 #[cfg(windows)]
@@ -38,10 +50,26 @@ mod native {
     };
     use windows_core::Interface;
 
-    use super::{MemoryTarget, next_memory_target};
+    use super::{MemoryTarget, created_webview_target, next_memory_target};
 
     thread_local! {
         static LAST_TARGETS: RefCell<BTreeMap<String, MemoryTarget>> = const { RefCell::new(BTreeMap::new()) };
+    }
+
+    pub(super) fn handle_webview_ready(webview: Webview) {
+        let window = webview.window();
+        let label = window.label();
+        let minimized = match window.is_minimized() {
+            Ok(minimized) => minimized,
+            Err(error) => {
+                warn!(window = label, ?error, "window memory state unavailable");
+                return;
+            }
+        };
+        if let Some(target) = created_webview_target(minimized) {
+            LAST_TARGETS.with_borrow_mut(|targets| targets.insert(label.to_owned(), target));
+            apply_memory_target(&webview, label, target);
+        }
     }
 
     pub(crate) fn handle_window_event(app: &AppHandle, label: &str, event: &WindowEvent) {
@@ -127,7 +155,20 @@ mod native {
 
 #[cfg(test)]
 mod tests {
-    use super::{MemoryTarget, next_memory_target};
+    use super::{MemoryTarget, created_webview_target, next_memory_target};
+
+    #[test]
+    fn webview_created_after_minimize_gets_low_despite_cached_window_target() {
+        let cached_target = next_memory_target(true, None);
+        assert_eq!(cached_target, Some(MemoryTarget::Low));
+        assert_eq!(next_memory_target(true, cached_target), None);
+        assert_eq!(created_webview_target(true), Some(MemoryTarget::Low));
+        assert_eq!(created_webview_target(false), None);
+        assert_eq!(
+            next_memory_target(false, cached_target),
+            Some(MemoryTarget::Normal)
+        );
+    }
 
     #[test]
     fn minimized_windows_request_low_memory() {
