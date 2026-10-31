@@ -154,10 +154,22 @@ function closedWithin(closed, timeoutMs) {
   ]).finally(() => clearTimeout(timer));
 }
 
+// Tracks a spawned guardian's close from the start, so a close that happens
+// before teardown begins is still observed.
+export function guardianFor(child) {
+  // The guardian can exit before it reads the release line; that is settled
+  // by waiting for close, not by the write.
+  child.stdin.on("error", () => {});
+  return {
+    child,
+    closed: new Promise((resolve) => child.once("close", resolve)),
+  };
+}
+
 // The guardian holds no-delete handles on the output's ancestors until its
 // process is gone, so teardown is complete only once it has closed. A guardian
 // that outlives the kill is a failure, never something to retry around.
-async function settleGuardian({ child, closed }, { release }) {
+export async function settleGuardian({ child, closed }, { release }) {
   if (release) {
     child.stdin.end("release\n");
     if (await closedWithin(closed, releaseGraceMs)) return;
@@ -168,7 +180,7 @@ async function settleGuardian({ child, closed }, { release }) {
   }
 }
 
-async function failAfterTeardown(guardian, error, { release }) {
+export async function failAfterTeardown(guardian, error, { release }) {
   try {
     await settleGuardian(guardian, { release });
   } catch (teardown) {
@@ -209,13 +221,7 @@ export async function acquireInstalledSmokeOutputAuthority({
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const guardian = {
-    child,
-    closed: new Promise((resolve) => child.once("close", resolve)),
-  };
-  // The guardian can exit before it reads the release line; that is settled
-  // by waiting for close, not by the write.
-  child.stdin.on("error", () => {});
+  const guardian = guardianFor(child);
   const authority = await new Promise((resolve, reject) => {
     let stdout = Buffer.alloc(0);
     let stderrBytes = 0;
