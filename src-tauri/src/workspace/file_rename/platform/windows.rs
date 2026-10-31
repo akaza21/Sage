@@ -87,6 +87,9 @@ fn rename_held(source: &File, target: &Path) -> AppResult<()> {
         .ok_or_else(|| AppError::ResourceLimit("file rename name is too large".into()))?;
     let total = offset_of!(FILE_RENAME_INFO, FileName)
         .checked_add(name_bytes)
+        // Win32 path conversion reads a NUL-terminated string even though
+        // FileNameLength excludes that terminator. Keep it in the allocation.
+        .and_then(|bytes| bytes.checked_add(size_of::<u16>()))
         .ok_or_else(|| AppError::ResourceLimit("file rename request is too large".into()))?;
     let mut storage = vec![0_usize; total.div_ceil(size_of::<usize>())];
     let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
