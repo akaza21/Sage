@@ -91,8 +91,9 @@ pub(crate) fn escape(app: &AppHandle, label: &str) {
         let overlay = NativeOverlay(&state, &app);
         let _ = state.annotate.run(
             |change| emit(&app, change),
-            |mode| mode.escape(&overlay, &label),
+            |mode| mode.escape(&overlay, &label, state.annotate.is_covered(&label)),
         );
+        super::zoom::show_deferred(&app, &label);
     });
 }
 
@@ -102,9 +103,10 @@ impl AnnotateMode {
         &mut self,
         overlay: &impl InspectOverlay,
         label: &str,
+        covered: bool,
     ) -> (Vec<AnnotateChange>, Result<(), String>) {
         if self.pending.is_some() {
-            self.cancel(overlay, label)
+            self.cancel(overlay, label, covered)
         } else {
             self.leave(overlay, label, Exit::Reveal)
         }
@@ -135,19 +137,23 @@ impl AnnotateMode {
         (vec![announced], Ok(()))
     }
 
-    /// Drops the waiting element, shows the page and resumes hovering.
+    /// Drops the waiting element and resumes hovering. A covered page stays
+    /// hidden and leaves keyboard focus in the chrome.
     pub(super) fn cancel(
         &mut self,
         overlay: &impl InspectOverlay,
         label: &str,
+        covered: bool,
     ) -> (Vec<AnnotateChange>, Result<(), String>) {
         if self.tab.as_deref() != Some(label) || self.pending.take().is_none() {
             return (Vec::new(), Ok(()));
         }
-        let released = overlay.release(label, true, true);
+        let released = overlay.release(label, !covered, true);
         // The page takes focus back, as in Codex, so the next Escape
         // reaches it and leaves Annotate.
-        let _ = overlay.focus(label, true);
+        if !covered {
+            let _ = overlay.focus(label, true);
+        }
         (vec![self.resumed(label, &released)], released)
     }
 
@@ -182,7 +188,7 @@ impl AnnotateMode {
             .ok_or("no browser element is waiting".into())
     }
 
-    fn resumed(&self, label: &str, released: &Result<(), String>) -> AnnotateChange {
+    pub(super) fn resumed(&self, label: &str, released: &Result<(), String>) -> AnnotateChange {
         let mut announced = change(label.to_owned(), true);
         announced.error = released.clone().err();
         announced
