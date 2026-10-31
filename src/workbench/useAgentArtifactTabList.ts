@@ -16,13 +16,28 @@ export function useAgentArtifactTabList(
 ) {
   const prefix = useId();
   const owner = useRef(ownerKey);
+  const pendingClose = useRef<{
+    closing: Element;
+    next: HTMLButtonElement;
+    selected: boolean;
+    ownerKey: string;
+  } | null>(null);
   useLayoutEffect(() => {
     owner.current = ownerKey;
+    pendingClose.current = null;
   }, [ownerKey]);
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
     const sync = () => {
+      const closed = pendingClose.current;
+      if (closed && !closed.closing.isConnected) {
+        pendingClose.current = null;
+        if (closed.ownerKey === owner.current && closed.next.isConnected) {
+          if (closed.selected) closed.next.click();
+          closed.next.focus();
+        }
+      }
       const tabs = Array.from(
         element.querySelectorAll<HTMLButtonElement>(TAB_SELECTOR),
       );
@@ -82,11 +97,9 @@ export function useAgentArtifactTabList(
       const index = tabs.findIndex((tab) => closing.contains(tab));
       const next = tabs[index + 1] ?? tabs[index - 1];
       const wasSelected = tabs[index]?.getAttribute("aria-selected") === "true";
-      requestAnimationFrame(() => {
-        if (owner.current !== ownerKey || !next?.isConnected) return;
-        if (wasSelected) next.click();
-        next.focus();
-      });
+      pendingClose.current = next
+        ? { closing, next, selected: wasSelected, ownerKey }
+        : null;
     },
   };
 }

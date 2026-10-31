@@ -1,4 +1,9 @@
 .browser-surface {
+  --browser-popup-max-width: calc(100cqi - var(--space-4));
+  --browser-popup-max-height: calc(100dvh - var(--chrome-row-height));
+  --browser-toolbar-height: calc(
+    var(--control-height-compact) + 2 * var(--space-2)
+  );
   position: absolute;
   inset: 0;
   min-width: 0;
@@ -25,8 +30,8 @@
 .browser-surface__toolbar {
   display: flex;
   container-type: inline-size;
-  height: 44px;
-  flex: 0 0 44px;
+  height: var(--browser-toolbar-height);
+  flex: 0 0 var(--browser-toolbar-height);
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -315,7 +320,9 @@
 .browser-surface__find {
   position: absolute;
   z-index: 6;
-  top: calc(var(--browser-toolbar-height, 44px) + var(--space-1));
+  /* Native pages paint above HTML. Float inside the existing toolbar bounds
+     so Find stays visible while the page and its matches stay visible too. */
+  top: var(--space-1);
   right: var(--space-2);
   display: flex;
   width: max-content;
@@ -329,7 +336,7 @@
 }
 
 .browser-surface__find {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   padding: 4px 8px;
 }
 .browser-surface__find input {

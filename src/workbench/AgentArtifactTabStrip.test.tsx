@@ -12,7 +12,8 @@ import type { WorkbenchTab } from "../domain/workbench";
 
 afterEach(cleanup);
 
-function Harness() {
+function Harness({ deferredClose = false }: { deferredClose?: boolean }) {
+  const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [tabs, setTabs] = useState<WorkbenchTab[]>(
     ["a.ts", "b.ts", "c.ts"].map((title) => ({
       id: title,
@@ -41,13 +42,27 @@ function Harness() {
         availableTargets={[]}
         activateTab={setActive}
         closeTab={(id) =>
-          setTabs((current) => current.filter((tab) => tab.id !== id))
+          deferredClose
+            ? setPendingClose(id)
+            : setTabs((current) => current.filter((tab) => tab.id !== id))
         }
         panelId="test-panel"
       />
       <div id="test-panel" role="tabpanel">
         {active}
       </div>
+      {pendingClose ? (
+        <button
+          onClick={() => {
+            setTabs((current) =>
+              current.filter((tab) => tab.id !== pendingClose),
+            );
+            setPendingClose(null);
+          }}
+        >
+          Confirm close
+        </button>
+      ) : null}
     </>
   );
 }
@@ -76,4 +91,24 @@ it("roves and selects with arrows and Home/End, associates the panel, and focuse
   fireEvent.click(screen.getByRole("button", { name: "Close b.ts" }));
   await waitFor(() => expect(last).toHaveFocus());
   expect(last).toHaveAttribute("aria-selected", "true");
+});
+
+it("keeps selection while close is pending and focuses a neighbor only after actual removal", async () => {
+  render(<Harness deferredClose />);
+  const closing = screen.getByRole("button", { name: "Close b.ts" });
+  closing.focus();
+  fireEvent.click(closing);
+  expect(screen.getByRole("tab", { name: "File b.ts" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(closing).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm close" }));
+  await waitFor(() =>
+    expect(screen.getByRole("tab", { name: "File c.ts" })).toHaveFocus(),
+  );
+  expect(screen.getByRole("tab", { name: "File c.ts" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });

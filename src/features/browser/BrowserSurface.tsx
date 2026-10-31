@@ -40,12 +40,9 @@ import {
   useBrowserShortcuts,
 } from "./browserShortcuts";
 import { useBrowserPlacement } from "./useBrowserPlacement";
+import { useBrowserFind } from "./useBrowserFind";
 import "./browser.css";
-
-const loadBrowserNewTab = () =>
-  import("./BrowserNewTab").then((module) => ({
-    default: module.BrowserNewTab,
-  }));
+import { loadBrowserNewTab } from "./browserNewTabLoader";
 
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
@@ -69,8 +66,13 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const frame = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLElement>(null);
   const addressField = useRef<HTMLInputElement>(null);
-  const findField = useRef<HTMLInputElement>(null);
-  const findLauncher = useRef<HTMLElement | null>(null);
+  const { findField, findOpen, openFind, closeFind } = useBrowserFind(
+    surface,
+    addressField,
+    () => {
+      void pageAction(() => browserFind(tab.id, "stop"));
+    },
+  );
   const screenshotEpoch = useRef(0);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);
   const latestNavigationRevision = useRef<bigint>(-1n);
@@ -81,7 +83,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
-  const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -177,7 +178,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  const covered = downloadsOpen || menuOpen || findOpen;
+  const covered = downloadsOpen || menuOpen;
   useBrowserPlacement(tab.id, frame, surface, setError, covered);
   async function navigate() {
     try {
@@ -258,24 +259,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         current ? { ...current, zoomPercent: percent } : current,
       );
     }).finally(() => setZoomPending(false));
-  }
-
-  function closeFind() {
-    setFindOpen(false);
-    if (findLauncher.current?.isConnected) findLauncher.current.focus();
-    else addressField.current?.focus();
-    void pageAction(() => browserFind(tab.id, "stop"));
-  }
-
-  function openFind() {
-    if (!findOpen) {
-      const active = document.activeElement;
-      findLauncher.current = active instanceof HTMLElement ? active : null;
-      setFindOpen(true);
-    } else {
-      findField.current?.focus();
-      findField.current?.select();
-    }
   }
 
   function openHistory() {

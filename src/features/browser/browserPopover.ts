@@ -14,6 +14,8 @@ export function useBoundedBrowserPopover(
     const measure = () => {
       const bounds = pane?.getBoundingClientRect();
       const rect = element.getBoundingClientRect();
+      const scale =
+        element.offsetWidth > 0 ? rect.width / element.offsetWidth : 1;
       const bottom = Math.min(
         window.innerHeight,
         bounds?.bottom ?? window.innerHeight,
@@ -21,11 +23,11 @@ export function useBoundedBrowserPopover(
       const left = Math.max(0, bounds?.left ?? 0);
       element.style.setProperty(
         "--browser-popup-max-height",
-        `${Math.max(0, bottom - rect.top - POPOVER_EDGE_CLEARANCE)}px`,
+        `${Math.max(0, (bottom - rect.top - POPOVER_EDGE_CLEARANCE) / scale)}px`,
       );
       element.style.setProperty(
         "--browser-popup-max-width",
-        `${Math.max(0, rect.right - left - POPOVER_EDGE_CLEARANCE)}px`,
+        `${Math.max(0, (rect.right - left - POPOVER_EDGE_CLEARANCE) / scale)}px`,
       );
     };
     measure();
