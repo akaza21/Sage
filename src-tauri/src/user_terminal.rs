@@ -184,6 +184,19 @@ impl TerminalSessionPort {
         Ok(session.process.shell_path().to_owned())
     }
 
+    /// Whether another terminal fits the global, project and chat limits.
+    fn admits(&self, scope: &TerminalScope) -> Result<bool, TerminalError> {
+        let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let (project, chat) = sessions.values().fold((0, 0), |(project, chat), session| {
+            let same_project = session.scope.project == scope.project;
+            (
+                project + usize::from(same_project),
+                chat + usize::from(same_project && session.scope == *scope),
+            )
+        });
+        Ok(sessions.len() < MAX_GLOBAL && project < MAX_PER_PROJECT && chat < MAX_PER_CHAT)
+    }
+
     fn new(factory: Box<dyn TerminalFactory>) -> Self {
         Self {
             factory,
@@ -222,21 +235,13 @@ impl TerminalSessionPort {
         if !chat_tab_exists(&state.database, scope).await? {
             return Err(TerminalError::InvalidScope);
         }
-        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
-        let project_count = sessions
-            .values()
-            .filter(|session| session.scope.project == scope.project)
-            .count();
-        let chat_count = sessions
-            .values()
-            .filter(|session| session.scope == *scope)
-            .count();
-        if sessions.len() >= MAX_GLOBAL
-            || project_count >= MAX_PER_PROJECT
-            || chat_count >= MAX_PER_CHAT
-        {
+        if !self.admits(scope)? {
             return Err(TerminalError::Capacity);
         }
+        // Spawning a shell can take a while (ConPTY on Windows), so the
+        // session table stays unlocked for reads, writes and resizes of the
+        // other terminals meanwhile. `context` holds the project transition
+        // lock, so no other create can take the slot admitted above.
         let root = state
             .database
             .selected_project_root_authority(&context)
@@ -251,16 +256,19 @@ impl TerminalSessionPort {
             };
         let id = TerminalSessionId(uuid::Uuid::new_v4());
         let revision = TerminalRevision(1);
-        sessions.insert(
-            id,
-            Session {
-                scope: scope.clone(),
-                revision,
-                output,
-                reader_busy: Arc::new(AtomicBool::new(false)),
-                process,
-            },
-        );
+        self.sessions
+            .lock()
+            .map_err(|_| TerminalError::Backend)?
+            .insert(
+                id,
+                Session {
+                    scope: scope.clone(),
+                    revision,
+                    output,
+                    reader_busy: Arc::new(AtomicBool::new(false)),
+                    process,
+                },
+            );
         if cleanup_unknown {
             Err(TerminalError::Backend)
         } else {
