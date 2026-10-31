@@ -8,13 +8,7 @@ import {
   X,
 } from "../ui/leanIcons";
 
-import {
-  lazy,
-  Suspense,
-  useLayoutEffect,
-  useRef,
-  type WheelEvent,
-} from "react";
+import { useLayoutEffect, useRef, type WheelEvent } from "react";
 
 import type { TabKind } from "../domain/workbench";
 import { orderedTabs } from "../app/tabState";
@@ -24,6 +18,7 @@ import { FileKindIcon } from "../features/files/FileKindIcon";
 import { useBrowserAgentPresence } from "../app/browserAgentActivityStore";
 import type { WorkbenchTab } from "../domain/workbench";
 import { BrowserFavicon } from "../features/browser/browserFavicon";
+import GitTabTitle from "../features/git/GitTabTitle";
 
 function BrowserTabPresence({
   tabId,
@@ -53,10 +48,6 @@ function BrowserTabPresence({
   );
 }
 
-// A File tab's Git mark (EP-13) loads with the first decorated tab, keeping it
-// and its styles off the startup path the Agent window shares.
-const GitTabTitle = lazy(() => import("../features/git/GitTabTitle"));
-
 /**
  * A vertical wheel scrolls the strip sideways, as in VS Code. A trackpad pinch
  * arrives as a wheel with Ctrl held, and is left alone.
@@ -83,15 +74,17 @@ const icons: Record<TabKind, typeof MessageSquare> = {
   browser: Globe2,
 };
 
+export interface TabStripProps {
+  kinds?: ReadonlyArray<TabKind>;
+  showNewChat?: boolean;
+  label?: string;
+}
+
 export function TabStrip({
   kinds,
   showNewChat = true,
   label = "Open tabs",
-}: {
-  kinds?: ReadonlyArray<TabKind>;
-  showNewChat?: boolean;
-  label?: string;
-} = {}) {
+}: TabStripProps = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
@@ -162,9 +155,7 @@ export function TabStrip({
                   <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                 )}
                 {gitDecorations && tab.kind === "file" && tab.resource ? (
-                  <Suspense fallback={<span>{tab.title}</span>}>
-                    <GitTabTitle title={tab.title} resource={tab.resource} />
-                  </Suspense>
+                  <GitTabTitle title={tab.title} resource={tab.resource} />
                 ) : (
                   <span>{tab.title}</span>
                 )}

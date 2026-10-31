@@ -75,7 +75,7 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     }
     let branch = symbolic_branch(workspace).await?;
     // Each read needs only the branch, so they run side by side.
-    let (tracking, listed, history, remotes, in_progress, changes) = tokio::try_join!(
+    let (tracking, listed, history, remotes, in_progress, staged) = tokio::try_join!(
         repository::tracking_status(workspace, branch.as_deref()),
         crate::repository_branches::list_local_branches(workspace),
         crate::repository_history::list_recent_commits(workspace),
@@ -103,17 +103,24 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         rebase_in_progress: in_progress.rebase,
         cherry_pick_in_progress: in_progress.cherry_pick,
         revert_in_progress: in_progress.revert,
-        changes,
+        changes: staged.changes,
         truncated: true,
-        changes_overflowed: false,
+        changes_overflowed: staged.overflowed,
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: Some(INDEX_ONLY_MESSAGE.into()),
     })
 }
 
+/// Staged changes, capped at `MAX_CHANGES`.
+struct StagedChanges {
+    changes: Vec<FileChange>,
+    /// Another change followed the full list, so more than `MAX_CHANGES` exist.
+    overflowed: bool,
+}
+
 /// What the index holds against `HEAD` (or the empty tree before the first
 /// commit).
-async fn staged_changes(workspace: &Workspace) -> AppResult<Vec<FileChange>> {
+async fn staged_changes(workspace: &Workspace) -> AppResult<StagedChanges> {
     let base = diff_base(workspace).await?;
     let output = crate::repository_workspace::run_git(
         workspace,
@@ -190,7 +197,7 @@ fn parse_changes(
     workspace: &Workspace,
     bytes: &[u8],
     output_truncated: bool,
-) -> AppResult<Vec<FileChange>> {
+) -> AppResult<StagedChanges> {
     let complete = if output_truncated {
         bytes
             .iter()
@@ -206,6 +213,7 @@ fn parse_changes(
     };
     let mut fields = complete.split(|byte| *byte == 0);
     let mut changes = Vec::new();
+    let mut overflowed = false;
     while let Some(status) = fields.next() {
         if status.is_empty() {
             break;
@@ -222,6 +230,7 @@ fn parse_changes(
             return Err(AppError::Git("Git returned an empty index path".into()));
         }
         if changes.len() == MAX_CHANGES {
+            overflowed = true;
             break;
         }
         let status = std::str::from_utf8(status)
@@ -241,7 +250,10 @@ fn parse_changes(
             deletions: None,
         });
     }
-    Ok(changes)
+    Ok(StagedChanges {
+        changes,
+        overflowed,
+    })
 }
 
 fn index_status(status: &str) -> &'static str {
@@ -252,5 +264,33 @@ fn index_status(status: &str) -> &'static str {
         Some(b'T') => "typeChanged",
         Some(b'U') => "conflicted",
         _ => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn staged(count: usize) -> Vec<u8> {
+        (0..count)
+            .flat_map(|index| format!("A\0staged-{index}.txt\0").into_bytes())
+            .collect()
+    }
+
+    #[test]
+    fn index_changes_report_overflow_only_past_the_full_list() {
+        let root = std::env::temp_dir().join(format!("sage-index-overflow-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+
+        let exact = parse_changes(&workspace, &staged(MAX_CHANGES), false).unwrap();
+        let over = parse_changes(&workspace, &staged(MAX_CHANGES + 1), false).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+
+        assert_eq!(exact.changes.len(), MAX_CHANGES);
+        assert!(!exact.overflowed);
+        assert_eq!(exact.changes[0].index_status, "added");
+        assert_eq!(over.changes.len(), MAX_CHANGES);
+        assert!(over.overflowed);
     }
 }

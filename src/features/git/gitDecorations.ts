@@ -71,7 +71,12 @@ const TONE_RANK: Record<GitDecorationTone, number> = {
 
 export function fileGitDecoration(change: FileChange): GitDecoration | null {
   if (isConflictedChange(change)) return FILE_DECORATIONS.conflict;
-  const state = visibleChangeStatus(change);
+  // The post-commit index-only status leaves the working tree "unknown";
+  // the staged state is then what is known.
+  const state =
+    change.worktreeStatus === "unknown"
+      ? change.indexStatus
+      : visibleChangeStatus(change);
   return state === "unchanged" || state === "unknown" || state === "conflicted"
     ? null
     : FILE_DECORATIONS[state];

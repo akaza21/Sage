@@ -75,6 +75,13 @@ describe("rootGitDecorations", () => {
     expect(marks.files.get("a.ts")?.badge).toBe("M");
   });
 
+  it("marks staged Files from the post-commit index-only status", () => {
+    const marks = rootGitDecorations(
+      root([change("a.ts", "unknown", "added")], { truncated: true }),
+    );
+    expect(marks.files.get("a.ts")?.badge).toBe("A");
+  });
+
   it("tints every folder above a change with its most pressing tone", () => {
     const marks = rootGitDecorations(
       root([
