@@ -565,3 +565,49 @@ fn a_linked_worktree_is_refused_before_git_runs() {
             .succeeded()
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_cached_root_whose_git_dir_becomes_a_link_is_refused() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    assert_eq!(probes(&root), 1);
+
+    // Byte-identical Git data outside the root, reached through a symlink.
+    let outside = scratch.base.join("outside.git");
+    fs::rename(root.join(".git"), &outside).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join(".git")).unwrap();
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+    assert_eq!(
+        probes(&root),
+        2,
+        "the link must invalidate the cached verdict"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_linked_config_file_is_refused() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    let config = root.join(".git").join("config");
+    let outside = scratch.base.join("outside-config");
+    fs::rename(&config, &outside).unwrap();
+    std::os::unix::fs::symlink(&outside, &config).unwrap();
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+}

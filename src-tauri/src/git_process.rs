@@ -232,6 +232,16 @@ async fn run_inner(
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
     let repository = repository_config::admit(root, root_authority.as_ref()).await?;
+    if repository.is_some()
+        && root_authority
+            .as_ref()
+            .is_some_and(|authority| !authority.anchors_repository())
+    {
+        // A `.git` that appeared after the root handle was taken.
+        return Err(AppError::InvalidRequest(
+            "workspace root changed before Git access".into(),
+        ));
+    }
     run_admitted(
         root,
         args,

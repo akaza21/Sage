@@ -11,6 +11,21 @@
 //! decides which config Git reads. Each call re-reads those few small files
 //! in-process and compares them, so steady-state polling starts no process,
 //! and Git itself stays the only config parser.
+//!
+//! # Threat model
+//!
+//! This defends against untrusted repository content: a cloned, downloaded,
+//! extracted or synced folder whose `.git` config tries to run commands when
+//! Sage runs Git there. Only Git data inside the opened root is admitted, and
+//! no watched path may be a symlink or junction, so every location Git reads
+//! is reached through the identity-checked root handle.
+//!
+//! A hostile process writing `.git/config` concurrently, between this check
+//! and the spawn, is out of scope: it already runs with the user's full
+//! privileges, and closing that window would need Git to read its config from
+//! a validated snapshot. The next call sees the change, because watched files
+//! are compared by their bytes. Admitting Git data outside the root through
+//! retained handles is tracked in issue #87.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -253,6 +268,11 @@ impl Probe {
         );
         let refusal = if watched
             .iter()
+            .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
+        {
+            Some(Refusal::Layout(RepositoryLayout::ExternalGitDir))
+        } else if watched
+            .iter()
             .any(|(_, fingerprint)| fingerprint.is_unverifiable())
         {
             Some(Refusal::Config(TOO_LARGE.to_owned()))
@@ -402,10 +422,19 @@ enum Fingerprint {
     Oversized,
     /// A FIFO, device or socket, which Git could block on; refused.
     Special,
+    /// A symlink or junction, which could lead outside the root; refused.
+    Link,
 }
 
 impl Fingerprint {
     fn of(path: &Path) -> Self {
+        match fs::symlink_metadata(path) {
+            // Junctions count as symlinks on Windows.
+            Ok(metadata) if metadata.file_type().is_symlink() => return Self::Link,
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::Missing,
+            Err(error) => return Self::Unreadable(error.kind()),
+        }
         match fs::metadata(path) {
             Ok(metadata) if metadata.is_dir() => Self::Directory,
             Ok(metadata) if !metadata.is_file() => Self::Special,
@@ -432,7 +461,7 @@ fn read_regular_file(path: &Path) -> io::Result<Fingerprint> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NONBLOCK);
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
     }
     let file = options.open(path)?;
     let metadata = file.metadata()?;
