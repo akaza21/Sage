@@ -22,6 +22,7 @@ import { ExplorerActions } from "./ExplorerActions";
 import {
   ExplorerContextMenuContext,
   createExplorerContextMenu,
+  isContextMenuKey,
 } from "./explorerContextMenu";
 import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
@@ -68,20 +69,23 @@ const RootTree = memo(function RootTree({
   // Like VS Code, a right-click selects what it is on (without opening a
   // File) and opens the actions for it there.
   const openContextMenu = useCallback(
-    (resource: ResourceRef, row: HTMLElement) => {
+    (resource: ResourceRef, row: HTMLElement): void => {
       const state = useWorkbenchStore.getState();
       if (!contextMenu || !state.project || state.projectTransitioning) {
-        return false;
+        return;
       }
-      state.selectDirectory(resource);
+      // The root heading selects as its click does (which also retries a
+      // listing that failed); a row without opening its File.
+      if (resource.relativePath === "") state.selectRoot(resource.rootId);
+      else state.selectDirectory(resource);
       // Selection is refused while a rename or recycle runs: the menu would
       // then show the actions of what was selected before.
       if (
         !sameResource(useWorkbenchStore.getState().selectedResource, resource)
       ) {
-        return false;
+        return;
       }
-      return contextMenu.open(row);
+      contextMenu.open(row);
     },
     [contextMenu],
   );
@@ -127,9 +131,13 @@ const RootTree = memo(function RootTree({
         title={root.name}
         onClick={() => selectRoot(root.id)}
         onContextMenu={(event) => {
-          if (openContextMenu(rootResource, event.currentTarget)) {
-            event.preventDefault();
-          }
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (!isContextMenuKey(event)) return;
+          event.preventDefault();
+          openContextMenu(rootResource, event.currentTarget);
         }}
       >
         <FileKindIcon path={root.name} entryKind="directory" />

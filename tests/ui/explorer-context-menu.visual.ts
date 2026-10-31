@@ -31,6 +31,17 @@ test.describe("Explorer context menu", () => {
     expect(menuBox.y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height - 1);
     expect(menuBox.y).toBeLessThan(rowBox.y + rowBox.height + 24);
 
+    // The root's heading above, while the menu is open: the menu moves
+    // there and keeps the focus.
+    const heading = page.locator(".root-tree__heading").first();
+    await heading.click({ button: "right" });
+    await expect(heading).toHaveAttribute("aria-current", "page");
+    await page.clock.runFor(100);
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(heading).toBeFocused();
+    await row.click({ button: "right" });
+
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(row).toBeFocused();

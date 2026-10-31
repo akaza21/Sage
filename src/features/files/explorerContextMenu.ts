@@ -32,3 +32,10 @@ export function createExplorerContextMenu(): ExplorerContextMenu {
 
 export const ExplorerContextMenuContext =
   createContext<ExplorerContextMenu | null>(null);
+
+/**
+ * The keyboard's own way to ask for the menu. WebKit on macOS sends no
+ * contextmenu event for it, so rows listen for the keys too.
+ */
+export const isContextMenuKey = (event: { key: string; shiftKey: boolean }) =>
+  event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);

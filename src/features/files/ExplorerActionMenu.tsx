@@ -69,15 +69,23 @@ export function ExplorerActionMenu() {
     }),
     [row],
   );
+  // A close hands the focus back on the next frame; reopening before then
+  // (a right-click on another row, the "…" button) must keep it instead.
+  const focusFrame = useRef<number | null>(null);
+  const keepFocus = useCallback(() => {
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+    focusFrame.current = null;
+  }, []);
   const contextMenu = useContext(ExplorerContextMenuContext);
   useEffect(
     () =>
       contextMenu?.register((anchor) => {
+        keepFocus();
         setRow(anchor);
         setOpeningFocus("first");
         setOpen(true);
       }),
-    [contextMenu],
+    [contextMenu, keepFocus],
   );
   const menuId = useId();
   const actionSource = action.kind === "unavailable" ? null : action.source;
@@ -88,11 +96,15 @@ export function ExplorerActionMenu() {
   const closeMenu = useCallback(
     (restoreFocus = true) => {
       setOpen(false);
+      keepFocus();
       if (restoreFocus) {
-        requestAnimationFrame(() => anchorRef.current?.focus());
+        focusFrame.current = requestAnimationFrame(() => {
+          focusFrame.current = null;
+          anchorRef.current?.focus();
+        });
       }
     },
-    [anchorRef],
+    [anchorRef, keepFocus],
   );
 
   useEffect(() => {
@@ -121,11 +133,13 @@ export function ExplorerActionMenu() {
         type="button"
         aria-label="More Explorer actions"
         aria-controls={menuId}
-        aria-expanded={open}
+        // A menu a row opened belongs to that row.
+        aria-expanded={open && row === null}
         aria-haspopup="menu"
         title={project ? "More Explorer actions" : "Open a Project first"}
         disabled={!project || projectTransitioning}
         onClick={() => {
+          keepFocus();
           setOpeningFocus("first");
           setOpen((current) => !current || row !== null);
           setRow(null);
@@ -133,6 +147,7 @@ export function ExplorerActionMenu() {
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
+          keepFocus();
           setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
           setRow(null);
           setOpen(true);
