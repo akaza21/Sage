@@ -176,7 +176,10 @@ mod tests {
     /// quietly skipping the wait. It leaves the repository folder, so a
     /// leftover filter outliving a killed add doesn't hold it as its working
     /// folder.
+    /// A slow clean filter keeps `git add` running past the deadline. Sage
+    /// refuses repository filters, so the fixture root is trusted explicitly.
     fn hold_staging_of_new_file(root: &Path) {
+        crate::git_process::trust_repository_config_for_test(root);
         git(
             root,
             &["config", "filter.sage-slow.clean", "cd / && sleep 2 && cat"],

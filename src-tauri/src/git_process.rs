@@ -19,15 +19,25 @@ use crate::{
 };
 
 mod containment;
+mod repository_config;
 mod root_authority;
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+pub(crate) use repository_config::trust_for_test as trust_repository_config_for_test;
 pub(crate) use root_authority::GitRootAuthority;
 #[cfg(test)]
 pub(crate) use test_support::GitProcessTestHarness;
 
 const MAX_STDERR_BYTES: usize = 64 * 1024;
+/// Parent variables Git still needs after `env_clear`: the SSH agent socket for
+/// SSH remotes, and `SystemRoot`, without which Winsock cannot initialise.
+const INHERITED_ENV: &[&str] = &[
+    "SSH_AUTH_SOCK",
+    #[cfg(windows)]
+    "SystemRoot",
+];
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -221,6 +231,20 @@ async fn run_inner(
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
+    repository_config::admit(root, root_authority.as_ref()).await?;
+    run_admitted(root, args, stdout_limit, policy, root_authority).await
+}
+
+/// Spawns Git without the repository-config admission check. Only the
+/// admission probes call this directly; every other caller goes through
+/// [`run_inner`].
+async fn run_admitted(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    root_authority: Option<GitRootAuthority>,
+) -> AppResult<GitOutput> {
     #[cfg(test)]
     let registry = policy
         .containment_registry
@@ -378,7 +402,10 @@ fn configured_command(
         .args(["-c", "core.hooksPath=/dev/null"])
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
-        .args(["-c", "gc.auto=0"]);
+        .args(["-c", "gc.auto=0"])
+        .args(["-c", "protocol.ext.allow=never"])
+        .args(["-c", "protocol.file.allow=user"])
+        .args(["-c", "safe.bareRepository=explicit"]);
     if let Some(root_authority) = root_authority {
         root_authority.bind_child(&mut command, root);
     } else {
@@ -395,6 +422,11 @@ fn configured_command(
         .env("GIT_PAGER", "cat")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
+        .envs(
+            INHERITED_ENV
+                .iter()
+                .filter_map(|name| std::env::var_os(name).map(|value| (name, value))),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

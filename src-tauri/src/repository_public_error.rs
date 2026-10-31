@@ -4,7 +4,9 @@ pub(crate) const MAX_PUBLIC_REPOSITORY_ERROR_BYTES: usize = 512;
 
 pub(crate) fn commit(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not complete the commit. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -24,7 +26,9 @@ pub(crate) fn commit(error: &AppError) -> String {
 
 pub(crate) fn create_branch(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not create that local branch. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -46,7 +50,9 @@ pub(crate) fn create_branch(error: &AppError) -> String {
 
 pub(crate) fn sequence_abort(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not abort that in-progress merge, rebase, cherry-pick, or revert. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -66,7 +72,9 @@ pub(crate) fn sequence_abort(error: &AppError) -> String {
 
 pub(crate) fn rename_branch(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not rename that local branch. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -88,7 +96,9 @@ pub(crate) fn rename_branch(error: &AppError) -> String {
 
 pub(crate) fn delete_branch(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not delete that local branch. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -110,7 +120,9 @@ pub(crate) fn delete_branch(error: &AppError) -> String {
 
 pub(crate) fn checkout(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not switch to that local branch. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -130,7 +142,9 @@ pub(crate) fn checkout(error: &AppError) -> String {
 
 pub(crate) fn rebase(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not continue the rebase. Refresh Source Control, resolve remaining conflicts, and retry."
         }
@@ -150,7 +164,9 @@ pub(crate) fn rebase(error: &AppError) -> String {
 
 pub(crate) fn cherry_pick(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not continue the cherry-pick. Refresh Source Control, resolve remaining conflicts, and retry."
         }
@@ -172,7 +188,9 @@ pub(crate) fn cherry_pick(error: &AppError) -> String {
 
 pub(crate) fn remote_transport(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not complete fetch or push for that remote. Refresh Source Control, resolve the repository error, and retry."
         }
@@ -194,7 +212,9 @@ pub(crate) fn remote_transport(error: &AppError) -> String {
 
 pub(crate) fn pull(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not fast-forward the incoming history. Refresh Source Control, resolve authentication, network, or conflict errors, and retry."
         }
@@ -214,7 +234,9 @@ pub(crate) fn pull(error: &AppError) -> String {
 
 pub(crate) fn revert(error: &AppError) -> String {
     let message = match error {
-        AppError::InvalidRequest(message) | AppError::ResourceLimit(message) => message.as_str(),
+        AppError::InvalidRequest(message)
+        | AppError::ResourceLimit(message)
+        | AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::Git(_) => {
             "Git could not continue the revert. Refresh Source Control, resolve remaining conflicts, and retry."
         }
@@ -234,6 +256,7 @@ pub(crate) fn revert(error: &AppError) -> String {
 
 pub(crate) fn projection(error: &AppError) -> String {
     let message = match error {
+        AppError::UnsafeRepositoryConfig(message) => message.as_str(),
         AppError::InvalidRequest(_) => {
             "Repository status is unavailable because the selected root changed or is no longer valid."
         }

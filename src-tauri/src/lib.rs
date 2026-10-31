@@ -58,6 +58,8 @@ mod repository_checkout_commands;
 mod repository_cherry_pick_commands;
 mod repository_commit;
 mod repository_commit_commands;
+#[cfg(test)]
+mod repository_config_refusal_tests;
 mod repository_conflict;
 mod repository_diff;
 mod repository_discovery;

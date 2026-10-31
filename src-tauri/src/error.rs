@@ -31,6 +31,11 @@ pub enum AppError {
     #[error("Git operation failed: {0}")]
     Git(String),
 
+    /// Sage refused to run Git because the repository's own config names a
+    /// program Git would run. The message is safe to show to the user.
+    #[error("{0}")]
+    UnsafeRepositoryConfig(String),
+
     #[error("Git mutation effect is unknown: {0}")]
     GitEffectUnknown(String),
 

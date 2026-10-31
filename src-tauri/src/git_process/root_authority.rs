@@ -31,6 +31,16 @@ impl GitRootAuthority {
         Ok(authority)
     }
 
+    /// Duplicates the retained root handle so a second Git process can bind to
+    /// the same identity-checked directory.
+    pub(super) fn try_clone(&self) -> AppResult<Self> {
+        Ok(Self {
+            directory: self.directory.try_clone()?,
+            #[cfg(windows)]
+            _anchor: self._anchor.try_clone()?,
+        })
+    }
+
     pub(super) fn bind_child(&self, command: &mut Command, root: &Path) {
         bind_child(command, root, &self.directory);
     }
