@@ -18,6 +18,9 @@ import {
 } from "../../domain/resourceIdentity";
 import type * as MatcherModule from "../../domain/pathGlobMatcher";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
+import { GitDecorationBadge } from "../git/GitDecorationBadge";
+import { gitDecorationAt } from "../git/gitDecorations";
+import { useRootGitDecorations } from "../git/useRootGitDecorations";
 import { ExplorerActions } from "./ExplorerActions";
 import {
   ExplorerContextMenuContext,
@@ -63,6 +66,8 @@ const RootTree = memo(function RootTree({
       void matcherLoaded.then((module) => module && setMatcher(module));
     }
   }, [matcher]);
+  const gitDecorations = useRootGitDecorations(root.id);
+  const rootGitDecoration = gitDecorationAt(gitDecorations, "", true);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const contextMenu = useContext(ExplorerContextMenuContext);
@@ -124,11 +129,24 @@ const RootTree = memo(function RootTree({
   return (
     <section className="root-tree">
       <button
-        className="root-tree__heading"
+        className={`root-tree__heading${
+          rootGitDecoration
+            ? ` root-tree__heading--git git-tone--${rootGitDecoration.tone}`
+            : ""
+        }`}
         data-resource-key={resourceKey(rootResource)}
         type="button"
         aria-current={rootSelected ? "page" : undefined}
-        title={root.name}
+        aria-label={
+          rootGitDecoration
+            ? `${root.name}, ${rootGitDecoration.label}`
+            : undefined
+        }
+        title={
+          rootGitDecoration
+            ? `${root.name}, ${rootGitDecoration.label}`
+            : root.name
+        }
         onClick={() => selectRoot(root.id)}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -145,6 +163,9 @@ const RootTree = memo(function RootTree({
         <span className={`root-state root-state--${root.availability}`}>
           {root.availability === "available" ? "" : root.availability}
         </span>
+        {rootGitDecoration ? (
+          <GitDecorationBadge decoration={rootGitDecoration} />
+        ) : null}
       </button>
       {root.availability !== "available" ? (
         <p className="sidebar__empty">{root.message ?? "Root unavailable"}</p>
@@ -165,6 +186,11 @@ const RootTree = memo(function RootTree({
             entry={entry}
             selected={isSelected}
             expanded={Boolean(expanded[key])}
+            gitDecoration={gitDecorationAt(
+              gitDecorations,
+              entry.resource.relativePath,
+              entry.kind === "directory",
+            )}
             onSelectDirectory={selectDirectory}
             onToggleDirectory={toggleDirectory}
             onOpenFile={openFile}

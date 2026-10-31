@@ -263,7 +263,7 @@
   object-fit: contain;
 }
 
-.tab__activate span:not(.tab__status, .tab__dirty, .tab__count) {
+.tab__activate span:not(.tab__status, .tab__dirty, .tab__count, .git-badge) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -316,6 +316,19 @@
 
 .tab__dirty {
   background: var(--color-warning);
+}
+
+/* EP-13: a File tab's title takes its Git tone; the badge sits after it. */
+.tab__title--git {
+  color: var(--git-tone);
+}
+
+.tab__title--git.git-tone--deleted {
+  text-decoration: line-through;
+}
+
+.tab__activate .git-badge {
+  margin-left: 0;
 }
 
 .tab__count {

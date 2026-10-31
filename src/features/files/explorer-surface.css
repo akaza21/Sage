@@ -44,7 +44,7 @@
   display: grid;
   width: 100%;
   height: 28px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px;
   padding: 0 8px;
@@ -66,6 +66,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.root-tree__heading--git > span:nth-child(2) {
+  color: var(--git-tone);
 }
 
 .root-state {
@@ -102,7 +106,7 @@
   cursor: default;
 }
 
-.tree__row span:last-child {
+.tree__name {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -118,8 +122,22 @@
 }
 
 /* Entries an ignore file ignores: VS Code greys the name of Git-ignored ones. */
-.tree__row--ignored > span:last-child {
+.tree__row--ignored > .tree__name {
   color: var(--color-text-muted);
+}
+
+/* Git status (EP-13): a changed entry's name takes its tone. */
+.tree__row--git > .tree__name {
+  color: var(--git-tone);
+}
+
+/* Ignored and changed (a tracked File an ignore rule matches): dimmed tone. */
+.tree__row--ignored.tree__row--git > .tree__name {
+  color: color-mix(in srgb, var(--git-tone) 55%, var(--color-text-muted));
+}
+
+.tree__row--git.git-tone--deleted > .tree__name {
+  text-decoration: line-through;
 }
 
 .tree__row > svg:first-child {

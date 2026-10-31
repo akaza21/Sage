@@ -3,6 +3,8 @@ import { forwardRef, memo } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import { GitDecorationBadge } from "../git/GitDecorationBadge";
+import type { GitDecoration } from "../git/gitDecorations";
 import { isContextMenuKey } from "./explorerContextMenu";
 import { FileKindIcon } from "./FileKindIcon";
 import type { VisibleWorkspaceEntry } from "./fileTree";
@@ -11,6 +13,8 @@ interface ExplorerRowProps {
   entry: VisibleWorkspaceEntry;
   selected: boolean;
   expanded: boolean;
+  /** Git status from the EP-12 store (EP-13); shared objects keep the memo. */
+  gitDecoration?: GitDecoration;
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
@@ -24,6 +28,7 @@ export const ExplorerRow = memo(
       entry,
       selected,
       expanded,
+      gitDecoration,
       onSelectDirectory,
       onToggleDirectory,
       onOpenFile,
@@ -35,26 +40,30 @@ export const ExplorerRow = memo(
     const directory = entry.kind === "directory";
     const file = entry.kind === "file";
     const entryKind = directory ? "directory" : file ? "file" : "symlink";
+    const gitStatus = gitDecoration ? `, ${gitDecoration.label}` : "";
 
     return (
       <button
         className={`tree__row ${directory ? "tree__row--folder" : ""} ${
           selected ? "tree__row--selected" : ""
-        } ${entry.ignored ? "tree__row--ignored" : ""}`}
+        } ${entry.ignored ? "tree__row--ignored" : ""}${
+          gitDecoration ? ` tree__row--git git-tone--${gitDecoration.tone}` : ""
+        }`}
         data-resource-key={key}
         ref={ref}
         type="button"
         role="treeitem"
         aria-label={
-          directory
+          (directory
             ? `Toggle folder ${entry.resource.relativePath}`
             : file
               ? `Open file ${entry.resource.relativePath}`
-              : `Unavailable resource ${entry.resource.relativePath}`
+              : `Unavailable resource ${entry.resource.relativePath}`) +
+          gitStatus
         }
         aria-current={selected ? "page" : undefined}
         aria-expanded={directory ? expanded : undefined}
-        title={entry.resource.relativePath}
+        title={entry.resource.relativePath + gitStatus}
         style={{ paddingLeft: 8 + entry.depth * 16 }}
         disabled={!directory && !file}
         onClick={() => {
@@ -90,7 +99,10 @@ export const ExplorerRow = memo(
           path={entry.resource.relativePath}
           entryKind={entryKind}
         />
-        <span>{entry.name}</span>
+        <span className="tree__name">{entry.name}</span>
+        {gitDecoration ? (
+          <GitDecorationBadge decoration={gitDecoration} />
+        ) : null}
       </button>
     );
   }),
