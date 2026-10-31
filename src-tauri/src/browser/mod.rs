@@ -123,6 +123,10 @@ struct BrowserTab<T> {
     revision: u64,
     document_revision: u64,
     committed_url: Option<String>,
+    /// The URL of this tab's latest visit queued to the browsing history,
+    /// which its later titles and same-document changes name; `None` when
+    /// none was queued, as when a full queue dropped it.
+    visited_url: Option<String>,
     history: BrowserHistory,
     fallback_url: Option<String>,
     last_error: Option<&'static str>,
@@ -214,6 +218,7 @@ impl<T> BrowserTabs<T> {
                 revision: 0,
                 document_revision: 0,
                 committed_url: None,
+                visited_url: None,
                 history: BrowserHistory::default(),
                 fallback_url: None,
                 last_error: None,

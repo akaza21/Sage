@@ -13,8 +13,8 @@ fn urls(history: &BrowsingHistory, search: &str) -> Vec<String> {
 #[test]
 fn reads_see_every_visit_and_title_recorded_before_them() {
     let history = BrowsingHistory::in_memory();
-    history.record_visit("browser-1", "https://a.example/");
-    history.record_visit("browser-1", "https://b.example/");
+    history.record_visit("browser-1", "https://a.example/", None);
+    history.record_visit("browser-1", "https://b.example/", None);
     history.record_title("browser-1", "Bravo");
     let page = history.page(String::new(), None, 10).unwrap();
     assert_eq!(
@@ -35,18 +35,18 @@ fn clearing_removes_visits_queued_before_it_and_keeps_later_ones() {
     let history = BrowsingHistory::in_memory();
     let recorder = history.clone();
     for index in 0..50 {
-        recorder.record_visit("browser-1", &format!("https://{index}.example/"));
+        recorder.record_visit("browser-1", &format!("https://{index}.example/"), None);
     }
     assert_eq!(history.clear().unwrap(), 50);
-    recorder.record_visit("browser-1", "https://after.example/");
+    recorder.record_visit("browser-1", "https://after.example/", None);
     assert_eq!(urls(&history, ""), ["https://after.example/"]);
 }
 
 #[test]
 fn removing_and_searching_go_through_the_worker() {
     let history = BrowsingHistory::in_memory();
-    history.record_visit("browser-1", "https://docs.example/");
-    history.record_visit("browser-1", "https://news.example/");
+    history.record_visit("browser-1", "https://docs.example/", None);
+    history.record_visit("browser-1", "https://news.example/", None);
     assert_eq!(urls(&history, "docs"), ["https://docs.example/"]);
     let id = history
         .page("news".into(), None, 1)
@@ -61,7 +61,7 @@ fn removing_and_searching_go_through_the_worker() {
 #[test]
 fn a_disabled_handle_records_nothing_and_reports_reads_unavailable() {
     let history = BrowsingHistory::default();
-    history.record_visit("browser-1", "https://a.example/");
+    history.record_visit("browser-1", "https://a.example/", None);
     history.record_title("browser-1", "A");
     assert_eq!(
         history.page(String::new(), None, 1).unwrap_err(),
@@ -77,7 +77,7 @@ fn a_store_that_cannot_open_drops_writes_and_fails_reads_without_panicking() {
         .join("nested")
         .join("browsing-history.db");
     let history = BrowsingHistory::open(missing);
-    history.record_visit("browser-1", "https://a.example/");
+    history.record_visit("browser-1", "https://a.example/", None);
     assert_eq!(
         history.page(String::new(), None, 1).unwrap_err(),
         UNAVAILABLE
@@ -90,7 +90,7 @@ fn recording_never_waits_for_the_disk() {
     let history = BrowsingHistory::in_memory();
     let started = std::time::Instant::now();
     for index in 0..(QUEUE * 4) {
-        history.record_visit("browser-1", &format!("https://{index}.example/"));
+        history.record_visit("browser-1", &format!("https://{index}.example/"), None);
     }
     // Far more visits than the queue holds return at once: excess visits
     // are dropped, never waited on.
@@ -108,62 +108,16 @@ fn stalled() -> (BrowsingHistory, Receiver<Request>) {
     (history, receiver)
 }
 
-fn take_write(receiver: &Receiver<Request>) -> Write {
-    match receiver.try_recv().unwrap() {
-        Request::Write(write) => write,
-        Request::Read(_) => panic!("expected a write"),
-    }
-}
-
 #[test]
-fn after_a_dropped_visit_its_tab_starts_a_new_visit_instead_of_editing_the_previous_one() {
+fn a_write_the_full_queue_drops_reports_that_it_was_not_queued() {
     let (history, receiver) = stalled();
-    history.record_visit("browser-1", "https://a.example/");
-    // The queue is full: this visit and the other tab's are dropped.
-    history.record_visit("browser-1", "https://b.example/");
-    history.record_visit("browser-2", "https://c.example/");
-    assert!(
-        matches!(take_write(&receiver), Write::Visit { url, .. } if url == "https://a.example/")
-    );
-    // Its title belongs to the dropped page, not to the previous visit.
-    history.record_title("browser-1", "Bravo");
-    assert!(receiver.try_recv().is_err());
-    history.record_same_document("browser-1", "https://b.example/#more", Some("Bravo"));
+    assert!(history.record_visit("browser-1", "https://a.example/", None));
+    assert!(!history.record_visit("browser-1", "https://b.example/", Some("B")));
+    assert!(!history.record_same_document("browser-1", "https://b.example/#c", None));
     assert!(matches!(
-        take_write(&receiver),
-        Write::Visit { url, same_document: false, .. } if url == "https://b.example/#more"
+        receiver.try_recv().unwrap(),
+        Request::Write(Write::Visit { url, .. }) if url == "https://a.example/"
     ));
-    // Recorded again, the tab names its latest visit as usual.
-    history.record_title("browser-1", "Bravo");
-    assert!(matches!(take_write(&receiver), Write::Title { title, .. } if title == "Bravo"));
-    history.record_same_document("browser-1", "https://b.example/#end", None);
-    assert!(matches!(
-        take_write(&receiver),
-        Write::Visit {
-            same_document: true,
-            ..
-        }
-    ));
-    // The other tab is still marked.
-    history.record_title("browser-2", "Charlie");
-    assert!(receiver.try_recv().is_err());
-}
-
-#[test]
-fn the_lost_tab_set_stays_bounded() {
-    let shared = Shared {
-        path: PathBuf::new(),
-        queue: OnceLock::new(),
-        dropped: AtomicU64::new(0),
-        stopped: AtomicBool::new(false),
-        lost: Mutex::default(),
-    };
-    for index in 0..=MAX_LOST_TABS {
-        shared.set_lost(&format!("browser-{index}"), true);
-    }
-    assert_eq!(shared.lost.lock().unwrap().len(), MAX_LOST_TABS);
-    assert!(!shared.is_lost("browser-0"));
-    assert!(shared.is_lost(&format!("browser-{MAX_LOST_TABS}")));
-    shared.set_lost("browser-1", false);
-    assert!(!shared.is_lost("browser-1"));
+    assert!(history.record_same_document("browser-1", "https://a.example/#c", None));
+    assert!(!BrowsingHistory::default().record_visit("browser-1", "https://a.example/", None));
 }

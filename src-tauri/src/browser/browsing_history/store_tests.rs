@@ -252,3 +252,44 @@ fn the_history_file_persists_across_reopening() {
     );
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn a_file_from_before_autoincrement_keeps_its_visits_and_never_reuses_an_id() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-browsing-history-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("browsing-history.db");
+    let path = path.to_str().unwrap();
+    Connection::open(path)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE browser_visits (
+               id INTEGER PRIMARY KEY,
+               url TEXT NOT NULL CHECK (length(url) BETWEEN 1 AND 2048),
+               title TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 256),
+               visited_at INTEGER NOT NULL CHECK (visited_at >= 0)
+             ) STRICT;
+             CREATE INDEX browser_visits_by_time ON browser_visits(visited_at);
+             INSERT INTO browser_visits (id, url, title, visited_at) VALUES
+               (1, 'https://a.example/', 'A', 1), (2, 'https://b.example/', NULL, 2);",
+        )
+        .unwrap();
+    let mut connection = open(path).unwrap();
+    assert_eq!(
+        urls(&page(&connection, "", None, 10).unwrap()),
+        ["https://b.example/", "https://a.example/"]
+    );
+    assert_eq!(remove(&connection, &[2]).unwrap(), 1);
+    let transaction = connection.transaction().unwrap();
+    assert_eq!(
+        insert(&transaction, "https://c.example/", None, 3).unwrap(),
+        3
+    );
+    transaction.commit().unwrap();
+    drop(connection);
+    // Opening again is a no-op on an upgraded file.
+    let reopened = open(path).unwrap();
+    assert_eq!(count(&reopened), 2);
+    drop(reopened);
+    std::fs::remove_dir_all(directory).unwrap();
+}

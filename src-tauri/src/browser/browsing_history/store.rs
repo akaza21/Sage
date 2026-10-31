@@ -23,6 +23,8 @@ pub(crate) const MAX_PAGE: u32 = 100;
 pub(crate) const MAX_SEARCH_CHARS: usize = 256;
 /// The most visits one remove names.
 pub(crate) const MAX_REMOVE: usize = 100;
+/// The `user_version` this code writes; `migrate` upgrades older files.
+const SCHEMA_VERSION: i64 = 1;
 
 /// One visit as the History page shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -52,25 +54,55 @@ pub(crate) struct VisitPage {
 }
 
 pub(super) fn open(path: &str) -> rusqlite::Result<Connection> {
-    let connection = Connection::open(path)?;
+    let mut connection = Connection::open(path)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
     // Losing the last few visits on power loss is acceptable; an fsync on
     // every page load is not.
     connection.pragma_update(None, "synchronous", "NORMAL")?;
     connection.pragma_update(None, "busy_timeout", 5_000)?;
+    migrate(&mut connection)?;
+    Ok(connection)
+}
+
+/// Brings the file to `SCHEMA_VERSION` in one transaction.
+fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
+    let transaction = connection.transaction()?;
+    let version: i64 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+    // Version 0 named visits by a plain rowid, which SQLite hands out
+    // again once the newest row is removed. Rebuild it: copying the ids
+    // into the AUTOINCREMENT table seeds its sequence past all of them.
+    let legacy = transaction.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'browser_visits'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? > 0;
+    if legacy {
+        transaction.execute_batch("ALTER TABLE browser_visits RENAME TO browser_visits_v0;")?;
+    }
     // AUTOINCREMENT: the writer names a tab's latest visit by id, so a
     // removed visit's id must never come back as another tab's row.
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_visits (
+    transaction.execute_batch(
+        "CREATE TABLE browser_visits (
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            url TEXT NOT NULL CHECK (length(url) BETWEEN 1 AND 2048),
            title TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 256),
            visited_at INTEGER NOT NULL CHECK (visited_at >= 0)
-         ) STRICT;
-         CREATE INDEX IF NOT EXISTS browser_visits_by_time
-           ON browser_visits(visited_at);",
+         ) STRICT;",
     )?;
-    Ok(connection)
+    if legacy {
+        transaction.execute_batch(
+            "INSERT INTO browser_visits (id, url, title, visited_at)
+               SELECT id, url, title, visited_at FROM browser_visits_v0;
+             DROP TABLE browser_visits_v0;",
+        )?;
+    }
+    transaction
+        .execute_batch("CREATE INDEX browser_visits_by_time ON browser_visits(visited_at);")?;
+    transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    transaction.commit()
 }
 
 /// Whether a visit may be stored; the schema refuses the rest anyway.

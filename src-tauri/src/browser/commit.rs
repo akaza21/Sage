@@ -1,10 +1,10 @@
 //! What a tab commits: the URL a navigation or same-document change lands
-//! on, and the title its page reports. Each new committed URL is also a
-//! visit in the global browsing history, and each new title names the
-//! latest visit to that URL; both are queued without blocking the UI
-//! thread (see `browsing_history`).
+//! on, and the title its page reports. Each page a tab newly shows is also
+//! a visit in the global browsing history, and a title names the tab's
+//! latest visit when that visit is the page on screen; both are queued
+//! without blocking the UI thread (see `browsing_history`).
 
-use super::{BrowserTabs, admit_url};
+use super::{BrowserTab, BrowserTabs, admit_url, browsing_history::BrowsingHistory};
 
 impl<T> BrowserTabs<T> {
     pub(super) fn finish_navigation(
@@ -42,12 +42,15 @@ impl<T> BrowserTabs<T> {
         } else if tab.fallback_url.is_none() {
             let previous = std::mem::replace(&mut tab.committed_url, url.map(str::to_owned));
             // A reload, a redirect back to the page already shown, or
-            // entering the address already shown is not a new visit.
+            // entering the address already shown is not a new visit,
+            // unless that page's own visit was never recorded (it failed
+            // to load, say, or a full queue dropped it).
             if let Some(url) = url
                 && visit
-                && previous.as_deref() != Some(url)
+                && (previous.as_deref() != Some(url) || tab.visited_url.as_deref() != Some(url))
             {
-                self.browsing_history.record_visit(label, url);
+                let queued = self.browsing_history.record_visit(label, url, None);
+                tab.visited_url = queued.then(|| url.to_owned());
             }
             tab.loading = false;
         }
@@ -81,7 +84,10 @@ impl<T> BrowserTabs<T> {
         if tab.title == title {
             return false;
         }
-        if let Some(title) = &title {
+        // Only the visit to this page takes its title, never an earlier one.
+        if let Some(title) = &title
+            && tab.visited_url.as_deref() == Some(url)
+        {
             self.browsing_history.record_title(label, title);
         }
         tab.title = title;
@@ -108,9 +114,8 @@ impl<T> BrowserTabs<T> {
             tab.last_error = Some("Back or Forward could not reach the saved page");
             tab.loading = false;
         } else if tab.fallback_url.is_none() {
+            record_same_document(&self.browsing_history, label, tab, url);
             tab.committed_url = Some(url.to_owned());
-            self.browsing_history
-                .record_same_document(label, url, tab.title.as_deref());
             tab.loading = false;
         } else {
             tab.loading = true;
@@ -119,6 +124,25 @@ impl<T> BrowserTabs<T> {
         tab.document_revision = tab.document_revision.wrapping_add(1);
         true
     }
+}
+
+/// Records tab `label` moving within its document to `url`, before its
+/// committed URL changes. The change folds into the tab's latest visit
+/// only when that visit is the page it moves from; otherwise it is a
+/// visit of its own.
+pub(super) fn record_same_document<T>(
+    history: &BrowsingHistory,
+    label: &str,
+    tab: &mut BrowserTab<T>,
+    url: &str,
+) {
+    let title = tab.title.as_deref();
+    let queued = if tab.visited_url.is_some() && tab.visited_url == tab.committed_url {
+        history.record_same_document(label, url, title)
+    } else {
+        history.record_visit(label, url, title)
+    };
+    tab.visited_url = queued.then(|| url.to_owned());
 }
 
 #[cfg(test)]

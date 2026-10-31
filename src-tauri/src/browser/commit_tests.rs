@@ -129,3 +129,59 @@ fn a_failed_load_that_moved_the_screen_is_not_a_visit() {
     assert!(!tabs.set_document_title("browser-1", "https://evil.example/", "Evil"));
     assert_eq!(visits(&history), [visit("https://bank.example/", None)]);
 }
+
+#[test]
+fn retrying_a_page_that_failed_on_screen_records_it_and_names_it_alone() {
+    let (mut tabs, history) = recorded_tab();
+    assert!(tabs.start_navigation("browser-1", 1, "https://a.example/"));
+    assert!(tabs.finish_navigation("browser-1", 1, Some("https://a.example/")));
+    assert!(tabs.set_document_title("browser-1", "https://a.example/", "Alpha"));
+    assert!(tabs.start_navigation("browser-1", 2, "https://b.example/"));
+    assert_eq!(
+        tabs.settle_navigation(
+            "browser-1",
+            2,
+            navigation::outcome::Completion {
+                success: false,
+                web_error: 12,
+                source: Some("https://b.example/"),
+            }
+        ),
+        Some(navigation::outcome::Settled::Adopted)
+    );
+    assert!(tabs.start_navigation("browser-1", 3, "https://b.example/"));
+    assert!(tabs.finish_navigation("browser-1", 3, Some("https://b.example/")));
+    assert!(tabs.set_document_title("browser-1", "https://b.example/", "Bravo"));
+    assert!(tabs.source_changed("browser-1", "https://b.example/#more"));
+    assert_eq!(
+        visits(&history),
+        [
+            visit("https://a.example/", Some("Alpha")),
+            visit("https://b.example/#more", Some("Bravo")),
+        ]
+    );
+}
+
+#[test]
+fn a_page_whose_visit_was_dropped_never_renames_or_moves_the_previous_one() {
+    let (mut tabs, history) = recorded_tab();
+    assert!(tabs.start_navigation("browser-1", 1, "https://a.example/"));
+    assert!(tabs.finish_navigation("browser-1", 1, Some("https://a.example/")));
+    assert!(tabs.start_navigation("browser-1", 2, "https://b.example/"));
+    assert!(tabs.finish_navigation("browser-1", 2, Some("https://b.example/")));
+    // As a full queue leaves it: B's visit was never queued.
+    tabs.entries.get_mut("browser-1").unwrap().visited_url = None;
+    assert!(tabs.set_document_title("browser-1", "https://b.example/", "Bravo"));
+    assert!(tabs.source_changed("browser-1", "https://b.example/#more"));
+    // A reload of the moved page is not a visit again.
+    assert!(tabs.start_navigation("browser-1", 3, "https://b.example/#more"));
+    assert!(tabs.finish_navigation("browser-1", 3, Some("https://b.example/#more")));
+    assert_eq!(
+        visits(&history),
+        [
+            visit("https://a.example/", None),
+            visit("https://b.example/", None),
+            visit("https://b.example/#more", Some("Bravo")),
+        ]
+    );
+}

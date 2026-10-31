@@ -244,9 +244,13 @@ impl<T> BrowserTabs<T> {
         {
             // No traversal is pending after `abandon`, so this appends.
             let _ = tab.history.same_document(source);
+            crate::browser::commit::record_same_document(
+                &self.browsing_history,
+                label,
+                tab,
+                source,
+            );
             tab.committed_url = Some(source.to_owned());
-            self.browsing_history
-                .record_same_document(label, source, tab.title.as_deref());
         }
         tab.revision = tab.revision.wrapping_add(1);
         tab.document_revision = tab.document_revision.wrapping_add(1);

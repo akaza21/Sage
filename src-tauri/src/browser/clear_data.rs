@@ -220,11 +220,12 @@ pub(crate) async fn browser_clear_data(
                         wait_for_pending_clear(receiver, std::time::Duration::from_secs(60))
                     })
                     .await;
-                    // The profile cleared but history did not: not a success.
-                    let result = completion
-                        .map_err(|error| error.to_string())
-                        .and_then(|callback| callback)
-                        .and(completion_history_error.map_or(Ok(()), Err));
+                    let result = pending_outcome(
+                        completion
+                            .map_err(|error| error.to_string())
+                            .and_then(|callback| callback),
+                        completion_history_error,
+                    );
                     if let Err(error) = complete_pending_clear(
                         &completion_state.clearing_data,
                         result,
@@ -268,6 +269,16 @@ pub(crate) async fn browser_clear_data(
     Ok(result)
 }
 
+/// A pending clear's final outcome: the profile cleared but history did
+/// not is not a success.
+#[cfg(windows)]
+fn pending_outcome(
+    profile: Result<(), String>,
+    history_error: Option<String>,
+) -> Result<(), String> {
+    profile.and(history_error.map_or(Ok(()), Err))
+}
+
 /// Adds a history failure to the result. Browsing data is not cleared
 /// while its history remains, so the clear no longer reports success.
 fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
@@ -281,24 +292,8 @@ fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
 }
 
 #[cfg(test)]
-#[test]
-fn a_history_failure_turns_a_clear_into_a_failure_and_keeps_the_first_error() {
-    let mut result = ClearBrowsingDataResult {
-        closed_tab_ids: Vec::new(),
-        cleared: true,
-        pending: false,
-        error: None,
-    };
-    append_error(&mut result, None);
-    assert!(result.cleared);
-    result.error = Some("Cookies were not cleared.".into());
-    append_error(&mut result, Some("History was not cleared.".into()));
-    assert!(!result.cleared);
-    assert_eq!(
-        result.error.as_deref(),
-        Some("Cookies were not cleared. History was not cleared.")
-    );
-}
+#[path = "clear_data/history_tests.rs"]
+mod history_tests;
 
 #[cfg(all(test, windows))]
 mod tests {

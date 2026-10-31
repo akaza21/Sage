@@ -11,10 +11,9 @@
 //! rather than stalling navigation.
 
 use std::{
-    collections::VecDeque,
     path::PathBuf,
     sync::{
-        Arc, Mutex, OnceLock, PoisonError,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel},
     },
@@ -34,8 +33,6 @@ use writer::{Write, Writer};
 pub(crate) const FILE_NAME: &str = "browsing-history.db";
 /// Pending messages the worker may lag behind by before visits are dropped.
 const QUEUE: usize = 256;
-/// Tabs remembered as having lost their latest visit.
-const MAX_LOST_TABS: usize = 32;
 /// The most queued writes one transaction takes.
 const MAX_BATCH: usize = 64;
 /// How long a reader waits for the worker before giving up.
@@ -73,10 +70,6 @@ struct Shared {
     queue: OnceLock<SyncSender<Request>>,
     dropped: AtomicU64,
     stopped: AtomicBool,
-    /// Tabs whose latest visit was dropped from a full queue. Until one of
-    /// them records a visit again, its titles and same-document changes
-    /// would land on its previous visit, so they are treated as below.
-    lost: Mutex<VecDeque<String>>,
 }
 
 /// The handle tabs record into and commands read through. Cloning shares
@@ -92,7 +85,6 @@ impl BrowsingHistory {
             queue: OnceLock::new(),
             dropped: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
-            lost: Mutex::default(),
         })))
     }
 
@@ -101,39 +93,33 @@ impl BrowsingHistory {
         Self::open(PathBuf::from(":memory:"))
     }
 
-    /// Tab `tab` committed a new document at `url`. Never blocks.
-    pub(super) fn record_visit(&self, tab: &str, url: &str) {
-        self.record(tab, url, None, false);
+    /// Tab `tab` visited `url`, titled `title` when the page already has
+    /// one. Never blocks; false when the visit was not queued, so the
+    /// tab's later titles and same-document changes must not name it.
+    pub(super) fn record_visit(&self, tab: &str, url: &str, title: Option<&str>) -> bool {
+        self.record(tab, url, title, false)
     }
 
-    /// Tab `tab` moved within its document to `url` (pushState, fragment),
-    /// still titled `title`. Never blocks.
-    pub(super) fn record_same_document(&self, tab: &str, url: &str, title: Option<&str>) {
-        self.record(tab, url, title, true);
+    /// Tab `tab` moved within the document of its latest queued visit to
+    /// `url` (pushState, fragment), still titled `title`. Never blocks;
+    /// false when it was not queued.
+    pub(super) fn record_same_document(&self, tab: &str, url: &str, title: Option<&str>) -> bool {
+        self.record(tab, url, title, true)
     }
 
-    fn record(&self, tab: &str, url: &str, title: Option<&str>, same_document: bool) {
-        let Some(shared) = &self.0 else {
-            return;
-        };
-        // A same-document change after a lost visit is a visit of its own.
-        let same_document = same_document && !shared.is_lost(tab);
-        let queued = self.write(Write::Visit {
+    fn record(&self, tab: &str, url: &str, title: Option<&str>, same_document: bool) -> bool {
+        self.write(Write::Visit {
             tab: tab.to_owned(),
             url: url.to_owned(),
             title: title.map(str::to_owned),
             visited_at: now_ms(),
             same_document,
-        });
-        shared.set_lost(tab, !queued);
+        })
     }
 
     /// Tab `tab`'s page reported `title`; it names that tab's latest
-    /// visit. Never blocks.
+    /// queued visit. Never blocks.
     pub(super) fn record_title(&self, tab: &str, title: &str) {
-        if self.0.as_ref().is_some_and(|shared| shared.is_lost(tab)) {
-            return;
-        }
         self.write(Write::Title {
             tab: tab.to_owned(),
             title: title.to_owned(),
@@ -211,25 +197,6 @@ impl BrowsingHistory {
 }
 
 impl Shared {
-    fn is_lost(&self, tab: &str) -> bool {
-        self.lost
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .any(|lost| lost == tab)
-    }
-
-    fn set_lost(&self, tab: &str, lost: bool) {
-        let mut tabs = self.lost.lock().unwrap_or_else(PoisonError::into_inner);
-        tabs.retain(|other| other != tab);
-        if lost {
-            if tabs.len() == MAX_LOST_TABS {
-                tabs.pop_front();
-            }
-            tabs.push_back(tab.to_owned());
-        }
-    }
-
     fn queue(&self) -> &SyncSender<Request> {
         self.queue.get_or_init(|| {
             let (sender, receiver) = sync_channel(QUEUE);
