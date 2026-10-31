@@ -27,6 +27,7 @@ dependencies = [
  "cfg-if",
  "cipher",
  "cpufeatures",
+ "zeroize",
 ]
 
 [[package]]
@@ -2903,6 +2904,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 name = "sage"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "agent-client-protocol-schema",
  "base64 0.22.1",

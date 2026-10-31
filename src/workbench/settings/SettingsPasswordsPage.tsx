@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
+  passwordsCancelImport,
   passwordsCopy,
   passwordsDelete,
   passwordsDeleteAll,
@@ -11,6 +12,7 @@ import {
 import { SavedPasswordRow } from "./SavedPasswordRow";
 import {
   REVEAL_MS,
+  SEARCH_DEBOUNCE_MS,
   errorText,
   importPasswordsCsv,
   importSummary,
@@ -30,7 +32,10 @@ import "./settings-passwords.css";
  */
 export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const desktop = isTauriRuntime();
+  const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
+  const cancelRequested = useRef(false);
   const [overview, setOverview] = useState<PasswordsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,6 +48,14 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const hideTimers = useRef(new Map<string, number>());
   const mounted = useRef(false);
   const reload = () => setReloads((count) => count + 1);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setQuery(search.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (!desktop) return;
@@ -152,13 +165,24 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     });
   };
 
-  const importCsv = () =>
+  const importCsv = () => {
+    cancelRequested.current = false;
+    setImporting(true);
     void run(async () => {
       const report = await importPasswordsCsv();
-      if (!report) return;
-      setImported(report);
-      reload();
-    });
+      if (report) {
+        setImported(report);
+        reload();
+      } else if (cancelRequested.current) {
+        setNotice("Import cancelled. Nothing was saved.");
+      }
+    }).finally(() => setImporting(false));
+  };
+
+  const cancelImport = () => {
+    cancelRequested.current = true;
+    void passwordsCancelImport();
+  };
 
   const deleteImportedFile = (report: PasswordImportReport) =>
     void run(async () => {
@@ -227,8 +251,8 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
                 className="input"
                 type="search"
                 placeholder="Search passwords"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
               />
             </label>
           ) : null}
@@ -236,7 +260,15 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
             <div className="settings-passwords__heading">
               <h3>Saved passwords ({ready?.total ?? 0})</h3>
               <div className="settings-passwords__actions">
-                {showImport ? (
+                {importing ? (
+                  <button
+                    className="button button--compact"
+                    type="button"
+                    onClick={cancelImport}
+                  >
+                    Cancel import
+                  </button>
+                ) : showImport ? (
                   <button
                     className="button button--compact"
                     type="button"
@@ -263,7 +295,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
             </p>
           ) : ready.entries.length === 0 ? (
             <p className="settings-passwords__empty">
-              {query.trim()
+              {query
                 ? "No saved passwords match your search."
                 : "No saved passwords"}
             </p>

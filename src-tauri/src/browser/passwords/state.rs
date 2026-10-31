@@ -1,6 +1,9 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    sync::{
+        Arc, Mutex, MutexGuard, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use serde::Serialize;
@@ -8,7 +11,7 @@ use serde::Serialize;
 use super::{
     MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
     cipher::VaultKey,
-    csv_import::ParsedCsv,
+    csv_import,
     key_store::{KeyFile, KeyProtector, platform_protector},
     secret::Secret,
     store::{CredentialPage, MergeCounts, Source, Store},
@@ -38,6 +41,8 @@ struct Shared {
     vault: Mutex<Option<Vault>>,
     /// The CSV the last import read, kept so the page can offer to delete it.
     imported_file: Mutex<Option<PathBuf>>,
+    /// Set by Cancel; checked between reads and between rows of an import.
+    cancel_import: AtomicBool,
 }
 
 struct Vault {
@@ -61,6 +66,7 @@ impl PasswordsState {
             protector,
             vault: Mutex::new(None),
             imported_file: Mutex::new(None),
+            cancel_import: AtomicBool::new(false),
         }))
     }
 
@@ -97,7 +103,12 @@ impl PasswordsState {
         self.with_vault(|vault| vault.store.page(query).map(PasswordsOverview::Ready))
     }
 
-    pub(super) fn import(&self, file: PathBuf, parsed: &ParsedCsv) -> VaultResult<MergeCounts> {
+    /// Reads `file` and merges it into the vault in one transaction. Returns
+    /// the merge counts and how many rows could not be used.
+    pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
+        let cancel = &self.0.cancel_import;
+        cancel.store(false, Ordering::Relaxed);
+        let parsed = csv_import::read_file(&file, cancel)?;
         let counts = self.with_vault(|vault| {
             let Vault {
                 store,
@@ -105,10 +116,14 @@ impl PasswordsState {
                 key,
             } = vault;
             let key = unlocked(key, key_file, store, true)?;
-            store.merge(key, Source::Csv, &parsed.credentials)
+            store.merge(key, Source::Csv, &parsed.credentials, cancel)
         })?;
         *lock(&self.0.imported_file) = Some(file);
-        Ok(counts)
+        Ok((counts, parsed.skipped))
+    }
+
+    pub(crate) fn cancel_import(&self) {
+        self.0.cancel_import.store(true, Ordering::Relaxed);
     }
 
     /// Deletes the CSV the last import read: it holds every password in

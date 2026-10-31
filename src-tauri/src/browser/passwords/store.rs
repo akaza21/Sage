@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
@@ -12,6 +15,9 @@ use super::{
 
 /// The most rows one overview returns; search narrows a larger vault.
 pub(super) const MAX_LISTED: u32 = 200;
+/// The most passwords the vault holds, so every search and list scan stays
+/// bounded.
+pub(super) const MAX_STORED: u32 = 50_000;
 const SCHEMA_VERSION: i64 = 1;
 const NOW_MS: &str = "CAST(unixepoch('subsec') * 1000 AS INTEGER)";
 
@@ -185,10 +191,15 @@ impl Store {
         key: &VaultKey,
         source: Source,
         credentials: &[NewCredential],
+        cancel: &AtomicBool,
     ) -> VaultResult<MergeCounts> {
         let transaction = self.0.transaction()?;
         let mut counts = MergeCounts::default();
         for credential in credentials {
+            // Dropping the transaction rolls every row back.
+            if cancel.load(Ordering::Relaxed) {
+                return Err(VaultError::Cancelled);
+            }
             let existing = transaction
                 .query_row(
                     "SELECT id, password FROM credentials WHERE origin = ?1 AND username = ?2",
@@ -229,6 +240,13 @@ impl Store {
                     counts.added += 1;
                 }
             }
+        }
+        let stored: u32 =
+            transaction.query_row("SELECT count(*) FROM credentials", [], |row| row.get(0))?;
+        if stored > MAX_STORED {
+            return Err(VaultError::Import(
+                "Sage keeps at most 50,000 saved passwords, and this import would pass that.",
+            ));
         }
         transaction.commit()?;
         Ok(counts)

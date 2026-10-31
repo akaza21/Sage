@@ -1,9 +1,16 @@
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    sync::atomic::AtomicBool,
+};
 
 use super::{
     MAX_PASSWORD_BYTES, VaultError,
-    csv_import::{MAX_CREDENTIALS, ParsedCsv, read},
+    csv_import::{self, MAX_CREDENTIALS, ParsedCsv},
 };
+
+fn read(source: impl Read) -> Result<ParsedCsv, VaultError> {
+    csv_import::read(source, &AtomicBool::new(false))
+}
 
 fn parse(csv: &str) -> ParsedCsv {
     read(csv.as_bytes()).unwrap()
@@ -163,4 +170,13 @@ fn one_credential_past_the_count_cap_refuses_the_import() {
     assert_eq!(parse(&csv).credentials.len(), MAX_CREDENTIALS);
     csv.push_str("https://a.example,one-more,pw\n");
     assert!(matches!(read(csv.as_bytes()), Err(VaultError::Import(_))));
+}
+
+#[test]
+fn a_cancelled_read_stops_before_the_next_chunk() {
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(
+        csv_import::read(Endless, &cancelled),
+        Err(VaultError::Cancelled)
+    ));
 }

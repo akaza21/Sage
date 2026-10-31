@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   overview: vi.fn(),
   importCsv: vi.fn(),
+  cancelImport: vi.fn(),
   deleteImportedFile: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("../../ports/nativeInvoke", () => ({
 vi.mock("../../ports/nativePasswordsPort", () => ({
   passwordsOverview: (query: string) => native.overview(query),
   passwordsImportCsv: () => native.importCsv(),
+  passwordsCancelImport: () => native.cancelImport(),
   passwordsDeleteImportedFile: () => native.deleteImportedFile(),
   passwordsUpdate: (...args: unknown[]) => native.update(...args),
   passwordsDelete: (id: string) => native.remove(id),
@@ -111,6 +113,7 @@ it("searches through Rust and lists sites and usernames, never passwords", async
   await vi.waitFor(() =>
     expect(native.overview).toHaveBeenLastCalledWith("exam"),
   );
+  expect(native.overview).toHaveBeenCalledTimes(2);
 });
 
 it("reveals a password only after Rust confirms, and hides it after 30 seconds", async () => {
@@ -205,4 +208,23 @@ it("edits a username, and deletes one or all passwords after confirming", async 
     "Delete all 1 saved passwords? This can't be undone.",
   );
   await vi.waitFor(() => expect(native.removeAll).toHaveBeenCalledTimes(1));
+});
+
+it("cancels a running import and says nothing was saved", async () => {
+  let finish: (value: null) => void = () => {};
+  native.importCsv.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  native.cancelImport.mockImplementation(async () => finish(null));
+  render(<SettingsPasswordsPage visible={all()} />);
+  await screen.findByText("No saved passwords");
+  fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Cancel import" }));
+  expect(
+    await screen.findByText("Import cancelled. Nothing was saved."),
+  ).toBeVisible();
+  expect(native.cancelImport).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
 });

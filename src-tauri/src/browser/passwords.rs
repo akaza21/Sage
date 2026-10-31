@@ -49,6 +49,8 @@ pub(crate) enum VaultError {
     Invalid(&'static str),
     #[error("{0}")]
     Import(&'static str),
+    #[error("The import was cancelled; nothing was saved.")]
+    Cancelled,
     #[error("Set up Windows Hello to show or copy saved passwords.")]
     ConfirmationUnavailable,
     #[error("Windows didn't confirm it's you, so the password stays hidden.")]

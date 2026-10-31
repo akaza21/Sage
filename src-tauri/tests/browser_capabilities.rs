@@ -85,6 +85,7 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::page_controls::browser_print",
         "browser::passwords::commands::browser_passwords",
         "browser::passwords::commands::browser_passwords_import_csv",
+        "browser::passwords::commands::browser_passwords_cancel_import",
         "browser::passwords::commands::browser_passwords_delete_imported_file",
         "browser::passwords::commands::browser_passwords_update",
         "browser::passwords::commands::browser_passwords_delete",

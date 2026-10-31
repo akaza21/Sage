@@ -9,8 +9,8 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use super::{
-    PasswordsState, VaultError, VaultResult, clipboard, confirm::confirm_user, csv_import,
-    secret::Secret, state::PasswordsOverview, store::MergeCounts,
+    PasswordsState, VaultError, VaultResult, clipboard, confirm::confirm_user, secret::Secret,
+    state::PasswordsOverview, store::MergeCounts,
 };
 
 #[derive(Debug, Serialize)]
@@ -48,7 +48,7 @@ pub(crate) async fn browser_passwords(
 }
 
 /// Picks a CSV in the native file dialog and imports it. The path never
-/// crosses IPC; `None` means the dialog was cancelled.
+/// crosses IPC; `None` means the dialog or the import was cancelled.
 #[tauri::command]
 pub(crate) async fn browser_passwords_import_csv(
     app: AppHandle,
@@ -72,19 +72,27 @@ pub(crate) async fn browser_passwords_import_csv(
         let path = selected
             .into_path()
             .map_err(|_| VaultError::Invalid("Choose a file on this computer."))?;
-        let parsed = csv_import::read_file(&path)?;
         let file_name = path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let counts = passwords.import(path, &parsed)?;
+        let (counts, skipped) = match passwords.import(path) {
+            Err(VaultError::Cancelled) => return Ok(None),
+            imported => imported?,
+        };
         Ok(Some(ImportReport {
             counts,
-            skipped: parsed.skipped,
+            skipped,
             file_name,
         }))
     })
     .await
+}
+
+/// Stops a running import; it rolls back and saves nothing.
+#[tauri::command]
+pub(crate) fn browser_passwords_cancel_import(state: State<'_, PasswordsState>) {
+    state.cancel_import();
 }
 
 #[tauri::command]
@@ -149,17 +157,19 @@ pub(crate) async fn browser_passwords_copy(
 ) -> Result<(), String> {
     let id = credential_id(&id)?;
     let passwords = state.inner().clone();
-    let sequence = blocking(move || {
+    let owner = window.clone();
+    let copied = blocking(move || {
         passwords.check_readable(&id)?;
         confirm_user(&window, "Sage wants to copy a saved password.")?;
-        clipboard::copy_concealed(&passwords.password(&id)?)
+        clipboard::copy_concealed(&window, passwords.password(&id)?)
     })
     .await?;
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(clipboard::CLEAR_AFTER).await;
-        let _ =
-            tauri::async_runtime::spawn_blocking(move || clipboard::clear_if_unchanged(sequence))
-                .await;
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            clipboard::clear_if_unchanged(&owner, copied)
+        })
+        .await;
     });
     Ok(())
 }

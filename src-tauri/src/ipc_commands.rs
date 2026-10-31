@@ -164,6 +164,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_find,
         browser::passwords::commands::browser_passwords,
         browser::passwords::commands::browser_passwords_import_csv,
+        browser::passwords::commands::browser_passwords_cancel_import,
         browser::passwords::commands::browser_passwords_delete_imported_file,
         browser::passwords::commands::browser_passwords_update,
         browser::passwords::commands::browser_passwords_delete,

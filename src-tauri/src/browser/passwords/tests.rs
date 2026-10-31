@@ -1,7 +1,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use uuid::Uuid;
@@ -10,7 +10,6 @@ use zeroize::Zeroizing;
 use super::{
     VaultError, VaultResult,
     cipher::{Binding, VaultKey},
-    csv_import,
     key_store::KeyProtector,
     secret::Secret,
     state::{PasswordsOverview, PasswordsState},
@@ -69,8 +68,13 @@ fn credential(origin: &str, username: &str, password: &str) -> NewCredential {
 }
 
 fn import(state: &PasswordsState, path: PathBuf) -> MergeCounts {
-    let parsed = csv_import::read_file(&path).unwrap();
-    state.import(path, &parsed).unwrap()
+    state.import(path).unwrap().0
+}
+
+fn merge(store: &mut Store, key: &VaultKey, credentials: &[NewCredential]) -> MergeCounts {
+    store
+        .merge(key, Source::Csv, credentials, &AtomicBool::new(false))
+        .unwrap()
 }
 
 fn ready(overview: PasswordsOverview) -> super::store::CredentialPage {
@@ -136,7 +140,7 @@ fn merging_adds_new_rows_and_lets_the_newer_password_win() {
         credential("https://example.com", "grace", "two"),
     ];
     assert_eq!(
-        store.merge(&key, Source::Csv, &first).unwrap(),
+        merge(&mut store, &key, &first),
         MergeCounts {
             added: 2,
             updated: 0,
@@ -148,7 +152,7 @@ fn merging_adds_new_rows_and_lets_the_newer_password_win() {
         credential("https://example.com", "grace", "three"),
     ];
     assert_eq!(
-        store.merge(&key, Source::Csv, &second).unwrap(),
+        merge(&mut store, &key, &second),
         MergeCounts {
             added: 0,
             updated: 1,
@@ -173,7 +177,7 @@ fn search_matches_site_or_username_and_the_list_stays_capped() {
         .map(|index| credential(&format!("https://site{index}.example"), "user", "pw"))
         .chain([credential("https://mail.example", "Ada.Lovelace", "pw")])
         .collect();
-    store.merge(&key, Source::Csv, &many).unwrap();
+    merge(&mut store, &key, &many);
     let all = store.page("").unwrap();
     assert_eq!(all.total, super::store::MAX_LISTED + 6);
     assert_eq!(all.matching, all.total);
@@ -189,16 +193,14 @@ fn search_matches_site_or_username_and_the_list_stays_capped() {
 fn editing_a_username_reseals_and_refuses_a_taken_one() {
     let mut store = Store::in_memory().unwrap();
     let key = VaultKey::generate().unwrap();
-    store
-        .merge(
-            &key,
-            Source::Csv,
-            &[
-                credential("https://example.com", "ada", "one"),
-                credential("https://example.com", "grace", "two"),
-            ],
-        )
-        .unwrap();
+    merge(
+        &mut store,
+        &key,
+        &[
+            credential("https://example.com", "ada", "one"),
+            credential("https://example.com", "grace", "two"),
+        ],
+    );
     let page = store.page("").unwrap();
     let ada = page
         .entries
@@ -293,9 +295,8 @@ fn a_lost_or_foreign_key_is_reported_and_delete_all_starts_again() {
     fs::remove_file(directory.join("passwords.key")).unwrap();
     let lost = state(&directory, 1);
     assert!(matches!(lost.password(&id), Err(VaultError::KeyLost)));
-    let parsed = csv_import::read_file(&scratch.csv("b.csv", CHROME_CSV)).unwrap();
     assert!(matches!(
-        lost.import(scratch.0.join("b.csv"), &parsed),
+        lost.import(scratch.csv("b.csv", CHROME_CSV)),
         Err(VaultError::KeyLost)
     ));
     lost.delete_all().unwrap();
@@ -373,4 +374,51 @@ fn reading_from_an_empty_vault_creates_no_key() {
         Err(VaultError::NotFound)
     ));
     assert!(!scratch.0.join("passwords.key").exists());
+}
+
+#[test]
+fn a_cancelled_merge_saves_nothing() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(
+        store.merge(
+            &key,
+            Source::Csv,
+            &[credential("https://example.com", "ada", "one")],
+            &cancelled
+        ),
+        Err(VaultError::Cancelled)
+    ));
+    assert_eq!(store.page("").unwrap().total, 0);
+}
+
+#[test]
+fn an_import_past_the_vault_cap_is_refused_whole() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    let full: Vec<_> = (0..super::store::MAX_STORED)
+        .map(|index| credential("https://a.example", &format!("user{index}"), "pw"))
+        .collect();
+    merge(&mut store, &key, &full);
+    assert!(matches!(
+        store.merge(
+            &key,
+            Source::Csv,
+            &[
+                credential("https://a.example", "user0", "changed"),
+                credential("https://b.example", "one-more", "pw"),
+            ],
+            &AtomicBool::new(false)
+        ),
+        Err(VaultError::Import(_))
+    ));
+    let page = store.page("").unwrap();
+    assert_eq!(page.total, super::store::MAX_STORED);
+    let first = store.page("user0").unwrap().entries;
+    let user0 = first
+        .iter()
+        .find(|entry| entry.username == "user0")
+        .unwrap();
+    assert_eq!(store.password(&key, &user0.id).unwrap().expose(), "pw");
 }

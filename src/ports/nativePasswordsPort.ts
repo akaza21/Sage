@@ -10,6 +10,10 @@ export function passwordsImportCsv(): Promise<unknown> {
   return invokeNative("browser_passwords_import_csv");
 }
 
+export function passwordsCancelImport(): Promise<unknown> {
+  return invokeNative("browser_passwords_cancel_import");
+}
+
 export function passwordsDeleteImportedFile(): Promise<unknown> {
   return invokeNative("browser_passwords_delete_imported_file");
 }

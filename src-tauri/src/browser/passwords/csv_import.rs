@@ -8,6 +8,7 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use csv_core::{ReadRecordResult, Reader};
@@ -37,16 +38,18 @@ pub(super) struct ParsedCsv {
     pub(super) skipped: u32,
 }
 
-pub(super) fn read_file(path: &Path) -> VaultResult<ParsedCsv> {
+pub(super) fn read_file(path: &Path, cancel: &AtomicBool) -> VaultResult<ParsedCsv> {
     let file = File::open(path)?;
     if file.metadata()?.len() > MAX_FILE_BYTES {
         return Err(too_large());
     }
-    read(file)
+    read(file, cancel)
 }
 
-pub(super) fn read(source: impl Read) -> VaultResult<ParsedCsv> {
-    let mut records = Records::new(source);
+/// Reads `source`, checking `cancel` before every read of at most
+/// `READ_BYTES`.
+pub(super) fn read(source: impl Read, cancel: &AtomicBool) -> VaultResult<ParsedCsv> {
+    let mut records = Records::new(source, cancel);
     let columns = match records.next()? {
         Some(Row::Fields(header)) => Columns::from_header(&header)?,
         Some(Row::Oversized) | None => return Err(no_columns()),
@@ -158,8 +161,9 @@ enum Row<'a> {
     Oversized,
 }
 
-struct Records<R> {
+struct Records<'c, R> {
     source: R,
+    cancel: &'c AtomicBool,
     parser: Reader,
     input: Zeroizing<Vec<u8>>,
     start: usize,
@@ -169,10 +173,11 @@ struct Records<R> {
     ends: [usize; MAX_FIELDS],
 }
 
-impl<R: Read> Records<R> {
-    fn new(source: R) -> Self {
+impl<'c, R: Read> Records<'c, R> {
+    fn new(source: R, cancel: &'c AtomicBool) -> Self {
         Self {
             source,
+            cancel,
             parser: Reader::new(),
             input: Zeroizing::new(vec![0; READ_BYTES]),
             start: 0,
@@ -185,6 +190,9 @@ impl<R: Read> Records<R> {
 
     /// Reads the next chunk; an empty chunk tells the parser the file ended.
     fn refill(&mut self) -> VaultResult<()> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(VaultError::Cancelled);
+        }
         let read = loop {
             match self.source.read(&mut self.input) {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
