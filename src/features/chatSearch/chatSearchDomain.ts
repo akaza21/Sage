@@ -1,3 +1,5 @@
+import { isRecord } from "../../domain/guards";
+import { utf8ByteLength } from "../../domain/text";
 import { MAX_CHAT_SEARCH_QUERY_BYTES } from "./chatSearchScope";
 
 export { MAX_CHAT_SEARCH_QUERY_BYTES };
@@ -88,7 +90,9 @@ export function validateProjectChatSearchRequest(
     utf8ByteLength(query) > MAX_CHAT_SEARCH_QUERY_BYTES ||
     containsControl(query)
   ) {
-    throw new Error("Project Chat search query must be 1-256 UTF-8 bytes");
+    throw new Error(
+      "Project Chat search query must be at most 256 UTF-8 bytes without control characters",
+    );
   }
 }
 
@@ -171,5 +175,3 @@ export function parseProjectChatSearchResponse(
   }
   return value as unknown as ProjectChatSearchResponse;
 }
-import { isRecord } from "../../domain/guards";
-import { utf8ByteLength } from "../../domain/text";

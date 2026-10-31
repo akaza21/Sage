@@ -3,7 +3,7 @@
   min-height: 0;
   overflow-y: auto;
   background: var(--browser-start-fill);
-  /* Codex 67: a 692 px column whose heading sits 28 px under the toolbar. */
+
   padding: 28px max(16px, calc((100% - 692px) / 2));
 }
 .browser-new-tab section + section {

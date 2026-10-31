@@ -9,7 +9,6 @@ import {
   collectAgentRailPinIds,
   compareAgentRailChats,
   deriveAgentRailSections,
-  filterAgentRailGroups,
   groupAgentRailProjects,
 } from "./agentChatRail";
 
@@ -232,15 +231,15 @@ describe("agent chat rail", () => {
         expect.objectContaining({ id: `recent:${index}`, pinned: false }),
       ),
     ]);
-    expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS);
+    expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS + 1);
     expect(sections.projects[0]?.truncated).toBe(false);
     expect(sections.recent.map((item) => item.chat.id)).toEqual(
       Array.from(
-        { length: MAX_AGENT_RAIL_RECENT_CHATS },
-        (_, index) => `pin:${65 - index}`,
+        { length: MAX_AGENT_RAIL_RECENT_CHATS + 1 },
+        (_, index) => `recent:${MAX_AGENT_RAIL_RECENT_CHATS + 1 - index}`,
       ),
     );
-    expect(sections.recent.every((item) => item.chat.pinned)).toBe(true);
+    expect(sections.recent.every((item) => !item.chat.pinned)).toBe(true);
     expect(
       deriveAgentRailSections([
         {
@@ -256,42 +255,6 @@ describe("agent chat rail", () => {
         },
       ]).recent,
     ).toEqual([]);
-  });
-
-  it("filters admitted rail groups locally while preserving matching project caps", () => {
-    const groups = [
-      {
-        id: "cross",
-        name: "Cross",
-        rootCount: 1,
-        chats: [
-          { id: "chat:x", title: "Research", pinned: false, position: 0 },
-        ],
-        archived: [{ id: "old:x", title: "Archived research" }],
-        truncated: true,
-      },
-      {
-        id: "sage",
-        name: "Sage",
-        rootCount: 1,
-        chats: [
-          { id: "chat:s", title: "Implement rail", pinned: false, position: 0 },
-        ],
-        archived: [],
-        truncated: false,
-      },
-    ];
-
-    expect(filterAgentRailGroups(groups, "research")).toEqual([groups[0]]);
-    expect(filterAgentRailGroups(groups, "cross")).toEqual([groups[0]]);
-    expect(filterAgentRailGroups(groups, "archived")).toEqual([
-      {
-        ...groups[0],
-        chats: [],
-        archived: [{ id: "old:x", title: "Archived research" }],
-      },
-    ]);
-    expect(filterAgentRailGroups(groups, "missing")).toEqual([]);
   });
 
   it("keeps the last native-admitted project in the bounded window", () => {

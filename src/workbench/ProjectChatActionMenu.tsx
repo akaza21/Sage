@@ -1,9 +1,9 @@
-import { FileDiff, MoreHorizontal } from "../ui/leanIcons";
 import { useId, useRef, useState, type ReactNode } from "react";
-import { AgentHeaderMenuContext } from "./AgentToolsProvider";
-import { MenuPopover } from "../ui/MenuPopover";
-import { lazyParts } from "../features/chat/lazyParts";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
+import { lazyParts } from "../features/chat/lazyParts";
+import { FileDiff, MoreHorizontal } from "../ui/leanIcons";
+import { MenuPopover } from "../ui/MenuPopover";
+import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
 const ActionsPart = lazyParts<typeof ActionsChunk>(
   () => import("./ProjectChatActionPopover"),
@@ -81,7 +81,7 @@ export function ProjectChatActionMenu(props: ProjectChatMenuProps) {
   );
 }
 
-// The Agent header "…" (Codex 68): the project row hosts the chat actions
+// The Agent header "…": the project row hosts the chat actions
 // above as a nested menu, then Changes opens this Chat's diff picker.
 export function AgentHeaderMore({
   scope,

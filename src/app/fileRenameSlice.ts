@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import { boundedError } from "../domain/errors";
 import {
   parentResource,
   resourceKey,
@@ -11,11 +12,11 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { renameTargetResource } from "../features/files/fileRenameContract";
-import { renameFolderTargetResource } from "../features/files/fileRenameContract";
-import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { renameFolderTargetResource } from "../features/files/folderRenameContract";
 import type { ProjectPort } from "../ports/workbenchPorts";
-import { currentProjectLayout } from "./projectProjection";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
+import { currentProjectLayout } from "./projectProjection";
 import {
   remapExpandedResourceHierarchy,
   withoutResourceHierarchy,
@@ -390,4 +391,3 @@ export const createFileRenameSlice: StateCreator<
       renameProjectResource("folder", source, basename),
   };
 };
-import { boundedError } from "../domain/errors";

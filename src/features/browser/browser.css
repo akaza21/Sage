@@ -326,7 +326,7 @@
   flex: 1;
   min-height: 0;
 }
-/* Annotate's comment box over the frozen page (Codex ref 60). */
+
 .browser-annotate {
   position: absolute;
   inset: 0;
@@ -471,8 +471,7 @@
   margin: 0;
   list-style: none;
 }
-/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
-   popover hangs from the right group like the … menu does. */
+
 .browser-downloads__trigger {
   position: relative;
 }

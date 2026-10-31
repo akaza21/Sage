@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { AcpItem } from "../../../domain/acp";
-import { subagentIdentities, withSubagentNames } from "./subagentActivity";
+import { subagentIdentities, withSubagentNames } from "./subagentIdentities";
 
 const events = [
   {

@@ -23,7 +23,7 @@ afterEach(() => {
   resetTurnWorkspaceChangesForTest();
 });
 
-it.each(["unavailable", "truncated"])(
+it.each(["truncated"])(
   "marks all change views incomplete when ledger attribution is %s",
   async (kind) => {
     const page = snapshotPage();

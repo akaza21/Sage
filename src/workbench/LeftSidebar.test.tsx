@@ -10,13 +10,13 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import {
   clearChatSearchFolderRequest,
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
 } from "../features/chatSearch/chatSearchScope";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
@@ -656,7 +656,7 @@ it("groups chats by durable status without dropping folder identity", () => {
   ).toBeInTheDocument();
 });
 
-it("promotes pinned tasks while keeping all timestamped chats in recents", () => {
+it("promotes pinned tasks without duplicating them in recents", async () => {
   const now = Date.now();
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -714,14 +714,16 @@ it("promotes pinned tasks while keeping all timestamped chats in recents", () =>
   ).toBeTruthy();
   expect(within(pinned).getByText("Pinned research")).toBeInTheDocument();
   expect(within(projects).queryByText("Pinned research")).toBeNull();
-  expect(within(recent).getByText("Recent research")).toBeInTheDocument();
+  expect(
+    await within(recent).findByText("Recent research"),
+  ).toBeInTheDocument();
   expect(within(recent).getByText("2h ago")).toBeInTheDocument();
   expect(
     within(recent).getByRole("button", {
       name: "Open recent chat Recent research",
     }),
   ).toBeEnabled();
-  expect(within(recent).getByText("Pinned research")).toBeInTheDocument();
+  expect(within(recent).queryByText("Pinned research")).toBeNull();
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(within(projects).getByText("Recent research")).toBeInTheDocument();
 });

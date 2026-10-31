@@ -1,4 +1,3 @@
-/* Annotate's composer chips and their hover card (Codex ref 63). */
 .browser-element-chip {
   position: relative;
   display: inline-flex;
@@ -101,7 +100,6 @@
   white-space: nowrap;
 }
 
-/* The element's role in a tag, like Codex's `img` pill. */
 .browser-element-card code {
   flex: none;
   padding: 0 4px;

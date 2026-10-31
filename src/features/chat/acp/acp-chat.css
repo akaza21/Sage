@@ -45,7 +45,6 @@
   content: "";
 }
 
-/* Codex draws no rule between turns (s2/f0149, s6/f0651, f0676). */
 .acp-turn + .acp-turn {
   padding-top: var(--space-4);
 }

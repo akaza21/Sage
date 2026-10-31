@@ -1,8 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  chatMatchRanges,
-  publishChatHighlights,
-} from "./useChatFindHighlights";
+import { chatMatchRanges, publishChatHighlights } from "./chatFindHighlights";
 import type { ChatMatch } from "./chatFindModel";
 
 afterEach(() => {

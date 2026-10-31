@@ -1,4 +1,3 @@
-import { startTransition, useLayoutEffect } from "react";
 import {
   act,
   cleanup,
@@ -6,14 +5,19 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { startTransition, useLayoutEffect } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 
 const previewBridge = vi.hoisted(() => ({
   discover: vi.fn(async () => ({ targets: [], truncated: false })),
   health: vi.fn(async () => ({ healthy: true, origin: null })),
   start: vi.fn(async () => undefined),
   stop: vi.fn(async () => undefined),
-  subscribe: vi.fn(async () => () => undefined),
+  subscribe: vi.fn(
+    async (_callback: (event: PreviewProjectionChangedEvent) => void) => () =>
+      undefined,
+  ),
 }));
 
 vi.mock("../features/preview/previewDesktop", () => ({
@@ -56,7 +60,6 @@ import {
 } from "../app/acpProjectionRegistry";
 import { clearAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import type {
   AcpChatPage,
   ProjectGeneration,
@@ -69,6 +72,7 @@ import {
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
@@ -132,11 +136,30 @@ afterEach(() => {
   clearAgentChatOwner();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
+  vi.clearAllMocks();
 });
 
 async function openPreview() {
   render(<Workbench />);
   await settleLazyModules();
+  await act(async () => {
+    previewBridge.subscribe.mock.calls.at(-1)?.[0]({
+      kind: "preview",
+      preview: {
+        ...browseOwner,
+        previewRevision: "1" as never,
+        phase: "active",
+        failure: null,
+        origin: "http://127.0.0.1:5173/",
+        target: {
+          ...browseOwner,
+          expectedTransitionEpoch: 0,
+          rootId: "root-a" as never,
+          scriptName: "dev",
+        },
+      },
+    });
+  });
   const frame = screen.getByTitle("Sage browser");
   expect(frame).toBeVisible();
   return frame;
@@ -161,6 +184,7 @@ it("keeps the Preview frame asleep behind Settings through a resize", async () =
   expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
   expect(frame.isConnected).toBe(true);
   expect(frame).not.toBeVisible();
+  expect(previewBridge.stop).not.toHaveBeenCalled();
   await resizeWhileHidden();
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   await settleLazyModules();
@@ -175,6 +199,7 @@ it("keeps the Preview frame when the layout changes while Editor is shown", asyn
   fireEvent.click(modeRadio("Editor"));
   await settleLazyModules();
   expect(frame.isConnected).toBe(true);
+  expect(previewBridge.stop).not.toHaveBeenCalled();
   await resizeWhileHidden();
   fireEvent.click(modeRadio("Agent"));
   await settleLazyModules();
@@ -192,6 +217,7 @@ it("keeps the Preview frame across transition mode switches with a layout change
     });
   });
   await settleLazyModules();
+  expect(previewBridge.stop).not.toHaveBeenCalled();
   await resizeWhileHidden();
   await act(async () => {
     startTransition(() => {
@@ -203,3 +229,21 @@ it("keeps the Preview frame across transition mode switches with a layout change
   expect(screen.getByTitle("Sage browser")).toBe(frame);
   expect(frame).toBeVisible();
 });
+
+it.each([false, true])(
+  "restores Editor after Browser settings close (site permissions: %s)",
+  async (site) => {
+    writeWorkbenchLayout({ windowMode: "editor" });
+    render(<Workbench />);
+    await settleLazyModules();
+    act(() =>
+      useAgentSettingsState.getState().open("Browser", "browser-a", site),
+    );
+    await settleLazyModules();
+    expect(
+      screen.getByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(modeRadio("Editor")).toBeChecked();
+  },
+);

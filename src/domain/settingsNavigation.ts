@@ -189,8 +189,6 @@ const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
   })),
 );
 
-// BF-7d: only the Codex Browser settings (refs 45, 47, 65) that Sage's browser
-// backend supports today. The Browser page renders these ids and no others.
 const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   {
     id: "browser.showFullUrl",

@@ -1,15 +1,17 @@
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import { lazyParts } from "../features/chat/lazyParts";
 import type * as SideHeadersChunk from "./AgentSideChatHeaders";
 import { AgentTaskHeader } from "./AgentTaskHeader";
+import { isSideChatId } from "./sideChatState";
 
 const SideHeadersPart = lazyParts<typeof SideHeadersChunk>(
   () => import("./AgentSideChatHeaders"),
 );
 
-/** Name the focused Chat; side-chat panes each own a column-aligned header cell (s2/f0244). */
+/** Name the focused Chat; side-chat panes each own a column-aligned header cell. */
 export interface AgentChatCenterHeaderProps {
   tabs: readonly WorkbenchTab[];
   /** Displayed panes if any is a side chat, else null. */
@@ -36,6 +38,12 @@ export function AgentChatCenterHeader(props: AgentChatCenterHeaderProps) {
     navigationCollapsed,
   } = props;
   const split = Boolean(paneIds && paneIds.length > 1);
+  const parentId = paneIds?.find((id) => !isSideChatId(id)) ?? null;
+  const taskId = parentId ?? (!isSideChatId(focusedId) ? focusedId : null);
+  const backgroundSnapshot = useAcpChatLiveSnapshot(
+    taskId ?? "",
+    Boolean(taskId && taskId !== focusedId),
+  );
   return (
     <div
       className={`agent-chat-center__header${paneIds ? " agent-chat-center__header--panes" : ""}${split ? " agent-chat-center__header--split" : ""}`}
@@ -49,18 +57,19 @@ export function AgentChatCenterHeader(props: AgentChatCenterHeaderProps) {
           : undefined
       }
     >
-      {paneIds ? (
-        <SideHeadersPart part="AgentSideChatHeaders" {...props} />
-      ) : (
+      {taskId ? (
         <AgentTaskHeader
           key="task"
-          tab={tabs.find((tab) => tab.id === focusedId) ?? null}
+          tab={tabs.find((tab) => tab.id === taskId) ?? null}
           chatCount={chatCount}
           showNewChat={navigationCollapsed}
-          snapshot={focusedSnapshot}
-          sessionChrome={sessionChromeById[focusedId ?? ""]}
+          snapshot={taskId === focusedId ? focusedSnapshot : backgroundSnapshot}
+          sessionChrome={sessionChromeById[taskId]}
         />
-      )}
+      ) : null}
+      {paneIds ? (
+        <SideHeadersPart part="AgentSideChatHeaders" {...props} />
+      ) : null}
       {onArtifactHeaderMount ? (
         <div
           key="artifact-slot"

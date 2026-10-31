@@ -38,7 +38,7 @@ it("does not render another chat's ledger while a new owner is loading", async (
   hook.rerender({ current: { ...page, chatId: "other-chat" as never } });
   expect(hook.result.current.changes).toEqual([]);
   expect(hook.result.current.incompleteTurnIds.has(page.turns[0].id)).toBe(
-    true,
+    false,
   );
   await waitFor(() => expect(complete).toBeDefined());
   await act(async () =>
@@ -54,7 +54,7 @@ it("does not render another chat's ledger while a new owner is loading", async (
   );
 });
 
-it("marks newly terminal turns unresolved until their ledger is loaded", async () => {
+it("retains a stable ledger while newly terminal turns load", async () => {
   const page = snapshotPage();
   const load = vi
     .spyOn(acpDesktop, "getTurnWorkspaceChanges")
@@ -74,6 +74,7 @@ it("marks newly terminal turns unresolved until their ledger is loaded", async (
   await waitFor(() =>
     expect(hook.result.current.incompleteTurnIds.size).toBe(0),
   );
+  const retained = hook.result.current;
   load.mockImplementation(() => new Promise(() => undefined));
   hook.rerender({
     current: {
@@ -84,7 +85,8 @@ it("marks newly terminal turns unresolved until their ledger is loaded", async (
       ],
     },
   });
-  expect(hook.result.current.incompleteTurnIds.has("new-turn")).toBe(true);
+  expect(hook.result.current).toBe(retained);
+  expect(hook.result.current.incompleteTurnIds.has("new-turn")).toBe(false);
   expect(hook.result.current.changes).toEqual([
     {
       turnId: page.turns[0].id,

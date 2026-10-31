@@ -5,30 +5,30 @@ import {
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
-import { SessionWorkingPill } from "./SessionWorkingPill";
-import { useComposerFocusHotkey } from "./composerChrome";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
+import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
-  terminalTurnStates,
   latestRetryPrompt,
+  terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
-  useAcpRetentionIncomplete,
   useAcpChatLoadFailure,
+  useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
-import { useBoundChatComposer } from "./useBoundChatComposer";
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { bindingNoticeAllowed } from "./composerBindingNotice";
+import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
-import { ChatHandoffControl } from "./ChatHandoffControl";
+import { isNewProjectChat } from "./newProjectChat";
+import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
+import { useApprovalSlot } from "./useApprovalSlot";
+import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-import { bindingNoticeAllowed } from "./harnessAvailability";
-import { isNewProjectChat } from "./newProjectChat";
-import { useApprovalSlot } from "./useApprovalSlot";
-import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 const loadQueueExecution = () => import("./ChatQueueExecution");
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();

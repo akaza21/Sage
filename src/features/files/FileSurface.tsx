@@ -10,31 +10,31 @@ import {
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
 import { watchEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
-import { sameResource } from "../../domain/resourceIdentity";
-import type { WorkbenchTab } from "../../domain/workbench";
-import type { EditorAdapterHandle } from "./EditorAdapter";
-import {
-  subscribeEditorFocusRequest,
-  takeEditorFocusRequest,
-} from "./editorFocusRequest";
-import { contentText, sameContent } from "./editorContent";
-import {
-  FileSurfaceContent,
-  FileSurfaceResourceState,
-} from "./FileSurfaceContent";
 import {
   keymapBinding,
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
+import { sameResource } from "../../domain/resourceIdentity";
+import type { WorkbenchTab } from "../../domain/workbench";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { localSymbolNavigation } from "../outline/outlineNavigation";
+import type { EditorAdapterHandle } from "./EditorAdapter";
+import { contentText, sameContent } from "./editorContent";
+import {
+  subscribeEditorFocusRequest,
+  takeEditorFocusRequest,
+} from "./editorFocusRequest";
 import {
   registerFileSurfaceCommands,
   type FileSurfaceCommands,
 } from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
+import {
+  FileSurfaceContent,
+  FileSurfaceResourceState,
+} from "./FileSurfaceContent";
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
-import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 const MixedEolFileView = lazy(() =>
   import("./MixedEolFileView").then((module) => ({
@@ -276,7 +276,7 @@ export function FileSurface({
     return <FileSurfaceResourceState path={path} />;
   }
   if (editor.phase === "error") {
-    if (editor.message.includes("mixed LF and CRLF"))
+    if (editor.kind === "mixedLineEndings")
       return (
         <Suspense fallback={<p role="status">Loading file viewer...</p>}>
           <MixedEolFileView key={activeResourceKey} resource={resource} />

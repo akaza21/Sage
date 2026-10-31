@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
-import { useWorkbenchStore } from "../../app/store";
 import { snapshotProjectionRevision } from "../../app/snapshotProjection";
+import { useWorkbenchStore } from "../../app/store";
 import type { FileDiff } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
+import type { ChangesEntry } from "./agentChanges";
 import { DiffHunks } from "./DiffHunks";
 import { snapshotFileDiff } from "./snapshotDiff";
-import type { ChangesEntry } from "./agentChanges";
 
 export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
+  const key = entry.diffRef ? JSON.stringify(entry.diffRef) : entry;
   const [result, setResult] = useState<{
-    entry: ChangesEntry;
+    key: string | ChangesEntry;
     diff?: FileDiff;
     error?: string;
   } | null>(null);
-  const diff = result?.entry === entry ? result.diff : null;
-  const error = result?.entry === entry ? result.error : "";
+  const diff = result?.key === key ? result.diff : null;
+  const error = result?.key === key ? result.error : "";
   useEffect(() => {
     let cancelled = false;
     const { getState } = useWorkbenchStore;
@@ -67,7 +68,7 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
             "The Chat changed while loading this edit. Refresh changes.",
           );
         setResult({
-          entry,
+          key,
           diff: snapshotFileDiff(
             entry.resource,
             snapshot.oldText,
@@ -84,16 +85,18 @@ export function ChangesFileDiff({ entry }: { entry: ChangesEntry }) {
           throw new Error(
             "Git status changed while loading this diff. Refresh changes.",
           );
-        setResult({ entry, diff: value });
+        setResult({ key, diff: value });
       }
     }
     void read().catch((cause: unknown) => {
-      if (current()) setResult({ entry, error: String(cause).slice(0, 512) });
+      if (current()) setResult({ key, error: String(cause).slice(0, 512) });
     });
     return () => {
       cancelled = true;
     };
-  }, [entry]);
+    // Saved snapshot descriptors are immutable; live Git entries retain refresh identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
   return error ? (
     <ResourceStateNotice
       state="error"

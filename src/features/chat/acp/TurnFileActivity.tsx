@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, FilePenLine, RotateCcw } from "../../../ui/leanIcons";
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
+import { ChevronDown, FilePenLine } from "../../../ui/leanIcons";
 import { projectTurnEditSummary } from "./chatEditSummary";
-import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
-import { FileChangeTotals } from "./FileChangeTotals";
-import { rootDisplayName } from "./chatFileChip";
 import "./edited-files-card.css";
+import { FileChangeTotals } from "./FileChangeTotals";
+import { rootDisplayName } from "./rootDisplayName";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
 export function TurnFileActivity({
   page,
@@ -40,11 +40,9 @@ export function TurnFileActivity({
   // than as an "Edited at least 0 files" card with dead actions.
   if (!changes.length)
     return (
-      <section className="acp-edited-files" aria-label="Edited files">
-        <p role="status">
-          Workspace change tracking is incomplete for this turn.
-        </p>
-      </section>
+      <p role="status">
+        Workspace change tracking is incomplete for this turn.
+      </p>
     );
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;
@@ -86,13 +84,6 @@ export function TurnFileActivity({
           />
         </div>
         <div className="acp-edited-files__actions">
-          <button
-            type="button"
-            disabled
-            title="Undo is not implemented: saved diffs are read-only."
-          >
-            Undo <RotateCcw size={12} aria-hidden="true" />
-          </button>
           <button
             type="button"
             disabled={!open || !firstDiff}

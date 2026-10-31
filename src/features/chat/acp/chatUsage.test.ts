@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
-import { currentChatUsage } from "./currentNonterminalTurn";
+import { currentChatUsage } from "./chatUsage";
 
 function usage(
   totalTokens: number,

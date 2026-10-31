@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { lazy, StrictMode, useState, type ComponentType } from "react";
+import { renderToString } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 
 import { LazyModuleBoundary } from "./LazyModuleBoundary";
@@ -207,4 +208,19 @@ it("keeps the configured fallback for a loaded surface's suspended child", async
   expect(screen.getByRole("status")).toHaveTextContent("Waiting for child");
   await act(async () => finish({ default: () => <p>Nested child ready</p> }));
   expect(screen.getByText("Nested child ready")).toBeVisible();
+});
+
+it("starts a cold import during the first render without waiting for passive effects", async () => {
+  const load = vi.fn(
+    () => new Promise<{ default: () => null }>(() => undefined),
+  );
+  renderToString(
+    <LazyModuleBoundary
+      label="Cold module"
+      load={load}
+      render={(Surface) => <Surface />}
+    />,
+  );
+  await Promise.resolve();
+  expect(load).toHaveBeenCalledOnce();
 });

@@ -10,7 +10,7 @@ export interface SideChatEntry {
 
 /** At most one side chat per Project and eight in all (Rust enforces the same). */
 export const MAX_SIDE_CHATS = 8;
-/** Non-persisted 43/57 split (Codex). */
+/** Non-persisted 43/57 split. */
 export const SIDE_CHAT_SPLIT = 43;
 
 export const useSideChatState = create<{
@@ -29,7 +29,7 @@ export const useSideChatState = create<{
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 
-/** A focused side chat isn't in the rail; its parent retains window title/highlight (s2/f0244). */
+/** A focused side chat isn't in the rail; its parent retains window title/highlight. */
 export function useRailChatId(activeId: string | null) {
   return (
     useSideChatState(

@@ -1,35 +1,35 @@
 import type { FormEventHandler, RefObject } from "react";
 
-import type { ChatUsage } from "./acp/currentNonterminalTurn";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import type { AcpGoalState } from "../../domain/acpGoal";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import type { AttachedContext } from "../../domain/attachedContext";
-import { isTranscriptQuote } from "../../domain/transcriptQuote";
-import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
+import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
-import { ChatHarnessControls } from "./ChatHarnessControls";
+import { isTranscriptQuote } from "../../domain/transcriptQuote";
+import "../../styles/queued-messages.css";
+import type { ChatUsage } from "./acp/chatUsage";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
-import { useBoundGoalDetails } from "./useBoundGoalDetails";
-import type { AcpGoalState } from "../../domain/acpGoal";
+import { ChatHarnessControls } from "./ChatHarnessControls";
+import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
+import { ComposerAttachments } from "./ComposerAttachments";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
   composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
-import { ComposerAttachments } from "./ComposerAttachments";
-import { TranscriptPart } from "./transcriptLazy";
-import { QueuedRows, lazyParts } from "./lazyParts";
 import { ComposerContext } from "./ComposerContext";
-import { useComposerImageInput } from "./useComposerImageInput";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
-import "../../styles/queued-messages.css";
-import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
+import { QueuedRows, lazyParts } from "./lazyParts";
+import { TranscriptPart } from "./transcriptLazy";
+import { useBoundGoalDetails } from "./useBoundGoalDetails";
+import { useComposerImageInput } from "./useComposerImageInput";
 
 const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),

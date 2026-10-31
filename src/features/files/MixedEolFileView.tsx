@@ -3,6 +3,7 @@ import {
   noticeMatchesWatch,
   type EditorWatchSubscription,
 } from "../../domain/editorWatch";
+import { truncateUtf8, utf8ByteLength } from "../../domain/text";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
@@ -30,7 +31,6 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
       if (cancelled) return;
       version += 1;
       pending = true;
-      setResult(null);
       setError("");
       if (reading) return;
       reading = true;
@@ -42,8 +42,9 @@ export function MixedEolFileView({ resource }: { resource: ResourceRef }) {
             const file = await editor.readTextFile(resource);
             if (cancelled || requestedVersion !== version) continue;
             setResult({
-              content: file.content.slice(0, MAX_EDITABLE_CONTENT_BYTES),
-              clipped: file.content.length > MAX_EDITABLE_CONTENT_BYTES,
+              content: truncateUtf8(file.content, MAX_EDITABLE_CONTENT_BYTES),
+              clipped:
+                utf8ByteLength(file.content) > MAX_EDITABLE_CONTENT_BYTES,
             });
           } catch (cause: unknown) {
             if (!cancelled && requestedVersion === version)

@@ -7,11 +7,6 @@ export const PopoverPlacementContext = createContext<{
   position: CSSProperties;
 } | null>(null);
 
-/**
- * Where a top-level menu prefers to open: below its trigger and right-aligned
- * (the default), or above it and left-aligned (Codex's answer "…" menu,
- * s2/f0053). Either side flips when the other has more room.
- */
 export type MenuPlacement = "below-end" | "above-start";
 
 export function menuPopoverPosition(

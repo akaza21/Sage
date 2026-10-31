@@ -117,7 +117,7 @@ describe("Project Chat search domain", () => {
         expectedTransitionEpoch: 3,
         query: `${"é".repeat(128)}a`,
       }),
-    ).toThrow("1-256 UTF-8 bytes");
+    ).toThrow("at most 256 UTF-8 bytes");
   });
 });
 

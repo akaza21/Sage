@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import "../../styles/composer-context.css";
 
-import type { ChatUsage } from "./acp/currentNonterminalTurn";
+import type { ChatUsage } from "./acp/chatUsage";
 
 type UsagePayload = ChatUsage;
 type UsageStyle = CSSProperties & { "--composer-context-usage": string };

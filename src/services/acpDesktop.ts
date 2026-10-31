@@ -1,44 +1,44 @@
 import type {
   AcpChatPage,
   AcpCommandFailure,
-  AgentEditDisposition,
   AcpMutationResult,
-  AcpSessionMutationIntent,
   AcpProjectionChangedEvent,
+  AcpSessionMutationIntent,
   ActivateAcpSessionRequest,
+  AgentEditDisposition,
   CancelAcpTurnRequest,
-  SteerAcpTurnRequest,
   CloseAcpSessionRequest,
-  EndAcpSessionRequest,
-  CodexDiscoveryResponse,
   CodexAuthResponse,
   CodexAuthScope,
+  CodexDiscoveryResponse,
+  EndAcpSessionRequest,
   GetAcpChatPageRequest,
   GetCodexDiscoveryRequest,
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
+  SteerAcpTurnRequest,
 } from "../domain/acp";
-import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
 import type {
   AgentDiffSnapshot,
   GetAgentDiffRequest,
 } from "../domain/agentDiff";
-import { invokeNative } from "../ports/nativeInvoke";
-import { isTauriRuntime } from "../ports/desktopRuntime";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
 import type { ResourceRef } from "../domain/workbench";
-import { decodeAcpGoal, type AcpGoalState } from "../domain/acpGoal";
+import { isTauriRuntime } from "../ports/desktopRuntime";
+import { invokeNative } from "../ports/nativeInvoke";
+import { resolvePermissionDecision } from "./acpDesktopPermission";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { getChatStatus, safeProjectionChanged } from "./acpDesktopProjection";
-import { resolvePermissionDecision } from "./acpDesktopPermission";
 import {
   isOneOf,
   isRecord,
+  safeAcpMutationResponse,
   safeCodexDiscovery,
   safeCounter,
   safeIdentifier,
   safeMessage,
-  safeAcpMutationResponse,
 } from "./acpDesktopResponses";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
@@ -271,7 +271,7 @@ export const acpDesktop = {
     await invokeNative("start_claude_auth_login");
   },
 
-  /** AP-B B5: a terminal turn's workspace (Git) changes; decoded by caller. */
+  /** a terminal turn's workspace (Git) changes; decoded by caller. */
   getTurnWorkspaceChanges(request: {
     projectId: string;
     projectGeneration: string;

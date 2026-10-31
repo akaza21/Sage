@@ -1,8 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import type { AcpProjectionChangedEvent } from "../domain/acp";
-import type { AcpChatStatus } from "../domain/acp";
+import type { AcpChatStatus, AcpProjectionChangedEvent } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { acpDesktop } from "../services/acpDesktop";
 import {
@@ -15,6 +14,7 @@ vi.mock("../ports/desktopRuntime", () => ({ isTauriRuntime: () => true }));
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   resetAgentRailInteractions();
   useWorkbenchStore.setState(initial, true);
@@ -200,7 +200,8 @@ it("reads only bounded status during streaming and sleeps with the hidden rail",
   const hook = renderHook(({ visible }) => useAgentRailStatus(visible), {
     initialProps: { visible: false },
   });
-  expect(subscribe).not.toHaveBeenCalled();
+  expect(subscribe).toHaveBeenCalledOnce();
+  expect(load).not.toHaveBeenCalled();
   hook.rerender({ visible: true });
   await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
   const event = {
@@ -214,7 +215,63 @@ it("reads only bounded status during streaming and sleeps with the hidden rail",
   expect(pages).not.toHaveBeenCalled();
   act(() => notify(event));
   hook.rerender({ visible: false });
-  expect(dispose).toHaveBeenCalledOnce();
+  expect(dispose).not.toHaveBeenCalled();
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(load).toHaveBeenCalledTimes(3);
+});
+
+it("resumes the rail without bootstrapping unchanged chats on every visibility flip", async () => {
+  seed();
+  vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+    () => undefined,
+  );
+  const load = vi
+    .spyOn(acpDesktop, "getChatStatus")
+    .mockImplementation(async (request) => ({
+      ...status("completed"),
+      chatId: request.chatId,
+    }));
+  const hook = renderHook(({ visible }) => useAgentRailStatus(visible), {
+    initialProps: { visible: true },
+  });
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  hook.rerender({ visible: false });
+  hook.rerender({ visible: true });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(load).toHaveBeenCalledTimes(2);
+});
+
+it("does not drop overflow events or keep polling after a rescan's tabs disappear", async () => {
+  vi.useFakeTimers();
+  seed();
+  const tabs = Array.from({ length: 130 }, (_, index) => ({
+    ...useWorkbenchStore.getState().tabs[0],
+    id: `chat-${index}`,
+  }));
+  useWorkbenchStore.setState({ tabs });
+  vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockResolvedValue(
+    () => undefined,
+  );
+  const load = vi
+    .spyOn(acpDesktop, "getChatStatus")
+    .mockImplementation(async (request) => ({
+      ...status("completed"),
+      chatId: request.chatId,
+    }));
+  const hook = renderHook(() => useAgentRailStatus(true));
+  await act(async () => {});
+  await act(async () => vi.advanceTimersByTimeAsync(20000));
+  expect(
+    load.mock.calls.some(([request]) => request.chatId === "chat-129"),
+  ).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  hook.unmount();
+  load.mockClear();
+  const second = renderHook(() => useAgentRailStatus(true));
+  await act(async () => {});
+  await act(async () => vi.advanceTimersByTimeAsync(3250));
+  act(() => useWorkbenchStore.setState({ tabs: tabs.slice(0, 5) }));
+  await act(async () => vi.advanceTimersByTimeAsync(20000));
+  expect(vi.getTimerCount()).toBe(0);
+  second.unmount();
 });

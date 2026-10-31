@@ -10,11 +10,6 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 const SHOW_FULL_URL = "browser-show-full-url";
 
-/**
- * BF-7d Browser settings, after Codex refs 45 (General), 47 (clear browsing
- * data) and 65. Only settings Sage's browser backend supports are rendered;
- * the rest of the Codex page is listed in FEATURE-ROADMAP, not stubbed here.
- */
 export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
   const desktop = isTauriRuntime();
   const preferences = useBrowserPreferencesStore((state) => state.preferences);

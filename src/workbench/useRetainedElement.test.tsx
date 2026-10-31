@@ -1,8 +1,8 @@
-import { Activity } from "react";
 import { act, cleanup, render } from "@testing-library/react";
+import { Activity } from "react";
 import { afterEach, expect, it } from "vitest";
 
-import { useRetainedElement } from "./useAgentArtifactFollowLifecycle";
+import { useRetainedElement } from "../ui/useRetainedElement";
 
 afterEach(cleanup);
 

@@ -5,35 +5,36 @@ import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { AgentDiffRef } from "../../../domain/agentDiff";
 import type { ResourceRef } from "../../../domain/workbench";
-import { acpDesktop } from "../../../services/acpDesktop";
-import { AnswerActions } from "../AnswerActions";
-import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { TurnDaySeparator } from "./AcpTurnDates";
-import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
-import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
-import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
-import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
-import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
-import { isEditingFiles } from "./editingFiles";
-import { HarnessActivity } from "./HarnessActivity";
+import { acpDesktop } from "../../../services/acpDesktop";
+import { isSideChatId } from "../../../workbench/sideChatState";
+import { AnswerActions } from "../AnswerActions";
+import type { TurnListHost } from "../chatScroll";
+import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
+import { TurnDaySeparator } from "./AcpTurnDates";
 import {
   chronologicalTurnItems,
   promptAttachmentItems,
   rootActivities,
 } from "./acpTurnState";
-import { ToolRunningIndicator, type OpenResourceTarget } from "./ToolItem";
-import { PrimaryActivities } from "./PrimaryActivities";
-import { ItemView } from "./TurnActivityItem";
-import { TurnHeader } from "./TurnHeader";
-import { TurnFailure } from "./TurnFailure";
-import { BrowserOperations } from "./BrowserOperations";
-import { terminalTurnStates } from "./statusSemantics";
-import { VirtualTurnList } from "./VirtualTurnList";
-import type { TurnListHost } from "../chatScroll";
-import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
-import { isSideChatId } from "../../../workbench/sideChatState";
+import { projectRootLabelKey, projectRootLabels } from "./agentEditSummary";
 import "./browser-operations.css";
+import { BrowserOperations } from "./BrowserOperations";
+import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
+import { isEditingFiles } from "./editingFiles";
+import { HarnessActivity } from "./HarnessActivity";
+import { PrimaryActivities } from "./PrimaryActivities";
+import { terminalTurnStates } from "./statusSemantics";
+import { type OpenResourceTarget } from "./ToolItem";
+import { ToolRunningIndicator } from "./ToolRunningIndicator";
+import { ItemView } from "./TurnActivityItem";
+import { TurnFailure } from "./TurnFailure";
+import { TurnHeader } from "./TurnHeader";
+import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
+import { VirtualTurnList } from "./VirtualTurnList";
 
 import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
@@ -54,7 +55,7 @@ const Turn = memo(
     turn: TurnProjection;
     /** A fork's read-only parent Turn: never interactive or quotable. */
     inherited?: boolean;
-    /** Earlier/inherited answers retain Copy (s2/f0066). */
+    /** Earlier/inherited answers retain Copy. */
     answerActions?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
     workspaceChanges?: readonly TurnWorkspaceChange[];
@@ -128,7 +129,7 @@ const Turn = memo(
           page={page}
         />
       ) : null;
-    // An inherited Turn is inert, all but its answer's own row (s2/f0066).
+    // An inherited Turn is inert, all but its answer's own row.
     const content = (
       <>
         <section
@@ -229,7 +230,7 @@ const Turn = memo(
                 )}
               />
             ))}
-            {/* docs/work-items/CHAT-WAVE-2/plan.md:28: live edits precede file data. */}
+            {/* Live edits precede file data. */}
             {isEditingFiles(page, turn) &&
             !turn.items.some(
               (item) =>

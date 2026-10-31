@@ -30,9 +30,6 @@
   border-radius: var(--radius-xl);
 }
 
-/* Codex draws no focus border on the composer; the caret shows focus
-   (s2/f0113, s2/f0244). Forced colors keep a system outline below. */
-
 /* An approval holds the slot; the form stays mounted so the draft survives. */
 .composer[hidden] {
   display: none;

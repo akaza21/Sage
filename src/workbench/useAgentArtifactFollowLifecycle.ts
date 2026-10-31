@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
-  type AgentArtifactTarget,
   useAgentArtifactFollowStore,
+  type AgentArtifactTarget,
 } from "../app/agentArtifactFollowStore";
 import {
   agentArtifactOwnerKey,
@@ -18,7 +18,7 @@ import {
 /**
  * The harness browse owner and its Preview. The Preview belongs to the
  * focused Chat only once that Chat owns the harness browse; while the next
- * Chat's projection loads, the previous Chat keeps ownership (AP-A1).
+ * Chat's projection loads, the previous Chat keeps ownership.
  */
 export function useFocusedBrowse(focusedOwner: AgentArtifactOwner | null) {
   const browseOwner = useHarnessBrowseOwner();
@@ -93,19 +93,4 @@ export function useExpandOnNewArtifact({
     availableResourceKeys.current = resourceKeys;
     if (!expanded && added) onExpandedChange?.(true);
   }, [expanded, onExpandedChange, resourceKeys]);
-}
-
-/** A callback-ref element that survives Activity hiding, which detaches refs but keeps the DOM node connected. */
-export function useRetainedElement<T extends Element>() {
-  const [element, setElement] = useState<T | null>(null);
-  const ref = useCallback((next: T | null) => {
-    if (next) {
-      setElement(next);
-      return;
-    }
-    queueMicrotask(() =>
-      setElement((current) => (current?.isConnected ? current : null)),
-    );
-  }, []);
-  return [element, ref] as const;
 }

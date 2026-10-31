@@ -48,17 +48,14 @@
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
-/* Codex 68: the open or focused "…" keeps a rounded accent ring inside its
-   28 px box. Codex draws it 2 px; Sage keeps its 1 px focus-ring token, since
-   the highlight policy reserves 2 px rings for forced colours. */
+
 .agent-header-more > button:focus-visible,
 .agent-header-more > button[aria-expanded="true"] {
   outline: var(--focus-ring);
   outline-offset: calc(-1 * var(--focus-ring-width));
   border-radius: var(--radius-md);
 }
-/* Codex 68: 272 x 72, 8 px under the header rule, its end aligned with the
-   resources button (36 px past the trigger), two 28 px rows. */
+
 .agent-header-more__menu.menu-popover {
   width: 272px;
   margin-left: 36px;
@@ -186,8 +183,6 @@
     gap: 0;
   }
 
-  /* Like Codex ref 37, an idle pane spends its width on the title; only
-     working, waiting and failed states keep a distinct compact shape. */
   .agent-task-header__status.agent-chat-chip--idle {
     display: none;
   }

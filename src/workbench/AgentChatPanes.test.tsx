@@ -1,4 +1,3 @@
-import { Profiler } from "react";
 import {
   act,
   cleanup,
@@ -7,14 +6,17 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../app/acpProjectionRegistry";
+import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { pinnedAgentChatOwner } from "../app/agentChatOwner";
-import { settleLazyModules } from "../test/settleLazyModules";
-import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
+import { useWorkbenchStore } from "../app/store";
 import type {
   AcpChatPage,
   AcpItem,
@@ -23,12 +25,6 @@ import type {
   TurnProjection,
 } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
-import { AgentChatPanes } from "./AgentChatPanes";
-import { launchSideChat } from "./AgentToolPanel";
-import { AgentTaskHeader } from "./AgentTaskHeader";
-import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
-import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
-import type { AgentSessionChrome } from "../app/agentChatOwner";
 import {
   applyBrowseIntent,
   browseSessionForOwner,
@@ -37,6 +33,12 @@ import {
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
+import { settleLazyModules } from "../test/settleLazyModules";
+import { AgentChatPanes } from "./AgentChatPanes";
+import { AgentTaskHeader } from "./AgentTaskHeader";
+import { launchSideChat } from "./AgentToolPanel";
+import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
+import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
 
 let resizeCallback: ResizeObserverCallback | null = null;
 const disconnect = vi.fn();
@@ -1166,7 +1168,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
   });
 
   it.each(["chat:a", "side-x"])(
-    "only reopens a responsive-hidden side pane through an explicit launch from %s",
+    "retains a responsive-hidden pair and allows explicit launch from %s",
     async (owner) => {
       render(<AgentChatPanes />);
       reportCenterWidth(1000);
@@ -1183,7 +1185,7 @@ describe("AgentChatPanes temporary side chat routing", () => {
           screen
             .getAllByRole("region", { name: /^Chat pane / })
             .map((pane) => pane.dataset.chatId),
-        ).toEqual(["side-x"]);
+        ).toEqual(width < 860 ? ["side-x"] : ["chat:a", "side-x"]);
       }
       await act(async () => {
         await useWorkbenchStore.getState().activateTab(owner);
@@ -1207,4 +1209,60 @@ describe("AgentChatPanes temporary side chat routing", () => {
       expect(useSideChatState.getState().sides).toHaveLength(1);
     },
   );
+});
+
+it("restores the requested side pair after compact and narrow layouts", () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [tabs[0], { ...tabs[1], id: "side-b" }],
+    activeTabId: "side-b",
+  });
+  useSideChatState.setState({
+    sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+    pairedId: "side-b",
+  });
+  const view = render(<AgentChatPanes />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+  reportCenterWidth(700);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    1,
+  );
+  reportCenterWidth(1200);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+  view.rerender(<AgentChatPanes compact />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    1,
+  );
+  view.rerender(<AgentChatPanes />);
+  expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+    2,
+  );
+});
+
+it("keeps a parent's rename text and focus when pairing and unpairing its side chat", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [tabs[0], { ...tabs[1], id: "side-b" }],
+    activeTabId: "chat:a",
+  });
+  useSideChatState.setState({
+    sides: [{ id: "side-b", parentChatId: "chat:a", projectId: "project-a" }],
+    pairedId: null,
+  });
+  render(<AgentChatPanes />);
+  fireEvent.click(screen.getByRole("button", { name: "Rename chat" }));
+  const input = await screen.findByRole("textbox", { name: "New chat name" });
+  fireEvent.change(input, { target: { value: "Uncommitted rename" } });
+  input.focus();
+  act(() => useSideChatState.setState({ pairedId: "side-b" }));
+  expect(screen.getByRole("textbox", { name: "New chat name" })).toBe(input);
+  expect(input).toHaveValue("Uncommitted rename");
+  expect(input).toHaveFocus();
+  act(() => useSideChatState.setState({ pairedId: null }));
+  expect(screen.getByRole("textbox", { name: "New chat name" })).toBe(input);
+  expect(input).toHaveFocus();
 });

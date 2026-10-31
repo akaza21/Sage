@@ -18,7 +18,7 @@
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
         "maxGzipBytes": 1100,
-        "reason": "Conditional harness build/account notices, deferred unless a harness needs attention; keeps their sign-in actions and copy off the ready first-Chat path. Existing caps unchanged."
+        "reason": "Conditional harness build/account notices, deferred unless a harness needs attention; keeps their sign-in actions and copy off the ready first-Chat path."
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
@@ -43,7 +43,7 @@
       {
         "entry": "src/features/chat/acp/TurnEditSummary.tsx",
         "maxGzipBytes": 2635,
-        "reason": "AP-E moves the existing current-chat edit disclosure off the first-Chat static path. Measured exclusive JS 2395 B; saved diff rendering stays click-lazy."
+        "reason": "moves the existing current-chat edit disclosure off the first-Chat static path. Measured exclusive JS 2395 B; saved diff rendering stays click-lazy."
       },
       {
         "entry": "src/features/chat/acp/turnWorkspaceChanges.ts",
@@ -77,9 +77,9 @@
       },
       {
         "entry": "src/features/diff/ChangesSurface.tsx",
-        "maxGzipBytes": 2490,
+        "maxGzipBytes": 2520,
         "maxCssGzipBytes": 426,
-        "reason": "Bounded Chat changes sections and scoped Git reads; loads only when Changes is selected. Inactive sections unmount their diff."
+        "reason": "Bounded Chat changes; added immutable snapshot identity and stable Last turn projection to avoid refetching after saves. Cap includes the small behavior-fix growth; inactive file diffs unmount."
       },
       {
         "entry": "src/features/diff/ChangesTab.tsx",
@@ -101,83 +101,83 @@
       {
         "entry": "src/features/chat/ComposerAccessMenu.tsx",
         "maxGzipBytes": 982,
-        "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request (AP-D)."
+        "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request."
       },
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
         "maxGzipBytes": 952,
         "maxCssGzipBytes": 243,
-        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; JS and CSS load on the first Model request (AP-D)."
+        "reason": "Bounded human-labelled model groups with exact IDs for name collisions and wrapping identity subtitles; JS and CSS load on the first Model request."
       },
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
         "maxGzipBytes": 1410,
-        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager (AP-D)."
+        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager."
       },
       {
         "entry": "src/features/chat/acp/TurnFileActivity.tsx",
         "maxGzipBytes": 1086,
         "maxCssGzipBytes": 619,
-        "reason": "AP-E root-qualified edited-files card, capped at 32 rows; loads only for a completed Turn with file edits. Measured JS 987 B and CSS 562 B; no dependencies."
+        "reason": "root-qualified edited-files card, capped at 32 rows; loads only for a completed Turn with file edits. Measured JS 987 B and CSS 562 B; no dependencies."
       },
       {
         "entry": "src/features/chat/ChatQueueExecution.tsx",
         "maxGzipBytes": 598,
-        "reason": "AP-G: queue execution and turn-start timeout effects load only with queued messages or a pending turn barrier; shared by awake chats and the Settings continuity keeper."
+        "reason": "queue execution and turn-start timeout effects load only with queued messages or a pending turn barrier; shared by awake chats and the Settings continuity keeper."
       },
       {
         "entry": "src/features/settings/AgentKeyboardSettings.tsx",
         "maxGzipBytes": 865,
-        "reason": "AP-G: Global, Agent and browser shortcut display; loaded only on Settings > Keybindings."
+        "reason": "Global, Agent and browser shortcut display; loaded only on Settings > Keybindings."
       },
       {
         "entry": "src/features/settings/AgentSettingsExecution.tsx",
         "maxGzipBytes": 865,
-        "reason": "AP-G: headless continuity for at most two pinned chats while Settings sleeps heavy workspace views; loaded only on Settings entry."
+        "reason": "headless continuity for at most two pinned chats while Settings sleeps heavy workspace views; loaded only on Settings entry."
       },
       {
         "entry": "src/features/settings/AgentSettingsSurface.tsx",
         "maxGzipBytes": 3983,
         "maxCssGzipBytes": 1240,
-        "reason": "AP-G: Agent settings dialog in T3 Code's layout, loaded only by a settings entry; Browser controls load separately. CSS measured 1158 B plus 7%; startup caps unchanged."
+        "reason": "Agent settings dialog , loaded only by a settings entry; Browser controls load separately. CSS measured 1158 B plus 7%; startup caps unchanged."
       },
       {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",
         "maxGzipBytes": 1732,
-        "reason": "AP-G: live-tab browser settings, history and reused native controls; loaded only by Settings > Browser. No browser commands run on the initial chat path."
+        "reason": "live-tab browser settings, history and reused native controls; loaded only by Settings > Browser. No browser commands run on the initial chat path."
       },
       {
         "entry": "src/features/browser/BrowserNewTab.tsx",
-        "maxGzipBytes": 3899,
-        "maxCssGzipBytes": 987,
+        "maxGzipBytes": 3750,
+        "maxCssGzipBytes": 966,
         "reason": "New-tab tools, chat resource picker and the Agent tool launch host (moved from core); loads on New tab or a chat-tool action. Measured JS 3544 B and CSS 897 B plus 10%."
       },
       {
         "entry": "src/features/chat/ChatNavigation.tsx",
-        "maxGzipBytes": 7481,
-        "maxCssGzipBytes": 1325,
+        "maxGzipBytes": 7000,
+        "maxCssGzipBytes": 1300,
         "reason": "Turn navigator and Ctrl+F find in chat; loads after a Chat has Turns."
       },
       {
         "entry": "src/features/chat/TranscriptInteractions.tsx",
-        "maxGzipBytes": 9361,
-        "maxCssGzipBytes": 1864,
+        "maxGzipBytes": 8600,
+        "maxCssGzipBytes": 1800,
         "reason": "Transcript selection popover, annotations and side chat; loads with a native Chat transcript."
       },
       {
         "entry": "src/features/chat/acp/PermissionPrompt.tsx",
-        "maxGzipBytes": 1863,
+        "maxGzipBytes": 1800,
         "maxCssGzipBytes": 955,
         "reason": "Composer-slot approval card; loads only while a live Turn awaits a permission decision."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
-        "maxGzipBytes": 4018,
+        "maxGzipBytes": 3800,
         "reason": "Chat search dialog, folder fan-out and native search adapter; loads on the first Search chats request (rail, title bar or Ctrl+K)."
       },
       {
         "entry": "src/features/chat/ForkChat.tsx",
-        "maxGzipBytes": 2488,
+        "maxGzipBytes": 2387,
         "maxCssGzipBytes": 685,
         "reason": "Answer More actions menu, Fork chat from here dialog, Continued from chat link and the fork's inherited parent history; loads once a forkable answer or a fork is shown."
       },
@@ -213,12 +213,12 @@
       },
       {
         "entry": "src/workbench/AgentRailArchiveNotice.tsx",
-        "maxGzipBytes": 405,
-        "reason": "Undo archive notice; mounted only after an archive has committed."
+        "maxGzipBytes": 450,
+        "reason": "Archive Undo notice; deferred until archive. Includes observed manual-restore cleanup so an expired or already-restored action cannot remain visible."
       },
       {
         "entry": "src/features/outline/OutlineSurface.tsx",
-        "maxGzipBytes": 1613,
+        "maxGzipBytes": 1600,
         "reason": "Outline side panel (symbol rows and honest empty states); loads when the Outline view first opens."
       },
       {
@@ -228,12 +228,12 @@
       },
       {
         "entry": "src/features/files/editorEditing.ts",
-        "maxGzipBytes": 4466,
+        "maxGzipBytes": 4300,
         "reason": "Editor pack: editing features of an editable File (EP-03 bracket matching, auto-close, folding, multiple cursors, occurrences); loads with the first editable File."
       },
       {
         "entry": "src/features/files/FileFindBar.tsx",
-        "maxGzipBytes": 4196,
+        "maxGzipBytes": 4000,
         "reason": "Editor pack: Find and Replace bar of a File (EP-04 options, replace one and all, match marks, regex worker client); preloaded while the File surface is idle."
       },
       {
@@ -258,23 +258,23 @@
       },
       {
         "entry": "src/features/files/editorLanguageMarkdown.ts",
-        "maxGzipBytes": 13910,
+        "maxGzipBytes": 13300,
         "reason": "Editor pack: Markdown grammar; loads when a Markdown file opens."
       },
       {
         "entry": "src/features/files/editorLanguagePython.ts",
-        "maxGzipBytes": 18884,
+        "maxGzipBytes": 18000,
         "reason": "Editor pack: Python grammar; loads when a Python file opens."
       },
       {
         "entry": "src/features/files/editorLanguageRust.ts",
-        "maxGzipBytes": 28407,
+        "maxGzipBytes": 27100,
         "reason": "Editor pack: Rust grammar; loads when a Rust file opens."
       },
       {
         "entry": "src/features/chat/acp/streamTail.ts",
         "maxGzipBytes": 428,
-        "reason": "Stream-fade run tracker for streamed answers (Codex s5/f0309); its import starts with the transcript, off the first-Chat path."
+        "reason": "Stream-fade run tracker for streamed answers; its import starts with the transcript, off the first-Chat path."
       },
       {
         "entry": "src/features/browser/BrowserDownloadsPanel.tsx",

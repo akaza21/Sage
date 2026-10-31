@@ -1,8 +1,3 @@
-/**
- * The browser menu's settings items. Browser settings opens Settings on its
- * Browser page, as Codex does; Site settings keeps this tab's saved site
- * permissions in reach, since those are per tab and not on that page.
- */
 export function BrowserSettingsMenuItems({
   run,
   onSettings,

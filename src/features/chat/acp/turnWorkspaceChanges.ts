@@ -5,7 +5,7 @@ import { canonicalRelativePath } from "./agentEditSummary";
 import { terminalTurnStates } from "./statusSemantics";
 
 /**
- * AP-B B5: workspace (Git) changes of terminal turns, computed and owned by
+ * workspace (Git) changes of terminal turns, computed and owned by
  * Rust. Edits made by shell commands never reach harness fileChange items;
  * this disposable cache only renders what the native ledger reports.
  */
@@ -29,6 +29,8 @@ interface TurnWorkspaceResult {
 export const MAX_TURN_WORKSPACE_CHANGES = 300;
 const MAX_CONCURRENT_READS = 5;
 const MAX_CACHED_TURNS = 100;
+// Bound suspended consumers across both visible chat panes.
+const MAX_WAITERS = 32;
 
 const cache = new Map<string, TurnWorkspaceResult>();
 const inFlight = new Map<string, { result?: TurnWorkspaceResult }>();
@@ -63,7 +65,7 @@ export function decodeTurnWorkspaceChanges(
           operation: change.operation as TurnWorkspaceChange["operation"],
         }))
       : [],
-    incomplete: !record.tracked || record.truncated !== false,
+    incomplete: record.truncated !== false,
   };
 }
 
@@ -73,7 +75,7 @@ async function loadTurn(
 ): Promise<TurnWorkspaceResult> {
   const key = JSON.stringify(request);
   while (true) {
-    if (signal.aborted || waiters.size >= 32) return unavailable;
+    if (signal.aborted || waiters.size >= MAX_WAITERS) return unavailable;
     const retained = cache.get(key);
     if (retained) return retained;
     let pending = inFlight.get(key);

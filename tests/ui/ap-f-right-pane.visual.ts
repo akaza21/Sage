@@ -141,9 +141,9 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
       // Native document opening refuses mixed line endings; reload through
       // that refusal rather than writing the error state directly.
       getWorkbenchPorts().editor.openEditorDocument = async () => {
-        throw new Error(
-          "invalid request: mixed LF and CRLF files are not editable in this slice",
-        );
+        throw Object.assign(new Error("Mixed line endings are view-only."), {
+          kind: "mixedLineEndings",
+        });
       };
       useWorkbenchStore.setState({ activeEditor: null });
       await useWorkbenchStore.getState().loadEditor(resource);

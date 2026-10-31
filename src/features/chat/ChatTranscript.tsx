@@ -7,33 +7,32 @@ import {
   type RefObject,
 } from "react";
 import { type AcpChatPage } from "../../domain/acp";
-import { SageMark } from "../../ui/leanIconCore";
-import { ArrowDown, Folder } from "../../ui/leanIcons";
 import { type ChatMessage } from "../../domain/chat";
 import {
   type ProjectRootSummary,
   type ResourceRef,
 } from "../../domain/workbench";
+import { ArrowDown, Folder } from "../../ui/leanIcons";
+import { isSideChatId } from "../../workbench/sideChatState";
+import { ChatHome } from "./ChatHome";
+import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
+import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import {
   AcpChatProjection,
   latestRetryPrompt,
   type OpenResourceTarget,
 } from "./acp";
-import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
-import { ProjectScopeChip } from "./ProjectScopeChip";
-import "./chat-home.css";
-import { composerWorkspaceName } from "./composerChrome";
-import { isNewProjectChat } from "./newProjectChat";
-import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
-import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import {
   AcpAnnouncementRegions,
   type Announcement,
 } from "./acp/AcpAnnouncementRegions";
+import { AnswerCopyFeedback } from "./answerCopyFeedback";
+import "./chat-home.css";
 import "./chat-transcript-polish.css";
-import { isSideChatId } from "../../workbench/sideChatState";
-import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
+import { composerWorkspaceName } from "./composerChrome";
 import { ForkPart } from "./lazyParts";
+import { isNewProjectChat } from "./newProjectChat";
+import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
 export function ChatTranscript({
   transcriptRef,
@@ -87,7 +86,7 @@ export function ChatTranscript({
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
-  /** "activity": follow is paused and a running turn grew below (Codex s6/f0200). */
+  /** "activity": follow is paused and a running turn grew below. */
   showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
 }) {
@@ -132,7 +131,7 @@ export function ChatTranscript({
   }, []);
   const retryAction = useMemo(
     () =>
-      // A side chat is temporary: nothing in it offers Retry (Codex s2/f0352).
+      // A side chat is temporary: nothing in it offers Retry.
       useNativeAcp &&
       page &&
       !isSideChatId(page.chatId) &&
@@ -255,14 +254,12 @@ export function ChatTranscript({
           />
         ) : null}
       </div>
-      {/* It overlays the transcript and stays mounted while hidden so CSS
-          can fade it out (Codex s2/f0048). */}
+
       <button
         className="chat-follow-end"
         type="button"
         hidden={!showJumpToLatest}
-        // data-mode="activity" restyles the arrow into the middle of three
-        // dots (chat-follow-end.css, Codex s6/f0200).
+
         data-mode={showJumpToLatest === "activity" ? "activity" : undefined}
         aria-label={jumpLabel}
         title={jumpLabel}
@@ -272,7 +269,7 @@ export function ChatTranscript({
       </button>
       {useNativeAcp && !projectTransitioning ? (
         <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>
-          {/* A side chat inherits its parent's Project (Codex s2/f0244). */}
+          {/* A side chat inherits its parent's Project. */}
           {showHome && projectName && !isSideChatId(page?.chatId) ? (
             <div
               className="chat-home__scope"
@@ -286,15 +283,5 @@ export function ChatTranscript({
         </div>
       ) : null}
     </AnswerCopyFeedback.Provider>
-  );
-}
-
-function ChatHome({ projectName }: { projectName: string | null }) {
-  return (
-    <section className="chat-home" aria-label="New chat">
-      <SageMark />
-      <h3>What should we work on?</h3>
-      {projectName ? <ProjectScopeChip projectName={projectName} /> : null}
-    </section>
   );
 }

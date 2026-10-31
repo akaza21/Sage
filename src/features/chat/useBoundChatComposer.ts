@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from "react";
-import { useWorkbenchStore } from "../../app/store";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   changeQueuedChatPrompt,
   persistQueuedChatPrompt,
 } from "../../app/chatAttachedContextState";
-import type { AttachedContext } from "../../domain/attachedContext";
+import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage, ClientIntentId } from "../../domain/acp";
+import type { AttachedContext } from "../../domain/attachedContext";
 import type {
   ChatOwnershipEntry,
   ChatTurnOrder,
@@ -152,37 +152,40 @@ export function useBoundChatComposer(
       .catch(() => updateQueuedPrompt(id, "blocked"));
   }
 
-  function changeQueueState(
-    change: Partial<
-      Pick<ChatOwnershipEntry, "queuedTurnBarrier" | "knownTurnOrder">
-    >,
-  ) {
-    const state = useWorkbenchStore.getState();
-    const ownerId = chatId ?? state.activeTabId;
-    const intent = ownerId ? state.captureChatOwnership(ownerId) : null;
-    if (!intent) return;
-    useWorkbenchStore.setState((current) => {
-      if (
-        current.project?.id !== intent.projectId ||
-        current.chatOwnershipEpoch !== intent.ownershipEpoch
-      )
-        return current;
-      const owned = current.chatUiById[intent.chatId];
-      if (!owned) return current;
-      if (
-        change.knownTurnOrder &&
-        owned.knownTurnOrder &&
-        !laterTurnOrder(change.knownTurnOrder, owned.knownTurnOrder)
-      )
-        return current;
-      return {
-        chatUiById: {
-          ...current.chatUiById,
-          [intent.chatId]: { ...owned, ...change },
-        },
-      };
-    });
-  }
+  const changeQueueState = useCallback(
+    (
+      change: Partial<
+        Pick<ChatOwnershipEntry, "queuedTurnBarrier" | "knownTurnOrder">
+      >,
+    ) => {
+      const state = useWorkbenchStore.getState();
+      const ownerId = chatId ?? state.activeTabId;
+      const intent = ownerId ? state.captureChatOwnership(ownerId) : null;
+      if (!intent) return;
+      useWorkbenchStore.setState((current) => {
+        if (
+          current.project?.id !== intent.projectId ||
+          current.chatOwnershipEpoch !== intent.ownershipEpoch
+        )
+          return current;
+        const owned = current.chatUiById[intent.chatId];
+        if (!owned) return current;
+        if (
+          change.knownTurnOrder &&
+          owned.knownTurnOrder &&
+          !laterTurnOrder(change.knownTurnOrder, owned.knownTurnOrder)
+        )
+          return current;
+        return {
+          chatUiById: {
+            ...current.chatUiById,
+            [intent.chatId]: { ...owned, ...change },
+          },
+        };
+      });
+    },
+    [chatId],
+  );
 
   function setQueuedTurnBarrier(
     barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
@@ -190,15 +193,16 @@ export function useBoundChatComposer(
     changeQueueState({ queuedTurnBarrier: barrier });
   }
 
-  function rememberTurnOrder(order: ChatTurnOrder | null) {
-    if (!order) return;
-    changeQueueState({ knownTurnOrder: order });
-  }
-
+  const rememberTurnOrder = useCallback(
+    (order: ChatTurnOrder | null) => {
+      if (order) changeQueueState({ knownTurnOrder: order });
+    },
+    [changeQueueState],
+  );
   const observedOrder = useMemo(() => latestTurnOrder(page), [page]);
   useEffect(() => {
     rememberTurnOrder(observedOrder);
-  });
+  }, [rememberTurnOrder, observedOrder]);
 
   return {
     observedOrder,

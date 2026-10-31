@@ -58,7 +58,7 @@
 .chat-find button:disabled {
   opacity: 0.4;
 }
-/* Codex s6/f0676: a 32 px second row with #898989 arrows. */
+
 .chat-find__results {
   display: flex;
   align-items: center;

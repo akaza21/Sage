@@ -208,11 +208,11 @@ test("parity selectors stay anchored to the wave 6-8 product components", () => 
       ['className="turn-navigator"', "data-active={distance === 0}"],
     ],
     [
-      "features/chat/TurnNavigator.tsx",
+      "features/chat/TurnPreviewCard.tsx",
       ['className="turn-navigator__preview"', 'role="tooltip"'],
     ],
     [
-      "features/chat/ChatFindController.tsx",
+      "features/chat/ChatFindBar.tsx",
       [
         'className="chat-find"',
         'role="search"',

@@ -552,7 +552,13 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     const recent = rail(page).getByRole("region", { name: "Recent" });
 
     const entries = recent.locator(".project-chat-row");
-    await expect(entries).toHaveCount(2);
+    await expect(entries).toHaveCount(1);
+    await expect(
+      recent.getByRole("button", {
+        name: "Open chat Agent navigation polish",
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await expect(entries.first().locator(".project-chat__state")).toHaveCount(
       1,
     );

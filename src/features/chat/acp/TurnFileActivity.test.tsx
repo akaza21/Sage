@@ -11,9 +11,9 @@ import {
   snapshotRef,
   snapshotResource,
 } from "../../../app/agentDiff.fixture";
+import type { AcpItem } from "../../../domain/acp";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnFileActivity } from "./TurnFileActivity";
-import type { AcpItem } from "../../../domain/acp";
 
 afterEach(cleanup);
 
@@ -119,12 +119,7 @@ it("shows real line counts and opens the originating saved Diff from the edit ca
   expect(within(card).getAllByLabelText("Line changes")[0]).toHaveTextContent(
     "+1-1",
   );
-  const undo = within(card).getByRole("button", { name: "Undo" });
-  expect(undo).toBeDisabled();
-  expect(undo).toHaveAttribute(
-    "title",
-    expect.stringContaining("saved diffs are read-only"),
-  );
+  expect(within(card).queryByRole("button", { name: "Undo" })).toBeNull();
   fireEvent.click(within(card).getByRole("button", { name: "View changes" }));
   expect(onOpenResource).toHaveBeenLastCalledWith(
     snapshotResource,
@@ -363,10 +358,11 @@ it("reports an incomplete workspace ledger without an empty edited-files card", 
   render(
     <TurnFileActivity page={page} turn={page.turns[0]} workspaceIncomplete />,
   );
-  const section = screen.getByRole("region", { name: "Edited files" });
-  expect(section).toHaveTextContent(
+  expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
+  const notice = screen.getByRole("status");
+  expect(notice).toHaveTextContent(
     "Workspace change tracking is incomplete for this turn.",
   );
   expect(screen.queryByText(/Edited at least 0 files/)).toBeNull();
-  expect(within(section).queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
 });

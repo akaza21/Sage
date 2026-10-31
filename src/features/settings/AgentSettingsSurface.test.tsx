@@ -6,13 +6,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../../app/store";
 import { useUiAppearanceStore } from "../../app/uiAppearanceStore";
+import type { SessionAccessModes } from "../../domain/sessionAccessMode";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { AgentSettingsSurface } from "./AgentSettingsSurface";
 import { useAgentSettingsState } from "./agentSettingsState";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import type { SessionAccessModes } from "../../domain/sessionAccessMode";
 
 const workbench = useWorkbenchStore.getState();
 const access = useSessionAccessModeStore.getState();
@@ -406,4 +406,19 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   expect(
     screen.getByRole("button", { name: "Refresh discovery" }),
   ).toBeEnabled();
+});
+
+it("allows Escape from a checkbox but keeps text-entry edits open", () => {
+  render(<AgentSettingsSurface />);
+  const dialog = screen.getByRole("dialog", { name: "Agent settings" });
+  const text = document.createElement("input");
+  text.type = "text";
+  dialog.append(text);
+  fireEvent.keyDown(text, { key: "Escape" });
+  expect(useAgentSettingsState.getState().page).toBe("Chats");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  dialog.append(checkbox);
+  fireEvent.keyDown(checkbox, { key: "Escape" });
+  expect(useAgentSettingsState.getState().page).toBeNull();
 });

@@ -217,7 +217,7 @@
   }
 }
 
-/* AP-B B4: sign-in action beside a harness picker row. */
+/* Sign-in action beside a harness picker row. */
 .searchable-picker__option-row {
   display: flex;
   align-items: center;

@@ -27,8 +27,13 @@ export function HarnessSignInPicker({
                 ...row,
                 subtitle: [row.subtitle, decoration.label]
                   .filter(Boolean)
-                  .join(" ? "),
-                accessibleLabel: `${row.accessibleLabel ?? row.label}. ${decoration.label}`,
+                  .join(" \u00b7 "),
+                accessibleLabel: [
+                  row.accessibleLabel ?? row.label,
+                  decoration.label,
+                ]
+                  .filter(Boolean)
+                  .join(". "),
                 action: decoration.action,
               }
             : row;

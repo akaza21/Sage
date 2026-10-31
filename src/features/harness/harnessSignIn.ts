@@ -1,16 +1,6 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
-
 import { acpDesktop } from "../../services/acpDesktop";
 
-/**
- * AP-B B4: harness sign-in state, shown before a turn starts.
- *
- * This is the small exported status API other surfaces (for example the
- * AP-G Settings › Harnesses page) consume: read with
- * `useHarnessSignInStatus`, refresh with `refreshHarnessSignIn`, and start
- * the harness's own sign-in with `startHarnessSignIn`. The native CLI owns the
- * truth; this module only caches its last bounded answer for rendering.
- */
+/** The native CLI owns sign-in truth; this bounded cache serves visible pickers. */
 export type HarnessSignInState =
   | "unsupported"
   | "unknown"
@@ -48,17 +38,18 @@ const UNKNOWN: HarnessSignInStatus = { state: "unknown", checkedAt: null };
 
 const statuses = new Map<string, HarnessSignInStatus>();
 const listeners = new Set<() => void>();
-let storeVersion = 0;
 const polls = new Map<string, ReturnType<typeof setTimeout>>();
+const refreshes = new Map<string, symbol>();
+const signIns = new Map<string, Promise<void>>();
+const pollOwners = new Map<string, symbol>();
 
 function publish(harnessId: string, status: HarnessSignInStatus) {
   statuses.set(harnessId, status);
-  storeVersion += 1;
   for (const listener of listeners) listener();
 }
 
 export function harnessSupportsSignIn(harnessId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(PROVIDERS, harnessId);
+  return Object.hasOwn(PROVIDERS, harnessId);
 }
 
 export function harnessSignInStatus(harnessId: string): HarnessSignInStatus {
@@ -72,14 +63,19 @@ export async function refreshHarnessSignIn(
   const provider = PROVIDERS[harnessId];
   if (!provider) return "unsupported";
   const previous = harnessSignInStatus(harnessId);
-  publish(harnessId, { state: "checking", checkedAt: previous.checkedAt });
+  const request = Symbol();
+  refreshes.set(harnessId, request);
+  if (previous.checkedAt === null)
+    publish(harnessId, { state: "checking", checkedAt: previous.checkedAt });
   let state: HarnessSignInState;
   try {
     state = (await provider.status()) ? "signedIn" : "signedOut";
   } catch {
     state = "unavailable";
   }
-  publish(harnessId, { state, checkedAt: Date.now() });
+  if (refreshes.get(harnessId) === request) {
+    publish(harnessId, { state, checkedAt: Date.now() });
+  }
   return state;
 }
 
@@ -87,86 +83,51 @@ function stopPolling(harnessId: string) {
   const timer = polls.get(harnessId);
   if (timer !== undefined) clearTimeout(timer);
   polls.delete(harnessId);
+  pollOwners.delete(harnessId);
 }
 
 /**
  * Opens the harness's own sign-in (never handles credentials) and then
  * re-checks on a bounded schedule until it reports signed in.
  */
-export async function startHarnessSignIn(harnessId: string): Promise<void> {
+export function startHarnessSignIn(harnessId: string): Promise<void> {
+  const pending = signIns.get(harnessId);
+  if (pending) return pending;
   const provider = PROVIDERS[harnessId];
-  if (!provider) throw new Error("This harness has no Sage sign-in action.");
-  await provider.start();
+  if (!provider) return Promise.reject(new Error("Sign-in is unavailable."));
   stopPolling(harnessId);
-  let attempts = 0;
-  const poll = () => {
-    attempts += 1;
-    void refreshHarnessSignIn(harnessId).then((state) => {
-      if (state === "signedIn" || attempts >= POLL_ATTEMPTS) {
-        stopPolling(harnessId);
-        return;
-      }
+  const owner = Symbol();
+  pollOwners.set(harnessId, owner);
+  const current = () => pollOwners.get(harnessId) === owner;
+  const request = provider
+    .start()
+    .then(() => {
+      if (!current()) return;
+      let attempts = 0;
+      const poll = () => {
+        if (!current()) return;
+        attempts += 1;
+        void refreshHarnessSignIn(harnessId).then((state) => {
+          if (!current()) return;
+          if (state === "signedIn" || attempts >= POLL_ATTEMPTS)
+            stopPolling(harnessId);
+          else polls.set(harnessId, setTimeout(poll, POLL_INTERVAL_MS));
+        });
+      };
       polls.set(harnessId, setTimeout(poll, POLL_INTERVAL_MS));
-    });
-  };
-  polls.set(harnessId, setTimeout(poll, POLL_INTERVAL_MS));
+    })
+    .finally(() => signIns.delete(harnessId));
+  signIns.set(harnessId, request);
+  return request;
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-/** Reads one harness's sign-in state, checking it when stale. */
-export function useHarnessSignInStatus(
-  harnessId: string | null,
-  enabled = true,
-): HarnessSignInStatus {
-  const status = useSyncExternalStore(subscribe, () =>
-    harnessId ? harnessSignInStatus(harnessId) : UNSUPPORTED,
-  );
-  useEffect(() => {
-    if (!enabled || !harnessId || !harnessSupportsSignIn(harnessId)) return;
-    const current = harnessSignInStatus(harnessId);
-    const stale =
-      current.checkedAt === null ||
-      Date.now() - current.checkedAt > STATUS_TTL_MS;
-    if (stale && current.state !== "checking")
-      void refreshHarnessSignIn(harnessId);
-  }, [enabled, harnessId]);
-  return status;
-}
-
-/** Reads several harnesses at once (for a picker), checking stale ones. */
-export function useHarnessSignInStatuses(
-  harnessIds: readonly string[],
-  enabled = true,
-): ReadonlyMap<string, HarnessSignInStatus> {
-  const version = useSyncExternalStore(subscribe, () => storeVersion);
-  const key = harnessIds.filter(harnessSupportsSignIn).join("\0");
-  useEffect(() => {
-    if (!enabled || !key) return;
-    for (const harnessId of key.split("\0")) {
-      const current = harnessSignInStatus(harnessId);
-      const stale =
-        current.checkedAt === null ||
-        Date.now() - current.checkedAt > STATUS_TTL_MS;
-      if (stale && current.state !== "checking")
-        void refreshHarnessSignIn(harnessId);
-    }
-  }, [enabled, key]);
-  return useMemo(
-    () =>
-      new Map(
-        (key ? key.split("\0") : []).map((harnessId) => [
-          harnessId,
-          harnessSignInStatus(harnessId),
-        ]),
-      ),
-    // `version` advances whenever any status is published.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, version],
-  );
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size)
+      for (const id of [...pollOwners.keys()]) stopPolling(id);
+  };
 }
 
 export function harnessSignInLabel(state: HarnessSignInState): string | null {
@@ -186,9 +147,11 @@ export function harnessSignInLabel(state: HarnessSignInState): string | null {
 
 export function resetHarnessSignInForTest() {
   for (const harnessId of [...polls.keys()]) stopPolling(harnessId);
+  refreshes.clear();
+  signIns.clear();
+  pollOwners.clear();
   statuses.clear();
   listeners.clear();
-  storeVersion = 0;
 }
 
 /** The picker-row action for a harness's current sign-in state. */

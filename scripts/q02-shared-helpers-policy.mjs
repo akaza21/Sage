@@ -3,7 +3,9 @@ import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 
 export const Q02_LIMITS = Object.freeze({
-  files: 560,
+  // Restored module boundaries bring this lane to 587 production files.
+  // Allow bounded source growth without folding unrelated owners together.
+  files: 600,
   depth: 16,
   fileBytes: 64 * 1024,
   aggregateBytes: 2.5 * 1024 * 1024,

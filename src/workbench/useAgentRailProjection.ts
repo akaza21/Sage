@@ -1,7 +1,5 @@
 import { useWorkbenchStore } from "../app/store";
-import { normalizeProjectionPage } from "../app/acpProjectionMerge";
-import type { AcpChatStatus } from "../domain/acp";
-import type { AcpChatPage, TurnState } from "../domain/acp";
+import type { AcpChatStatus, TurnState } from "../domain/acp";
 import type { SessionStatus } from "../domain/workbench";
 import { setAgentRailApproval } from "./agentRailInteractions";
 
@@ -12,13 +10,6 @@ export function railStatusForTurn(state?: TurnState): SessionStatus {
   if (state === "interrupted" || state === "cancelled") return "idle";
   if (state === "waitingApproval" || state === "waitingUser") return "waiting";
   return "working";
-}
-
-export function mirrorAgentRailProjection(page: AcpChatPage) {
-  mirrorAgentRailStatus({
-    ...page,
-    latestTurn: normalizeProjectionPage(page).turns.at(-1) ?? null,
-  });
 }
 
 export function mirrorAgentRailStatus(page: AcpChatStatus) {

@@ -1,13 +1,4 @@
 import { useState } from "react";
-import {
-  useAgentSettingsState,
-  type AgentSettingsPage,
-} from "./agentSettingsState";
-import "./agent-settings.css";
-import { AgentChatSettings } from "./AgentChatSettings";
-import { AgentHarnessSettings } from "./AgentHarnessSettings";
-import { AgentArchivedSettings } from "./AgentArchivedSettings";
-import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import {
   Archive,
@@ -20,6 +11,15 @@ import {
   Search,
   X,
 } from "../../ui/leanIcons";
+import "./agent-settings.css";
+import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
+import { AgentArchivedSettings } from "./AgentArchivedSettings";
+import { AgentChatSettings } from "./AgentChatSettings";
+import { AgentHarnessSettings } from "./AgentHarnessSettings";
+import {
+  useAgentSettingsState,
+  type AgentSettingsPage,
+} from "./agentSettingsState";
 
 const loadBrowserSettings = () =>
   import("./AgentBrowserSettings").then(({ AgentBrowserSettings }) => ({
@@ -31,7 +31,7 @@ const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
 
-// T3 Code's settings order and grouping, limited to the sections Sage has.
+// Settings order and grouping, limited to the sections Sage has.
 const groups: readonly {
   heading: string | null;
   pages: readonly AgentSettingsPage[];
@@ -66,7 +66,7 @@ export function AgentSettingsSurface() {
     .filter((group) => group.pages.length > 0);
   return (
     // Takes the Agent workspace's place below the title bar, which stays
-    // usable, with T3 Code's settings dialog centred in it.
+    // usable, with the settings dialog centred in it.
     <div className="agent-settings-layer">
       <section
         className="agent-settings"
@@ -78,7 +78,9 @@ export function AgentSettingsSurface() {
           if (
             event.key === "Escape" &&
             !event.defaultPrevented &&
-            !target.closest("input:not([type=search]), select, textarea") &&
+            !target.closest(
+              "input:not([type]):not([type=search]), input[type=text], input[type=email], input[type=password], input[type=url], input[type=tel], input[type=number], input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week], textarea, [contenteditable=true]",
+            ) &&
             target.closest("[role=dialog]") === event.currentTarget &&
             !(target.matches("input[type=search]") && query)
           ) {

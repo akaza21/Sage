@@ -1,30 +1,4 @@
 import { Files, Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
-import { useEffect, useRef, type RefObject } from "react";
-
-// While the resource pane covers the Agent body, the Chat and rail behind it
-// leave the tab order and the accessibility tree, and come back on restore.
-function useInertSiblings(
-  active: boolean,
-  anchor: RefObject<HTMLElement | null>,
-) {
-  useEffect(() => {
-    const pane = anchor.current?.closest<HTMLElement>(
-      ".agent-artifact-surface",
-    );
-    if (!active || !pane?.parentElement) return;
-    const siblings = Array.from(pane.parentElement.children).filter(
-      (node): node is HTMLElement =>
-        node instanceof HTMLElement &&
-        node !== pane &&
-        !node.hasAttribute("inert"),
-    );
-    for (const node of siblings) node.setAttribute("inert", "");
-    return () => {
-      for (const node of siblings) node.removeAttribute("inert");
-    };
-  }, [active, anchor]);
-}
-
 export function AgentArtifactEmptyState({ titleId }: { titleId: string }) {
   return (
     <section
@@ -56,8 +30,6 @@ export function AgentArtifactPaneControls({
   onNewTab: () => void;
   onCollapse: () => void;
 }) {
-  const expand = useRef<HTMLButtonElement>(null);
-  useInertSiblings(maximized, expand);
   return (
     <>
       <button
@@ -71,7 +43,6 @@ export function AgentArtifactPaneControls({
         <Plus size={16} aria-hidden="true" />
       </button>
       <button
-        ref={expand}
         className="agent-artifact-pane__collapse"
         type="button"
         aria-label={

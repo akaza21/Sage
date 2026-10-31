@@ -7,14 +7,14 @@ import {
   useState,
 } from "react";
 
-import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import type { HarnessDefinition } from "../../domain/harness";
-import type { SearchablePickerOption } from "../../ui/SearchablePicker";
-import { harnessIconKind } from "../../domain/harness";
-import { harnessAvailability } from "./harnessAvailability";
+import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
+import type { HarnessDefinition } from "../../domain/harness";
+import { harnessIconKind } from "../../domain/harness";
+import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
+import { harnessAvailability } from "./harnessAvailability";
 
 export function harnessPickerCandidates(
   harnesses: readonly HarnessDefinition[],
@@ -209,8 +209,10 @@ export function useChatHarnessSelection(chatId?: string): {
     sessionSelection?.harnessId,
     setChatHarnessSelection,
   ]);
+  const selectionRequest = useRef(0);
   const chooseHarness = useCallback(
     async (harnessId: string) => {
+      const request = ++selectionRequest.current;
       const ownership = captureChatOwnership(chatId);
       if (!ownership) {
         await selectHarness(harnessId);
@@ -219,7 +221,11 @@ export function useChatHarnessSelection(chatId?: string): {
       setChatHarnessSelection(ownership, { harnessId, modelId: null });
       await selectHarness(harnessId);
       const state = useWorkbenchStore.getState();
-      if (state.selectedHarnessId !== harnessId) return;
+      if (
+        request !== selectionRequest.current ||
+        state.selectedHarnessId !== harnessId
+      )
+        return;
       setChatHarnessSelection(ownership, {
         harnessId,
         modelId: state.selectedModelId,

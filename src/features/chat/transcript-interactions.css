@@ -1,6 +1,3 @@
-/* Codex live parity §1-3: selection popover, annotations and side chat.
-   Loaded with the lazy transcript chunk; no enter/exit motion (Codex shows
-   these in one frame), so reduced motion needs no override. */
 .chat-selection-popover,
 .annotation-comment,
 .transcript-annotation-badge,
@@ -56,8 +53,6 @@
 }
 
 .chat-selection-popover button {
-  /* Codex s2/f0093 measures 7 px (172x29). 8 px overflows the 480 px answer
-     column (B5), so this is the spacing seam's one listed exception. */
   padding: 0 7px;
   border: 0;
   background: transparent;
@@ -185,7 +180,6 @@
   );
 }
 
-/* Codex s2/f0095, f0113: the comment-square icon is outlined and muted. */
 .annotation-chip__trigger svg {
   flex: none;
   color: var(--chat-annotation-muted);
@@ -196,7 +190,6 @@
   margin-bottom: calc(8px - var(--space-3));
 }
 
-/* Codex s2/f0149: 30 px overall, a 28 px fill inside a 1 px #3e3e3e ring. */
 .annotation-chip--sent .annotation-chip__trigger {
   padding: 0 12px;
   border: 0;
@@ -348,7 +341,6 @@
   font-size: 13px;
 }
 
-/* Codex s2/f0352 rhythm: about 170 px tall with a two-line body. */
 .close-side-chat-dialog h2 {
   margin: 0 0 4px;
 }
@@ -366,8 +358,6 @@
 }
 
 .close-side-chat-dialog input[type="checkbox"] {
-  /* Codex s2/f0352: a 14 px outline box, no fill, at the small icon size;
-     checked, it holds a white square. */
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
   margin: 0;
@@ -400,7 +390,6 @@
 }
 
 .close-side-chat-dialog .button--danger:is(:focus-visible, :focus) {
-  /* Codex draws a 2 px accent ring on the default (focused) danger action. */
   outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
   outline-offset: 0;
   box-shadow: 0 0 0 1px var(--chat-annotation-accent);

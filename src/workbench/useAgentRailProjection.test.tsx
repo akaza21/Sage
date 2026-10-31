@@ -1,17 +1,19 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
+import { normalizeProjectionPage } from "../app/acpProjectionMerge";
 import { useWorkbenchStore } from "../app/store";
+import type { AcpChatPage } from "../domain/acp";
 import { page } from "../features/chat/acp/acpProjection.fixture";
 import { createBrowserChatTab } from "../services/browserChat";
-import { compareAgentRailViewChats } from "./agentRailStatusView";
-import {
-  mirrorAgentRailProjection,
-  railStatusForTurn,
-} from "./useAgentRailProjection";
 import {
   resetAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
+import { compareAgentRailViewChats } from "./agentRailStatusView";
+import {
+  mirrorAgentRailStatus,
+  railStatusForTurn,
+} from "./useAgentRailProjection";
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -131,3 +133,10 @@ it("creates honestly untitled and unpinned browser chats", () => {
     pinned: false,
   });
 });
+
+function mirrorAgentRailProjection(page: AcpChatPage) {
+  mirrorAgentRailStatus({
+    ...page,
+    latestTurn: normalizeProjectionPage(page).turns.at(-1) ?? null,
+  });
+}

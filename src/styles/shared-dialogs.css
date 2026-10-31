@@ -11,8 +11,6 @@
   background: var(--color-overlay);
 }
 
-/* Codex's in-chat dialogs (s2/f0055, s2/f0352): one #2a2a2a surface over a
-   light 12% scrim. */
 .dialog--scrim {
   width: min(378px, calc(100vw - 32px));
   background: var(--color-plane-raised);

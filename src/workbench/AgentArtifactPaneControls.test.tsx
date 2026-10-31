@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
 import { createRef, useState } from "react";
+import { afterEach, expect, it, vi } from "vitest";
 import { AgentArtifactPaneControls } from "./AgentArtifactPaneControls";
 
 afterEach(cleanup);
@@ -49,8 +49,8 @@ it("makes the covered Chat and rail inert only while the pane is expanded", () =
     const [maximized, setMaximized] = useState(false);
     return (
       <div>
-        <nav data-testid="rail" />
-        <main data-testid="chat" />
+        <nav data-testid="rail" inert={maximized} />
+        <main data-testid="chat" inert={maximized} />
         <div className="agent-artifact-surface">
           <aside className="agent-artifact-pane">
             <AgentArtifactPaneControls
@@ -77,4 +77,28 @@ it("makes the covered Chat and rail inert only while the pane is expanded", () =
   );
   expect(rail).not.toHaveAttribute("inert");
   expect(chat).not.toHaveAttribute("inert");
+});
+
+it("preserves React's inert ownership when maximize controls restore", () => {
+  function Body() {
+    const [maximized, setMaximized] = useState(false);
+    return (
+      <>
+        <nav data-testid="modal-background" inert />
+        <AgentArtifactPaneControls
+          maximized={maximized}
+          onMaximizedChange={setMaximized}
+          disabled={false}
+          onNewTab={() => undefined}
+          onCollapse={() => undefined}
+        />
+      </>
+    );
+  }
+  render(<Body />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand resource pane" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Restore resource pane" }),
+  );
+  expect(screen.getByTestId("modal-background")).toHaveAttribute("inert");
 });

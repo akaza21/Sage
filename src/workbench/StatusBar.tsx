@@ -1,10 +1,10 @@
 import { GitBranch, PanelLeftClose, PanelLeftOpen } from "../ui/leanIcons";
 
-import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useEditorCaretStore } from "../app/editorCaretStore";
+import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useWorkbenchStore } from "../app/store";
 import type { ProjectRepositoryStatus } from "../domain/workbench";
-import { caretStatusLabel } from "../features/files/goToLine";
+import { caretStatusLabel } from "../features/files/editorCaret";
 import { editorLanguageStatusLabel } from "../features/files/editorLanguage";
 
 function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {

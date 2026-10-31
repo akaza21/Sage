@@ -1,5 +1,3 @@
-/* T3 Code's settings dialog: a section rail beside a titled, scrolling page,
-   floated over the Agent window. */
 .agent-settings-layer {
   display: grid;
   place-items: center;

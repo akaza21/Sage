@@ -102,7 +102,15 @@ it("opens the same chat actions by right click and marks a read chat unread", as
 
 it("only offers Undo after a committed archive, and restores the exact project/chat", async () => {
   seed();
-  const archiveChat = vi.fn(async () => true);
+  const archiveChat = vi.fn(async () => {
+    useWorkbenchStore.setState({
+      archivedChats: [{ id: "Beta", title: "Beta" }],
+      tabs: useWorkbenchStore
+        .getState()
+        .tabs.filter((tab) => tab.id !== "Beta"),
+    });
+    return true;
+  });
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({ archiveChat, restoreChat });
   render(<LeftSidebar />);

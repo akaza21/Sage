@@ -2,28 +2,29 @@ import type { StateCreator } from "zustand";
 
 import { browserTabTitle } from "../domain/browserTabTitle";
 
+import type { BrowserOperationProjection } from "../domain/browserOperation";
+import { browserFaviconDataUrl } from "../features/browser/browserFavicon";
 import {
+  browserPopupAbandon,
+  browserPopupPending,
   closeBrowser,
   openBrowser,
-  browserPopupPending,
-  type BrowserPopupIntent,
   type BrowserNavigation,
+  type BrowserPopupIntent,
 } from "../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../ports/nativeInvoke";
-import { browserFaviconDataUrl } from "../features/browser/browserFavicon";
 import {
   clearBrowserAgentPresence,
   recordBrowserAgentOperation,
 } from "./browserAgentActivityStore";
-import type { BrowserOperationProjection } from "../domain/browserOperation";
 import { matchesProjectIntent } from "./projectIntent";
+import type { WorkbenchState } from "./store";
 import {
   BROWSER_CLOSE_ERROR,
   consumeBrowserAlreadyClosed,
   isBrowserCloseInFlight,
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
-import type { WorkbenchState } from "./store";
 
 export interface BrowserSlice {
   openBrowser: (url?: string) => Promise<void>;
@@ -75,6 +76,12 @@ export const createBrowserSlice: StateCreator<
         if (first !== undefined) finishedPopups.delete(first);
       }
     } catch {
+      if (typeof intent.nativeTabId === "string")
+        await browserPopupAbandon(
+          intent.id,
+          intent.openerTabId,
+          intent.nativeTabId,
+        ).catch(() => undefined);
       set({ error: "Could not open the browser popup. Try again." });
     } finally {
       processingPopups.delete(intent.id);

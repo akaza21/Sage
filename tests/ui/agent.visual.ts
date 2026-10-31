@@ -514,7 +514,7 @@ test.describe("ED02 picker visual states", () => {
     ).toHaveCount(0);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
-    await expect(modelTrigger).toHaveText("Fresh advertised model 2");
+    await expect(modelTrigger).toHaveText("Model");
     await expect(page.locator("html")).toHaveAttribute(
       "data-visual-model-selection-count",
       "1",
@@ -647,7 +647,7 @@ test.describe("ED02 picker visual states", () => {
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
       "Model",
-      "GPT-5",
+      "Model",
     );
     await harnessTrigger.click();
     const listbox = page.getByRole("listbox", { name: "Harness" });

@@ -1,19 +1,20 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { PreviewTargetRef } from "../domain/previewProjection";
 
-import { AgentArtifactPane } from "./AgentArtifactPane";
-import { AgentChatPanes } from "./AgentChatPanes";
-import { LeftSidebar } from "./LeftSidebar";
-import { AgentNavigationPart } from "./agentNavigationLazy";
-import { AgentToolsProvider } from "./AgentToolsProvider";
-import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
-import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 import { AgentChatOwnerScopeContext } from "../app/agentChatOwner";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { useRetainedElement } from "./useAgentArtifactFollowLifecycle";
+import { useRetainedElement } from "../ui/useRetainedElement";
+import { AgentArtifactPane } from "./AgentArtifactPane";
+import { AgentChatPanes } from "./AgentChatPanes";
+import { AgentToolsProvider } from "./AgentToolsProvider";
+import { LeftSidebar } from "./LeftSidebar";
+import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
+import { AgentNavigationPart } from "./agentNavigationLazy";
 import {
   AgentHomeNavigationContext,
   navigateAgentHome,
 } from "./agentRailNavigation";
+import type { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 export function AgentWorkbenchBody({
   layout,
@@ -27,6 +28,7 @@ export function AgentWorkbenchBody({
   onAgentArtifactWidthChange,
   onOpenArtifactInEditor,
   onOpenTerminal,
+  onPreviewTargetChange,
 }: {
   layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
@@ -39,7 +41,12 @@ export function AgentWorkbenchBody({
   onAgentArtifactWidthChange: (width: number) => void;
   onOpenArtifactInEditor: (tabId: string) => void;
   onOpenTerminal?: () => void;
+  onPreviewTargetChange?: (target: PreviewTargetRef | null) => void;
 }) {
+  const [artifactMaximized, setArtifactMaximized] = useState(false);
+  if (!artifactExpanded && artifactMaximized) setArtifactMaximized(false);
+  const backgroundInert =
+    layout.artifactModal || (artifactExpanded && artifactMaximized);
   const openSettings = useAgentSettingsState((state) => state.open);
   const [artifactHeader, setArtifactHeader] =
     useRetainedElement<HTMLDivElement>();
@@ -74,12 +81,12 @@ export function AgentWorkbenchBody({
                 fallback={
                   <div className="project-sidebar" aria-hidden="true" />
                 }
-                inert={layout.artifactModal}
+                inert={backgroundInert}
                 onOpenSettings={() => openSettings()}
                 onExpand={onExpandNavigation}
               />
             ) : (
-              <LeftSidebar inert={layout.artifactModal} />
+              <LeftSidebar inert={backgroundInert} />
             )}
           </AgentHomeNavigationContext.Provider>
           {layout.navigationResizable ? (
@@ -93,8 +100,10 @@ export function AgentWorkbenchBody({
           ) : null}
           <div
             className="center-region"
-            inert={drawerOpen}
-            aria-hidden={drawerOpen || undefined}
+            inert={drawerOpen || (artifactExpanded && artifactMaximized)}
+            aria-hidden={
+              drawerOpen || (artifactExpanded && artifactMaximized) || undefined
+            }
           >
             <AgentChatPanes
               compact={layout.compact}
@@ -121,6 +130,9 @@ export function AgentWorkbenchBody({
             />
           ) : null}
           <AgentArtifactPane
+            onPreviewTargetChange={onPreviewTargetChange}
+            maximized={artifactMaximized}
+            onMaximizedChange={setArtifactMaximized}
             expanded={artifactExpanded}
             focusOnExpand={layout.artifactOverlay}
             modal={layout.artifactModal}

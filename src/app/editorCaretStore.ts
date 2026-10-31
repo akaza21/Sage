@@ -2,7 +2,10 @@ import type { Text } from "@codemirror/state";
 import { useEffect } from "react";
 import { create } from "zustand";
 
-import { admitCaretStatus, type EditorCaret } from "../features/files/goToLine";
+import {
+  admitCaretStatus,
+  type EditorCaret,
+} from "../features/files/editorCaret";
 
 interface EditorCaretStore {
   caret: EditorCaret | null;

@@ -16,6 +16,8 @@ const retainedTurns = new WeakMap<
     chatId: string;
     sessionKnown: boolean;
     summary: AgentEditSummaryProjection;
+    workspace?: readonly TurnWorkspaceChange[];
+    merged?: AgentEditSummaryProjection;
   }
 >();
 
@@ -38,6 +40,7 @@ function mergeWorkspaceChanges(
   turn: TurnProjection,
   workspaceChanges: readonly TurnWorkspaceChange[],
 ): AgentEditSummaryProjection {
+  if (!workspaceChanges.length) return summary;
   const changes = new Map<string, AgentEditSummaryChange>();
   const changeKeys = new Set(summary.changeKeys);
   for (const workspace of workspaceChanges) {
@@ -98,6 +101,7 @@ export function projectChatEditSummary(
     sourceTruncated: workspaceIncomplete,
     rejectedUnsafeOrStale: false,
   };
+  const byTurn = groupWorkspaceChanges(workspaceChanges);
   for (const turn of page.turns) {
     const sessionKnown = page.sessions.some(
       (session) => session.id === turn.sessionId,
@@ -114,14 +118,21 @@ export function projectChatEditSummary(
               terminalItemLifecycles.has(item.lifecycle),
             ),
           });
-    if (retained !== cached?.summary)
-      retainedTurns.set(turn, {
-        projectId: page.projectId,
-        chatId: page.chatId,
-        sessionKnown,
-        summary: retained,
-      });
-    const merged = mergeWorkspaceChanges(retained, turn, workspaceChanges);
+    const workspace = byTurn.get(turn.id) ?? NO_CHANGES;
+    const merged =
+      cached?.summary === retained &&
+      cached.workspace === workspace &&
+      cached.merged
+        ? cached.merged
+        : mergeWorkspaceChanges(retained, turn, workspace);
+    retainedTurns.set(turn, {
+      projectId: page.projectId,
+      chatId: page.chatId,
+      sessionKnown,
+      summary: retained,
+      workspace,
+      merged,
+    });
     summary.sourceTruncated ||= merged.sourceTruncated;
     summary.rejectedUnsafeOrStale ||= merged.rejectedUnsafeOrStale;
     for (const key of merged.changeKeys) {
@@ -144,4 +155,23 @@ export function projectChatEditSummary(
     ...summary,
     changes: [...changes.values()],
   };
+}
+
+const NO_CHANGES: readonly TurnWorkspaceChange[] = [];
+const groupedWorkspace = new WeakMap<
+  readonly TurnWorkspaceChange[],
+  Map<string, TurnWorkspaceChange[]>
+>();
+function groupWorkspaceChanges(changes: readonly TurnWorkspaceChange[]) {
+  let grouped = groupedWorkspace.get(changes);
+  if (!grouped) {
+    grouped = new Map();
+    for (const change of changes) {
+      const turn = grouped.get(change.turnId) ?? [];
+      turn.push(change);
+      grouped.set(change.turnId, turn);
+    }
+    groupedWorkspace.set(changes, grouped);
+  }
+  return grouped;
 }

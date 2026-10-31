@@ -1,4 +1,3 @@
-import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 import {
   useCallback,
   useContext,
@@ -9,14 +8,16 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { explorerSelectionAction } from "./explorerActionDialogController";
-import { RenameResourceControl } from "./RenameResourceControl";
 import { ExplorerContextMenuContext } from "./explorerContextMenu";
 import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
+import { RenameFileControl } from "./RenameFileControl";
+import { RenameFolderControl } from "./RenameFolderControl";
 import { TrashResourceControl } from "./TrashResourceControl";
 
 export function ExplorerActionMenu() {
@@ -182,8 +183,7 @@ export function ExplorerActionMenu() {
         </button>
         {action.kind === "file" ? (
           <>
-            <RenameResourceControl
-              kind="File"
+            <RenameFileControl
               source={action.source}
               rootName={rootName}
               returnFocusRef={anchorRef}
@@ -199,8 +199,7 @@ export function ExplorerActionMenu() {
           </>
         ) : action.kind === "emptyFolder" ? (
           <>
-            <RenameResourceControl
-              kind="Folder"
+            <RenameFolderControl
               source={action.source}
               rootName={rootName}
               returnFocusRef={anchorRef}

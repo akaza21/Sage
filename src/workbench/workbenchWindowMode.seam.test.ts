@@ -1,28 +1,28 @@
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { createElement } from "react";
 import {
-  cleanup,
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { createElement } from "react";
 import {
-  beforeEach,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
   vi,
 } from "vitest";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
-import { useWorkbenchStore } from "../app/store";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
+import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
@@ -106,7 +106,7 @@ describe("D0 workbench window mode seam", () => {
     expect(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
         "radio",
-        { name: "Agent" },
+        { name: "Editor" },
       ),
     ).toBeChecked();
     act(() => useAgentSettingsState.getState().close());

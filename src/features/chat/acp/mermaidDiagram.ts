@@ -1,9 +1,5 @@
-import {
-  type MermaidStateSource,
-  parseMermaidState,
-  mermaidLines,
-  clampMermaidLabel as clampLabel,
-} from "./mermaidState";
+import { type MermaidStateSource, parseMermaidState } from "./mermaidState";
+import { clampMermaidLabel as clampLabel, mermaidLines } from "./mermaidText";
 
 export const MAX_MERMAID_NODES = 32;
 export const MAX_MERMAID_EDGES = 48;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../app/store";
 import {
   setAgentRailArchiveUndo,
@@ -12,6 +12,19 @@ export function AgentRailArchiveNotice() {
   );
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const [saving, setSaving] = useState(false);
+  const archived = useWorkbenchStore(
+    (state) =>
+      !undo ||
+      (undo.projectId === state.project?.id
+        ? state.archivedChats.some((chat) => chat.id === undo.chatId)
+        : state.projects
+            .find((project) => project.id === undo.projectId)
+            ?.railArchived?.some((chat) => chat.id === undo.chatId)),
+  );
+  useEffect(() => {
+    if (undo && !archived && !transitioning)
+      setAgentRailArchiveUndo(null, undo);
+  }, [archived, transitioning, undo]);
   if (!undo) return null;
   return (
     <div role="status" className="project-empty-copy">

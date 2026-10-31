@@ -7,12 +7,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { MixedEolFileView } from "./MixedEolFileView";
-import { FileSurface } from "./FileSurface";
 import { useWorkbenchStore } from "../../app/store";
 import { createInjectedEditorWatchDelivery } from "../../domain/editorWatch";
 import type { TextFile } from "../../domain/workbench";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { FileSurface } from "./FileSurface";
+import { MixedEolFileView } from "./MixedEolFileView";
 
 const initial = useWorkbenchStore.getState();
 
@@ -58,8 +58,11 @@ it("coalesces rewrite bursts and cannot resurrect text after a deletion", async 
       resolveLate = done;
     }),
   );
+  const retained = screen.getByRole("textbox");
+  retained.scrollTop = 120;
   act(() => injected.emit({ resource, kind: "changed", generation: 1 }));
-  expect(screen.queryByRole("textbox")).toBeNull();
+  expect(screen.getByRole("textbox")).toBe(retained);
+  expect(retained.scrollTop).toBe(120);
   act(() => injected.emit({ resource, kind: "deleted", generation: 1 }));
   await act(async () => resolveLate(file));
   expect(screen.queryByRole("textbox")).toBeNull();
@@ -189,6 +192,7 @@ it("falls back from the native mixed-EOL refusal at the shared File surface", as
     activeTabId: tab.id,
     activeEditor: {
       phase: "error",
+      kind: "mixedLineEndings",
       resource,
       message:
         "invalid request: mixed LF and CRLF files are not editable in this slice",
@@ -248,4 +252,20 @@ it("reads mixed line endings without opening a writable buffer", async () => {
   expect(screen.getByRole("textbox")).toHaveAttribute("readonly");
   expect(screen.getByText(/Mixed line endings/)).toBeVisible();
   expect(save).not.toHaveBeenCalled();
+});
+
+it("clips non-ASCII content by UTF-8 bytes rather than UTF-16 code units", async () => {
+  const resource = { rootId: "root", relativePath: "unicode.txt" };
+  vi.spyOn(getWorkbenchPorts().editor, "readTextFile").mockResolvedValue({
+    resource,
+    content: "\u20ac".repeat(400000),
+    byteLen: 1200000,
+    lineEnding: "none",
+    modifiedAt: null,
+  });
+  render(<MixedEolFileView resource={resource} />);
+  await screen.findByText("View capped at 1 MiB of text.");
+  const value = (screen.getByRole("textbox") as HTMLTextAreaElement).value;
+  expect(new TextEncoder().encode(value).byteLength).toBe(1048575);
+  expect(value.endsWith("\u20ac")).toBe(true);
 });

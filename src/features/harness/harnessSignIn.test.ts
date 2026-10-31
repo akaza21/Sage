@@ -1,4 +1,3 @@
-import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const desktop = vi.hoisted(() => ({
@@ -8,6 +7,7 @@ const desktop = vi.hoisted(() => ({
 vi.mock("../../services/acpDesktop", () => ({ acpDesktop: desktop }));
 
 import {
+  ensureHarnessSignInChecked,
   harnessSignInAction,
   harnessSignInDecorations,
   harnessSignInLabel,
@@ -16,7 +16,7 @@ import {
   refreshHarnessSignIn,
   resetHarnessSignInForTest,
   startHarnessSignIn,
-  useHarnessSignInStatuses,
+  subscribeHarnessSignIn,
 } from "./harnessSignIn";
 
 beforeEach(() => {
@@ -47,18 +47,13 @@ it("reports signed out, signed in and an unavailable check", async () => {
   expect(harnessSignInStatus("claude-code").checkedAt).not.toBeNull();
 });
 
-it("checks visible harnesses once and exposes their status to the picker", async () => {
+it("checks visible harnesses once while their cached status is fresh", async () => {
   desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
-  const { result, rerender } = renderHook(
-    ({ ids }: { ids: string[] }) => useHarnessSignInStatuses(ids),
-    { initialProps: { ids: ["claude-code", "codex"] } },
-  );
-  await act(async () => {});
-  expect(result.current.get("claude-code")?.state).toBe("signedOut");
-  expect(result.current.has("codex")).toBe(false);
-  rerender({ ids: ["claude-code", "codex"] });
-  await act(async () => {});
-  expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(1);
+  ensureHarnessSignInChecked(["claude-code", "codex"]);
+  await Promise.resolve();
+  await Promise.resolve();
+  ensureHarnessSignInChecked(["claude-code", "codex"]);
+  expect(desktop.getClaudeAuthStatus).toHaveBeenCalledOnce();
 });
 
 it("signs in through the harness's own flow and polls until signed in", async () => {
@@ -93,4 +88,41 @@ it("decorates picker rows with the sign-in label and action", async () => {
   expect([...decorations.keys()]).toEqual(["claude-code"]);
   expect(decorations.get("claude-code")?.label).toMatch(/Signed out/);
   expect(decorations.get("claude-code")?.action?.label).toBe("Sign in");
+});
+
+it("keeps Sign in stable while polling, coalesces double clicks, and stops on picker cleanup", async () => {
+  vi.useFakeTimers();
+  desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  await refreshHarnessSignIn("claude-code");
+  const observed: string[] = [];
+  const unsubscribe = subscribeHarnessSignIn(() =>
+    observed.push(harnessSignInStatus("claude-code").state),
+  );
+  await Promise.all([
+    startHarnessSignIn("claude-code"),
+    startHarnessSignIn("claude-code"),
+  ]);
+  expect(desktop.startClaudeAuthLogin).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(observed).not.toContain("checking");
+  unsubscribe();
+  await vi.advanceTimersByTimeAsync(120000);
+  expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
+});
+it("does not let a stale refresh replace a later check", async () => {
+  let complete!: (value: { loggedIn: boolean }) => void;
+  desktop.getClaudeAuthStatus
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    )
+    .mockResolvedValue({ loggedIn: true });
+  const older = refreshHarnessSignIn("claude-code");
+  await refreshHarnessSignIn("claude-code");
+  complete({ loggedIn: false });
+  await older;
+  expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
 });

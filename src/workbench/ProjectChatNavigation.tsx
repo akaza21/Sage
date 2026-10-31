@@ -1,10 +1,10 @@
 import {
+  ChevronDown,
+  ChevronRight,
   GitBranch,
   MessageSquare,
   Pin,
   RotateCcw,
-  ChevronDown,
-  ChevronRight,
 } from "../ui/leanIcons";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -12,16 +12,7 @@ import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 
 import { useWorkbenchStore } from "../app/store";
 import { chatDisplayTitle } from "../domain/chatTitle";
-import { lazyParts } from "../features/chat/lazyParts";
-import type * as RenameChunk from "./ProjectChatRename";
-const RenamePart = lazyParts<typeof RenameChunk>(
-  () => import("./ProjectChatRename"),
-);
-import {
-  isSideChatId,
-  useParentChatStatus,
-  useRailChatId,
-} from "./sideChatState";
+import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import {
   ackSessionRailUnread,
   seenSessionRailFingerprint,
@@ -31,20 +22,29 @@ import {
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
-import {
-  agentRailAgeStamp,
-  agentRailTrailingState,
-} from "./agentRailStatusView";
-import { agentRailClockMs } from "./agentRailViewPrefs";
-import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
-import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
-import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import { lazyParts } from "../features/chat/lazyParts";
 import {
   clearAgentRailUnread,
   markAgentRailUnread,
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
+import {
+  agentRailAgeStamp,
+  agentRailTrailingState,
+} from "./agentRailStatusView";
+import { agentRailClockMs } from "./agentRailViewPrefs";
+import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
+import type * as RenameChunk from "./ProjectChatRename";
+import {
+  isSideChatId,
+  useParentChatStatus,
+  useRailChatId,
+} from "./sideChatState";
+const RenamePart = lazyParts<typeof RenameChunk>(
+  () => import("./ProjectChatRename"),
+);
 
 export function ProjectChatNavigation({
   projectId,
@@ -90,7 +90,7 @@ export function ProjectChatNavigation({
   const storeArchivedChats = useWorkbenchStore((state) => state.archivedChats);
   const archivedChats = selected ? storeArchivedChats : (archived ?? []);
   const archivedListId = `archived-chat-list-${projectId}`;
-  // A side chat never lists; its parent keeps the highlight (Codex s2/f0244).
+  // A side chat never lists; its parent keeps the highlight.
   const activeTabId = useRailChatId(
     useWorkbenchStore((state) => state.activeTabId),
   );

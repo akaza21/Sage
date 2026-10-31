@@ -1,24 +1,24 @@
-import {
-  FileSearch,
-  Search,
-  Settings,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "../ui/leanIcons";
 import { useCallback, useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
-import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { useRailChatId } from "./sideChatState";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import {
+  FileSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+} from "../ui/leanIcons";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
+import { useRailChatId } from "./sideChatState";
+import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
 import {
   collectChatTabIds,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
-import { chatDisplayTitle } from "../domain/chatTitle";
 
 const modeLabels: Record<WorkbenchWindowMode, string> = {
   agent: "Agent",
@@ -110,7 +110,7 @@ export function TitleBar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inert, chatSearchDisabled, mode, openChatSearch]);
-  // A side chat keeps its parent's window title (Codex s2/f0244).
+  // A side chat keeps its parent's window title.
   const focusedId = useRailChatId(
     titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
   );
@@ -190,31 +190,4 @@ export function TitleBar({
       </div>
     </header>
   );
-}
-
-const TITLE_BAR_LABEL_CAP = 48;
-
-function hasControlCharacter(value: string): boolean {
-  return value.split("").some((character) => {
-    const code = character.charCodeAt(0);
-    return code < 32 || code === 127;
-  });
-}
-
-function titleBarSessionTitle(
-  tabTitle: string | null | undefined,
-): string | null {
-  if (!tabTitle) return null;
-  const name = chatDisplayTitle(tabTitle).trim();
-  if (!name || hasControlCharacter(name)) return null;
-  if (name.length <= TITLE_BAR_LABEL_CAP) return name;
-  return `${name.slice(0, TITLE_BAR_LABEL_CAP - 1)}…`;
-}
-
-function titleBarFocusedChatId(
-  chatIds: readonly string[],
-  activeTabId: string | null,
-): string | null {
-  if (activeTabId && chatIds.includes(activeTabId)) return activeTabId;
-  return chatIds[0] ?? null;
 }

@@ -204,10 +204,6 @@
   padding: var(--space-1) 0 0;
 }
 
-/*
- * Worked open (Codex s2/f0011-f0015): the rows, which mount on expand, fade
- * in top to bottom. Collapse is instant (s2/f0040).
- */
 .chat-transcript-work[open] + .chat-transcript-work__groups > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
@@ -275,7 +271,6 @@
     transform var(--motion-duration-chevron) ease-out;
 }
 
-/* Nested rows pitch 24 px (Codex s5/f0390: about 22 px). */
 .chat-transcript-work__groups
   .acp-tool-rollup__items
   .acp-tool-rollup
@@ -308,8 +303,7 @@
   display: flex;
   min-height: 28px;
   align-items: center;
-  /* Codex pitches its ~22 px buttons 24 px apart (s2/f0053); on the 4 px
-   * scale they are 24 px buttons with no gap. */
+
   gap: 0;
   margin-top: var(--space-2);
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;

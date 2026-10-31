@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
 import type {
   ProjectGeneration,
@@ -9,7 +9,16 @@ import { isTauriRuntime } from "../ports/desktopRuntime";
 import { acpDesktop } from "../services/acpDesktop";
 import { mirrorAgentRailStatus } from "./useAgentRailProjection";
 
+// Coalesce bursty projection events without retaining unbounded chat IDs.
+const MAX_DIRTY_CHATS = 64;
+const STATUS_COALESCE_MS = 50;
 export function useAgentRailStatus(visible: boolean) {
+  const visibility = useRef(visible);
+  const wake = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    visibility.current = visible;
+    if (visible) wake.current?.();
+  }, [visible]);
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.projectGeneration);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -17,12 +26,13 @@ export function useAgentRailStatus(visible: boolean) {
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (!visible || !isTauriRuntime() || !projectId || transitioning) return;
+    if (!isTauriRuntime() || !projectId || transitioning) return;
     let disposed = false;
     let pending = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let unlisten: (() => void) | undefined;
     const dirty = new Set<string>();
+    let rescanIndex: number | null = null;
     const current = () => {
       const state = useWorkbenchStore.getState();
       return (
@@ -34,7 +44,15 @@ export function useAgentRailStatus(visible: boolean) {
       );
     };
     const refresh = async () => {
-      if (!current() || pending) return;
+      if (!current() || !visibility.current || pending) return;
+      if (!dirty.size && rescanIndex !== null) {
+        const tabs = useWorkbenchStore.getState().tabs;
+        while (rescanIndex < tabs.length && dirty.size < MAX_DIRTY_CHATS) {
+          const tab = tabs[rescanIndex++];
+          if (tab.kind === "chat") dirty.add(tab.id);
+        }
+        if (rescanIndex >= tabs.length) rescanIndex = null;
+      }
       pending = true;
       const chatId = dirty.values().next().value;
       if (chatId) {
@@ -53,11 +71,18 @@ export function useAgentRailStatus(visible: boolean) {
       schedule();
     };
     const schedule = () => {
-      if (!current() || pending || timer || !dirty.size) return;
+      if (
+        !current() ||
+        !visibility.current ||
+        pending ||
+        timer ||
+        (!dirty.size && rescanIndex === null)
+      )
+        return;
       timer = setTimeout(() => {
         timer = undefined;
         void refresh();
-      }, 50);
+      }, STATUS_COALESCE_MS);
     };
     const enqueue = (chatId: string) => {
       if (
@@ -67,9 +92,11 @@ export function useAgentRailStatus(visible: boolean) {
           .tabs.some((tab) => tab.kind === "chat" && tab.id === chatId)
       )
         return;
-      if (dirty.size < 64) dirty.add(chatId);
+      if (dirty.size < MAX_DIRTY_CHATS) dirty.add(chatId);
+      else if (!dirty.has(chatId)) rescanIndex ??= 0;
       schedule();
     };
+    wake.current = schedule;
     void acpDesktop
       .subscribeProjectionChanges((event) => {
         if (event.projectId === projectId) enqueue(event.chatId);
@@ -87,9 +114,16 @@ export function useAgentRailStatus(visible: boolean) {
       .catch(() => undefined);
     return () => {
       disposed = true;
+      wake.current = null;
       if (timer) clearTimeout(timer);
       dirty.clear();
       unlisten?.();
     };
-  }, [visible, projectId, generation, epoch, transitioning]);
+  }, [projectId, generation, epoch, transitioning]);
+}
+
+/** Desktop status transport stays outside the ready workbench path and Activity. */
+export function AgentRailStatusObserver({ visible }: { visible: boolean }) {
+  useAgentRailStatus(visible);
+  return null;
 }

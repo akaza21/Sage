@@ -1,12 +1,12 @@
 import type { AcpChatPage } from "../../domain/acpProjection";
 import type { AgentDiffRef } from "../../domain/agentDiff";
+import { resourceKey } from "../../domain/resourceIdentity";
 import type {
   ProjectRepositoryStatus,
   ResourceRef,
 } from "../../domain/workbench";
 import { projectTurnEditSummary } from "../chat/acp/chatEditSummary";
 import type { TurnWorkspaceChange } from "../chat/acp/turnWorkspaceChanges";
-import { resourceKey } from "../../domain/resourceIdentity";
 
 export type ChangesScope = "lastTurn" | "unstaged" | "staged";
 export type ChangesEntry = {
@@ -21,7 +21,7 @@ export type ChangesEntry = {
 export function projectChanges(
   scope: ChangesScope,
   page: AcpChatPage | null,
-  repositories: ProjectRepositoryStatus,
+  repositories: ProjectRepositoryStatus | null,
   workspaceChanges: readonly TurnWorkspaceChange[] = [],
   workspaceIncompleteTurns: ReadonlySet<string> = new Set(),
 ) {
@@ -80,6 +80,7 @@ export function projectChanges(
         summary.rejectedUnsafeOrStale,
     };
   }
+  if (!repositories) return { entries, truncated: false };
   let truncated = repositories.truncated || repositories.roots.length > 32;
   for (const root of repositories.roots.slice(0, 32)) {
     truncated ||= root.truncated || root.changes.length > 300;

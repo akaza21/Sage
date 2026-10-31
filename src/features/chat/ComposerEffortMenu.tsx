@@ -10,9 +10,9 @@ import type {
   AcpConfigValue,
 } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
+import { capitalizeLabel } from "../../domain/text";
 import { Brain, ChevronDown, RotateCcw } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
-import { capitalizeLabel } from "../../domain/text";
 
 export default function ComposerEffortMenu({
   anchorRef,
@@ -49,7 +49,6 @@ export default function ComposerEffortMenu({
     option: typeof option;
     index: number;
   } | null>(null);
-  if (!open && draft) setDraft(null);
   useLayoutEffect(() => {
     if (!open) return;
     const panel = document.getElementById(panelId);

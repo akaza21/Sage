@@ -12,7 +12,10 @@ import {
   loadEditorLanguage,
   type EditorLanguage,
 } from "../files/editorLanguage";
-import { MAX_OUTLINE_SOURCE_CHARS, outlineAvailability } from "./outlineCard";
+import {
+  MAX_OUTLINE_SOURCE_CHARS,
+  outlineAvailability,
+} from "./outlineAvailability";
 
 export { MAX_OUTLINE_SOURCE_CHARS };
 

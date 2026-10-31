@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
 import {
-  MAX_OUTLINE_SOURCE_CHARS,
   MAX_OUTLINE_SYMBOLS,
   syntaxOutline,
   type OutlineSymbol,

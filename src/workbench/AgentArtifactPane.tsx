@@ -1,57 +1,58 @@
-import { isTauriRuntime } from "../ports/nativeInvoke";
 import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
+import type { PreviewTargetRef } from "../domain/previewProjection";
+import { isTauriRuntime } from "../ports/nativeInvoke";
 
-import { RetainedActivity } from "../ui/LazyModuleBoundary";
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
-import {
-  subagentPaneForPage,
-  latestSubagentForPage,
-  ownerFromFocusedPage,
-  validFocusedSubagentPage,
-  useSubagentPaneStore,
-} from "../app/subagentPaneStore";
 import {
   agentArtifactFollowRecordFor,
   sameAgentArtifactTarget,
-  type AgentArtifactTarget,
   useAgentArtifactFollowStore,
+  type AgentArtifactTarget,
 } from "../app/agentArtifactFollowStore";
-import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
-import { orderedTabs } from "../app/tabState";
 import { useWorkbenchStore } from "../app/store";
+import {
+  latestSubagentForPage,
+  ownerFromFocusedPage,
+  subagentPaneForPage,
+  useSubagentPaneStore,
+  validFocusedSubagentPage,
+} from "../app/subagentPaneStore";
+import { orderedTabs } from "../app/tabState";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
+import { RetainedActivity } from "../ui/LazyModuleBoundary";
+import { useRetainedElement } from "../ui/useRetainedElement";
 import {
   agentArtifactAdmitted,
   agentArtifactVisible,
 } from "./agentArtifactAdmission";
-import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
-import { artifactChipStatsForTab } from "./artifactChipStats";
-import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
+import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
-  AgentArtifactPaneControls,
   AgentArtifactEmptyState,
+  AgentArtifactPaneControls,
 } from "./AgentArtifactPaneControls";
+import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
 import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
+import { useAgentChangesState } from "./agentChangesState";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
-import {
-  useAgentArtifactFollowLifecycle,
-  useExpandOnNewArtifact,
-  useFocusedBrowse,
-  useRetainedElement,
-} from "./useAgentArtifactFollowLifecycle";
-import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
-import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
-import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
+import { artifactChipStatsForTab } from "./artifactChipStats";
+import { loadSubagentSurface } from "./loadSubagentSurface";
 import {
   renderFileOrDiffCanvas,
   renderRegisteredCanvas,
 } from "./surfaceRegistry";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
-import { loadSubagentSurface } from "./loadSubagentSurface";
+import {
+  useAgentArtifactFollowLifecycle,
+  useExpandOnNewArtifact,
+  useFocusedBrowse,
+} from "./useAgentArtifactFollowLifecycle";
+import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { useAgentChangesPane } from "./useAgentChangesPane";
-import { useAgentChangesState } from "./agentChangesState";
+import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
 const SubagentSurface = lazy(() =>
   loadSubagentSurface().then((module) => ({
@@ -72,6 +73,9 @@ export function AgentArtifactPane({
   onExpandedChange,
   onOpenInEditor,
   headerNode,
+  onMaximizedChange,
+  onPreviewTargetChange,
+  maximized: suppliedMaximized,
 }: {
   expanded?: boolean;
   focusOnExpand?: boolean;
@@ -80,6 +84,9 @@ export function AgentArtifactPane({
   onExpandedChange?: (expanded: boolean) => void;
   onOpenInEditor?: (tabId: string) => void;
   headerNode?: HTMLElement | null;
+  onMaximizedChange?: (maximized: boolean) => void;
+  onPreviewTargetChange?: (target: PreviewTargetRef | null) => void;
+  maximized?: boolean;
 } = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -88,7 +95,12 @@ export function AgentArtifactPane({
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const paneRef = useRef<HTMLElement | null>(null);
   const [canvasNode, setCanvasNode] = useRetainedElement<HTMLDivElement>();
-  const [maximized, setMaximized] = useState(false);
+  const [localMaximized, setLocalMaximized] = useState(false);
+  const maximized = suppliedMaximized ?? localMaximized;
+  const setMaximized = (next: boolean) => {
+    setLocalMaximized(next);
+    onMaximizedChange?.(next);
+  };
   const edgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const onPaneKeyDown = useAgentArtifactPaneFocus({
     expanded,
@@ -213,6 +225,7 @@ export function AgentArtifactPane({
   });
   const previewController = (
     <AgentPreviewSurface
+      onTargetChange={onPreviewTargetChange}
       key={JSON.stringify(Object.values(previewControllerOwner ?? {}))}
       owner={previewControllerOwner}
       browseOwner={browseOwner}

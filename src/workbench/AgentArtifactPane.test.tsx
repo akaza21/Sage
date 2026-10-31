@@ -38,12 +38,20 @@ vi.mock("../services/acpDesktop", () => ({
   acpDesktop: { subscribePreviewProjectionChanges: previewBridge.subscribe },
 }));
 
+import type { ComponentProps } from "react";
 import {
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
   pinAcpProjectionIds,
 } from "../app/acpProjectionRegistry";
+import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../app/agentArtifactFollowStore";
+import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type {
   AcpChatPage,
   AcpItem,
@@ -51,6 +59,9 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../domain/acp";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { CollaborationItem } from "../features/chat/acp/CollaborationItem";
 import {
   applyBrowseIntent,
   clearBrowseSession,
@@ -58,18 +69,13 @@ import {
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
-import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
-import { useSubagentPaneStore } from "../app/subagentPaneStore";
-import {
-  agentArtifactFollowRecordFor,
-  useAgentArtifactFollowStore,
-} from "../app/agentArtifactFollowStore";
-import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { settleLazyModules } from "../test/settleLazyModules";
-import { AgentArtifactPane } from "./AgentArtifactPane";
-import { CollaborationItem } from "../features/chat/acp/CollaborationItem";
-import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { AgentArtifactPane as Pane } from "./AgentArtifactPane";
+function AgentArtifactPane(props: ComponentProps<typeof Pane>) {
+  const publish = usePreviewTargetLifetime();
+  return <Pane {...props} onPreviewTargetChange={publish} />;
+}
 
 function mountArtifactHeader() {
   return render(<div />).container.firstElementChild as HTMLElement;
@@ -1323,7 +1329,9 @@ describe("Agent artifact file chips", () => {
       } as PreviewProjectionChangedEvent),
     );
     act(() => pinAgentChatOwner(null));
-    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+    await waitFor(() =>
+      expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target),
+    );
   });
 
   it("bridges active native Preview and hides only its matching-origin terminal frame", async () => {
@@ -1486,7 +1494,9 @@ describe("Agent artifact file chips", () => {
         ),
     ).toBe(true);
     view.unmount();
-    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+    await waitFor(() =>
+      expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target),
+    );
   });
 
   it("suppresses a stopped native frame while preserving a different manual origin", async () => {

@@ -1,14 +1,14 @@
-import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { Plus, Settings } from "../../ui/leanIcons";
+import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
 import { useLayoutEffect, useRef, useState } from "react";
 
-import { useWorkbenchStore } from "../../app/store";
 import {
   cachedHarnessModels,
   harnessModelIdentity,
 } from "../../app/harnessModelCache";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { useWorkbenchStore } from "../../app/store";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -18,24 +18,24 @@ import {
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
+import { capitalizeLabel } from "../../domain/text";
+import "../../styles/harness-picker.css";
+import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
+import { ComposerAccessControl } from "./ComposerAccessControl";
+import { ComposerOptionsMenu } from "./ComposerAddActions";
+import { composerOptionLabel } from "./composerChrome";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { useComposerModelName } from "./composerModelName";
-import { useComposerModelChoices } from "./useComposerModelChoices";
-import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ComposerOptionsMenu } from "./ComposerAddActions";
-import { ProjectScopeChip } from "./ProjectScopeChip";
-import { composerOptionLabel } from "./composerChrome";
-import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
-import { useComposerCompaction } from "./useComposerCompaction";
-import { capitalizeLabel } from "../../domain/text";
+import { ProjectScopeChip } from "./ProjectScopeChip";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
 } from "./useChatHarnessSelection";
-import "../../styles/harness-picker.css";
-import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
+import { useComposerCompaction } from "./useComposerCompaction";
+import { useComposerModelChoices } from "./useComposerModelChoices";
+import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -169,10 +169,7 @@ export function ChatHarnessControls({
       ? inherited
       : undefined;
   const modelLabel = useComposerModelName(
-    confirmedModelLabel ??
-      inheriting?.model ??
-      models.find((model) => model.id === selectedModelId)?.name ??
-      "Model",
+    confirmedModelLabel ?? inheriting?.model ?? "Model",
   );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortLabel =

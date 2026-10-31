@@ -153,7 +153,6 @@
   color: var(--color-accent);
 }
 
-/* Codex live parity s6/f0526: the title truncates before the pill. */
 .rail-pill {
   flex: none;
   height: 20px;
@@ -368,8 +367,6 @@
   color: var(--color-text-muted);
 }
 
-/* The title truncates before the "Awaiting approval" pill, which keeps a gap
-   before the trailing spinner at any rail width (Codex s6/f0526). */
 .project-chat-row:has(.project-chat__approval-spinner) .project-chat {
   padding-inline-end: 28px;
 }

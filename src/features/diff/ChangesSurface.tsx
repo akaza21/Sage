@@ -1,12 +1,12 @@
 import { memo, useMemo, useState } from "react";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acpProjection";
 import { resourceKey } from "../../domain/resourceIdentity";
-import { useWorkbenchStore } from "../../app/store";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
+import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
 import { ChangesFileDiff } from "./ChangesFileDiff";
 import { projectChanges, type ChangesScope } from "./agentChanges";
-import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
-import { isTauriRuntime } from "../../ports/desktopRuntime";
 import "./changes.css";
 
 export const ChangesSurface = memo(function ChangesSurface({
@@ -35,16 +35,17 @@ export const ChangesSurface = memo(function ChangesSurface({
     scope === "lastTurn" && isTauriRuntime(),
     revision,
   );
+  const scopedRepositories = scope === "lastTurn" ? null : repositories;
   const result = useMemo(
     () =>
       projectChanges(
         scope,
         page,
-        repositories,
+        scopedRepositories,
         workspaceChanges.changes,
         workspaceChanges.incompleteTurnIds,
       ),
-    [scope, page, repositories, workspaceChanges],
+    [scope, page, scopedRepositories, workspaceChanges],
   );
   const gitAvailable = repositories.roots.some(
     (root) => root.state === "repository",

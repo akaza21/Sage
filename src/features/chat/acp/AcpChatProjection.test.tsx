@@ -6,8 +6,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AcpChatPage,
@@ -15,20 +15,20 @@ import type {
   HarnessActivityProjection,
   SagePermissionRequestId,
 } from "../../../domain/acp";
+import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
+import { settleLazyModules } from "../../../test/settleLazyModules";
+import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import {
   browseSessionForOwner,
   clearBrowseSessions,
   setHarnessBrowseOwner,
 } from "../../preview/harnessBrowse";
-import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
-import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
-import { AcpChatProjection as Projection } from "./AcpChatProjection";
-import { AcpChatPresentation } from "./AcpChatPresentation";
-import { page, textItem } from "./acpProjection.fixture";
-import { settleLazyModules } from "../../../test/settleLazyModules";
-import createdFileEvent from "./createdFileEvent.fixture.json";
-import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { AcpChatPresentation } from "./AcpChatPresentation";
+import { AcpChatProjection as Projection } from "./AcpChatProjection";
+import { page, textItem } from "./acpProjection.fixture";
+import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
+import createdFileEvent from "./createdFileEvent.fixture.json";
 
 function AcpChatProjection(props: ComponentProps<typeof Projection>) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
@@ -1857,7 +1857,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={edited} active onOpenResource={openResource} />,
     );
 
-    let summary = screen.getByRole("region", {
+    const summary = screen.getByRole("region", {
       name: "Files edited in this chat",
     });
     const disclosure = within(summary).getByRole("button", {
@@ -1881,13 +1881,9 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
-    summary = screen.getByRole("region", { name: "Files edited in this chat" });
-    expect(within(summary).queryByRole("list")).toBeNull();
     expect(
-      within(summary).getByText(
-        /unsafe or stale change records were not shown/i,
-      ),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: "Files edited in this chat" }),
+    ).toBeNull();
     expect(openResource).not.toHaveBeenCalled();
   });
 

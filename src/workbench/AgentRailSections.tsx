@@ -1,15 +1,17 @@
 import {
+  ChevronDown,
+  ChevronRight,
   FolderOpen,
   GitBranch,
   Plus,
-  ChevronDown,
-  ChevronRight,
 } from "../ui/leanIcons";
 
 import type { ReactNode } from "react";
 
+import { lazyParts } from "../features/chat/lazyParts";
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
 import { MAX_AGENT_RAIL_CHATS_PER_PROJECT } from "./agentChatRail";
+import type * as ProjectMenuChunk from "./AgentProjectMenu";
 import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
 import { groupAgentRailByStatus } from "./agentRailStatusView";
 import {
@@ -17,6 +19,7 @@ import {
   toggleAgentRailSection,
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
+import type * as RecentChatsChunk from "./AgentRecentChats";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
 function visibleProjectChats(
@@ -28,8 +31,9 @@ function visibleProjectChats(
   if (active && !visible.includes(active)) visible[visible.length - 1] = active;
   return visible;
 }
-import { lazyParts } from "../features/chat/lazyParts";
-import type * as ProjectMenuChunk from "./AgentProjectMenu";
+const RecentChatsPart = lazyParts<typeof RecentChatsChunk>(
+  () => import("./AgentRecentChats"),
+);
 const ProjectMenuPart = lazyParts<typeof ProjectMenuChunk>(
   () => import("./AgentProjectMenu"),
 );
@@ -187,7 +191,6 @@ export function AgentRailSections({
   unreadByChatId,
   prefs,
   currentBranchLabel,
-  emptyProjects,
   createChat,
   createProject,
   switchProject,
@@ -321,9 +324,7 @@ export function AgentRailSections({
             ))}
         {projects.length === 0 ? (
           <p className="project-empty-copy">
-            {emptyProjects
-              ? "New chat starts under Local. Open a folder when you want files."
-              : "No tasks match this search."}
+            New chat starts under Local. Open a folder when you want files.
           </p>
         ) : null}
       </AgentRailSection>
@@ -342,26 +343,12 @@ export function AgentRailSections({
 
       <AgentRailSection id="recent" label="Recent">
         {recent.length > 0 ? (
-          <div className="agent-rail-flat-list">
-            {recent.map((item) => (
-              <ProjectChatNavigation
-                key={`${item.projectId}:${item.chat.id}`}
-                projectId={item.projectId}
-                chats={[item.chat]}
-                selected={item.projectId === currentProjectId}
-                workspaceLabel={
-                  prefs.show.workspace ? item.projectName : undefined
-                }
-                showUpdated={prefs.show.updated}
-                showBranch={prefs.show.branch}
-                hideArchived
-                flat
-                projectChatCount={item.projectChatCount}
-                relativeTimeSuffix
-                suppressActive
-              />
-            ))}
-          </div>
+          <RecentChatsPart
+            part="AgentRecentChats"
+            items={recent}
+            currentProjectId={currentProjectId}
+            prefs={prefs}
+          />
         ) : (
           <p className="agent-rail-section__empty">No recent tasks</p>
         )}

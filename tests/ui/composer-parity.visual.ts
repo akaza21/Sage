@@ -251,7 +251,7 @@ for (const width of [1888, 720, 480]) {
       const composer = page.locator("form.composer");
       await expect(
         composer.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Claude Sonnet 4.5");
+      ).toHaveText("Model");
       const effort = composer.getByRole("button", {
         name: "Thinking level",
         exact: true,

@@ -46,7 +46,7 @@ it("keeps the picker synchronous while loading sign-in decorations lazily", asyn
   const action = await screen.findByRole("button", {
     name: "Sign in to Claude Code",
   });
-  expect(screen.getByText(/Sonnet.*Signed out/)).toBeVisible();
+  expect(screen.getByText("Sonnet \u00b7 Signed out")).toBeVisible();
   fireEvent.click(action);
   expect(desktop.startClaudeAuthLogin).toHaveBeenCalledTimes(1);
   expect(select).not.toHaveBeenCalled();

@@ -161,6 +161,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentSideChatHeaders.tsx",
   "src/workbench/AgentProjectMenu.tsx",
   "src/workbench/AgentRailArchiveNotice.tsx",
+  "src/workbench/AgentRecentChats.tsx",
+  "src/workbench/useAgentRailStatus.ts",
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",

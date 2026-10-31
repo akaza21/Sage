@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { Files, ChevronRight } from "../../../ui/leanIcons";
+import { ChevronRight, Files } from "../../../ui/leanIcons";
 
 import type {
   AcpChatPage,
@@ -8,18 +8,18 @@ import type {
   AgentEditDispositionState,
   TurnProjection,
 } from "../../../domain/acp";
+import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
-import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
-import { ChatFileChip } from "./FileChip";
-import { chatFileChipBasename } from "./chatFileChip";
+import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { projectChatEditSummary } from "./chatEditSummary";
+import { chatFileChipBasename } from "./chatFileChip";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 import { FileChangeTotals } from "./FileChangeTotals";
-import { isTauriRuntime } from "../../../ports/desktopRuntime";
-import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { ChatFileChip } from "./FileChip";
+import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
-import { rootDisplayName } from "./chatFileChip";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -61,13 +61,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   );
   const [dispositionError, setDispositionError] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
-  if (
-    summary.changes.length === 0 &&
-    !summary.sourceTruncated &&
-    !summary.rejectedUnsafeOrStale
-  ) {
-    return null;
-  }
+  if (summary.changes.length === 0) return null;
   const summaryIncomplete =
     countIncomplete ||
     summary.omittedCount > 0 ||

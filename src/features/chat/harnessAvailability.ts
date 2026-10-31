@@ -1,4 +1,3 @@
-import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import {
   harnessUnavailableReason,
   type HarnessDefinition,
@@ -34,14 +33,4 @@ export function harnessAvailability(harness: HarnessDefinition): {
         disabledReason: harnessUnavailableReason(harness.unavailableReason),
       };
   }
-}
-
-export function bindingNoticeAllowed(phase: HarnessDiscoveryPhase): boolean {
-  return ![
-    "checking",
-    "signInRequired",
-    "consent",
-    "waiting",
-    "error",
-  ].includes(phase);
 }

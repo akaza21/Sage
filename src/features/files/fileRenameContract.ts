@@ -15,10 +15,3 @@ export function renameTargetResource(
   }
   return target;
 }
-
-export function renameFolderTargetResource(
-  source: ResourceRef,
-  basename: string,
-): ResourceRef {
-  return renameTargetResource(source, basename);
-}

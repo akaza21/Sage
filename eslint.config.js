@@ -9,6 +9,7 @@ export default tseslint.config(
     ignores: [
       ".claude/worktrees/**",
       "dist/**",
+      "output/**",
       "node_modules/**",
       "coverage/**",
       "local-evidence/**",

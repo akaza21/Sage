@@ -1,26 +1,26 @@
 import {
   act,
   cleanup,
-  within,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_SESSION_ACCESS_MODE } from "../../domain/sessionAccessMode";
-import { decodeSessionConfig } from "../../domain/acpSessionConfig";
-import {
-  getWorkbenchPorts,
-  resetWorkbenchPortsForTests,
-} from "../../ports/workbenchRuntime";
-import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
-import { useWorkbenchStore } from "../../app/store";
 import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
+import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../../app/store";
+import { decodeSessionConfig } from "../../domain/acpSessionConfig";
+import { DEFAULT_SESSION_ACCESS_MODE } from "../../domain/sessionAccessMode";
+import {
+  getWorkbenchPorts,
+  resetWorkbenchPortsForTests,
+} from "../../ports/workbenchRuntime";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
 const noop = () => Promise.resolve();
@@ -128,14 +128,14 @@ function openOptions() {
   if (options) fireEvent.click(options);
 }
 
-it("labels a catalog-selected model even before the session confirms its name", () => {
+it("waits for session confirmation before labeling the active model", () => {
   useWorkbenchStore.setState({
     selectedHarnessId: "access-test",
     models: [{ id: "gpt-5", name: "GPT-5" }],
   });
   renderControls({ selectedModelId: "gpt-5", sessionModelId: "gpt-5" });
   expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-    "GPT-5",
+    "Model",
   );
 });
 
@@ -144,7 +144,7 @@ it("hides the add button when there are no composer actions", () => {
   expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
 });
 
-it("shows the selected harness, human model, effort availability and access before a first turn", async () => {
+it("shows harness, unconfirmed model, effort availability and access before a first turn", async () => {
   useWorkbenchStore.setState({
     selectedHarnessId: "access-test",
     models: [
@@ -157,7 +157,7 @@ it("shows the selected harness, human model, effort availability and access befo
   });
   expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-    "Claude Sonnet 4.5",
+    "Model",
   );
   expect(screen.getByRole("button", { name: "Access options" })).toBeVisible();
   const effort = screen.getByRole("button", { name: "Thinking level" });
@@ -511,7 +511,7 @@ describe("last confirmed model label", () => {
   });
 
   it.each([null, "previous-harness"])(
-    "shows a known draft catalog selection apart from session %s",
+    "keeps a draft model unconfirmed apart from session %s",
     (sessionHarnessId) => {
       useWorkbenchStore.setState({
         selectedHarnessId: "access-test",
@@ -522,7 +522,7 @@ describe("last confirmed model label", () => {
         selectedModelId: "chosen",
       });
       expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-        /^Chosen model$/,
+        /^Model$/,
       );
     },
   );
@@ -639,7 +639,7 @@ describe("last confirmed model label", () => {
     ).toBeNull();
   });
 
-  it("shows the requested catalog model until the harness reports another identity", async () => {
+  it("waits for the harness model identity after a catalog request", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
       models: [
@@ -655,13 +655,13 @@ describe("last confirmed model label", () => {
     };
     const view = renderControls(selection);
     const trigger = screen.getByRole("button", { name: "Model" });
-    expect(trigger).toHaveTextContent(/^Requested model$/);
+    expect(trigger).toHaveTextContent(/^Model$/);
     fireEvent.click(trigger);
     expect(
-      screen.getByRole("option", { name: "Requested model" }),
+      await screen.findByRole("option", { name: "Requested model" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("option", { name: "Requested model" }));
-    expect(trigger).toHaveTextContent(/^Requested model$/);
+    expect(trigger).toHaveTextContent(/^Model$/);
     view.rerenderControls({
       ...selection,
       sessionConfig: decodeSessionConfig({
@@ -675,7 +675,7 @@ describe("last confirmed model label", () => {
     });
     expect(trigger).toHaveTextContent(/^Actual model$/);
     view.rerenderControls({ ...selection, selectedModelId: "actual" });
-    expect(trigger).toHaveTextContent(/^Actual model$/);
+    expect(trigger).toHaveTextContent(/^Model$/);
   });
 
   it("retains the matching catalog name while id-only session identity survives catalog removal", async () => {
@@ -1781,7 +1781,7 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      /^Codex 6$/,
+      /^Model$/,
     );
     expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
       "Claude Opus",
@@ -1841,7 +1841,7 @@ describe("composer permission mode picker", () => {
       sessionConfig,
     });
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
-      /^New Model$/,
+      /^Model$/,
     );
     expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
       "Old Model",

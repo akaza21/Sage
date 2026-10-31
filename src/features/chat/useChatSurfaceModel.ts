@@ -1,26 +1,24 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type FormEvent } from "react";
 
-import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
-import { openAgentArtifact } from "../../app/openAgentArtifact";
-import type { AgentDiffRef } from "../../domain/agentDiff";
-import type { AttachedContext } from "../../domain/attachedContext";
-import { MAX_QUEUED_CHAT_PROMPTS } from "../../domain/chatOwnership";
-import type { HarnessDefinition } from "../../domain/harness";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { openAgentArtifact } from "../../app/openAgentArtifact";
+import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import type {
+  AcpChatPage,
   AcpCommandFailure,
   CuratedBindingId,
   CuratedModelId,
   TurnProjection,
 } from "../../domain/acp";
-import type { AcpChatPage } from "../../domain/acp";
+import type { AgentDiffRef } from "../../domain/agentDiff";
+import type { AttachedContext } from "../../domain/attachedContext";
+import { MAX_QUEUED_CHAT_PROMPTS } from "../../domain/chatOwnership";
+import type { HarnessDefinition } from "../../domain/harness";
 import type { ResourceRef } from "../../domain/workbench";
-import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
-import {
-  currentNonterminalTurn,
-  currentChatUsage,
-} from "./acp/currentNonterminalTurn";
 import { terminalTurnStates, type OpenResourceTarget } from "./acp";
+import { currentChatUsage } from "./acp/chatUsage";
+import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
+import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
 
 type SurfaceHarness = Pick<
   HarnessDefinition,

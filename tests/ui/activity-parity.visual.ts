@@ -336,8 +336,7 @@ for (const width of [1888, 720, 480]) {
       expect(countColors.deletions).toBe(countColors.deleted);
       await expect(card.getByRole("listitem")).toHaveCount(3);
       const undo = card.getByRole("button", { name: "Undo", exact: true });
-      await expect(undo).toBeDisabled();
-      await expect(undo).toHaveAttribute("title", /saved diffs are read-only/);
+      await expect(undo).toHaveCount(0);
       await card.getByRole("button", { name: "View changes" }).click();
       await expect(page.getByLabel("Opened diff")).toHaveText(
         "diff:src/file-0.ts",

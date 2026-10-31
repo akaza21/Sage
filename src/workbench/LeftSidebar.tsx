@@ -3,15 +3,6 @@ import { Search, Settings, SquarePen } from "../ui/leanIcons";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
-import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
-import {
-  CHAT_SEARCH_ALL_FOLDERS_ID,
-  hasChatSearchFolderRequest,
-  requestChatSearchInFolder,
-  subscribeChatSearchFolderRequest,
-} from "../features/chatSearch/chatSearchScope";
 import {
   ackSessionRailUnread,
   pinSessionRailIds,
@@ -20,29 +11,39 @@ import {
   sessionRailGitLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
+import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
+import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
+  hasChatSearchFolderRequest,
+  requestChatSearchInFolder,
+  subscribeChatSearchFolderRequest,
+} from "../features/chatSearch/chatSearchScope";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import {
   collectAgentRailPinIds,
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
-import { AgentRailSections } from "./AgentRailSections";
+import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
 import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
-import { useRailChatId } from "./sideChatState";
-import { classifyAgentRailSection } from "./agentRailStatusView";
 import {
   clearAgentRailUnread,
+  pruneAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
-import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
+import { AgentRailSections } from "./AgentRailSections";
+import { classifyAgentRailSection } from "./agentRailStatusView";
+import {
+  agentRailSectionCollapsed,
+  expandAgentRailSection,
+  syncAgentRailClock,
+  useAgentRailViewPrefs,
+} from "./agentRailViewPrefs";
+import { useRailChatId } from "./sideChatState";
 const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
   () => import("./AgentRailArchiveNotice"),
 );
-import {
-  syncAgentRailClock,
-  expandAgentRailSection,
-  agentRailSectionCollapsed,
-  useAgentRailViewPrefs,
-} from "./agentRailViewPrefs";
 
 /**
  * Tiny core trigger for the Chat search dialog. The first folder request
@@ -99,33 +100,6 @@ export function LeftSidebar({
   const railChatId = useRailChatId(activeTabId);
   const sidebarRef = useRef<HTMLElement>(null);
   const previousChatId = useRef(railChatId);
-  useEffect(() => {
-    if (projectTransitioning) return;
-    const scroll = () =>
-      sidebarRef.current
-        ?.querySelector(".project-chat[aria-current='page']")
-        ?.scrollIntoView?.({ block: "nearest" });
-    if (previousChatId.current !== railChatId) {
-      previousChatId.current = railChatId;
-      const active = useWorkbenchStore
-        .getState()
-        .tabs.find((tab) => tab.id === railChatId);
-      const sections = [
-        "projects",
-        `project:${project?.id}`,
-        active?.pinned
-          ? "pinned"
-          : classifyAgentRailSection({ status: active?.status, unread: false }),
-      ];
-      const hidden = sections.some(agentRailSectionCollapsed);
-      sections.forEach(expandAgentRailSection);
-      if (hidden) {
-        const frame = requestAnimationFrame(scroll);
-        return () => cancelAnimationFrame(frame);
-      }
-    }
-    scroll();
-  }, [railChatId, project?.id, projectTransitioning]);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
       (state) =>
@@ -159,6 +133,47 @@ export function LeftSidebar({
         });
     }
   }
+  useEffect(() => {
+    if (projectTransitioning) return;
+    const scroll = () =>
+      sidebarRef.current
+        ?.querySelector(".project-chat[aria-current='page']")
+        ?.scrollIntoView?.({ block: "nearest" });
+    if (previousChatId.current !== railChatId) {
+      previousChatId.current = railChatId;
+      const active = useWorkbenchStore
+        .getState()
+        .tabs.find((tab) => tab.id === railChatId);
+      const sections = [
+        "projects",
+        ...(active?.pinned
+          ? ["pinned"]
+          : prefs.grouping === "folder"
+            ? [`project:${project?.id}`]
+            : [
+                classifyAgentRailSection({
+                  status: active?.status,
+                  unread: unreadByChatId[railChatId ?? ""] === true,
+                }),
+                `project:${project?.id}`,
+              ]),
+      ];
+      const hidden = sections.some(agentRailSectionCollapsed);
+      sections.forEach(expandAgentRailSection);
+      if (hidden) {
+        const frame = requestAnimationFrame(scroll);
+        return () => cancelAnimationFrame(frame);
+      }
+    }
+    scroll();
+    // Only explicit navigation reveals a section; badge updates do not expand it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [railChatId, project?.id, projectTransitioning, prefs.grouping]);
+  useEffect(() => {
+    pruneAgentRailInteractions(
+      new Set(groups.flatMap((group) => group.chats.map((chat) => chat.id))),
+    );
+  }, [groups]);
   const sections = useMemo(() => deriveAgentRailSections(groups), [groups]);
 
   const markAllRead = () => {

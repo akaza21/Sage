@@ -1,10 +1,10 @@
 import { memo, useState } from "react";
 import {
   Archive,
+  Check,
   Circle,
   LoaderCircle,
   XCircle,
-  Check,
 } from "../../../ui/leanIcons";
 
 import type { AcpItem, TurnState } from "../../../domain/acp";
@@ -20,7 +20,7 @@ import { PermissionItem } from "./PermissionItem";
 import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
-import { isWorkingTool, workingToolStatus } from "./statusSemantics";
+import { isWorkingTool, workingToolStatus } from "./workingTool";
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,

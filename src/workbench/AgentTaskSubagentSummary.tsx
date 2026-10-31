@@ -18,8 +18,6 @@ export function AgentTaskSubagentSummary({
       aria-label="Subagents"
       title="The latest 128 subagents found in the latest 256 items of the latest 128 turns"
     >
-      {/* A plain heading; the count row below says how many are working
-          (Codex s4/f0111). */}
       <strong role="heading" aria-level={3}>
         Subagents
       </strong>

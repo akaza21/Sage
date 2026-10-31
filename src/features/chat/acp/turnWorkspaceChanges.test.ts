@@ -14,7 +14,7 @@ afterEach(() => {
   resetTurnWorkspaceChangesForTest();
 });
 
-it.each(["untracked", "truncated"])(
+it.each(["truncated"])(
   "retries %s coverage instead of caching it as final",
   async (kind) => {
     const page = snapshotPage();
@@ -336,4 +336,20 @@ it("rejects unknown operations and oversized replies", () => {
     ),
   ).toBeNull();
   expect(decodeTurnWorkspaceChanges(null, "t")).toBeNull();
+});
+
+it("caches untracked legacy and non-Git turns without an incomplete notice", async () => {
+  const load = vi
+    .spyOn(acpDesktop, "getTurnWorkspaceChanges")
+    .mockResolvedValue({
+      rootId: "root-a",
+      tracked: false,
+      truncated: false,
+      changes: [],
+    });
+  const first = await loadTurnWorkspaceChanges(snapshotPage(), "3", signal);
+  expect(first.changes).toEqual([]);
+  expect(first.incompleteTurnIds.size).toBe(0);
+  await loadTurnWorkspaceChanges(snapshotPage(), "3", signal);
+  expect(load).toHaveBeenCalledOnce();
 });
