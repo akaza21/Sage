@@ -42,9 +42,17 @@ impl GateSink {
         }
     }
 
+    // Both waits register for the wakeup before reading the counter, so a
+    // `notify_waiters` between the read and the await is never lost.
     async fn wait_for_entries(&self, expected: usize) {
-        while self.entries.load(Ordering::SeqCst) < expected {
-            self.entered.notified().await;
+        loop {
+            let entered = self.entered.notified();
+            tokio::pin!(entered);
+            entered.as_mut().enable();
+            if self.entries.load(Ordering::SeqCst) >= expected {
+                return;
+            }
+            entered.await;
         }
     }
 
@@ -53,8 +61,14 @@ impl GateSink {
     }
 
     async fn wait_for_idle(&self) {
-        while self.active.load(Ordering::SeqCst) != 0 {
-            self.settled.notified().await;
+        loop {
+            let settled = self.settled.notified();
+            tokio::pin!(settled);
+            settled.as_mut().enable();
+            if self.active.load(Ordering::SeqCst) == 0 {
+                return;
+            }
+            settled.await;
         }
     }
 }

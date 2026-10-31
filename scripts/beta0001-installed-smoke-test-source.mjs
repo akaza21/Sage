@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,17 +25,4 @@ export function stageInstalledSmokeTestSource(testRoot) {
       directories: [],
     }),
   };
-}
-
-// Windows releases a directory only after every handle on it closes, and the
-// PowerShell, Job and guardian processes these tests start can still be
-// closing theirs when a test ends. Retry EBUSY and friends with Node's linear
-// backoff (100 ms, 200 ms, ...: 5.5 s over ten retries) before failing.
-export function removeInstalledSmokeTestRoot(testRoot) {
-  rmSync(testRoot, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 100,
-  });
 }

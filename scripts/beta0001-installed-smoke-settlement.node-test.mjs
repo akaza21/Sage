@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   renameSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -21,10 +22,7 @@ import {
   INSTALLED_SMOKE_OUTPUT_GUARDIAN_ARGUMENTS,
   releaseInstalledSmokeOutputAuthority,
 } from "./beta0001-installed-smoke-output-authority.mjs";
-import {
-  removeInstalledSmokeTestRoot,
-  stageInstalledSmokeTestSource,
-} from "./beta0001-installed-smoke-test-source.mjs";
+import { stageInstalledSmokeTestSource } from "./beta0001-installed-smoke-test-source.mjs";
 
 function identity(filePath) {
   const bytes = readFileSync(filePath);
@@ -237,7 +235,7 @@ test("forced watchdog performs exact Job-contained fallback cleanup", async () =
       false,
     );
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -337,7 +335,7 @@ test("forced outer watchdog returns truthful failure after fallback uninstall", 
       "orchestrator-timeout",
     );
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -397,7 +395,7 @@ test("outer watchdog without zero-membership proof retains residue and never lau
       true,
     );
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -433,7 +431,7 @@ test("wrapper-held output authority blocks post-validation root substitution", a
       true,
     );
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -515,7 +513,7 @@ test("zero-exit campaigns with missing or malformed receipts settle residue fail
           false,
         );
       } finally {
-        removeInstalledSmokeTestRoot(root);
+        rmSync(root, { recursive: true, force: true });
       }
     });
   }
@@ -569,7 +567,7 @@ test("forced watchdog retains residue before a changed uninstaller can run", asy
     );
     assert.equal(existsSync(path.join(output, "fallback-cleanup.json")), false);
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -620,7 +618,7 @@ test("forced watchdog rejects a forged durable cleanup authority", async () => {
     );
     assert.equal(existsSync(path.join(output, "fallback-cleanup.json")), false);
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -652,7 +650,7 @@ test("watchdog never reports cleanup absent while durable authority remains", as
     assert.equal(result.status, "retained");
     assert.equal(result.residueRelativePath, "cleanup-authority.json");
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -693,7 +691,7 @@ test("converged watchdog treats an installed junction as unresolved without muta
     );
     assert.equal(existsSync(path.join(output, "quarantine-installed")), false);
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -726,7 +724,7 @@ test("settlement never mutates a junction target after output-root validation fa
     );
     assert.equal(existsSync(path.join(target, "new-output")), false);
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -823,6 +821,6 @@ test("forced outer watchdog reports cleanup-failed with retained residue", async
       "retained",
     );
   } finally {
-    removeInstalledSmokeTestRoot(root);
+    rmSync(root, { recursive: true, force: true });
   }
 });
