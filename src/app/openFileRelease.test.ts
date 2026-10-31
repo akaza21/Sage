@@ -236,6 +236,72 @@ describe("renaming an open File (ED-16)", () => {
     expect(state().selectedResource).toEqual(source);
   });
 
+  it("refuses when flushing the editor shows unsaved changes", async () => {
+    const rename = vi.spyOn(projectPort, "renameProjectFile");
+    const tab = fileTab("file", 1);
+    // The editor still held edits the tab hadn't reported yet.
+    const flushActiveEditor = vi.fn(async () => {
+      useWorkbenchStore.setState((current) => ({
+        tabs: current.tabs.map((item) =>
+          item.id === tab.id ? { ...item, dirty: true } : item,
+        ),
+      }));
+    });
+    useWorkbenchStore.setState({
+      tabs: [chatTab, tab],
+      activeTabId: tab.id,
+      activeEditor: {
+        resource: source,
+      } as ReturnType<typeof state>["activeEditor"],
+      flushActiveEditor,
+    });
+
+    await expect(
+      state().renameProjectFile(source, "new.ts", true),
+    ).resolves.toBe(false);
+    expect(flushActiveEditor).toHaveBeenCalled();
+    expect(state().fileRenameError).toBe(UNSAVED_FILE_REASON);
+    expect(resourceTabs()).toHaveLength(1);
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it("doesn't put tabs back when a failed rename crossed another transition", async () => {
+    vi.spyOn(projectPort, "renameProjectFile").mockImplementation(async () => {
+      // Another transition lands while native works.
+      useWorkbenchStore.setState({ nativeTransitionEpoch: 9 });
+      throw new Error("stale");
+    });
+    useWorkbenchStore.setState({ tabs: [chatTab, fileTab("file", 2)] });
+
+    await expect(
+      state().renameProjectFile(source, "new.ts", true),
+    ).resolves.toBe(false);
+    expect(resourceTabs()).toEqual([]);
+  });
+
+  it("activates the renamed File when its Diff tab was active", async () => {
+    vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue(renamed());
+    const activateTab = vi.fn(async (id: string) => {
+      useWorkbenchStore.setState({ activeTabId: id });
+    });
+    const diff = fileTab("diff", 2);
+    useWorkbenchStore.setState({
+      tabs: [chatTab, fileTab("file", 1), diff],
+      activeTabId: diff.id,
+      activateTab,
+    });
+
+    await expect(
+      state().renameProjectFile(source, "new.ts", true),
+    ).resolves.toBe(true);
+    const active = state().tabs.find((tab) => tab.id === state().activeTabId);
+    expect(active).toMatchObject({
+      kind: "file",
+      resource: target,
+      position: 1,
+    });
+  });
+
   it("leaves the tabs alone when the rename couldn't start anyway", async () => {
     const rename = vi.spyOn(projectPort, "renameProjectFile");
     const tabs = [chatTab, fileTab("file", 1)];

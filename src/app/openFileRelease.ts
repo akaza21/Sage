@@ -22,6 +22,10 @@ export const UNSAVED_FILE_REASON =
 /** The tabs released for a move, as they were, to settle them afterwards. */
 export interface ReleasedFile {
   projectId: string;
+  /** Where the store stood at release; a failed move that moved these
+   * may still have changed the layout natively. */
+  projectGeneration: number;
+  transitionEpoch: number;
   tabs: WorkbenchTab[];
   /** The released tab that was active, if one was. */
   activeId: string | null;
@@ -133,6 +137,8 @@ export async function releaseCleanFile(
   });
   return {
     projectId,
+    projectGeneration: state.projectGeneration,
+    transitionEpoch: state.nativeTransitionEpoch,
     tabs,
     activeId,
     neighbourId: activeId ? neighbourOf(state.tabs, activeId, ids) : null,
@@ -152,7 +158,12 @@ export async function settleReleasedFile(
   outcome: ReleaseOutcome,
 ): Promise<void> {
   if (get().project?.id !== released.projectId) return;
-  if (outcome.kind === "failed") {
+  // Put back only if nothing else moved; otherwise native may have committed
+  // a layout without these tabs, or even the move itself.
+  const unchanged =
+    get().projectGeneration === released.projectGeneration &&
+    get().nativeTransitionEpoch === released.transitionEpoch;
+  if (outcome.kind === "failed" && unchanged) {
     set((state) => ({
       tabs: [
         ...state.tabs,
@@ -192,6 +203,11 @@ export async function settleReleasedFile(
       sameResource(tab.resource, outcome.target),
   );
   if (!released.activeId || (reopened && get().activeTabId === reopened.id)) {
+    return;
+  }
+  // A Diff tab of the File was active: the File it showed takes its place.
+  if (reopened) {
+    await get().activateTab(reopened.id);
     return;
   }
   const neighbour = get().tabs.find((tab) => tab.id === released.neighbourId);
