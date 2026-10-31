@@ -149,6 +149,12 @@ export const EDITOR_SETTINGS = [
     default: true,
     ticket: "EP-12",
   },
+  {
+    key: "editor.gitGutter",
+    kind: "boolean",
+    default: true,
+    ticket: "EP-14",
+  },
 ] as const satisfies readonly EditorSettingSpec[];
 
 type Entry = (typeof EDITOR_SETTINGS)[number];

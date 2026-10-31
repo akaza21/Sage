@@ -91,6 +91,11 @@
         "reason": "Editor pack: Find and Replace bar of a File (EP-04 options, replace one and all, match marks, regex worker client); preloaded while the File surface is idle."
       },
       {
+        "entry": "src/features/files/gitGutter/index.ts",
+        "maxGzipBytes": 4050,
+        "reason": "Editor pack: change markers of a File in a repository (EP-14 gutter, change peek with Revert, staged-text cache, worker client). Measured 3684 B plus 10%."
+      },
+      {
         "entry": "src/features/files/editorLanguageJavaScript.ts",
         "maxGzipBytes": 400,
         "reason": "Editor pack: JavaScript and TypeScript grammar; loads when a file of that language opens."

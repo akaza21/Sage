@@ -109,6 +109,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
+  // Change markers (EP-14) load with the first File in a repository.
+  "src/features/files/gitGutter/index.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",

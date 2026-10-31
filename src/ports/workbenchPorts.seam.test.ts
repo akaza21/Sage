@@ -92,6 +92,7 @@ describe("S0.3 workbench port seam", () => {
       "discoverProjectRepositories",
       "fetchGitRemote",
       "getFileDiff",
+      "getFileGitBase",
       "getNestedRepositoryFileDiff",
       "getNestedRepositoryStatus",
       "getRepositoryChangeStamp",

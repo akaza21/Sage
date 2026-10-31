@@ -74,6 +74,15 @@ export interface DiffHunk {
   lines: DiffLine[];
 }
 
+/**
+ * The staged (index) text of a File, which the gutter marks changes against
+ * (EP-14). `unchanged` answers a request that named the current blob.
+ */
+export type FileGitBase =
+  | { state: "none" }
+  | { state: "unchanged"; oid: string }
+  | { state: "ready"; oid: string; content: string };
+
 export interface FileDiff {
   resource: ResourceRef;
   hunks: DiffHunk[];

@@ -1,3 +1,4 @@
+import type { EditorView } from "@codemirror/view";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
@@ -29,6 +30,7 @@ import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+import { useGitGutter } from "./useGitGutter";
 
 const LIMIT_EXCEEDED_STATUS =
   "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
@@ -113,6 +115,21 @@ export function FileSurface({
     editor?.phase === "ready" &&
     !!resource &&
     sameResource(editor.resource, resource);
+  // The view, with the File it was made for, so markers never cross Files.
+  const [editorView, setEditorView] = useState<{
+    view: EditorView;
+    key: string;
+  } | null>(null);
+  const onEditorView = useCallback(
+    (view: EditorView | null) =>
+      setEditorView(view && { view, key: activeResourceKey }),
+    [activeResourceKey],
+  );
+  useGitGutter(
+    editorView?.key === activeResourceKey ? editorView.view : null,
+    resource ?? null,
+    editorShown,
+  );
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
     () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
@@ -299,6 +316,7 @@ export function FileSurface({
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onLimitExceeded={reportLimitExceeded}
+      onEditorView={onEditorView}
       onEditorChange={readOnly ? () => undefined : editorChanged}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {

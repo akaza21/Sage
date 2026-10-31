@@ -117,4 +117,10 @@ export const EDITOR_SETTING_COPY: Readonly<
     description:
       "Updates Source Control when files or Git state change outside Sage, such as a commit from a terminal.",
   },
+  "editor.gitGutter": {
+    group: "Git",
+    label: "Change markers",
+    description:
+      "Marks lines you have added, changed or deleted since the last stage or commit next to the line numbers. Click a marker to see what was there and revert it.",
+  },
 };

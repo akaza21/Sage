@@ -157,6 +157,9 @@ const repository: RepositoryPort = {
   getFileDiff(resource) {
     return invokeNative("get_file_diff", { resource });
   },
+  getFileGitBase(resource, knownOid) {
+    return invokeNative("get_file_git_base", { resource, knownOid });
+  },
   mutateGitFile(request, expectedTransitionEpoch) {
     return invokeNative("mutate_git_file", {
       request,
