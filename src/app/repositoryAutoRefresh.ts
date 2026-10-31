@@ -33,7 +33,7 @@ export interface RepositoryAutoRefreshDeps {
   subscribeNotices(
     listener: (notice: WorkspaceNotifyNotice) => void,
   ): () => void;
-  /** The watcher misses some edits from the start (macOS watches folders). */
+  /** The watcher misses some edits from the start (see the hook). */
   pollAlways: boolean;
 }
 
@@ -114,7 +114,8 @@ export function startRepositoryAutoRefresh(
     refreshing = false;
     if (stopped) return;
     if (outcome === "changed") idlePolls = 0;
-    else if (outcome === "unchanged" && pollOnly) {
+    // A notice that came in while it ran keeps the poll at its fastest.
+    else if (outcome === "unchanged" && pollOnly && !activity) {
       idlePolls = Math.min(MAX_BACKOFF_STEPS, idlePolls + 1);
     }
     if (outcome === "skipped") {

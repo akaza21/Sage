@@ -6,7 +6,6 @@ import { useWorkbenchStore } from "../app/store";
 import { subscribeWorkspaceNotifySearch } from "../features/files/workspaceNotifyCompose";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
-import { usesMetaModifier } from "../ui/shortcutLabel";
 
 /** Refreshes Git state on outside changes while `git.autoRefresh` is on. */
 export function useRepositoryAutoRefresh() {
@@ -36,8 +35,10 @@ export function useRepositoryAutoRefresh() {
       },
       changeStamp: () => desktop.getRepositoryChangeStamp(),
       subscribeNotices: subscribeWorkspaceNotifySearch,
-      // macOS watches folders, which misses a file edited in place.
-      pollAlways: usesMetaModifier(),
+      // Only the Windows watcher sees every edit. macOS watches folders,
+      // which misses a file edited in place, and the Linux and macOS watchers
+      // stop at 64 folders, saying so only once, when the watch starts.
+      pollAlways: !/windows/i.test(navigator.userAgent),
     });
   }, [enabled, projectId]);
 }

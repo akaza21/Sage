@@ -271,6 +271,27 @@ describe("repository auto refresh", () => {
     expect(gaps[5]).toBe(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
   });
 
+  it("keeps the fast pace when a notice comes in during a poll", async () => {
+    let finish = () => undefined as void;
+    const times: number[] = [];
+    refresh.mockImplementation(() => {
+      times.push(Date.now());
+      return new Promise<RefreshOutcome>(
+        (resolve) => (finish = () => resolve("unchanged")),
+      );
+    });
+    start(true);
+    await advance(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
+    expect(times).toHaveLength(1);
+    notice();
+    finish();
+    await advance(REFRESH_DEBOUNCE_MS);
+    expect(times).toHaveLength(2);
+    finish();
+    await advance(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
+    expect(times).toHaveLength(3);
+  });
+
   it("caps the idle poll so Git stays near 0.5% of one core", () => {
     expect(pollDelay(5, 3)).toBe(16_000);
     expect(pollDelay(5, 8)).toBe(MIN_IDLE_POLL_MS);
