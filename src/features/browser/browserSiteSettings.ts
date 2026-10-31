@@ -1,5 +1,8 @@
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
-import type { BrowserSiteSetting } from "../../ports/nativeBrowserSiteSettingsPort";
+import type {
+  BrowserSiteSetting,
+  BrowserSiteSettingsUpdate,
+} from "../../ports/nativeBrowserSiteSettingsPort";
 
 /** Rust keeps at most this many saved answers (`MAX_SITE_PERMISSIONS`). */
 export const MAX_SITE_SETTINGS = 256;
@@ -22,13 +25,21 @@ function isKind(value: unknown): value is BrowserPermissionKind {
   );
 }
 
+const ORIGIN = /^https?:\/\/[^/?#\s]+$/;
+
+function isOrigin(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_ORIGIN_LENGTH &&
+    ORIGIN.test(value)
+  );
+}
+
 function admitOne(input: unknown): BrowserSiteSetting | null {
   if (typeof input !== "object" || input === null) return null;
   const { origin, kind, decision } = input as Record<string, unknown>;
   if (
-    typeof origin !== "string" ||
-    origin.length > MAX_ORIGIN_LENGTH ||
-    !/^https?:\/\/[^/?#\s]+$/.test(origin) ||
+    !isOrigin(origin) ||
     !isKind(kind) ||
     (decision !== "allow" && decision !== "deny")
   ) {
@@ -49,4 +60,24 @@ export function admitBrowserSiteSettings(input: unknown): BrowserSiteSetting[] {
     if (row) rows.push(row);
   }
   return rows;
+}
+
+/** Keeps only well-formed site origins, bounded to the store's cap. */
+export function admitSiteOrigins(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, MAX_SITE_SETTINGS).filter(isOrigin);
+}
+
+/** Admits a change's reply: the saved list and the sites left unreloaded. */
+export function admitSiteSettingsUpdate(
+  input: unknown,
+): BrowserSiteSettingsUpdate {
+  const source =
+    typeof input === "object" && input !== null
+      ? (input as Record<string, unknown>)
+      : {};
+  return {
+    settings: admitBrowserSiteSettings(source.settings),
+    reloadFailed: admitSiteOrigins(source.reloadFailed),
+  };
 }

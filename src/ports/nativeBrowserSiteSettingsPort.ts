@@ -17,6 +17,15 @@ export function browserSiteSettings(): Promise<unknown> {
   return invokeNative("browser_site_settings");
 }
 
+/**
+ * What a change returns: the saved list, and the sites whose tabs did not
+ * reload after an Allow ended (those pages may keep access until they do).
+ */
+export interface BrowserSiteSettingsUpdate {
+  settings: BrowserSiteSetting[];
+  reloadFailed: string[];
+}
+
 export function browserSiteSettingSet(
   origin: string,
   kind: BrowserPermissionKind,
@@ -34,4 +43,9 @@ export function browserSiteSettingReset(
 
 export function browserSiteSettingsResetAll(): Promise<unknown> {
   return invokeNative("browser_site_settings_reset_all");
+}
+
+/** Reloads the tabs on sites whose earlier reload failed; resolves to the sites still failing. */
+export function browserSiteReloadTabs(origins: string[]): Promise<unknown> {
+  return invokeNative("browser_site_reload_tabs", { origins });
 }

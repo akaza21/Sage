@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  browserSiteReloadTabs,
   browserSiteSettingReset,
   browserSiteSettingSet,
   browserSiteSettings,
@@ -10,11 +11,14 @@ import {
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
 import {
   admitBrowserSiteSettings,
+  admitSiteOrigins,
+  admitSiteSettingsUpdate,
   SITE_PERMISSION_LABELS,
 } from "./browserSiteSettings";
 
 const LOAD_FAILURE = "Site permissions could not be loaded.";
 const SAVE_FAILURE = "The site permission could not be changed.";
+const RELOAD_FAILURE = "The tabs could not be reloaded.";
 
 const rowKey = (row: Pick<BrowserSiteSetting, "origin" | "kind">) =>
   `${row.origin} ${row.kind}`;
@@ -29,6 +33,9 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Sites whose tabs did not reload after an Allow ended; their pages may
+  // keep access until they reload.
+  const [unreloaded, setUnreloaded] = useState<string[]>([]);
   // Counts change events, so a reply that a newer event overtook is dropped.
   const events = useRef(0);
 
@@ -48,9 +55,12 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
     let mounted = true;
     let sawEvent = false;
     let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        if (!mounted) return;
+    // Subscribe before the first read, so a change made in a browser tab
+    // between the two is not lost; an event that lands before the read
+    // returns is newer than it.
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
         const dispose = await listen<unknown>(
           "browser:site-settings",
           (event) => {
@@ -64,19 +74,20 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
         );
         if (mounted) unlisten = dispose;
         else dispose();
-      })
-      .catch(() => undefined);
-    // A change event that lands first is newer than this initial read.
-    browserSiteSettings().then(
-      (loaded) => {
+      } catch {
+        // Without live updates the list still loads; Settings refreshes on
+        // its own changes.
+      }
+      if (!mounted) return;
+      try {
+        const loaded = admitBrowserSiteSettings(await browserSiteSettings());
         if (!mounted || sawEvent) return;
-        setRows(admitBrowserSiteSettings(loaded));
+        setRows(loaded);
         setReady(true);
-      },
-      () => {
+      } catch {
         if (mounted && !sawEvent) setError(LOAD_FAILURE);
-      },
-    );
+      }
+    })();
     return () => {
       mounted = false;
       unlisten?.();
@@ -89,10 +100,24 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
     setError(null);
     const seen = events.current;
     try {
-      const stored = admitBrowserSiteSettings(await action());
-      if (seen === events.current) setRows(stored);
+      const update = admitSiteSettingsUpdate(await action());
+      if (seen === events.current) setRows(update.settings);
+      setUnreloaded(update.reloadFailed);
     } catch {
       setError(SAVE_FAILURE);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reloadAgain() {
+    if (busy !== null) return;
+    setBusy("reload");
+    setError(null);
+    try {
+      setUnreloaded(admitSiteOrigins(await browserSiteReloadTabs(unreloaded)));
+    } catch {
+      setError(RELOAD_FAILURE);
     } finally {
       setBusy(null);
     }
@@ -125,6 +150,22 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
               Retry
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {unreloaded.length ? (
+        <div className="settings-surface__error" role="alert">
+          <span>
+            Saved, but tabs on {unreloaded.join(", ")} could not reload and may
+            keep access until they do.
+          </span>
+          <button
+            className="button button--compact"
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void reloadAgain()}
+          >
+            Reload tabs
+          </button>
         </div>
       ) : null}
       {!ready ? null : rows.length === 0 ? (

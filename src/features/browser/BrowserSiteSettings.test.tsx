@@ -13,6 +13,7 @@ const list = vi.fn();
 const set = vi.fn();
 const reset = vi.fn();
 const resetAll = vi.fn();
+const reloadTabs = vi.fn();
 
 vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
   browserSiteSettings: () => list(),
@@ -21,6 +22,7 @@ vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
   browserSiteSettingReset: (origin: string, kind: string) =>
     reset(origin, kind),
   browserSiteSettingsResetAll: () => resetAll(),
+  browserSiteReloadTabs: (origins: string[]) => reloadTabs(origins),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
@@ -29,6 +31,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { BrowserSiteSettings } from "./BrowserSiteSettings";
 import {
   admitBrowserSiteSettings,
+  admitSiteSettingsUpdate,
   MAX_SITE_SETTINGS,
 } from "./browserSiteSettings";
 
@@ -46,7 +49,7 @@ const location = {
 beforeEach(() => {
   vi.mocked(listen).mockReset();
   vi.mocked(listen).mockResolvedValue(() => undefined);
-  for (const mock of [list, set, reset, resetAll]) mock.mockReset();
+  for (const mock of [list, set, reset, resetAll, reloadTabs]) mock.mockReset();
   list.mockResolvedValue([camera, location]);
 });
 
@@ -83,7 +86,10 @@ it("lists every saved site answer with its setting", async () => {
 });
 
 it("changes a site's answer through Rust and shows the stored list", async () => {
-  set.mockResolvedValue([{ ...camera, decision: "deny" }, location]);
+  set.mockResolvedValue({
+    settings: [{ ...camera, decision: "deny" }, location],
+    reloadFailed: [],
+  });
   view();
   const select = await screen.findByRole("combobox", {
     name: "Camera for https://a.example",
@@ -94,7 +100,7 @@ it("changes a site's answer through Rust and shows the stored list", async () =>
 });
 
 it("resets one answer so the site asks again", async () => {
-  reset.mockResolvedValue([location]);
+  reset.mockResolvedValue({ settings: [location], reloadFailed: [] });
   view();
   fireEvent.click(
     await screen.findByRole("button", {
@@ -111,7 +117,7 @@ it("resets one answer so the site asks again", async () => {
 
 it("resets every answer only after confirmation", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false);
-  resetAll.mockResolvedValue([]);
+  resetAll.mockResolvedValue({ settings: [], reloadFailed: [] });
   view();
   const button = await screen.findByRole("button", {
     name: "Reset all site permissions",
@@ -123,6 +129,67 @@ it("resets every answer only after confirmation", async () => {
   expect(resetAll).toHaveBeenCalledOnce();
   expect(
     await screen.findByText("No site permissions saved yet."),
+  ).toBeVisible();
+});
+
+it("keeps a saved Block distinct from a failed reload and reloads again", async () => {
+  set.mockResolvedValue({
+    settings: [{ ...camera, decision: "deny" }, location],
+    reloadFailed: ["https://a.example"],
+  });
+  reloadTabs
+    .mockResolvedValueOnce(["https://a.example"])
+    .mockResolvedValueOnce([]);
+  view();
+  const select = await screen.findByRole("combobox", {
+    name: "Camera for https://a.example",
+  });
+  fireEvent.change(select, { target: { value: "deny" } });
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Saved, but tabs on https://a.example could not reload and may keep access until they do.",
+  );
+  expect(alert).not.toHaveTextContent("could not be changed");
+  expect(select).toHaveValue("deny");
+  const again = within(alert).getByRole("button", { name: "Reload tabs" });
+  fireEvent.click(again);
+  await vi.waitFor(() =>
+    expect(reloadTabs).toHaveBeenCalledWith(["https://a.example"]),
+  );
+  await vi.waitFor(() => expect(again).toBeEnabled());
+  expect(screen.getByRole("alert")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Reload tabs" }));
+  await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(reloadTabs).toHaveBeenCalledTimes(2);
+});
+
+it("subscribes before the first read so a change in between is kept", async () => {
+  let registered!: () => void;
+  let deliver!: (payload: unknown) => void;
+  vi.mocked(listen).mockImplementationOnce(
+    (_event, handler) =>
+      new Promise((resolve) => {
+        deliver = (payload) =>
+          handler({ event: "browser:site-settings", id: 1, payload });
+        registered = () => resolve(() => undefined);
+      }),
+  );
+  let answer!: (rows: unknown) => void;
+  list.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+  view();
+  await vi.waitFor(() => expect(registered).toBeTypeOf("function"));
+  expect(list).not.toHaveBeenCalled();
+  await act(async () => registered());
+  await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
+  act(() => deliver([location]));
+  await act(async () => answer([camera, location]));
+  expect(
+    screen.queryByRole("combobox", { name: "Camera for https://a.example" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("combobox", {
+      name: "Location for https://b.example:8443",
+    }),
   ).toBeVisible();
 });
 
@@ -194,6 +261,16 @@ it("admits only well-formed rows, bounded to the store's cap", () => {
     ]),
   ).toEqual([camera]);
   expect(admitBrowserSiteSettings({ rows: [camera] })).toEqual([]);
+  expect(
+    admitSiteSettingsUpdate({
+      settings: [camera, { ...camera, kind: "usb" }],
+      reloadFailed: ["https://a.example", "https://a.example/path", 3],
+    }),
+  ).toEqual({ settings: [camera], reloadFailed: ["https://a.example"] });
+  expect(admitSiteSettingsUpdate(null)).toEqual({
+    settings: [],
+    reloadFailed: [],
+  });
   expect(
     admitBrowserSiteSettings(
       Array.from({ length: MAX_SITE_SETTINGS + 10 }, () => camera),

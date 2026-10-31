@@ -91,6 +91,7 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::site_permissions::commands::browser_site_setting_set",
         "browser::site_permissions::commands::browser_site_setting_reset",
         "browser::site_permissions::commands::browser_site_settings_reset_all",
+        "browser::site_permissions::commands::browser_site_reload_tabs",
         "acp::browser::attachment::attach_browser_tab",
         "acp::browser::attachment::detach_browser_tab",
         "acp::browser::attachment::stop_browser_tab",

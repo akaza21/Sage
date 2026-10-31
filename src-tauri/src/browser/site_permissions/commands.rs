@@ -5,6 +5,7 @@
 
 use std::collections::BTreeSet;
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State, Webview};
 
 #[cfg(windows)]
@@ -13,7 +14,7 @@ use super::{
     Decision, PermissionDecisionView, PermissionKind, PermissionSnapshot, SitePermissions,
     site_origin,
 };
-use crate::browser::BrowserState;
+use crate::{browser::BrowserState, settings_store::MAX_SITE_PERMISSIONS};
 
 const MAX_TAB_ID_BYTES: usize = 64;
 const MAX_ORIGIN_ARGUMENT_BYTES: usize = 2048;
@@ -71,10 +72,23 @@ pub(super) fn emit_site_settings(app: &AppHandle, state: &BrowserState) {
     }
 }
 
-/// Every tab showing one of `origins`, whoever drives it. A page that was
-/// granted access keeps it until its document goes away, so these reload
-/// after an Allow ends.
-fn tabs_on(state: &BrowserState, origins: &BTreeSet<String>) -> Result<Vec<Webview>, String> {
+/// The result of a Settings change. The change is saved even when a tab
+/// failed to reload; `reload_failed` names those tabs' sites so the user can
+/// reload them again, because until then a page may keep its old access.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SiteSettingsUpdate {
+    settings: Vec<PermissionDecisionView>,
+    reload_failed: Vec<String>,
+}
+
+/// Every tab showing one of `origins`, whoever drives it, with its site. A
+/// page that was granted access keeps it until its document goes away, so
+/// these reload after an Allow ends.
+fn tabs_on(
+    state: &BrowserState,
+    origins: &BTreeSet<String>,
+) -> Result<Vec<(String, Webview)>, String> {
     if origins.is_empty() {
         return Ok(Vec::new());
     }
@@ -84,35 +98,38 @@ fn tabs_on(state: &BrowserState, origins: &BTreeSet<String>) -> Result<Vec<Webvi
         .map_err(lock_error)?
         .entries
         .values()
-        .filter(|tab| {
-            tab.committed_url
-                .as_deref()
-                .and_then(site_origin)
-                .is_some_and(|origin| origins.contains(&origin))
+        .filter_map(|tab| {
+            let origin = tab.committed_url.as_deref().and_then(site_origin)?;
+            origins
+                .contains(&origin)
+                .then(|| (origin, tab.handle.clone()))
         })
-        .map(|tab| tab.handle.clone())
         .collect())
+}
+
+/// Reloads every tab on `origins`, trying each even if one fails, and
+/// returns the sites whose tabs did not reload.
+fn reload_sites(state: &BrowserState, origins: &BTreeSet<String>) -> Result<Vec<String>, String> {
+    let failed = tabs_on(state, origins)?
+        .into_iter()
+        .filter(|(_, webview)| webview.reload().is_err())
+        .map(|(origin, _)| origin)
+        .collect::<BTreeSet<_>>();
+    Ok(failed.into_iter().collect())
 }
 
 fn apply(
     app: &AppHandle,
     state: &BrowserState,
     change: impl FnOnce(&mut SitePermissions) -> Result<BTreeSet<String>, String>,
-) -> Result<Vec<PermissionDecisionView>, String> {
+) -> Result<SiteSettingsUpdate, String> {
     let ended_allows = change(&mut *state.permissions.lock().map_err(lock_error)?)?;
-    let stale = tabs_on(state, &ended_allows)?;
     emit_site_settings(app, state);
-    // Every tab is tried even if one fails, so no other tab keeps access.
-    let failed = stale
-        .iter()
-        .filter(|webview| webview.reload().is_err())
-        .count();
-    if failed > 0 {
-        return Err(format!(
-            "The change was saved, but {failed} browser tab(s) could not reload"
-        ));
-    }
-    site_settings(state)
+    let reload_failed = reload_sites(state, &ended_allows)?;
+    Ok(SiteSettingsUpdate {
+        settings: site_settings(state)?,
+        reload_failed,
+    })
 }
 
 fn admit_origin_argument(origin: &str) -> Result<(), String> {
@@ -159,7 +176,7 @@ pub(crate) async fn browser_site_setting_set(
     origin: String,
     kind: PermissionKind,
     decision: Decision,
-) -> Result<Vec<PermissionDecisionView>, String> {
+) -> Result<SiteSettingsUpdate, String> {
     admit_origin_argument(&origin)?;
     apply(&app, &state, |permissions| {
         let previous = permissions.set(&origin, kind, decision)?;
@@ -179,7 +196,7 @@ pub(crate) async fn browser_site_setting_reset(
     state: State<'_, BrowserState>,
     origin: String,
     kind: PermissionKind,
-) -> Result<Vec<PermissionDecisionView>, String> {
+) -> Result<SiteSettingsUpdate, String> {
     admit_origin_argument(&origin)?;
     apply(&app, &state, |permissions| {
         Ok(ended_allow(&origin, permissions.reset(&origin, kind)?))
@@ -191,8 +208,29 @@ pub(crate) async fn browser_site_setting_reset(
 pub(crate) async fn browser_site_settings_reset_all(
     app: AppHandle,
     state: State<'_, BrowserState>,
-) -> Result<Vec<PermissionDecisionView>, String> {
+) -> Result<SiteSettingsUpdate, String> {
     apply(&app, &state, SitePermissions::reset_all)
+}
+
+/// Reloads the tabs on sites whose earlier reload failed. Each origin must be
+/// canonical; the reply names the sites that still did not reload.
+#[tauri::command]
+pub(crate) async fn browser_site_reload_tabs(
+    state: State<'_, BrowserState>,
+    origins: Vec<String>,
+) -> Result<Vec<String>, String> {
+    if origins.len() > MAX_SITE_PERMISSIONS {
+        return Err("too many sites".into());
+    }
+    let mut admitted = BTreeSet::new();
+    for origin in origins {
+        admit_origin_argument(&origin)?;
+        if site_origin(&origin).as_deref() != Some(origin.as_str()) {
+            return Err("invalid permission origin".into());
+        }
+        admitted.insert(origin);
+    }
+    reload_sites(&state, &admitted)
 }
 
 #[tauri::command]

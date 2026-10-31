@@ -153,6 +153,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::site_permissions::commands::browser_site_setting_set,
         browser::site_permissions::commands::browser_site_setting_reset,
         browser::site_permissions::commands::browser_site_settings_reset_all,
+        browser::site_permissions::commands::browser_site_reload_tabs,
         browser::navigation::browser_status,
         browser::state_query::browser_live_tabs,
         browser::state_query::browser_history,
