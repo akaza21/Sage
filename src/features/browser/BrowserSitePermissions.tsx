@@ -39,6 +39,7 @@ export function BrowserSitePermissions({
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
+        if (!mounted) return;
         unlisten = await listen<BrowserPermissionSnapshot>(
           "browser:permissions",
           (event) => {
@@ -48,6 +49,10 @@ export function BrowserSitePermissions({
             }
           },
         );
+        if (!mounted) {
+          unlisten();
+          return;
+        }
         const initial = await browserPermissionStatus(tabId);
         if (mounted && !sawEvent) setSnapshot(initial);
       })
@@ -197,12 +202,9 @@ export function BrowserDrawers({
   return (
     <>
       {settingsOpen ? (
-        <aside
-          className="browser-surface__drawer"
-          aria-label="Browser settings"
-        >
+        <aside className="browser-surface__drawer" aria-label="Site settings">
           <button type="button" onClick={onCloseSettings}>
-            Close settings
+            Close site settings
           </button>
           <BrowserSitePermissions tabId={tabId} showEmpty />
         </aside>

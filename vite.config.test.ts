@@ -121,6 +121,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentRailFilterOptions.tsx",
   "src/workbench/AgentTaskResources.tsx",
   "src/workbench/SettingsSurface.tsx",
+  // The Browser settings page remains a lazy facade.
+  "src/workbench/settings/SettingsBrowserPage.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",

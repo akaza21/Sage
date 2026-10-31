@@ -13,6 +13,9 @@ use super::{
 
 #[cfg(windows)]
 mod native;
+mod start;
+
+use start::{ClearStart, start_clear};
 
 #[cfg(windows)]
 fn wait_for_pending_clear(
@@ -117,7 +120,10 @@ pub(crate) async fn browser_clear_data(
     app: AppHandle,
     state: State<'_, BrowserState>,
 ) -> Result<ClearBrowsingDataResult, String> {
-    let tab_ids = begin_clear(&state.tabs, &state.clearing_data)?;
+    let tab_ids = match start_clear(&state.tabs, &state.clearing_data)? {
+        ClearStart::Refused(result) => return Ok(result),
+        ClearStart::Begun(tab_ids) => tab_ids,
+    };
     #[cfg_attr(not(windows), allow(unused_mut, unused_variables))]
     let mut gate = ClearGate {
         flag: &state.clearing_data,
@@ -233,7 +239,8 @@ pub(crate) async fn browser_clear_data(
         }
         #[cfg(not(windows))]
         {
-            result.error = Some("browser data clearing requires Windows WebView2".into());
+            // Unreached: `start_clear` refuses first on these platforms.
+            result.error = Some(start::UNSUPPORTED_PLATFORM.into());
         }
     }
     if let Err(error) = close_webview_on_main_thread(&app, &state.tabs, temporary, false).await {
