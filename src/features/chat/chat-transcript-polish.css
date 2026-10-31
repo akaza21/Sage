@@ -394,7 +394,7 @@
 
 .chat-transcript-actions > button:focus-visible::after {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   bottom: calc(100% + var(--space-1));
   left: 0;
   display: block;

@@ -1,7 +1,7 @@
 .turn-navigator {
   position: absolute;
   left: 13px;
-  z-index: 6;
+  z-index: var(--z-floating);
   transform: translateY(-50%);
 }
 .turn-navigator ol {

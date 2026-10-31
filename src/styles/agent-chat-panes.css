@@ -116,7 +116,7 @@
 
 .agent-chat-splitter {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-raised);
   cursor: col-resize;
   touch-action: none;
   outline: none;

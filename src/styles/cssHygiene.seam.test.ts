@@ -82,6 +82,7 @@ type CssInventory = {
   parseErrors: string[];
   rawColors: unknown[];
   rawRadii: unknown[];
+  rawZIndexes: unknown[];
 };
 
 async function productionInventory(): Promise<CssInventory> {
@@ -129,5 +130,32 @@ describe("production CSS hygiene", () => {
     expect(inventory.duplicateSelectors).toEqual([]);
     expect(inventory.rawRadii).toEqual([]);
     expect(inventory.rawColors).toEqual([]);
+    expect(inventory.rawZIndexes).toEqual([]);
+  });
+
+  it("stacks modals above every popover and alerts above modals", async () => {
+    const tokens = await readFile(resolve("src/styles/global.css"), "utf8");
+    const layer = (name: string): number => {
+      const match = new RegExp(`--z-${name}:\\s*(-?\\d+);`, "u").exec(tokens);
+      if (!match) throw new Error(`missing --z-${name}`);
+      return Number(match[1]);
+    };
+    const order = [
+      "behind",
+      "raised",
+      "sticky",
+      "floating",
+      "sidebar-overlay",
+      "overlay-backdrop",
+      "overlay",
+      "popover",
+      "popover-stacked",
+      "popover-card",
+      "modal",
+      "alert",
+    ].map(layer);
+
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(new Set(order).size).toBe(order.length);
   });
 });

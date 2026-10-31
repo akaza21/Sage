@@ -274,6 +274,25 @@
   --space-4: 16px;
   --space-6: 24px;
   --space-8: 32px;
+
+  /* Stacking layers. Component layers order siblings inside one stacking
+     context; window layers order fixed surfaces against each other, with
+     modals above every popover so nothing paints over an open dialog. */
+  --z-behind: -1;
+  --z-raised: 1;
+  --z-sticky: 2; /* sticky rows and edge handles such as splitters */
+  --z-floating: 4;
+  --z-sidebar-overlay: 10;
+  --z-overlay-backdrop: 11;
+  --z-overlay: 12;
+  --z-popover: 80;
+  --z-popover-stacked: 81;
+  --z-popover-card: 85;
+  --z-modal: 90;
+  --z-alert: 100;
+  /* @codemirror/view's base theme puts .cm-gutters at 200. */
+  --z-codemirror-gutters: 200;
+
   --control-height-compact: 28px;
   --control-height-default: 32px;
   --control-height-emphasis: 36px;
@@ -478,7 +497,7 @@ body {
 
 .close-failure {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-alert);
   top: 12px;
   left: 50%;
   width: max-content;
