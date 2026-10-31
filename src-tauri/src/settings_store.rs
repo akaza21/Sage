@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod browser_download_folder;
 mod browser_preferences;
 mod editor_settings;
 mod side_chat;
@@ -107,6 +108,7 @@ impl SettingsStore {
             // in the catalogue's rows, copied from it once.
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
+            browser_download_folder::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

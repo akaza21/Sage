@@ -194,6 +194,13 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
       "Clear browsing history, cookies, site data, and cache from the built-in browser.",
     group: "General",
   },
+  {
+    id: "browser.downloadFolder",
+    label: "Download location",
+    description:
+      "The folder downloads save to without asking. Programs and scripts always ask.",
+    group: "Downloads",
+  },
 ]);
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([

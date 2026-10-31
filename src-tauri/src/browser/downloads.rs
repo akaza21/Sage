@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::{BrowserState, admit_url};
 
 mod close;
+pub(crate) mod folder;
 #[cfg(windows)]
 mod native;
 pub(crate) mod show;

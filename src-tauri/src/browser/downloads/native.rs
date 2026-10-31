@@ -19,7 +19,7 @@ use webview2_com::{
 };
 use windows_core::{HSTRING, Interface, PWSTR};
 
-use super::{BrowserState, DownloadView};
+use super::{BrowserState, DownloadView, folder::Plan};
 
 mod choice;
 mod watchdog;
@@ -32,6 +32,8 @@ struct PendingDownload {
     armed_at: Instant,
     app: AppHandle,
     tab_id: String,
+    /// Save the chosen file's folder as the download folder once it starts.
+    remember: bool,
 }
 
 thread_local! {
@@ -155,6 +157,8 @@ fn start_download(
             return Err(error);
         }
     };
+    let plan = choice::plan_download(app, &file_name);
+    let remember = matches!(plan, Plan::Ask { remember: true, .. });
     let Some((timer_id, armed_at)) = watchdog::arm() else {
         if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock() {
             registry.settle(id, "error");
@@ -176,41 +180,57 @@ fn start_download(
                 armed_at,
                 app: app.clone(),
                 tab_id: tab_id.to_owned(),
+                remember,
             },
         );
     });
     emit_views(app, tab_id);
 
+    let (file_name, directory) = match plan {
+        Plan::Silent(path) => {
+            complete_choice(app, tab_id, id, Some(path));
+            return Ok(());
+        }
+        Plan::Ask {
+            file_name,
+            directory,
+            ..
+        } => (file_name, directory),
+    };
     let picker_app = app.clone();
     let picker_webview = webview.clone();
     let picker_tab = tab_id.to_owned();
-    app.dialog()
+    let mut dialog = app
+        .dialog()
         .file()
         .set_title("Save browser download")
-        .set_file_name(file_name)
-        .save_file(move |selected| {
-            let path = selected.and_then(|file| file.into_path().ok());
-            let dispatch_app = picker_app.clone();
-            let dispatch_tab = picker_tab.clone();
-            if picker_webview
-                .with_webview(move |_| {
-                    complete_choice(&dispatch_app, &dispatch_tab, id, path);
-                })
-                .is_err()
-            {
-                let fallback_app = picker_app.clone();
-                let fallback_tab = picker_tab.clone();
-                if let Err(error) = picker_app.run_on_main_thread(move || {
-                    complete_choice(&fallback_app, &fallback_tab, id, None);
-                }) {
-                    if let Ok(mut registry) = picker_app.state::<BrowserState>().downloads.lock() {
-                        registry.settle(id, "error");
-                    }
-                    emit_views(&picker_app, &picker_tab);
-                    eprintln!("browser download picker dispatch failed: {error}");
+        .set_file_name(file_name);
+    if let Some(directory) = directory {
+        dialog = dialog.set_directory(directory);
+    }
+    dialog.save_file(move |selected| {
+        let path = selected.and_then(|file| file.into_path().ok());
+        let dispatch_app = picker_app.clone();
+        let dispatch_tab = picker_tab.clone();
+        if picker_webview
+            .with_webview(move |_| {
+                complete_choice(&dispatch_app, &dispatch_tab, id, path);
+            })
+            .is_err()
+        {
+            let fallback_app = picker_app.clone();
+            let fallback_tab = picker_tab.clone();
+            if let Err(error) = picker_app.run_on_main_thread(move || {
+                complete_choice(&fallback_app, &fallback_tab, id, None);
+            }) {
+                if let Ok(mut registry) = picker_app.state::<BrowserState>().downloads.lock() {
+                    registry.settle(id, "error");
                 }
+                emit_views(&picker_app, &picker_tab);
+                eprintln!("browser download picker dispatch failed: {error}");
             }
-        });
+        }
+    });
     Ok(())
 }
 
@@ -235,14 +255,20 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
                     )
                 });
             if allowed {
-                let configured =
-                    unsafe { pending.args.SetResultFilePath(&HSTRING::from(path_text)) }
-                        .and_then(|()| unsafe { pending.args.SetHandled(true) })
-                        .is_ok();
+                let configured = unsafe {
+                    pending
+                        .args
+                        .SetResultFilePath(&HSTRING::from(path_text.as_str()))
+                }
+                .and_then(|()| unsafe { pending.args.SetHandled(true) })
+                .is_ok();
                 if configured {
                     if install_progress(app.clone(), tab_id.to_owned(), id, &pending.operation)
                         .is_ok()
                     {
+                        if pending.remember {
+                            choice::remember_choice(app, Path::new(&path_text));
+                        }
                         ACTIVE.with_borrow_mut(|active| {
                             active.insert(id, pending.operation);
                         });

@@ -1,6 +1,52 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
-use super::super::DownloadRegistry;
+use tauri::{AppHandle, Manager};
+
+use super::super::{
+    BrowserState, DownloadRegistry,
+    folder::{self, Plan},
+};
+use crate::{settings_commands::browser_download_folder::remember_folder, state::AppState};
+
+/// Silent save into the saved download folder, or the Save dialog.
+pub(super) fn plan_download(app: &AppHandle, suggested: &str) -> Plan {
+    let stored = app
+        .state::<AppState>()
+        .settings
+        .browser_download_folder()
+        .ok()
+        .flatten();
+    app.state::<BrowserState>()
+        .downloads
+        .lock()
+        .ok()
+        .map(|registry| folder::plan(stored.as_deref(), suggested, |path| registry.claims(path)))
+        .unwrap_or_else(|| Plan::Ask {
+            file_name: folder::sanitize_file_name(suggested),
+            remember: false,
+            directory: None,
+        })
+}
+
+/// The first download's folder becomes the saved download folder, unless
+/// Settings saved a usable one while the Save dialog was open.
+pub(super) fn remember_choice(app: &AppHandle, chosen: &Path) {
+    let settings = &app.state::<AppState>().settings;
+    let saved = settings
+        .browser_download_folder()
+        .ok()
+        .flatten()
+        .as_deref()
+        .and_then(folder::admit_folder);
+    if saved.is_none()
+        && let Some(folder) = folder::folder_of_choice(chosen)
+    {
+        let _ = remember_folder(settings, &folder);
+    }
+}
 
 pub(super) fn accept_destination(
     registry: &mut DownloadRegistry,

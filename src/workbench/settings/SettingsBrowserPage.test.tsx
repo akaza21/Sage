@@ -12,6 +12,12 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => getPreferences(),
   browserSetPreferences: (value: unknown) => setPreferences(value),
 }));
+vi.mock("../../ports/nativeBrowserDownloadFolderPort", async (actual) => ({
+  ...(await actual<Record<string, unknown>>()),
+  browserDownloadFolder: async () => ({ path: null, available: false }),
+  browserChooseDownloadFolder: vi.fn(),
+  browserResetDownloadFolder: vi.fn(),
+}));
 vi.mock("../../ports/nativeBrowserPort", () => ({
   browserClearData: vi.fn(),
   closeBrowser: vi.fn(),
@@ -100,4 +106,19 @@ it("explains that browser settings need the desktop app", () => {
   );
   expect(screen.queryByRole("checkbox")).toBeNull();
   expect(getPreferences).not.toHaveBeenCalled();
+});
+
+it("lists the download location under its own Downloads group", async () => {
+  render(<SettingsBrowserPage visible={all()} />);
+  const downloads = screen.getByRole("group", { name: "Downloads" });
+  expect(downloads).toHaveTextContent("Download location");
+  expect(
+    await screen.findByRole("button", { name: "Change…" }),
+  ).toBeInTheDocument();
+});
+
+it("hides the Downloads group outside the desktop app", () => {
+  runtime.desktop = false;
+  render(<SettingsBrowserPage visible={all()} />);
+  expect(screen.queryByRole("group", { name: "Downloads" })).toBeNull();
 });
