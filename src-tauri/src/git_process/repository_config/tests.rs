@@ -139,7 +139,7 @@ fn classifies_command_running_keys() {
         "include.path",
         "includeIf.gitdir:/x/.path",
     ] {
-        let parsed = ConfigKey::parse(key).unwrap();
+        let parsed = ConfigKey::parse(key.as_bytes()).unwrap();
         assert!(parsed.runs_command(), "{key} should be refused");
     }
     for key in [
@@ -158,11 +158,11 @@ fn classifies_command_running_keys() {
         "branch.main.remote",
         "sequence.x.editor",
     ] {
-        let parsed = ConfigKey::parse(key).unwrap();
+        let parsed = ConfigKey::parse(key.as_bytes()).unwrap();
         assert!(!parsed.runs_command(), "{key} should be allowed");
     }
-    assert_eq!(ConfigKey::parse("nodot"), None);
-    assert_eq!(ConfigKey::parse(".name"), None);
+    assert_eq!(ConfigKey::parse(b"nodot"), None);
+    assert_eq!(ConfigKey::parse(b".name"), None);
 }
 
 #[test]
@@ -326,4 +326,115 @@ fn worktree_config_is_checked() {
     );
     let message = refusal(sage_git(&root, &["status", "--porcelain"]));
     assert!(message.contains("merge.sentinel.driver"), "{message}");
+}
+
+#[test]
+fn an_empty_git_directory_filled_later_is_checked() {
+    let scratch = Scratch::new();
+    let root = scratch.directory("hollow");
+    fs::create_dir(root.join(".git")).unwrap();
+    for _ in 0..2 {
+        assert!(
+            !sage_git(&root, &["status", "--porcelain"])
+                .unwrap()
+                .succeeded()
+        );
+    }
+    assert_eq!(
+        probes(&root),
+        2,
+        "an unused .git entry must not cache a verdict"
+    );
+
+    git(&root, &["init", "-q"]);
+    git(
+        &root,
+        &["config", "filter.sentinel.clean", "touch filter-ran"],
+    );
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+}
+
+#[test]
+fn a_same_length_rewrite_with_a_restored_mtime_is_detected() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    let config = root.join(".git").join("config");
+    let benign = fs::read_to_string(&config).unwrap();
+    let original = format!("{benign}[user]\n\tname = {}\n", "n".repeat(40));
+    let malicious = format!("{benign}[filter \"x\"]\n\tclean = touch ran\n");
+    // A comment line pads the rewrite to exactly the original length.
+    let padding = original.len() - malicious.len() - 2;
+    let rewritten = format!("{malicious}#{}\n", "x".repeat(padding));
+    assert_eq!(original.len(), rewritten.len());
+    fs::write(&config, &original).unwrap();
+
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    let modified = fs::metadata(&config).unwrap().modified().unwrap();
+    fs::write(&config, &rewritten).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&config)
+        .unwrap()
+        .set_modified(modified)
+        .unwrap();
+    assert_eq!(fs::metadata(&config).unwrap().modified().unwrap(), modified);
+
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.x.clean"), "{message}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_non_utf8_filter_subsection_is_refused() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    let driver = b"ev\xffil";
+    let mut attributes = b"*.txt filter=".to_vec();
+    attributes.extend_from_slice(driver);
+    attributes.push(b'\n');
+    fs::write(root.join(".gitattributes"), attributes).unwrap();
+    fs::write(root.join("a.txt"), "a\n").unwrap();
+    let (sentinel, filter) = sentinel_filter(&root);
+    let mut key = b"filter.".to_vec();
+    key.extend_from_slice(driver);
+    key.extend_from_slice(b".clean");
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .arg("config")
+        .arg(std::ffi::OsStr::from_bytes(&key))
+        .arg(&filter)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.*.clean"), "{message}");
+    assert!(!sentinel.exists());
+
+    // Control: Git does run the non-UTF-8 driver when it is allowed to start.
+    git(&root, &["add", "--", "a.txt"]);
+    assert!(sentinel.exists(), "fixture filter is not live");
+}
+
+#[test]
+fn the_cache_drops_idle_roots_once_full() {
+    let mut admissions = HashMap::new();
+    let held = slot_in(&mut admissions, Path::new("/held"));
+    for index in 0..MAX_CACHED_ROOTS + 8 {
+        drop(slot_in(
+            &mut admissions,
+            &PathBuf::from(format!("/idle-{index}")),
+        ));
+        assert!(admissions.len() <= MAX_CACHED_ROOTS);
+    }
+    assert!(admissions.contains_key(Path::new("/held")));
+    drop(held);
 }
