@@ -92,13 +92,13 @@ export const EDITOR_SETTING_COPY: Readonly<
     group: "Search",
     label: "Use ignore files",
     description:
-      "Search skips files that .gitignore, .ignore and Git's exclude files ignore.",
+      "Search skips files that ignore rules match: .gitignore, .ignore and Git's exclude files.",
   },
   "explorer.showIgnored": {
     group: "Files",
     label: "Ignored files in Explorer",
     description:
-      "Shows files that ignore files ignore in a dimmed color, or hides them.",
+      "Shows files that ignore rules match in a dimmed color, or hides them.",
 
     choiceLabels: {
       dimmed: ["Dimmed", "Dimmed"],
