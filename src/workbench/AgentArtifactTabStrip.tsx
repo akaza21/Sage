@@ -18,6 +18,7 @@ import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
+import { useAgentArtifactTabList } from "./useAgentArtifactTabList";
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
@@ -34,6 +35,7 @@ type AgentArtifactTabStripProps = {
   activateTab: (tabId: string) => Promise<void> | void;
   closeTab: (tabId: string) => void;
   changesTab?: ReactNode;
+  panelId?: string;
 };
 
 export function AgentArtifactTabStrip({
@@ -51,8 +53,14 @@ export function AgentArtifactTabStrip({
   activateTab,
   closeTab,
   changesTab,
+  panelId = "agent-artifact-panel",
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const keyboard = useAgentArtifactTabList(
+    scrollRef,
+    JSON.stringify(focusedOwner),
+    panelId,
+  );
   const pendingTargets = agentArtifactPendingTargets(record);
   const latestPendingTarget = pendingTargets.at(-1) ?? null;
   const following = record?.mode !== "pinned";
@@ -74,7 +82,13 @@ export function AgentArtifactTabStrip({
   return (
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
-        <div ref={scrollRef} className="tab-strip__scroll">
+        <div
+          ref={scrollRef}
+          className="tab-strip__scroll"
+          role="tablist"
+          aria-label="Resources"
+          {...keyboard}
+        >
           {changesTab}
           {artifacts.map((tab, index) => {
             const selected =

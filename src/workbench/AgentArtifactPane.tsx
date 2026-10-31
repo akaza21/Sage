@@ -36,7 +36,6 @@ import {
   AgentArtifactPaneControls,
 } from "./AgentArtifactPaneControls";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
-import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { useAgentChangesState } from "./agentChangesState";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { artifactChipStatsForTab } from "./artifactChipStats";
@@ -62,6 +61,11 @@ const SubagentSurface = lazy(() =>
 const AgentArtifactHeader = lazy(() =>
   import("./AgentArtifactHeader").then((module) => ({
     default: module.AgentArtifactHeader,
+  })),
+);
+const AgentArtifactTabStrip = lazy(() =>
+  import("./AgentArtifactTabStrip").then((module) => ({
+    default: module.AgentArtifactTabStrip,
   })),
 );
 
@@ -112,6 +116,7 @@ export function AgentArtifactPane({
   });
   const emptyTitleId = useId();
   const paneId = useId();
+  const panelId = useId();
   const admissions = useAgentArtifactAdmissionStore(
     (state) => state.admissions,
   );
@@ -310,28 +315,33 @@ export function AgentArtifactPane({
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
           <header className="agent-artifact-pane__header">
             {hasResources ? (
-              <AgentArtifactTabStrip
-                artifacts={artifacts}
-                selectedTarget={
-                  changes.selected || subagentSelected ? null : selectedTarget
-                }
-                changesTab={changes.tab}
-                focusedOwner={focusedOwner}
-                focusedPage={focusedPage}
-                previewSelected={previewSelected}
-                previewOpen={previewOpen}
-                subagentOpen={subagentAvailable}
-                subagentSelected={subagentSelected}
-                onSelectSubagent={() => {
-                  useAgentChangesState.getState().select(false);
-                  if (subagentTarget)
-                    useSubagentPaneStore.getState().show(subagentTarget, true);
-                }}
-                record={record}
-                availableTargets={availableTargets}
-                activateTab={activateTab}
-                closeTab={closeTab}
-              />
+              <Suspense fallback={null}>
+                <AgentArtifactTabStrip
+                  panelId={panelId}
+                  artifacts={artifacts}
+                  selectedTarget={
+                    changes.selected || subagentSelected ? null : selectedTarget
+                  }
+                  changesTab={changes.tab}
+                  focusedOwner={focusedOwner}
+                  focusedPage={focusedPage}
+                  previewSelected={previewSelected}
+                  previewOpen={previewOpen}
+                  subagentOpen={subagentAvailable}
+                  subagentSelected={subagentSelected}
+                  onSelectSubagent={() => {
+                    useAgentChangesState.getState().select(false);
+                    if (subagentTarget)
+                      useSubagentPaneStore
+                        .getState()
+                        .show(subagentTarget, true);
+                  }}
+                  record={record}
+                  availableTargets={availableTargets}
+                  activateTab={activateTab}
+                  closeTab={closeTab}
+                />
+              </Suspense>
             ) : (
               <strong>Files, changes, and preview</strong>
             )}
@@ -363,7 +373,13 @@ export function AgentArtifactPane({
               />
             </Suspense>
           ) : null}
-          <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
+          <div
+            id={panelId}
+            role="tabpanel"
+            aria-label="Selected resource"
+            ref={setCanvasNode}
+            className="agent-artifact-pane__canvas"
+          >
             {changes.surface}
             {subagentSelected && focusedPage && subagentTarget ? (
               <Suspense fallback={<p role="status">Loading subagent view…</p>}>
