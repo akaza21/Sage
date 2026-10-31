@@ -4,6 +4,10 @@ import path from "node:path";
 
 const requestEnvironment = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY";
 const startupTimeoutMs = 10_000;
+// How long a released guardian may take to exit on its own before it is
+// killed, and how long a killed one may take to close its stdio after that.
+const releaseGraceMs = 5000;
+const teardownTimeoutMs = 10_000;
 const outputMaximumBytes = 16 * 1024;
 const authorities = new WeakSet();
 
@@ -137,7 +141,44 @@ async function ordinaryIdentity(root, label) {
 }
 
 function stopChild(child) {
-  if (child.exitCode === null) child.kill();
+  if (child.exitCode === null && child.signalCode === null) child.kill();
+}
+
+function closedWithin(closed, timeoutMs) {
+  let timer;
+  return Promise.race([
+    closed.then(() => true),
+    new Promise((resolve) => {
+      timer = setTimeout(resolve, timeoutMs, false);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// The guardian holds no-delete handles on the output's ancestors until its
+// process is gone, so teardown is complete only once it has closed. A guardian
+// that outlives the kill is a failure, never something to retry around.
+async function settleGuardian({ child, closed }, { release }) {
+  if (release) {
+    child.stdin.end("release\n");
+    if (await closedWithin(closed, releaseGraceMs)) return;
+  }
+  stopChild(child);
+  if (!(await closedWithin(closed, teardownTimeoutMs))) {
+    throw new Error("installed-smoke-output-authority-teardown-timeout");
+  }
+}
+
+async function failAfterTeardown(guardian, error, { release }) {
+  try {
+    await settleGuardian(guardian, { release });
+  } catch (teardown) {
+    // Report the teardown failure first; the failure that led to it stays
+    // attached rather than being lost.
+    throw new AggregateError([teardown, error], teardown.message, {
+      cause: teardown,
+    });
+  }
+  throw error;
 }
 
 export async function acquireInstalledSmokeOutputAuthority({
@@ -168,6 +209,13 @@ export async function acquireInstalledSmokeOutputAuthority({
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
+  const guardian = {
+    child,
+    closed: new Promise((resolve) => child.once("close", resolve)),
+  };
+  // The guardian can exit before it reads the release line; that is settled
+  // by waiting for close, not by the write.
+  child.stdin.on("error", () => {});
   const authority = await new Promise((resolve, reject) => {
     let stdout = Buffer.alloc(0);
     let stderrBytes = 0;
@@ -176,7 +224,6 @@ export async function acquireInstalledSmokeOutputAuthority({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      stopChild(child);
       reject(error);
     };
     const timer = setTimeout(
@@ -204,7 +251,7 @@ export async function acquireInstalledSmokeOutputAuthority({
         }
         settled = true;
         clearTimeout(timer);
-        resolve({ root: path.resolve(outputDirectory), child });
+        resolve({ ...guardian, root: path.resolve(outputDirectory) });
       } catch (error) {
         fail(error);
       }
@@ -220,16 +267,14 @@ export async function acquireInstalledSmokeOutputAuthority({
       if (!settled)
         fail(new Error(`installed-smoke-output-authority-exit-${code}`));
     });
-  });
+  }).catch((error) => failAfterTeardown(guardian, error, { release: false }));
   try {
     authority.identity = await ordinaryIdentity(
       authority.root,
       "installed-smoke-output-authority",
     );
   } catch (error) {
-    authority.child.stdin.end("release\n");
-    stopChild(authority.child);
-    throw error;
+    await failAfterTeardown(authority, error, { release: true });
   }
   authorities.add(authority);
   return authority;
@@ -268,19 +313,7 @@ export async function writeInstalledSmokeOutputFile(
 export async function releaseInstalledSmokeOutputAuthority(authority) {
   if (!authorities.has(authority)) return;
   authorities.delete(authority);
-  if (authority.child.exitCode !== null) return;
-  // The guardian holds no-delete handles on the output's ancestors until its
-  // process is gone, so wait for it to close even when it has to be stopped.
-  await new Promise((resolve) => {
-    const closed = setTimeout(resolve, 10_000);
-    const stop = setTimeout(() => stopChild(authority.child), 5000);
-    authority.child.once("close", () => {
-      clearTimeout(stop);
-      clearTimeout(closed);
-      resolve();
-    });
-    authority.child.stdin.end("release\n");
-  });
+  await settleGuardian(authority, { release: true });
 }
 
 export const INSTALLED_SMOKE_OUTPUT_GUARDIAN_ARGUMENTS = guardianArguments;

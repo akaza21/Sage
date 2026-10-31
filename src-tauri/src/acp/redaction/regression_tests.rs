@@ -255,32 +255,28 @@ fn diagnostic_home_paths_keep_adjacent_command_operators() {
 
 #[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
-    // Compare the cost of 4x the input against 1x rather than against a wall
-    // clock, which a loaded CI runner or a debug build can exceed: linear work
-    // scales by about 4, quadratic by 16. The fastest of three runs filters
-    // out scheduler noise.
-    fn fastest_redaction(repeats: usize) -> std::time::Duration {
+    use super::credentials::{AWS_KEY_TAIL_SCAN, work};
+    // Count the scanner's work instead of timing it: every byte position is
+    // visited once and each AWS prefix inspects a bounded tail, so the
+    // work is linear in the input whatever the runner's load.
+    for repeats in [16_384, 65_536] {
         let input = "0AKIA".repeat(repeats);
-        (0..3)
-            .map(|_| {
-                let started = std::time::Instant::now();
-                for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
-                    assert_eq!(
-                        redact("test", &input, input.len() * 10, mode).unwrap(),
-                        input
-                    );
-                }
-                started.elapsed()
-            })
-            .min()
-            .unwrap()
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            work::take();
+            assert_eq!(
+                redact("test", &input, input.len() * 10, mode).unwrap(),
+                input,
+                "{mode:?}"
+            );
+            let observed = work::take();
+            assert_eq!(observed.positions, input.len(), "{mode:?}");
+            assert_eq!(observed.aws_prefixes, repeats, "{mode:?}");
+            assert!(
+                observed.aws_tail_bytes <= observed.aws_prefixes * AWS_KEY_TAIL_SCAN,
+                "{mode:?}: {observed:?}"
+            );
+        }
     }
-    let small = fastest_redaction(16_384);
-    let large = fastest_redaction(65_536);
-    assert!(
-        large < small * 8,
-        "4x the input took {large:?} against {small:?}: worse than linear"
-    );
 }
 
 #[test]
