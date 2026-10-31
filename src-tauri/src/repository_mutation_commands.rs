@@ -169,6 +169,24 @@ mod tests {
         );
     }
 
+    /// Makes `git add new.txt` wait in a clean filter, after it has taken
+    /// `index.lock` and before it writes the index. A process stopped by a
+    /// zero timeout then never stages the File, however fast the machine.
+    /// The filter leaves the repository folder so a leftover `sleep` can't
+    /// hold it open on Windows.
+    fn hold_staging_of_new_file(root: &Path) {
+        git(
+            root,
+            &["config", "filter.sage-slow.clean", "cd / && sleep 2 && cat"],
+        );
+        fs::create_dir_all(root.join(".git/info")).unwrap();
+        fs::write(
+            root.join(".git/info/attributes"),
+            "new.txt filter=sage-slow\n",
+        )
+        .unwrap();
+    }
+
     #[test]
     fn stage_command_returns_the_authoritative_epoch_bound_status() {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -482,6 +500,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
+            hold_staging_of_new_file(&root);
             let database = Database::open(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
@@ -632,6 +651,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
+            hold_staging_of_new_file(&root);
             let database = Database::open(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
@@ -682,6 +702,14 @@ mod tests {
                 .wait_for_exit(crate::test_wait::BUDGET)
                 .await
                 .unwrap();
+            // A killed add can leave its lock behind, as a real one would.
+            // Clear it and the slow filter, so this add shows only that
+            // admission reopened once the reaper proved the exit.
+            match fs::remove_file(root.join(".git/index.lock")) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                result => result.unwrap(),
+            }
+            git(&root, &["config", "--unset", "filter.sage-slow.clean"]);
             let recovered = mutate_git_file_inner_with_process_policy(
                 &state,
                 request,
