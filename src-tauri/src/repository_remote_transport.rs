@@ -47,14 +47,22 @@ pub(crate) async fn push_listed_remote_with_policy(
 ) -> AppResult<()> {
     let admitted = admit_idle_listed_remote(workspace, requested, "Git push").await?;
     let branch = current_listed_named_branch(workspace, "Git push").await?;
+    let refspec = exact_branch_refspec(&branch);
     let output = repository::run_git_with_policy(
         workspace.root(),
-        &["push", "-q", "--", &admitted, branch.as_str()],
+        &["push", "-q", "--", &admitted, &refspec],
         MAX_GIT_MUTATION_OUTPUT_BYTES,
         process_policy,
     )
     .await?;
     repository::ensure_success(&output)
+}
+
+/// Spells the push refspec in full so that a branch name git accepts but
+/// refspec syntax reads specially, such as `+main` (force), is never
+/// reinterpreted: only a leading `+` on the whole refspec forces a push.
+fn exact_branch_refspec(branch: &str) -> String {
+    format!("refs/heads/{branch}:refs/heads/{branch}")
 }
 
 async fn admit_idle_listed_remote(
@@ -233,6 +241,35 @@ mod tests {
             .block_on(fetch_listed_remote(&workspace, "origin"))
             .unwrap_err();
         assert!(error.to_string().contains("in-progress merge"));
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+
+    #[test]
+    fn push_of_a_plus_prefixed_branch_never_forces_the_remote() {
+        let (bare, work, workspace) = local_remote_pair();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap();
+        let published = git_stdout(&bare, &["rev-parse", "refs/heads/main"]);
+        git(&work, &["checkout", "-q", "--orphan", "+main"]);
+        fs::write(work.join("ok.txt"), "unrelated\n").unwrap();
+        git(&work, &["add", "--", "ok.txt"]);
+        git(&work, &["commit", "-q", "-m", "unrelated history"]);
+
+        runtime
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap();
+
+        assert_eq!(
+            git_stdout(&bare, &["rev-parse", "refs/heads/main"]),
+            published
+        );
+        assert_eq!(
+            git_stdout(&bare, &["rev-parse", "refs/heads/+main"]).trim(),
+            git_stdout(&work, &["rev-parse", "HEAD"]).trim()
+        );
         fs::remove_dir_all(bare).unwrap();
         fs::remove_dir_all(work).unwrap();
     }
