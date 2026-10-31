@@ -66,7 +66,8 @@ test("path closures include static transitive imports once, not dynamic details"
       expected.reduce((sum, file) => sum + gzipSync(files.get(file)).length, 0),
     );
     assert.equal(paths.initial.files.length, 1);
-    assert.equal(paths.editorFile.files.length, 5);
+    // index, Workbench, TabStrip, FileSurface, CodeMirror runtime, shared.
+    assert.equal(paths.editorFile.files.length, 6);
     assert.ok(!paths.agentOneChat.files.includes("assets/details.js"));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -139,7 +140,8 @@ test("named workbench groups resolve folded facades without counting the shared 
     manifest["index.html"].dynamicImports = Object.keys(manifest).slice(1);
     const paths = measureWebBundlePaths(root, manifest);
     assert.equal(paths.agentOneChat.files.length, 4);
-    assert.equal(paths.editorShell.files.length, 2);
+    // index, the workbench group and the lazy TabStrip.
+    assert.equal(paths.editorShell.files.length, 3);
     manifest._ambiguous = { ...manifest[group], file: "assets/other.js" };
     assert.throws(
       () => measureWebBundlePaths(root, manifest),
@@ -183,7 +185,7 @@ test("folded chat presentation and editor runtime roots retain their static clos
     manifest["index.html"].dynamicImports = Object.keys(manifest).slice(1);
     const paths = measureWebBundlePaths(root, manifest);
     assert.equal(paths.agentOneChat.files.length, 5);
-    assert.equal(paths.editorFile.files.length, 4);
+    assert.equal(paths.editorFile.files.length, 5);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
