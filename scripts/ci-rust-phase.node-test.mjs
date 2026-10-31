@@ -26,11 +26,11 @@ function jobBlock(workflow, jobId) {
 const formatCommand =
   "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check";
 const clippyCommand =
-  "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features ${{ matrix.lint-features }} -- -D warnings";
+  'cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings';
 const rustTestPhases = [
-  "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} -- --skip repository_mutation_commands::tests:: --skip app_preview",
-  "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} repository_mutation_commands::tests:: -- --test-threads=1",
-  "cargo test --manifest-path src-tauri/Cargo.toml --features ${{ matrix.test-features }} app_preview -- --test-threads=1",
+  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview',
+  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1',
+  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" app_preview -- --test-threads=1',
 ];
 const runnerPlatforms = {
   "windows-latest": "win32",
@@ -46,11 +46,8 @@ test("Rust CI runs the supported feature phases in strict job order", async () =
   const cargoCommands = rust
     .split("\n")
     .map((line) => line.trim().replace(/^-\s*/, ""))
-    .filter(
-      (line) =>
-        line.startsWith("run: cargo ") || line.startsWith('run: "cargo '),
-    )
-    .map((line) => line.slice("run: ".length).replace(/^"|"$/g, ""));
+    .filter((line) => /^run: ["']?cargo /u.test(line))
+    .map((line) => line.slice("run: ".length).replace(/^(["'])(.*)\1$/u, "$2"));
 
   assert.deepEqual(cargoCommands, [
     formatCommand,
