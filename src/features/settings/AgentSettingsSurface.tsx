@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useWorkbenchStore } from "../../app/store";
+import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import {
   Archive,
@@ -50,11 +52,98 @@ const icons: Record<AgentSettingsPage, typeof Archive> = {
   "Archived chats": Archive,
 };
 
+const CONTROL_FOCUS_TIMEOUT_MS = 5_000;
+const searchControls: readonly {
+  page: AgentSettingsPage;
+  label: string;
+  aliases: string;
+  selector: string;
+  capability?: "browser" | "access";
+}[] = [
+  {
+    page: "Appearance",
+    label: "Interface font size",
+    aliases: "text",
+    selector: '[aria-label="Interface font size"]',
+  },
+  {
+    page: "Appearance",
+    label: "Interface density",
+    aliases: "compact comfortable spacing",
+    selector: '[aria-label="Interface density"]',
+  },
+  {
+    page: "Chats",
+    label: "Default access",
+    aliases: "permissions approval",
+    selector: '[aria-label="Default access"]',
+    capability: "access",
+  },
+  {
+    page: "Chats",
+    label: "Current harness",
+    aliases: "agent",
+    selector: '[aria-label="Current harness"]',
+  },
+  {
+    page: "Chats",
+    label: "Current model",
+    aliases: "model",
+    selector: '[aria-label="Current model"]',
+  },
+  {
+    page: "Browser",
+    label: "Browsing history",
+    aliases: "visited pages",
+    selector: '[data-setting-search="history"]',
+    capability: "browser",
+  },
+];
+
 export function AgentSettingsSurface() {
   const page = useAgentSettingsState((state) => state.page) ?? "Appearance";
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
+  const [focusSelector, setFocusSelector] = useState<string | null>(null);
+  const accessAvailable = useWorkbenchStore((state) =>
+    state.harnesses.some(
+      (harness) =>
+        harness.id === state.selectedHarnessId && harness.accessModes?.length,
+    ),
+  );
+  useEffect(() => {
+    if (!focusSelector) return;
+    const focus = () => {
+      const control = document.querySelector<HTMLElement>(
+        `.agent-settings__page ${focusSelector}`,
+      );
+      if (!control || control.matches(":disabled")) return false;
+      control.focus();
+      control.scrollIntoView?.({ block: "nearest" });
+      return true;
+    };
+    if (focus()) return;
+    const observer = new MutationObserver(() => {
+      if (focus()) observer.disconnect();
+    });
+    const pageElement = document.querySelector(".agent-settings__page");
+    if (pageElement)
+      observer.observe(pageElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["disabled"],
+      });
+    const timer = window.setTimeout(
+      () => observer.disconnect(),
+      CONTROL_FOCUS_TIMEOUT_MS,
+    );
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [focusSelector, page]);
   useEffect(() => {
     const launcher = useAgentSettingsState.getState().launcher;
     return () => {
@@ -71,6 +160,13 @@ export function AgentSettingsSurface() {
     };
   }, []);
   const normalized = query.trim().toLowerCase();
+  const results = normalized
+    ? searchControls.filter((control) =>
+        `${control.label} ${control.aliases}`
+          .toLowerCase()
+          .includes(normalized),
+      )
+    : [];
   const matching = groups
     .map((group) => ({
       ...group,
@@ -114,10 +210,28 @@ export function AgentSettingsSurface() {
               autoFocus
               type="search"
               placeholder="Search settings"
+              maxLength={256}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
+          {results.map((control) => (
+            <button
+              className="button button--compact"
+              type="button"
+              key={control.selector}
+              disabled={
+                (control.capability === "browser" && !isTauriRuntime()) ||
+                (control.capability === "access" && !accessAvailable)
+              }
+              onClick={() => {
+                open(control.page);
+                setFocusSelector(control.selector);
+              }}
+            >
+              {control.page}: {control.label}
+            </button>
+          ))}
           {matching.map((group) => (
             <div className="agent-settings__nav-group" key={group.pages[0]}>
               {group.heading ? <h2>{group.heading}</h2> : null}
@@ -137,7 +251,9 @@ export function AgentSettingsSurface() {
               })}
             </div>
           ))}
-          {!matching.length ? <p role="status">No matching sections.</p> : null}
+          {!matching.length && !results.length ? (
+            <p role="status">No matching sections.</p>
+          ) : null}
         </nav>
         <div className="agent-settings__content">
           <LazyModuleBoundary

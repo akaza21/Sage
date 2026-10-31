@@ -283,6 +283,48 @@ it("filters settings navigation without changing the current section", () => {
   expect(screen.getByText("No matching sections.")).toBeVisible();
 });
 
+it.each([
+  ["font", "Interface font size"],
+  ["density", "Interface density"],
+])(
+  "searches for %s and focuses its implemented control",
+  async (query, label) => {
+    useUiAppearanceStore.setState({ ready: true });
+    render(<AgentSettingsSurface />);
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: query },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: `Appearance: ${label}` }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: label })).toHaveFocus(),
+    );
+  },
+);
+
+it("finds access while leaving unsupported history unavailable", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "access" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Chats: Default access" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("combobox", { name: "Default access" }),
+    ).toHaveFocus(),
+  );
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "history" },
+  });
+  expect(
+    screen.getByRole("button", { name: "Browser: Browsing history" }),
+  ).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /notification/i })).toBeNull();
+});
+
 it("keeps failed restores visible and sends foreign project identity to unarchive", async () => {
   const restoreChat = vi.fn(async () => false);
   useWorkbenchStore.setState({
