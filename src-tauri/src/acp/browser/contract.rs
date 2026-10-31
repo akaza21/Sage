@@ -14,6 +14,8 @@ pub enum BrowserFailure {
     OutcomeUnknown,
     Denied,
     NoAttachment,
+    /// The user took over the tab; the Agent waits until they hand it back.
+    UserControl,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

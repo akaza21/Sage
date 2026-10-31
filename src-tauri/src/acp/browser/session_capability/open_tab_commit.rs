@@ -22,22 +22,26 @@ fn close_attached(
     Err(failure)
 }
 
+/// `owner_current` answers why the tab may no longer be committed: `Denied`
+/// when the owner moved on or the user took over a tab of this chat while
+/// the tab opened. Never `UserControl`: the tab opened, so the call was
+/// issued and must not run again on hand back.
 pub(super) fn complete_opened_tab(
-    owner_current: impl Fn() -> bool,
+    owner_current: impl Fn() -> Result<(), BrowserFailure>,
     attach: impl FnOnce() -> Result<(), BrowserFailure>,
     detach: impl FnOnce(),
     retire: impl FnOnce(),
     emit: impl FnOnce() -> Result<(), BrowserFailure>,
     close: impl FnOnce() -> Result<(), BrowserFailure>,
 ) -> Result<(), BrowserFailure> {
-    if !owner_current() {
-        return close_with(BrowserFailure::Denied, close);
+    if let Err(failure) = owner_current() {
+        return close_with(failure, close);
     }
     if let Err(failure) = attach() {
         return close_with(failure, close);
     }
-    if !owner_current() {
-        return close_attached(BrowserFailure::Denied, close, detach, retire);
+    if let Err(failure) = owner_current() {
+        return close_attached(failure, close, detach, retire);
     }
     if let Err(failure) = emit() {
         return close_attached(failure, close, detach, retire);
@@ -57,7 +61,13 @@ mod tests {
         let event = Cell::new(false);
         let tab = Cell::new(true);
         let result = complete_opened_tab(
-            || owner_live.get(),
+            || {
+                if owner_live.get() {
+                    Ok(())
+                } else {
+                    Err(BrowserFailure::Denied)
+                }
+            },
             || {
                 lease.set(true);
                 owner_live.set(false);
@@ -87,7 +97,13 @@ mod tests {
         let event = Cell::new(false);
         let tab = Cell::new(true);
         let result = complete_opened_tab(
-            || owner_live.get(),
+            || {
+                if owner_live.get() {
+                    Ok(())
+                } else {
+                    Err(BrowserFailure::Denied)
+                }
+            },
             || {
                 lease.set(true);
                 owner_live.set(false);
@@ -106,6 +122,44 @@ mod tests {
         assert!(retired.get());
         assert!(tab.get());
         assert!(!event.get());
+    }
+
+    #[test]
+    fn a_take_over_while_the_tab_opens_closes_it_and_never_reruns() {
+        let taken_over = Cell::new(false);
+        let lease = Cell::new(false);
+        let event = Cell::new(false);
+        let tab = Cell::new(true);
+        let result = complete_opened_tab(
+            || {
+                if taken_over.get() {
+                    Err(BrowserFailure::Denied)
+                } else {
+                    Ok(())
+                }
+            },
+            || {
+                lease.set(true);
+                taken_over.set(true);
+                Ok(())
+            },
+            || lease.set(false),
+            || lease.set(false),
+            || {
+                event.set(true);
+                Ok(())
+            },
+            || {
+                tab.set(false);
+                Ok(())
+            },
+        );
+        // Not `UserControl`: the pause would open the tab a second time.
+        assert_eq!(result, Err(BrowserFailure::Denied));
+        assert!(!crate::acp::browser::pause::paused(&result, false));
+        assert!(!lease.get());
+        assert!(!event.get());
+        assert!(!tab.get());
     }
 
     #[test]

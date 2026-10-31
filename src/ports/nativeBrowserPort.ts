@@ -193,6 +193,22 @@ export function browserControl(
   return invokeNative("browser_control", { tabId, action });
 }
 
+/** The tab's live Agent attachment as Rust holds it; null when none. */
+export interface BrowserAgentControl {
+  projectId: string;
+  chatId: string;
+  /** The user took the tab over; the Agent waits until Hand back. */
+  userControl: boolean;
+}
+
+/** Reads, takes over or hands back the tab; Rust answers with the state after it. */
+export function browserAgentControl(
+  tabId: string,
+  action: "agentControl" | "agentTakeOver" | "agentHandBack",
+): Promise<BrowserAgentControl | null> {
+  return invokeNative("browser_control", { tabId, action });
+}
+
 export function browserZoom(tabId: string, percent: number): Promise<void> {
   return invokeNative("browser_zoom", { tabId, percent });
 }

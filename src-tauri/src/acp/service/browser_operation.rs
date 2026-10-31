@@ -220,6 +220,10 @@ fn summary(command: &BrowserCommand) -> String {
     }
 }
 
+/// The transcript's result for a call refused while the user holds the tab;
+/// the chat projection matches it word for word.
+const USER_CONTROL_SUMMARY: &str = "Paused: you took over this tab";
+
 fn outcome_summary(outcome: &Result<BrowserResponse, BrowserFailure>) -> (&'static str, String) {
     match outcome {
         Ok(BrowserResponse {
@@ -257,6 +261,9 @@ fn outcome_summary(outcome: &Result<BrowserResponse, BrowserFailure>) -> (&'stat
                 }
             },
         ),
+        // Stored as denied, as the gate refused it; the summary tells the
+        // transcript that the user paused the Agent rather than refused it.
+        Err(BrowserFailure::UserControl) => ("denied", USER_CONTROL_SUMMARY.into()),
         Err(BrowserFailure::Denied | BrowserFailure::NoAttachment) => {
             ("denied", "Browser access denied".into())
         }
@@ -272,6 +279,18 @@ fn outcome_summary(outcome: &Result<BrowserResponse, BrowserFailure>) -> (&'stat
 mod tests {
     use super::*;
     use crate::acp::browser::{ElementHandle, FillSecret, SnapshotNode};
+
+    #[test]
+    fn a_call_refused_under_user_control_reads_as_paused() {
+        assert_eq!(
+            outcome_summary(&Err(BrowserFailure::UserControl)),
+            ("denied", "Paused: you took over this tab".into())
+        );
+        assert_eq!(
+            outcome_summary(&Err(BrowserFailure::Denied)).1,
+            "Browser access denied"
+        );
+    }
 
     #[test]
     fn fill_value_never_enters_operation_summary() {

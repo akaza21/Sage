@@ -76,6 +76,7 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     decisions: [],
   })),
   browserControl: vi.fn(),
+  browserAgentControl: vi.fn(async () => null),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
   hideBrowser: (tabId: string) => hideBrowser(tabId),
   positionBrowser: (tabId: string, bounds: unknown) =>
@@ -371,6 +372,12 @@ it("opens native print for the loaded tab from the menu", async () => {
   fireEvent.click(screen.getByRole("menuitem", { name: "Print" }));
   await waitFor(() => expect(browserPrint).toHaveBeenCalledWith(tab.id));
   expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
+});
+it("renders the secure address indicator as a lean lock icon", async () => {
+  render(<BrowserSurface tab={tab} />);
+  const indicator = await screen.findByLabelText("Secure connection");
+  expect(indicator.querySelector("svg.lucide-lock")).not.toBeNull();
+  expect(indicator.textContent).toBe("");
 });
 it("copies an explicit loaded-page screenshot and confirms the result", async () => {
   const write = vi.fn(async (_items: ClipboardItem[]) => undefined);

@@ -8,6 +8,7 @@
 //! deadline and cancellation stay covered only by the Windows build. The lane
 //! validates CDP parameters, result parsing and what reaches the Agent.
 
+mod agent_marker;
 mod annotate;
 mod chromium;
 mod isolation;

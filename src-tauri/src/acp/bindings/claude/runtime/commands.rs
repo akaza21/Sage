@@ -68,6 +68,7 @@ impl ClaudeRuntime {
                         .map_err(|_| AdapterRuntimeError::Operation)?,
                     client_message_id,
                     request_id: id,
+                    cancel_written: false,
                 });
                 let external_session_id = active.external_id.clone();
                 match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":[{"type":"text","text":prompt.as_str()}]})) {

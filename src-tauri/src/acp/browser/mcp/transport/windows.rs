@@ -291,6 +291,17 @@ fn connect_client(
     }
 }
 
+#[cfg(all(test, feature = "acp-fixture", debug_assertions))]
+pub(crate) fn connect_for_test(
+    environment: &[(String, String); 4],
+) -> Result<impl MessagePipe, BrowserMcpError> {
+    connect_client(
+        &environment[0].1,
+        std::process::id(),
+        Instant::now() + Duration::from_secs(2),
+    )
+}
+
 fn validate_name(name: &str) -> Result<(), BrowserMcpError> {
     let suffix = name
         .strip_prefix(PIPE_PREFIX)

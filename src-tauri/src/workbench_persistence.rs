@@ -178,6 +178,10 @@ pub(crate) fn persist_layout_in(
     validate_layout(transaction, request)?;
     crate::side_chat_storage::validate_layout(transaction, request)?;
     let now = now_millis();
+    transaction.execute(
+        "UPDATE workbench_tabs SET position=-position-1 WHERE project_id=?1",
+        [&request.project_id],
+    )?;
     for tab in &request.tabs {
         let title = if tab.kind == "chat" {
             durable_chat_title_in(transaction, &request.project_id, &tab.id)?
@@ -306,7 +310,7 @@ pub(crate) fn validate_layout(
     let mut ids = HashSet::new();
     let mut positions = HashSet::new();
     for tab in &request.tabs {
-        if !ids.insert(tab.id.as_str()) || !positions.insert(tab.position) {
+        if tab.position < 0 || !ids.insert(tab.id.as_str()) || !positions.insert(tab.position) {
             return Err(AppError::InvalidRequest(
                 "project layout contains duplicate tab identity or position".into(),
             ));

@@ -1,21 +1,47 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 
-import { browserOperationFixture } from "../../domain/browserOperation.fixture";
-import { BrowserAgentPresence } from "./BrowserAttachmentControls";
+import { BrowserAgentPresence } from "./BrowserAgentPresence";
 
-it("names the chat using the tab and offers one-click Stop / Take over", () => {
-  const onDetach = vi.fn();
+afterEach(cleanup);
+
+function renderPresence(userControl: boolean) {
+  const handlers = {
+    onStop: vi.fn(),
+    onTakeOver: vi.fn(),
+    onHandBack: vi.fn(),
+  };
   render(
     <BrowserAgentPresence
-      operation={{ ...browserOperationFixture, phase: "started" }}
+      pending
+      userControl={userControl}
       chatTitle="Research chat"
-      onDetach={onDetach}
+      {...handlers}
     />,
   );
+  return handlers;
+}
+
+it("names the chat using the tab and offers Take over and Stop", () => {
+  const { onStop, onTakeOver, onHandBack } = renderPresence(false);
   expect(screen.getByRole("status")).toHaveTextContent(
     "Agent has a browser action pending · Research chat",
   );
-  fireEvent.click(screen.getByRole("button", { name: "Stop / Take over" }));
-  expect(onDetach).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Take over" }));
+  expect(onTakeOver).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Stop agent" }));
+  expect(onStop).toHaveBeenCalledOnce();
+  expect(onHandBack).not.toHaveBeenCalled();
+});
+
+it("offers Hand back while the user controls the tab", () => {
+  const { onTakeOver, onHandBack } = renderPresence(true);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "You're in control · Research chat",
+  );
+  expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Hand back" }));
+  expect(onHandBack).toHaveBeenCalledOnce();
+  expect(onTakeOver).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Stop agent" })).toBeEnabled();
 });

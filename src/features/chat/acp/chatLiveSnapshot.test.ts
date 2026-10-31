@@ -114,4 +114,17 @@ describe("bounded Agent chat live snapshot", () => {
       projectChatLiveSnapshot("chat-1", page([turn("cancelled", 1)])),
     ).toMatchObject({ statusLabel: "Cancelled", statusTone: "idle" });
   });
+  it("labels a user-stopped turn with its cancellation attribution", () => {
+    const stopped = {
+      ...turn("cancelled", 1),
+      terminalReason: {
+        kind: "cancelledByUser" as const,
+      },
+    };
+    expect(projectChatLiveSnapshot("chat-1", page([stopped]))).toMatchObject({
+      statusLabel: "Cancelled by you",
+      statusTone: "idle",
+      working: false,
+    });
+  });
 });

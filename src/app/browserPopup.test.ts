@@ -13,8 +13,17 @@ vi.mock("../ports/nativeInvoke", () => ({ isTauriRuntime: () => true }));
 vi.mock("../ports/nativeBrowserPort", () => native);
 
 import { createBrowserSlice } from "./browserSlice";
+import { ackPopup } from "./browserPopupNative";
+import { pinAgentChatOwner, clearAgentChatOwner } from "./agentChatOwner";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+  pinAcpProjectionIds,
+} from "./acpProjectionRegistry";
 
 beforeEach(() => {
+  clearAgentChatOwner();
+  clearAcpProjectionRegistry();
   events.listen.mockReset();
   for (const method of Object.values(native)) method.mockReset();
 });
@@ -320,6 +329,7 @@ it("removes a just-inserted popup tab when its late ack fails", async () => {
     url: "https://example.com/",
   });
   native.browserPopupAck.mockRejectedValue(new Error("popup tab unavailable"));
+  native.browserPopupAbandon.mockResolvedValue(undefined);
   const state = mountWithOpener();
   const listener = await popupListener();
   listener({
@@ -342,6 +352,169 @@ it("removes a just-inserted popup tab when its late ack fails", async () => {
   );
   expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1"]);
   expect(state.activeTabId).toBe("browser-1");
+  expect(native.browserPopupAbandon).toHaveBeenCalledWith(
+    11,
+    "browser-1",
+    "browser-4",
+  );
+});
+
+it("does not reactivate the mounted chat after a popup ack fails", async () => {
+  native.browserPopupAck.mockRejectedValue(
+    new Error("popup acknowledgement unavailable"),
+  );
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  const activateChat = vi.fn();
+  pinAgentChatOwner("chat-1");
+  const state = mountWithOpener({
+    tabs: [
+      { id: "chat-1", kind: "chat", title: "Chat", position: 0 },
+      { id: "browser-4", kind: "browser", title: "Popup", position: 1 },
+    ],
+    activeTabId: "browser-4",
+    activateChat,
+  });
+  await expect(
+    ackPopup(
+      ((update: object) => Object.assign(state, update)) as never,
+      (() => state) as never,
+      21,
+      {
+        tabId: "browser-4",
+        openerTabId: "browser-1",
+        url: "https://example.com/",
+      },
+      true,
+    ),
+  ).rejects.toThrow("popup acknowledgement unavailable");
+  expect(activateChat).not.toHaveBeenCalled();
+  expect(state.activeTabId).toBe("chat-1");
+  expect(state.tabs.map((tab) => tab.id)).toEqual(["chat-1"]);
+  clearAgentChatOwner();
+});
+
+it("keeps both mounted projections when failed adoption selects the unfocused chat", async () => {
+  pinAgentChatOwner("chat-a");
+  pinAcpProjectionIds(["chat-a", "chat-b"]);
+  const first = acpProjectionStoreFor("chat-a");
+  const second = acpProjectionStoreFor("chat-b");
+  for (const [chatId, store] of [
+    ["chat-a", first],
+    ["chat-b", second],
+  ] as const) {
+    store.getState().activateScope({
+      projectId: "project",
+      projectGeneration: "1",
+      chatId,
+    } as never);
+  }
+  const firstState = first.getState();
+  const secondState = second.getState();
+  const firstChanged = vi.fn();
+  const secondChanged = vi.fn();
+  const unsubscribeFirst = first.subscribe(firstChanged);
+  const unsubscribeSecond = second.subscribe(secondChanged);
+  const activateChat = vi.fn(() => {
+    first.getState().clear();
+    second.getState().clear();
+  });
+  native.browserPopupAck.mockRejectedValue(
+    new Error("popup acknowledgement unavailable"),
+  );
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  const state = mountWithOpener({
+    tabs: [
+      { id: "chat-a", kind: "chat", title: "A", position: 0 },
+      { id: "browser-1", kind: "browser", title: "Opener", position: 1 },
+      { id: "browser-4", kind: "browser", title: "Popup", position: 2 },
+      { id: "chat-b", kind: "chat", title: "B", position: 3 },
+    ],
+    activeTabId: "browser-4",
+    activateChat,
+  });
+  try {
+    await expect(
+      ackPopup(
+        ((update: object) => Object.assign(state, update)) as never,
+        (() => state) as never,
+        23,
+        {
+          tabId: "browser-4",
+          openerTabId: "browser-1",
+          url: "https://example.com/",
+        },
+        true,
+      ),
+    ).rejects.toThrow("popup acknowledgement unavailable");
+    expect(activateChat).not.toHaveBeenCalled();
+    expect(state.activeTabId).toBe("chat-b");
+    expect(state.projectGeneration).toBe(1);
+    expect(state.projectTransitioning).toBe(false);
+    expect(first.getState()).toBe(firstState);
+    expect(second.getState()).toBe(secondState);
+    expect(firstChanged).not.toHaveBeenCalled();
+    expect(secondChanged).not.toHaveBeenCalled();
+  } finally {
+    unsubscribeFirst();
+    unsubscribeSecond();
+    clearAcpProjectionRegistry();
+    clearAgentChatOwner();
+  }
+});
+
+it("retains a plain popup tab as cleanup owner when native close is unresolved", async () => {
+  native.browserPopupPending.mockResolvedValue([]);
+  native.browserOpenPopup.mockResolvedValue({
+    tabId: "browser-4",
+    openerTabId: "browser-1",
+    url: "https://example.com/",
+  });
+  native.browserPopupAck.mockRejectedValue(
+    new Error("popup acknowledgement unavailable"),
+  );
+  native.browserPopupAbandon.mockRejectedValue(
+    new Error("popup native close is unresolved"),
+  );
+  const state = mountWithOpener();
+  const listener = await popupListener();
+  listener({
+    payload: {
+      id: 22,
+      openerTabId: "browser-1",
+      nativeTabId: "browser-4",
+      url: "https://example.com/",
+    },
+  });
+  await vi.waitFor(() =>
+    expect(state).toMatchObject({
+      error: "Couldn't open popup: popup native close is unresolved",
+    }),
+  );
+  expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1", "browser-4"]);
+});
+
+it("abandons the native child when flushing fails before opening", async () => {
+  native.browserPopupPending.mockResolvedValue([]);
+  native.browserPopupAbandon.mockResolvedValue(undefined);
+  const state = mountWithOpener();
+  state.flushActiveEditor.mockRejectedValue(new Error("flush failed"));
+  const listener = await popupListener();
+  listener({
+    payload: {
+      id: 23,
+      openerTabId: "browser-1",
+      nativeTabId: "browser-4",
+      url: "https://example.com/",
+    },
+  });
+  await vi.waitFor(() =>
+    expect(native.browserPopupAbandon).toHaveBeenCalledWith(
+      23,
+      "browser-1",
+      "browser-4",
+    ),
+  );
+  expect(native.browserOpenPopup).not.toHaveBeenCalled();
 });
 
 it("abandons a native child when the Project changes during the editor flush", async () => {

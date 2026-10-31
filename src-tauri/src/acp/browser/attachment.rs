@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -10,8 +10,18 @@ use crate::{browser::BrowserState, state::AppState};
 use tauri::State;
 
 const MAX_ATTACHMENTS: usize = 8;
+/// Authorities a settled navigation took out of a lease that Stop and Take
+/// over still end, newest last. A wait outlives at most a few navigations.
+const MAX_RETIRED: usize = 4;
+/// Tabs that Agent-driven tabs opened and that joined, per session. They
+/// never count against `openTab`'s cap and never become the default tab.
+pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
+mod control;
+mod popup;
+pub(crate) use control::AgentControl;
+pub(crate) use popup::AgentAction;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -22,7 +32,18 @@ pub(crate) struct AttachmentLease {
     active: Arc<AtomicBool>,
     retiring: Arc<AtomicBool>,
     sweeping: Arc<AtomicBool>,
+    user_control: Arc<AtomicBool>,
     authority: Arc<Mutex<Option<(String, BrowserAuthority)>>>,
+    /// Authorities a settled navigation took out of the slot. Their permits
+    /// count as invalidated by navigation, not stopped, so an in-flight wait
+    /// keeps probing until Stop or Take over stops them too.
+    retired: Arc<Mutex<VecDeque<BrowserAuthority>>>,
+    /// The Agent session that last held this lease's authority, which a tab
+    /// this one opens joins.
+    last_session: Arc<Mutex<Option<String>>>,
+    /// The tab that opened this one, for a popup that joined its opener's
+    /// attachment: Take over, Hand back and Stop on the opener cover it.
+    opener: Option<String>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -49,7 +70,7 @@ impl AttachmentLease {
             return None;
         }
         let mut slot = self.authority.lock().ok()?;
-        if !self.is_live() {
+        if !self.is_live() || self.user_controls() {
             return None;
         }
         if let Some((session, authority)) = slot.as_ref() {
@@ -61,10 +82,18 @@ impl AttachmentLease {
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
         *slot = Some((scope.session_id.clone(), authority.clone()));
+        if let Ok(mut last) = self.last_session.lock() {
+            *last = Some(scope.session_id.clone());
+        }
         Some(authority)
     }
 
+    fn last_session(&self) -> Option<String> {
+        self.last_session.lock().ok()?.clone()
+    }
+
     fn stop(&self) {
+        self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
             return;
@@ -75,8 +104,34 @@ impl AttachmentLease {
         }
     }
 
+    /// Stops the authorities navigations took out of the slot, which ends
+    /// any dispatch still running under them.
+    fn stop_retired(&self) {
+        if let Ok(mut retired) = self.retired.lock() {
+            retired.drain(..).for_each(|authority| authority.stop());
+        }
+    }
+
+    /// Takes the slot's authority out after a settled navigation, keeping it
+    /// where Stop and Take over still reach it.
+    fn retire_slot_authority(&self) {
+        let Ok(mut slot) = self.authority.lock() else {
+            return;
+        };
+        if let Some((_, authority)) = slot.take() {
+            authority.navigation_started();
+            if let Ok(mut retired) = self.retired.lock() {
+                if retired.len() == MAX_RETIRED {
+                    retired.pop_front();
+                }
+                retired.push_back(authority);
+            }
+        }
+    }
+
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
+        self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
         {
@@ -97,6 +152,14 @@ impl AttachmentLease {
 pub(crate) struct BrowserAttachments {
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
+    /// Tabs an Agent-driven tab opened, by child label, until they join.
+    popup_children: Mutex<HashMap<String, String>>,
+    /// Counts hand backs per chat, so a paused call resumes only after one
+    /// in its own chat, not after Stop, a detach or another chat's hand back.
+    hand_backs: Mutex<HashMap<(SageProjectId, SageChatId), u64>>,
+    /// Agent actions in flight on, or recently ended on, each tab: only a
+    /// popup that opens around one joins (`popup.rs`).
+    agent_actions: Mutex<HashMap<String, popup::AgentActivity>>,
 }
 
 impl BrowserAttachments {
@@ -140,6 +203,9 @@ impl BrowserAttachments {
         }
         if let Some(previous) = entries.remove(&key) {
             previous.stop();
+            // Keep replacement unpublished until its old family is gone.
+            // Registry lock order is user entries, then Agent entries.
+            self.drop_joined_popups(&previous.tab_label);
         }
         entries.insert(
             key,
@@ -151,9 +217,24 @@ impl BrowserAttachments {
                 active: Arc::new(AtomicBool::new(true)),
                 retiring: Arc::new(AtomicBool::new(false)),
                 sweeping: Arc::new(AtomicBool::new(false)),
+                user_control: Arc::new(AtomicBool::new(false)),
                 authority: Arc::new(Mutex::new(None)),
+                retired: Arc::default(),
+                last_session: Arc::default(),
+                opener: None,
             },
         );
+        drop(entries);
+        // Attaching is the user's new grant, so it also ends user control of
+        // tabs this chat's Agent opened under the same label.
+        if let Ok(agent_entries) = self.agent_entries.lock() {
+            for lease in agent_entries
+                .values()
+                .filter(|lease| lease.tab_label == tab_label)
+            {
+                lease.set_user_control(false);
+            }
+        }
         Ok(())
     }
 
@@ -170,16 +251,18 @@ impl BrowserAttachments {
     }
 
     pub(crate) fn detach(&self, project: &SageProjectId, chat: &SageChatId) -> Option<String> {
-        if let Ok(mut entries) = self.entries.lock()
-            && let Some(lease) = entries.remove(&(project.clone(), chat.clone()))
-        {
-            lease.stop();
-            return Some(lease.tab_label);
-        }
-        None
+        let lease = self
+            .entries
+            .lock()
+            .ok()
+            .and_then(|mut entries| entries.remove(&(project.clone(), chat.clone())))?;
+        lease.stop();
+        self.drop_joined_popups(&lease.tab_label);
+        Some(lease.tab_label)
     }
 
     pub(crate) fn revoke_tab(&self, tab_label: &str) {
+        self.forget_popups(tab_label);
         if let Ok(mut entries) = self.entries.lock() {
             entries.retain(|_, lease| {
                 if lease.tab_label == tab_label {
@@ -190,9 +273,10 @@ impl BrowserAttachments {
                 }
             });
         }
+        // Stop on an opener also stops the popups that joined it.
         if let Ok(mut entries) = self.agent_entries.lock() {
             entries.retain(|_, lease| {
-                if lease.tab_label == tab_label {
+                if lease.tab_label == tab_label || lease.opener.as_deref() == Some(tab_label) {
                     lease.stop();
                     false
                 } else {
@@ -227,11 +311,7 @@ impl BrowserAttachments {
                 .values_mut()
                 .filter(|lease| lease.tab_label == tab_label)
             {
-                if let Ok(mut slot) = lease.authority.lock()
-                    && let Some((_, authority)) = slot.take()
-                {
-                    authority.navigation_started();
-                }
+                lease.retire_slot_authority();
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }
@@ -241,11 +321,7 @@ impl BrowserAttachments {
                 .values_mut()
                 .filter(|lease| lease.tab_label == tab_label)
             {
-                if let Ok(mut slot) = lease.authority.lock()
-                    && let Some((_, authority)) = slot.take()
-                {
-                    authority.navigation_started();
-                }
+                lease.retire_slot_authority();
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }

@@ -5,8 +5,15 @@ import type { AcpItem } from "../../../domain/acp";
 import { acpDesktop } from "../../../services/acpDesktop";
 import { PermissionPrompt } from "./PermissionPrompt";
 import { clearApprovalDecisions } from "../useApprovalSlot";
+import { ackPopup } from "../../../app/browserPopupNative";
+import {
+  clearAgentChatOwner,
+  pinAgentChatOwner,
+} from "../../../app/agentChatOwner";
+import * as browserPort from "../../../ports/nativeBrowserPort";
 
 afterEach(() => {
+  clearAgentChatOwner();
   clearApprovalDecisions();
   cleanup();
   vi.restoreAllMocks();
@@ -39,6 +46,62 @@ const browserItem = {
 } as Extract<AcpItem, { kind: "permissionRequest" }>;
 
 describe("local browser permission card", () => {
+  it("keeps a pending browser card visible and resolvable after popup rollback", async () => {
+    vi.spyOn(browserPort, "browserPopupAck").mockRejectedValue(
+      new Error("popup acknowledgement unavailable"),
+    );
+    vi.spyOn(browserPort, "browserPopupAbandon").mockResolvedValue(undefined);
+    const resolve = vi
+      .spyOn(acpDesktop, "resolvePermissionDecision")
+      .mockResolvedValue({
+        source: "browser",
+        projectId: "project-1",
+        chatId: "chat-1",
+        sessionId: "session-1",
+        turnId: "turn-1",
+        runtimeEpoch: "1",
+        requestId: "request-browser",
+        decision: "allowOnce",
+        state: "resolvedAllowed",
+      });
+    const activateChat = vi.fn();
+    const state = {
+      tabs: [
+        { id: "chat-1", kind: "chat", title: "Chat", position: 0 },
+        { id: "browser-4", kind: "browser", title: "Popup", position: 1 },
+      ],
+      activeTabId: "browser-4",
+      activateChat,
+    };
+    pinAgentChatOwner("chat-1");
+    render(<PermissionPrompt items={[browserItem]} />);
+    await expect(
+      ackPopup(
+        ((update: object) => Object.assign(state, update)) as never,
+        (() => state) as never,
+        21,
+        {
+          tabId: "browser-4",
+          openerTabId: "browser-1",
+          url: "https://example.com/",
+        },
+        true,
+      ),
+    ).rejects.toThrow("popup acknowledgement unavailable");
+    expect(activateChat).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("group", { name: "Browser permission" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "request-browser",
+        decision: "allowOnce",
+        chatId: "chat-1",
+      }),
+    );
+  });
+
   it("identifies the browser request and sends denial for its exact local identity", () => {
     const resolve = vi
       .spyOn(acpDesktop, "resolvePermissionDecision")

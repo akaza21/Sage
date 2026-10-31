@@ -277,6 +277,7 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
         }
         let response = match outcome {
             Err(super::BrowserFailure::NoAttachment) => return Ok(json!({"content":[{"type":"text","text":"No browser tab attached; call openTab with an HTTP(S) URL, or ask the user to attach one."}],"isError":true})),
+            Err(super::BrowserFailure::UserControl) => return Ok(json!({"content":[{"type":"text","text":"The user took over this browser tab and has not handed it back. Do not retry now; tell the user you will continue once they hand the tab back."}],"isError":true})),
             Err(super::BrowserFailure::OutcomeUnknown) => return Ok(json!({"content":[{"type":"text","text":"The browser operation was issued, but its outcome is unknown. Do not retry automatically; inspect the page state first."}],"isError":true})),
             other => other,
         }.map_err(|failure| match failure {
@@ -287,7 +288,9 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
             }
             super::BrowserFailure::Unavailable => BrowserMcpError::Unavailable,
             super::BrowserFailure::OutcomeUnknown => BrowserMcpError::OutcomeUnknown,
-            super::BrowserFailure::NoAttachment => BrowserMcpError::Unavailable,
+            super::BrowserFailure::NoAttachment | super::BrowserFailure::UserControl => {
+                BrowserMcpError::Unavailable
+            }
         })?;
         let text = serde_json::to_string(&response).map_err(|_| BrowserMcpError::Unavailable)?;
         Ok(json!({"content":[{"type":"text","text":text}],"isError":false}))
