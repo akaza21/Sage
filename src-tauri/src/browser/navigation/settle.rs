@@ -239,6 +239,7 @@ impl<T> BrowserTabs<T> {
             // No traversal is pending after `abandon`, so this appends.
             let _ = tab.history.same_document(source);
             tab.committed_url = Some(source.to_owned());
+            self.browsing_history.record_visit(source);
         }
         tab.revision = tab.revision.wrapping_add(1);
         tab.document_revision = tab.document_revision.wrapping_add(1);

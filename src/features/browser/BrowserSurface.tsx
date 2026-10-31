@@ -7,7 +7,6 @@ import {
   browserControl,
   browserCaptureScreenshot,
   browserFind,
-  browserHistory,
   browserNavigate,
   browserOpenExternal,
   browserPrint,
@@ -43,6 +42,11 @@ import "./browser.css";
 const BrowserNewTab = lazy(() =>
   import("./BrowserNewTab").then((module) => ({
     default: module.BrowserNewTab,
+  })),
+);
+const BrowserHistoryPage = lazy(() =>
+  import("./BrowserHistoryPage").then((module) => ({
+    default: module.BrowserHistoryPage,
   })),
 );
 
@@ -86,7 +90,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [findText, setFindText] = useState("");
   const [zoomPending, setZoomPending] = useState(false);
   const [attachmentEpoch, setAttachmentEpoch] = useState(0);
@@ -173,10 +176,11 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  const covered = downloadsOpen || menuOpen;
+  const covered = downloadsOpen || menuOpen || historyOpen;
   useBrowserPlacement(tab.id, frame, surface, setError, covered);
   async function navigate() {
     try {
+      setHistoryOpen(false);
       setError(null);
       setScreenshotStatus(null);
       screenshotEpoch.current += 1;
@@ -192,6 +196,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   }
   async function control(action: BrowserControlAction) {
     try {
+      if (action !== "stop") setHistoryOpen(false);
       setError(null);
       await browserControl(tab.id, action);
       if (action === "stop") {
@@ -261,19 +266,13 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     void pageAction(() => browserFind(tab.id, "stop"));
   }
 
-  function openHistory() {
-    setHistoryOpen(true);
-    void browserHistory(tab.id)
-      .then(setHistoryEntries)
-      .catch((cause) => setError(String(cause).slice(0, 512)));
-  }
-
   useBrowserShortcuts(surface, tab.id, Boolean(navigation?.loading), (action) =>
     performBrowserShortcut(action, {
       address: addressField.current,
       find: () => findField.current,
       control: (command) => void control(command),
       findOpen: () => setFindOpen(true),
+      history: () => setHistoryOpen(true),
       zoom: changeZoom,
       zoomPercent: navigation?.zoomPercent ?? 100,
       newTab: () => void openBrowser(),
@@ -303,7 +302,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           onZoom={changeZoom}
           onZoomReset={() => setZoom(100)}
           onDownloads={() => setDownloadsOpen(true)}
-          onHistory={openHistory}
+          onHistory={() => setHistoryOpen(true)}
           onSettings={(target) =>
             target === "site"
               ? setSettingsOpen(true)
@@ -367,15 +366,20 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       <BrowserDrawers
         tabId={tab.id}
         settingsOpen={settingsOpen}
-        historyOpen={historyOpen}
-        historyEntries={historyEntries}
         onCloseSettings={() => setSettingsOpen(false)}
-        onCloseHistory={() => setHistoryOpen(false)}
-        onNavigate={(url) =>
-          void pageAction(() => browserNavigate(tab.id, url))
-        }
       />
-      {newTab ? (
+      {historyOpen ? (
+        <Suspense fallback={<p role="status">Loading history…</p>}>
+          <BrowserHistoryPage
+            onNavigate={(url) => {
+              setHistoryOpen(false);
+              void pageAction(() => browserNavigate(tab.id, url));
+            }}
+            onClose={() => setHistoryOpen(false)}
+            clearDataControl={<BrowserClearData />}
+          />
+        </Suspense>
+      ) : newTab ? (
         <Suspense fallback={<p role="status">Loading new tab…</p>}>
           <BrowserNewTab
             suggestions={suggestions}
@@ -391,7 +395,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <div
         ref={frame}
-        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}`}
+        className={`browser-surface__frame${newTab || historyOpen ? " browser-surface__frame--new-tab" : ""}`}
       />
     </section>
   );

@@ -1,0 +1,296 @@
+//! Global browsing history (BF-7c): every page a browser tab commits, kept
+//! across launches in its own SQLite file next to Sage's other durable
+//! stores, for the History page to search and prune.
+//!
+//! Recording happens on WebView2's UI thread, so it must never touch the
+//! disk there. A tab's commit only hands a small message to a bounded
+//! queue; one worker thread, started on first use, owns the database and
+//! writes queued visits in batched transactions. Reads, removals and
+//! clears travel the same queue, so a clear can never be overtaken by a
+//! visit recorded before it. When the queue is full a visit is dropped
+//! rather than stalling navigation.
+
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU64, Ordering},
+        mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use rusqlite::Connection;
+
+pub(crate) mod commands;
+mod store;
+
+use store::NewVisit;
+pub(crate) use store::{Cursor, MAX_PAGE, MAX_REMOVE, MAX_SEARCH_CHARS, VisitPage};
+
+/// The history file, in the launch profile's durable directory.
+pub(crate) const FILE_NAME: &str = "browsing-history.db";
+/// Pending messages the worker may lag behind by before visits are dropped.
+const QUEUE: usize = 256;
+/// The most queued writes one transaction takes.
+const MAX_BATCH: usize = 64;
+/// How long a reader waits for the worker before giving up.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
+const UNAVAILABLE: &str = "browsing history is unavailable";
+
+/// A write the worker applies in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Write {
+    Visit(NewVisit),
+    Title { url: String, title: String },
+}
+
+type Reply<T> = SyncSender<Result<T, String>>;
+
+enum Request {
+    Write(Write),
+    Read(Read),
+}
+
+/// A request that answers, applied after every write queued before it.
+enum Read {
+    Page {
+        search: String,
+        before: Option<Cursor>,
+        limit: u32,
+        reply: Reply<VisitPage>,
+    },
+    Remove {
+        ids: Vec<i64>,
+        reply: Reply<usize>,
+    },
+    RemoveRange {
+        from: i64,
+        to: i64,
+        reply: Reply<usize>,
+    },
+}
+
+struct Shared {
+    path: PathBuf,
+    queue: OnceLock<SyncSender<Request>>,
+    dropped: AtomicU64,
+}
+
+/// The handle tabs record into and commands read through. Cloning shares
+/// one queue and one worker. The default handle records nothing, for tab
+/// tests that do not concern history.
+#[derive(Clone, Default)]
+pub(crate) struct BrowsingHistory(Option<Arc<Shared>>);
+
+impl BrowsingHistory {
+    pub(crate) fn open(path: PathBuf) -> Self {
+        Self(Some(Arc::new(Shared {
+            path,
+            queue: OnceLock::new(),
+            dropped: AtomicU64::new(0),
+        })))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn in_memory() -> Self {
+        Self::open(PathBuf::from(":memory:"))
+    }
+
+    /// A tab committed `url`. Never blocks.
+    pub(super) fn record_visit(&self, url: &str) {
+        self.write(Write::Visit(NewVisit {
+            url: url.to_owned(),
+            visited_at: now_ms(),
+        }));
+    }
+
+    /// The page at `url` reported `title` after it committed. Never blocks.
+    pub(super) fn record_title(&self, url: &str, title: &str) {
+        self.write(Write::Title {
+            url: url.to_owned(),
+            title: title.to_owned(),
+        });
+    }
+
+    fn write(&self, write: Write) {
+        let Some(shared) = &self.0 else {
+            return;
+        };
+        match shared.queue().try_send(Request::Write(write)) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                let dropped = shared.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+                if dropped.is_power_of_two() {
+                    eprintln!("browsing history queue full; {dropped} writes dropped");
+                }
+            }
+            Err(TrySendError::Disconnected(_)) => {}
+        }
+    }
+
+    /// Newest-first visits whose URL or title contains `search`. Blocks
+    /// until the worker answers; call it off the UI thread.
+    pub(crate) fn page(
+        &self,
+        search: String,
+        before: Option<Cursor>,
+        limit: u32,
+    ) -> Result<VisitPage, String> {
+        self.ask(|reply| Read::Page {
+            search,
+            before,
+            limit,
+            reply,
+        })
+    }
+
+    /// Removes the named visits. Blocks; call it off the UI thread.
+    pub(crate) fn remove(&self, ids: Vec<i64>) -> Result<usize, String> {
+        self.ask(|reply| Read::Remove { ids, reply })
+    }
+
+    /// Removes visits with `from <= visited_at < to`, after every visit
+    /// recorded before this call. Blocks; call it off the UI thread.
+    pub(crate) fn remove_range(&self, from: i64, to: i64) -> Result<usize, String> {
+        self.ask(|reply| Read::RemoveRange { from, to, reply })
+    }
+
+    /// Removes every visit recorded so far.
+    pub(crate) fn clear(&self) -> Result<usize, String> {
+        self.remove_range(i64::MIN, i64::MAX)
+    }
+
+    fn ask<T>(&self, request: impl FnOnce(Reply<T>) -> Read) -> Result<T, String> {
+        let shared = self.0.as_ref().ok_or(UNAVAILABLE)?;
+        let (reply, answer) = sync_channel(1);
+        shared
+            .queue()
+            .send(Request::Read(request(reply)))
+            .map_err(|_| UNAVAILABLE.to_owned())?;
+        answer
+            .recv_timeout(REPLY_TIMEOUT)
+            .map_err(|error| match error {
+                RecvTimeoutError::Timeout => "browsing history timed out".to_owned(),
+                RecvTimeoutError::Disconnected => UNAVAILABLE.to_owned(),
+            })?
+    }
+}
+
+impl Shared {
+    fn queue(&self) -> &SyncSender<Request> {
+        self.queue.get_or_init(|| {
+            let (sender, receiver) = sync_channel(QUEUE);
+            let path = self.path.clone();
+            if let Err(error) = std::thread::Builder::new()
+                .name("sage-browsing-history".into())
+                .spawn(move || run(&path, &receiver))
+            {
+                // The receiver is gone with the closure: writes are dropped
+                // and reads report the store unavailable.
+                eprintln!("browsing history worker failed to start: {error}");
+            }
+            sender
+        })
+    }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+        })
+}
+
+/// The worker: drains the queue in order, batching consecutive writes into
+/// one transaction. It ends when every handle is gone.
+fn run(path: &std::path::Path, receiver: &Receiver<Request>) {
+    let mut connection: Option<Connection> = None;
+    let mut writes = Vec::with_capacity(MAX_BATCH);
+    while let Ok(first) = receiver.recv() {
+        let mut next = Some(first);
+        while let Some(request) = next.take() {
+            match request {
+                Request::Write(write) => {
+                    writes.push(write);
+                    if writes.len() < MAX_BATCH {
+                        next = receiver.try_recv().ok();
+                    }
+                }
+                Request::Read(read) => {
+                    flush(path, &mut connection, &mut writes);
+                    answer(path, &mut connection, read);
+                }
+            }
+        }
+        flush(path, &mut connection, &mut writes);
+    }
+}
+
+/// Opens the database on first use, and again after a failed open, so a
+/// transient failure does not disable history for the session.
+fn connect<'a>(
+    path: &std::path::Path,
+    connection: &'a mut Option<Connection>,
+) -> Result<&'a mut Connection, String> {
+    if connection.is_none() {
+        let opened = path
+            .to_str()
+            .ok_or_else(|| "browsing history path is not UTF-8".to_owned())
+            .and_then(|path| store::open(path).map_err(|error| error.to_string()));
+        match opened {
+            Ok(opened) => *connection = Some(opened),
+            Err(error) => {
+                eprintln!("browsing history could not open: {error}");
+                return Err(UNAVAILABLE.into());
+            }
+        }
+    }
+    connection.as_mut().ok_or_else(|| UNAVAILABLE.into())
+}
+
+fn flush(path: &std::path::Path, connection: &mut Option<Connection>, writes: &mut Vec<Write>) {
+    if writes.is_empty() {
+        return;
+    }
+    if let Ok(connection) = connect(path, connection)
+        && let Err(error) = store::write(connection, writes, now_ms())
+    {
+        eprintln!("browsing history write failed: {error}");
+    }
+    writes.clear();
+}
+
+fn answer(path: &std::path::Path, connection: &mut Option<Connection>, read: Read) {
+    let opened = connect(path, connection);
+    let failed = |error: rusqlite::Error| error.to_string();
+    // A reader that gave up has dropped its receiver; nothing to report.
+    match read {
+        Read::Page {
+            search,
+            before,
+            limit,
+            reply,
+        } => {
+            let _ = reply.send(opened.and_then(|connection| {
+                store::page(connection, &search, before, limit).map_err(failed)
+            }));
+        }
+        Read::Remove { ids, reply } => {
+            let _ = reply.send(
+                opened.and_then(|connection| store::remove(connection, &ids).map_err(failed)),
+            );
+        }
+        Read::RemoveRange { from, to, reply } => {
+            let _ =
+                reply.send(opened.and_then(|connection| {
+                    store::remove_range(connection, from, to).map_err(failed)
+                }));
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "browsing_history_tests.rs"]
+mod tests;

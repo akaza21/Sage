@@ -85,8 +85,39 @@ export function browserSuggestedSites(): Promise<string[]> {
   return invokeNative("browser_suggested_sites");
 }
 
-export function browserHistory(tabId: string): Promise<string[]> {
-  return invokeNative("browser_history", { tabId });
+/** One visit in the global browsing history (BF-7c). */
+export interface BrowserVisit {
+  id: number;
+  url: string;
+  title: string | null;
+  /** Milliseconds since the Unix epoch. */
+  visitedAt: number;
+}
+
+/** Where the next page starts: strictly older than this visit. */
+export interface BrowserHistoryCursor {
+  visitedAt: number;
+  id: number;
+}
+
+export interface BrowserHistoryPage {
+  visits: BrowserVisit[];
+  next: BrowserHistoryCursor | null;
+}
+
+/** The most visits one page or one removal may carry. */
+export const BROWSER_HISTORY_PAGE_LIMIT = 100;
+
+export function browserHistoryPage(query: {
+  search: string;
+  before: BrowserHistoryCursor | null;
+  limit: number;
+}): Promise<BrowserHistoryPage> {
+  return invokeNative("browser_history_page", { query });
+}
+
+export function browserHistoryRemove(ids: readonly number[]): Promise<number> {
+  return invokeNative("browser_history_remove", { ids });
 }
 
 export function closeBrowser(tabId: string): Promise<void> {

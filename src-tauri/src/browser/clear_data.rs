@@ -179,6 +179,18 @@ pub(crate) async fn browser_clear_data(
         }
     }
     if result.error.is_none() {
+        // Every tab is closed, so no visit can follow the clear; visits
+        // queued before it are removed with the rest.
+        let history = state.browsing_history.clone();
+        if let Err(error) = tauri::async_runtime::spawn_blocking(move || history.clear())
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|outcome| outcome)
+        {
+            result.error = Some(error);
+        }
+    }
+    if result.error.is_none() {
         #[cfg(windows)]
         let clear_webview = temporary.clone();
         #[cfg(windows)]

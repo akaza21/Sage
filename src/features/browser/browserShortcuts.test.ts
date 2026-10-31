@@ -40,6 +40,7 @@ describe("browser chrome shortcuts", () => {
       [{ key: "0", ctrlKey: true }, "zoomReset"],
       [{ key: "t", ctrlKey: true }, "newTab"],
       [{ key: "w", ctrlKey: true }, "closeTab"],
+      [{ key: "h", ctrlKey: true }, "history"],
       [{ key: "Escape" }, "stop"],
     ] as const) {
       const event = press(root, address, init);

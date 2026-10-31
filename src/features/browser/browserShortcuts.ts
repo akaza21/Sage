@@ -12,6 +12,7 @@ export type BrowserShortcut =
   | "zoomReset"
   | "newTab"
   | "closeTab"
+  | "history"
   | "stop";
 
 export function dispatchBrowserChromeShortcut(
@@ -32,6 +33,7 @@ export function dispatchBrowserChromeShortcut(
           f: "find",
           t: "newTab",
           w: "closeTab",
+          h: "history",
           "0": "zoomReset",
           "-": "zoomOut",
         } as const
@@ -72,6 +74,7 @@ interface BrowserShortcutActions {
   zoomPercent: number;
   newTab: () => void;
   closeTab: () => void;
+  history: () => void;
 }
 
 export function performBrowserShortcut(
@@ -107,6 +110,9 @@ export function performBrowserShortcut(
       break;
     case "closeTab":
       actions.closeTab();
+      break;
+    case "history":
+      actions.history();
       break;
   }
 }

@@ -42,9 +42,17 @@ const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
 const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
-const browserHistory = vi.fn(async (_tabId: string) => [
-  "https://example.com/",
-]);
+const browserHistoryPage = vi.fn(async (_query: unknown) => ({
+  visits: [
+    {
+      id: 1,
+      url: "https://history.example/page",
+      title: "History Example",
+      visitedAt: Date.now(),
+    },
+  ],
+  next: null,
+}));
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -65,7 +73,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserCaptureScreenshot: (tabId: string, revision: string) =>
     browserCaptureScreenshot(tabId, revision),
   browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistory: (tabId: string) => browserHistory(tabId),
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),

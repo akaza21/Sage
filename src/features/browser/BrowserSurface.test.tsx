@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
@@ -35,9 +36,17 @@ const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
 const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
-const browserHistory = vi.fn(async (_tabId: string) => [
-  "https://example.com/",
-]);
+const browserHistoryPage = vi.fn(async (_query: unknown) => ({
+  visits: [
+    {
+      id: 1,
+      url: "https://history.example/page",
+      title: "History Example",
+      visitedAt: Date.now(),
+    },
+  ],
+  next: null,
+}));
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -72,7 +81,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     browserFind(tabId, action, query),
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
   browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistory: (tabId: string) => browserHistory(tabId),
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
@@ -736,4 +746,52 @@ it("still hides the native page for real when the centre pane is hidden", async 
   act(() => center.setAttribute("aria-hidden", "true"));
   await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   center.remove();
+});
+
+it("opens History over the covered page and opens a chosen visit in this tab", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  coverBrowser.mockClear();
+  positionBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  const history = await screen.findByRole("region", { name: "History" });
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
+  expect(positionBrowser).not.toHaveBeenCalled();
+  expect(browserHistoryPage).toHaveBeenCalledWith({
+    search: "",
+    before: null,
+    limit: 50,
+  });
+  fireEvent.click(
+    await within(history).findByRole("button", {
+      name: /^(?!Remove ).*History Example/,
+    }),
+  );
+  await waitFor(() =>
+    expect(browserNavigate).toHaveBeenCalledWith(
+      tab.id,
+      "https://history.example/page",
+    ),
+  );
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  expect(hideBrowser).not.toHaveBeenCalled();
+});
+
+it("opens History with Ctrl+H and closes it with Escape", async () => {
+  render(<BrowserSurface tab={tab} />);
+  const address = await screen.findByRole("textbox", {
+    name: "Address or search",
+  });
+  fireEvent.keyDown(address, { key: "h", ctrlKey: true });
+  const search = await screen.findByRole("searchbox", {
+    name: "Search history",
+  });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
 });

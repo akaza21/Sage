@@ -185,53 +185,20 @@ export function BrowserSitePermissions({
 export function BrowserDrawers({
   tabId,
   settingsOpen,
-  historyOpen,
-  historyEntries,
   onCloseSettings,
-  onCloseHistory,
-  onNavigate,
 }: {
   tabId: string;
   settingsOpen: boolean;
-  historyOpen: boolean;
-  historyEntries: readonly string[];
   onCloseSettings: () => void;
-  onCloseHistory: () => void;
-  onNavigate: (url: string) => void;
 }) {
-  return (
-    <>
-      {settingsOpen ? (
-        <aside className="browser-surface__drawer" aria-label="Site settings">
-          <button type="button" onClick={onCloseSettings}>
-            Close site settings
-          </button>
-          <BrowserSitePermissions tabId={tabId} showEmpty />
-        </aside>
-      ) : (
-        <BrowserSitePermissions tabId={tabId} />
-      )}
-      {historyOpen ? (
-        <aside className="browser-surface__drawer" aria-label="Browser history">
-          <button type="button" onClick={onCloseHistory}>
-            Close history
-          </button>
-          <h2>History</h2>
-          {historyEntries.length ? (
-            <ul>
-              {historyEntries.map((url) => (
-                <li key={url}>
-                  <button type="button" onClick={() => onNavigate(url)}>
-                    {url}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No history for this tab yet.</p>
-          )}
-        </aside>
-      ) : null}
-    </>
+  return settingsOpen ? (
+    <aside className="browser-surface__drawer" aria-label="Site settings">
+      <button type="button" onClick={onCloseSettings}>
+        Close site settings
+      </button>
+      <BrowserSitePermissions tabId={tabId} showEmpty />
+    </aside>
+  ) : (
+    <BrowserSitePermissions tabId={tabId} />
   );
 }

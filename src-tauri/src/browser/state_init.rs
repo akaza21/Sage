@@ -6,7 +6,9 @@ use std::{
 use crate::launch_profile::LaunchProfile;
 
 use super::{
-    BrowserState, BrowserTabs, PopupRequests, annotate, downloads,
+    BrowserState, BrowserTabs, PopupRequests, annotate,
+    browsing_history::BrowsingHistory,
+    downloads,
     profile::{browser_profile_dir, validate_project_roots},
     site_permissions,
 };
@@ -28,8 +30,14 @@ impl BrowserState {
             return Err("browser tab labels exhausted".into());
         }
         let profile_dir = browser_profile_dir(profile, ui_webview_dir, active_project_roots)?;
+        let browsing_history = BrowsingHistory::open(
+            profile
+                .durable_dir()
+                .join(super::browsing_history::FILE_NAME),
+        );
         let mut tabs = BrowserTabs::new();
         tabs.next_number = next_number;
+        tabs.browsing_history = browsing_history.clone();
         Ok(Self {
             profile_dir,
             tabs: Mutex::new(tabs),
@@ -38,6 +46,7 @@ impl BrowserState {
             popups: Mutex::new(PopupRequests::default()),
             annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
+            browsing_history,
         })
     }
 
