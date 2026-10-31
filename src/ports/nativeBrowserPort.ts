@@ -137,6 +137,8 @@ export interface BrowserNavigation {
   zoomPercent: number;
   /** The device toolbar's emulation, as Rust holds it for the tab. */
   device?: BrowserDevice | null;
+  /** A reset step failed, so some override may still be on the page. */
+  deviceUnconfirmed?: boolean;
   error?: string | null;
   printUnavailableReason?: string | null;
   annotateUnavailableReason?: string | null;

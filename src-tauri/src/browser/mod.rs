@@ -138,7 +138,7 @@ struct BrowserSnapshot {
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
-    device: Option<device::DeviceEmulation>,
+    device: device::DeviceHeld,
     navigation_id: Option<u64>,
     revision: u64,
     committed_url: Option<String>,
@@ -240,7 +240,7 @@ impl<T> BrowserTabs<T> {
             title: tab.title.clone(),
             favicon: tab.favicon.clone(),
             zoom_percent: tab.zoom_percent,
-            device: tab.device.applied(),
+            device: tab.device.held(),
             navigation_id: tab.navigation_id,
             revision: tab.revision,
             committed_url: if tab.last_error.is_none() {

@@ -37,7 +37,7 @@ export function BrowserDeviceController({
 }: {
   tabId: string;
   open: boolean;
-  restored: BrowserDevice | null;
+  restored: BrowserDevice | "unconfirmed" | null;
   frame: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
   onError: (message: string) => void;

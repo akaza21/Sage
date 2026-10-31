@@ -319,7 +319,7 @@ fn the_tab_holds_its_emulation_without_changing_the_page_revision() {
     let request = tabs.request_device("browser-1").unwrap();
     assert!(tabs.settle_device("browser-1", request, DeviceHeld::Known(Some(device))));
     let snapshot = tabs.snapshot("browser-1").unwrap();
-    assert_eq!(snapshot.device, Some(device));
+    assert_eq!(snapshot.device, DeviceHeld::Known(Some(device)));
     assert_eq!(snapshot.revision, before);
     assert_eq!(
         serde_json::to_value(device).unwrap(),
@@ -327,11 +327,17 @@ fn the_tab_holds_its_emulation_without_changing_the_page_revision() {
     );
     let request = tabs.request_device("browser-1").unwrap();
     assert!(tabs.settle_device("browser-1", request, DeviceHeld::Known(None)));
-    assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().device,
+        DeviceHeld::Known(None)
+    );
     let request = tabs.request_device("browser-1").unwrap();
     assert!(tabs.settle_device("browser-1", request, DeviceHeld::Unconfirmed));
-    // An unconfirmed page is never restored as a device it may not hold.
-    assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
+    // The status keeps the unknown state: no device to restore, but a
+    // remounted toolbar still shows that some override may be on.
+    let held = tabs.snapshot("browser-1").unwrap().device;
+    assert_eq!(held, DeviceHeld::Unconfirmed);
+    assert_eq!((held.confirmed(), held.is_unconfirmed()), (None, true));
     assert_eq!(tabs.device_held("browser-1"), DeviceHeld::Unconfirmed);
     assert_eq!(tabs.request_device("browser-2"), None);
 }
@@ -346,7 +352,13 @@ fn only_the_latest_overlapping_update_is_recorded() {
     assert!(tabs.latest_device("browser-1", newer));
     let device = admitted("iphone-se", 375, 667, 100);
     assert!(!tabs.settle_device("browser-1", older, DeviceHeld::Known(Some(device))));
-    assert_eq!(tabs.snapshot("browser-1").unwrap().device, None);
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().device,
+        DeviceHeld::Known(None)
+    );
     assert!(tabs.settle_device("browser-1", newer, DeviceHeld::Known(Some(device))));
-    assert_eq!(tabs.snapshot("browser-1").unwrap().device, Some(device));
+    assert_eq!(
+        tabs.snapshot("browser-1").unwrap().device,
+        DeviceHeld::Known(Some(device))
+    );
 }

@@ -497,3 +497,56 @@ it("never carries one tab's device over to the next tab in the same pane", async
   );
   expect(document.querySelector("[data-device]")).toBeNull();
 });
+
+it("restores the Unconfirmed warning on remount without touching the page", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    device: null,
+    deviceUnconfirmed: true,
+  });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("toolbar", { name: "Device toolbar" });
+  expect(screen.getByRole("status")).toHaveTextContent("Unconfirmed");
+  await act(async () => undefined);
+  expect(browserSetDevice).not.toHaveBeenCalled();
+  // Closing is the recovery: it sends the reset whatever the toolbar shows.
+  fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
+  await waitFor(() =>
+    expect(browserSetDevice).toHaveBeenCalledWith(tab.id, null),
+  );
+  expect(browserSetDevice).toHaveBeenCalledTimes(1);
+});
+
+it("sends the first change after an Unconfirmed restore", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/",
+    revision: "1",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+    device: null,
+    deviceUnconfirmed: true,
+  });
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("toolbar", { name: "Device toolbar" });
+  fireEvent.change(screen.getByRole("combobox", { name: "Dimensions:" }), {
+    target: { value: "iphone-se" },
+  });
+  await waitFor(() =>
+    expect(browserSetDevice).toHaveBeenCalledWith(
+      tab.id,
+      expect.objectContaining({ preset: "iphone-se" }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Unconfirmed")).not.toBeInTheDocument(),
+  );
+});

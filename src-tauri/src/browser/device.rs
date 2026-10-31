@@ -199,6 +199,20 @@ impl Default for DeviceHeld {
     }
 }
 
+impl DeviceHeld {
+    /// The emulation a remounted toolbar restores: only a confirmed one.
+    pub(crate) fn confirmed(self) -> Option<DeviceEmulation> {
+        match self {
+            Self::Known(device) => device,
+            Self::Unconfirmed => None,
+        }
+    }
+
+    pub(crate) fn is_unconfirmed(self) -> bool {
+        self == Self::Unconfirmed
+    }
+}
+
 /// A tab's device emulation: what the page holds, and how many updates were
 /// asked for, so only the latest request lands when two overlap.
 #[derive(Default)]
@@ -209,12 +223,8 @@ pub(crate) struct TabDevice {
 }
 
 impl TabDevice {
-    /// The emulation a remounted toolbar restores: only a confirmed one.
-    pub(crate) fn applied(&self) -> Option<DeviceEmulation> {
-        match self.held {
-            DeviceHeld::Known(device) => device,
-            DeviceHeld::Unconfirmed => None,
-        }
+    pub(crate) fn held(&self) -> DeviceHeld {
+        self.held
     }
 }
 

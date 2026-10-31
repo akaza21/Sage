@@ -108,8 +108,9 @@ export function useBrowserDevice({
 }: {
   tabId: string;
   open: boolean;
-  /** The emulation this tab's status reports, shown when the toolbar opens. */
-  restored: BrowserDevice | null;
+  /** What this tab's status reports, used the first time the toolbar opens
+   * for the tab: its device, or `"unconfirmed"` when a reset step failed. */
+  restored: BrowserDevice | typeof UNCONFIRMED | null;
   frame: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
   onError: (message: string) => void;
@@ -119,6 +120,11 @@ export function useBrowserDevice({
   const [shownTab, setShownTab] = useState(tabId);
   /** Whether a reset step failed on this tab since its last good update. */
   const [unconfirmed, setUnconfirmed] = useState(false);
+  /** The tab whose status the toolbar has restored from, once per tab. */
+  const [restoredTab, setRestoredTab] = useState<string | null>(null);
+  /** Restored unconfirmed: nothing is sent until the user picks a size or
+   * closes, so the toolbar never changes a page it cannot vouch for. */
+  const [awaitingUser, setAwaitingUser] = useState(false);
   const queue = useRef<DeviceQueue>({ running: false, waiting: new Map() });
   /** What was last asked of Rust, or found on the page, and for which tab. */
   const sent = useRef<{ tabId: string; device: SentDevice }>({
@@ -132,13 +138,21 @@ export function useBrowserDevice({
     setSize(null);
     setArea(null);
     setUnconfirmed(false);
+    setRestoredTab(null);
+    setAwaitingUser(false);
   } else if (open && size === null) {
+    const restore = restoredTab === tabId ? null : restored;
+    setRestoredTab(tabId);
+    if (restore === UNCONFIRMED) {
+      setUnconfirmed(true);
+      setAwaitingUser(true);
+    }
     setSize(
-      restored
+      restore && restore !== UNCONFIRMED
         ? {
-            preset: restored.preset,
-            width: restored.width,
-            height: restored.height,
+            preset: restore.preset,
+            width: restore.width,
+            height: restore.height,
           }
         : FIT,
     );
@@ -218,21 +232,31 @@ export function useBrowserDevice({
       scalePercent === null
     )
       return; // Not measured yet: nothing to send.
+    else if (awaitingUser)
+      return; // Restored unconfirmed: wait for the user.
     else wanted = { preset, width, height, scalePercent };
-    const last = sent.current.tabId === tabId ? sent.current.device : null;
+    // Restored unconfirmed, the page may hold anything: a close is sent.
+    const last = awaitingUser
+      ? UNCONFIRMED
+      : sent.current.tabId === tabId
+        ? sent.current.device
+        : null;
     if (sameDevice(wanted, last)) return;
     sent.current = { tabId, device: wanted };
     enqueue(queue.current, tabId, wanted, (settledTab, failure) =>
       settled.current(settledTab, failure),
     );
-  }, [tabId, shown, preset, width, height, scalePercent]);
+  }, [tabId, shown, preset, width, height, scalePercent, awaitingUser]);
 
   return {
     size: device,
     shown,
     scalePercent,
     unconfirmed,
-    change: setSize,
+    change: (next) => {
+      setAwaitingUser(false);
+      setSize(next);
+    },
   };
 }
 
