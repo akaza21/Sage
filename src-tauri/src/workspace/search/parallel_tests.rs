@@ -253,3 +253,50 @@ fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
     }
     fs::remove_dir_all(path).unwrap();
 }
+
+/// Where reading each entry's file type is slow, read-ahead must not hold a
+/// folder's listing back until every entry is checked: the time limit would
+/// then land before the walk reached a File one thread reads first.
+#[test]
+fn slow_file_types_keep_the_first_match_before_the_time_limit() {
+    let path = std::env::temp_dir().join(format!("sage-search-slow-types-{}", Uuid::new_v4()));
+    fs::create_dir_all(&path).unwrap();
+    fs::write(path.join("a.txt"), "needle\n").unwrap();
+    for file in 0..60 {
+        fs::write(path.join(format!("b{file:02}.txt")), "nothing\n").unwrap();
+    }
+    let limits = SearchLimits {
+        max_duration: std::time::Duration::from_secs(1),
+        ..SearchLimits::default()
+    };
+    // Checking every entry first would take 61 × 50 ms, three times the
+    // limit; reading `a.txt` first takes one delay.
+    for threads in [1, 4] {
+        let mut engine = SearchEngine::new(limits);
+        engine.threads = threads;
+        engine.file_type_delay = Some(std::time::Duration::from_millis(50));
+        let response = engine
+            .search(
+                request("needle"),
+                vec![SearchRoot {
+                    root_id: "root-test".into(),
+                    root_name: "fixture".into(),
+                    source: SearchRootSource::Available(
+                        Workspace::open("project-test", "root-test", &path).unwrap(),
+                    ),
+                }],
+            )
+            .unwrap();
+        assert!(
+            response.limit_reasons.contains(&SearchLimitReason::Time),
+            "{threads} threads"
+        );
+        let found = response
+            .matches
+            .iter()
+            .map(|found| found.resource.relative_path.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(found, ["a.txt"], "{threads} threads");
+    }
+    fs::remove_dir_all(path).unwrap();
+}

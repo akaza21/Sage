@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, fs};
+use std::{
+    collections::VecDeque,
+    fs::{self, DirEntry},
+    ops::Deref,
+};
 
 use crate::workspace::{
     Workspace,
@@ -21,6 +25,24 @@ use super::{
         WorkspaceSearchMatch, contract_join, push_reason,
     },
 };
+
+/// An entry of the folder being walked: listed by the walk itself, or
+/// borrowed from a listing read ahead.
+enum FolderEntry<'a> {
+    Listed(DirEntry),
+    ReadAhead(&'a DirEntry),
+}
+
+impl Deref for FolderEntry<'_> {
+    type Target = DirEntry;
+
+    fn deref(&self) -> &DirEntry {
+        match self {
+            Self::Listed(entry) => entry,
+            Self::ReadAhead(entry) => entry,
+        }
+    }
+}
 
 impl SearchEngine {
     #[allow(clippy::too_many_arguments)]
@@ -110,20 +132,32 @@ impl SearchEngine {
                 }
                 let listing = prefetch.as_mut().and_then(|prefetch| prefetch.take(front));
                 front += 1;
-                let (read_directory, mut ahead): (Box<dyn Iterator<Item = _>>, _) = match listing {
+                let (listed_ahead, mut ahead) = match listing {
                     Some(listing) => (
-                        Box::new(listing.entries.into_iter()),
+                        Some(listing.entries),
                         Some((listing.folder_rules, listing.scans)),
                     ),
-                    None => match fs::read_dir(&directory) {
-                        Ok(entries) => (Box::new(entries), None),
-                        Err(_) => {
-                            counters.error_count += 1;
-                            counters.partial = true;
-                            continue;
-                        }
-                    },
+                    None => (None, None),
                 };
+                // Only whether an entry failed to list matters, not why.
+                let read_directory: Box<dyn Iterator<Item = Result<FolderEntry<'_>, ()>>> =
+                    match &listed_ahead {
+                        Some(entries) => {
+                            Box::new(entries.iter().map(|entry| {
+                                entry.as_ref().map(FolderEntry::ReadAhead).map_err(drop)
+                            }))
+                        }
+                        None => match fs::read_dir(&directory) {
+                            Ok(entries) => Box::new(
+                                entries.map(|entry| entry.map(FolderEntry::Listed).map_err(drop)),
+                            ),
+                            Err(_) => {
+                                counters.error_count += 1;
+                                counters.partial = true;
+                                continue;
+                            }
+                        },
+                    };
                 let mut entries = Vec::new();
                 let mut rule_files = RuleFiles::default();
                 let mut cut_short = false;
@@ -219,7 +253,7 @@ impl SearchEngine {
                         counters.partial = true;
                         continue;
                     }
-                    let file_type = match entry.file_type() {
+                    let file_type = match self.entry_file_type(&entry) {
                         Ok(file_type) => file_type,
                         Err(_) => {
                             counters.error_count += 1;

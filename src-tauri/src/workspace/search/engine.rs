@@ -1,4 +1,9 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    fs::{DirEntry, FileType},
+    io,
+    path::PathBuf,
+    time::Instant,
+};
 
 use crate::{
     error::{AppError, AppResult},
@@ -27,6 +32,10 @@ pub struct SearchEngine {
     /// lands at the same place on every run.
     #[cfg(test)]
     pub(super) time_checks_left: Option<std::sync::atomic::AtomicU64>,
+    /// Tests make each entry's file type this slow to read, as on a
+    /// filesystem whose listings leave it out.
+    #[cfg(test)]
+    pub(super) file_type_delay: Option<std::time::Duration>,
 }
 
 pub(super) struct SearchBudget {
@@ -54,6 +63,8 @@ impl SearchEngine {
             threads: super::file_prefetch::search_threads(),
             #[cfg(test)]
             time_checks_left: None,
+            #[cfg(test)]
+            file_type_delay: None,
         }
     }
 
@@ -191,6 +202,16 @@ impl SearchEngine {
             return true;
         }
         false
+    }
+
+    /// The entry's file type, which costs a metadata read where the listing
+    /// left it out.
+    pub(super) fn entry_file_type(&self, entry: &DirEntry) -> io::Result<FileType> {
+        #[cfg(test)]
+        if let Some(delay) = self.file_type_delay {
+            std::thread::sleep(delay);
+        }
+        entry.file_type()
     }
 
     fn out_of_time(&self, started_at: Instant) -> bool {

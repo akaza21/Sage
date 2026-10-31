@@ -47,8 +47,9 @@ pub(super) struct QueuedFolder {
 
 /// One folder, listed and read ahead.
 pub(super) struct Listing {
-    /// Every entry, in the order the platform listed them.
-    pub(super) entries: Vec<io::Result<DirEntry>>,
+    /// Every entry, in the order the platform listed them, shared with the
+    /// worker reading the folder's Files.
+    pub(super) entries: Arc<[io::Result<DirEntry>]>,
     /// The rules in force inside the folder, from the complete listing.
     pub(super) folder_rules: FolderChain,
     /// The folder's Files as a worker reads them, so the walk can go on as
@@ -258,8 +259,10 @@ impl Drop for Prefetch {
 }
 
 /// Lists the folder, hands the listing to `deliver` and then reads its
-/// Files one by one, each handed over as soon as it is read. Returns early,
-/// without delivering, for a folder the walk should list itself.
+/// Files one by one in name order, each handed over as soon as it is read.
+/// Returns early, without delivering, for a folder the walk should list
+/// itself. Nothing that may touch the disk per entry runs before delivery,
+/// so the walk is never kept waiting past where it would have read a File.
 fn read_folder(
     context: WalkContext<'_>,
     job: Job,
@@ -280,6 +283,7 @@ fn read_folder(
         }
         entries.push(entry);
     }
+    let entries = Arc::<[_]>::from(entries);
     let folder_rules = context
         .rules
         .enter(&job.parent_rules, &job.relative, rule_files);
@@ -291,18 +295,18 @@ fn read_folder(
         });
         return;
     };
-    let mut files = entries
-        .iter()
-        .filter_map(|entry| entry.as_ref().ok())
-        .filter_map(|entry| searchable_file(entry, &job.relative, &context, &folder_rules))
-        .collect::<Vec<(String, String)>>();
     // In walk order: the walk takes them in turn, and the reads stop where
     // a page would.
-    files.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    let mut named = entries
+        .iter()
+        .filter_map(|entry| entry.as_ref().ok())
+        .filter_map(|entry| Some((entry.file_name().into_string().ok()?, entry)))
+        .collect::<Vec<_>>();
+    named.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let (scanned, arriving) = mpsc::channel();
     let listing = Listing {
-        entries,
-        folder_rules,
+        entries: Arc::clone(&entries),
+        folder_rules: folder_rules.clone(),
         scans: FolderScans {
             arriving: Some(arriving),
             next: None,
@@ -313,7 +317,7 @@ fn read_folder(
     }
     let max_results = context.engine.limits.max_results;
     let (mut found, mut bytes) = (0_usize, 0_u64);
-    for (name, relative) in files {
+    for (name, entry) in named {
         if stop.load(Ordering::Relaxed) {
             return;
         }
@@ -325,6 +329,10 @@ fn read_folder(
         {
             break;
         }
+        let Some(relative) = searchable_file(entry, &name, &job.relative, &context, &folder_rules)
+        else {
+            continue;
+        };
         // Only the whole budget left is safe to pass: the walk may not
         // charge every byte counted here (an oversized File is skipped).
         let scan = context.engine.scan_file(
@@ -344,21 +352,21 @@ fn read_folder(
     }
 }
 
-/// The name and root-relative path of an entry the walk will read as a
-/// File, by the walk's own tests; None for anything else. Getting this wrong
-/// costs only speed: the walk reads any File that was not read ahead itself.
+/// The root-relative path of an entry the walk will read as a File, by the
+/// walk's own tests; None for anything else. Getting this wrong costs only
+/// speed: the walk reads any File that was not read ahead itself.
 fn searchable_file(
     entry: &DirEntry,
+    name: &str,
     folder: &str,
     context: &WalkContext<'_>,
     folder_rules: &FolderChain,
-) -> Option<(String, String)> {
-    let name = entry.file_name().into_string().ok()?;
+) -> Option<String> {
     if name.contains('\\') || name.contains('/') {
         return None;
     }
-    let relative = contract_join(folder, &name);
-    let file_type = entry.file_type().ok()?;
+    let relative = contract_join(folder, name);
+    let file_type = context.engine.entry_file_type(entry).ok()?;
     let admitted = relative.len() <= MAX_RESOURCE_PATH_BYTES
         && file_type.is_file()
         && !context.excluded.matches(&relative)
@@ -368,5 +376,5 @@ fn searchable_file(
             context.include_patterns,
             context.exclude_patterns,
         );
-    admitted.then_some((name, relative))
+    admitted.then_some(relative)
 }
