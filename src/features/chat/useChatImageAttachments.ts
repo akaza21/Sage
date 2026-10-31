@@ -54,7 +54,7 @@ export function useChatImageAttachments(
     } catch {
       useWorkbenchStore.getState().setChatActionState(intent, {
         sending: false,
-        error: "Could not load image controls. Try again.",
+        error: "Image controls unavailable. Try again.",
       });
     } finally {
       busy.current = false;
@@ -81,7 +81,7 @@ export function useChatImageAttachments(
       .catch(() => {
         useWorkbenchStore.getState().setChatActionState(intent, {
           sending: false,
-          error: "Could not load image controls. Try again.",
+          error: "Image controls unavailable. Try again.",
         });
       })
       .finally(() => {

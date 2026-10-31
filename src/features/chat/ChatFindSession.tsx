@@ -75,10 +75,10 @@ export function ChatFindSession({
     setExpandedKey(
       [
         ...scrollport.querySelectorAll<HTMLDetailsElement>(
-          "details[data-worked-turn-id][open]",
+          "details[open][data-worked]",
         ),
       ]
-        .map((node) => node.dataset.workedTurnId!)
+        .map((node) => node.dataset.worked!)
         .join("\0"),
     );
   }, [scrollport]);

@@ -113,7 +113,6 @@ export function chatTurnText(
       const cached = cache.get(item);
       if (cached) return cached;
       let rendered: ReturnType<typeof segments> | undefined;
-      const read = () => (rendered ??= segments(item.payload.text));
       const message = {
         itemId: item.id,
         role: item.payload.role as "user" | "assistant",
@@ -122,10 +121,10 @@ export function chatTurnText(
           MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
         ),
         get segments() {
-          return read().segments;
+          return (rendered ??= segments(item.payload.text)).segments;
         },
         get previewLimited() {
-          return read().previewLimited;
+          return (rendered ??= segments(item.payload.text)).previewLimited;
         },
       };
       cache.set(item, message);

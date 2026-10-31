@@ -13,23 +13,26 @@ afterEach(cleanup);
 it("finds an admitted model beyond the display cap and keeps its exact identity", () => {
   let selection = "";
   render(
-    <ChatModelPicker
-      listboxId="models"
-      models={Array.from({ length: 205 }, (_, index) => ({
-        id: `model-${index}`,
-        name: `Model ${index}`,
-      }))}
-      selectedId="model-204"
-      disabled={false}
-      onSelect={(id) => {
-        selection = id;
-      }}
-    />,
+    <div className="menu-popover">
+      <ChatModelPicker
+        listboxId="models"
+        models={Array.from({ length: 205 }, (_, index) => ({
+          id: `model-${index}`,
+          name: `Model ${index}`,
+        }))}
+        selectedId="model-204"
+        disabled={false}
+        onSelect={(id) => {
+          selection = id;
+        }}
+      />
+    </div>,
   );
   expect(screen.getByRole("option", { name: "Model 204" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
+  expect(screen.getByRole("option", { name: "Model 204" })).toHaveFocus();
   const query = screen.getByRole("searchbox", { name: "Search models" });
   fireEvent.change(query, { target: { value: "Model 203" } });
   fireEvent.click(screen.getByRole("option", { name: "Model 203" }));

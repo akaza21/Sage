@@ -35,6 +35,7 @@ export function AnswerActions({
     [],
   );
   const CopyIcon = copied ? Check : Copy;
+  const copyLabel = copied ? "Copied" : user ? "Copy message" : "Copy";
   const time = createdAt === undefined ? null : chatTimestamp(createdAt);
 
   async function copyAnswer() {
@@ -61,8 +62,8 @@ export function AnswerActions({
     >
       <button
         type="button"
-        aria-label={copied ? "Copied" : user ? "Copy message" : "Copy"}
-        title={copied ? "Copied" : user ? "Copy message" : "Copy"}
+        aria-label={copyLabel}
+        title={copyLabel}
         onClick={() => void copyAnswer()}
       >
         <CopyIcon size={14} aria-hidden="true" />

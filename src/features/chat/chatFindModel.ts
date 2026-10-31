@@ -62,21 +62,16 @@ export function findChatMatches(
   const needle = query.toLowerCase();
   if (!needle) return result;
   let budget = MAX_CHAT_FIND_SCAN_CHARS;
-  let sourceBudget = MAX_CHAT_FIND_SCAN_CHARS;
   for (const turn of turns) {
     for (const message of chatTurnText(turn, expandedTurns.has(turn.id))) {
-      if (message.sourceChars > sourceBudget) {
+      if (message.sourceChars > budget) {
         result.scanLimited = true;
         return result;
       }
-      sourceBudget -= message.sourceChars;
+      // Source bounds both lazy Markdown parsing and the shorter rendered text.
+      budget -= message.sourceChars;
       if (message.previewLimited) result.previewLimited = true;
       for (const [segment, { text }] of message.segments.entries()) {
-        if (budget < text.length) {
-          result.scanLimited = true;
-          return result;
-        }
-        budget -= text.length;
         const folded = text.toLowerCase();
         const offsets =
           folded.length === text.length ? null : foldedOffsets(text);

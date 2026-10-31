@@ -28,9 +28,11 @@ export function ChatModelPicker({
   const listRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!listRef.current?.closest(".menu-popover")) return;
-    listRef.current
-      .querySelector<HTMLElement>('[aria-selected="true"], [role="option"]')
-      ?.focus();
+    const list = listRef.current;
+    (
+      list.querySelector<HTMLElement>('[aria-selected="true"]') ??
+      list.querySelector<HTMLElement>('[role="option"]')
+    )?.focus();
   }, []);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();

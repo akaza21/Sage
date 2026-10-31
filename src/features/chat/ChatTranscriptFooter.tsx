@@ -94,7 +94,7 @@ export function ChatTranscriptTurnSummary({
     <>
       <details
         className="chat-transcript-work"
-        data-worked-turn-id={turn.id}
+        data-worked={turn.id}
         open={expanded}
         onToggle={(event) => {
           if (event.currentTarget.open !== expanded)
