@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Terminal } from "@xterm/xterm";
+import { useEffect, useRef } from "react";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import {
@@ -15,29 +15,8 @@ import { utf8ByteLength } from "../domain/text";
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
 
-/** Resolve CSS roles to concrete colors, including aliases and color-mix. */
-function terminalTheme(element: HTMLElement) {
-  const probe = document.createElement("span");
-  probe.hidden = true;
-  element.append(probe);
-  const color = (token: string) => {
-    probe.style.color = `var(${token})`;
-    return getComputedStyle(probe).color;
-  };
-  const theme = {
-    background: color("--color-canvas"),
-    foreground: color("--color-text-primary"),
-    cursor: color("--color-text-emphasis"),
-    cursorAccent: color("--color-canvas"),
-    selectionBackground: color("--color-selection"),
-    selectionForeground: color("--color-text-emphasis"),
-  };
-  probe.remove();
-  return theme;
-}
-
 function errorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
+  return error !== null && typeof error === "object"
     ? (error as { code?: unknown }).code
     : undefined;
 }
@@ -59,6 +38,7 @@ export type TerminalDockProps = {
   session: UserTerminalSession;
   ended: boolean;
   onStatus: (status: string, ended?: boolean) => void;
+  getTheme: (element: HTMLElement) => ITheme;
 };
 
 export function TerminalDock({
@@ -66,24 +46,19 @@ export function TerminalDock({
   session,
   ended,
   onStatus,
+  getTheme,
 }: TerminalDockProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
   useEffect(() => {
     onStatusRef.current = onStatus;
   }, [onStatus]);
-  const ownerScope = useMemo(
-    () => ({
-      projectId: scope.projectId,
-      projectGeneration: scope.projectGeneration,
-      chatId: scope.chatId,
-    }),
-    [scope.projectId, scope.projectGeneration, scope.chatId],
-  );
+  const { projectId, projectGeneration, chatId } = scope;
 
   useEffect(() => {
     const element = viewportRef.current;
     if (!element) return;
+    const ownerScope = { projectId, projectGeneration, chatId };
     let stopped = false;
     let sessionEnded = ended;
     let pendingInput = "";
@@ -93,32 +68,23 @@ export function TerminalDock({
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = window.devicePixelRatio;
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
       cursorBlink: true,
       // xterm measures a concrete face; Menlo keeps macOS off Courier.
       fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
       lineHeight: 1.3,
       scrollback: 1_000,
-      theme: terminalTheme(element),
+      theme: getTheme(element),
     });
     terminal.open(element);
     const themeObserver = new MutationObserver(() => {
-      terminal.options.theme = terminalTheme(element);
+      terminal.options.theme = getTheme(element);
     });
-    const themeHosts = [
-      document.documentElement,
-      document.body,
-      element.closest(".workbench"),
-    ];
-    for (const host of themeHosts) {
-      if (host)
-        themeObserver.observe(host, {
-          attributes: true,
-          attributeFilter: ["style", "class", "data-theme"],
-        });
-    }
+    for (const host of document.querySelectorAll("html, body, .workbench"))
+      themeObserver.observe(host, {
+        attributes: true,
+        attributeFilter: ["style", "class"],
+      });
     const initial = dimensionsFor(element);
     terminal.resize(initial.columns, initial.rows);
 
@@ -139,7 +105,7 @@ export function TerminalDock({
           if (stopped) return;
           if (page.truncated)
             terminal.write("\r\n[Earlier terminal output was truncated]\r\n");
-          if (page.bytes.length > 0) {
+          if (page.bytes.length) {
             await new Promise<void>((resolve) =>
               terminal.write(page.bytes, resolve),
             );
@@ -220,8 +186,8 @@ export function TerminalDock({
     const inputListener = terminal.onData((data) => {
       if (stopped || sessionEnded) return;
       const byteLength = utf8ByteLength(data);
-      if (byteLength === 0) return;
-      if (byteLength > 4_096 || pendingInputBytes + byteLength > 4_096) {
+      if (!byteLength) return;
+      if (pendingInputBytes + byteLength > 4_096) {
         onStatusRef.current(
           "Input was not sent: terminal input buffer limit reached.",
         );
@@ -264,7 +230,9 @@ export function TerminalDock({
       inputListener.dispose();
       terminal.dispose();
     };
-  }, [ended, ownerScope, session]);
+  }, [ended, projectId, projectGeneration, chatId, session, getTheme]);
 
   return <div className="terminal-dock__viewport" ref={viewportRef} />;
 }
+
+export default TerminalDock;

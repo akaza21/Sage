@@ -118,6 +118,10 @@
   min-height: 0;
   padding: 8px;
   overflow: hidden;
+  color: var(--color-text-primary);
+  background: var(--color-canvas);
+  caret-color: var(--color-text-emphasis);
+  accent-color: var(--color-selection);
 }
 
 .terminal-dock__viewport .xterm {

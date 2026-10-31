@@ -58,7 +58,7 @@ vi.mock("@xterm/xterm", () => ({
 }));
 
 import { TerminalDock } from "./TerminalDock";
-import { TerminalDockForWorkbench } from "./TerminalDockShell";
+import { terminalTheme, TerminalDockForWorkbench } from "./TerminalDockShell";
 
 const initialWorkbenchState = useWorkbenchStore.getState();
 const scope = {
@@ -111,6 +111,7 @@ it("delivers a zero-delay typing burst without losing characters", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      getTheme={terminalTheme}
       scope={scope}
       session={handle}
       ended={false}
@@ -135,6 +136,7 @@ it("reports an ended shell and ignores later input", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      getTheme={terminalTheme}
       scope={scope}
       session={handle}
       ended={false}
@@ -157,6 +159,7 @@ it("sends input again while the program is not reading it", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      getTheme={terminalTheme}
       scope={scope}
       session={handle}
       ended={false}
@@ -181,6 +184,7 @@ it("drops input refused as busy for too long and says why", async () => {
     const onStatus = vi.fn();
     render(
       <TerminalDock
+        getTheme={terminalTheme}
         scope={scope}
         session={handle}
         ended={false}
@@ -211,6 +215,7 @@ it("retries a transient native reader conflict after remount", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      getTheme={terminalTheme}
       scope={scope}
       session={handle}
       ended={false}
@@ -224,6 +229,7 @@ it("retries a transient native reader conflict after remount", async () => {
 it("resizes the active terminal after a pane or DPI change", async () => {
   render(
     <TerminalDock
+      getTheme={terminalTheme}
       scope={scope}
       session={handle}
       ended={false}

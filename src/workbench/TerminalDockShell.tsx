@@ -3,7 +3,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type ComponentType,
+  lazy,
+  Suspense,
 } from "react";
 
 import { useWorkbenchStore } from "../app/store";
@@ -15,7 +16,6 @@ import {
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { firstChatTabId } from "./workbenchWindowMode";
-import type { TerminalDockProps } from "./TerminalDock";
 import "./terminal-dock.css";
 
 type SessionEntry = {
@@ -24,10 +24,7 @@ type SessionEntry = {
   message: string | null;
 };
 
-const loadTerminalView = () =>
-  import("./TerminalDock").then(({ TerminalDock }) => ({
-    default: TerminalDock,
-  }));
+const TerminalView = lazy(() => import("./TerminalDock"));
 
 function selectedScope(
   pinnedChatId: string | null,
@@ -38,11 +35,13 @@ function selectedScope(
   const activeChat = state.tabs.find(
     (tab) => tab.id === state.activeTabId && tab.kind === "chat",
   )?.id;
+  const isChat = (id: string | null | undefined) =>
+    state.tabs.some((tab) => tab.kind === "chat" && tab.id === id);
   const chatId =
     activeChat ??
-    (state.tabs.some((tab) => tab.kind === "chat" && tab.id === preferredChatId)
+    (isChat(preferredChatId)
       ? preferredChatId
-      : state.tabs.some((tab) => tab.kind === "chat" && tab.id === pinnedChatId)
+      : isChat(pinnedChatId)
         ? pinnedChatId
         : firstChatTabId(state.tabs));
   if (!chatId) return null;
@@ -119,8 +118,6 @@ export function TerminalDockShell({
   const [closingId, setClosingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [TerminalView, setTerminalView] =
-    useState<ComponentType<TerminalDockProps> | null>(null);
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
     creating: false,
@@ -181,17 +178,6 @@ export function TerminalDockShell({
       owner.entries = [];
     };
   }, [create, scope]);
-
-  useEffect(() => {
-    if (collapsed || entries.length === 0 || TerminalView) return;
-    let cancelled = false;
-    void loadTerminalView().then(({ default: View }) => {
-      if (!cancelled) setTerminalView(() => View);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [collapsed, entries.length, TerminalView]);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
@@ -300,17 +286,32 @@ export function TerminalDockShell({
           {message ?? active?.message}
         </p>
       ) : null}
-      {!collapsed && active && TerminalView ? (
-        <TerminalView
-          key={active.session.sessionId}
-          scope={scope}
-          session={active.session}
-          ended={active.ended}
-          onStatus={(status, ended) =>
-            updateStatus(active.session.sessionId, status, ended)
-          }
-        />
+      {!collapsed && active ? (
+        <Suspense fallback={null}>
+          <TerminalView
+            getTheme={terminalTheme}
+            key={active.session.sessionId}
+            scope={scope}
+            session={active.session}
+            ended={active.ended}
+            onStatus={(status, ended) =>
+              updateStatus(active.session.sessionId, status, ended)
+            }
+          />
+        </Suspense>
       ) : null}
     </section>
   );
+}
+
+/** The viewport's CSS roles resolve aliases and color-mix before xterm parses them. */
+export function terminalTheme(element: HTMLElement) {
+  const colors = getComputedStyle(element);
+  return {
+    background: colors.backgroundColor,
+    foreground: colors.color,
+    cursor: colors.caretColor,
+    cursorAccent: colors.backgroundColor,
+    selectionBackground: colors.accentColor,
+  };
 }

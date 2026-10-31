@@ -20,7 +20,7 @@ vi.mock("../services/userTerminalDesktop", () => ({
 }));
 
 vi.mock("./TerminalDock", () => ({
-  TerminalDock: ({
+  default: ({
     session,
     ended,
     onStatus,
