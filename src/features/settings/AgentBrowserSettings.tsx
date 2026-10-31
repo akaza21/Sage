@@ -10,6 +10,12 @@ import { BrowserSitePermissions } from "../browser/BrowserSitePermissions";
 import { useAgentSettingsState } from "./agentSettingsState";
 import { SettingsRow } from "./SettingsRow";
 
+const loadBrowserPreferences = () =>
+  import("../../workbench/settings/SettingsBrowserPage").then(
+    ({ SettingsBrowserPage }) => ({ default: SettingsBrowserPage }),
+  );
+const generalPreferences = new Set(["browser.showFullUrl"]);
+
 const loadDownloadsPanel = () => import("../browser/BrowserDownloadsPanel");
 
 function LiveTabDownloads({ tabId }: { tabId: string }) {
@@ -163,6 +169,13 @@ export function AgentBrowserSettings() {
     liveIds[0];
   return (
     <>
+      <LazyModuleBoundary
+        label="Browser preferences"
+        load={loadBrowserPreferences}
+        render={(SettingsBrowserPage) => (
+          <SettingsBrowserPage visible={generalPreferences} />
+        )}
+      />
       <p>
         Manage the built-in browser's real data and permissions. History,
         downloads and permission status are scoped to a live tab. Closed-tab

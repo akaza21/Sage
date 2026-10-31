@@ -39,14 +39,13 @@ const out = flag("out")
   : resolve(repo, "work", "app-smoke", stamp);
 mkdirSync(out, { recursive: true });
 
-const COMPOSER = 'textarea, [contenteditable="true"]';
-const EDITOR_TAB = '[role="tab"]';
+const COMPOSER = 'textarea[aria-label="Message agent"]';
+const EDITOR_TAB = '[role="tab"][aria-selected="true"]';
 const SENTINEL = "sage-smoke-sentinel";
 const DOM_SCAN_LIMIT = 50;
 const NODE_SCAN_LIMIT = 2_000;
 const SEARCH_INPUT = '[aria-label="Search text"]';
-const AGENT_RAIL =
-  '[aria-label="Projects and chats"], [aria-label="Agent navigation"]';
+const AGENT_RAIL = 'aside[aria-label="Projects and chats"]';
 
 let server;
 let devServerPid = null;
@@ -65,26 +64,24 @@ async function shot(name) {
   shots.push(name);
   console.log(`SHOT ${name}`);
 }
-async function click(label, required = false) {
+async function click(label, required = false, role = "button") {
   try {
-    await page
-      .getByRole("button", { name: label })
-      .first()
-      .click({ timeout: 4000 });
+    const control = page.getByRole(role, { name: label, exact: true });
+    if (role === "radio") {
+      // The mode radios are keyboard-accessible; their styled labels own clicks.
+      if (!(await control.isChecked({ timeout: 4000 }))) {
+        await control.press("Space", { timeout: 4000 });
+      }
+      if (!(await control.isChecked({ timeout: 4000 }))) {
+        throw new Error(`${label} did not become checked`);
+      }
+    } else await control.click({ timeout: 4000 });
     return true;
   } catch {
-    try {
-      await page
-        .getByText(label, { exact: false })
-        .first()
-        .click({ timeout: 3000 });
-      return true;
-    } catch {
-      misses.push(label);
-      if (required) requiredMisses.push(label);
-      console.log(`MISS click: ${label}`);
-      return false;
-    }
+    misses.push(label);
+    if (required) requiredMisses.push(label);
+    console.log(`MISS ${role}: ${label}`);
+    return false;
   }
 }
 
@@ -94,9 +91,9 @@ async function visible(selector) {
   return await locator.elementHandle().catch(() => null);
 }
 
-async function reach(label, expectation) {
+async function reach(label, expectation, role = "button") {
   const previous = await visible(expectation);
-  if (!(await click(label, true))) {
+  if (!(await click(label, true, role))) {
     await previous?.dispose();
     return false;
   }
@@ -167,10 +164,8 @@ async function reachComposer(label) {
       },
     )
     .catch(() => 0);
-  const primed = await page
-    .locator(COMPOSER)
-    .first()
-    .fill(SENTINEL)
+  const primed = await focusedComposer()
+    .fill(SENTINEL, { timeout: 4000 })
     .then(() => true)
     .catch(() => false);
   if (!(await click(label, true))) return false;
@@ -221,6 +216,13 @@ async function reachComposer(label) {
   return reached;
 }
 
+function focusedComposer() {
+  return page
+    .getByRole("region", { name: /^Chat pane / })
+    .and(page.locator(".agent-chat-pane--focused"))
+    .getByRole("textbox", { name: "Message agent", exact: true });
+}
+
 let fatal = null;
 let settled;
 try {
@@ -246,45 +248,38 @@ try {
   );
   await page.goto(url, { waitUntil: "networkidle", timeout: 60_000 });
   await page.waitForTimeout(1500);
-  // A fresh profile opens in Agent (AP-A6); the walk starts in Editor.
-  try {
-    await page
-      .getByRole("radiogroup", { name: "Window mode" })
-      .getByText("Editor", { exact: true })
-      .click({ timeout: 4000 });
-    await page.waitForTimeout(800);
-  } catch {
-    misses.push("Editor mode");
-  }
+  await click("Editor", true, "radio");
   await shot("10-editor-welcome");
 
-  await reach("README.md", EDITOR_TAB);
+  await reach("Open file README.md", EDITOR_TAB, "treeitem");
   await shot("11-editor-file-open");
 
-  await reach("Search files", SEARCH_INPUT);
+  await reach("Search", SEARCH_INPUT);
   await shot("12-search");
 
-  try {
-    await page
-      .locator('[aria-label*="Settings" i], button[title*="Settings" i]')
-      .first()
-      .click({ timeout: 4000 });
-  } catch {
-    misses.push("Settings gear");
-  }
+  await reach("Search files", '[role="dialog"][aria-label="Quick Open"]');
+  await shot("12-quick-open");
+  await page
+    .getByRole("combobox", { name: "Search Files by name", exact: true })
+    .press("Escape", { timeout: 4000 })
+    .catch(() => misses.push("Dismiss Quick Open"));
+
+  await reach("Open settings", 'section[aria-label="Settings"]');
   await shot("13-settings");
 
-  await reach("Agent", AGENT_RAIL);
+  await reach("Agent", AGENT_RAIL, "radio");
   await page.waitForTimeout(1200);
   await shot("20-agent-panel");
 
   await reachComposer("New chat");
   await shot("21-agent-new-chat");
 
-  const composer = page.locator(COMPOSER).first();
+  const composer = focusedComposer();
   try {
     await composer.click({ timeout: 4000 });
-    await composer.fill("Show me the README and summarise it.");
+    await composer.fill("Show me the README and summarise it.", {
+      timeout: 4000,
+    });
     await shot("22-agent-composer-typed");
   } catch {
     misses.push("composer");

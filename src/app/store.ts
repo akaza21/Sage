@@ -64,6 +64,7 @@ import {
 import { closeWorkbenchTab } from "./tabClosing";
 import { shareRepositoryStatus } from "./shareRepositoryStatus";
 import { createBrowserSlice, type BrowserSlice } from "./browserSlice";
+import type { SettingsPageId } from "../domain/settingsNavigation";
 
 export type SidebarView =
   "explorer" | "search" | "sourceControl" | "preview" | "outline";
@@ -121,7 +122,8 @@ export interface WorkbenchState
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
   toggleSidebar: () => void;
-  openSettings: () => Promise<void>;
+  /** Opens the Settings tab, on `page` when given (otherwise where it was). */
+  openSettings: (page?: SettingsPageId) => Promise<void>;
 }
 
 const emptyRepositories: ProjectRepositoryStatus = {
@@ -266,7 +268,13 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       }
     },
 
-    openSettings: async () => {
+    openSettings: async (page) => {
+      if (page === "browser") {
+        const { useAgentSettingsState } =
+          await import("../features/settings/agentSettingsState");
+        useAgentSettingsState.getState().open("Browser");
+        return;
+      }
       const source = get();
       const { openEditorSettings } =
         await import("../features/settings/openEditorSettings");
@@ -275,6 +283,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         get,
         source,
         (tabId) => (settingsReturnTabId = tabId),
+        page,
       );
     },
 

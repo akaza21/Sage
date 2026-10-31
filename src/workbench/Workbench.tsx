@@ -98,7 +98,11 @@ function EditorContinuityKeeper({
     const state = useWorkbenchStore.getState();
     const active =
       state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
-    if (active && isAgentArtifactTabKind(active.kind)) return;
+    if (
+      active &&
+      (isAgentArtifactTabKind(active.kind) || active.kind === "settings")
+    )
+      return;
     const continuity = lastArtifactTabId(state.tabs, lastArtifactId.current);
     if (continuity && continuity !== state.activeTabId) {
       void state.activateTab(continuity);
@@ -193,6 +197,13 @@ export function Workbench() {
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
+  );
+  useEffect(
+    () =>
+      useAgentSettingsState.subscribe(({ page }) => {
+        if (page) setWindowMode("agent");
+      }),
+    [],
   );
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
   const [navigation, setNavigation] = useState({
@@ -322,7 +333,9 @@ export function Workbench() {
           })
         }
       />
-      <AgentCenterKeeper windowMode={windowMode} />
+      <AgentCenterKeeper
+        windowMode={agentSettingsPage ? "editor" : windowMode}
+      />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
       <RetainedActivity visible={windowMode === "agent" && !agentSettingsPage}>

@@ -5,6 +5,8 @@
 //! docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
 
 #[cfg(windows)]
+mod annotate;
+#[cfg(windows)]
 mod report;
 #[cfg(windows)]
 mod s10_tls;
@@ -49,7 +51,8 @@ mod lane {
     use sage_lib::native_lane::{self, Lane};
 
     use crate::{
-        report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads, site::Site,
+        annotate, report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads,
+        site::Site,
     };
 
     /// The whole lane, Tauri start to exit; a hang past it fails the run.
@@ -64,6 +67,7 @@ mod lane {
         ("s8", s8_devtools::run),
         ("s1", s1_popups::run),
         ("s11", s11_downloads::run),
+        ("annotate", annotate::run),
     ];
 
     pub fn run() -> i32 {

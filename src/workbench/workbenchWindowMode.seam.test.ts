@@ -1,8 +1,10 @@
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createElement } from "react";
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -20,6 +22,7 @@ import {
 } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
@@ -54,9 +57,11 @@ beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   localStorage.clear();
   compactViewport = false;
   useWorkbenchStore.setState(initialState, true);
+  useSettingsPageRequest.setState({ page: null });
 });
 
 async function switchWindowMode(mode: "Agent" | "Editor") {
@@ -70,6 +75,51 @@ async function switchWindowMode(mode: "Agent" | "Editor") {
 }
 
 describe("D0 workbench window mode seam", () => {
+  it("opens the shared Browser settings dialog from Editor and preserves its active resource", async () => {
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "file:current",
+          kind: "file",
+          title: "current.ts",
+          position: 0,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "current.ts" },
+        },
+      ],
+      activeTabId: "file:current",
+    });
+    render(createElement(Workbench));
+    await settleLazyModules();
+    const activeTabId = useWorkbenchStore.getState().activeTabId;
+    await act(() => useWorkbenchStore.getState().openSettings("browser"));
+    await settleLazyModules();
+    expect(
+      screen.getByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Browser" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(useWorkbenchStore.getState().activeTabId).toBe(activeTabId);
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
+        "radio",
+        { name: "Agent" },
+      ),
+    ).toBeChecked();
+    act(() => useAgentSettingsState.getState().close());
+    await switchWindowMode("Editor");
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await settleLazyModules();
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    await settleLazyModules();
+    expect(
+      screen.getAllByRole("dialog", { name: "Agent settings" }),
+    ).toHaveLength(1);
+  });
+
   it("offers exactly Agent and Editor with Agent as the default", () => {
     expect([...WORKBENCH_WINDOW_MODES]).toEqual(["agent", "editor"]);
     expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("agent");

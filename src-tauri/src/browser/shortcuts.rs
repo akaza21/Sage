@@ -88,6 +88,7 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
 
     let label = webview.label().to_owned();
+    let (zoom_app, zoom_label) = (app.clone(), label.clone());
     let (sender, receiver) = mpsc::sync_channel(1);
     webview
         .with_webview(move |platform| {
@@ -149,6 +150,7 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
                 let mut token = 0;
                 unsafe { controller.add_AcceleratorKeyPressed(&callback, &mut token) }
                     .map_err(|error| error.to_string())
+                    .and_then(|()| watch_zoom(&controller, zoom_app, zoom_label))
             };
             let _ = sender.send(result);
         })
@@ -160,6 +162,32 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// Keeps Annotate on through every page zoom: Sage's zoom controls and
+/// shortcuts set the zoom factor, and Ctrl+wheel changes it in WebView2
+/// itself, so this one event covers them all.
+#[cfg(windows)]
+fn watch_zoom(
+    controller: &webview2_com_sys::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller,
+    app: AppHandle,
+    label: String,
+) -> Result<(), String> {
+    use webview2_com::ZoomFactorChangedEventHandler;
+
+    let callback = ZoomFactorChangedEventHandler::create(Box::new(move |_controller, _args| {
+        if app
+            .state::<super::BrowserState>()
+            .annotate
+            .is_annotating(&label)
+        {
+            super::annotate::zoom::zoomed(&app, &label);
+        }
+        Ok(())
+    }));
+    let mut token = 0;
+    unsafe { controller.add_ZoomFactorChanged(&callback, &mut token) }
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(not(windows))]
@@ -232,6 +260,26 @@ mod tests {
             }),
             Some(BrowserShortcut::Stop)
         );
+    }
+
+    #[test]
+    fn zoom_in_accepts_ctrl_equals_shift_equals_and_numpad_plus() {
+        for (key, shift) in [(0xBB, false), (0xBB, true), (0x6B, false)] {
+            let zoom = KeyChord {
+                ctrl: true,
+                shift,
+                ..chord(key)
+            };
+            assert_eq!(shortcut_for(zoom), Some(BrowserShortcut::ZoomIn));
+            assert_eq!(shortcut_for(KeyChord { alt: true, ..zoom }), None);
+            assert_eq!(
+                shortcut_for(KeyChord {
+                    ctrl: false,
+                    ..zoom
+                }),
+                None
+            );
+        }
     }
 
     #[test]

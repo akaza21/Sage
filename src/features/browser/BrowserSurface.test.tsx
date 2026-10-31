@@ -32,6 +32,7 @@ const browserNavigate = vi.fn(
   async (_tabId: string, _url: string) => undefined,
 );
 const hideBrowser = vi.fn(async (_tabId: string) => undefined);
+const coverBrowser = vi.fn(async (_tabId: string) => undefined);
 const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
@@ -90,6 +91,7 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     browserAgentControl(tabId, action),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
   hideBrowser: (tabId: string) => hideBrowser(tabId),
+  coverBrowser: (tabId: string) => coverBrowser(tabId),
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));
@@ -705,7 +707,7 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
   });
 });
 
-it("hides the native page while a toolbar popover covers it, even across a resize", async () => {
+it("covers the native page while a toolbar popover is open, even across a resize, without hiding it for real", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
     DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
   );
@@ -713,9 +715,10 @@ it("hides the native page while a toolbar popover covers it, even across a resiz
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
 
   hideBrowser.mockClear();
+  coverBrowser.mockClear();
   positionBrowser.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "Downloads" }));
-  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
   act(() => {
     window.dispatchEvent(new Event("resize"));
   });
@@ -727,10 +730,53 @@ it("hides the native page while a toolbar popover covers it, even across a resiz
   });
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
 
-  hideBrowser.mockClear();
+  coverBrowser.mockClear();
   positionBrowser.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
-  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  // A real hide ends Annotate; a popover opening or closing must not.
+  expect(hideBrowser).not.toHaveBeenCalled();
+});
+
+it("still hides the native page for real on unmount or a tab switch while a popover covers it", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  const view = render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  hideBrowser.mockClear();
+  coverBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
+  expect(hideBrowser).not.toHaveBeenCalled();
+  view.rerender(<BrowserSurface tab={{ ...tab, id: "browser-2" }} />);
+  expect(hideBrowser).toHaveBeenCalledWith(tab.id);
+
+  // The menu stays open in the new tab, which is covered from the start.
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith("browser-2"));
+  hideBrowser.mockClear();
+  view.unmount();
+  expect(hideBrowser).toHaveBeenCalledWith("browser-2");
+});
+
+it("still hides the native page for real when the centre pane is hidden", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  const center = document.createElement("div");
+  center.className = "center-region";
+  document.body.append(center);
+  render(<BrowserSurface tab={tab} />, { container: center });
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+
+  hideBrowser.mockClear();
+  coverBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
+  act(() => center.setAttribute("aria-hidden", "true"));
+  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  center.remove();
 });

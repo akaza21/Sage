@@ -63,6 +63,7 @@ mod repository_diff;
 mod repository_discovery;
 mod repository_git;
 mod repository_history;
+mod repository_in_progress;
 mod repository_index_status;
 mod repository_merge_commit;
 mod repository_mutation;

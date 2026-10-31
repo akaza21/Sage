@@ -74,17 +74,45 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         }
     }
     let branch = symbolic_branch(workspace).await?;
-    let tracking = repository::tracking_status(workspace, branch.as_deref()).await?;
-    let listed = crate::repository_branches::list_local_branches(workspace).await?;
+    // Each read needs only the branch, so they run side by side.
+    let (tracking, listed, history, remotes, in_progress, changes) = tokio::try_join!(
+        repository::tracking_status(workspace, branch.as_deref()),
+        crate::repository_branches::list_local_branches(workspace),
+        crate::repository_history::list_recent_commits(workspace),
+        crate::repository_remotes::list_remotes(workspace),
+        crate::repository_in_progress::in_progress(workspace),
+        staged_changes(workspace),
+    )?;
     let listed =
         crate::repository_branches::compose_current_named_branch(listed, branch.as_deref());
-    let history = crate::repository_history::list_recent_commits(workspace).await?;
-    let remotes = crate::repository_remotes::list_remotes(workspace).await?;
-    let merge_in_progress = crate::repository_conflict::merge_in_progress(workspace).await?;
-    let rebase_in_progress = crate::repository_conflict::rebase_in_progress(workspace).await?;
-    let cherry_pick_in_progress =
-        crate::repository_conflict::cherry_pick_in_progress(workspace).await?;
-    let revert_in_progress = crate::repository_conflict::revert_in_progress(workspace).await?;
+
+    Ok(RootRepositoryStatus {
+        root_id: workspace.root_id().into(),
+        state: "repository".into(),
+        branch,
+        upstream: tracking.upstream,
+        ahead: tracking.ahead,
+        behind: tracking.behind,
+        branches: listed.names,
+        branches_truncated: listed.truncated,
+        recent_commits: history.commits,
+        recent_commits_truncated: history.truncated,
+        remotes: remotes.names,
+        remotes_truncated: remotes.truncated,
+        merge_in_progress: in_progress.merge,
+        rebase_in_progress: in_progress.rebase,
+        cherry_pick_in_progress: in_progress.cherry_pick,
+        revert_in_progress: in_progress.revert,
+        changes,
+        truncated: true,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        message: Some(INDEX_ONLY_MESSAGE.into()),
+    })
+}
+
+/// What the index holds against `HEAD` (or the empty tree before the first
+/// commit).
+async fn staged_changes(workspace: &Workspace) -> AppResult<Vec<FileChange>> {
     let base = diff_base(workspace).await?;
     let output = crate::repository_workspace::run_git(
         workspace,
@@ -103,30 +131,7 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     )
     .await?;
     repository::ensure_success(&output)?;
-    let changes = parse_changes(workspace, &output.stdout, output.stdout_truncated)?;
-
-    Ok(RootRepositoryStatus {
-        root_id: workspace.root_id().into(),
-        state: "repository".into(),
-        branch,
-        upstream: tracking.upstream,
-        ahead: tracking.ahead,
-        behind: tracking.behind,
-        branches: listed.names,
-        branches_truncated: listed.truncated,
-        recent_commits: history.commits,
-        recent_commits_truncated: history.truncated,
-        remotes: remotes.names,
-        remotes_truncated: remotes.truncated,
-        merge_in_progress,
-        rebase_in_progress,
-        cherry_pick_in_progress,
-        revert_in_progress,
-        changes,
-        truncated: true,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        message: Some(INDEX_ONLY_MESSAGE.into()),
-    })
+    parse_changes(workspace, &output.stdout, output.stdout_truncated)
 }
 
 async fn diff_base(workspace: &Workspace) -> AppResult<String> {

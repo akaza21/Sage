@@ -1,4 +1,6 @@
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { DEFAULT_EDITOR_SETTINGS } from "../domain/editorSettingsCatalogue";
 import { SettingsSurface } from "./SettingsSurface";
 
@@ -24,6 +27,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useSettingsPageRequest.setState({ page: null });
+  useAgentSettingsState.getState().close();
   useEditorSettingsStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -36,11 +41,46 @@ describe("SettingsSurface", () => {
       within(nav)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Editor", "Keyboard"]);
+    ).toEqual(["Editor", "Keyboard", "Browser"]);
     expect(within(nav).getByRole("tab", { name: "Editor" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+  });
+
+  it("opens on a requested page and follows a request while open", async () => {
+    useSettingsPageRequest.setState({ page: "keyboard" });
+    render(<SettingsSurface />);
+    expect(screen.getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Keyboard Shortcuts" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(useSettingsPageRequest.getState().page).toBeNull(),
+    );
+
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "tab size" },
+    });
+    act(() => useSettingsPageRequest.setState({ page: "keyboard" }));
+    expect(screen.getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(useSettingsPageRequest.getState().page).toBeNull();
+  });
+
+  it("opens Browser in the shared Agent settings dialog", async () => {
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    await waitFor(() =>
+      expect(useAgentSettingsState.getState().page).toBe("Browser"),
+    );
+    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
   });
 
   it("shows the real chord for each shortcut on the Keyboard page", () => {

@@ -13,7 +13,7 @@
 
 use std::sync::{
     Mutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use serde::Serialize;
@@ -26,6 +26,7 @@ pub(crate) mod element;
 #[cfg(windows)]
 mod native;
 pub(crate) mod selection;
+pub(crate) mod zoom;
 
 use selection::{Selection, SelectionView};
 
@@ -101,6 +102,8 @@ pub(crate) trait InspectOverlay {
     /// Moves native keyboard focus to `label`'s page when `page`, else to
     /// Sage's own webview, whose comment box takes the typing.
     fn focus(&self, label: &str, page: bool) -> Result<(), String>;
+    /// Removes the hover outline, which a page zoom left on the wrong spot.
+    fn clear_outline(&self, label: &str) -> Result<(), String>;
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -117,12 +120,17 @@ pub(crate) struct AnnotateChange {
 /// Annotate's place in `BrowserState`: the mode, and lock-free copies of its
 /// tab number and of the tab whose page is frozen (0 for none) for the main
 /// thread, which must never wait on the mode lock while a native step needs
-/// that thread.
+/// that thread. `zoom.rs` keeps the rest: `covered` is the tab a toolbar
+/// popover hides, `deferred` the tab whose show a frozen page put off, and
+/// `zoom_queued` whether a zoom step waits for the lock.
 #[derive(Default)]
 pub(crate) struct Annotate {
     mode: Mutex<AnnotateMode>,
     tab: AtomicU64,
     frozen: AtomicU64,
+    covered: AtomicU64,
+    deferred: AtomicU64,
+    zoom_queued: AtomicBool,
 }
 
 impl Annotate {
@@ -315,9 +323,13 @@ pub(crate) async fn set(
             Action::Off => state
                 .annotate
                 .run(announce, |mode| mode.leave(&overlay, &tab_id, Exit::Reveal)),
-            Action::Cancel => state
-                .annotate
-                .run(announce, |mode| mode.cancel(&overlay, &tab_id)),
+            Action::Cancel => {
+                let result = state.annotate.run(announce, |mode| {
+                    mode.cancel(&overlay, &tab_id, state.annotate.is_covered(&tab_id))
+                });
+                zoom::show_deferred(&app, &tab_id);
+                result
+            }
             Action::Confirm => {
                 let comment = comment.unwrap_or_default();
                 let ordinal = ordinal.ok_or("browser element ordinal rejected")?;
@@ -360,8 +372,9 @@ pub(crate) fn pick(app: &AppHandle, label: &str, backend_node_id: u64) {
     });
 }
 
-/// Leaves Annotate on `label` after a navigation starts, the tab is hidden or
-/// closes, or Escape reaches the page. Runs on its own thread: callers
+/// Leaves Annotate on `label` after a navigation starts, the tab is hidden
+/// (not merely covered by a toolbar popover) or closes, or Escape reaches the
+/// page. Runs on its own thread: callers
 /// include WebView2 event handlers on the main thread, which the overlay's
 /// CDP calls need free.
 pub(crate) fn leave(app: &AppHandle, label: &str, exit: Exit) {
@@ -407,6 +420,10 @@ impl InspectOverlay for NativeOverlay<'_> {
     }
 
     fn focus(&self, _: &str, _: bool) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn clear_outline(&self, _: &str) -> Result<(), String> {
         Ok(())
     }
 }

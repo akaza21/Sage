@@ -1,3 +1,5 @@
+import type { SettingsPageId } from "../../domain/settingsNavigation";
+import { requestSettingsPage } from "../../app/settingsPageRequest";
 import type { StoreApi } from "zustand";
 import type { WorkbenchState } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
@@ -7,6 +9,7 @@ export async function openEditorSettings(
   get: StoreApi<WorkbenchState>["getState"],
   source: WorkbenchState,
   rememberReturnTab: (tabId: string | null) => void,
+  page?: SettingsPageId,
 ) {
   const id = "settings:appearance";
   const sourceTab = source.tabs.find((tab) => tab.id === source.activeTabId);
@@ -18,7 +21,11 @@ export async function openEditorSettings(
       current.activeTabId === source.activeTabId
     );
   };
-  if (sourceTab?.id === id || !isCurrent()) return;
+  if (!isCurrent()) return;
+  if (sourceTab?.id === id) {
+    requestSettingsPage(page);
+    return;
+  }
   try {
     await source.flushActiveEditor();
   } catch (error) {
@@ -55,6 +62,7 @@ export async function openEditorSettings(
     activeTabId: id,
     activeEditor: null,
   });
+  requestSettingsPage(page);
   void get()
     .persistLayout()
     .catch((error) => set({ error: errorMessage(error) }));

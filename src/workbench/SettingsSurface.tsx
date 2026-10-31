@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useWorkbenchStore } from "../app/store";
+import { useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
+import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import {
   EDITOR_KEYMAP_SCOPES,
   SETTINGS_PAGES,
@@ -15,8 +17,20 @@ import { SettingsNav } from "./settings/SettingsNav";
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
-    SETTINGS_PAGES[0].id,
+    () => useSettingsPageRequest.getState().page ?? SETTINGS_PAGES[0].id,
   );
+  // A caller such as the browser's menu asks for a page: the first render
+  // opens on it, and while Settings is open a new request switches to it with
+  // the search cleared. Either way the request is then forgotten.
+  useEffect(() => {
+    useSettingsPageRequest.setState({ page: null });
+    return useSettingsPageRequest.subscribe(({ page }) => {
+      if (!page) return;
+      setActivePageId(page);
+      setQuery("");
+      useSettingsPageRequest.setState({ page: null });
+    });
+  }, []);
   const persistenceMessage = useEditorSettingsStore(
     (state) => state.persistenceMessage,
   );
@@ -66,7 +80,11 @@ export function SettingsSurface() {
       <SettingsNav
         activePageId={activePageId}
         matchingPageIds={matchingPageIds}
-        onSelect={setActivePageId}
+        onSelect={(page) => {
+          if (page === "browser")
+            void useWorkbenchStore.getState().openSettings(page);
+          else setActivePageId(page);
+        }}
       />
       {persistencePhase === "loading" ? (
         <p className="settings-surface__loading" role="status">

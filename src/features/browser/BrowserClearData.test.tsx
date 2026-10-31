@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import { StatusBar } from "../../workbench/StatusBar";
 import { BrowserClearData } from "./BrowserClearData";
+import { resetBrowserClearDataForTests } from "./browserClearProgress";
 
 const browserClearData = vi.fn();
 const closeBrowser = vi.fn();
@@ -40,6 +41,7 @@ const original = useWorkbenchStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetBrowserClearDataForTests();
   clearDataEvent = undefined;
   closeBrowser.mockResolvedValue(undefined);
   vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -272,4 +274,65 @@ it("reconciles every closed tab before activating the next Chat", async () => {
     expect.objectContaining({ id: "chat-clear-test" }),
   ]);
   expect(closeBrowser).not.toHaveBeenCalled();
+});
+
+it("keeps a clear that outlives its control visible when the control comes back", async () => {
+  let answer:
+    | ((value: {
+        closedTabIds: string[];
+        cleared: boolean;
+        error: null;
+      }) => void)
+    | undefined;
+  browserClearData.mockReturnValue(
+    new Promise((resolve) => {
+      answer = resolve;
+    }),
+  );
+  const first = render(<BrowserClearData />);
+  fireEvent.click(screen.getByRole("button", { name: "Clear browsing data" }));
+  await waitFor(() => expect(browserClearData).toHaveBeenCalledTimes(1));
+  first.unmount();
+
+  render(<BrowserClearData />);
+  const button = screen.getByRole("button", { name: "Clearing browser data…" });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(browserClearData).toHaveBeenCalledTimes(1);
+
+  await act(async () =>
+    answer?.({
+      closedTabIds: ["browser-clear-test"],
+      cleared: true,
+      error: null,
+    }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "Clear browsing data" }),
+  ).toBeEnabled();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Browsing data cleared.",
+  );
+});
+
+it("says plainly that nothing was cleared where WebView2 is unavailable", async () => {
+  const message =
+    "Clearing browsing data requires Windows WebView2. Nothing was cleared and no tabs were closed.";
+  browserClearData.mockResolvedValue({
+    closedTabIds: [],
+    cleared: false,
+    pending: false,
+    error: message,
+  });
+  render(<BrowserClearData />);
+  fireEvent.click(screen.getByRole("button", { name: "Clear browsing data" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(
+    useWorkbenchStore
+      .getState()
+      .tabs.some((tab) => tab.id === "browser-clear-test"),
+  ).toBe(true);
+  expect(
+    screen.getByRole("button", { name: "Clear browsing data" }),
+  ).toBeEnabled();
 });

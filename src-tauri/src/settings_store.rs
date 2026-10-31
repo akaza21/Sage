@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod browser_preferences;
 mod editor_settings;
 mod side_chat;
 pub use access::SessionAccessModes;
+pub use browser_preferences::BrowserPreferences;
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +106,7 @@ impl SettingsStore {
             // The fixed columns above are the legacy record; values now live
             // in the catalogue's rows, copied from it once.
             editor_settings::migrate(&migration)?;
+            browser_preferences::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

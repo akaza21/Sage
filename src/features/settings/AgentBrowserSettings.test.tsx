@@ -21,6 +21,10 @@ import {
   browserShowDownloadInFolder,
 } from "../../ports/nativeBrowserDownloadsPort";
 
+vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
+  browserPreferences: vi.fn(async () => ({ showFullUrl: false })),
+  browserSetPreferences: vi.fn(async () => undefined),
+}));
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: vi.fn(() => true),
 }));

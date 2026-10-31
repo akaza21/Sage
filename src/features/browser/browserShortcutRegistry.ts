@@ -34,7 +34,7 @@ export const BROWSER_SHORTCUT_BINDINGS: readonly BrowserShortcutBinding[] = [
   {
     action: "zoomIn",
     chord: "Ctrl++",
-    keys: ["+", "add"],
+    keys: ["+", "=", "add"],
     ctrl: true,
     shift: "allowed",
     shiftedCode: "Equal",
@@ -56,7 +56,6 @@ export function browserShortcutFor(
       event.altKey === Boolean(binding.alt) &&
       (!event.shiftKey || binding.shift === "allowed") &&
       (!binding.loadingOnly || loading) &&
-      (binding.keys.includes(key) ||
-        (binding.shiftedCode === event.code && event.shiftKey)),
+      (binding.keys.includes(key) || binding.shiftedCode === event.code),
   )?.action;
 }

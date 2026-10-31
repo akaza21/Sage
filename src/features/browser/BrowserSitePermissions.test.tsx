@@ -1,5 +1,6 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -7,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { Activity } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { BrowserSitePermissions } from "./BrowserSitePermissions";
 
@@ -28,6 +29,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 beforeEach(() => {
+  vi.mocked(listen).mockReset();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   status.mockReset();
   resolve.mockReset();
   revoke.mockReset();
@@ -46,6 +49,25 @@ beforeEach(() => {
   });
   resolve.mockResolvedValue(undefined);
   revoke.mockResolvedValue(undefined);
+});
+
+afterEach(cleanup);
+
+it("disposes a permission subscription that finishes registering after the drawer closes", async () => {
+  let registered!: (dispose: () => void) => void;
+  const dispose = vi.fn();
+  vi.mocked(listen).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        registered = resolve;
+      }),
+  );
+  const drawer = render(<BrowserSitePermissions tabId="browser-1" showEmpty />);
+  await waitFor(() => expect(listen).toHaveBeenCalled());
+  drawer.unmount();
+  await act(async () => registered(dispose));
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(status).not.toHaveBeenCalled();
 });
 
 it("shows a site permission prompt in browser chrome and resolves Allow", async () => {

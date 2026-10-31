@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -43,6 +43,7 @@ mod state_init;
 pub(crate) mod state_query;
 mod teardown;
 pub(crate) mod user_screenshot;
+mod visibility;
 
 #[cfg(test)]
 use admission::MAX_BROWSER_URL_BYTES;
@@ -110,6 +111,7 @@ impl BrowserState {
 
 struct BrowserTab<T> {
     handle: T,
+    visibility: Arc<visibility::PageVisibility>,
     loading: bool,
     title: Option<String>,
     favicon: Option<String>,
@@ -198,6 +200,7 @@ impl<T> BrowserTabs<T> {
             label,
             BrowserTab {
                 handle,
+                visibility: Arc::default(),
                 loading,
                 title: None,
                 favicon: None,

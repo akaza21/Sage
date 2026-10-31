@@ -8,11 +8,23 @@ import {
 } from "./settingsNavigation";
 
 describe("settings navigation", () => {
-  it("orders the pages so Editor comes before Keyboard", () => {
+  it("orders the pages so Editor comes before Keyboard and Browser", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",
       "keyboard",
+      "browser",
     ]);
+  });
+
+  it("finds the Browser settings by their Codex labels", () => {
+    expect(admitSettingsPageId("browser")).toBe("browser");
+    expect(pagesWithMatches("full url")).toEqual(new Set(["browser"]));
+    expect(matchingSettingsEntryIds("address bar", "browser")).toEqual(
+      new Set(["browser.showFullUrl"]),
+    );
+    expect(matchingSettingsEntryIds("cache", "browser")).toEqual(
+      new Set(["browser.clearData"]),
+    );
   });
 
   it("admits a known page id and falls back to the first page otherwise", () => {
