@@ -2,11 +2,14 @@
 //! may reach the attached tab, and the seam through which the gate reads the
 //! Settings switch, the per-session grant and the audit log.
 //!
-//! The deny list is about leaving the tab and the grant, not about what the
-//! page can do: any command that reaches other targets, the whole browser
-//! profile, local files, another origin's frames or storage, or that leaves
-//! state behind on the tab's shared DevTools session after the grant ends,
-//! is refused before it is sent.
+//! Default deny: only the methods in `ALLOWED`, each with only its listed
+//! top-level parameters, are sent. Every one of them acts on the main
+//! frame's document or default execution context, reads or changes this
+//! origin's cookies, or navigates or captures the tab, and none leaves state
+//! on the tab's shared DevTools session after the grant ends. Node handles
+//! are only `nodeId` (issued for the main document, never pierced) and
+//! `objectId` (from the main world); `backendNodeId`, frame and context ids
+//! are never accepted because they can name same-process iframes.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -14,96 +17,115 @@ use serde_json::{Map, Value};
 
 use super::BrowserFailure;
 
-/// Domains whose commands reach beyond the attached tab or its origin, or
-/// leave state on the tab's DevTools session that would outlive the grant
-/// (breakpoints and pauses, request interception, emulation overrides,
-/// virtual authenticators).
-const DENIED_DOMAINS: &[&str] = &[
-    "Autofill",
-    "BackgroundService",
-    "BluetoothEmulation",
-    "Browser",
-    "Cast",
-    "DOMDebugger",
-    "DOMSnapshot",
-    "Debugger",
-    "DeviceAccess",
-    "DeviceOrientation",
-    "Emulation",
-    "EventBreakpoints",
-    "Extensions",
-    "FedCm",
-    "Fetch",
-    "IO",
-    "PWA",
-    "ServiceWorker",
-    "Storage",
-    "SystemInfo",
-    "Target",
-    "Tethering",
-    "Tracing",
-    "WebAuthn",
+const NODE: &[&str] = &["nodeId", "objectId"];
+const EVALUATE: &[&str] = &[
+    "expression",
+    "objectGroup",
+    "silent",
+    "returnByValue",
+    "generatePreview",
+    "userGesture",
+    "awaitPromise",
+    "throwOnSideEffect",
+    "timeout",
+    "disableBreaks",
+    "replMode",
+    "serializationOptions",
+];
+const CALL_FUNCTION: &[&str] = &[
+    "functionDeclaration",
+    "objectId",
+    "arguments",
+    "silent",
+    "returnByValue",
+    "generatePreview",
+    "userGesture",
+    "awaitPromise",
+    "objectGroup",
+    "throwOnSideEffect",
+    "serializationOptions",
+];
+const COOKIE: &[&str] = &[
+    "name",
+    "value",
+    "url",
+    "domain",
+    "path",
+    "secure",
+    "httpOnly",
+    "sameSite",
+    "expires",
+    "priority",
+    "sourceScheme",
+    "sourcePort",
 ];
 
-/// Single commands that act on the whole profile, read local files, fetch
-/// with the user's credentials outside the page, close or freeze the tab,
-/// bypass a security check, or install state that outlives the grant.
-const DENIED_METHODS: &[&str] = &[
-    "DOM.setFileInputFiles",
-    "Input.dispatchDragEvent",
-    "Input.setIgnoreInputEvents",
-    "Input.setInterceptDrags",
-    "Memory.setPressureNotificationsSuppressed",
-    "Memory.simulatePressureNotification",
-    "Network.clearBrowserCache",
-    "Network.clearBrowserCookies",
-    "Network.emulateNetworkConditions",
-    "Network.emulateNetworkConditionsByRule",
-    "Network.enableReportingApi",
-    "Network.getAllCookies",
-    "Network.loadNetworkResource",
-    "Network.overrideNetworkState",
-    "Network.setAttachDebugStack",
-    "Network.setBlockedURLs",
-    "Network.setBypassServiceWorker",
-    "Network.setCacheDisabled",
-    "Network.setCookieControls",
-    "Network.setExtraHTTPHeaders",
-    "Network.setRequestInterception",
-    "Network.setUserAgentOverride",
-    "Page.addScriptToEvaluateOnLoad",
-    "Page.addScriptToEvaluateOnNewDocument",
-    "Page.captureSnapshot",
-    "Page.close",
-    "Page.crash",
-    "Page.handleFileChooser",
-    "Page.setBypassCSP",
-    "Page.setDownloadBehavior",
-    "Page.setInterceptFileChooserDialog",
-    "Page.setRPHRegistrationMode",
-    "Page.setSPCTransactionMode",
-    "Page.setWebLifecycleState",
-    "Runtime.addBinding",
-    "Security.handleCertificateError",
-    "Security.setIgnoreCertificateErrors",
-    "Security.setOverrideCertificateErrors",
-];
-
-/// Parameter keys that name a storage partition; each must be the granted
-/// origin's.
-const ORIGIN_KEYS: &[&str] = &["securityOrigin", "storageKey"];
-
-/// Parameter keys that would aim a command at another frame or execution
-/// context (a same-site iframe can share the page's process), at a cache
-/// named by another origin's storage key, or at local files. Commands run
-/// on the main frame's default context only.
-const DENIED_KEYS: &[&str] = &[
-    "cacheId",
-    "contextId",
-    "executionContextId",
-    "files",
-    "frameId",
-    "uniqueContextId",
+/// Every method developer mode sends, with the parameters it may carry.
+const ALLOWED: &[(&str, &[&str])] = &[
+    ("Runtime.evaluate", EVALUATE),
+    ("Runtime.callFunctionOn", CALL_FUNCTION),
+    (
+        "Runtime.getProperties",
+        &[
+            "objectId",
+            "ownProperties",
+            "accessorPropertiesOnly",
+            "generatePreview",
+            "nonIndexedPropertiesOnly",
+        ],
+    ),
+    (
+        "Runtime.awaitPromise",
+        &["promiseObjectId", "returnByValue", "generatePreview"],
+    ),
+    ("Runtime.releaseObject", &["objectId"]),
+    ("Runtime.releaseObjectGroup", &["objectGroup"]),
+    ("Runtime.getHeapUsage", &[]),
+    ("DOM.getDocument", &["depth"]),
+    ("DOM.querySelector", &["nodeId", "selector"]),
+    ("DOM.querySelectorAll", &["nodeId", "selector"]),
+    ("DOM.describeNode", &["nodeId", "objectId", "depth"]),
+    ("DOM.getOuterHTML", NODE),
+    ("DOM.getAttributes", &["nodeId"]),
+    ("DOM.getBoxModel", NODE),
+    ("DOM.getContentQuads", NODE),
+    ("DOM.resolveNode", &["nodeId", "objectGroup"]),
+    ("DOM.requestNode", &["objectId"]),
+    ("DOM.setAttributeValue", &["nodeId", "name", "value"]),
+    ("DOM.setAttributesAsText", &["nodeId", "text", "name"]),
+    ("DOM.removeAttribute", &["nodeId", "name"]),
+    ("DOM.setNodeValue", &["nodeId", "value"]),
+    ("DOM.setOuterHTML", &["nodeId", "outerHTML"]),
+    ("DOM.removeNode", &["nodeId"]),
+    ("DOM.focus", NODE),
+    (
+        "DOM.scrollIntoViewIfNeeded",
+        &["nodeId", "objectId", "rect"],
+    ),
+    (
+        "Page.navigate",
+        &["url", "referrer", "transitionType", "referrerPolicy"],
+    ),
+    ("Page.reload", &["ignoreCache"]),
+    ("Page.stopLoading", &[]),
+    ("Page.getFrameTree", &[]),
+    ("Page.getNavigationHistory", &[]),
+    ("Page.getLayoutMetrics", &[]),
+    (
+        "Page.captureScreenshot",
+        &[
+            "format",
+            "quality",
+            "clip",
+            "fromSurface",
+            "captureBeyondViewport",
+            "optimizeForSpeed",
+        ],
+    ),
+    ("Network.getCookies", &["urls"]),
+    ("Network.setCookie", COOKIE),
+    ("Network.setCookies", &["cookies"]),
+    ("Network.deleteCookies", &["name", "url", "domain", "path"]),
 ];
 
 /// Accepts `Domain.command`, both ASCII alphanumeric and non-empty.
@@ -120,19 +142,18 @@ pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
     }
 }
 
-/// Refuses a command that would leave the tab or the granted origin. The
-/// caller has already checked the method's shape.
+/// Refuses any method not in `ALLOWED`, any parameter not listed for it,
+/// and cookie commands that leave the granted origin. The caller has
+/// already checked the method's shape.
 pub fn admit_command(
     method: &str,
     params: &Map<String, Value>,
     origin: &str,
 ) -> Result<(), BrowserFailure> {
-    let domain = method.split_once('.').map_or(method, |(domain, _)| domain);
-    if DENIED_DOMAINS.contains(&domain) || DENIED_METHODS.contains(&method) {
+    let Some((_, keys)) = ALLOWED.iter().find(|(allowed, _)| *allowed == method) else {
         return Err(BrowserFailure::Denied);
-    }
-    let params_value = Value::Object(params.clone());
-    if !storage_keys_match(&params_value, origin) || !stays_in_main_frame(&params_value) {
+    };
+    if !params.keys().all(|key| keys.contains(&key.as_str())) {
         return Err(BrowserFailure::Denied);
     }
     match method {
@@ -147,10 +168,13 @@ pub fn admit_command(
         },
         "Network.setCookie" | "Network.deleteCookies" => cookie_target(params, origin),
         "Network.setCookies" => match params.get("cookies") {
-            Some(Value::Array(cookies)) => cookies.iter().try_for_each(|cookie| {
-                cookie
-                    .as_object()
-                    .map_or(Err(BrowserFailure::Denied), |c| cookie_target(c, origin))
+            Some(Value::Array(cookies)) => cookies.iter().try_for_each(|cookie| match cookie {
+                Value::Object(cookie)
+                    if cookie.keys().all(|key| COOKIE.contains(&key.as_str())) =>
+                {
+                    cookie_target(cookie, origin)
+                }
+                _ => Err(BrowserFailure::Denied),
             }),
             _ => Err(BrowserFailure::Denied),
         },
@@ -174,37 +198,6 @@ fn cookie_target(params: &Map<String, Value>, origin: &str) -> Result<(), Browse
             Ok(())
         }
         Some(_) => Err(BrowserFailure::Denied),
-    }
-}
-
-fn storage_keys_match(value: &Value, origin: &str) -> bool {
-    match value {
-        Value::Object(map) => map.iter().all(|(key, value)| {
-            if ORIGIN_KEYS.contains(&key.as_str()) {
-                // A storage key may carry `^`-separated partition attributes.
-                value.as_str().is_some_and(|text| {
-                    same_origin(text.split('^').next().unwrap_or_default(), origin)
-                })
-            } else {
-                storage_keys_match(value, origin)
-            }
-        }),
-        Value::Array(items) => items.iter().all(|item| storage_keys_match(item, origin)),
-        _ => true,
-    }
-}
-
-/// No denied key at any depth, and no `pierce`, which would walk into
-/// iframe documents.
-fn stays_in_main_frame(value: &Value) -> bool {
-    match value {
-        Value::Object(map) => map.iter().all(|(key, value)| {
-            !DENIED_KEYS.contains(&key.as_str())
-                && !(key == "pierce" && value != &Value::Bool(false))
-                && stays_in_main_frame(value)
-        }),
-        Value::Array(items) => items.iter().all(stays_in_main_frame),
-        _ => true,
     }
 }
 

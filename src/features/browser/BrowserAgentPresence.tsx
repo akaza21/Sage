@@ -39,7 +39,7 @@ export function BrowserAgentPresence({
       {developerMode && !userControl ? (
         <span
           className="browser-surface__agent-developer"
-          title="Developer mode is on: the Agent has full CDP access to this tab, including running scripts. Stop or Take over ends it."
+          title="Developer mode is on: the Agent has CDP access to this tab, including running scripts. Stop or Take over ends it."
         >
           Developer mode
         </span>

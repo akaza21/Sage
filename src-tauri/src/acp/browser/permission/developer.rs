@@ -2,13 +2,64 @@
 //! Settings switch, a live authority and the deny list before it may ask,
 //! and every attempt is audited, whatever its outcome.
 
+use std::sync::Arc;
+
 use serde_json::{Map, Value};
 
 use super::{
-    BrowserCapabilityDispatch, BrowserFailure, BrowserPermissionDecider, BrowserPermissionGate,
-    BrowserRequest, BrowserResult,
+    BrowserAuthority, BrowserCapabilityDispatch, BrowserFailure, BrowserPermissionDecider,
+    BrowserPermissionGate, BrowserRequest, BrowserResult,
 };
-use crate::acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome, admit_command};
+use crate::acp::browser::developer::{
+    CdpAuditEntry, CdpAuditOutcome, DeveloperModePolicy, admit_command,
+};
+
+/// What `perform_admitted` needs for an elevated command: the policy, the
+/// origin the command was admitted for, and the `sent` audit writer.
+#[derive(Clone, Copy)]
+pub(super) struct Elevated<'a> {
+    pub(super) policy: &'a Arc<dyn DeveloperModePolicy>,
+    pub(super) origin: &'a str,
+    pub(super) record_sent: &'a dyn Fn() -> bool,
+}
+
+impl Elevated<'_> {
+    /// After the card: the switch is read again (it may have gone off while
+    /// the card was open), a new approval is recorded on the attachment (so
+    /// Stop, Take over and a cross-origin commit end it whichever authority
+    /// asked), and the `sent` row must be written before anything is sent.
+    pub(super) fn admit(&self, session: &str, origin: &str, already_granted: bool) -> bool {
+        self.policy.enabled()
+            && (already_granted || self.policy.grant(session, origin))
+            && (self.record_sent)()
+    }
+
+    /// Checked under the live lock as the native call issues.
+    pub(super) fn issue_check(
+        &self,
+        session: &str,
+        origin: &str,
+    ) -> Arc<dyn Fn() -> bool + Send + Sync> {
+        let (policy, session, origin) =
+            (self.policy.clone(), session.to_owned(), origin.to_owned());
+        Arc::new(move || policy.enabled() && policy.granted(&session, &origin))
+    }
+}
+
+impl BrowserAuthority {
+    /// Waits for any command issuing under this authority's live lock.
+    pub(crate) fn fence(&self) {
+        drop(self.0.lock());
+    }
+}
+
+impl<P, D> BrowserPermissionGate<P, D> {
+    /// Admits elevated commands under `policy`; without it they are denied.
+    pub fn with_developer_mode(mut self, policy: Arc<dyn DeveloperModePolicy>) -> Self {
+        self.developer = Some(policy);
+        self
+    }
+}
 
 impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissionGate<P, D> {
     pub(super) fn perform_elevated(
@@ -54,8 +105,14 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
         // Written after approval and before sending; if it cannot be
         // written, the command is not sent.
         let record_sent = || developer.audit(entry(CdpAuditOutcome::Sent, None));
-        let outcome =
-            self.perform_admitted(request, Some((developer.as_ref(), &origin, &record_sent)));
+        let outcome = self.perform_admitted(
+            request,
+            Some(Elevated {
+                policy: &developer,
+                origin: &origin,
+                record_sent: &record_sent,
+            }),
+        );
         match &outcome {
             Ok(BrowserResult::Cdp { result }) => audit(
                 CdpAuditOutcome::Ok,

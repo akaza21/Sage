@@ -196,9 +196,9 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
   {
     id: "browser.developerMode",
-    label: "Enable full CDP access",
+    label: "Enable CDP access",
     description:
-      "Let agents use the full Chrome DevTools Protocol on a browser tab after you approve it.",
+      "Let agents use the Chrome DevTools Protocol on a browser tab after you approve it.",
     group: "Developer mode",
   },
 ]);

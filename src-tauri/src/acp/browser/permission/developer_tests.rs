@@ -339,3 +339,59 @@ fn a_command_whose_audit_row_cannot_be_written_is_not_sent() {
     assert_eq!(gate.perform(&evaluate()), Err(BrowserFailure::Denied));
     assert_eq!(port.0.load(Ordering::SeqCst), 0);
 }
+
+/// Turns the switch off, or ends the grant, after the gate's checks and
+/// the `sent` row but before the native call issues.
+struct RevokeBeforeIssue {
+    policy: Arc<Policy>,
+    end_grant: bool,
+    issued: Arc<AtomicUsize>,
+}
+
+impl BrowserCapabilityDispatch for RevokeBeforeIssue {
+    fn dispatch(
+        &mut self,
+        _request: &BrowserRequest,
+        permit: BrowserDispatchPermit,
+    ) -> Result<PendingBrowserResult, BrowserFailure> {
+        if self.end_grant {
+            *self.policy.grant.lock().unwrap() = None;
+        } else {
+            self.policy.enabled.store(false, Ordering::SeqCst);
+        }
+        let result = permit.with_live_lock(|| {
+            self.issued.fetch_add(1, Ordering::SeqCst);
+            Ok(BrowserResult::Cdp { result: json!({}) })
+        })?;
+        Ok(Box::new(move || Ok(result)))
+    }
+}
+
+#[test]
+fn switch_off_or_a_grant_ending_after_the_checks_still_stops_native_issue() {
+    for end_grant in [false, true] {
+        let policy = Policy::on();
+        let issued = Arc::new(AtomicUsize::new(0));
+        let mut gate = BrowserPermissionGate::new(
+            RevokeBeforeIssue {
+                policy: policy.clone(),
+                end_grant,
+                issued: issued.clone(),
+            },
+            |_: &BrowserPermissionPrompt| BrowserPermissionChoice::AllowDeveloperMode,
+            authority(),
+        )
+        .with_developer_mode(policy.clone());
+        assert_eq!(
+            gate.perform(&evaluate()),
+            Err(BrowserFailure::Denied),
+            "end_grant={end_grant}"
+        );
+        assert_eq!(issued.load(Ordering::SeqCst), 0, "end_grant={end_grant}");
+        assert_eq!(
+            policy.outcomes(),
+            ["sent", "denied"],
+            "end_grant={end_grant}"
+        );
+    }
+}

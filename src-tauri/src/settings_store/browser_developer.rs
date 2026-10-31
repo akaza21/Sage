@@ -16,13 +16,7 @@ pub const CDP_AUDIT_ROWS: i64 = 5_000;
 #[cfg_attr(not(windows), allow(dead_code))]
 const PARAMS_PREVIEW_BYTES: usize = 512;
 
-pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_developer_mode (
-           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-           enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
-         ) STRICT;
-         CREATE TABLE IF NOT EXISTS browser_cdp_audit (
+const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS browser_cdp_audit (
            id INTEGER PRIMARY KEY,
            at_ms INTEGER NOT NULL CHECK (at_ms >= 0),
            session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 128),
@@ -34,8 +28,35 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            result_bytes INTEGER CHECK (result_bytes IS NULL OR result_bytes >= 0),
            outcome TEXT NOT NULL CHECK (outcome IN
              ('sent', 'ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
+         ) STRICT;";
+
+pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS browser_developer_mode (
+           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+           enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
          ) STRICT;",
     )?;
+    // Schema 1 of the audit table (never released, but present in dev
+    // databases) lacked the `sent` outcome; CREATE IF NOT EXISTS would keep
+    // its CHECK and refuse every pre-send row, so rebuild it, keeping rows,
+    // inside the caller's migration transaction.
+    let existing: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'browser_cdp_audit'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if existing.is_some_and(|sql| !sql.contains("'sent'")) {
+        connection.execute_batch(&format!(
+            "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_v1;
+             {AUDIT_TABLE}
+             INSERT INTO browser_cdp_audit SELECT * FROM browser_cdp_audit_v1;
+             DROP TABLE browser_cdp_audit_v1;"
+        ))?;
+    }
+    connection.execute_batch(AUDIT_TABLE)?;
     Ok(())
 }
 
@@ -211,6 +232,38 @@ mod tests {
         assert!(preview.len() <= 512);
         assert_eq!(bytes, params.len() as i64);
         assert_eq!(outcome, "ok");
+    }
+
+    #[test]
+    fn a_schema_1_audit_table_is_rebuilt_to_accept_sent_rows_and_keeps_its_rows() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(&AUDIT_TABLE.replace("'sent', ", ""))
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO browser_cdp_audit(at_ms, session_id, tab_id, origin, method,
+                   params_preview, params_bytes, outcome)
+                 VALUES (1, 's', 7, 'https://example.com', 'Runtime.evaluate', '{}', 2, 'ok')",
+                [],
+            )
+            .unwrap();
+        migrate(&connection).unwrap();
+        migrate(&connection).unwrap();
+        connection
+            .execute(
+                "INSERT INTO browser_cdp_audit(at_ms, session_id, tab_id, origin, method,
+                   params_preview, params_bytes, outcome)
+                 VALUES (2, 's', 7, 'https://example.com', 'Runtime.evaluate', '{}', 2, 'sent')",
+                [],
+            )
+            .unwrap();
+        let rows: i64 = connection
+            .query_row("SELECT count(*) FROM browser_cdp_audit", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(rows, 2);
     }
 
     #[test]

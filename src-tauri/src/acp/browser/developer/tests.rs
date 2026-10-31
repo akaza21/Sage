@@ -40,89 +40,6 @@ fn method_shape_is_domain_dot_command() {
 }
 
 #[test]
-fn tab_scoped_commands_pass_including_script() {
-    for method in [
-        "Runtime.evaluate",
-        "Page.navigate",
-        "DOM.querySelector",
-        "Network.enable",
-        "Profiler.start",
-        "Security.enable",
-    ] {
-        assert_eq!(
-            admit(method, json!({"expression": "1"})),
-            Ok(()),
-            "{method}"
-        );
-    }
-}
-
-#[test]
-fn domains_and_commands_that_leave_the_tab_are_blocked() {
-    for method in [
-        "Target.createTarget",
-        "Target.attachToTarget",
-        "Browser.setDownloadBehavior",
-        "Browser.grantPermissions",
-        "Storage.getCookies",
-        "Storage.clearDataForOrigin",
-        "SystemInfo.getProcessInfo",
-        "Tethering.bind",
-        "Autofill.trigger",
-        "Extensions.loadUnpacked",
-        "FedCm.selectAccount",
-        "PWA.install",
-        "ServiceWorker.stopAllWorkers",
-        "BackgroundService.startObserving",
-        "Tracing.start",
-        "Network.getAllCookies",
-        "Network.clearBrowserCookies",
-        "Network.clearBrowserCache",
-        "Page.setDownloadBehavior",
-        "Security.setIgnoreCertificateErrors",
-        "Security.handleCertificateError",
-        "Security.setOverrideCertificateErrors",
-        // Local files.
-        "DOM.setFileInputFiles",
-        "Input.dispatchDragEvent",
-        "Page.setInterceptFileChooserDialog",
-        "Page.handleFileChooser",
-        "IO.read",
-        // Fetching with the user's credentials outside the page.
-        "Network.loadNetworkResource",
-        // State that would outlive the grant on the shared DevTools session.
-        "Page.addScriptToEvaluateOnNewDocument",
-        "Page.addScriptToEvaluateOnLoad",
-        "Page.setBypassCSP",
-        "Runtime.addBinding",
-        "Fetch.enable",
-        "Debugger.enable",
-        "Debugger.setBreakpointByUrl",
-        "DOMDebugger.setEventListenerBreakpoint",
-        "Emulation.setUserAgentOverride",
-        "Network.setExtraHTTPHeaders",
-        "Network.setBlockedURLs",
-        "Network.setUserAgentOverride",
-        "Input.setIgnoreInputEvents",
-        "WebAuthn.addVirtualAuthenticator",
-        // Other frames, the tab itself, the whole browser.
-        "DOMSnapshot.captureSnapshot",
-        "Page.captureSnapshot",
-        "Page.close",
-        "Page.crash",
-        "Network.setCookieControls",
-        "Memory.simulatePressureNotification",
-        "Cast.enable",
-    ] {
-        assert_eq!(
-            admit(method, json!({})),
-            Err(BrowserFailure::Denied),
-            "{method}"
-        );
-    }
-}
-
-#[test]
 fn cookie_reads_must_name_only_the_granted_origin() {
     assert_eq!(
         admit(
@@ -197,45 +114,6 @@ fn cookie_writes_stay_on_the_granted_host() {
 }
 
 #[test]
-fn storage_partitions_must_be_the_granted_origin() {
-    assert_eq!(
-        admit(
-            "IndexedDB.requestDatabaseNames",
-            json!({"securityOrigin": "https://app.example.com"})
-        ),
-        Ok(())
-    );
-    assert_eq!(
-        admit(
-            "DOMStorage.getDOMStorageItems",
-            json!({"storageId": {"storageKey": "https://app.example.com/^0https://x.example", "isLocalStorage": true}})
-        ),
-        Ok(())
-    );
-    for (method, value) in [
-        (
-            "IndexedDB.requestDatabaseNames",
-            json!({"securityOrigin": "https://bank.example"}),
-        ),
-        (
-            "DOMStorage.getDOMStorageItems",
-            json!({"storageId": {"securityOrigin": "https://bank.example", "isLocalStorage": true}}),
-        ),
-        (
-            "CacheStorage.requestCacheNames",
-            json!({"storageBucket": {"storageKey": "https://bank.example/"}}),
-        ),
-        ("IndexedDB.requestData", json!({"storageKey": 3})),
-    ] {
-        assert_eq!(
-            admit(method, value.clone()),
-            Err(BrowserFailure::Denied),
-            "{value}"
-        );
-    }
-}
-
-#[test]
 fn audit_outcomes_have_stable_names() {
     assert_eq!(CdpAuditOutcome::Ok.as_str(), "ok");
     assert_eq!(CdpAuditOutcome::Blocked.as_str(), "blocked");
@@ -255,12 +133,92 @@ fn audit_outcomes_have_stable_names() {
 }
 
 #[test]
-fn commands_stay_in_the_main_frame_and_its_default_context() {
-    assert_eq!(admit("DOM.getDocument", json!({"depth": 2})), Ok(()));
-    assert_eq!(admit("DOM.getDocument", json!({"pierce": false})), Ok(()));
+fn listed_main_frame_commands_pass_with_their_own_parameters() {
     for (method, value) in [
-        ("DOM.getDocument", json!({"pierce": true})),
-        ("DOM.describeNode", json!({"nodeId": 1, "pierce": true})),
+        (
+            "Runtime.evaluate",
+            json!({"expression": "1 + 1", "returnByValue": true}),
+        ),
+        (
+            "Runtime.callFunctionOn",
+            json!({"functionDeclaration": "function () {}", "objectId": "1"}),
+        ),
+        ("DOM.getDocument", json!({"depth": -1})),
+        ("DOM.querySelector", json!({"nodeId": 1, "selector": "h1"})),
+        ("DOM.getOuterHTML", json!({"nodeId": 4})),
+        (
+            "DOM.setAttributeValue",
+            json!({"nodeId": 4, "name": "class", "value": "x"}),
+        ),
+        (
+            "Page.navigate",
+            json!({"url": "https://app.example.com/next"}),
+        ),
+        ("Page.reload", json!({"ignoreCache": true})),
+        ("Page.captureScreenshot", json!({"format": "png"})),
+        ("Page.getFrameTree", json!({})),
+    ] {
+        assert_eq!(admit(method, value.clone()), Ok(()), "{method} {value}");
+    }
+}
+
+#[test]
+fn any_method_not_listed_is_refused() {
+    for method in [
+        // Leaving the tab or the profile.
+        "Target.createTarget",
+        "Browser.grantPermissions",
+        "Storage.getCookies",
+        "Network.getAllCookies",
+        "Page.close",
+        // Local files and credentialed fetches.
+        "DOM.setFileInputFiles",
+        "Input.dispatchDragEvent",
+        "Page.handleFileChooser",
+        "IO.read",
+        "Network.loadNetworkResource",
+        // State that outlives the grant on the shared DevTools session.
+        "Page.addScriptToEvaluateOnNewDocument",
+        "Page.setBypassCSP",
+        "Page.setGeolocationOverride",
+        "Page.setDeviceMetricsOverride",
+        "Page.setTouchEmulationEnabled",
+        "Runtime.addBinding",
+        "Fetch.enable",
+        "Debugger.enable",
+        "Emulation.setUserAgentOverride",
+        "Network.setExtraHTTPHeaders",
+        "Network.enable",
+        "Runtime.enable",
+        "WebAuthn.addVirtualAuthenticator",
+        // Input can land in any frame, cross-origin iframes included.
+        "Input.dispatchMouseEvent",
+        "Input.dispatchKeyEvent",
+        "Input.insertText",
+        // Other frames.
+        "Page.createIsolatedWorld",
+        "Page.getResourceContent",
+        "DOMSnapshot.captureSnapshot",
+        "CacheStorage.requestEntries",
+        "IndexedDB.requestData",
+    ] {
+        assert_eq!(
+            admit(method, json!({})),
+            Err(BrowserFailure::Denied),
+            "{method}"
+        );
+    }
+}
+
+#[test]
+fn a_listed_method_refuses_any_parameter_it_does_not_list() {
+    for (method, value) in [
+        // Injected into every frame after the reload, cross-origin ones too.
+        ("Page.reload", json!({"scriptToEvaluateOnLoad": "steal()"})),
+        (
+            "Page.navigate",
+            json!({"url": "file:///etc/passwd", "frameId": "F2"}),
+        ),
         (
             "Runtime.evaluate",
             json!({"expression": "1", "contextId": 3}),
@@ -270,25 +228,19 @@ fn commands_stay_in_the_main_frame_and_its_default_context() {
             json!({"expression": "1", "uniqueContextId": "x"}),
         ),
         (
+            "Runtime.evaluate",
+            json!({"expression": "debug(f)", "includeCommandLineAPI": true}),
+        ),
+        (
             "Runtime.callFunctionOn",
             json!({"functionDeclaration": "f", "executionContextId": 3}),
         ),
+        ("DOM.getDocument", json!({"pierce": true})),
+        ("DOM.describeNode", json!({"nodeId": 1, "pierce": true})),
+        ("DOM.getOuterHTML", json!({"backendNodeId": 99})),
         (
-            "Page.navigate",
-            json!({"url": "file:///etc/passwd", "frameId": "F2"}),
-        ),
-        (
-            "Page.getResourceContent",
-            json!({"frameId": "F2", "url": "https://x"}),
-        ),
-        ("Page.createIsolatedWorld", json!({"frameId": "F2"})),
-        (
-            "CacheStorage.requestEntries",
-            json!({"cacheId": "https://bank.example/|c"}),
-        ),
-        (
-            "Network.continueInterceptedRequest",
-            json!({"nested": {"files": ["/x"]}}),
+            "Network.setCookie",
+            json!({"name": "a", "url": "https://app.example.com/", "partitionKey": {"topLevelSite": "https://bank.example"}}),
         ),
     ] {
         assert_eq!(
@@ -297,4 +249,11 @@ fn commands_stay_in_the_main_frame_and_its_default_context() {
             "{method} {value}"
         );
     }
+    assert_eq!(
+        admit(
+            "Network.setCookies",
+            json!({"cookies": [{"name": "a", "url": "https://app.example.com/", "partitionKey": "x"}]})
+        ),
+        Err(BrowserFailure::Denied)
+    );
 }

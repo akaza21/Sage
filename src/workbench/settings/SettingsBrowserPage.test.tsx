@@ -116,7 +116,7 @@ it("offers developer mode off by default, names its risk, and saves through Rust
   render(<SettingsBrowserPage visible={all()} />);
   const group = await screen.findByRole("group", { name: "Developer mode" });
   const toggle = screen.getByRole("checkbox", {
-    name: "Enable full CDP access",
+    name: "Enable CDP access",
   });
   expect(group).toContainElement(toggle);
   expect(group).toHaveTextContent("Elevated risk");
@@ -144,7 +144,7 @@ it("says so when developer mode cannot be changed, and keeps Rust's value", asyn
   setDeveloperMode.mockRejectedValue(new Error("unavailable"));
   render(<SettingsBrowserPage visible={all()} />);
   const toggle = await screen.findByRole("checkbox", {
-    name: "Enable full CDP access",
+    name: "Enable CDP access",
   });
   fireEvent.click(toggle);
   expect(await screen.findByRole("alert")).toHaveTextContent(

@@ -103,17 +103,29 @@ impl BrowserAttachments {
     /// Ends every developer-mode grant, as the Settings switch going off
     /// does. Returns the tabs that held one.
     pub(crate) fn end_developer_mode(&self) -> Vec<String> {
+        let mut leases = Vec::new();
+        if let Ok(entries) = self.entries.lock() {
+            leases.extend(entries.values().cloned());
+        }
+        if let Ok(entries) = self.agent_entries.lock() {
+            leases.extend(entries.values().cloned());
+        }
         let mut labels = Vec::new();
-        let mut end = |lease: &AttachmentLease| {
+        for lease in leases {
             if lease.end_developer_mode() {
                 labels.push(lease.tab_label.clone());
             }
-        };
-        if let Ok(entries) = self.entries.lock() {
-            entries.values().for_each(&mut end);
-        }
-        if let Ok(entries) = self.agent_entries.lock() {
-            entries.values().for_each(&mut end);
+            // A developer command that passed its check before the grant
+            // ended may be issuing under the live lock; wait for it, holding
+            // no other lock, so none is sent after switch-off returns.
+            let authority = lease
+                .authority
+                .lock()
+                .ok()
+                .and_then(|slot| slot.as_ref().map(|(_, authority)| authority.clone()));
+            if let Some(authority) = authority {
+                authority.fence();
+            }
         }
         labels
     }

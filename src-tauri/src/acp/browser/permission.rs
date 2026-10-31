@@ -58,6 +58,10 @@ pub struct BrowserDispatchPermit {
     tab_is_current: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     owner_is_current: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     owner_witness: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// For a developer-mode command: the grant and switch generation are
+    /// still current. Checked under the live lock, which switch-off also
+    /// takes after ending grants, so nothing issues after it returns.
+    elevated_is_current: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     issued: Arc<AtomicBool>,
 }
 
@@ -80,6 +84,10 @@ impl BrowserDispatchPermit {
             || state.owner_generation != self.owner_generation
             || self.tab_is_current.as_ref().is_some_and(|check| !check())
             || self.owner_witness.as_ref().is_some_and(|check| !check())
+            || self
+                .elevated_is_current
+                .as_ref()
+                .is_some_and(|check| !check())
         {
             return Err(BrowserFailure::Denied);
         }
@@ -94,6 +102,10 @@ impl BrowserDispatchPermit {
                 && state.owner_generation == self.owner_generation
                 && self.tab_is_current.as_ref().is_none_or(|check| check())
                 && self.owner_witness.as_ref().is_none_or(|check| check())
+                && self
+                    .elevated_is_current
+                    .as_ref()
+                    .is_none_or(|check| check())
         })
     }
 
@@ -256,12 +268,6 @@ impl<P, D> BrowserPermissionGate<P, D> {
         }
     }
 
-    /// Admits elevated commands under `policy`; without it they are denied.
-    pub fn with_developer_mode(mut self, policy: Arc<dyn DeveloperModePolicy>) -> Self {
-        self.developer = Some(policy);
-        self
-    }
-
     pub fn with_tab_revision_guard(
         mut self,
         check: impl Fn() -> bool + Send + Sync + 'static,
@@ -300,7 +306,7 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
     fn perform_admitted(
         &mut self,
         request: &BrowserRequest,
-        elevated: Option<(&dyn DeveloperModePolicy, &str, &dyn Fn() -> bool)>,
+        elevated: Option<developer::Elevated<'_>>,
     ) -> Result<BrowserResult, BrowserFailure> {
         let session = request.scope.session_id.as_str();
         let (revision, owner_generation, origin, already_granted) = {
@@ -319,8 +325,8 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
                 _ => state.origin.clone(),
             };
             let granted = match elevated {
-                Some((_, admitted, _)) if admitted != origin => return Err(BrowserFailure::Denied),
-                Some((developer, _, _)) => developer.granted(session, &origin),
+                Some(elevated) if elevated.origin != origin => return Err(BrowserFailure::Denied),
+                Some(elevated) => elevated.policy.granted(session, &origin),
                 None => state.grant_origin.as_deref() == Some(origin.as_str()),
             };
             (state.revision, state.owner_generation, origin, granted)
@@ -344,15 +350,8 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
         if !admitted {
             return Err(BrowserFailure::Denied);
         }
-        // The attachment holds the grant, so Stop, Take over and a
-        // cross-origin commit end it whichever authority asked. The switch
-        // is read again because it may have gone off while the card was
-        // open, and the command leaves Sage only once its audit row is
-        // written.
-        if let Some((developer, _, record_sent)) = elevated
-            && (!developer.enabled()
-                || (!already_granted && !developer.grant(session, &origin))
-                || !record_sent())
+        if let Some(elevated) = elevated
+            && !elevated.admit(session, &origin, already_granted)
         {
             return Err(BrowserFailure::Denied);
         }
@@ -364,6 +363,7 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
             tab_is_current: self.tab_is_current.clone(),
             owner_is_current: self.owner_is_current.clone(),
             owner_witness: self.owner_witness.clone(),
+            elevated_is_current: elevated.map(|elevated| elevated.issue_check(session, &origin)),
             issued: Arc::new(AtomicBool::new(false)),
         };
         let pending = self.port.dispatch(request, permit.clone())?;

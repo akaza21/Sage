@@ -56,7 +56,7 @@ export function PermissionPrompt({
   /** The request in flight, or the one whose decision failed (negated). */
   const [sent, setSent] = useState<[string, boolean] | null>(null);
   const execute = item?.payload.category === "execute";
-  /** A developer-mode card (ADR-0009b): full CDP for this tab and site. */
+  /** A developer-mode card (ADR-0009b): CDP for this tab and site. */
   const developer = item?.payload.source === "browserDeveloper";
   const question = developer
     ? "Allow developer mode on this site?"
@@ -191,9 +191,9 @@ export function PermissionPrompt({
       </Detail>
       {developer ? (
         <p className="acp-permission-prompt__risk">
-          The agent gets full Chrome DevTools Protocol access to this tab. It
-          can run its own scripts on the page and read this site&apos;s cookies
-          and session data until you stop it, take over or leave the site. Only
+          The agent gets Chrome DevTools Protocol access to this tab. It can run
+          its own scripts on the page and read this site&apos;s cookies and
+          session data until you stop it, take over or leave the site. Only
           allow this for sites you trust.
         </p>
       ) : null}

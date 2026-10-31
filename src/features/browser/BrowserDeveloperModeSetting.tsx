@@ -51,12 +51,12 @@ export function BrowserDeveloperModeSetting() {
         <div className="settings-surface__row">
           <div className="settings-surface__copy">
             <strong className="settings-surface__risk">Elevated risk</strong>
-            <label htmlFor={TOGGLE}>Enable full CDP access</label>
+            <label htmlFor={TOGGLE}>Enable CDP access</label>
             <p id={`${TOGGLE}-description`}>
-              Let agents use the full Chrome DevTools Protocol on a browser tab
-              after you approve it for that tab and site. Full CDP access can
-              run scripts on the page and read the site&apos;s cookies and
-              session data. Stop or Take over ends it.
+              Let agents use the Chrome DevTools Protocol on a browser tab after
+              you approve it for that tab and site. Full CDP access can run
+              scripts on the page and read the site&apos;s cookies and session
+              data. Stop or Take over ends it.
             </p>
             <small id={`${TOGGLE}-default`}>Default: Off</small>
             {error ? (
