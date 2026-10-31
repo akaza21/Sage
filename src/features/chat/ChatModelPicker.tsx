@@ -1,4 +1,4 @@
-import { Fragment, useId, useState } from "react";
+import { Fragment, useId, useState, useLayoutEffect, useRef } from "react";
 import { PickerOption } from "../../ui/PickerOption";
 import { composerModelName } from "./composerModelName";
 
@@ -9,6 +9,7 @@ export interface ComposerModelChoice {
   isDefault?: boolean;
 }
 export const MAX_VISIBLE_MODELS = 200;
+const MAX_MODEL_QUERY = 128;
 
 export function ChatModelPicker({
   listboxId,
@@ -24,6 +25,13 @@ export function ChatModelPicker({
   onSelect: (modelId: string) => void;
 }) {
   const id = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!listRef.current?.closest(".menu-popover")) return;
+    listRef.current
+      .querySelector<HTMLElement>('[aria-selected="true"], [role="option"]')
+      ?.focus();
+  }, []);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();
   const matches = needle
@@ -61,7 +69,7 @@ export function ChatModelPicker({
           type="search"
           aria-label="Search models"
           aria-controls={listboxId}
-          maxLength={128}
+          maxLength={MAX_MODEL_QUERY}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -79,6 +87,7 @@ export function ChatModelPicker({
       ) : null}
       <div
         id={listboxId}
+        ref={listRef}
         className="composer-model-picker__list"
         role="listbox"
         aria-labelledby={`${id}-title`}

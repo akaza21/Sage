@@ -1,7 +1,13 @@
 import type { RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-model-identities.css";
-import { ChatModelPicker, type ComposerModelChoice } from "./ChatModelPicker";
+import type { ComposerModelChoice } from "./ChatModelPicker";
+import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+
+const loadModels = () =>
+  import("./ChatModelPicker").then(({ ChatModelPicker }) => ({
+    default: ChatModelPicker,
+  }));
 
 export default function ComposerModelMenu({
   triggerRef,
@@ -33,12 +39,18 @@ export default function ComposerModelMenu({
       className="composer__popover composer__model-menu composer-model-picker"
       ariaLabel="Select model"
     >
-      <ChatModelPicker
-        listboxId={panelId}
-        models={choices}
-        selectedId={selectedId}
-        disabled={disabled}
-        onSelect={onSelect}
+      <LazyModuleBoundary
+        label="Models"
+        load={loadModels}
+        render={(ChatModelPicker) => (
+          <ChatModelPicker
+            listboxId={panelId}
+            models={choices}
+            selectedId={selectedId}
+            disabled={disabled}
+            onSelect={onSelect}
+          />
+        )}
       />
     </MenuPopover>
   );

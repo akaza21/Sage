@@ -110,7 +110,7 @@ export default function ComposerEffortMenu({
         }}
         className="composer__popover composer__effort-menu"
       >
-        <div className="composer-effort__heading">
+        <div className="composer-effort__heading" aria-busy={pending}>
           <Brain size={13} aria-hidden="true" />
           <div className="composer-effort__identity">
             <span className="composer-effort__level">
