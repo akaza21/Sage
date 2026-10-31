@@ -30,6 +30,8 @@ const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS browser_cdp_audit (
              ('sent', 'ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
          ) STRICT;";
 
+const AUDIT_SCHEMA_VERSION: i64 = 2;
+
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_developer_mode (
@@ -37,18 +39,33 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
          ) STRICT;",
     )?;
-    // Schema 1 of the audit table (never released, but present in dev
-    // databases) lacked the `sent` outcome; CREATE IF NOT EXISTS would keep
-    // its CHECK and refuse every pre-send row, so rebuild it, keeping rows,
-    // inside the caller's migration transaction.
-    let existing: Option<String> = connection
+    // The audit table's schema version, kept in its own row: the settings
+    // database has no shared `user_version` scheme, and claiming the whole
+    // file's pragma for one table would collide with other settings
+    // migrations. Version 1 (dev builds only) lacked the `sent` outcome;
+    // version 2 is AUDIT_TABLE.
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
+           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+           version INTEGER NOT NULL CHECK (version >= 1)
+         ) STRICT;",
+    )?;
+    let recorded: Option<i64> = connection
         .query_row(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'browser_cdp_audit'",
+            "SELECT version FROM browser_cdp_audit_schema WHERE singleton = 1",
             [],
             |row| row.get(0),
         )
         .optional()?;
-    if existing.is_some_and(|sql| !sql.contains("'sent'")) {
+    let table_exists: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'browser_cdp_audit')",
+        [],
+        |row| row.get(0),
+    )?;
+    // A table with no recorded version predates versioning: version 1.
+    let version = recorded.unwrap_or(if table_exists { 1 } else { 0 });
+    if version == 1 {
+        // Rebuild, keeping rows, inside the caller's migration transaction.
         connection.execute_batch(&format!(
             "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_v1;
              {AUDIT_TABLE}
@@ -57,6 +74,11 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
         ))?;
     }
     connection.execute_batch(AUDIT_TABLE)?;
+    connection.execute(
+        "INSERT INTO browser_cdp_audit_schema(singleton, version) VALUES (1, ?1)
+         ON CONFLICT(singleton) DO UPDATE SET version = excluded.version",
+        params![AUDIT_SCHEMA_VERSION],
+    )?;
     Ok(())
 }
 
@@ -250,6 +272,12 @@ mod tests {
             .unwrap();
         migrate(&connection).unwrap();
         migrate(&connection).unwrap();
+        let version: i64 = connection
+            .query_row("SELECT version FROM browser_cdp_audit_schema", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, AUDIT_SCHEMA_VERSION);
         connection
             .execute(
                 "INSERT INTO browser_cdp_audit(at_ms, session_id, tab_id, origin, method,

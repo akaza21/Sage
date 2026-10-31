@@ -3,13 +3,17 @@
 //! Settings switch, the per-session grant and the audit log.
 //!
 //! Default deny: only the methods in `ALLOWED`, each with only its listed
-//! top-level parameters, are sent. Every one of them acts on the main
-//! frame's document or default execution context, reads or changes this
-//! origin's cookies, or navigates or captures the tab, and none leaves state
-//! on the tab's shared DevTools session after the grant ends. Node handles
-//! are only `nodeId` (issued for the main document, never pierced) and
-//! `objectId` (from the main world); `backendNodeId`, frame and context ids
-//! are never accepted because they can name same-process iframes.
+//! top-level parameters, are sent. Every one of them runs in the main
+//! frame's default execution context (where the same-origin policy keeps
+//! cross-origin iframes out) or navigates or captures the tab, and none
+//! enables a domain or leaves other state on the tab's shared DevTools
+//! session after the grant ends. The `DOM` domain is left out because its
+//! node ids reach same-process iframe documents and it enables itself;
+//! cookie commands are left out because they hand over `HttpOnly` session
+//! tokens that page script cannot read. Frame and context ids are never
+//! accepted, and neither is a remote `objectId`: it encodes the execution
+//! context it belongs to, so a hand-built one could name an iframe's
+//! context. Results come back by value or as previews.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -17,7 +21,6 @@ use serde_json::{Map, Value};
 
 use super::BrowserFailure;
 
-const NODE: &[&str] = &["nodeId", "objectId"];
 const EVALUATE: &[&str] = &[
     "expression",
     "objectGroup",
@@ -32,76 +35,12 @@ const EVALUATE: &[&str] = &[
     "replMode",
     "serializationOptions",
 ];
-const CALL_FUNCTION: &[&str] = &[
-    "functionDeclaration",
-    "objectId",
-    "arguments",
-    "silent",
-    "returnByValue",
-    "generatePreview",
-    "userGesture",
-    "awaitPromise",
-    "objectGroup",
-    "throwOnSideEffect",
-    "serializationOptions",
-];
-const COOKIE: &[&str] = &[
-    "name",
-    "value",
-    "url",
-    "domain",
-    "path",
-    "secure",
-    "httpOnly",
-    "sameSite",
-    "expires",
-    "priority",
-    "sourceScheme",
-    "sourcePort",
-];
 
 /// Every method developer mode sends, with the parameters it may carry.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("Runtime.evaluate", EVALUATE),
-    ("Runtime.callFunctionOn", CALL_FUNCTION),
-    (
-        "Runtime.getProperties",
-        &[
-            "objectId",
-            "ownProperties",
-            "accessorPropertiesOnly",
-            "generatePreview",
-            "nonIndexedPropertiesOnly",
-        ],
-    ),
-    (
-        "Runtime.awaitPromise",
-        &["promiseObjectId", "returnByValue", "generatePreview"],
-    ),
-    ("Runtime.releaseObject", &["objectId"]),
     ("Runtime.releaseObjectGroup", &["objectGroup"]),
     ("Runtime.getHeapUsage", &[]),
-    ("DOM.getDocument", &["depth"]),
-    ("DOM.querySelector", &["nodeId", "selector"]),
-    ("DOM.querySelectorAll", &["nodeId", "selector"]),
-    ("DOM.describeNode", &["nodeId", "objectId", "depth"]),
-    ("DOM.getOuterHTML", NODE),
-    ("DOM.getAttributes", &["nodeId"]),
-    ("DOM.getBoxModel", NODE),
-    ("DOM.getContentQuads", NODE),
-    ("DOM.resolveNode", &["nodeId", "objectGroup"]),
-    ("DOM.requestNode", &["objectId"]),
-    ("DOM.setAttributeValue", &["nodeId", "name", "value"]),
-    ("DOM.setAttributesAsText", &["nodeId", "text", "name"]),
-    ("DOM.removeAttribute", &["nodeId", "name"]),
-    ("DOM.setNodeValue", &["nodeId", "value"]),
-    ("DOM.setOuterHTML", &["nodeId", "outerHTML"]),
-    ("DOM.removeNode", &["nodeId"]),
-    ("DOM.focus", NODE),
-    (
-        "DOM.scrollIntoViewIfNeeded",
-        &["nodeId", "objectId", "rect"],
-    ),
     (
         "Page.navigate",
         &["url", "referrer", "transitionType", "referrerPolicy"],
@@ -122,10 +61,6 @@ const ALLOWED: &[(&str, &[&str])] = &[
             "optimizeForSpeed",
         ],
     ),
-    ("Network.getCookies", &["urls"]),
-    ("Network.setCookie", COOKIE),
-    ("Network.setCookies", &["cookies"]),
-    ("Network.deleteCookies", &["name", "url", "domain", "path"]),
 ];
 
 /// Accepts `Domain.command`, both ASCII alphanumeric and non-empty.
@@ -142,73 +77,23 @@ pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
     }
 }
 
-/// Refuses any method not in `ALLOWED`, any parameter not listed for it,
-/// and cookie commands that leave the granted origin. The caller has
-/// already checked the method's shape.
+/// Refuses any method not in `ALLOWED` and any parameter not listed for
+/// it. The caller has already checked the method's shape. `origin` is the
+/// granted origin; no listed method takes an origin-bearing parameter
+/// today, so none needs binding to it.
 pub fn admit_command(
     method: &str,
     params: &Map<String, Value>,
-    origin: &str,
+    _origin: &str,
 ) -> Result<(), BrowserFailure> {
     let Some((_, keys)) = ALLOWED.iter().find(|(allowed, _)| *allowed == method) else {
         return Err(BrowserFailure::Denied);
     };
-    if !params.keys().all(|key| keys.contains(&key.as_str())) {
-        return Err(BrowserFailure::Denied);
+    if params.keys().all(|key| keys.contains(&key.as_str())) {
+        Ok(())
+    } else {
+        Err(BrowserFailure::Denied)
     }
-    match method {
-        // Without `urls`, CDP answers for every frame, cross-origin ones too.
-        "Network.getCookies" => match params.get("urls") {
-            Some(Value::Array(urls)) if !urls.is_empty() => urls
-                .iter()
-                .all(|url| url.as_str().is_some_and(|url| same_origin(url, origin)))
-                .then_some(())
-                .ok_or(BrowserFailure::Denied),
-            _ => Err(BrowserFailure::Denied),
-        },
-        "Network.setCookie" | "Network.deleteCookies" => cookie_target(params, origin),
-        "Network.setCookies" => match params.get("cookies") {
-            Some(Value::Array(cookies)) => cookies.iter().try_for_each(|cookie| match cookie {
-                Value::Object(cookie)
-                    if cookie.keys().all(|key| COOKIE.contains(&key.as_str())) =>
-                {
-                    cookie_target(cookie, origin)
-                }
-                _ => Err(BrowserFailure::Denied),
-            }),
-            _ => Err(BrowserFailure::Denied),
-        },
-        _ => Ok(()),
-    }
-}
-
-/// A cookie command must name the granted origin by `url`, and any `domain`
-/// must be that origin's exact host: a leading dot or a parent domain would
-/// reach sibling sites.
-fn cookie_target(params: &Map<String, Value>, origin: &str) -> Result<(), BrowserFailure> {
-    let Some(url) = params.get("url").and_then(Value::as_str) else {
-        return Err(BrowserFailure::Denied);
-    };
-    if !same_origin(url, origin) {
-        return Err(BrowserFailure::Denied);
-    }
-    match params.get("domain") {
-        None => Ok(()),
-        Some(Value::String(domain)) if host_of(origin).as_deref() == Some(domain.as_str()) => {
-            Ok(())
-        }
-        Some(_) => Err(BrowserFailure::Denied),
-    }
-}
-
-fn same_origin(url: &str, origin: &str) -> bool {
-    url::Url::parse(url).is_ok_and(|url| url.origin().ascii_serialization() == origin)
-}
-
-fn host_of(origin: &str) -> Option<String> {
-    url::Url::parse(origin)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_owned))
 }
 
 /// How one developer-mode call ended, as the audit log records it.

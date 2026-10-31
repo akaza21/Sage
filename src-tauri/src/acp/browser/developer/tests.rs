@@ -40,80 +40,6 @@ fn method_shape_is_domain_dot_command() {
 }
 
 #[test]
-fn cookie_reads_must_name_only_the_granted_origin() {
-    assert_eq!(
-        admit(
-            "Network.getCookies",
-            json!({"urls": ["https://app.example.com/a"]})
-        ),
-        Ok(())
-    );
-    for value in [
-        json!({}),
-        json!({"urls": []}),
-        json!({"urls": ["https://bank.example"]}),
-        json!({"urls": ["https://app.example.com/", "https://evil.example"]}),
-        json!({"urls": ["http://app.example.com/"]}),
-        json!({"urls": [7]}),
-    ] {
-        assert_eq!(
-            admit("Network.getCookies", value.clone()),
-            Err(BrowserFailure::Denied),
-            "{value}"
-        );
-    }
-}
-
-#[test]
-fn cookie_writes_stay_on_the_granted_host() {
-    for method in ["Network.setCookie", "Network.deleteCookies"] {
-        assert_eq!(
-            admit(
-                method,
-                json!({"name": "a", "url": "https://app.example.com/"})
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            admit(
-                method,
-                json!({"name": "a", "url": "https://app.example.com/", "domain": "app.example.com"})
-            ),
-            Ok(())
-        );
-        for value in [
-            json!({"name": "a"}),
-            json!({"name": "a", "url": "https://other.example/"}),
-            json!({"name": "a", "url": "https://app.example.com/", "domain": ".example.com"}),
-            json!({"name": "a", "url": "https://app.example.com/", "domain": "example.com"}),
-        ] {
-            assert_eq!(
-                admit(method, value.clone()),
-                Err(BrowserFailure::Denied),
-                "{value}"
-            );
-        }
-    }
-    assert_eq!(
-        admit(
-            "Network.setCookies",
-            json!({"cookies": [{"name": "a", "value": "1", "url": "https://app.example.com/"}]})
-        ),
-        Ok(())
-    );
-    assert_eq!(
-        admit(
-            "Network.setCookies",
-            json!({"cookies": [
-                {"name": "a", "value": "1", "url": "https://app.example.com/"},
-                {"name": "b", "value": "1", "domain": "bank.example"}
-            ]})
-        ),
-        Err(BrowserFailure::Denied)
-    );
-}
-
-#[test]
 fn audit_outcomes_have_stable_names() {
     assert_eq!(CdpAuditOutcome::Ok.as_str(), "ok");
     assert_eq!(CdpAuditOutcome::Blocked.as_str(), "blocked");
@@ -137,18 +63,15 @@ fn listed_main_frame_commands_pass_with_their_own_parameters() {
     for (method, value) in [
         (
             "Runtime.evaluate",
-            json!({"expression": "1 + 1", "returnByValue": true}),
+            json!({"expression": "document.title", "returnByValue": true}),
         ),
         (
-            "Runtime.callFunctionOn",
-            json!({"functionDeclaration": "function () {}", "objectId": "1"}),
+            "Runtime.evaluate",
+            json!({"expression": "fetch('/a')", "awaitPromise": true}),
         ),
-        ("DOM.getDocument", json!({"depth": -1})),
-        ("DOM.querySelector", json!({"nodeId": 1, "selector": "h1"})),
-        ("DOM.getOuterHTML", json!({"nodeId": 4})),
         (
-            "DOM.setAttributeValue",
-            json!({"nodeId": 4, "name": "class", "value": "x"}),
+            "Runtime.releaseObjectGroup",
+            json!({"objectGroup": "agent"}),
         ),
         (
             "Page.navigate",
@@ -201,6 +124,24 @@ fn any_method_not_listed_is_refused() {
         "DOMSnapshot.captureSnapshot",
         "CacheStorage.requestEntries",
         "IndexedDB.requestData",
+        // Node ids reach same-process iframe documents, and DOM enables
+        // itself, leaving tracking on after the grant.
+        "DOM.getDocument",
+        "DOM.querySelector",
+        "DOM.getOuterHTML",
+        "DOM.setOuterHTML",
+        "DOM.resolveNode",
+        // HttpOnly session tokens page script cannot read.
+        "Network.getCookies",
+        "Network.setCookie",
+        "Network.setCookies",
+        "Network.deleteCookies",
+        // A remote objectId names its execution context, so a hand-built
+        // one could reach an iframe's.
+        "Runtime.callFunctionOn",
+        "Runtime.getProperties",
+        "Runtime.awaitPromise",
+        "Runtime.releaseObject",
     ] {
         assert_eq!(
             admit(method, json!({})),
@@ -232,15 +173,8 @@ fn a_listed_method_refuses_any_parameter_it_does_not_list() {
             json!({"expression": "debug(f)", "includeCommandLineAPI": true}),
         ),
         (
-            "Runtime.callFunctionOn",
-            json!({"functionDeclaration": "f", "executionContextId": 3}),
-        ),
-        ("DOM.getDocument", json!({"pierce": true})),
-        ("DOM.describeNode", json!({"nodeId": 1, "pierce": true})),
-        ("DOM.getOuterHTML", json!({"backendNodeId": 99})),
-        (
-            "Network.setCookie",
-            json!({"name": "a", "url": "https://app.example.com/", "partitionKey": {"topLevelSite": "https://bank.example"}}),
+            "Page.captureScreenshot",
+            json!({"format": "png", "frameId": "F2"}),
         ),
     ] {
         assert_eq!(
@@ -249,11 +183,4 @@ fn a_listed_method_refuses_any_parameter_it_does_not_list() {
             "{method} {value}"
         );
     }
-    assert_eq!(
-        admit(
-            "Network.setCookies",
-            json!({"cookies": [{"name": "a", "url": "https://app.example.com/", "partitionKey": "x"}]})
-        ),
-        Err(BrowserFailure::Denied)
-    );
 }
