@@ -50,9 +50,9 @@ isolation, GPU acceleration, accessibility, and the minimal `core:default`
 capability remain enabled.
 
 ADE-0005 implementation self-check is complete, but fresh-context independent
-review and independent verification have not been recorded. See
-`docs/development/CURRENT-STATE.md`; ADE-0006A and the staged ADE-0006B/C/D/E
-harness work items are specified, but none is release-admitted.
+review and independent verification have not been recorded. ADE-0006A and the
+staged ADE-0006B/C/D/E harness work items are specified, but none is
+release-admitted.
 
 Syntax highlighting, LSP, project search, Git mutation/history, file watching,
 PTYs, and managed-release wiring for Claude Code, Codex CLI, and Pi remain
@@ -68,9 +68,8 @@ token does not itself close the Job. This is not proof that all descendant
 process objects have signaled or that every file handle has been released.
 Callers must not use the token alone as permission to delete a directory or
 assume filesystem locks are gone. No upper bound on descendant object
-settlement was established. See the
-[settlement evidence](docs/work-items/SUPERVISOR-DESCENDANT-SETTLEMENT/evidence.md),
-including the separately outstanding Cargo-target lease contract defect.
+settlement was established, and the Cargo-target lease contract defect is
+still outstanding.
 
 ## Stack
 
@@ -155,26 +154,6 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -
 ```
 
 ## Project boundaries
-
-Read:
-
-- `docs/architecture/README.md`
-- `docs/development/WORKFLOW.md`
-- `docs/development/CURRENT-STATE.md`
-- `docs/decisions/ADR-0001-process-and-state-ownership.md`
-- `docs/decisions/ADR-0002-chat-native-diffs-and-navigation.md`
-- `docs/decisions/ADR-0003-bounded-native-repository-services.md`
-- `docs/decisions/ADR-0004-durable-conflict-safe-editor-buffers.md`
-- `docs/decisions/ADR-0005-windows-footprint-attribution.md`
-- `docs/decisions/ADR-0006-durable-project-and-resource-identity.md`
-- `docs/work-items/ADE-0001-walking-skeleton/brief.md`
-- `docs/work-items/ADE-0002-repository-substrate/brief.md`
-- `docs/work-items/ADE-0003-persistent-editor-buffers/brief.md`
-- `docs/work-items/ADE-0003-persistent-editor-buffers/results.md`
-- `docs/work-items/ADE-0004-windows-idle-footprint/brief.md`
-- `docs/work-items/ADE-0004-windows-idle-footprint/results.md`
-- `docs/work-items/ADE-0005-project-lifecycle/brief.md`
-- `docs/work-items/ADE-0005-project-lifecycle/results.md`
 
 The base installer must not grow a bundled Node runtime, Chromium, Monaco,
 libgit2, a VS Code extension host, or built-in harness runtimes.
