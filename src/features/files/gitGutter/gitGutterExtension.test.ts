@@ -634,4 +634,19 @@ describe("git gutter peek and reloads", () => {
     view.dispatch({ changes: { from: 0, to: 6, insert: "z" } });
     expect(kinds(view)).toEqual([]);
   });
+
+  it("drops a deleted-line marker when text is typed at its anchor", async () => {
+    const view = mount("a\nc\n");
+    const { pool } = fakePool();
+    attachGitGutter(view, pool).setBase("a\nb\nc\n");
+    await settle();
+    expect(kinds(view)).toEqual(["deleted"]);
+    view.dispatch({ changes: { from: 2, insert: "X" } });
+    expect(kinds(view)).toEqual([]);
+    expect(revertHunk(view, 0)).toBe(false);
+    await settle();
+    expect(kinds(view)).toEqual(["modified"]);
+    expect(revertHunk(view, 0)).toBe(true);
+    expect(view.state.doc.toString()).toBe("a\nb\nc\n");
+  });
 });

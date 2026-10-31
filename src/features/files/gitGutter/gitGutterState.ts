@@ -73,8 +73,9 @@ function survives(hunk: GutterHunk, changes: ChangeDesc, length: number) {
     if (!keeps) return;
     if (length > 0 && fromA === 0 && toA === length) keeps = false;
     else if (hunk.kind === "deleted") {
-      // The staged lines sit at `from`; a change crossing it removes the anchor.
-      if (fromA < hunk.from && toA >= hunk.from) keeps = false;
+      // The staged lines go back in at `from`, a line start; any edit there
+      // (even an insert) would leave them on the wrong side of new text.
+      if (fromA <= hunk.from && toA >= hunk.from) keeps = false;
     } else if (fromA <= hunk.to && toA >= hunk.from) {
       keeps = fromA >= hunk.from && toA <= hunk.to;
     }
