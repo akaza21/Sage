@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import test from "node:test";
@@ -510,48 +510,71 @@ test("release package mode hands exact validated arguments to the existing campa
 
 // origin: check-lanes.node-test.mjs:443 "Rust environment uses explicit paths and only enables detected sccache" -> check-lanes.portable.node-test.mjs
 test("Rust environment uses explicit paths and only enables detected sccache", () => {
-  assert.deepEqual(
-    buildRustEnvironment({
-      platform: "linux",
-      environment: {
-        SAGE_CARGO_TARGET_DIR: "/cache/target",
-        SAGE_SCCACHE_DIR: "/cache/sccache",
+  for (const platform of ["win32", "linux", "darwin"]) {
+    assert.deepEqual(
+      buildRustEnvironment({
+        platform,
+        environment: {
+          SAGE_CARGO_TARGET_DIR: "/cache/target",
+          SAGE_SCCACHE_DIR: "/cache/sccache",
+        },
+        repositoryRoot: "/workspace/sage",
+        sccachePath: "/usr/bin/sccache",
+      }),
+      {
+        CARGO_TARGET_DIR: "/cache/target",
+        RUSTC_WRAPPER: "/usr/bin/sccache",
+        SCCACHE_CACHE_SIZE: "20G",
+        SCCACHE_DIR: "/cache/sccache",
       },
-      repositoryRoot: "/workspace/sage",
-      sccachePath: "/usr/bin/sccache",
-      windowsDDriveAvailable: false,
-    }),
-    {
-      CARGO_TARGET_DIR: "/cache/target",
-      RUSTC_WRAPPER: "/usr/bin/sccache",
+    );
+    const pathModule = platform === "win32" ? path.win32 : path;
+    const root = pathModule.resolve("workspace", "sage");
+    const defaults = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: root,
+      sccachePath: "sccache",
+    });
+    assert.equal(
+      pathModule.dirname(defaults.CARGO_TARGET_DIR),
+      pathModule.join(homedir(), ".cache", "sage-target"),
+    );
+    assert.match(
+      pathModule.basename(defaults.CARGO_TARGET_DIR),
+      /^sage-[0-9a-f]{12}$/u,
+    );
+    assert.deepEqual(defaults, {
+      CARGO_TARGET_DIR: defaults.CARGO_TARGET_DIR,
+      RUSTC_WRAPPER: "sccache",
       SCCACHE_CACHE_SIZE: "20G",
-      SCCACHE_DIR: "/cache/sccache",
-    },
-  );
-  const windowsEnvironment = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot,
-    sccachePath: undefined,
-    windowsDDriveAvailable: true,
-  });
-  assert.match(
-    windowsEnvironment.CARGO_TARGET_DIR,
-    /^C:\\SageCaches\\cargo-target\\sage-[0-9a-f]{12}$/u,
-  );
-  const first = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot: "C:\\one\\same-name",
-    windowsDDriveAvailable: true,
-  });
-  const second = buildRustEnvironment({
-    platform: "win32",
-    environment: {},
-    repositoryRoot: "C:\\two\\same-name",
-    windowsDDriveAvailable: true,
-  });
-  assert.notEqual(first.CARGO_TARGET_DIR, second.CARGO_TARGET_DIR);
+      SCCACHE_DIR: pathModule.join(homedir(), ".cache", "sccache"),
+    });
+    assert.deepEqual(
+      buildRustEnvironment({ platform, environment: {}, repositoryRoot: root }),
+      { CARGO_TARGET_DIR: defaults.CARGO_TARGET_DIR },
+    );
+    const first = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("one", "same-name"),
+    });
+    const second = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("two", "same-name"),
+    });
+    assert.notEqual(first.CARGO_TARGET_DIR, second.CARGO_TARGET_DIR);
+    const caseVariant = buildRustEnvironment({
+      platform,
+      environment: {},
+      repositoryRoot: pathModule.resolve("ONE", "same-name"),
+    });
+    assert.equal(
+      first.CARGO_TARGET_DIR === caseVariant.CARGO_TARGET_DIR,
+      platform === "win32",
+    );
+  }
 });
 
 // origin: check-lanes.node-test.mjs:488 "Cargo target lease excludes a second Node process and releases cleanly" -> check-lanes.portable.node-test.mjs
