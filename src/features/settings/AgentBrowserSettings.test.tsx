@@ -82,6 +82,7 @@ afterEach(() => {
 });
 
 it("scopes native history, permissions and downloads to the requested live browser tab", async () => {
+  await import("../browser/BrowserDownloadsPanel");
   render(<AgentBrowserSettings />);
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Browser tab" })).toHaveValue(

@@ -1,12 +1,9 @@
 //! Bounded concurrent live runtimes.
 //!
-//! Each lane is one complete copy of the formerly singleton live-runtime
-//! authority: one runtime slot, one one-tree scheduler, its session
-//! coordinator, and its single retained recovery. Every invariant the
-//! single-runtime code proved still holds inside a lane; this module only
-//! routes an exact runtime owner to the lane that holds it and picks a free
-//! lane for a new activation. The lane count is the frozen
-//! `operational_live_trees` limit, so total live harness trees stay bounded.
+//! Each lane owns one runtime slot, a one-tree scheduler, its session
+//! coordinator, and one retained recovery. Routing selects the lane holding
+//! an exact runtime owner or reserves a lane for a new activation. The
+//! `operational_live_trees` limit bounds total live harness trees.
 
 use std::{
     ops::Deref,
@@ -106,10 +103,7 @@ impl LiveLane {
     }
 }
 
-/// One lane viewed through the service. Field names deliberately match the
-/// former singleton `AcpService` fields, so lane-scoped runtime code reads
-/// `self.runtime`, `self.scheduler`, `self.sessions` and `self.codex_recovery`
-/// exactly as before while everything else dereferences to the service.
+/// Lane-specific runtime authority with shared service access through `Deref`.
 pub(super) struct Lane<'a> {
     service: &'a AcpService,
     pub(super) runtime: Arc<RuntimeSlot>,

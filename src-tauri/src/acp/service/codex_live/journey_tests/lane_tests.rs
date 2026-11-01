@@ -1,4 +1,4 @@
-//! AP-B B2 journeys: bounded concurrent live chats, each on its own runtime.
+//! Bounded concurrent live chats, each on its own runtime.
 
 use super::*;
 use crate::acp::service::LIVE_RUNTIME_LANES;

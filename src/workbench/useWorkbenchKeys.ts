@@ -47,7 +47,7 @@ export function useWorkbenchKeys({
         if (windowMode === "agent") useAgentSettingsState.getState().open();
         else void useWorkbenchStore.getState().openSettings();
       }
-      // In Agent mode the same chord opens the Chat's Files picker (CP-48).
+      // In Agent mode the same chord opens the Chat's Files picker.
       if (
         windowMode === "editor" &&
         matchesPlatformChord(keymapBinding("quickOpen"), event, apple)

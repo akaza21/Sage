@@ -1,7 +1,7 @@
 //! Service entry points that route one exact runtime owner to its live lane.
 //!
 //! An owner no lane holds is stale or foreign; it is refused here without
-//! touching any lane, exactly as the single slot refused a foreign owner.
+//! touching any lane.
 
 use std::{sync::Arc, time::Instant};
 

@@ -34,14 +34,13 @@ async function prepare(
 ) {
   await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
   await settleChatProjections(page);
-  await page.evaluate(
-    async ({ profile, live }) => {
-      const fixturePath = "/tests/ui/fixtures/chatContainmentFixture.ts";
-      const fixture = await import(fixturePath);
-      fixture.installChatContainmentFixture(profile, live);
-    },
-    { profile, live },
-  );
+  await page.addScriptTag({
+    type: "module",
+    content: `
+      import { installChatContainmentFixture } from "/tests/ui/fixtures/chatContainmentFixture.ts";
+      installChatContainmentFixture(${JSON.stringify(profile)}, ${JSON.stringify(live)});
+    `,
+  });
   await expect(
     page.locator("form.composer").first().getByRole("textbox"),
   ).toHaveValue("Draft survives resizing");

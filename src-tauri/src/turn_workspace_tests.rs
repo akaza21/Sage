@@ -52,12 +52,7 @@ fn mark(entries: &[(&str, &str, Option<u64>, u64)]) -> WorkspaceMark {
 fn git_in(root: &std::path::Path, args: &[&str]) {
     assert!(
         std::process::Command::new("git")
-            .args([
-                "-c",
-                "user.name=Test",
-                "-c",
-                "user.email=test@example.invalid"
-            ])
+            .args(["-c", "user.name=Test", "-c", "user.email=fixture"])
             .args(args)
             .current_dir(root)
             .status()
@@ -376,7 +371,7 @@ fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
         );
     };
     git(&["init", "-q"]);
-    git(&["config", "user.email", "test@example.invalid"]);
+    git(&["config", "user.email", "fixture"]);
     git(&["config", "user.name", "Test"]);
     std::fs::write(root.join("README.md"), b"hello\n").unwrap();
     git(&["add", "README.md"]);
@@ -479,7 +474,7 @@ fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
         "-c",
         "user.name=Test",
         "-c",
-        "user.email=test@example.invalid",
+        "user.email=fixture",
         "commit",
         "-q",
         "-m",

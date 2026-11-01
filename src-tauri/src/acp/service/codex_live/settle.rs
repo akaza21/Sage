@@ -1,11 +1,10 @@
-//!  a turn whose host failed closed is always settled, and its lane freed.
+//! Settles turns whose hosts failed closed and releases their runtime lanes.
 //!
 //! A harness can refuse a prompt before writing it (for example Claude Code
 //! reporting that sign-in is required). The runtime host then fails closed and
-//! rejects every later command for that turn as stale, so neither the turn nor
-//! the lane could ever settle. These paths converge that exact tree through
-//! the existing zero-process recovery, which terminalizes the durable turn and
-//! releases the lane's capacity.
+//! rejects every later command for that turn as stale. These paths converge
+//! that exact tree through zero-process recovery, which terminalizes the durable
+//! turn and releases the lane's capacity.
 
 use super::live_recovery::LiveHostRecoveryPhase;
 use super::*;

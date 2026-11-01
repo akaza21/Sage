@@ -27,7 +27,7 @@ fn fixture() -> (Repository, Workspace) {
     let root = std::env::temp_dir().join(format!("sage-scoped-diff-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     git(&root, &["init", "-q"]);
-    git(&root, &["config", "user.email", "sage@example.invalid"]);
+    git(&root, &["config", "user.email", "fixture"]);
     git(&root, &["config", "user.name", "Sage Test"]);
     git(&root, &["config", "core.autocrlf", "false"]);
     let workspace = Workspace::open("project-test", "root-test", &root).unwrap();

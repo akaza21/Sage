@@ -283,8 +283,7 @@ export function SentAnnotations({
   return (
     <>
       <AnnotationChip
-        // A side chat's sent quotes are selections, as in its composer
-        //.
+        // A side chat's sent quotes are selections, as in its composer.
         selection={isSideChatId(chatId)}
         quotes={contexts.filter(isTranscriptQuote)}
       />

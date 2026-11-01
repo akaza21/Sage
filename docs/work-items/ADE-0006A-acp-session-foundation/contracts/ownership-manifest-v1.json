@@ -21,10 +21,6 @@
     "src/features/chat/acp/"
   ],
   "ownedFileScopes": [
-    "docs/decisions/ADR-0007-bounded-acp-session-runtime.md",
-    "docs/development/CURRENT-STATE.md",
-    "docs/development/FEATURE-ROADMAP.md",
-    "docs/development/ROADMAP.md",
     "eslint.config.js",
     "scripts/ade0006a-admission.mjs",
     "scripts/ade0006a-c0b-campaign-launch.mjs",
@@ -202,10 +198,6 @@
         "src-tauri/src/acp/tests/"
       ],
       "files": [
-        "docs/decisions/ADR-0007-bounded-acp-session-runtime.md",
-        "docs/development/CURRENT-STATE.md",
-        "docs/development/FEATURE-ROADMAP.md",
-        "docs/development/ROADMAP.md",
         "scripts/generate-acp-fixture-cases.mjs",
         "src-tauri/Cargo.lock",
         "src-tauri/Cargo.toml",

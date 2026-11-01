@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { win32 } from "node:path";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
 import { PrimaryActivities } from "./PrimaryActivities";
@@ -37,7 +38,7 @@ it.each([
     "Get-Content -LiteralPath README.md",
   ],
   [
-    '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo -NonInteractive -Command "Add-Content README.md [redacted]"',
+    `"${win32.resolve("/Program Files/PowerShell/7/pwsh.exe").replaceAll("\\", "\\\\")}" -NoLogo -NonInteractive -Command "Add-Content README.md [redacted]"`,
     "Add-Content README.md [redacted]",
   ],
   [

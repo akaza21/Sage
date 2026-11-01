@@ -83,9 +83,9 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay 0;
 test("teardown ignores unrelated processes while retaining distinct remembered identities for one PID", () => {
   const observed = runPowerShellFixture(`${commonFixture}
 [void](Add-FootprintRememberedIdentity $store $childRow);
-$newChild=[pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath='C:\\Apps\\node.exe';CreationDate='2026-08-30T00:00:02.000Z'};
+$newChild=[pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath=$childRow.ExecutablePath;CreationDate='2026-08-30T00:00:02.000Z'};
 [void](Add-FootprintRememberedIdentity $store $newChild);
-$noise=@(1000..1999 | ForEach-Object { [pscustomobject]@{ProcessId=$_;ParentProcessId=1;ExecutablePath='C:\\Apps\\unrelated.exe';CreationDate='2026-08-30T00:00:03.000Z'} });
+$noise=@(1000..1999 | ForEach-Object { [pscustomobject]@{ProcessId=$_;ParentProcessId=1;ExecutablePath=$childRow.ExecutablePath;CreationDate='2026-08-30T00:00:03.000Z'} });
 $plan=Get-FootprintTeardownPlan $root $store (@($rootRow,$newChild)+$noise);
 [ordered]@{rootState=$plan.rootState;identityLost=$plan.identityLost;candidates=@($plan.candidates | ForEach-Object ProcessId);reused=@($plan.reusedProcessIds)}|ConvertTo-Json -Compress
 `);

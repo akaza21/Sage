@@ -1,40 +1,5 @@
-// Agent Panel V1 conformance.
-//
-// This spec is NOT a regression test. The rest of `tests/ui/*.visual.ts`
-// compares the UI against screenshots the project saved earlier, which answers
-// "did this change since last time?" and never "does this match the target?".
-// This file answers the second question, against
-// `docs/design/agent-panel-references/agent-panel-v1-target.png` as read by
-// `docs/design/AGENT-PANEL-V1-REFERENCE.md`.
-//
-// It deliberately takes no screenshot and makes no pixel comparison against the
-// mockup: Sage's palette is its own, so a pixel compare would fail forever and
-// teach everyone to ignore this file.
-//
-// Two halves, and both must be able to fail:
-//
-//   1. Elements the target requires that Sage renders today are asserted by
-//      role, accessible name, DOM order and geometry. Some assertions
-//      deliberately pin today's *divergent* placement — notably the
-//      titlebar-hosted mode segment — so that closing a gap forces this file
-//      and `docs/design/agent-panel-conformance.md` to be updated together.
-//   2. Elements the target requires that Sage does NOT render yet are listed
-//      once, in `PENDING_CONFORMANCE_ITEMS`, each with a probe asserting the
-//      element is still absent. When a lane builds one, its probe fails and the
-//      entry must move into part 1. A pending entry is therefore a
-//      currently-false assertion, never a silent pass.
-//
-// The pending list is the ordered work queue for the lanes that follow, and it
-// shrinks to empty as they land. Its order mirrors the queue table in
-// `docs/design/agent-panel-conformance.md`.
-//
-// An element that shipped and was then *lost* is a third case: it is written in
-// the target's direction and marked `test.fail()`, so it reports as a known
-// failure and flips to "expected to fail but passed" the moment it is restored.
-// There are none open right now — `M12` was the first and it is fixed — but the
-// pattern is the one to reach for, not the pending queue, which means "never
-// built".
-//
+// Agent Panel V1 conformance: controls, geometry, and pending target elements.
+// The fixture contract records expected presence and pending queue order.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -161,7 +126,7 @@ async function boundsOf(locator: Locator) {
 type PendingScenario = "agent-single" | "agent-declared-test" | "diff";
 
 interface PendingConformanceItem {
-  /** Row id in `docs/design/agent-panel-conformance.md`. */
+  /** Row id in the conformance fixture contract. */
   readonly id: string;
   readonly region: string;
   readonly element: string;
@@ -273,7 +238,7 @@ function registerPendingTests(scenario: PendingScenario) {
       await expect(
         item.probe(page),
         `${item.id} (${item.region}) — ${item.element} — is on the pending ` +
-          `queue in docs/design/agent-panel-conformance.md, but the UI now ` +
+          `queue in the conformance fixture contract, but the UI now ` +
           `renders it. That is good news: move ${item.id} out of ` +
           `PENDING_CONFORMANCE_ITEMS into an asserted check and mark the ` +
           `inventory row present.` +
@@ -286,31 +251,27 @@ function registerPendingTests(scenario: PendingScenario) {
 test.describe("Agent Panel V1 conformance — pending target elements", () => {
   test.use({ viewport: AGENT_VIEWPORT });
 
-  test("keeps the pending queue and the inventory document in step", async () => {
+  test("keeps the pending queue and the conformance contract in step", async () => {
     // Guards the list itself: duplicate or empty ids would let an item drop out
     // of the queue silently.
     const ids = PENDING_CONFORMANCE_ITEMS.map((item) => item.id);
     expect(new Set(ids).size, "pending ids are unique").toBe(ids.length);
     expect(ids.every((id) => /^[A-Z]\d+$/.test(id))).toBe(true);
-    const inventory = await readFile(
-      new URL("../../docs/design/agent-panel-conformance.md", import.meta.url),
-      "utf8",
+    const inventory = JSON.parse(
+      await readFile(
+        new URL("./fixtures/agentConformanceContract.json", import.meta.url),
+        "utf8",
+      ),
+    ) as {
+      pendingQueue: string[];
+      statuses: Record<string, "present" | "different" | "absent">;
+    };
+    const queue = inventory.pendingQueue;
+    expect(queue, "inventory has a pending queue").toBeDefined();
+    expect(ids, "pending probes mirror the contract's ordered queue").toEqual(
+      queue,
     );
-    const queue = inventory.split(/^## Pending queue\s*$/m)[1];
-    expect(queue, "inventory has a pending queue section").toBeDefined();
-    const documentedIds = [
-      ...queue!.matchAll(/^\|\s*\d+\s*\|\s*`([A-Z]\d+)`/gm),
-    ].map((match) => match[1]);
-    expect(ids, "pending probes mirror the document's ordered queue").toEqual(
-      documentedIds,
-    );
-    const statuses = new Map(
-      [
-        ...inventory.matchAll(
-          /^\|\s*([A-Z]\d+)\s*\|.*?\|\s*(present|different|absent)\s*\|/gm,
-        ),
-      ].map((match) => [match[1], match[2]]),
-    );
+    const statuses = new Map(Object.entries(inventory.statuses));
     for (const id of ids)
       expect(statuses.get(id), `${id} is inventoried as absent`).toBe("absent");
     expect(statuses.get("M11")).toBe("present");

@@ -105,6 +105,7 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
 });
 
 it("lists app-wide and Agent shortcuts and leaves Editor shortcuts to Editor settings", async () => {
+  await import("./AgentKeyboardSettings");
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Keybindings" }));
   expect(

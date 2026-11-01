@@ -146,9 +146,8 @@ export function useFollowEnd({
     };
     // An upward wheel that will move the transcript leaves the end at once:
     // its smooth scroll can still be inside the follow threshold when new
-    // activity lands, and anchoring then would pull the reader back down
-    //. A short chat, or a nested scroller that
-    // takes the wheel itself, keeps following.
+    // activity lands, and anchoring then would pull the reader back down.
+    // A short chat, or a nested scroller that takes the wheel itself, keeps following.
     const movesTranscriptUp = (event: WheelEvent) => {
       // A synthetic wheel without a deltaY is reader input, not navigation.
       if (!(event.deltaY < 0 && transcript.scrollTop > 0)) return false;

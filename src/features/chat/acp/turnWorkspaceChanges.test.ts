@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { win32 } from "node:path";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { acpDesktop } from "../../../services/acpDesktop";
 
@@ -293,7 +294,7 @@ it("decodes bounded native workspace changes for one turn", () => {
 
 it.each([
   ["../escape.txt"],
-  ["C:/abs.txt"],
+  [win32.resolve("abs.txt")],
   ["/abs.txt"],
   ["a\\b.txt"],
   ["a//b.txt"],

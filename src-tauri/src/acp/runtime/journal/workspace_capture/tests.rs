@@ -60,7 +60,7 @@ fn capture_database() -> crate::persistence::Database {
          INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES('project','slow','session-slow',0,1);
          INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at) VALUES('project','slow','session-slow',1,'running','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',1);
          INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-slow','project','slow','session-slow',1,0,'intent','running','correlated',0,1,1);
-         INSERT INTO acp_turn_workspace_changes(project_id,session_id,client_intent_id,root_id,root_path,baseline_json,payload_bytes) VALUES('project','session-slow','intent','root','C:/capture','{}',131072);"
+         INSERT INTO acp_turn_workspace_changes(project_id,session_id,client_intent_id,root_id,root_path,baseline_json,payload_bytes) VALUES('project','session-slow','intent','root','/capture','{}',131072);"
     ).unwrap();
     database
 }
