@@ -99,6 +99,11 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
+  // Model search, inherited turns, previews and retry load on request.
+  "src/features/chat/ChatModelPicker.tsx",
+  "src/features/chat/InheritedChatHistory.tsx",
+  "src/features/chat/chatImagePreviewCache.ts",
+  "src/features/chat/retryChatTurn.ts",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
   // Recovery notices and sign-in actions stay off the ready Chat path.

@@ -5,6 +5,7 @@ import {
   type AttachedContext,
 } from "../../domain/attachedContext";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import type { ChatOwnershipIntent } from "../../domain/chatOwnership";
 import type * as ImagePreviewCache from "./chatImagePreviewCache";
 
 let cache: typeof ImagePreviewCache | null = null;
@@ -14,6 +15,13 @@ const previewKey = (chatId: string) => {
   const state = useWorkbenchStore.getState();
   return JSON.stringify([state.project?.id, state.chatOwnershipEpoch, chatId]);
 };
+
+function imageControlsUnavailable(intent: ChatOwnershipIntent) {
+  useWorkbenchStore.getState().setChatActionState(intent, {
+    sending: false,
+    error: "Image controls unavailable. Try again.",
+  });
+}
 
 export function useChatImageAttachments(
   chatId: string | undefined,
@@ -52,10 +60,7 @@ export function useChatImageAttachments(
       cache = await import("./chatImagePreviewCache");
       await cache.uploadDraftImages(intent, files, notify);
     } catch {
-      useWorkbenchStore.getState().setChatActionState(intent, {
-        sending: false,
-        error: "Image controls unavailable. Try again.",
-      });
+      imageControlsUnavailable(intent);
     } finally {
       busy.current = false;
       if (mounted.current) setImageUploading(false);
@@ -79,10 +84,7 @@ export function useChatImageAttachments(
         notify();
       })
       .catch(() => {
-        useWorkbenchStore.getState().setChatActionState(intent, {
-          sending: false,
-          error: "Image controls unavailable. Try again.",
-        });
+        imageControlsUnavailable(intent);
       })
       .finally(() => {
         removals.current.delete(contextKey);

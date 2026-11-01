@@ -26,6 +26,7 @@ export function ChatModelPicker({
 }) {
   const id = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
     if (!listRef.current?.closest(".menu-popover")) return;
     const list = listRef.current;
@@ -68,6 +69,7 @@ export function ChatModelPicker({
       </p>
       {models.length > MAX_VISIBLE_MODELS ? (
         <input
+          ref={searchRef}
           type="search"
           aria-label="Search models"
           aria-controls={listboxId}
@@ -75,12 +77,24 @@ export function ChatModelPicker({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              document
-                .getElementById(listboxId)
-                ?.querySelector<HTMLElement>('[role="option"]:not(:disabled)')
-                ?.focus();
+            if (
+              event.key === "ArrowDown" ||
+              (event.key === "Tab" && !event.shiftKey)
+            ) {
+              const list = listRef.current;
+              const next =
+                list?.querySelector<HTMLElement>(
+                  '[aria-selected="true"]:not(:disabled)',
+                ) ??
+                list?.querySelector<HTMLElement>(
+                  '[role="option"]:not(:disabled)',
+                );
+              if (next || event.key === "ArrowDown") {
+                event.preventDefault();
+                event.stopPropagation();
+                next?.focus();
+                return;
+              }
             }
             if (event.key !== "Escape" && event.key !== "Tab")
               event.stopPropagation();
@@ -93,6 +107,21 @@ export function ChatModelPicker({
         className="composer-model-picker__list"
         role="listbox"
         aria-labelledby={`${id}-title`}
+        onKeyDown={(event) => {
+          if (
+            searchRef.current &&
+            ((event.key === "Tab" && event.shiftKey) ||
+              (event.key === "ArrowUp" &&
+                event.target ===
+                  listRef.current?.querySelector(
+                    '[role="option"]:not(:disabled)',
+                  )))
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            searchRef.current.focus();
+          }
+        }}
       >
         {Array.from(groups, ([group, choices]) => {
           const options = choices.map((model) => {

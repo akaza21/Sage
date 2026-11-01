@@ -102,7 +102,10 @@
   animation: none;
 }
 
-.acp-message--user:is(:hover, :focus-within) > .chat-transcript-actions {
+.acp-message--user:is(:hover, :focus-within) > .chat-user-actions,
+.acp-message--user:is(:hover, :focus-within)
+  > .chat-user-actions
+  > .chat-transcript-actions__time {
   opacity: 1;
 }
 

@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useRef, useState } from "react";
 import { ChatComposerRegion } from "../../src/features/chat/ChatComposerRegion";
 import { ChatHome } from "../../src/features/chat/ChatHome";
-import { ChatModelPicker } from "../../src/features/chat/ChatModelPicker";
+import { ComposerModelControls } from "../../src/features/chat/ComposerModelControls";
 import { ChatCodeBlock } from "../../src/features/chat/acp/ChatCodeBlock";
 import { ItemView } from "../../src/features/chat/acp/TurnActivityItem";
 import { TurnFileActivity } from "../../src/features/chat/acp/TurnFileActivity";
@@ -40,6 +40,8 @@ export function Fixture({ surface }: { surface: string }) {
   const [draft, setDraft] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [selected, setSelected] = useState("model-204");
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const modelTrigger = useRef<HTMLButtonElement>(null);
   const [opened, setOpened] = useState("");
   const saved = snapshotPage();
   return (
@@ -50,15 +52,30 @@ export function Fixture({ surface }: { surface: string }) {
       {surface === "home" ? <ChatHome projectName={projectName} /> : null}
       {surface === "models" ? (
         <>
-          <ChatModelPicker
-            listboxId="models"
-            models={Array.from({ length: 205 }, (_, i) => ({
+          <ComposerModelControls
+            triggerRef={modelTrigger}
+            panelId="models"
+            open={modelsOpen}
+            effortOpen={false}
+            onToggle={() => setModelsOpen((open) => !open)}
+            onToggleEffort={() => {}}
+            onDismiss={() => setModelsOpen(false)}
+            choices={Array.from({ length: 205 }, (_, i) => ({
               id: `model-${i}`,
               name: `Model ${i}`,
             }))}
             selectedId={selected}
+            modelLabel="Model"
+            effortLabel={null}
+            contextWindow={null}
+            effortOption={undefined}
             disabled={false}
-            onSelect={setSelected}
+            pending={false}
+            onSelectModel={(id) => {
+              setSelected(id);
+              setModelsOpen(false);
+            }}
+            onSetOption={async () => {}}
           />
           <output aria-label="Selected model">{selected}</output>
         </>

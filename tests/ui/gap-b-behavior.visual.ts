@@ -55,13 +55,16 @@ test("composer composition preserves text, focus is visible, and image/actions f
 }) => {
   await render(page, "composer");
   const draft = page.getByRole("textbox", { name: "Message agent" });
+  const composer = page.locator(".composer");
+  const unfocusedShadow = await composer.evaluate(
+    (node) => getComputedStyle(node).boxShadow,
+  );
   await page.keyboard.press("Tab");
   await expect(draft).toBeFocused();
-  expect(
-    await page
-      .locator(".composer")
-      .evaluate((node) => getComputedStyle(node).boxShadow),
-  ).not.toBe("none");
+  await expect(composer).not.toHaveCSS("box-shadow", unfocusedShadow);
+  await draft.press("Tab");
+  await expect(composer).toHaveCSS("box-shadow", unfocusedShadow);
+  await draft.focus();
   await draft.fill("日本語");
   await draft.dispatchEvent("keydown", { key: "Enter", isComposing: true });
   await expect(page.getByLabel("Submitted text")).toBeEmpty();
@@ -82,18 +85,47 @@ test("keyboard search reaches a model beyond 200 and reports no match", async ({
   page,
 }) => {
   await render(page, "models");
+  const trigger = page.getByRole("button", { name: "Model", exact: true });
+  await expect(trigger).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("option")).toHaveCount(200);
+  await expect(page.getByRole("option", { name: "Model 204" })).toBeFocused();
   const search = page.getByRole("searchbox", { name: "Search models" });
-  await search.fill("Model 203");
-  await search.press("ArrowDown");
+  await page.keyboard.press("Shift+Tab");
+  await expect(search).toBeFocused();
+  await page.keyboard.type("Model 203");
+  await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("option", { name: "Model 203" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Selected model")).toHaveText("model-203");
-  await search.fill("missing");
+  await expect(search).toHaveCount(0);
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("option", { name: "Model 203" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("option", { name: "Model 203" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.type("missing");
   await expect(page.getByRole("option")).toHaveCount(0);
   await expect(page.locator(".menu-empty[role=status]")).toHaveText(
     "No models match.",
   );
+  await page.keyboard.press("Tab");
+  await expect(search).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("option", { name: "Model 203" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(search).toBeFocused();
+  await page.keyboard.type("missing");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test("code scroll and inset focus stay within the card, and Wrap contains source", async ({
@@ -131,9 +163,19 @@ test("user hover and keyboard actions leave bubble geometry stable; date has no 
   const bubble = page.locator(".acp-message--user");
   const before = await bubble.boundingBox();
   const copy = page.getByRole("button", { name: "Copy message" });
-  await copy.focus();
-  await expect(copy).toBeVisible();
+  const actions = page.getByRole("group", { name: "User message actions" });
+  const time = actions.locator("time");
+  await expect(actions).toHaveCSS("opacity", "0");
   await bubble.hover();
+  await expect(actions).toHaveCSS("opacity", "1");
+  await expect(time).toHaveCSS("opacity", "1");
+  expect(await bubble.boundingBox()).toEqual(before);
+  await page.mouse.move(0, 0);
+  await expect(actions).toHaveCSS("opacity", "0");
+  await page.keyboard.press("Tab");
+  await expect(copy).toBeFocused();
+  await expect(actions).toHaveCSS("opacity", "1");
+  await expect(time).toHaveCSS("opacity", "1");
   expect(await bubble.boundingBox()).toEqual(before);
   expect(
     await page
