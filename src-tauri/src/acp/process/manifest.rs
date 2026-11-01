@@ -134,7 +134,8 @@ mod tests {
 
     fn recorded(label: &str, bytes: &[u8]) -> (TempFile, ManifestExpectation) {
         let path = TempFile(
-            std::env::temp_dir().join(format!("sage-manifest-{label}-{}", uuid::Uuid::new_v4())),
+            crate::test_paths::temp_dir()
+                .join(format!("sage-manifest-{label}-{}", uuid::Uuid::new_v4())),
         );
         std::fs::write(&path.0, bytes).expect("write manifest");
         let digest: [u8; 32] = Sha256::digest(bytes).into();
