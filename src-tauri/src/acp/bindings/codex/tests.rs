@@ -12,6 +12,8 @@ use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 mod file_change_sequence_tests;
+#[cfg(windows)]
+mod state_volume;
 mod terminal_error_tests;
 
 struct Mapper;
@@ -819,8 +821,8 @@ struct TestCodexStateRoot {
 #[cfg(windows)]
 impl TestCodexStateRoot {
     fn new() -> Self {
-        let parent =
-            std::env::temp_dir().join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
+        let parent = crate::test_paths::temp_dir()
+            .join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
         let home = parent
             .join("CodexState")
             .join("codex-app-server-0.146.0-d3992fec");
@@ -898,30 +900,33 @@ fn physical_state_authority_rejects_hardlinks_alternate_streams_and_sparse_exces
     let hardlinks = TestCodexStateRoot::new();
     let first = hardlinks.home.join("sessions").join("first.jsonl");
     std::fs::write(&first, b"session").unwrap();
-    std::fs::hard_link(&first, hardlinks.home.join("sessions").join("second.jsonl")).unwrap();
-    assert!(matches!(
-        inspect_test_state(&hardlinks),
-        Err(StateAuthorityError::Alias)
-    ));
+    let second = hardlinks.home.join("sessions").join("second.jsonl");
+    let supported = state_volume::capabilities(&hardlinks.home)
+        & windows_sys::Win32::Storage::FileSystem::FILE_SUPPORTS_HARD_LINKS
+        != 0;
+    let linked = std::fs::hard_link(&first, &second);
+    if supported {
+        linked.expect("create supported hard link");
+        assert!(matches!(
+            inspect_test_state(&hardlinks),
+            Err(StateAuthorityError::Alias)
+        ));
+    } else {
+        assert!(linked.is_err(), "this volume must refuse hard links");
+        assert!(!second.exists());
+        inspect_test_state(&hardlinks).expect("bounded state without a hard link");
+    }
     hardlinks.cleanup();
 
     let streams = TestCodexStateRoot::new();
     let ordinary = streams.home.join("history.jsonl");
     std::fs::write(&ordinary, b"history").unwrap();
-    std::fs::write(format!("{}:secret", ordinary.display()), b"hidden").unwrap();
-    assert!(matches!(
-        inspect_test_state(&streams),
-        Err(StateAuthorityError::Stream)
-    ));
+    state_volume::assert_named_stream_policy(&streams, &ordinary);
     streams.cleanup();
 
     let directory_streams = TestCodexStateRoot::new();
     let directory = directory_streams.home.join("sessions");
-    std::fs::write(format!("{}:secret", directory.display()), b"hidden").unwrap();
-    assert!(matches!(
-        inspect_test_state(&directory_streams),
-        Err(StateAuthorityError::Stream)
-    ));
+    state_volume::assert_named_stream_policy(&directory_streams, &directory);
     directory_streams.cleanup();
 
     let sparse = TestCodexStateRoot::new();

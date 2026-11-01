@@ -383,19 +383,8 @@ mod tests {
     use serde_json::Value;
     use std::path::PathBuf;
 
-    /// The temp directory spelled the way an agent names workspace paths.
-    ///
-    /// On macOS it sits under the `/var` link to `/private/var`, and ingress
-    /// refuses any path with a linked ancestor, so Unix fixtures resolve it.
-    /// Windows keeps the ordinary DOS spelling: `canonicalize` there returns a
-    /// `\\?\` verbatim path, which no agent sends as a tool target.
     fn temp_root() -> PathBuf {
-        let temp = std::env::temp_dir();
-        if cfg!(windows) {
-            temp
-        } else {
-            temp.canonicalize().expect("canonical temp directory")
-        }
+        crate::test_paths::temp_dir()
     }
 
     struct TempRoot(PathBuf);

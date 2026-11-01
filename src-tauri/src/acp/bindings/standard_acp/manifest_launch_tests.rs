@@ -24,7 +24,7 @@ fn manifest_bytes(version: &str) -> String {
 }
 
 fn npm_tree(label: &str) -> (TempTree, PathBuf, PathBuf) {
-    let root = TempTree(std::env::temp_dir().join(format!(
+    let root = TempTree(crate::test_paths::temp_dir().join(format!(
         "sage-acp-manifest-{label}-{}",
         uuid::Uuid::new_v4()
     )));
