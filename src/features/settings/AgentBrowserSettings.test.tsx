@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -53,6 +54,7 @@ vi.mock("../../ports/nativeBrowserDownloadsPort", () => ({
 const initial = useWorkbenchStore.getState();
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(browserLiveTabs).mockResolvedValue(["browser-a", "browser-b"]);
   vi.mocked(isTauriRuntime).mockReturnValue(true);
   useAgentSettingsState.getState().open("Browser", "browser-b");
   useWorkbenchStore.setState({
@@ -99,6 +101,31 @@ it("finds live browsing history by its setting label and focuses its real contro
   await waitFor(() => expect(control).toHaveFocus());
   fireEvent.click(control);
   expect(await screen.findByText("https://example.com/visited")).toBeVisible();
+});
+
+it("keeps the browser availability sample while typing and refreshes it on section navigation", async () => {
+  useAgentSettingsState.getState().open("Appearance");
+  vi.mocked(browserLiveTabs)
+    .mockResolvedValueOnce(["browser-a"])
+    .mockResolvedValue([]);
+  render(<AgentSettingsSurface />);
+  const search = screen.getByRole("searchbox", {
+    name: "Search Agent settings sections",
+  });
+  for (const query of ["f", "fo", "fon", "font", "history"]) {
+    await act(async () =>
+      fireEvent.change(search, { target: { value: query } }),
+    );
+  }
+  expect(
+    screen.getByRole("button", { name: "Browser: Browsing history" }),
+  ).toBeEnabled();
+  await act(async () => {
+    useAgentSettingsState.getState().open("Chats");
+  });
+  expect(
+    screen.getByRole("button", { name: "Browser: Browsing history" }),
+  ).toBeDisabled();
 });
 
 it("scopes native history, permissions and downloads to the requested live browser tab", async () => {

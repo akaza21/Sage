@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -53,10 +54,10 @@ beforeEach(async () => {
   initialSettings.unmount();
 });
 
-it("shows installation and sign-in evidence without treating an installed adapter as signed in", () => {
+it("shows installation and sign-in evidence without treating an installed adapter as signed in", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
-  expect(screen.getByText("Test harness")).toBeVisible();
+  expect(await screen.findByText("Test harness")).toBeVisible();
   expect(screen.getByText(/Sign-in status is not exposed/)).toBeVisible();
   expect(screen.queryByText("Signed in")).toBeNull();
 });
@@ -327,6 +328,42 @@ it("filters settings navigation without changing the current section", () => {
   );
   expect(screen.getByText("No matching sections.")).toBeVisible();
 });
+
+it.each(["checking", "waiting", "error", "ready"] as const)(
+  "keeps model search unavailable during %s until models can be selected",
+  async (harnessDiscoveryPhase) => {
+    useWorkbenchStore.setState({
+      harnessDiscoveryPhase,
+      models:
+        harnessDiscoveryPhase === "ready"
+          ? []
+          : [{ id: "model-a", name: "Advertised model" }],
+    });
+    render(<AgentSettingsSurface />);
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search Agent settings sections" }),
+      { target: { value: "model" } },
+    );
+    const result = screen.getByRole("button", { name: "Chats: Current model" });
+    expect(result).toBeDisabled();
+    expect(
+      screen.getByRole("combobox", { name: "Current model" }),
+    ).toBeDisabled();
+    act(() =>
+      useWorkbenchStore.setState({
+        harnessDiscoveryPhase: "ready",
+        models: [{ id: "model-a", name: "Advertised model" }],
+      }),
+    );
+    expect(result).toBeEnabled();
+    fireEvent.click(result);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Current model" }),
+      ).toHaveFocus(),
+    );
+  },
+);
 
 it.each([
   ["font", "Interface font size"],
@@ -637,7 +674,9 @@ it("does not apply an obsolete discovery result after leaving and reopening Harn
   useWorkbenchStore.setState({ applyHarnessDiscovery: apply });
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
-  fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Refresh discovery" }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Chats" }));
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));

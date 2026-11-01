@@ -11,6 +11,10 @@ import { harnessAvailability } from "../chat/harnessAvailability";
 import { LazyHarnessNotice } from "../chat/lazyParts";
 import { composerModelName } from "../chat/composerModelName";
 import { SettingsRow } from "./SettingsRow";
+import {
+  chatSettingsDisabled,
+  modelSettingsDisabled,
+} from "./chatSettingsAvailability";
 
 const MODEL_RESULT_LIMIT = 200;
 
@@ -27,7 +31,6 @@ function ChatSettingsControls() {
   const harnessId = useWorkbenchStore((state) => state.selectedHarnessId);
   const models = useWorkbenchStore((state) => state.models);
   const modelId = useWorkbenchStore((state) => state.selectedModelId);
-  const phase = useWorkbenchStore((state) => state.harnessDiscoveryPhase);
   const project = useWorkbenchStore((state) => state.project);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -39,8 +42,8 @@ function ChatSettingsControls() {
     harness?.bindingId,
     harness?.accessModes,
   );
-  const disabled =
-    !project || transitioning || phase === "checking" || phase === "waiting";
+  const disabled = useWorkbenchStore(chatSettingsDisabled);
+  const modelDisabled = useWorkbenchStore(modelSettingsDisabled);
   const confirmationId = useId();
   const accessRef = useRef<HTMLSelectElement>(null);
   const [confirmation, setConfirmation] = useState<{
@@ -137,7 +140,7 @@ function ChatSettingsControls() {
             className="input input--compact"
             aria-label="Search models"
             maxLength={256}
-            disabled={disabled || phase !== "ready" || !models.length}
+            disabled={modelDisabled}
             placeholder="Search models"
             value={query}
             onChange={(event) =>
@@ -147,7 +150,7 @@ function ChatSettingsControls() {
           <select
             aria-label="Current model"
             className="input"
-            disabled={disabled || phase !== "ready" || !models.length}
+            disabled={modelDisabled}
             value={modelId ?? ""}
             onChange={(event) => selectModel(event.target.value)}
           >

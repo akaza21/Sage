@@ -98,6 +98,7 @@ it("keeps the parent's own live session chrome while its side chat is focused", 
   fireEvent.click(
     screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
   );
+  await settleLazyModules();
   expect(
     await screen.findByRole("menuitem", { name: "Close session" }),
   ).toBeInTheDocument();
@@ -125,5 +126,6 @@ it("shows no session chrome the parent did not publish", async () => {
   fireEvent.click(
     screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
   );
+  await settleLazyModules();
   expect(screen.queryByRole("menuitem", { name: "Close session" })).toBeNull();
 });

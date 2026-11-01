@@ -11,12 +11,15 @@ import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { TitleBar } from "./TitleBar";
 import { useSideChatState } from "./sideChatState";
+import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
   useAgentSettingsState.getState().close();
   useWorkbenchStore.setState(initial, true);
+  useSideChatState.setState({ sides: [], pairedId: null });
+  clearAgentChatOwner();
 });
 
 function seed(count = 2) {
@@ -69,6 +72,32 @@ it("travels chat A → B → Settings without creating chats or restoring a spli
   expect(screen.getByRole("button", { name: "Go forward" })).toBeDisabled();
   expect(useWorkbenchStore.getState().tabs).toHaveLength(2);
 });
+
+it.each(["side-b", "file:notes"])(
+  "returns from Settings to B's focused side chat after %s was active",
+  async (activeTabId) => {
+    seed();
+    act(() => {
+      useSideChatState.setState({
+        sides: [{ id: "side-b", parentChatId: "chat-1", projectId: "a" }],
+        pairedId: "side-b",
+      });
+      pinAgentChatOwner("side-b");
+      useWorkbenchStore.setState((state) => ({
+        tabs: [...state.tabs, { ...state.tabs[1], id: "side-b" }],
+        activeTabId,
+      }));
+    });
+    act(() => useAgentSettingsState.getState().open("Chats"));
+    fireEvent.click(screen.getByRole("button", { name: "Go back" }));
+    await waitFor(() =>
+      expect(useAgentSettingsState.getState().page).toBeNull(),
+    );
+    expect(useWorkbenchStore.getState().activeTabId).toBe("side-b");
+    expect(useSideChatState.getState().pairedId).toBeNull();
+    expect(useWorkbenchStore.getState().tabs).toHaveLength(3);
+  },
+);
 
 it("evicts old entries and discards removed chats and project transitions", async () => {
   seed(40);

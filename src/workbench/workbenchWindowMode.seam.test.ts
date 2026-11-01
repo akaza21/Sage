@@ -75,7 +75,7 @@ async function switchWindowMode(mode: "Agent" | "Editor") {
 }
 
 describe("D0 workbench window mode seam", () => {
-  it("opens the shared Browser settings dialog from Editor and preserves its active resource", async () => {
+  function renderCurrentFile() {
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -91,6 +91,10 @@ describe("D0 workbench window mode seam", () => {
       activeTabId: "file:current",
     });
     render(createElement(Workbench));
+  }
+
+  it("opens the shared Browser settings page from Editor and preserves its active resource", async () => {
+    renderCurrentFile();
     await settleLazyModules();
     const activeTabId = useWorkbenchStore.getState().activeTabId;
     await act(() => useWorkbenchStore.getState().openSettings("browser"));
@@ -111,6 +115,11 @@ describe("D0 workbench window mode seam", () => {
     ).toBeChecked();
     act(() => useAgentSettingsState.getState().close());
     await switchWindowMode("Editor");
+  });
+
+  it("opens exactly one shared Browser settings page from the Editor Settings tab", async () => {
+    renderCurrentFile();
+    await settleLazyModules();
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
     await settleLazyModules();
     fireEvent.click(screen.getByRole("tab", { name: "Browser" }));

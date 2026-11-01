@@ -123,9 +123,12 @@ describe("sizing scale tokens", () => {
 
 function collectSources(directory: string): string[] {
   const found: string[] = [];
-  for (const entry of readdirSync(directory)) {
-    const path = join(directory, entry);
-    if (statSync(path).isDirectory()) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (
+      entry.isDirectory() ||
+      (entry.isSymbolicLink() && statSync(path).isDirectory())
+    ) {
       found.push(...collectSources(path));
       continue;
     }

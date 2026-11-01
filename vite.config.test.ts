@@ -81,6 +81,11 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
 ];
+const WORKBENCH_ON_DEMAND_FACADES = [
+  "src/workbench/DirtyTabDialog.tsx",
+  "src/workbench/RightSidebar.tsx",
+  "src/workbench/useAgentRailStatus.ts",
+];
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
@@ -147,6 +152,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentBrowserSettings.tsx",
   // Chat preferences load only when their Settings page is selected.
   "src/features/settings/AgentChatSettings.tsx",
+  "src/features/settings/AgentHarnessSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
   "src/features/settings/AgentSettingsExecution.tsx",
   "src/features/settings/AgentSettingsSurface.tsx",
@@ -165,9 +171,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentRailArchiveNotice.tsx",
   "src/workbench/AgentRecentChats.tsx",
   // Unsaved-file confirmation and Editor tools stay off the Agent path.
-  "src/workbench/DirtyTabDialog.tsx",
-  "src/workbench/RightSidebar.tsx",
-  "src/workbench/useAgentRailStatus.ts",
+  ...WORKBENCH_ON_DEMAND_FACADES,
   "src/workbench/ProjectChatActionPopover.tsx",
   "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",
@@ -518,7 +522,11 @@ describe("desktop-native chunk topology", () => {
         ).toBe(false);
     }
     const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
-    for (const module of COMPOSER_MENU_DYNAMIC_FACADES) {
+    for (const module of [
+      ...COMPOSER_MENU_DYNAMIC_FACADES,
+      ...WORKBENCH_ON_DEMAND_FACADES,
+      "src/features/settings/AgentHarnessSettings.tsx",
+    ]) {
       expect(graph.dynamicFacades).toContain(module);
       expect(
         chat.some((id) => id.endsWith(module)),

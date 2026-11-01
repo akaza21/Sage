@@ -396,7 +396,9 @@ describe("Advertised composer effort", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Select model: Actual model" }),
     );
-    await act(async () => {});
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     expect(screen.queryByRole("slider")).toBeNull();
     expect(
       await screen.findByRole("option", { name: "Actual model" }),

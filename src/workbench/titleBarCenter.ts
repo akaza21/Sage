@@ -1,5 +1,5 @@
-import { chatDisplayTitle } from "../domain/chatTitle";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import {
   useAgentSettingsState,
@@ -7,6 +7,7 @@ import {
 } from "../features/settings/agentSettingsState";
 import { useSideChatState } from "./sideChatState";
 import { navigateAgentHome } from "./agentRailNavigation";
+import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 
 export const AGENT_HISTORY_LIMIT = 32;
 interface AgentHistory {
@@ -22,21 +23,22 @@ function recordAgentDestination(previous: AgentHistory): AgentHistory {
     return emptyHistory;
   }
   const scope = `${state.project.id}:${state.projectGeneration}:${state.nativeTransitionEpoch}`;
-  const chats = state.tabs.filter(
-    (tab) => tab.kind === "chat" && !tab.id.startsWith("side-"),
-  );
+  const chats = collectChatTabIds(state.tabs);
   const settings = useAgentSettingsState.getState().page;
-  const chat = chats.find((tab) => tab.id === state.activeTabId) ?? chats[0];
+  const chat = focusedAgentChatId(
+    chats,
+    state.activeTabId,
+    pinnedAgentChatOwner(),
+  );
   const destination = settings
     ? `settings:${settings}`
     : chat
-      ? `chat:${chat.id}`
+      ? `chat:${chat}`
       : null;
   const current =
     previous.scope === scope ? previous : { ...emptyHistory, scope };
   const valid = (entry: string) =>
-    entry.startsWith("settings:") ||
-    chats.some((tab) => `chat:${tab.id}` === entry);
+    entry.startsWith("settings:") || chats.includes(entry.slice(5));
   const before = current.entries.slice(0, current.index + 1).filter(valid);
   const after = current.entries.slice(current.index + 1).filter(valid);
   if (!destination || before.at(-1) === destination) {
@@ -152,31 +154,4 @@ export function useAgentNavigationHistory(enabled: boolean) {
 
     travel,
   };
-}
-
-const TITLE_BAR_LABEL_CAP = 48;
-
-function hasControlCharacter(value: string): boolean {
-  return value.split("").some((character) => {
-    const code = character.charCodeAt(0);
-    return code < 32 || code === 127;
-  });
-}
-
-export function titleBarSessionTitle(
-  tabTitle: string | null | undefined,
-): string | null {
-  if (!tabTitle) return null;
-  const name = chatDisplayTitle(tabTitle).trim();
-  if (!name || hasControlCharacter(name)) return null;
-  if (name.length <= TITLE_BAR_LABEL_CAP) return name;
-  return `${name.slice(0, TITLE_BAR_LABEL_CAP - 1)}…`;
-}
-
-export function titleBarFocusedChatId(
-  chatIds: readonly string[],
-  activeTabId: string | null,
-): string | null {
-  if (activeTabId && chatIds.includes(activeTabId)) return activeTabId;
-  return chatIds[0] ?? null;
 }

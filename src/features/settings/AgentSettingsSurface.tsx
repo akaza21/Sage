@@ -17,7 +17,10 @@ import {
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
-import { AgentHarnessSettings } from "./AgentHarnessSettings";
+import {
+  chatSettingsDisabled,
+  modelSettingsDisabled,
+} from "./chatSettingsAvailability";
 import {
   useAgentSettingsState,
   type AgentSettingsPage,
@@ -26,6 +29,11 @@ import {
 const loadBrowserSettings = () =>
   import("./AgentBrowserSettings").then(({ AgentBrowserSettings }) => ({
     default: AgentBrowserSettings,
+  }));
+
+const loadHarnessSettings = () =>
+  import("./AgentHarnessSettings").then(({ AgentHarnessSettings }) => ({
+    default: AgentHarnessSettings,
   }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
@@ -62,7 +70,7 @@ const searchControls: readonly {
   label: string;
   aliases: string;
   selector?: string;
-  capability?: "browser" | "access";
+  capability?: "browser" | "access" | "selection" | "model";
 }[] = [
   {
     page: "Appearance",
@@ -84,11 +92,13 @@ const searchControls: readonly {
     page: "Chats",
     label: "Current harness",
     aliases: "agent",
+    capability: "selection",
   },
   {
     page: "Chats",
     label: "Current model",
     aliases: "model",
+    capability: "model",
   },
   {
     page: "Browser",
@@ -109,7 +119,7 @@ export function AgentSettingsSurface() {
   );
   const [historyAvailable, setHistoryAvailable] = useState(false);
   useEffect(() => {
-    if (!isTauriRuntime() || !query.trim()) return;
+    if (!isTauriRuntime()) return;
     let current = true;
     void browserLiveTabs().then(
       (ids) => {
@@ -122,7 +132,9 @@ export function AgentSettingsSurface() {
     return () => {
       current = false;
     };
-  }, [query]);
+  }, [page]);
+  const selectionDisabled = useWorkbenchStore(chatSettingsDisabled);
+  const modelDisabled = useWorkbenchStore(modelSettingsDisabled);
   const accessAvailable = useWorkbenchStore((state) =>
     state.harnesses.some(
       (harness) =>
@@ -252,7 +264,10 @@ export function AgentSettingsSurface() {
               key={control.label}
               disabled={
                 (control.capability === "browser" && !historyAvailable) ||
-                (control.capability === "access" && !accessAvailable)
+                (control.capability === "access" &&
+                  (!accessAvailable || selectionDisabled)) ||
+                (control.capability === "selection" && selectionDisabled) ||
+                (control.capability === "model" && modelDisabled)
               }
               onClick={() => {
                 open(control.page);
@@ -317,7 +332,13 @@ export function AgentSettingsSurface() {
                 render={(KeyboardSettings) => <KeyboardSettings />}
               />
             ) : null}
-            {page === "Harnesses" ? <AgentHarnessSettings /> : null}
+            {page === "Harnesses" ? (
+              <LazyModuleBoundary
+                label="Harness settings"
+                load={loadHarnessSettings}
+                render={(HarnessSettings) => <HarnessSettings />}
+              />
+            ) : null}
             {page === "Chats" ? (
               <LazyModuleBoundary
                 label="Chat settings"
