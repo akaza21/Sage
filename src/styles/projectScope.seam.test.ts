@@ -45,7 +45,6 @@ describe("Composer Project chip responsive seam", () => {
 
   it("reserves clickable icon targets while allowing the harness to shrink", async () => {
     const surface = await readFile("src/styles/composer-surface.css", "utf8");
-    const harness = await readFile("src/styles/harness-picker.css", "utf8");
     const model = await readFile(
       "src/styles/composer-model-picker.css",
       "utf8",
@@ -56,9 +55,6 @@ describe("Composer Project chip responsive seam", () => {
     expect(surface).toMatch(/\.project-scope\s*\{[^}]*min-width:\s*28px;/s);
     expect(surface).toMatch(
       /\.project-scope \.searchable-picker__trigger\s*\{[^}]*min-width:\s*28px;[^}]*min-height:\s*28px;/s,
-    );
-    expect(harness).toMatch(
-      /\.composer__harness\.composer__control-trigger\s*\{[^}]*min-width:\s*28px;/s,
     );
     expect(model).toMatch(
       /\.composer__model-group \.composer__effort-picker\s*\{[^}]*min-width:\s*28px;[^}]*overflow:\s*hidden;/s,
@@ -157,12 +153,6 @@ describe("Composer Project chip responsive seam", () => {
       document.body.append(composer);
       try {
         const wrapped = width < 182;
-        const harnessStyle = getComputedStyle(
-          composer.querySelector(".composer__harness")!,
-        );
-        expect(harnessStyle.flexShrink).toBe("1");
-        expect(harnessStyle.flexBasis).toBe("auto");
-        expect(harnessStyle.minWidth).toBe(width <= 280 ? "24px" : "28px");
         expect(
           getComputedStyle(composer.querySelector(".composer__model-group")!)
             .minWidth,

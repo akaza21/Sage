@@ -89,6 +89,10 @@
     display: none;
   }
 
+  .composer .composer__harness.composer__control-trigger {
+    --harness-chevron-room: 0px;
+  }
+
   .composer .composer__model-group {
     max-width: 100%;
     flex: 1 1 auto;
@@ -118,6 +122,14 @@
 
   .composer .composer__model-group {
     min-width: 28px;
+  }
+
+  .composer .composer__harness.composer__control-trigger {
+    --harness-name-min: 0px;
+  }
+
+  .composer .composer__harness .searchable-picker__trigger-label {
+    display: none;
   }
 
   /* The label may truncate to nothing beside a long effort level; the icon
@@ -184,15 +196,6 @@
 
   .composer .composer__harness.composer__control-trigger {
     min-width: 24px;
-  }
-
-  .composer .composer__harness .searchable-picker__trigger {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .composer .composer__harness .searchable-picker__trigger-label {
-    display: none;
   }
 
   .composer .project-scope,

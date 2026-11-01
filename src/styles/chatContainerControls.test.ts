@@ -153,7 +153,7 @@ describe("Chat container control breakpoints", () => {
           ".composer__harness .searchable-picker__trigger-label",
           width,
         ),
-      ).toBe(width <= 280 ? "none" : "inline");
+      ).toBe(width <= 320 ? "none" : "inline");
       expect(await containerDisplay(".composer__model-label", width)).toBe(
         identity,
       );

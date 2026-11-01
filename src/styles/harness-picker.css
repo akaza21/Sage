@@ -1,9 +1,16 @@
 /* Codex-style plain control: brand mark and name on the composer fill, with
-   the shared control hover. The name truncates under pressure; the mark
-   always stays. */
+   the shared control hover. Under pressure the name ellipsises down to its
+   first letters; the minimum width is the mark, those letters, the chevron
+   and the trigger's padding and gaps, so the mark is never clipped. */
 .composer__harness.composer__control-trigger {
   --harness-logo-size: var(--icon-size-md);
-  min-width: 28px;
+  --harness-name-min: 3ch;
+  --harness-chevron-size: 12px;
+  --harness-chevron-room: calc(var(--harness-chevron-size) + var(--space-1));
+  min-width: calc(
+    var(--harness-logo-size) + var(--harness-name-min) +
+      var(--harness-chevron-room) + 3 * var(--space-1)
+  );
   max-width: 160px;
   flex: 0 1 auto;
 }
@@ -55,14 +62,15 @@
 
 .composer__harness .searchable-picker__trigger-label {
   display: block;
+  min-width: var(--harness-name-min);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .composer__harness .searchable-picker__chevron {
-  width: 12px;
-  height: 12px;
+  width: var(--harness-chevron-size);
+  height: var(--harness-chevron-size);
 }
 
 .composer__harness-menu.menu-popover {

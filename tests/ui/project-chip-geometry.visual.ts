@@ -24,9 +24,9 @@ async function expectProjectInOptionsMenu(composer: Locator) {
 async function expectResponsiveToolbar(
   composer: Locator,
   compact: boolean,
-  // A long effort label may take the harness name's room; the toolbar
-  // geometry, hit-testing and the harness mark are still checked.
-  harnessNamed = true,
+  // A long effort label crowds the toolbar, so the harness name may
+  // ellipsise down to its first letters instead of showing in full.
+  crowded = false,
 ) {
   const project = composer.getByRole("button", { name: /^Project: / });
   // Wave 5: at 280px and below the Project control folds into the composer
@@ -69,12 +69,7 @@ async function expectResponsiveToolbar(
   }
   const harnessLabel = harness.locator(".searchable-picker__trigger-label");
   const modelLabel = model.locator(".composer__model-label");
-  // The harness keeps its name beside its mark until the whole toolbar
-  // compacts to icons.
-  if (controlsCompact) await expect(harnessLabel).toBeHidden();
-  else if (harnessNamed) await expect(harnessLabel).toBeVisible();
-  // Under pressure the name may ellipsise, but the brand mark always stays
-  // whole inside the trigger and the name never paints over it.
+  // The brand mark always stays whole inside the harness trigger.
   const harnessBox = (await harness.boundingBox())!;
   const markBox = (await harness.locator(".harness-logo").boundingBox())!;
   expect(markBox.width).toBeGreaterThanOrEqual(12);
@@ -82,15 +77,30 @@ async function expectResponsiveToolbar(
   expect(markBox.x + markBox.width).toBeLessThanOrEqual(
     harnessBox.x + harnessBox.width + 0.5,
   );
-  if (!controlsCompact) {
-    expect(
-      await harnessLabel.evaluate(
-        (label) => getComputedStyle(label).textOverflow,
-      ),
-    ).toBe("ellipsis");
-    const labelBox = await harnessLabel.boundingBox();
-    if (labelBox && labelBox.width > 0)
-      expect(labelBox.x).toBeGreaterThanOrEqual(markBox.x + markBox.width);
+  // Above 320px the name shows beside the mark: whole, or ellipsised to its
+  // first letters when crowded. At 320px and below the harness compacts to
+  // its mark, as the model does.
+  if (await composer.evaluate((element) => element.clientWidth <= 320)) {
+    await expect(harnessLabel).toBeHidden();
+  } else {
+    await expect(harnessLabel).toBeVisible();
+    expect((await harnessLabel.boundingBox())!.x).toBeGreaterThanOrEqual(
+      markBox.x + markBox.width,
+    );
+    const label = await harnessLabel.evaluate((node) => ({
+      clipped: node.scrollWidth > node.clientWidth,
+      width: node.clientWidth,
+      // The name's floor, three letters, resolved to pixels.
+      floor: Number.parseFloat(getComputedStyle(node).minWidth),
+      textOverflow: getComputedStyle(node).textOverflow,
+    }));
+    if (crowded) {
+      expect(label.textOverflow).toBe("ellipsis");
+      expect(label.floor).toBeGreaterThan(0);
+      expect(label.width).toBeGreaterThanOrEqual(label.floor - 0.5);
+    } else {
+      expect(label.clipped).toBe(false);
+    }
   }
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
@@ -265,7 +275,7 @@ for (const contentWidth of [
         exact: true,
       }),
     ).toBeVisible();
-    await expectResponsiveToolbar(composer, contentWidth <= 400, false);
+    await expectResponsiveToolbar(composer, contentWidth <= 400, true);
   });
 }
 
