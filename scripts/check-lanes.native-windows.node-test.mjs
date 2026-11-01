@@ -635,11 +635,17 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
           ],
         },
       ]),
-      (error) =>
-        error?.code === "command-timeout" &&
-        error.settled === true &&
-        error.exitCode === 0 &&
-        error.teardown === null,
+      (error) => {
+        assert.equal(error?.code, "command-timeout");
+        assert.equal(error.settled, true);
+        assert.equal(error.exitCode, 0);
+        assert.equal(error.teardown, null);
+        assert.deepEqual(error.stall, {
+          rootRunning: false,
+          memberImages: ["node.exe"],
+        });
+        return true;
+      },
     );
     assert.equal(await waitForFixtureReady(readyPath), "ready");
     descendantPid = Number.parseInt(await readFile(pidPath, "utf8"), 10);

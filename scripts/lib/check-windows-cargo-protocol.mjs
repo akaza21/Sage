@@ -205,6 +205,25 @@ async function deliverTruncation(state, kind) {
   state.lineBytes = 0;
 }
 
+const MAX_STALL_MEMBERS = 256;
+
+// A timed-out command reports what was still running at its deadline.
+function validStall(stall, reason) {
+  if (reason !== "command-timeout") return stall === null;
+  return (
+    stall !== null &&
+    typeof stall === "object" &&
+    hasExactKeys(stall, ["memberImages", "rootRunning"]) &&
+    typeof stall.rootRunning === "boolean" &&
+    Array.isArray(stall.memberImages) &&
+    stall.memberImages.length <= MAX_STALL_MEMBERS &&
+    stall.memberImages.every(
+      (name) =>
+        typeof name === "string" && name.length > 0 && name.length <= 260,
+    )
+  );
+}
+
 function validatedProof(result, requestNonce, sequence) {
   const reasons = [
     null,
@@ -224,7 +243,8 @@ function validatedProof(result, requestNonce, sequence) {
     (result.settled && result.activeProcesses !== 0) ||
     !Number.isSafeInteger(result.exitCode) ||
     !reasons.includes(result.reason) ||
-    !("teardown" in result)
+    !("teardown" in result) ||
+    !validStall(result.stall, result.reason)
   ) {
     throw new Error("invalid Job proof response");
   }

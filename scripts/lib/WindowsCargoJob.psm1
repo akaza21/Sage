@@ -128,8 +128,14 @@ function Invoke-CargoValidationJob {
     if ($null -eq $rootExitCode -and -not $job.RootRunning) {
       $rootExitCode = $job.ExitCode()
     }
+    $stall = $null
     if ($null -eq $reason -and $job.ActiveProcesses() -ne 0) {
       $reason = "command-timeout"
+      # Record what was still running at the deadline before teardown.
+      $stall = [ordered]@{
+        rootRunning = [bool]$job.RootRunning
+        memberImages = @($job.MemberImageNames())
+      }
     }
     if ($null -ne $reason) {
       $graceDeadline = [DateTime]::UtcNow.AddMilliseconds($TerminationGraceMilliseconds)
@@ -166,6 +172,7 @@ function Invoke-CargoValidationJob {
       exitCode = $exitCode
       reason = $reason
       teardown = $teardown
+      stall = $stall
     }
   } finally {
     if ($null -ne $control) { $control.Dispose() }

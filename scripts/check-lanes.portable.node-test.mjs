@@ -43,6 +43,7 @@ test("Windows Cargo frame parser rejects reordered and post-proof frames", async
     exitCode: 0,
     reason: null,
     teardown: null,
+    stall: null,
   };
   const data = {
     type: "data",
@@ -85,6 +86,7 @@ test("Windows Cargo frame parser accepts only the exact VCTIP teardown receipt",
     activeProcesses: 0,
     exitCode: 7,
     reason: null,
+    stall: null,
   };
   const receipt = {
     kind: "verified-msvc-vctip",
@@ -143,6 +145,48 @@ test("Windows Cargo frame parser accepts only the exact VCTIP teardown receipt",
       ),
       /invalid VCTIP teardown receipt/u,
     );
+  }
+});
+
+test("Windows Cargo frame parser requires a stall report exactly for timeouts", async () => {
+  const requestNonce = "stall-nonce";
+  const base = {
+    type: "proof",
+    schemaVersion: 1,
+    requestNonce,
+    sequence: 0,
+    settled: true,
+    treeBoundaryVerified: true,
+    activeProcesses: 0,
+    exitCode: 1,
+    teardown: null,
+  };
+  const parse = (proof) =>
+    consumeWindowsCargoJobFrames(
+      Readable.from([Buffer.from(`${JSON.stringify(proof)}\n`)]),
+      { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+      requestNonce,
+      discardStream(),
+      discardStream(),
+    );
+  const stall = { rootRunning: true, memberImages: ["cargo.exe", "cargo.exe"] };
+  assert.deepEqual(
+    (await parse({ ...base, reason: "command-timeout", stall })).stall,
+    stall,
+  );
+  for (const proof of [
+    { ...base, reason: "command-timeout", stall: null },
+    { ...base, reason: "command-timeout" },
+    { ...base, reason: null, stall },
+    { ...base, reason: "command-timeout", stall: { ...stall, extra: 1 } },
+    { ...base, reason: "command-timeout", stall: { ...stall, rootRunning: 1 } },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { ...stall, memberImages: [""] },
+    },
+  ]) {
+    await assert.rejects(parse(proof), /invalid Job proof response/u);
   }
 });
 
