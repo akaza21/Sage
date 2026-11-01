@@ -30,22 +30,38 @@ function Get-FootprintDescendants {
     [Parameter(Mandatory)][int]$RootProcessId,
     [AllowNull()][object[]]$ProcessRows,
     [ValidateRange(1, 4096)][int]$MaxProcessRows = $script:MaxProcessSnapshotRows,
-    [ValidateRange(1, 512)][int]$MaxDescendants = $script:MaxRetainedProcessRecords
+    [ValidateRange(1, 512)][int]$MaxDescendants = $script:MaxRetainedProcessRecords,
+    [AllowNull()]$RootCreationDate
   )
   if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
   if ($ProcessRows.Count -gt $MaxProcessRows) {
     throw "Process snapshot exceeds its $MaxProcessRows-row limit."
+  }
+  # Windows keeps a process's parent PID after the parent exits, and PIDs are
+  # reused. A row that started before an included process cannot be its child:
+  # it is an orphan of an older process that held the same PID. Rows whose
+  # creation time is unknown stay included so incomplete identities still fail
+  # closed downstream.
+  $creationById = @{}
+  foreach ($row in $ProcessRows) {
+    $creationById[[int]$row.ProcessId] = Get-FootprintCreationTime $row
+  }
+  if ($null -eq $creationById[$RootProcessId] -and $null -ne $RootCreationDate) {
+    $creationById[$RootProcessId] = ConvertTo-FootprintCreationTime $RootCreationDate
   }
   $included = [Collections.Generic.HashSet[int]]::new()
   [void]$included.Add($RootProcessId)
   do {
     $changed = $false
     foreach ($row in $ProcessRows) {
-      $pid = [int]$row.ProcessId
-      if (-not $included.Contains($pid) -and $included.Contains([int]$row.ParentProcessId)) {
-        [void]$included.Add($pid)
-        $changed = $true
-      }
+      $processId = [int]$row.ProcessId
+      $parentId = [int]$row.ParentProcessId
+      if ($included.Contains($processId) -or -not $included.Contains($parentId)) { continue }
+      $created = $creationById[$processId]
+      $parentCreated = $creationById[$parentId]
+      if ($null -ne $created -and $null -ne $parentCreated -and $created -lt $parentCreated) { continue }
+      [void]$included.Add($processId)
+      $changed = $true
     }
   } while ($changed)
   $result = @($ProcessRows | Where-Object { $included.Contains([int]$_.ProcessId) } | Sort-Object ProcessId)
@@ -64,6 +80,28 @@ function ConvertTo-FootprintCreationIdentity {
     )
   }
   return [string]$CreationDate
+}
+
+function ConvertTo-FootprintCreationTime {
+  param([AllowNull()]$CreationDate)
+  if ($CreationDate -is [DateTime]) { return $CreationDate.ToUniversalTime() }
+  $parsed = [DateTime]::MinValue
+  if ($CreationDate -is [string] -and [DateTime]::TryParse(
+      $CreationDate,
+      [Globalization.CultureInfo]::InvariantCulture,
+      [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal,
+      [ref]$parsed
+    )) {
+    return $parsed
+  }
+  return $null
+}
+
+function Get-FootprintCreationTime {
+  param([Parameter(Mandatory)]$ProcessRow)
+  $property = $ProcessRow.PSObject.Properties["CreationDate"]
+  if ($null -eq $property) { return $null }
+  return ConvertTo-FootprintCreationTime $property.Value
 }
 
 function ConvertTo-FootprintProcessIdentity {
@@ -260,7 +298,7 @@ function Stop-FootprintLaunchedProcessObject {
       }
     }
     if ($null -ne $rootIdentity) {
-      foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows)) {
+      foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows -RootCreationDate $rootIdentity.creationDate)) {
         [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
       }
     }

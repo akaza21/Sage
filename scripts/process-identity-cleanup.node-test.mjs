@@ -146,3 +146,22 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
     stops: [101],
   });
 });
+
+test("an older process that names a reused root PID as its parent is never adopted or stopped", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$orphanRow=[pscustomobject]@{ProcessId=303;ParentProcessId=101;ExecutablePath='C:\\Windows\\System32\\svchost.exe';CreationDate='2026-08-29T23:59:00.000Z'};
+$descendants=@(Get-FootprintDescendants 101 @($rootRow,$childRow,$orphanRow) | ForEach-Object { [int]$_.ProcessId });
+$script:rootAlive=$true;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
+$snapshot={$rows=@($orphanRow);if($script:rootAlive){$rows+=$rootRow};return $rows};
+$stop={param([int]$processId)$script:stops+=$processId;if($processId-eq101){$script:rootAlive=$false}};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{descendants=$descendants;identityLost=$result.identityLost;remaining=@($result.remaining);stops=@($script:stops)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    descendants: [101, 202],
+    identityLost: false,
+    remaining: [],
+    stops: [101],
+  });
+});
