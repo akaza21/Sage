@@ -1,6 +1,5 @@
 use std::{
     collections::VecDeque,
-    thread,
     time::{Duration, Instant},
 };
 
@@ -22,7 +21,7 @@ struct ScriptTransport {
     cleanup: Result<u64, CodexDiscoveryRunError>,
     read_timeouts: Vec<Duration>,
     cleanup_end: Option<Instant>,
-    silent_after_write: Option<usize>,
+    now: Instant,
 }
 
 impl ScriptTransport {
@@ -46,12 +45,16 @@ impl ScriptTransport {
             cleanup: Ok(71),
             read_timeouts: Vec::new(),
             cleanup_end: None,
-            silent_after_write: None,
+            now: Instant::now(),
         }
     }
 }
 
 impl DiscoveryTransport for ScriptTransport {
+    fn now(&self) -> Instant {
+        self.now
+    }
+
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
         self.writes
             .push(serde_json::from_slice(frame.payload()).unwrap());
@@ -64,13 +67,10 @@ impl DiscoveryTransport for ScriptTransport {
 
     fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError> {
         self.read_timeouts.push(timeout);
-        if self.silent_after_write == Some(self.writes.len()) {
-            thread::sleep(timeout);
-            return Err(CodexDiscoveryRunError::Timeout);
-        }
-        self.reads
-            .pop_front()
-            .unwrap_or(Err(CodexDiscoveryRunError::Timeout))
+        self.reads.pop_front().unwrap_or_else(|| {
+            self.now += timeout;
+            Err(CodexDiscoveryRunError::Timeout)
+        })
     }
 
     fn revalidate(&self, checkpoint: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError> {
@@ -228,22 +228,24 @@ fn every_transport_protocol_eof_timeout_and_drift_failure_tears_down() {
 
 #[test]
 fn a_model_list_that_never_answers_expires_its_read_budget_and_tears_down() {
-    let deadline = CodexDiscoveryDeadline::from_budgets(
-        Instant::now(),
-        Duration::from_millis(20),
-        Duration::from_millis(20),
-    )
-    .unwrap();
+    let admitted = Instant::now();
+    let budget = Duration::from_millis(20);
+    let deadline =
+        CodexDiscoveryDeadline::from_budgets(admitted, budget, Duration::from_millis(20)).unwrap();
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
-    transport.silent_after_write = Some(4);
-    let started = Instant::now();
+    transport.now = admitted;
+    transport.reads.pop_back(); // initialize and account answer; model/list never does.
 
     assert_eq!(
         run_discovery_protocol(&mut protocol, &mut transport, 71, deadline),
         Err(CodexDiscoveryRunError::Timeout)
     );
-    assert!(started.elapsed() < Duration::from_millis(100));
+    assert_eq!(transport.read_timeouts, vec![budget; 3]);
+    assert_eq!(transport.now, deadline.operation_end());
+    assert_eq!(transport.writes.len(), 4);
+    assert_eq!(transport.writes[3]["method"], "model/list");
+    assert_eq!(transport.cleanup_end, Some(deadline.cleanup_end()));
     assert!(transport.closed);
     assert_eq!(transport.terminated, Some(true));
 }

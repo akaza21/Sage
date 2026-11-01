@@ -1,3 +1,4 @@
+import { lintFeatures, testFeatures } from "../cargo-features.mjs";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -118,7 +119,8 @@ export function createRustValidationCommands({
           "--manifest-path",
           "src-tauri/Cargo.toml",
           "--all-targets",
-          "--all-features",
+          "--features",
+          lintFeatures(platform).join(","),
           "--",
           "-D",
           "warnings",
@@ -136,7 +138,8 @@ export function createRustValidationCommands({
           "test",
           "--manifest-path",
           "src-tauri/Cargo.toml",
-          "--all-features",
+          "--features",
+          testFeatures(platform).join(","),
           "--",
           "--test-threads=1",
         ],

@@ -123,11 +123,7 @@ attributable existing refreshes: `agent-resource-empty`, `agent-file-error`,
 `agent-diff-loading`, `agent-file-ready`, `agent-diff-ready`, `file`, `diff`,
 and `preview`. The refresh passed 11/11; the subsequent Windows Chromium
 no-update run passed 67/67 (62 visual plus five behavioral) with zero
-skips/flakes/retries. Exact image identities are external consolidation
-evidence in
-`/home/username/projects/sage-consolidation/execution/manifests/AV01-WINDOWS-BASELINES-20260905T1516Z.sha256`;
-raw Windows evidence is recorded externally at
-`/home/username/projects/sage-consolidation/execution/test-evidence/AV01-WINDOWS-INSPECT.md`.
+skips/flakes/retries.
 This does not cover native WebView, signed package, macOS, operating-system
 assistive technology, or performance acceptance.
 

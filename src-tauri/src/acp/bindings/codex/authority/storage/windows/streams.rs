@@ -4,16 +4,20 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 
 use windows_sys::Win32::Foundation::{
-    ERROR_HANDLE_EOF, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
+    ERROR_HANDLE_EOF, ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED,
+    GetLastError, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_STREAM_INFO, FileStreamInfo, FindClose, FindFirstStreamW, FindNextStreamW,
-    FindStreamInfoStandard, GetFileInformationByHandleEx, WIN32_FIND_STREAM_DATA,
+    FindStreamInfoStandard, GetFileInformationByHandleEx, GetVolumeInformationByHandleW,
+    WIN32_FIND_STREAM_DATA,
 };
 
 use super::StateAuthorityError;
 
 const STREAM_INFO_BYTES_MAX: usize = 64 * 1024;
+// WinBase.h volume flag; no SystemServices binding module is needed for a mask.
+const FILE_NAMED_STREAMS: u32 = 0x0004_0000;
 
 pub(super) fn reject_named_streams(file: &File) -> Result<(), StateAuthorityError> {
     let mut buffer = vec![0_u64; STREAM_INFO_BYTES_MAX / std::mem::size_of::<u64>()];
@@ -26,7 +30,7 @@ pub(super) fn reject_named_streams(file: &File) -> Result<(), StateAuthorityErro
         )
     } == 0
     {
-        return Err(StateAuthorityError::Stream);
+        return unsupported_stream_query(file, unsafe { GetLastError() });
     }
     let entry = unsafe { &*buffer.as_ptr().cast::<FILE_STREAM_INFO>() };
     let name_bytes =
@@ -49,7 +53,10 @@ pub(super) fn reject_named_streams(file: &File) -> Result<(), StateAuthorityErro
     Ok(())
 }
 
-pub(super) fn reject_directory_named_streams(path: &Path) -> Result<(), StateAuthorityError> {
+pub(super) fn reject_directory_named_streams(
+    directory: &File,
+    path: &Path,
+) -> Result<(), StateAuthorityError> {
     let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     let mut entry = WIN32_FIND_STREAM_DATA::default();
     let find = unsafe {
@@ -61,10 +68,11 @@ pub(super) fn reject_directory_named_streams(path: &Path) -> Result<(), StateAut
         )
     };
     if find == INVALID_HANDLE_VALUE {
-        return if unsafe { GetLastError() } == ERROR_HANDLE_EOF {
+        let error = unsafe { GetLastError() };
+        return if error == ERROR_HANDLE_EOF {
             Ok(())
         } else {
-            Err(StateAuthorityError::Stream)
+            unsupported_stream_query(directory, error)
         };
     }
 
@@ -73,6 +81,42 @@ pub(super) fn reject_directory_named_streams(path: &Path) -> Result<(), StateAut
         return Err(StateAuthorityError::Stream);
     }
     result
+}
+
+// Unsupported enumeration is not evidence of absence. Require the volume of
+// the retained handle to prove that named streams cannot exist at all.
+fn unsupported_stream_query(file: &File, error: u32) -> Result<(), StateAuthorityError> {
+    if !matches!(
+        error,
+        ERROR_INVALID_FUNCTION | ERROR_INVALID_PARAMETER | ERROR_NOT_SUPPORTED
+    ) {
+        return Err(StateAuthorityError::Stream);
+    }
+    let mut flags = 0;
+    if unsafe {
+        GetVolumeInformationByHandleW(
+            file.as_raw_handle() as HANDLE,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut flags,
+            std::ptr::null_mut(),
+            0,
+        )
+    } == 0
+    {
+        return Err(StateAuthorityError::Stream);
+    }
+    require_streamless_volume(flags)
+}
+
+fn require_streamless_volume(flags: u32) -> Result<(), StateAuthorityError> {
+    if flags & FILE_NAMED_STREAMS == 0 {
+        Ok(())
+    } else {
+        Err(StateAuthorityError::Stream)
+    }
 }
 
 fn inspect_directory_streams(
@@ -97,4 +141,24 @@ fn stream_name(entry: &WIN32_FIND_STREAM_DATA) -> Result<String, StateAuthorityE
         .position(|character| *character == 0)
         .ok_or(StateAuthorityError::Stream)?;
     String::from_utf16(&entry.cStreamName[..end]).map_err(|_| StateAuthorityError::Stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_enumeration_requires_proof_that_the_volume_has_no_named_streams() {
+        assert_eq!(require_streamless_volume(0), Ok(()));
+        assert_eq!(
+            require_streamless_volume(FILE_NAMED_STREAMS),
+            Err(StateAuthorityError::Stream)
+        );
+        let file = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
+        // An access or I/O failure must never fall back to a capability claim.
+        assert_eq!(
+            unsupported_stream_query(&file, windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED),
+            Err(StateAuthorityError::Stream)
+        );
+    }
 }
