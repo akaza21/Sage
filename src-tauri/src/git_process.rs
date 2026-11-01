@@ -43,6 +43,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(test)]
 type GitProcessHook = Arc<dyn Fn() + Send + Sync>;
+#[cfg(test)]
+type GitSpawnHook = Arc<dyn Fn(u32) + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct GitProcessPolicy {
@@ -65,6 +67,8 @@ pub(crate) struct GitProcessPolicy {
     before_spawn_hook: Option<GitProcessHook>,
     #[cfg(test)]
     after_process_hook: Option<GitProcessHook>,
+    #[cfg(test)]
+    spawned_hook: Option<GitSpawnHook>,
     #[cfg(test)]
     deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
 }
@@ -92,6 +96,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             after_process_hook: None,
             #[cfg(test)]
+            spawned_hook: None,
+            #[cfg(test)]
             deadline_wait_gate: None,
         }
     }
@@ -118,6 +124,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             after_process_hook: None,
             #[cfg(test)]
+            spawned_hook: None,
+            #[cfg(test)]
             deadline_wait_gate: None,
         }
     }
@@ -143,6 +151,8 @@ impl GitProcessPolicy {
             before_spawn_hook: None,
             #[cfg(test)]
             after_process_hook: None,
+            #[cfg(test)]
+            spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
         }
@@ -286,6 +296,10 @@ async fn run_admitted(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    #[cfg(test)]
+    if let (Some(hook), Some(pid)) = (&policy.spawned_hook, child.id()) {
+        hook(pid);
+    }
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
