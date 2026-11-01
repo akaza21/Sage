@@ -49,6 +49,7 @@ import {
   useAgentArtifactFollowLifecycle,
   useExpandOnNewArtifact,
   useFocusedBrowse,
+  useSelectOpenedBrowserTab,
 } from "./useAgentArtifactFollowLifecycle";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { useAgentChangesPane } from "./useAgentChangesPane";
@@ -263,6 +264,7 @@ export function AgentArtifactPane({
     browseOwnerChatId: browseOwner?.chatId ?? null,
     focusedOwner,
   });
+  useSelectOpenedBrowserTab({ artifacts, activeTabId, focusedOwner });
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;

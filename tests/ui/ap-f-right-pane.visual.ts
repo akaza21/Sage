@@ -59,6 +59,43 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     ).toBeVisible();
   });
 
+  test("gives a Diff filename room beside a New tab before truncating", async ({
+    page,
+  }) => {
+    await openAgentScenario(page, "diff");
+    await openAgentSnapshotDiff(page);
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const state = useWorkbenchStore.getState();
+      useWorkbenchStore.setState({
+        tabs: [
+          ...state.tabs,
+          {
+            id: "browser:new-tab",
+            kind: "browser",
+            title: "New tab",
+            position: state.tabs.length,
+            pinned: false,
+            dirty: false,
+          },
+        ],
+      });
+    });
+    const pane = page.getByLabel("Agent artifacts", { exact: true });
+    const diff = pane.locator('.tab[data-resource-kind="diff"]');
+    const browser = pane.locator('.tab[data-resource-kind="browser"]');
+    await expect(browser).toBeVisible();
+    const basenameFits = await diff
+      .locator(".tab__basename")
+      .evaluate((node) => node.scrollWidth <= node.clientWidth);
+    expect(basenameFits).toBe(true);
+    const [diffBox, browserBox] = await Promise.all([
+      diff.boundingBox(),
+      browser.boundingBox(),
+    ]);
+    expect(browserBox!.width).toBeLessThan(diffBox!.width);
+  });
+
   test("shows real edited resources and explains unsupported background tracking", async ({
     page,
   }) => {

@@ -65,13 +65,14 @@ describe("Agent right-pane stylesheet seam", () => {
     expect(modeShell).toMatch(
       /\.agent-artifact-pane__follow,\s*\.agent-artifact-pane__collapse\s*\{\s*order: 2;\s*\}/,
     );
-    // Content-sized strip: each tab starts at Codex's ~208 px and shrinks.
+    // Content-sized strip: each tab sizes to its title up to Codex's ~208 px
+    // and shrinks from there (geometry: ap-f-right-pane.visual.ts).
     const chrome = await readFile(
       resolve("src/styles/workbench-chrome.css"),
       "utf8",
     );
     expect(chrome).toMatch(
-      /\.workbench--agent \.agent-artifact-pane \.tab\s*\{[^}]*min-width: 96px;[^}]*flex: 0 1 208px;/s,
+      /\.workbench--agent \.agent-artifact-pane \.tab\s*\{[^}]*min-width: 96px;[^}]*max-width: 208px;[^}]*flex: 0 1 auto;/s,
     );
   });
 });

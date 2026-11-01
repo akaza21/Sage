@@ -12,6 +12,13 @@
   padding-bottom: 0;
 }
 
+/* The trailing time/state shares the title's line here, so a row that shows
+   one keeps its title to the first column and truncates before the state
+   instead of running under it. */
+.workbench--agent .project-chat-row:has(.project-chat__state) > .project-chat {
+  grid-column: 1;
+}
+
 .workbench--agent .project-chat__working {
   width: 12px;
   height: 12px;

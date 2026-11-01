@@ -58,6 +58,46 @@ export function useAgentArtifactFollowLifecycle({
   }, [availableTargets, browseSettled, focusedOwner]);
 }
 
+/**
+ * Selects a browser tab the person just opened. Browser tabs only open on an
+ * explicit request ("+", Ctrl+T, New page), and that request must win over
+ * following the newest agent File, Diff, or Preview: a new tab that the
+ * workbench made active is pinned as the focused Chat's selection.
+ */
+export function useSelectOpenedBrowserTab({
+  artifacts,
+  activeTabId,
+  focusedOwner,
+}: {
+  artifacts: readonly WorkbenchTab[];
+  activeTabId: string | null;
+  focusedOwner: AgentArtifactOwner | null;
+}): void {
+  const knownBrowserTabs = useRef<ReadonlySet<string> | null>(null);
+  const browserTabs = useMemo(
+    () =>
+      new Set(
+        artifacts.filter((tab) => tab.kind === "browser").map((tab) => tab.id),
+      ),
+    [artifacts],
+  );
+  useEffect(() => {
+    const previous = knownBrowserTabs.current;
+    knownBrowserTabs.current = browserTabs;
+    if (
+      !previous ||
+      !focusedOwner ||
+      !activeTabId ||
+      previous.has(activeTabId) ||
+      !browserTabs.has(activeTabId)
+    )
+      return;
+    useAgentArtifactFollowStore
+      .getState()
+      .pin(focusedOwner, { kind: "tab", tabId: activeTabId });
+  }, [activeTabId, browserTabs, focusedOwner]);
+}
+
 /** Expands a collapsed resource pane when a tab or Preview revision appears. */
 export function useExpandOnNewArtifact({
   artifacts,

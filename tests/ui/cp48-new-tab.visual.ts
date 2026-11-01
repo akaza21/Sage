@@ -46,6 +46,34 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
     );
   });
 
+  test("a narrow Terminal tool keeps its shortcut chip inside the button", async ({
+    page,
+  }) => {
+    await page.goto("/tests/ui/fixtures/browser-new-tab.html");
+    await page
+      .locator(".browser-surface")
+      .evaluate((node) => ((node as HTMLElement).style.width = "300px"));
+    const terminal = page.getByRole("button", {
+      name: "Terminal",
+      exact: true,
+    });
+    const shortcut = terminal.locator("kbd");
+    const more = page.getByRole("button", { name: "Terminal options" });
+    await expect(shortcut).toHaveText("Ctrl+`");
+    const [buttonBox, shortcutBox, moreBox] = await Promise.all([
+      terminal.boundingBox(),
+      shortcut.boundingBox(),
+      more.boundingBox(),
+    ]);
+    expect(shortcutBox!.x + shortcutBox!.width).toBeLessThanOrEqual(
+      buttonBox!.x + buttonBox!.width,
+    );
+    expect(shortcutBox!.x + shortcutBox!.width).toBeLessThanOrEqual(moreBox!.x);
+    expect(
+      await shortcut.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+  });
+
   test("narrow tools remain keyboard-readable in forced colours and reduced motion", async ({
     page,
   }) => {

@@ -34,6 +34,13 @@ vi.mock("../features/preview/previewDesktop", () => ({
   stopPreviewTarget: previewBridge.stop,
 }));
 
+const nativeBrowser = vi.hoisted(() => ({ open: vi.fn() }));
+
+vi.mock("../ports/nativeBrowserPort", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  openBrowser: nativeBrowser.open,
+}));
+
 vi.mock("../services/acpDesktop", () => ({
   acpDesktop: { subscribePreviewProjectionChanges: previewBridge.subscribe },
 }));
@@ -2049,6 +2056,31 @@ describe("Agent artifact file chips", () => {
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
     expect(openBrowser).not.toHaveBeenCalled();
+  });
+
+  it("selects the tab that New browser tab opens over a followed agent Diff", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    nativeBrowser.open.mockResolvedValueOnce("browser:opened");
+    admit("diff:other");
+    useAgentArtifactFollowStore
+      .getState()
+      .observe(focusedOwner, { kind: "tab", tabId: "diff:other" });
+    useWorkbenchStore.setState({ activeTabId: "diff:other" });
+    render(<AgentArtifactPane />);
+    expect(
+      screen.getByRole("tab", { name: "Diff src/other.ts" }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+
+    const opened = await screen.findByRole("tab", { name: "Browser New tab" });
+    await waitFor(() =>
+      expect(opened).toHaveAttribute("aria-selected", "true"),
+    );
+    expect(
+      screen.getByRole("tab", { name: "Diff src/other.ts" }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(nativeBrowser.open).toHaveBeenCalledTimes(1);
   });
 
   it("shows browser tabs beside artifacts but keeps them out of Editor", () => {

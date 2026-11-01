@@ -100,6 +100,45 @@ test("AP-C project disclosure, context actions, and honest project menu", async 
   await takeCanonicalScreenshot(page, "ap-c-project-menu.png");
 });
 
+test("AP-C long chat titles truncate before the trailing time or state", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      tabs: state.tabs.map((tab) =>
+        tab.kind === "chat"
+          ? {
+              ...tab,
+              title: `${tab.title} with a long title that must truncate`,
+              updatedAt: Date.now() - 3 * 60_000,
+            }
+          : tab,
+      ),
+    });
+  });
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  const rows = sidebar.locator(".project-chat-row:has(.project-chat__state)");
+  await expect(rows.first()).toBeVisible();
+  const overlaps = await rows.evaluateAll((nodes) =>
+    nodes.flatMap((row) => {
+      const title = row.querySelector(".project-chat__title-label");
+      const trailing = row.querySelector(".project-chat__state");
+      if (!title || !trailing) return [];
+      const titleRight = title.getBoundingClientRect().right;
+      const trailingLeft = trailing.getBoundingClientRect().left;
+      return titleRight > trailingLeft
+        ? [`${title.textContent}: ${titleRight} > ${trailingLeft}`]
+        : [];
+    }),
+  );
+  expect(overlaps).toEqual([]);
+});
+
 test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   page,
 }) => {

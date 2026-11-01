@@ -47,7 +47,16 @@
   flex: none;
   color: var(--browser-muted-text);
 }
+/* In a narrow pane the label truncates first; the shortcut chip keeps its
+   width and never spills past its button onto the neighbouring options button. */
+.browser-new-tab__tools button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .browser-new-tab__tools kbd {
+  flex: none;
   margin-left: auto;
   border-radius: var(--radius-pill);
   padding: 0 4px;

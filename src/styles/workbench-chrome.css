@@ -152,8 +152,10 @@
   overflow: clip;
   height: 28px;
   min-width: 96px;
-
-  flex: 0 1 208px;
+  max-width: 208px;
+  /* Size each tab to its own title so a filename gets room before the strip
+     shrinks; when space runs out, tabs shrink in proportion to that width. */
+  flex: 0 1 auto;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
