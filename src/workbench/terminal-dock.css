@@ -1,29 +1,25 @@
-.workbench:has(.terminal-dock) {
-  grid-template-rows:
-    var(--chrome-row-height) minmax(0, 1fr) minmax(180px, 28vh)
-    24px;
-}
-
-.workbench:has(.terminal-dock--collapsed) {
-  grid-template-rows: var(--chrome-row-height) minmax(0, 1fr) 34px 24px;
+/* The dock is the center region's bottom panel: its slot is an extra grid
+   child in an implicit auto row under the region's flexible row, so the
+   leading rail and the trailing pane keep their full height. */
+.center-region__dock {
+  min-width: 0;
 }
 
 .terminal-dock {
+  --terminal-dock-header-height: var(--control-height-emphasis);
+  --terminal-dock-height: max(180px, 28vh);
   display: grid;
+  height: var(--terminal-dock-height);
   min-width: 0;
   min-height: 0;
-  margin-left: var(--project-sidebar-width);
-  grid-template-rows: 34px auto minmax(0, 1fr);
+  grid-template-rows: var(--terminal-dock-header-height) auto minmax(0, 1fr);
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-canvas);
 }
 
-.workbench--editor .terminal-dock {
-  margin-left: calc(var(--sidebar-width) + var(--editor-activity-width));
-}
-
-.workbench--compact .terminal-dock {
-  margin-left: 44px;
+.terminal-dock--collapsed {
+  height: auto;
+  grid-template-rows: var(--terminal-dock-header-height);
 }
 
 .terminal-dock__header {
@@ -31,12 +27,10 @@
   min-width: 0;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-1);
+  padding-inline: 0 var(--space-1);
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
-}
-
-.terminal-dock--collapsed {
-  grid-template-rows: 34px;
 }
 
 .terminal-dock__tabs {
@@ -49,61 +43,69 @@
 .terminal-dock__actions {
   display: flex;
   flex: none;
-  height: 100%;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-.terminal-dock__actions button,
-.terminal-dock__tab button {
-  min-width: 28px;
-  height: 100%;
+.terminal-dock__button {
+  display: inline-grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
 }
 
-.terminal-dock__actions button:hover,
-.terminal-dock__tab button:hover {
+.terminal-dock__button:hover:not(:disabled) {
   color: var(--color-text-primary);
-  background: var(--color-border-subtle);
-}
-
-.terminal-dock__actions button:disabled {
-  opacity: 0.4;
+  background: var(--color-surface-hover);
 }
 
 .terminal-dock__tab {
   display: inline-flex;
   max-width: 220px;
   height: 100%;
-  align-items: center;
   flex: none;
-  overflow: hidden;
+  align-items: center;
+  padding-inline-end: var(--space-1);
   border-right: 1px solid var(--color-border-subtle);
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
-.terminal-dock__tab [role="tab"] {
-  max-width: 180px;
-  padding: 0 8px;
+.terminal-dock__tab-label {
+  display: inline-flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.terminal-dock__tab-label > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.terminal-dock__tab [aria-selected="true"] {
+.terminal-dock__tab-label:hover,
+.terminal-dock__tab-label[aria-selected="true"] {
   color: var(--color-text-primary);
-  border-bottom: 2px solid var(--color-accent);
 }
 
-.terminal-dock__close {
-  width: 34px;
-  height: 32px;
-  color: var(--color-text-secondary);
-  font-size: 19px;
-}
-
-.terminal-dock__close:hover {
-  color: var(--color-text-primary);
-  background: var(--color-border-subtle);
+.terminal-dock__tab-label[aria-selected="true"] {
+  border-bottom-color: var(--color-accent);
 }
 
 .terminal-dock__message {

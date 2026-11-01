@@ -20,6 +20,7 @@ import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { TabStrip } from "./TabStrip";
+import { useTerminalDockHost } from "./TerminalDockSlot";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
@@ -292,6 +293,8 @@ export function Workbench() {
         : {
             gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
           };
+  const terminalHost = useTerminalDockHost();
+  const terminalDockSlot = terminalOpen ? terminalHost.slot : null;
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
@@ -320,6 +323,7 @@ export function Workbench() {
                 changeAgentSidebarWidth("left", width)
               }
               onOpenTerminal={() => setTerminalOpen(true)}
+              bottomPanel={terminalDockSlot}
               onAgentArtifactWidthChange={(width) =>
                 changeAgentSidebarWidth("artifact", width)
               }
@@ -352,23 +356,26 @@ export function Workbench() {
               <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
             </div>
             <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
+            {terminalDockSlot}
           </div>
           <QuickOpenHost />
         </div>
       )}
-      {terminalOpen ? (
-        <LazyModuleBoundary
-          label="Terminal"
-          load={loadTerminalDock}
-          render={(TerminalDock) => (
-            <TerminalDock
-              setOpen={setTerminalOpen}
-              inert={resourceModal}
-              pinnedChatId={pinnedAgentChatOwner()}
-            />
-          )}
-        />
-      ) : null}
+      {terminalOpen
+        ? terminalHost.portal(
+            <LazyModuleBoundary
+              label="Terminal"
+              load={loadTerminalDock}
+              render={(TerminalDock) => (
+                <TerminalDock
+                  setOpen={setTerminalOpen}
+                  inert={resourceModal}
+                  pinnedChatId={pinnedAgentChatOwner()}
+                />
+              )}
+            />,
+          )
+        : null}
       <StatusBar
         inert={resourceModal}
         railLeading={windowMode === "editor"}

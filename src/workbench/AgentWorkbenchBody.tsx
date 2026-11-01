@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
@@ -18,6 +18,7 @@ export function AgentWorkbenchBody({
   onOpenArtifactInEditor,
   onOpenSettings,
   onOpenTerminal,
+  bottomPanel,
 }: {
   layout: ReturnType<typeof agentWorkbenchLayout>;
   style: CSSProperties | undefined;
@@ -29,6 +30,7 @@ export function AgentWorkbenchBody({
   onOpenArtifactInEditor: (tabId: string) => void;
   onOpenSettings: () => void;
   onOpenTerminal?: () => void;
+  bottomPanel?: ReactNode;
 }) {
   const [artifactHeader, setArtifactHeader] = useState<HTMLDivElement | null>(
     null,
@@ -66,6 +68,7 @@ export function AgentWorkbenchBody({
             compact={!layout.navigationResizable}
             onArtifactHeaderMount={setArtifactHeader}
           />
+          {bottomPanel}
         </div>
         {!layout.artifactOverlay && artifactExpanded ? (
           <WorkbenchSidebarSplitter

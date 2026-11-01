@@ -17,6 +17,13 @@ import {
 import { firstChatTabId } from "./workbenchWindowMode";
 import type { TerminalDockProps } from "./TerminalDock";
 import "./terminal-dock.css";
+import {
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  TerminalSquare,
+  X,
+} from "../ui/leanIcons";
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -256,21 +263,26 @@ export function TerminalDockShell({
               <button
                 type="button"
                 role="tab"
+                className="terminal-dock__tab-label"
                 aria-selected={entry.session.sessionId === activeId}
                 title={entry.session.shellPath}
                 onClick={() => setActiveId(entry.session.sessionId)}
               >
-                <span aria-hidden="true">▣</span>{" "}
-                {entry.session.shellPath.split(/[\\/]/u).at(-1) ?? "Terminal"}{" "}
-                {index + 1}
+                <TerminalSquare size={14} aria-hidden="true" />
+                <span>
+                  {entry.session.shellPath.split(/[\\/]/u).at(-1) ?? "Terminal"}{" "}
+                  {index + 1}
+                </span>
               </button>
               <button
                 type="button"
+                className="terminal-dock__button"
                 aria-label="Close terminal tab"
+                title="Close terminal tab"
                 disabled={closingId !== null}
                 onClick={() => void close(entry.session.sessionId)}
               >
-                ×
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -278,20 +290,26 @@ export function TerminalDockShell({
         <div className="terminal-dock__actions">
           <button
             type="button"
+            className="terminal-dock__button"
             aria-label="New terminal"
             title="New terminal"
             disabled={creating || entries.length >= 4}
             onClick={() => void create()}
           >
-            +
+            <Plus size={16} aria-hidden="true" />
           </button>
           <button
             type="button"
+            className="terminal-dock__button"
             aria-label={collapsed ? "Expand terminal" : "Collapse terminal"}
             title={collapsed ? "Expand terminal" : "Collapse terminal"}
             onClick={() => setCollapsed(!collapsed)}
           >
-            {collapsed ? "⌃" : "⌄"}
+            {collapsed ? (
+              <ChevronUp size={16} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={16} aria-hidden="true" />
+            )}
           </button>
         </div>
       </div>
