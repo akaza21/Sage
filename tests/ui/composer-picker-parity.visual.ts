@@ -162,8 +162,13 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
   expect(triggerBox).not.toBeNull();
-  expect(triggerBox!.width).toBeGreaterThanOrEqual(124);
-  expect(triggerBox!.width).toBeLessThanOrEqual(132);
+  // A plain mark-and-name control sized to its label, never a fixed pill.
+  expect(triggerBox!.width).toBeLessThanOrEqual(160);
+  expect(
+    await harness
+      .locator(".searchable-picker__trigger-label")
+      .evaluate((label) => label.scrollWidth <= label.clientWidth),
+  ).toBe(true);
 
   await harness.click();
   const listbox = page.getByRole("listbox", { name: "Harness" });

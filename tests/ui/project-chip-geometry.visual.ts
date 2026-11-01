@@ -21,7 +21,12 @@ async function expectProjectInOptionsMenu(composer: Locator) {
   await expect(add).toBeFocused();
 }
 
-async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
+async function expectResponsiveToolbar(
+  composer: Locator,
+  compact: boolean,
+  // A long effort label may take the harness name's room; its mark stays.
+  harnessNamed = true,
+) {
   const project = composer.getByRole("button", { name: /^Project: / });
   // Wave 5: at 280px and below the Project control folds into the composer
   // options menu so the toolbar keeps one row (Codex ref 37).
@@ -63,11 +68,10 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   }
   const harnessLabel = harness.locator(".searchable-picker__trigger-label");
   const modelLabel = model.locator(".composer__model-label");
-  if (await composer.evaluate((element) => element.clientWidth <= 400)) {
-    await expect(harnessLabel).toBeHidden();
-  } else {
-    await expect(harnessLabel).toBeVisible();
-  }
+  // The harness keeps its name beside its mark until the whole toolbar
+  // compacts to icons.
+  if (controlsCompact) await expect(harnessLabel).toBeHidden();
+  else if (harnessNamed) await expect(harnessLabel).toBeVisible();
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
     await expect(model.locator(".composer__model-icon")).toBeVisible();
@@ -241,7 +245,7 @@ for (const contentWidth of [
         exact: true,
       }),
     ).toBeVisible();
-    await expectResponsiveToolbar(composer, contentWidth <= 400);
+    await expectResponsiveToolbar(composer, contentWidth <= 400, false);
   });
 }
 

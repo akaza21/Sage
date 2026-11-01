@@ -127,7 +127,6 @@
 .browser-surface__page-actions {
   display: flex;
   min-width: 0;
-  max-width: min(55%, 440px);
   align-items: center;
   gap: var(--space-1);
 }
@@ -159,8 +158,10 @@
 }
 
 .browser-surface__attachment select {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  min-width: 10ch;
   max-width: 160px;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .browser-surface__attachment button:hover:not(:disabled),

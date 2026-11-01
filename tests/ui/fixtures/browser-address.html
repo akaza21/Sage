@@ -16,11 +16,14 @@
       import React from "react";
       import { createRoot } from "react-dom/client";
       import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
+      import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
       import "/src/styles/global.css";
       import "/src/features/browser/browser.css";
 
       const url = "https://en.wikipedia.org/wiki/Web_browser";
-      const newTab = new URLSearchParams(location.search).has("new-tab");
+      const params = new URLSearchParams(location.search);
+      const newTab = params.has("new-tab");
+      const chatTitle = params.get("chat");
       function Fixture() {
         const [address, setAddress] = React.useState(newTab ? "" : url);
         const addressField = React.useRef(null);
@@ -60,11 +63,22 @@
             { role: "menuitem", type: "button" },
             "Clear browsing data",
           ),
-          pageControls: React.createElement(
-            "button",
-            { "aria-label": "Attach page" },
-            "▣",
-          ),
+          pageControls: chatTitle
+            ? React.createElement(
+                "div",
+                { className: "browser-surface__page-actions" },
+                React.createElement(BrowserAttachmentControls, {
+                  projectId: "project-visual",
+                  tabId: "browser-visual",
+                  ready: true,
+                  chats: [{ id: "chat-visual", title: chatTitle }],
+                }),
+              )
+            : React.createElement(
+                "button",
+                { "aria-label": "Attach page" },
+                "▣",
+              ),
         });
       }
       createRoot(document.getElementById("toolbar")).render(
