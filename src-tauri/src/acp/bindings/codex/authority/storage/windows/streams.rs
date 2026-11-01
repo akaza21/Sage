@@ -119,26 +119,6 @@ fn require_streamless_volume(flags: u32) -> Result<(), StateAuthorityError> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unsupported_enumeration_requires_proof_that_the_volume_has_no_named_streams() {
-        assert_eq!(require_streamless_volume(0), Ok(()));
-        assert_eq!(
-            require_streamless_volume(FILE_NAMED_STREAMS),
-            Err(StateAuthorityError::Stream)
-        );
-        let file = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
-        // An access or I/O failure must never fall back to a capability claim.
-        assert_eq!(
-            unsupported_stream_query(&file, windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED),
-            Err(StateAuthorityError::Stream)
-        );
-    }
-}
-
 fn inspect_directory_streams(
     find: HANDLE,
     entry: &mut WIN32_FIND_STREAM_DATA,
@@ -161,4 +141,24 @@ fn stream_name(entry: &WIN32_FIND_STREAM_DATA) -> Result<String, StateAuthorityE
         .position(|character| *character == 0)
         .ok_or(StateAuthorityError::Stream)?;
     String::from_utf16(&entry.cStreamName[..end]).map_err(|_| StateAuthorityError::Stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_enumeration_requires_proof_that_the_volume_has_no_named_streams() {
+        assert_eq!(require_streamless_volume(0), Ok(()));
+        assert_eq!(
+            require_streamless_volume(FILE_NAMED_STREAMS),
+            Err(StateAuthorityError::Stream)
+        );
+        let file = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
+        // An access or I/O failure must never fall back to a capability claim.
+        assert_eq!(
+            unsupported_stream_query(&file, windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED),
+            Err(StateAuthorityError::Stream)
+        );
+    }
 }

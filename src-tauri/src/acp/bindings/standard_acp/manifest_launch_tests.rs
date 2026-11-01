@@ -143,10 +143,10 @@ fn manifest_guard_refuses_a_byte_identical_reparse_point_substituted_after_admis
         );
     } else {
         assert!(!junction.success(), "this volume must refuse a junction");
-        assert!(!package.exists());
+        assert!(!manifest.exists());
         assert_eq!(
             expectation.open_guard().err(),
-            Some(crate::acp::process::supervisor::LaunchError::Io)
+            Some(crate::acp::process::LaunchError::Io)
         );
     }
 
