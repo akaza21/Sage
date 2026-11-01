@@ -162,8 +162,45 @@ fn apply_steps(
     } else {
         None
     };
-    emulation
-        .commands(major)
-        .iter()
-        .try_for_each(|(method, params)| call(method, &params.to_string()).map(drop))
+    for (method, params) in emulation.commands(major) {
+        if method == "Emulation.setDeviceMetricsOverride" && emulation.preset.mobile {
+            prepare_mobile_viewport(emulation, &params, call)?;
+        }
+        call(method, &params.to_string())?;
+    }
+    Ok(())
+}
+
+/// Resize the desktop layout before enabling mobile viewport calculations.
+/// Otherwise Chromium can carry the narrow desktop layout's scale into the
+/// mobile viewport. Leave an unchanged viewport alone so fit-percent updates
+/// preserve the page's own zoom, including authored initial-scale metadata.
+fn prepare_mobile_viewport(
+    emulation: &DeviceEmulation,
+    metrics: &Value,
+    call: &mut impl FnMut(&'static str, &str) -> Result<String, String>,
+) -> Result<(), String> {
+    let current = call("Page.getLayoutMetrics", "{}")?;
+    let current: Value =
+        serde_json::from_str(&current).map_err(|_| "browser layout unavailable")?;
+    let visual = &current["cssVisualViewport"];
+    let number = |field: &str| {
+        visual[field]
+            .as_f64()
+            .filter(|value| *value > 0.0)
+            .ok_or("browser layout unavailable")
+    };
+    // CSS viewport pixels -> device-independent pixels. Neither factor is DPR.
+    let scale = number("scale")? * visual["zoom"].as_f64().unwrap_or(1.0);
+    let same_width = (number("clientWidth")? * scale - f64::from(emulation.width)).abs() < 1.0;
+    let same_height = (number("clientHeight")? * scale - f64::from(emulation.height)).abs() < 1.0;
+    if same_width && same_height {
+        return Ok(());
+    }
+    let mut desktop = metrics.clone();
+    desktop["mobile"] = json!(false);
+    desktop["deviceScaleFactor"] = json!(0);
+    call("Emulation.setDeviceMetricsOverride", &desktop.to_string())?;
+    // This read flushes layout before the mobile metrics are applied.
+    call("Page.getLayoutMetrics", "{}").map(drop)
 }

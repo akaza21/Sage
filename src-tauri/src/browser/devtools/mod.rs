@@ -43,16 +43,18 @@ mod snapshot;
 mod transport;
 mod wait;
 
-/// One step of the user's device toolbar: a fixed `Emulation.*` or
-/// `Browser.getVersion` call that `browser::device` builds, outside any Agent
-/// permit.
+/// One fixed CDP step built by the user's device toolbar, including layout
+/// reads that settle the viewport, outside any Agent permit.
 #[cfg(windows)]
 pub(crate) fn device_call(
     webview: &tauri::Webview,
     method: &'static str,
     params: &str,
 ) -> Result<String, crate::acp::browser::BrowserFailure> {
-    debug_assert!(method.starts_with("Emulation.") || method == "Browser.getVersion");
+    debug_assert!(
+        method.starts_with("Emulation.")
+            || matches!(method, "Browser.getVersion" | "Page.getLayoutMetrics")
+    );
     cdp::call(
         webview,
         method,

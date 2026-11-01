@@ -194,19 +194,33 @@ fn reset_methods() -> Vec<&'static str> {
         .collect()
 }
 
+fn engine_reply(method: &str) -> String {
+    match method {
+        "Browser.getVersion" => r#"{"product":"Chrome/131.0.1.2"}"#,
+        "Page.getLayoutMetrics" => {
+            r#"{"cssVisualViewport":{"clientWidth":50,"clientHeight":700,"scale":1,"zoom":1}}"#
+        }
+        _ => "{}",
+    }
+    .into()
+}
+
 #[test]
 fn apply_sends_each_step_in_order() {
     let device = admitted("pixel-7", 915, 412, 50);
     let mut sent = Vec::new();
     apply_with(Some(&device), |method, _| {
         sent.push(method);
-        Ok(r#"{"product":"Chrome/131.0.1.2"}"#.into())
+        Ok(engine_reply(method))
     })
     .unwrap();
     assert_eq!(
         sent,
         [
             "Browser.getVersion",
+            "Page.getLayoutMetrics",
+            "Emulation.setDeviceMetricsOverride",
+            "Page.getLayoutMetrics",
             "Emulation.setDeviceMetricsOverride",
             "Emulation.setTouchEmulationEnabled",
             "Emulation.setUserAgentOverride",
@@ -217,16 +231,22 @@ fn apply_sends_each_step_in_order() {
 #[test]
 fn a_failed_step_resets_the_tab_and_confirms_it() {
     let mut sent = Vec::new();
+    let mut refused = false;
     let failed = apply_with(Some(&admitted("iphone-se", 375, 667, 100)), |method, _| {
         sent.push(method);
-        if method == "Emulation.setTouchEmulationEnabled" && sent.len() == 2 {
+        if method == "Emulation.setTouchEmulationEnabled" && !refused {
+            refused = true;
             Err("refused".into())
         } else {
-            Ok("{}".into())
+            Ok(engine_reply(method))
         }
     });
     assert_eq!(failed, Err(("refused".into(), Left::Reset)));
-    assert_eq!(&sent[2..], reset_methods().as_slice());
+    let reset = sent
+        .iter()
+        .position(|method| *method == "Emulation.clearDeviceMetricsOverride")
+        .unwrap();
+    assert_eq!(&sent[reset..], reset_methods().as_slice());
 }
 
 #[test]
@@ -259,7 +279,7 @@ fn a_reset_tries_every_step_and_reports_an_unconfirmed_one() {
             {
                 Err("refused".into())
             } else {
-                Ok("{}".into())
+                Ok(engine_reply(method))
             }
         });
         assert_eq!(result, Err(("refused".into(), Left::Unknown)));
