@@ -38,29 +38,75 @@ async function expectUnclippedText(locator: Locator) {
   ).toBe(true);
 }
 
+interface TerminalBridgeState {
+  created: string[];
+  closed: string[];
+  input: Record<string, string>;
+}
+
+function bridgeState(page: Page) {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __terminals: TerminalBridgeState }).__terminals,
+  );
+}
+
 /**
- * The terminal is desktop-only. Install a native bridge that answers
- * `terminal_create` with a valid session and rejects everything else, then
- * re-render the workbench so it sees the desktop runtime.
+ * The terminal is desktop-only. Install a native bridge whose sessions echo
+ * their input back as output, like a shell at a prompt, and record every
+ * create, write and close; other native calls reject. Then re-render the
+ * workbench so it sees the desktop runtime.
  */
 async function openTerminal(page: Page, mode: "agent" | "editor") {
   await openScenario(page, "agent-single", "agent");
   await page.evaluate(() => {
-    let created = 0;
+    const state: TerminalBridgeState = { created: [], closed: [], input: {} };
+    const output = new Map<string, string>();
+    Object.assign(window, { __terminals: state });
+    type Request = {
+      handle?: { sessionId: string };
+      text?: string;
+      cursor?: string;
+    };
+    const commands: Record<string, (request: Request) => Promise<unknown>> = {
+      async terminal_create() {
+        const sessionId = `00000000-0000-4000-8000-${String(state.created.length + 1).padStart(12, "0")}`;
+        state.created.push(sessionId);
+        state.input[sessionId] = "";
+        output.set(sessionId, "");
+        return { sessionId, revision: "1", shellPath: "/bin/bash" };
+      },
+      async terminal_write({ handle, text }) {
+        state.input[handle!.sessionId] += text!;
+        output.set(handle!.sessionId, output.get(handle!.sessionId)! + text!);
+      },
+      async terminal_read({ handle, cursor }) {
+        const from = Number(cursor);
+        // Long-poll briefly, as the native side waits for new output.
+        for (let wait = 0; wait < 10; wait += 1) {
+          if (output.get(handle!.sessionId)!.length > from) break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const text = output.get(handle!.sessionId)!;
+        return {
+          bytesBase64: btoa(text.slice(from)),
+          nextCursor: String(text.length),
+          truncations: "0",
+          truncated: false,
+        };
+      },
+      async terminal_resize() {},
+      async terminal_close({ handle }) {
+        state.closed.push(handle!.sessionId);
+      },
+    };
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
-        invoke: (command: string) => {
-          if (command !== "terminal_create")
-            return Promise.reject(new Error("visual fixture"));
-          created += 1;
-          Object.assign(window, { __terminalsCreated: created });
-          return Promise.resolve({
-            sessionId: `00000000-0000-4000-8000-${String(created).padStart(12, "0")}`,
-            revision: "1",
-            shellPath: "/bin/bash",
-          });
-        },
+        invoke: (command: string, args?: { request?: Request }) =>
+          command in commands
+            ? commands[command](args?.request ?? {})
+            : Promise.reject(new Error("visual fixture")),
         transformCallback: () => 0,
       },
     });
@@ -115,27 +161,42 @@ for (const mode of ["agent", "editor"] as const) {
   });
 }
 
-test("an open terminal keeps its session across Agent and Editor", async ({
+test("an open terminal keeps its session, input and output across Agent and Editor", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const dock = await openTerminal(page, "agent");
-  const tab = dock.getByRole("tab");
-  await expect(tab).toHaveText(/bash 1/);
-  for (const mode of ["Editor", "Agent"]) {
+  const screen = dock.locator(".xterm-rows");
+  const typeLine = async (text: string) => {
+    await dock.locator(".xterm").click();
+    await page.keyboard.type(text);
+    await expect(screen).toContainText(text);
+  };
+  await typeLine("agent-1");
+  const [session] = (await bridgeState(page)).created;
+  for (const [mode, line] of [
+    ["Editor", "editor-2"],
+    ["Agent", "agent-3"],
+  ] as const) {
     await page.getByRole("radio", { name: mode, exact: true }).check({
       force: true,
     });
     await expect(page.locator(".center-region .terminal-dock")).toBeVisible();
-    await expect(tab).toHaveCount(1);
+    await expect(dock.getByRole("tab")).toHaveCount(1);
+    await typeLine(line);
   }
-  expect(
-    await page.evaluate(
-      () =>
-        (window as unknown as { __terminalsCreated: number })
-          .__terminalsCreated,
-    ),
-  ).toBe(1);
+  // Earlier output is still on screen, and every keystroke reached the one
+  // session, which was never closed and reopened.
+  await expect(screen).toContainText("agent-1editor-2agent-3");
+  const kept = await bridgeState(page);
+  expect(kept.created).toEqual([session]);
+  expect(kept.input[session]).toBe("agent-1editor-2agent-3");
+  expect(kept.closed).toEqual([]);
+
+  await dock.getByRole("button", { name: "Close terminal tab" }).click();
+  await expect(dock).toHaveCount(0);
+  await expect(page.locator(".center-region__dock")).toHaveCount(0);
+  expect((await bridgeState(page)).closed).toEqual([session]);
 });
 
 test("terminal dock header controls are whole, hit-testable and unfilled at rest", async ({
@@ -189,7 +250,9 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   const label = trigger.locator(".searchable-picker__trigger-label");
   await expect(label).toHaveText("Codex");
   await expectUnclippedText(label);
-  await expect(logo).toHaveAttribute("data-harness-icon", "codex");
+  // The visual fixture is a development harness named "Codex", so it shows
+  // the generic mark: brands follow the curated catalogue id, not the name.
+  await expect(logo).toHaveAttribute("data-harness-icon", "generic");
   const logoBox = await bounds(logo);
   expect(logoBox.width).toBeGreaterThan(0);
   expect(logoBox.x + logoBox.width).toBeLessThanOrEqual(
@@ -197,7 +260,7 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   );
   expect(
     await logo.evaluate((node) => getComputedStyle(node).maskImage),
-  ).toContain("/harness-codex.svg");
+  ).toContain("/harness-generic.svg");
   expect(await backgroundColor(trigger)).toBe("rgba(0, 0, 0, 0)");
   expect(await backgroundColor(composer.locator(".composer__harness"))).toBe(
     "rgba(0, 0, 0, 0)",

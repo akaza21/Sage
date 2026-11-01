@@ -24,7 +24,8 @@ async function expectProjectInOptionsMenu(composer: Locator) {
 async function expectResponsiveToolbar(
   composer: Locator,
   compact: boolean,
-  // A long effort label may take the harness name's room; its mark stays.
+  // A long effort label may take the harness name's room; the toolbar
+  // geometry, hit-testing and the harness mark are still checked.
   harnessNamed = true,
 ) {
   const project = composer.getByRole("button", { name: /^Project: / });
@@ -72,6 +73,25 @@ async function expectResponsiveToolbar(
   // compacts to icons.
   if (controlsCompact) await expect(harnessLabel).toBeHidden();
   else if (harnessNamed) await expect(harnessLabel).toBeVisible();
+  // Under pressure the name may ellipsise, but the brand mark always stays
+  // whole inside the trigger and the name never paints over it.
+  const harnessBox = (await harness.boundingBox())!;
+  const markBox = (await harness.locator(".harness-logo").boundingBox())!;
+  expect(markBox.width).toBeGreaterThanOrEqual(12);
+  expect(markBox.x).toBeGreaterThanOrEqual(harnessBox.x - 0.5);
+  expect(markBox.x + markBox.width).toBeLessThanOrEqual(
+    harnessBox.x + harnessBox.width + 0.5,
+  );
+  if (!controlsCompact) {
+    expect(
+      await harnessLabel.evaluate(
+        (label) => getComputedStyle(label).textOverflow,
+      ),
+    ).toBe("ellipsis");
+    const labelBox = await harnessLabel.boundingBox();
+    if (labelBox && labelBox.width > 0)
+      expect(labelBox.x).toBeGreaterThanOrEqual(markBox.x + markBox.width);
+  }
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
     await expect(model.locator(".composer__model-icon")).toBeVisible();
