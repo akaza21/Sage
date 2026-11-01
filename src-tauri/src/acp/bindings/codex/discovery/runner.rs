@@ -78,7 +78,11 @@ impl CodexDiscoveryDeadline {
     }
 
     pub(crate) fn ensure_operation(self) -> Result<(), CodexDiscoveryRunError> {
-        self.operation_remaining(Duration::MAX).map(drop)
+        self.ensure_operation_at(Instant::now())
+    }
+
+    fn ensure_operation_at(self, now: Instant) -> Result<(), CodexDiscoveryRunError> {
+        self.operation_remaining_at(now, Duration::MAX).map(drop)
     }
 
     pub(crate) fn ensure_total(self) -> Result<(), CodexDiscoveryRunError> {
@@ -177,6 +181,10 @@ impl DiscoveryZeroProcess {
 }
 
 pub(crate) trait DiscoveryTransport {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome;
     fn read_frame(&mut self, timeout: Duration) -> Result<Option<Frame>, CodexDiscoveryRunError>;
     fn revalidate(&self, checkpoint: RevalidationCheckpoint) -> Result<(), CodexDiscoveryRunError>;
@@ -212,7 +220,7 @@ fn execute(
     transport: &mut dyn DiscoveryTransport,
     deadline: CodexDiscoveryDeadline,
 ) -> Result<CodexDiscoveryContent, CodexDiscoveryRunError> {
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     let request = protocol.initialize_request()?;
     write(transport, request.into_frame(), deadline)?;
     let initialized = protocol.accept_initialize(&read(
@@ -222,13 +230,13 @@ fn execute(
     )?)?;
     write(transport, initialized, deadline)?;
 
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     transport.revalidate(RevalidationCheckpoint::Account)?;
     let request = protocol.account_request()?;
     let account_id = request.id();
     write(transport, request.into_frame(), deadline)?;
 
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     transport.revalidate(RevalidationCheckpoint::ModelPage)?;
     let request = protocol.model_request()?;
     let first_model_id = request.id();
@@ -247,7 +255,7 @@ fn execute(
                 protocol.accept_account(&frame)?;
                 awaiting_account = false;
                 if first_model_completed_before_account {
-                    deadline.ensure_operation()?;
+                    deadline.ensure_operation_at(transport.now())?;
                     transport.revalidate(RevalidationCheckpoint::Publish)?;
                     return protocol.take_completed_content().map_err(Into::into);
                 }
@@ -259,7 +267,7 @@ fn execute(
                         first_model_completed_before_account = true;
                     }
                     ProtocolProgress::Complete(content) => {
-                        deadline.ensure_operation()?;
+                        deadline.ensure_operation_at(transport.now())?;
                         transport.revalidate(RevalidationCheckpoint::Publish)?;
                         return Ok(content);
                     }
@@ -271,7 +279,7 @@ fn execute(
     }
 
     loop {
-        deadline.ensure_operation()?;
+        deadline.ensure_operation_at(transport.now())?;
         transport.revalidate(RevalidationCheckpoint::ModelPage)?;
         let request = protocol.model_request()?;
         write(transport, request.into_frame(), deadline)?;
@@ -283,7 +291,7 @@ fn execute(
             ProtocolProgress::More => {}
             ProtocolProgress::AwaitingAccount => return Err(CodexDiscoveryRunError::Protocol),
             ProtocolProgress::Complete(content) => {
-                deadline.ensure_operation()?;
+                deadline.ensure_operation_at(transport.now())?;
                 transport.revalidate(RevalidationCheckpoint::Publish)?;
                 return Ok(content);
             }
@@ -310,7 +318,8 @@ fn read(
     timeout_ms: u64,
 ) -> Result<Frame, CodexDiscoveryRunError> {
     for _ in 0..DISCOVERY_INTERLEAVED_NOTIFICATION_LIMIT {
-        let timeout = deadline.operation_remaining(Duration::from_millis(timeout_ms))?;
+        let timeout =
+            deadline.operation_remaining_at(transport.now(), Duration::from_millis(timeout_ms))?;
         let frame = transport
             .read_frame(timeout)?
             .ok_or(CodexDiscoveryRunError::Eof)?;
@@ -353,7 +362,7 @@ fn write(
     frame: OutboundFrame,
     deadline: CodexDiscoveryDeadline,
 ) -> Result<(), CodexDiscoveryRunError> {
-    deadline.ensure_operation()?;
+    deadline.ensure_operation_at(transport.now())?;
     log_request(&frame);
     match transport.write(&frame) {
         FrameWriteOutcome::Complete => Ok(()),

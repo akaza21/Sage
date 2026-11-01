@@ -162,6 +162,13 @@ function sameCanonicalPath(left, right) {
   return normalize(left) === normalize(right);
 }
 
+// Node's toNamespacedPath resolves the extended drive root `\\?\C:\` to the
+// volume device `\\?\C:`, which lstat refuses with EISDIR. Inspect that root
+// as `C:\`; every other path, extended or not, is inspected as given.
+function driveRootTarget(filePath) {
+  return /^\\\\\?\\[A-Za-z]:\\$/u.test(filePath) ? filePath.slice(4) : filePath;
+}
+
 export function validatePlainCanonicalExecutable(
   filePath,
   expected,
@@ -178,9 +185,10 @@ export function validatePlainCanonicalExecutable(
     deps.realpathSync ?? realpathSync.native ?? realpathSync;
   let current = filePath;
   while (true) {
-    const stats = inspect(current);
+    const target = driveRootTarget(current);
+    const stats = inspect(target);
     if (stats.isSymbolicLink()) fail("executable-identity-invalid");
-    if (!sameCanonicalPath(resolveRealPath(current), current))
+    if (!sameCanonicalPath(resolveRealPath(target), current))
       fail("executable-identity-invalid");
     const parent = path.dirname(current);
     if (parent === current) break;
