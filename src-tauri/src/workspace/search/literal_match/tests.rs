@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use memchr::memmem::Finder;
 
 use super::{
@@ -205,23 +207,50 @@ fn only_the_listed_characters_fold_into_ascii() {
     assert_eq!(folding_into_ascii, ASCII_FOLDING_SPECIALS);
 }
 
-/// The worst case for a naive search: a near miss at every position.
+thread_local! {
+    // Matching is synchronous; each test thread measures only its own work.
+    static FOLDED_BYTES: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(super) fn record_folded_bytes(bytes: usize) {
+    FOLDED_BYTES.with(|work| work.set(work.get() + bytes));
+}
+
+/// The worst case for a naive search: a near miss at every position. Count
+/// bytes actually folded, including overlap, rather than shared-runner time.
+/// memmem supplies linear substring search; this guards the folding around it
+/// against repeatedly processing a candidate or the remaining suffix.
 #[test]
 fn near_misses_cost_linear_time() {
-    let content = "a".repeat(2 * 1024 * 1024);
-    let query = format!("{}b", "a".repeat(511));
-    let started = std::time::Instant::now();
-    for case_sensitive in [false, true] {
-        let literal = LiteralQuery::new(&query, case_sensitive);
-        assert!(!literal.file_may_match(&content));
-        assert!(literal.line_matches(&content, false).is_empty());
+    // Doubling both text and query exposes quadratic candidate-by-candidate
+    // folding. The large case also crosses many production window boundaries.
+    for (length, prefix) in [(1024, 255), (2048, 511), (2 * 1024 * 1024, 511)] {
+        let content = "a".repeat(length);
+        let query = format!("{}b", "a".repeat(prefix));
+        let exact = LiteralQuery::new(&query, true);
+        assert!(!exact.file_may_match(&content));
+        assert!(exact.line_matches(&content, false).is_empty());
+
+        let ascii = LiteralQuery::new(&query, false);
+        let unicode = LiteralQuery::new(&format!("{}é", "a".repeat(prefix)), false);
+        for (path, literal, file_check) in [
+            ("ASCII file", &ascii, true),
+            ("ASCII line", &ascii, false),
+            ("Unicode line", &unicode, false),
+        ] {
+            FOLDED_BYTES.with(|work| work.set(0));
+            if file_check {
+                assert!(!literal.file_may_match(&content));
+            } else {
+                assert!(literal.line_matches(&content, false).is_empty());
+            }
+            let work = FOLDED_BYTES.with(Cell::get);
+            // Each byte is folded once, plus bounded window overlap. A naive
+            // matcher folds roughly (length - prefix) * prefix bytes instead.
+            assert!(
+                (length..=2 * length).contains(&work),
+                "{path}: folded {work} bytes for {length} input bytes, prefix {prefix}"
+            );
+        }
     }
-    let unicode = LiteralQuery::new(&format!("{}é", "a".repeat(511)), false);
-    assert!(unicode.line_matches(&content, false).is_empty());
-    // A quadratic search takes about 10^9 comparisons per call here.
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(1),
-        "took {:?}",
-        started.elapsed()
-    );
 }

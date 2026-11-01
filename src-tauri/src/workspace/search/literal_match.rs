@@ -120,6 +120,8 @@ fn ascii_folded_matches(
         let core_end = (offset + window).min(haystack.len());
         let window_end = (core_end + needle_len - 1).min(haystack.len());
         buffer.clear();
+        #[cfg(test)]
+        tests::record_folded_bytes(window_end - offset);
         buffer.extend(
             haystack[offset..window_end]
                 .iter()
@@ -166,6 +168,8 @@ fn unicode_folded_matches(
         let window_end = ceil_char_boundary(line, core_end + reach);
         folded.clear();
         origin.clear();
+        #[cfg(test)]
+        tests::record_folded_bytes(window_end - offset);
         for (start, character) in line[offset..window_end].char_indices() {
             let start = offset + start;
             let end = start + character.len_utf8();
