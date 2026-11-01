@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { acquireCargoTargetLease } from "./check-cargo-lease.mjs";
@@ -9,6 +10,9 @@ import { executeWindowsCargoJobCommand } from "./check-windows-cargo-job.mjs";
 export { CheckProcessError, executeCommand };
 
 const MAX_COMMANDS = 32;
+const CACHE_DIR_NAME = ".cache";
+const CARGO_TARGET_DIR_NAME = "sage-target";
+const SCCACHE_DIR_NAME = "sccache";
 
 export function executableName(name, platform = process.platform) {
   if (platform === "win32" && name === "cargo") return "cargo.exe";
@@ -41,8 +45,9 @@ function repositoryIdentity(repositoryRoot, platform = process.platform) {
   // Windows-shaped roots must resolve with Windows semantics even when the
   // lane host is POSIX; on a real win32 host path.win32 is path itself.
   const pathModule = platform === "win32" ? path.win32 : path;
+  const resolvedRoot = pathModule.resolve(repositoryRoot);
   return createHash("sha256")
-    .update(pathModule.resolve(repositoryRoot).toLowerCase())
+    .update(platform === "win32" ? resolvedRoot.toLowerCase() : resolvedRoot)
     .digest("hex")
     .slice(0, 12);
 }
@@ -52,17 +57,16 @@ export function buildRustEnvironment({
   environment = process.env,
   repositoryRoot,
   sccachePath,
-  windowsDDriveAvailable = platform === "win32" && existsSync("D:\\"),
 }) {
   const pathModule = platform === "win32" ? path.win32 : path;
   const selectedTarget =
     environment.SAGE_CARGO_TARGET_DIR ??
-    (windowsDDriveAvailable
-      ? pathModule.join(
-          "C:\\SageCaches\\cargo-target",
-          `${pathModule.basename(repositoryRoot)}-${repositoryIdentity(repositoryRoot, platform)}`,
-        )
-      : pathModule.join(repositoryRoot, "src-tauri", "target"));
+    pathModule.join(
+      homedir(),
+      CACHE_DIR_NAME,
+      CARGO_TARGET_DIR_NAME,
+      `${pathModule.basename(repositoryRoot)}-${repositoryIdentity(repositoryRoot, platform)}`,
+    );
   const selectedSccache =
     sccachePath ?? findExecutable("sccache", { environment, platform });
   const result = { CARGO_TARGET_DIR: selectedTarget };
@@ -72,7 +76,7 @@ export function buildRustEnvironment({
   result.SCCACHE_CACHE_SIZE = "20G";
   const selectedCache =
     environment.SAGE_SCCACHE_DIR ??
-    (windowsDDriveAvailable ? "C:\\SageCaches\\sccache" : undefined);
+    pathModule.join(homedir(), CACHE_DIR_NAME, SCCACHE_DIR_NAME);
   if (selectedCache) result.SCCACHE_DIR = selectedCache;
   return result;
 }
