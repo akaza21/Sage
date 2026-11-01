@@ -1059,7 +1059,7 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
         changed["codexHome"]
             .as_str()
             .unwrap()
-            .replace("CodexState", "OtherCodexState")
+            .replace("SageHarnesses", "OtherHarnesses")
     );
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
     let requirements =

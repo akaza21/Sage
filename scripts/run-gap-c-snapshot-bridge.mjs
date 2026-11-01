@@ -7,10 +7,14 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const prebuilt = process.env.SAGE_GAP_C_NATIVE_TEST_BINARY;
+const relativeBinary = prebuilt
+  ? path.relative(root, path.resolve(root, prebuilt))
+  : "";
 if (
   prebuilt &&
   (path.isAbsolute(prebuilt) ||
-    path.relative(root, path.resolve(root, prebuilt)).startsWith(".."))
+    path.isAbsolute(relativeBinary) ||
+    relativeBinary.startsWith(".."))
 )
   throw new Error("The prebuilt snapshot test must be checkout-relative");
 const testArgs = [

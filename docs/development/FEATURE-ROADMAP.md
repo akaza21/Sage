@@ -2,7 +2,7 @@
 
 ## GAP-C review remediation
 
-Implemented; final gate verification in progress.
+Implemented and reviewed; Windows budget validation remains red.
 
 - Source and Changes explicitly select their destination in the originating
   Agent pane, preserving observation behavior for newly arriving artifacts.
@@ -29,3 +29,16 @@ mixed-EOL resource header screenshot.
 
 No dependencies were added. Bundle sizes and final gate results are reported
 with the change handoff.
+
+Final validation passes formatting, lint (34 existing warnings), 4,239 frontend
+tests, desktop build, web bundle budgets, policy (10 tests), Rust formatting
+and Clippy, 3,383 Rust library tests, and all 7 Gap-C browser tests. Cargo
+retains 30 pre-existing ignored manual/external tests. The related resource
+and AP-F browser run passes all 10 tests.
+
+Windows budget validation remains unresolved: all 840 portable tests pass;
+the Windows lane reports 341 passed and 6 failed process-readiness/cleanup
+tests. No skips, retries, or relaxed assertions were introduced to bypass them.
+
+The mixed-EOL win32 snapshot intentionally reflects the compact path-chip
+resource header with its visible View only state.
