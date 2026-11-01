@@ -148,11 +148,9 @@ impl SearchEngine {
                             }))
                         }
                         None => match fs::read_dir(&directory) {
-                            Ok(entries) => Box::new(
-                                entries.map(|entry| {
-                                    entry.map(Box::new).map(FolderEntry::Listed).map_err(drop)
-                                }),
-                            ),
+                            Ok(entries) => Box::new(entries.map(|entry| {
+                                entry.map(Box::new).map(FolderEntry::Listed).map_err(drop)
+                            })),
                             Err(_) => {
                                 counters.error_count += 1;
                                 counters.partial = true;
