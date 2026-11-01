@@ -21,7 +21,7 @@ impl ResourceMapper for CreatedFileMapper {
 
 #[test]
 fn captured_created_file_is_published_only_after_approved_write_and_completion() {
-    let root = TempRoot(std::env::temp_dir().join(format!(
+    let root = TempRoot(temp_root().join(format!(
         "sage-opencode-created-file-{}",
         uuid::Uuid::new_v4()
     )));
@@ -124,7 +124,7 @@ fn has_file_change(events: &[AdapterEvent]) -> bool {
 #[test]
 fn differing_or_refused_client_write_never_projects_the_proposed_created_diff() {
     for (label, differing) in [("different-write", true), ("refused-write", false)] {
-        let root = TempRoot(std::env::temp_dir().join(format!(
+        let root = TempRoot(temp_root().join(format!(
             "sage-opencode-created-negative-{}",
             uuid::Uuid::new_v4()
         )));

@@ -40,6 +40,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-candidate-campaign.node-test.mjs",
   "beta0001-candidate-package.node-test.mjs",
   "beta0001-candidate-verifier.node-test.mjs",
+  "beta0001-installed-smoke-output-teardown.node-test.mjs",
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
   "browser-test-policy.node-test.mjs",
@@ -387,6 +388,11 @@ export const CHECK_LANES_MIGRATION = Object.freeze([
 // split itself (not a migration successor): the discovered file count may
 // grow only through entries recorded here.
 export const LANE_JUSTIFICATIONS = Object.freeze([
+  {
+    file: "beta0001-installed-smoke-output-teardown.node-test.mjs",
+    reason:
+      "Portable checks of installed-smoke output guardian teardown against a fake child and mocked timers; no PowerShell or subprocess launch.",
+  },
   {
     file: "web-bundle-paths.node-test.mjs",
     reason:

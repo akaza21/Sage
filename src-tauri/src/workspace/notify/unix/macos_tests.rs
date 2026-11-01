@@ -1,16 +1,21 @@
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
+        // Tests run in parallel and can read the same clock tick, so a
+        // per-process sequence keeps their directory names apart.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "sage-macos-review-{}-{}",
+            "sage-macos-review-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path).unwrap();
         Self(path.canonicalize().unwrap())

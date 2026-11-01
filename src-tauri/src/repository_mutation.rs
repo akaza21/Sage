@@ -1046,14 +1046,32 @@ mod tests {
             ))
             .unwrap_err();
 
+        // The failure is injected after spawn, so Git may or may not have
+        // staged the file before it was killed: that is why the effect is
+        // unknown. Either way the process is reaped before the error returns,
+        // so nothing may change afterwards.
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
         let immediate = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(immediate.changes[0].index_status, "unchanged");
-        assert_eq!(immediate.changes[0].worktree_status, "untracked");
+        let observed = (
+            immediate.changes[0].index_status.clone(),
+            immediate.changes[0].worktree_status.clone(),
+        );
+        assert!(
+            matches!(
+                (observed.0.as_str(), observed.1.as_str()),
+                ("unchanged", "untracked") | ("added", "unchanged")
+            ),
+            "unexpected state after the injected failure: {observed:?}"
+        );
         std::thread::sleep(Duration::from_millis(200));
         let later = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(later.changes[0].index_status, "unchanged");
-        assert_eq!(later.changes[0].worktree_status, "untracked");
+        assert_eq!(
+            (
+                later.changes[0].index_status.as_str(),
+                later.changes[0].worktree_status.as_str(),
+            ),
+            (observed.0.as_str(), observed.1.as_str())
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
