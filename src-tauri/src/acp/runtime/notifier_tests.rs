@@ -42,9 +42,17 @@ impl GateSink {
         }
     }
 
+    // Both waits register for the wakeup before reading the counter, so a
+    // `notify_waiters` between the read and the await is never lost.
     async fn wait_for_entries(&self, expected: usize) {
-        while self.entries.load(Ordering::SeqCst) < expected {
-            self.entered.notified().await;
+        loop {
+            let entered = self.entered.notified();
+            tokio::pin!(entered);
+            entered.as_mut().enable();
+            if self.entries.load(Ordering::SeqCst) >= expected {
+                return;
+            }
+            entered.await;
         }
     }
 
@@ -53,8 +61,14 @@ impl GateSink {
     }
 
     async fn wait_for_idle(&self) {
-        while self.active.load(Ordering::SeqCst) != 0 {
-            self.settled.notified().await;
+        loop {
+            let settled = self.settled.notified();
+            tokio::pin!(settled);
+            settled.as_mut().enable();
+            if self.active.load(Ordering::SeqCst) == 0 {
+                return;
+            }
+            settled.await;
         }
     }
 }
@@ -140,6 +154,7 @@ fn committed_event_is_observed_only_after_commit_and_drained_once() {
         assert_eq!(task.await.unwrap(), Ok(PublishOutcome::Scheduled));
         sink.wait_for_entries(1).await;
         sink.release(1);
+        tokio::task::yield_now().await;
 
         assert!(!sink.observed_before_commit.load(Ordering::SeqCst));
         assert_eq!(*lock(&sink.revisions), vec![1]);
@@ -161,10 +176,9 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             notifier.publish_committed(event("p", "c", "s", 4)),
             Ok(PublishOutcome::Scheduled)
         );
-        // Each check runs while the sink holds a delivery in flight: the
-        // notifier compares against the in-flight revision and forgets it once
-        // delivery settles, after which any event would be scheduled.
         sink.wait_for_entries(1).await;
+        // Keep the base revision in flight so this checks the changed child
+        // epoch against it, rather than a tuple already forgotten while idle.
         // Only the child epoch moved; the revision is the same.
         assert_eq!(
             notifier.publish_committed(child(7)),
@@ -172,12 +186,15 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
         );
         sink.release(1);
         sink.wait_for_entries(2).await;
-        // The child epoch is now in flight: repeating it is a duplicate.
+        // A repeat of the child epoch being delivered coalesces into it. Once
+        // that delivery settles the notifier is idle and would schedule the
+        // repeat again, so publish it while the delivery is still held.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
         sink.release(1);
+        sink.wait_for_idle().await;
         assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
@@ -207,6 +224,7 @@ fn same_tuple_coalesces_to_greatest_revision_in_one_pending_slot() {
 
         sink.release(2);
         sink.wait_for_entries(2).await;
+        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![1, 3]);
         assert_eq!(notifier.scheduled_wakes(), 1);
         notifier.shutdown().await;
@@ -235,6 +253,7 @@ fn an_in_flight_greatest_revision_rejects_duplicate_and_older_revisions() {
         );
 
         sink.release(1);
+        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![3]);
         assert_eq!(notifier.scheduled_wakes(), 1);
         notifier.shutdown().await;
@@ -310,6 +329,7 @@ fn project_switch_suppresses_background_notices_without_stopping_the_turn() {
         );
         sink.wait_for_entries(1).await;
         sink.release(1);
+        tokio::task::yield_now().await;
         assert_eq!(*lock(&sink.revisions), vec![1]);
         assert_eq!(notifier.recovery(), None);
         notifier.shutdown().await;

@@ -165,38 +165,24 @@ pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
         || contains_token(token)
 }
 
-#[cfg(test)]
-thread_local! {
-    static TOKEN_SCAN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Bytes `contains_token` has examined on this thread, so tests can bound
-/// its work structurally instead of by wall-clock time.
-#[cfg(test)]
-pub(crate) fn token_scan_bytes() -> usize {
-    TOKEN_SCAN_BYTES.with(std::cell::Cell::get)
-}
-
-#[cfg(test)]
-fn record_token_scan(bytes: usize) {
-    TOKEN_SCAN_BYTES.with(|scanned| scanned.set(scanned.get() + bytes));
-}
-
-#[cfg(not(test))]
-fn record_token_scan(_bytes: usize) {}
+/// Longest AWS access key tail `contains_token` inspects after a prefix: the
+/// 16 key characters plus one to reject a longer run.
+pub(crate) const AWS_KEY_TAIL_SCAN: usize = 17;
 
 pub(crate) fn contains_token(value: &str) -> bool {
     let bytes = value.as_bytes();
     for index in 0..bytes.len() {
-        record_token_scan(1);
+        work::record(|work| work.positions += 1);
         if index > 0 && bytes[index - 1].is_ascii_alphabetic() {
             continue;
         }
         let rest = &bytes[index..];
         if rest.starts_with(b"AKIA") || rest.starts_with(b"ASIA") {
+            work::record(|work| work.aws_prefixes += 1);
             let tail = rest[4..]
                 .iter()
-                .take(17)
+                .take(AWS_KEY_TAIL_SCAN)
+                .inspect(|_| work::record(|work| work.aws_tail_bytes += 1))
                 .take_while(|byte| byte.is_ascii_alphanumeric());
             let (length, uppercase) = tail.fold((0usize, true), |(length, uppercase), byte| {
                 (
@@ -204,7 +190,6 @@ pub(crate) fn contains_token(value: &str) -> bool {
                     uppercase && (byte.is_ascii_uppercase() || byte.is_ascii_digit()),
                 )
             });
-            record_token_scan(length);
             if length == 16 && uppercase {
                 return true;
             }
@@ -229,12 +214,50 @@ pub(crate) fn contains_token(value: &str) -> bool {
         let (length, alphanumeric) = tail.fold((0usize, false), |(length, alphanumeric), byte| {
             (length + 1, alphanumeric || byte.is_ascii_alphanumeric())
         });
-        record_token_scan(length);
         if length >= 3 && alphanumeric {
             return true;
         }
     }
     false
+}
+
+/// Test-only accounting of the work `contains_token` does on this thread, so
+/// tests can bound it by input size instead of by wall-clock time.
+pub(crate) mod work {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub(crate) struct ContainsTokenWork {
+        /// Outer-loop byte positions visited.
+        pub(crate) positions: usize,
+        /// Positions that start with an AWS access key prefix.
+        pub(crate) aws_prefixes: usize,
+        /// Bytes inspected after those prefixes.
+        pub(crate) aws_tail_bytes: usize,
+    }
+
+    #[cfg(test)]
+    thread_local! {
+        static WORK: std::cell::Cell<ContainsTokenWork> =
+            const { std::cell::Cell::new(ContainsTokenWork { positions: 0, aws_prefixes: 0, aws_tail_bytes: 0 }) };
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record(update: impl FnOnce(&mut ContainsTokenWork)) {
+        WORK.with(|cell| {
+            let mut work = cell.get();
+            update(&mut work);
+            cell.set(work);
+        });
+    }
+
+    #[cfg(not(test))]
+    #[inline(always)]
+    pub(crate) fn record(_update: impl FnOnce(&mut ContainsTokenWork)) {}
+
+    /// Returns the work recorded on this thread since the last call.
+    #[cfg(test)]
+    pub(crate) fn take() -> ContainsTokenWork {
+        WORK.with(std::cell::Cell::take)
+    }
 }
 
 pub(crate) fn url_userinfo(token: &str) -> Option<(usize, usize)> {

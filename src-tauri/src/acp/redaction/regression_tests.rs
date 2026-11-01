@@ -1,4 +1,4 @@
-use super::{Mode, credentials::token_scan_bytes, redact};
+use super::{Mode, redact};
 
 #[test]
 fn home_paths_hide_windows_names_and_preserve_posix_prose() {
@@ -255,23 +255,28 @@ fn diagnostic_home_paths_keep_adjacent_command_operators() {
 
 #[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
-    const REPEATS: usize = 4_096;
-    let scanned = |repeats: usize| {
+    use super::credentials::{AWS_KEY_TAIL_SCAN, work};
+    // Count the scanner's work instead of timing it: every byte position is
+    // visited once and each AWS prefix inspects a bounded tail, so the
+    // work is linear in the input whatever the runner's load.
+    for repeats in [16_384, 65_536] {
         let input = "0AKIA".repeat(repeats);
-        let before = token_scan_bytes();
         for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            work::take();
             assert_eq!(
                 redact("test", &input, input.len() * 10, mode).unwrap(),
-                input
+                input,
+                "{mode:?}"
+            );
+            let observed = work::take();
+            assert_eq!(observed.positions, input.len(), "{mode:?}");
+            assert_eq!(observed.aws_prefixes, repeats, "{mode:?}");
+            assert!(
+                observed.aws_tail_bytes <= observed.aws_prefixes * AWS_KEY_TAIL_SCAN,
+                "{mode:?}: {observed:?}"
             );
         }
-        token_scan_bytes() - before
-    };
-    let [one, two, three] = [1, 2, 3].map(|factor| scanned(factor * REPEATS));
-    // Each further block of rejected AKIA candidates costs the same scan
-    // work, so the work grows linearly with the input, not quadratically.
-    assert!(one > 0);
-    assert_eq!(three - two, two - one);
+    }
 }
 
 #[test]
