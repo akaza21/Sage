@@ -63,6 +63,8 @@ impl Drop for Scratch {
     }
 }
 
+// Keep clone/worktree operands relative: Git for Windows accepts canonical
+// verbatim paths for `-C`, but rejects them in these operands.
 fn git(root: &Path, args: &[&str]) {
     let status = Command::new("git")
         .arg("-C")
@@ -250,7 +252,20 @@ fn cached_verdict_spawns_no_probe_until_the_config_changes() {
     assert_eq!(probes(&root), 1);
 
     // Index and ref updates touch `.git` but not the config, so they hit.
-    git(&root, &["commit", "-q", "--allow-empty", "-m", "x"]);
+    git(
+        &root,
+        &[
+            "-c",
+            "user.name=Sage Test",
+            "-c",
+            "user.email=sage@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+        ],
+    );
     assert!(
         sage_git(&root, &["status", "--porcelain"])
             .unwrap()
@@ -567,15 +582,11 @@ fn a_gitdir_file_is_refused_even_when_it_points_inside_the_root() {
 fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
-    let common = root.join("metadata").join("common.git");
-    fs::create_dir_all(common.parent().unwrap()).unwrap();
-    let status = Command::new("git")
-        .args(["clone", "-q", "--bare"])
-        .arg(&root)
-        .arg(&common)
-        .status()
-        .unwrap();
-    assert!(status.success());
+    fs::create_dir_all(root.join("metadata")).unwrap();
+    git(
+        &root,
+        &["clone", "-q", "--bare", ".", "metadata/common.git"],
+    );
     fs::write(
         root.join(".git").join("commondir"),
         "../metadata/common.git\n",
@@ -685,14 +696,7 @@ fn a_linked_worktree_is_refused_before_git_runs() {
     let worktree = scratch.base.join("linked");
     git(
         &main,
-        &[
-            "worktree",
-            "add",
-            "-q",
-            &worktree.to_string_lossy(),
-            "-b",
-            "linked",
-        ],
+        &["worktree", "add", "-q", "../linked", "-b", "linked"],
     );
     assert!(matches!(
         sage_git(&worktree, &["status", "--porcelain"]),

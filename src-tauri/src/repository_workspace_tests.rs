@@ -173,27 +173,12 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
     let linked = safe.join("linked");
     git(
         &safe.join("main"),
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "-b",
-            "linked",
-            &linked.to_string_lossy(),
-        ],
+        &["worktree", "add", "-q", "-b", "linked", "../linked"],
     );
     // A neighbouring git dir with the same relative shape and a hostile filter.
-    let decoy = attacker.join("decoy").join("linked");
     git(
         &attacker.join("main"),
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "-b",
-            "linked",
-            &decoy.to_string_lossy(),
-        ],
+        &["worktree", "add", "-q", "-b", "linked", "../decoy/linked"],
     );
     fs::remove_dir_all(attacker.join("decoy")).unwrap();
     let sentinel = base.join("filter-ran");
