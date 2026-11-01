@@ -1377,6 +1377,7 @@ describe("composer permission mode picker", () => {
       harnesses: [
         {
           id: "claude-code",
+          brand: "claude",
           name: "Claude Code",
           description: "",
           installState: "available",
@@ -1387,6 +1388,7 @@ describe("composer permission mode picker", () => {
         },
         {
           id: "pi",
+          brand: "pi",
           name: "Pi",
           description: "",
           installState: "available",
@@ -1407,6 +1409,7 @@ describe("composer permission mode picker", () => {
         },
         {
           id: "codex",
+          brand: "codex",
           name: "Codex",
           description: "",
           installState: "available",
@@ -1417,6 +1420,7 @@ describe("composer permission mode picker", () => {
         },
         {
           id: "opencode",
+          brand: "opencode",
           name: "OpenCode",
           description: "",
           installState: "available",
@@ -1466,6 +1470,7 @@ describe("composer permission mode picker", () => {
   it("shows confirmed model subtitles without installation details and keeps reasons accessible", () => {
     const claude = {
       id: "claude-code",
+      brand: "claude" as const,
       name: "Claude Code",
       description: "",
       installState: "available" as const,
@@ -1477,6 +1482,7 @@ describe("composer permission mode picker", () => {
     const codex = {
       ...claude,
       id: "codex",
+      brand: "codex" as const,
       name: "Codex",
       version: "0.146.0",
       bindingId: "codex-app-server",
@@ -1484,12 +1490,14 @@ describe("composer permission mode picker", () => {
     const opencode = {
       ...claude,
       id: "opencode",
+      brand: "opencode" as const,
       name: "OpenCode",
       bindingId: "opencode-acp",
     };
     const unavailable = {
       ...claude,
       id: "missing",
+      brand: null,
       name: "Missing",
       installState: "notInstalled" as const,
       bindingId: null,

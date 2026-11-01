@@ -12,7 +12,6 @@ import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
-import { harnessLogoKind } from "./composerChrome";
 import { harnessAvailability } from "./harnessAvailability";
 import type { AcpChatPage } from "../../domain/acp";
 import { useAcpChatProjection } from "./acp";
@@ -35,7 +34,7 @@ export function harnessPickerCandidates(
           : availability.label;
       return {
         id: harness.id,
-        icon: harnessLogoKind(harness),
+        icon: harness.brand ?? "generic",
         label: harness.name,
         triggerLabel: harness.name,
         accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,

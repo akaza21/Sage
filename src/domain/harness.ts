@@ -50,6 +50,9 @@ export function harnessUnavailableReason(
 
 import type { SessionAccessModeCapability } from "./sessionAccessMode";
 
+/** A curated harness's brand mark, set by the native catalogue. */
+export type HarnessBrand = "claude" | "codex" | "opencode" | "pi";
+
 interface HarnessDefinitionBase {
   id: string;
   name: string;
@@ -63,6 +66,7 @@ interface HarnessDefinitionBase {
   characterisation?: "characterised" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: { command: string; hint: string } | null;
+  brand?: HarnessBrand | null;
 }
 
 export type HarnessDefinition = HarnessDefinitionBase &

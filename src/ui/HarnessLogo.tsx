@@ -1,7 +1,7 @@
+import type { HarnessBrand } from "../domain/harness";
 import "../styles/harness-logo.css";
 
-export type HarnessLogoKind =
-  "claude" | "codex" | "pi" | "opencode" | "generic";
+export type HarnessLogoKind = HarnessBrand | "generic";
 
 /**
  * A harness brand mark. The mark is a CSS mask over the current text colour,

@@ -23,6 +23,7 @@ mod hash_tests;
 #[cfg(test)]
 mod tests;
 
+use crate::domain::HarnessBrand;
 #[cfg(test)]
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
@@ -66,6 +67,7 @@ pub(crate) struct KnownHarnessSpec {
     pub(crate) executable: HarnessExecutable,
     pub(crate) install_layout: InstallLayout,
     pub(crate) sign_in: Option<KnownHarnessSignIn>,
+    pub(crate) brand: Option<HarnessBrand>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +85,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "codex login",
             hint: "Sign in to your Codex account.",
         }),
+        brand: Some(HarnessBrand::Codex),
     },
     KnownHarnessSpec {
         id: "claude-code",
@@ -92,6 +95,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "claude auth login",
             hint: "Complete sign-in in the terminal.",
         }),
+        brand: Some(HarnessBrand::Claude),
     },
     KnownHarnessSpec {
         id: "pi",
@@ -101,6 +105,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "pi",
             hint: "Then run /login.",
         }),
+        brand: Some(HarnessBrand::Pi),
     },
     KnownHarnessSpec {
         id: "gemini-cli",
@@ -110,6 +115,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "gemini",
             hint: "Follow the sign-in prompts.",
         }),
+        brand: None,
     },
     KnownHarnessSpec {
         id: "opencode",
@@ -119,6 +125,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "opencode auth login",
             hint: "Choose the provider to sign in.",
         }),
+        brand: Some(HarnessBrand::OpenCode),
     },
     KnownHarnessSpec {
         id: "cursor-agent",
@@ -128,12 +135,14 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "cursor-agent login",
             hint: "Sign in to Cursor Agent.",
         }),
+        brand: None,
     },
     KnownHarnessSpec {
         id: "oh-my-pi",
         executable: HarnessExecutable::OhMyPi,
         install_layout: InstallLayout::NpmGlobal,
         sign_in: None,
+        brand: None,
     },
 ];
 
