@@ -1126,14 +1126,15 @@ mod tests {
             ))
             .unwrap_err();
 
+        // The failure is injected after spawn, so Git may or may not have
+        // staged the file before it was killed: that is why the effect is
+        // unknown. Either way the process is reaped before the error returns,
+        // so nothing may change afterwards.
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
         assert!(
             child.get().expect("`git add` was spawned").settled(),
             "the call returned before the killed `git add` was settled"
         );
-        // The kill can land before or after `git add` writes the index, so the
-        // effect before return is unknown by contract. Either way the state
-        // must be coherent and must not change after the call returns.
         let observe = || {
             let status = runtime.block_on(repository::status(&workspace)).unwrap();
             let [change] = status.changes.as_slice() else {
