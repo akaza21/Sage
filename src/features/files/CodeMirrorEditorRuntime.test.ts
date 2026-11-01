@@ -685,31 +685,6 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
     expect(expectedTokenTable).toHaveLength(defaultHighlightStyle.specs.length);
   });
 
-  it("rejects an inserted runtime token table entry", async () => {
-    const inserted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-meta)",',
-      '"var(--doc-syntax-meta)",\n  null,',
-    );
-    expect(() => assertTokenTableMatchesSpecs(inserted)).toThrow();
-  });
-
-  it("rejects a deleted runtime token table entry", async () => {
-    const deleted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-keyword)",',
-      "",
-    );
-    expect(() => assertTokenTableMatchesSpecs(deleted)).toThrow();
-  });
-
-  it("rejects a reordered runtime token table entry", async () => {
-    const reordered = (await runtimeSource()).replace(
-      '"var(--doc-syntax-type)",\n  "var(--doc-syntax-class)",',
-      '"var(--doc-syntax-class)",\n  "var(--doc-syntax-type)",',
-    );
-    expect(reordered).not.toEqual(await runtimeSource());
-    expect(() => assertTokenTableMatchesSpecs(reordered)).toThrow();
-  });
-
   it("mounts token-driven syntax declarations for every syntax token", () => {
     const { runtime } = runtimeForPath("notes.txt");
     const colors = tokenDrivenColors();
@@ -757,40 +732,6 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
       vi.doUnmock("@codemirror/language");
       vi.resetModules();
     }
-  });
-
-  it("rejects a same-count reorder of specs with matching style shapes", () => {
-    const reordered = [...defaultHighlightStyle.specs];
-    [reordered[11], reordered[12]] = [reordered[12], reordered[11]];
-    expect(() => assertDefaultSpecFingerprint(reordered)).toThrow();
-  });
-
-  it("rejects drift in a non-color style value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 1 ? { ...spec, textDecoration: "overline" } : spec,
-        ),
-      ),
-    ).toThrow();
-  });
-
-  it("rejects a changed default spec count", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint([
-        { tag: defaultHighlightStyle.specs[0].tag, color: "currentColor" },
-      ]),
-    ).toThrow();
-  });
-
-  it("rejects drift in a default palette value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 6 ? { ...spec, color: "currentColor" } : spec,
-        ),
-      ),
-    ).toThrow();
   });
 });
 

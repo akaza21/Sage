@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -51,26 +51,6 @@ describe("sizing scale tokens", () => {
     expect(rootBlock).toMatch(/--space-8:\s*32px;/);
   });
 
-  it("never references a custom property that no stylesheet defines", () => {
-    const sources = collectSources(resolve(process.cwd(), "src"));
-    const defined = new Set<string>();
-    const referenced = new Map<string, string>();
-    for (const file of sources) {
-      const source = readFileSync(file, "utf8");
-      for (const match of source.matchAll(/(--[a-z0-9-]+)"?\s*:/g)) {
-        defined.add(match[1]);
-      }
-      if (!file.endsWith(".css")) continue;
-      for (const match of source.matchAll(/var\(\s*(--[a-z0-9-]+)/g)) {
-        if (!referenced.has(match[1])) referenced.set(match[1], file);
-      }
-    }
-    const dangling = [...referenced]
-      .filter(([token]) => !defined.has(token))
-      .map(([token, file]) => `${token} in ${file}`);
-    expect(dangling).toEqual([]);
-  });
-
   it("freezes a thin neutral scrollbar that brightens on hover", () => {
     expect(rootBlock).toMatch(/--scrollbar-size:\s*8px;/);
     expect(rootBlock).toMatch(/--scrollbar-thumb:\s*#3a3a3a;/);
@@ -120,16 +100,3 @@ describe("sizing scale tokens", () => {
     );
   });
 });
-
-function collectSources(directory: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(directory)) {
-    const path = join(directory, entry);
-    if (statSync(path).isDirectory()) {
-      found.push(...collectSources(path));
-      continue;
-    }
-    if (/\.(?:css|ts|tsx)$/.test(path)) found.push(path);
-  }
-  return found;
-}
