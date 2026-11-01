@@ -7,8 +7,6 @@ mod project;
 mod repository;
 mod resource;
 
-#[cfg(test)]
-pub use beta_evidence::BetaEvidenceResult;
 pub use chat::*;
 pub use editor::*;
 pub use file_operations::*;
@@ -16,14 +14,3 @@ pub use harness::*;
 pub use project::*;
 pub use repository::*;
 pub use resource::*;
-
-#[cfg(test)]
-mod freeze_tests {
-    use super::BetaEvidenceResult;
-
-    #[test]
-    fn domain_reexports_beta_evidence_result() {
-        let result = BetaEvidenceResult::incomplete("contract", "commit");
-        assert_eq!(result.verdict, "incomplete");
-    }
-}

@@ -6,7 +6,7 @@ use crate::{
     repository::{
         RepositoryBoundary, ensure_success, repository_boundary, repository_diff_base, run_git,
     },
-    repository_parse::{merge_numstat, parse_status},
+    repository_parse::{ParsedStatus, merge_numstat, parse_status},
     workspace::Workspace,
 };
 
@@ -45,7 +45,12 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     .await?;
     ensure_success(&status_output)?;
 
-    let (branch, mut changes, parser_truncated) = parse_status(
+    let ParsedStatus {
+        branch,
+        mut changes,
+        truncated: parser_truncated,
+        overflowed: changes_overflowed,
+    } = parse_status(
         workspace.root_id(),
         &status_output.stdout,
         status_output.stdout_truncated,
@@ -98,6 +103,7 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         revert_in_progress: in_progress.revert,
         changes,
         truncated: parser_truncated || numstat_truncated,
+        changes_overflowed,
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: None,
     })
