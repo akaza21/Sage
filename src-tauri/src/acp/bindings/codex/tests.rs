@@ -1055,8 +1055,10 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
     let inspected_packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let inspection = PhysicallyInspectedPackage::matching_fixture(&inspected_packet);
     let mut changed = packet_value();
-    changed["codexHome"] = json!(r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec");
+    changed["codexHome"] =
+        json!(ISOLATED_CODEX_HOME.replacen("\\CodexState\\", "\\Relocated\\CodexState\\", 1,));
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert_ne!(changed_packet.codex_home(), inspected_packet.codex_home());
     let requirements =
         parse_reproduction_requirements(REPRODUCTION_FIXTURE, &changed_packet).unwrap();
 
@@ -1071,20 +1073,29 @@ fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() 
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
     let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+    let relocated_package = PACKAGE_ROOT.replacen("\\Codex\\", "\\Relocated\\Codex\\", 1);
+    let relocated_home =
+        ISOLATED_CODEX_HOME.replacen("\\CodexState\\", "\\Relocated\\CodexState\\", 1);
+    assert_ne!(relocated_package, PACKAGE_ROOT);
+    assert_ne!(relocated_home, ISOLATED_CODEX_HOME);
 
-    let mut changed = packet_value();
-    relocate_package_root(&mut changed, r"C:\SageHarnesses\Codex\0.146.0\package");
-    relocate_codex_home(
-        &mut changed,
-        r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
-    );
-    let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
-    let changed_reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
+    for (package_root, codex_home) in [
+        (relocated_package.as_str(), ISOLATED_CODEX_HOME),
+        (PACKAGE_ROOT, relocated_home.as_str()),
+        (relocated_package.as_str(), relocated_home.as_str()),
+    ] {
+        let mut changed = packet_value();
+        relocate_package_root(&mut changed, package_root);
+        relocate_codex_home(&mut changed, codex_home);
+        let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+        let changed_reproduced =
+            reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
 
-    assert_eq!(
-        managed.revalidate(&changed_packet, &changed_reproduced),
-        Err(ManagedStagingError::Binding)
-    );
+        assert_eq!(
+            managed.revalidate(&changed_packet, &changed_reproduced),
+            Err(ManagedStagingError::Binding)
+        );
+    }
 }
 
 #[cfg(windows)]
