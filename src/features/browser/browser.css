@@ -195,6 +195,10 @@
   font-size: 12px;
 }
 
+.browser-surface__menu[hidden] {
+  display: none;
+}
+
 .browser-surface__menu-group + .browser-surface__menu-group {
   border-top: 1px solid var(--browser-menu-divider);
   margin-top: 4px;
