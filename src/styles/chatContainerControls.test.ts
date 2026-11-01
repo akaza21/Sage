@@ -148,12 +148,6 @@ describe("Chat container control breakpoints", () => {
       expect(await containerDisplay(".composer__access-text", width)).toBe(
         access,
       );
-      expect(
-        await containerDisplay(
-          ".composer__harness .searchable-picker__trigger-label",
-          width,
-        ),
-      ).toBe(width <= 320 ? "none" : "inline");
       expect(await containerDisplay(".composer__model-label", width)).toBe(
         identity,
       );

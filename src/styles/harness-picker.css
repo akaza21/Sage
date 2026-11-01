@@ -1,18 +1,21 @@
 /* Codex-style plain control: brand mark and name on the composer fill, with
-   the shared control hover. Under pressure the name ellipsises down to its
-   first letters; the minimum width is the mark, those letters, the chevron
-   and the trigger's padding and gaps, so the mark is never clipped. */
+   the shared control hover. The name shows whole or not at all:
+   useHarnessNameFit hides it when the toolbar has no room, leaving the mark. */
 .composer__harness.composer__control-trigger {
   --harness-logo-size: var(--icon-size-md);
-  --harness-name-min: 3ch;
   --harness-chevron-size: 12px;
-  --harness-chevron-room: calc(var(--harness-chevron-size) + var(--space-1));
-  min-width: calc(
-    var(--harness-logo-size) + var(--harness-name-min) +
-      var(--harness-chevron-room) + 3 * var(--space-1)
-  );
+  min-width: calc(var(--harness-logo-size) + 2 * var(--space-1));
   max-width: 160px;
   flex: 0 1 auto;
+}
+
+.composer__harness[data-name-hidden] .searchable-picker__trigger {
+  justify-content: center;
+}
+
+.composer__harness[data-name-hidden] .searchable-picker__trigger-label,
+.composer__harness[data-name-hidden] .searchable-picker__chevron {
+  display: none;
 }
 
 .composer__harness.composer__control-trigger:hover {
@@ -62,9 +65,7 @@
 
 .composer__harness .searchable-picker__trigger-label {
   display: block;
-  min-width: var(--harness-name-min);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

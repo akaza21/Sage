@@ -24,8 +24,8 @@ async function expectProjectInOptionsMenu(composer: Locator) {
 async function expectResponsiveToolbar(
   composer: Locator,
   compact: boolean,
-  // A long effort label crowds the toolbar, so the harness name may
-  // ellipsise down to its first letters instead of showing in full.
+  // A long effort label crowds the toolbar, so the harness may need to fall
+  // back to its mark even above 320px.
   crowded = false,
 ) {
   const project = composer.getByRole("button", { name: /^Project: / });
@@ -77,30 +77,23 @@ async function expectResponsiveToolbar(
   expect(markBox.x + markBox.width).toBeLessThanOrEqual(
     harnessBox.x + harnessBox.width + 0.5,
   );
-  // Above 320px the name shows beside the mark: whole, or ellipsised to its
-  // first letters when crowded. At 320px and below the harness compacts to
-  // its mark, as the model does.
-  if (await composer.evaluate((element) => element.clientWidth <= 320)) {
-    await expect(harnessLabel).toBeHidden();
-  } else {
-    await expect(harnessLabel).toBeVisible();
+  // The harness shows its whole name or only its mark, never a truncated
+  // name. Uncrowded above 320px there is room for the name.
+  if (await harnessLabel.isVisible()) {
     expect((await harnessLabel.boundingBox())!.x).toBeGreaterThanOrEqual(
       markBox.x + markBox.width,
     );
-    const label = await harnessLabel.evaluate((node) => ({
-      clipped: node.scrollWidth > node.clientWidth,
-      width: node.clientWidth,
-      // The name's floor, three letters, resolved to pixels.
-      floor: Number.parseFloat(getComputedStyle(node).minWidth),
-      textOverflow: getComputedStyle(node).textOverflow,
-    }));
-    if (crowded) {
-      expect(label.textOverflow).toBe("ellipsis");
-      expect(label.floor).toBeGreaterThan(0);
-      expect(label.width).toBeGreaterThanOrEqual(label.floor - 0.5);
-    } else {
-      expect(label.clipped).toBe(false);
-    }
+    expect(
+      await harnessLabel.evaluate(
+        (node) => node.scrollWidth <= node.clientWidth,
+      ),
+    ).toBe(true);
+  } else {
+    expect(harnessBox.width).toBeGreaterThanOrEqual(24);
+    if (!crowded)
+      expect(
+        await composer.evaluate((element) => element.clientWidth <= 320),
+      ).toBe(true);
   }
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();

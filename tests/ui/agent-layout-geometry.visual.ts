@@ -267,6 +267,53 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   );
 });
 
+test("a long harness name shows whole or not at all as the composer narrows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openScenario(page, "agent-single", "agent");
+  // Rename the fixture harness to the longest curated name.
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    useWorkbenchStore.setState((state) => ({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        name: "Claude Code",
+      })),
+    }));
+  });
+  const composer = page.locator("form.composer").first();
+  const trigger = composer.getByRole("button", { name: "Harness" });
+  const label = trigger.locator(".searchable-picker__trigger-label");
+  await expect(label).toHaveText("Claude Code");
+  const shown: boolean[] = [];
+  for (const width of [480, 400, 360, 321, 300, 281]) {
+    await composer.evaluate((element, content) => {
+      const style = getComputedStyle(element);
+      element.style.width = `${content + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.borderRightWidth)}px`;
+    }, width);
+    // Let the resize observers run, as they do before the next paint.
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await expect(trigger.locator(".harness-logo")).toBeVisible();
+    const named = await label.isVisible();
+    if (named) await expectUnclippedText(label);
+    else expect((await bounds(trigger)).width).toBeGreaterThanOrEqual(24);
+    shown.push(named);
+  }
+  // A comfortable composer names the harness; the name only ever goes away
+  // as the composer narrows, and never comes back truncated.
+  expect(shown[0]).toBe(true);
+  expect(
+    shown.indexOf(false) === -1 ||
+      !shown.slice(shown.indexOf(false)).includes(true),
+  ).toBe(true);
+});
+
 test("the browser toolbar shows the attached chat's title, truncating only long ones", async ({
   page,
 }) => {

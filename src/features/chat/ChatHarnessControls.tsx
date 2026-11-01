@@ -28,6 +28,7 @@ import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
 import { useComposerCompaction } from "./useComposerCompaction";
+import { useHarnessNameFit } from "./useHarnessNameFit";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
 import {
@@ -96,6 +97,8 @@ export function ChatHarnessControls({
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
   const keyboardFocus = useHarnessKeyboardFocus();
+  const harnessControl = useRef<HTMLLabelElement>(null);
+  useHarnessNameFit(harnessControl);
   const {
     active,
     modelId,
@@ -291,6 +294,7 @@ export function ChatHarnessControls({
         />
       ) : null}
       <label
+        ref={harnessControl}
         className="composer__control-trigger composer__harness"
         data-keyboard-focus={keyboardFocus}
       >
