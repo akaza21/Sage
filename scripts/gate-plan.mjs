@@ -1,7 +1,13 @@
+import { lintFeatures, testFeatures } from "./cargo-features.mjs";
 import { environmentForGateStep } from "./gate-env.mjs";
 
 const manifest = "src-tauri/Cargo.toml";
-const cargoConfiguration = ["--manifest-path", manifest, "--all-features"];
+const cargoConfiguration = [
+  "--manifest-path",
+  manifest,
+  "--features",
+  testFeatures().join(","),
+];
 const cargoTest = ["cargo", "test", ...cargoConfiguration];
 
 export const steps = {
@@ -29,7 +35,8 @@ export const steps = {
     "--manifest-path",
     manifest,
     "--all-targets",
-    "--all-features",
+    "--features",
+    lintFeatures().join(","),
     "--",
     "-D",
     "warnings",
