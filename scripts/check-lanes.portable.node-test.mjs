@@ -18,7 +18,11 @@ import {
   executeCommand,
   runCommandGroups,
 } from "./lib/check-process.mjs";
-import { consumeWindowsCargoJobFrames } from "./lib/check-windows-cargo-protocol.mjs";
+import {
+  consumeWindowsCargoJobFrames,
+  MAX_PROTOCOL_LINE_BYTES,
+  MAX_STALL_IMAGE_BYTES,
+} from "./lib/check-windows-cargo-protocol.mjs";
 import {
   createRustValidationCommands,
   resolveNpmInvocation,
@@ -169,7 +173,11 @@ test("Windows Cargo frame parser requires a stall report exactly for timeouts", 
       discardStream(),
       discardStream(),
     );
-  const stall = { rootRunning: true, memberImages: ["cargo.exe", "cargo.exe"] };
+  const stall = {
+    rootRunning: true,
+    memberImages: ["cargo.exe", "cargo.exe"],
+    omittedMembers: 0,
+  };
   assert.deepEqual(
     (await parse({ ...base, reason: "command-timeout", stall })).stall,
     stall,
@@ -185,9 +193,84 @@ test("Windows Cargo frame parser requires a stall report exactly for timeouts", 
       reason: "command-timeout",
       stall: { ...stall, memberImages: [""] },
     },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { ...stall, omittedMembers: -1 },
+    },
+    {
+      ...base,
+      reason: "command-timeout",
+      stall: { rootRunning: true, memberImages: ["cargo.exe"] },
+    },
   ]) {
     await assert.rejects(parse(proof), /invalid Job proof response/u);
   }
+});
+
+test("Windows Cargo timeout proof with a full stall report fits one protocol line", async () => {
+  const requestNonce = "00000000-0000-4000-8000-000000000000";
+  // Fill the member-name budget with the longest Windows file names.
+  const longName = `${"x".repeat(251)}.exe`;
+  const memberImages = [];
+  while (
+    Buffer.byteLength(JSON.stringify([...memberImages, longName])) <=
+    MAX_STALL_IMAGE_BYTES
+  ) {
+    memberImages.push(longName);
+  }
+  const proof = {
+    type: "proof",
+    schemaVersion: 1,
+    requestNonce,
+    sequence: 0,
+    settled: false,
+    treeBoundaryVerified: false,
+    activeProcesses: Number.MAX_SAFE_INTEGER,
+    exitCode: Number.MIN_SAFE_INTEGER,
+    reason: "command-timeout",
+    // The unconfirmed receipt is the largest teardown the proof can carry.
+    teardown: {
+      fileVersion: "14.44.35228.0",
+      imagePath:
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\VCTIP.EXE",
+      imageSizeBytes: 335328,
+      jobMembershipVerified: true,
+      kind: "msvc-vctip-termination-unconfirmed",
+      originalFilename: "VCTIP.EXE",
+      productVersion: "14.44.35228.0",
+      rootExited: true,
+      sha256:
+        "e175c981ca866689bf8f8d9bd5ba1e71e2eb1c9d389de555744b0cb439250996",
+      singletonPid: 0xffff_ffff,
+      terminationExitCodeRequested: 0x53475654,
+      terminationObservation: "exit-code-unconfirmed",
+    },
+    stall: {
+      rootRunning: true,
+      memberImages,
+      omittedMembers: Number.MAX_SAFE_INTEGER,
+    },
+  };
+  const line = `${JSON.stringify(proof)}\n`;
+  assert.ok(Buffer.byteLength(line) <= MAX_PROTOCOL_LINE_BYTES);
+  const parse = (frame) =>
+    consumeWindowsCargoJobFrames(
+      Readable.from([Buffer.from(frame)]),
+      { label: "protocol", maximumLineBytes: 32, maximumOutputBytes: 32 },
+      requestNonce,
+      discardStream(),
+      discardStream(),
+    );
+  assert.deepEqual((await parse(line)).stall, proof.stall);
+  const overBudget = {
+    ...proof,
+    stall: { ...proof.stall, memberImages: [...memberImages, longName] },
+  };
+  await assert.rejects(
+    parse(`${JSON.stringify(overBudget)}\n`),
+    /invalid Job proof response/u,
+  );
 });
 
 // origin: check-lanes.node-test.mjs:75 "developer lane requires explicit bounded targets" -> check-lanes.portable.node-test.mjs

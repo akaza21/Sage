@@ -1,6 +1,6 @@
 import { TextDecoder } from "node:util";
 
-const MAX_PROTOCOL_LINE_BYTES = 8 * 1_024;
+export const MAX_PROTOCOL_LINE_BYTES = 8 * 1_024;
 const MAX_PROTOCOL_FRAME_BYTES = 4 * 1_024;
 const MAX_RENDER_CHARS = 4 * MAX_PROTOCOL_FRAME_BYTES;
 const VCTIP_TEARDOWN_EXIT_CODE = 0x53475654;
@@ -205,7 +205,9 @@ async function deliverTruncation(state, kind) {
   state.lineBytes = 0;
 }
 
-const MAX_STALL_MEMBERS = 256;
+// Matches the producer's budget for the serialized member-name array, which
+// keeps a timeout proof inside MAX_PROTOCOL_LINE_BYTES.
+export const MAX_STALL_IMAGE_BYTES = 2_048;
 
 // A timed-out command reports what was still running at its deadline.
 function validStall(stall, reason) {
@@ -213,14 +215,17 @@ function validStall(stall, reason) {
   return (
     stall !== null &&
     typeof stall === "object" &&
-    hasExactKeys(stall, ["memberImages", "rootRunning"]) &&
+    hasExactKeys(stall, ["memberImages", "omittedMembers", "rootRunning"]) &&
     typeof stall.rootRunning === "boolean" &&
+    Number.isSafeInteger(stall.omittedMembers) &&
+    stall.omittedMembers >= 0 &&
     Array.isArray(stall.memberImages) &&
-    stall.memberImages.length <= MAX_STALL_MEMBERS &&
     stall.memberImages.every(
       (name) =>
         typeof name === "string" && name.length > 0 && name.length <= 260,
-    )
+    ) &&
+    Buffer.byteLength(JSON.stringify(stall.memberImages)) <=
+      MAX_STALL_IMAGE_BYTES
   );
 }
 
