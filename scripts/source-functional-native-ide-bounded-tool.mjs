@@ -42,8 +42,23 @@ const SAFE_CHILD_ENVIRONMENT_KEYS = [
   "WINDIR",
 ];
 
-function fail(code) {
-  throw new Error(`journey-${code}`);
+function fail(code, cause) {
+  throw new Error(
+    `journey-${code}`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+const HELPER_DIAGNOSTIC_CHARS_MAX = 4096;
+
+function helperFailure(result) {
+  if (result.error) return result.error;
+  const stderr = (result.stderr ?? "").trim();
+  return new Error(
+    `process identity helper exited with status ${result.status}${
+      result.signal ? ` (${result.signal})` : ""
+    }: ${stderr.slice(0, HELPER_DIAGNOSTIC_CHARS_MAX)}`,
+  );
 }
 
 function samePath(left, right) {
@@ -100,11 +115,12 @@ export function processIdentityHelper(action, value) {
     timeout: 5000,
     maxBuffer: 64 * 1024,
   });
-  if (result.error || result.status !== 0) fail("tool-cleanup-unproven");
+  if (result.error || result.status !== 0)
+    fail("tool-cleanup-unproven", helperFailure(result));
   try {
     return JSON.parse(result.stdout.trim());
-  } catch {
-    fail("tool-cleanup-unproven");
+  } catch (error) {
+    fail("tool-cleanup-unproven", error);
   }
 }
 
