@@ -177,7 +177,13 @@ fn validate_resource_identity(workspace: &Workspace, resource: &ResourceRef) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsStr, fs, path::Path, process::Command};
+    use std::{
+        ffi::OsStr,
+        fs,
+        path::Path,
+        process::Command,
+        sync::{Arc, OnceLock},
+    };
 
     use uuid::Uuid;
 
@@ -194,6 +200,66 @@ mod tests {
                 .unwrap()
                 .success()
         );
+    }
+
+    /// Observes one spawned Git child through the OS, outside the code under
+    /// test, so a test can tell whether the child was settled before return.
+    struct ChildWatch {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        pid: libc::pid_t,
+        #[cfg(windows)]
+        process: std::os::windows::io::OwnedHandle,
+    }
+
+    impl ChildWatch {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        fn open(pid: u32) -> Self {
+            Self {
+                pid: libc::pid_t::try_from(pid).expect("process ids fit in pid_t"),
+            }
+        }
+
+        /// Opened while the child is alive, so the handle pins its identity
+        /// and pid reuse cannot be mistaken for it.
+        #[cfg(windows)]
+        fn open(pid: u32) -> Self {
+            use std::os::windows::io::{FromRawHandle, OwnedHandle};
+            use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+
+            // SAFETY: OpenProcess takes no pointers; a null result is checked
+            // before the handle is owned.
+            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+            assert!(!handle.is_null(), "{}", std::io::Error::last_os_error());
+            Self {
+                // SAFETY: `handle` is a fresh, valid process handle that nothing
+                // else owns, so it is closed exactly once.
+                process: unsafe { OwnedHandle::from_raw_handle(handle) },
+            }
+        }
+
+        /// The child has been reaped. `waitpid` only considers this process's
+        /// own children, so a reused pid cannot read as settled: `ECHILD` means
+        /// the child was already waited for, `0` that it still runs, and its pid
+        /// that it exited but was never reaped.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        fn settled(&self) -> bool {
+            let mut status = 0;
+            // SAFETY: `status` is a valid, writable c_int for the call.
+            let waited = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+            waited == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD)
+        }
+
+        /// The child process has exited.
+        #[cfg(windows)]
+        fn settled(&self) -> bool {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::{
+                Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject,
+            };
+
+            // SAFETY: the owned handle is valid for the lifetime of `self`.
+            unsafe { WaitForSingleObject(self.process.as_raw_handle(), 0) == WAIT_OBJECT_0 }
+        }
     }
 
     fn create_file_symlink(target: &Path, link: &Path) -> bool {
@@ -1029,6 +1095,9 @@ mod tests {
 
     #[test]
     fn a_post_spawn_git_deadline_reaps_before_return_and_never_mutates_later() {
+        /// Long enough for a child that outlived the call to show its write.
+        const AFTER_RETURN: Duration = Duration::from_millis(200);
+
         let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-q"]);
@@ -1036,13 +1105,24 @@ mod tests {
         let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
         let resource = workspace.resource("timeout.txt").unwrap();
         let runtime = tokio::runtime::Runtime::new().unwrap();
+        let child = Arc::new(OnceLock::new());
+        let policy = repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3))
+            .with_spawned_hook({
+                let child = Arc::clone(&child);
+                move |pid| {
+                    assert!(
+                        child.set(ChildWatch::open(pid)).is_ok(),
+                        "`git add` spawns once"
+                    );
+                }
+            });
 
         let error = runtime
             .block_on(mutate_file_with_process_policy(
                 &workspace,
                 &resource,
                 GitFileMutationAction::Stage,
-                repository::GitProcessPolicy::post_spawn_failure(Duration::from_secs(3)),
+                policy,
             ))
             .unwrap_err();
 
@@ -1051,27 +1131,27 @@ mod tests {
         // unknown. Either way the process is reaped before the error returns,
         // so nothing may change afterwards.
         assert!(matches!(error, AppError::GitEffectUnknown(_)));
-        let immediate = runtime.block_on(repository::status(&workspace)).unwrap();
-        let observed = (
-            immediate.changes[0].index_status.clone(),
-            immediate.changes[0].worktree_status.clone(),
+        assert!(
+            child.get().expect("`git add` was spawned").settled(),
+            "the call returned before the killed `git add` was settled"
         );
+        let observe = || {
+            let status = runtime.block_on(repository::status(&workspace)).unwrap();
+            let [change] = status.changes.as_slice() else {
+                panic!("expected one change, got {:?}", status.changes);
+            };
+            (change.index_status.clone(), change.worktree_status.clone())
+        };
+        let immediate = observe();
         assert!(
             matches!(
-                (observed.0.as_str(), observed.1.as_str()),
+                (immediate.0.as_str(), immediate.1.as_str()),
                 ("unchanged", "untracked") | ("added", "unchanged")
             ),
-            "unexpected state after the injected failure: {observed:?}"
+            "the killed `git add` left a partial state: {immediate:?}"
         );
-        std::thread::sleep(Duration::from_millis(200));
-        let later = runtime.block_on(repository::status(&workspace)).unwrap();
-        assert_eq!(
-            (
-                later.changes[0].index_status.as_str(),
-                later.changes[0].worktree_status.as_str(),
-            ),
-            (observed.0.as_str(), observed.1.as_str())
-        );
+        std::thread::sleep(AFTER_RETURN);
+        assert_eq!(observe(), immediate);
         fs::remove_dir_all(root).unwrap();
     }
 }
