@@ -176,8 +176,8 @@ function Invoke-InstrumentedScenarioSetup {
     }
     $window = Wait-FootprintWindow $process.Id $WindowTimeoutSeconds
     Start-Sleep -Milliseconds 500
-    $tree = Get-FootprintTreeSample $process.Id
-    foreach ($record in $tree.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
+    $tree = Get-FootprintTreeSample $process.Id $identity.creationDate
+    Add-FootprintRememberedIdentities $known @($tree.processes)
     if ($tree.unknownProcessCount -ne 0) { throw "Setup process tree contains an unknown descendant." }
     $debugRows = @($tree.processes | Where-Object { $_.commandLine -and $_.commandLine -match "--remote-debugging-port=$port(?:\s|$)" })
     if ($debugRows.Count -lt 1) { throw "Setup endpoint was not bound to the exact candidate process tree." }
@@ -188,8 +188,8 @@ function Invoke-InstrumentedScenarioSetup {
       (Join-Path $resolvedOutput "setup-node-process.json") 60000 65536
     if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { throw "Semantic CDP setup did not produce its bounded result." }
     $semantic = Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
-    $verifiedTree = Get-FootprintTreeSample $process.Id
-    foreach ($record in $verifiedTree.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
+    $verifiedTree = Get-FootprintTreeSample $process.Id $identity.creationDate
+    Add-FootprintRememberedIdentities $known @($verifiedTree.processes)
     if ($verifiedTree.unknownProcessCount -ne 0) { throw "Verified setup tree contains an unknown descendant." }
     return [ordered]@{
       scenario = $Scenario
@@ -293,9 +293,9 @@ while ($validCount -lt $Launches -and $attempt -lt $maximumAttempts) {
     Start-Sleep -Seconds $WarmupSeconds
     $sampleTimer = [Diagnostics.Stopwatch]::StartNew()
     for ($sampleIndex = 1; $sampleIndex -le $SampleCount; $sampleIndex += 1) {
-      $sample = Get-FootprintTreeSample $process.Id
+      $sample = Get-FootprintTreeSample $process.Id $identity.creationDate
       $sample["sampleElapsedSeconds"] = [Math]::Round($sampleTimer.Elapsed.TotalSeconds, 9)
-      foreach ($record in $sample.processes) { [void](Add-FootprintRememberedIdentity $known $record) }
+      Add-FootprintRememberedIdentities $known @($sample.processes)
       if ($sample.unknownProcessCount -ne 0) { throw "Measured tree contains an unknown descendant." }
       Assert-FootprintDebugStateClear @($sample.processes)
       $launch.samples += $sample

@@ -66,7 +66,7 @@ $snapshot={
   if($script:childAlive){$rows+=$childRow};
   return $rows
 };
-$stop={param([int]$processId)$script:stops+=$processId;if($processId-eq202){$script:childAlive=$false}elseif($processId-eq101){$script:rootAlive=$false;$script:rootStopped=$true}else{throw 'unexpected process'}};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;if($processId-eq202){$script:childAlive=$false}elseif($processId-eq101){$script:rootAlive=$false;$script:rootStopped=$true}else{throw 'unexpected process'};$true};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -83,7 +83,7 @@ test("root PID reuse before exact root termination remains fatal", () => {
   const observed = runPowerShellFixture(`${commonFixture}
 $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={return @($reusedRootRow)};
-$stop={param([int]$processId)$script:stops+=$processId};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;$true};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -105,7 +105,7 @@ $snapshot={
   if($script:rootAlive){$rows+=$rootRow}elseif($script:rootStopped){$rows+=$reusedRootRow};
   return $rows
 };
-$stop={param([int]$processId)$script:stops+=$processId;if($processId-eq101){$script:rootAlive=$false;$script:rootStopped=$true}};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;if($processId-eq101){$script:rootAlive=$false;$script:rootStopped=$true};$true};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(6)};
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -122,7 +122,7 @@ test("a failed exact root stop cannot establish post-kill reuse authority", () =
   const observed = runPowerShellFixture(`${commonFixture}
 $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={return @($rootRow)};
-$stop={param([int]$processId)$script:stops+=$processId;throw 'injected stop failure'};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;throw 'injected stop failure'};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
 $failed=$false;try{[void](Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay)}catch{$failed=$_.Exception.Message -match 'injected stop failure'};
 [ordered]@{failed=$failed;stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -134,7 +134,7 @@ test("a matching candidate that exits between revalidation and stop reaches term
   const observed = runPowerShellFixture(`${commonFixture}
 $script:rootAlive=$true;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={if($script:rootAlive){return @($rootRow)};return @()};
-$stop={param([int]$processId)$script:stops+=$processId;$script:rootAlive=$false;throw 'process not found'};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;$script:rootAlive=$false;throw 'process not found'};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -153,7 +153,7 @@ $orphanRow=[pscustomobject]@{ProcessId=303;ParentProcessId=101;ExecutablePath='C
 $descendants=@(Get-FootprintDescendants 101 @($rootRow,$childRow,$orphanRow) | ForEach-Object { [int]$_.ProcessId });
 $script:rootAlive=$true;$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={$rows=@($orphanRow);if($script:rootAlive){$rows+=$rootRow};return $rows};
-$stop={param([int]$processId)$script:stops+=$processId;if($processId-eq101){$script:rootAlive=$false}};
+$stop={param($identity)$processId=[int]$identity.processId;$script:stops+=$processId;if($processId-eq101){$script:rootAlive=$false};$true};
 $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
 $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{descendants=$descendants;identityLost=$result.identityLost;remaining=@($result.remaining);stops=@($script:stops)}|ConvertTo-Json -Compress
@@ -222,5 +222,46 @@ $live=@(
     exitedWithLaunchTime: [202],
     liveWithLaunchTime: [101, 202],
     reusedRoot: [],
+  });
+});
+
+test("a PID that stops naming the identified process before termination is never killed", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
+$snapshot={return @($rootRow)};
+$stop={param($identity)$script:stops+=[int]$identity.processId;$false};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(6)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{forced=$result.forced;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    forced: false,
+    remaining: [101],
+    reused: [101],
+    stops: [101],
+  });
+});
+
+test("exact process termination validates and kills through one retained handle", () => {
+  const observed = runPowerShellFixture(String.raw`
+$powershell=(Get-Process -Id $PID).Path;
+$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+try{
+  $identity=Get-FootprintLaunchIdentity $child $powershell;
+  $other=[ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=[DateTime]::Parse($identity.creationDate).ToUniversalTime().AddSeconds(-1).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")};
+  $refused=Stop-FootprintExactProcess $other;
+  $child.Refresh();$aliveAfterRefusal=-not $child.HasExited;
+  $stopped=Stop-FootprintExactProcess $identity;
+  $exited=$child.WaitForExit(5000);
+  [ordered]@{refused=$refused;aliveAfterRefusal=$aliveAfterRefusal;stopped=$stopped;exited=$exited}|ConvertTo-Json -Compress
+}finally{
+  $child.Refresh();if(-not $child.HasExited){$child.Kill();[void]$child.WaitForExit(5000)}
+}
+`);
+  assert.deepEqual(observed, {
+    refused: false,
+    aliveAfterRefusal: true,
+    stopped: true,
+    exited: true,
   });
 });

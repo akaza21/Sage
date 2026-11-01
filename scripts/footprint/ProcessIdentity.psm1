@@ -437,7 +437,9 @@ function Invoke-FootprintTreeCore {
     [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
     [ValidateRange(1, 30)][int]$GraceSeconds = 1,
     [Parameter(Mandatory)][scriptblock]$SnapshotProvider,
-    [Parameter(Mandatory)][scriptblock]$StopProcessById,
+    # Terminates the process an identity names and returns $true, or returns
+    # $false when that PID no longer names the identified process.
+    [Parameter(Mandatory)][scriptblock]$StopExactProcess,
     [Parameter(Mandatory)][scriptblock]$UtcNow,
     [Parameter(Mandatory)][scriptblock]$Delay
   )
@@ -451,8 +453,18 @@ function Invoke-FootprintTreeCore {
   if ($plan.rootState -eq "matching") {
     Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows -RootCreationDate $RootIdentity.creationDate)
     $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
-    $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
-    if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
+    try {
+      $root = Open-FootprintExactProcess $RootIdentity
+      if ($null -ne $root) {
+        try {
+          if ($root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
+        } finally {
+          $root.Dispose()
+        }
+      }
+    } catch {
+      # A graceful close request is best effort; the exact stop below still applies.
+    }
   }
   $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
   do {
@@ -474,8 +486,9 @@ function Invoke-FootprintTreeCore {
     $identityLost = $identityLost -or $currentPlan.identityLost
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
+    $currentIdentity = ConvertTo-FootprintProcessIdentity $current
     try {
-      & $StopProcessById ([int]$current.ProcessId)
+      $terminated = [bool](& $StopExactProcess $currentIdentity)
     } catch {
       $afterStopFailure = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
       foreach ($reusedProcessId in @($afterStopFailure.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
@@ -487,7 +500,11 @@ function Invoke-FootprintTreeCore {
       if ($stillPresent) { throw }
       continue
     }
-    $killed += ConvertTo-FootprintProcessIdentity $current
+    if (-not $terminated) {
+      [void]$reusedProcessIds.Add([int]$current.ProcessId)
+      continue
+    }
+    $killed += $currentIdentity
     if ([int]$current.ProcessId -eq $rootPid) { $exactRootTerminationIssued = $true }
   }
   $postKillDeadline = ([DateTime](& $UtcNow)).AddSeconds($script:PostKillWaitSeconds)
@@ -507,6 +524,37 @@ function Invoke-FootprintTreeCore {
   }
 }
 
+function Open-FootprintExactProcess {
+  param([Parameter(Mandatory)][Collections.IDictionary]$Identity)
+  # The retained handle pins one process, so the creation-time check and any
+  # later action on the returned object address that same process even if its
+  # PID is reused in between. The caller disposes the returned object.
+  $process = Get-Process -Id ([int]$Identity.processId) -ErrorAction SilentlyContinue
+  if ($null -eq $process) { return $null }
+  try {
+    [void]$process.Handle
+    $sameProcess = (ConvertTo-FootprintCreationIdentity $process.StartTime) -eq [string]$Identity.creationDate
+  } catch {
+    $process.Dispose()
+    throw
+  }
+  if ($sameProcess) { return $process }
+  $process.Dispose()
+  return $null
+}
+
+function Stop-FootprintExactProcess {
+  param([Parameter(Mandatory)][Collections.IDictionary]$Identity)
+  $process = Open-FootprintExactProcess $Identity
+  if ($null -eq $process) { return $false }
+  try {
+    $process.Kill()
+    return $true
+  } finally {
+    $process.Dispose()
+  }
+}
+
 function Stop-FootprintTree {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
@@ -518,7 +566,7 @@ function Stop-FootprintTree {
     $KnownProcessIdentities `
     $GraceSeconds `
     { Get-FootprintProcessSnapshot } `
-    { param([int]$ProcessId) Stop-Process -Id $ProcessId -Force -ErrorAction Stop } `
+    { param([Collections.IDictionary]$Identity) Stop-FootprintExactProcess $Identity } `
     { [DateTime]::UtcNow } `
     { param([int]$Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
 }
@@ -536,6 +584,8 @@ Export-ModuleMember -Function @(
   "Get-FootprintRootIdentity",
   "Get-FootprintTeardownPlan",
   "New-FootprintIdentityStore",
+  "Open-FootprintExactProcess",
+  "Stop-FootprintExactProcess",
   "Stop-FootprintLaunchedProcessObject",
   "Stop-FootprintTree"
 )
