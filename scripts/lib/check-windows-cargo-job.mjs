@@ -195,6 +195,7 @@ function responseError(command, response, signal) {
   );
   error.exitCode = response.exitCode;
   error.teardown = response.teardown;
+  error.stall = response.stall;
   return error;
 }
 
