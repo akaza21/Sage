@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { HarnessLogo, type HarnessLogoKind } from "./HarnessLogo";
 import { ChevronDown } from "./leanIcons";
 import { PickerOption } from "./PickerOption";
 
@@ -28,8 +29,7 @@ export interface SearchablePickerOption {
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
-  icon?: "claude" | "codex" | "opencode";
-  logo?: string;
+  icon?: HarnessLogoKind;
 }
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
@@ -264,15 +264,7 @@ export function SearchablePicker({
           } else if (event.key === "Tab") close("tab");
         }}
       >
-        {selected?.logo || selected?.icon ? (
-          <img
-            src={selected.logo ?? `/harness-${selected.icon}.svg`}
-            alt=""
-            aria-hidden="true"
-          />
-        ) : (
-          triggerIcon
-        )}
+        {selected?.icon ? <HarnessLogo kind={selected.icon} /> : triggerIcon}
         <span className="searchable-picker__trigger-label">
           {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
         </span>

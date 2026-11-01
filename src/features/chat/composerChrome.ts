@@ -16,6 +16,7 @@ import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
+import type { HarnessLogoKind } from "../../ui/HarnessLogo";
 import { shortcutLabel } from "../../ui/shortcutLabel";
 
 export { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
@@ -27,11 +28,12 @@ export const COMPOSER_WORKSPACE_NAME_CAP = 48;
 
 export function harnessIconKind(
   name: string | null | undefined,
-): "claude" | "codex" | "opencode" | undefined {
+): HarnessLogoKind {
   if (/claude/i.test(name ?? "")) return "claude";
   if (/codex/i.test(name ?? "")) return "codex";
   if (/opencode/i.test(name ?? "")) return "opencode";
-  return undefined;
+  if (/^pi\b/i.test(name ?? "")) return "pi";
+  return "generic";
 }
 
 interface VoiceEvent {

@@ -27,7 +27,6 @@ export function harnessPickerCandidates(
         Number(Boolean(harnessAvailability(right).disabledReason)),
     )
     .map((harness) => {
-      const icon = harnessIconKind(harness.name);
       const availability = harnessAvailability(harness);
       const status = harness.versionChecking
         ? "version checking…"
@@ -36,8 +35,7 @@ export function harnessPickerCandidates(
           : availability.label;
       return {
         id: harness.id,
-        icon,
-        logo: `/harness-${icon ?? "generic"}.svg`,
+        icon: harnessIconKind(harness.name),
         label: harness.name,
         triggerLabel: harness.name,
         accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,

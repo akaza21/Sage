@@ -1507,7 +1507,7 @@ describe("composer permission mode picker", () => {
     expect(trigger).toHaveTextContent("Claude Code");
     expect(trigger).not.toHaveTextContent("Opus 5 High");
     expect(
-      trigger.querySelector('img[src="/harness-claude.svg"]'),
+      trigger.querySelector('[data-harness-icon="claude"]'),
     ).not.toBeNull();
     fireEvent.click(trigger);
     const claudeRow = screen.getByRole("option", { name: /Claude Code/ });
@@ -1526,7 +1526,7 @@ describe("composer permission mode picker", () => {
     ).not.toHaveTextContent("0.146.0");
     expect(codexRow).not.toHaveAccessibleName(/0\.146\.0/);
     expect(
-      codexRow.querySelector('img[src="/harness-codex.svg"]'),
+      codexRow.querySelector('[data-harness-icon="codex"]'),
     ).not.toBeNull();
     expect(screen.getByRole("option", { name: /OpenCode/ })).toHaveTextContent(
       /^OpenCode$/,

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { HarnessLogo } from "./HarnessLogo";
 import { Check } from "./leanIcons";
 import type { SearchablePickerOption } from "./SearchablePicker";
 
@@ -27,9 +28,6 @@ export const PickerOption = memo(function PickerOption({
 }) {
   onRender?.(candidate.id);
   const unavailable = disabled || Boolean(candidate.disabledReason);
-  const logo =
-    candidate.logo ??
-    (candidate.icon ? `/harness-${candidate.icon}.svg` : null);
   return (
     <button
       ref={(element) => onOptionElement?.(candidate.id, element)}
@@ -49,14 +47,7 @@ export const PickerOption = memo(function PickerOption({
       onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
       onClick={() => !unavailable && onSelect(candidate.id)}
     >
-      {logo ? (
-        <img
-          src={logo}
-          alt=""
-          aria-hidden="true"
-          data-harness-icon={candidate.icon ?? "generic"}
-        />
-      ) : null}
+      {candidate.icon ? <HarnessLogo kind={candidate.icon} /> : null}
       <span className="searchable-picker__option-copy">
         <span>{candidate.label}</span>
         {candidate.subtitle ? (
@@ -65,7 +56,7 @@ export const PickerOption = memo(function PickerOption({
           </span>
         ) : null}
       </span>
-      {selected && (logo || showSelectedCheck) ? (
+      {selected && (candidate.icon || showSelectedCheck) ? (
         <Check
           className="searchable-picker__selected-check"
           size={14}

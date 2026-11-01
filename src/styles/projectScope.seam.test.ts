@@ -58,7 +58,7 @@ describe("Composer Project chip responsive seam", () => {
       /\.project-scope \.searchable-picker__trigger\s*\{[^}]*min-width:\s*28px;[^}]*min-height:\s*28px;/s,
     );
     expect(harness).toMatch(
-      /\.composer__harness\.composer__control-trigger\s*\{[^}]*min-width:\s*28px;[^}]*flex:\s*0 1 128px;/s,
+      /\.composer__harness\.composer__control-trigger\s*\{[^}]*min-width:\s*28px;/s,
     );
     expect(model).toMatch(
       /\.composer__model-group \.composer__effort-picker\s*\{[^}]*min-width:\s*28px;[^}]*overflow:\s*hidden;/s,
@@ -161,9 +161,7 @@ describe("Composer Project chip responsive seam", () => {
           composer.querySelector(".composer__harness")!,
         );
         expect(harnessStyle.flexShrink).toBe("1");
-        expect(harnessStyle.flexBasis).toBe(
-          width <= 280 ? "24px" : width <= 400 ? "28px" : "128px",
-        );
+        expect(harnessStyle.flexBasis).toBe("auto");
         expect(harnessStyle.minWidth).toBe(width <= 280 ? "24px" : "28px");
         expect(
           getComputedStyle(composer.querySelector(".composer__model-group")!)

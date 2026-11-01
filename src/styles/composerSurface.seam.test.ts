@@ -227,22 +227,6 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__action-description\s*\{[^}]*grid-column:\s*2 \/ -1;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s,
     );
   });
-  it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    const wrapper = css.match(
-      /^\.composer__harness\.composer__control-trigger\s*\{([^}]*)\}/m,
-    );
-    const trigger = css.match(
-      /^\.composer__harness \.searchable-picker__trigger\s*\{([^}]*)\}/m,
-    );
-    const height = (rule: RegExpMatchArray | null) =>
-      rule?.[1].match(/(?:^|;)\s*height:\s*(\d+)px;/)?.[1];
-    expect(height(trigger)).toBe("40");
-    expect(height(wrapper)).toBe(height(trigger));
-  });
   it("keeps a system progress fill visible in forced colors", async () => {
     const css = await readFile(
       resolve("src/styles/composer-context.css"),

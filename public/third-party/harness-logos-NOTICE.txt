@@ -1,0 +1,11 @@
+Harness logos
+
+The harness logos in this directory's parent are third-party marks, used only
+to identify each harness in the harness picker. All trademarks belong to their
+respective owners; their use does not imply endorsement.
+
+harness-claude.svg    Claude mark, Simple Icons 16.36.0 (CC0 1.0, simple-icons-LICENSE.txt)
+harness-pi.svg        Pi mark, Simple Icons 16.36.0 (CC0 1.0, simple-icons-LICENSE.txt)
+harness-codex.svg     Codex mark, Lobe Icons 1.101.0 (MIT, lobe-icons-LICENSE.txt)
+harness-opencode.svg  opencode mark, Lobe Icons 1.101.0 (MIT, lobe-icons-LICENSE.txt)
+harness-generic.svg   Lucide "bot" icon (ISC, lucide-react-LICENSE.txt)
