@@ -80,7 +80,7 @@ pub(super) fn inspect(
     {
         return Err(StateAuthorityError::Alias);
     }
-    reject_directory_named_streams(&home)?;
+    reject_directory_named_streams(&root, &home)?;
     #[cfg(test)]
     run_after_state_root_open();
     let config_path = home.join("config.toml");
@@ -137,7 +137,7 @@ fn observe(home: &Path) -> Result<StateSnapshot, StateAuthorityError> {
     {
         return Err(StateAuthorityError::Alias);
     }
-    reject_directory_named_streams(home)?;
+    reject_directory_named_streams(&root, home)?;
     let mut pending = vec![(PathBuf::new(), home.to_owned(), root, root_info)];
     while let Some((relative_parent, directory, handle, before)) = pending.pop() {
         for entry in fs::read_dir(&directory).map_err(|_| StateAuthorityError::Io)? {
@@ -156,7 +156,7 @@ fn observe(home: &Path) -> Result<StateSnapshot, StateAuthorityError> {
                 .map_err(|_| StateAuthorityError::DepthLimit)?;
             totals.maximum_depth = totals.maximum_depth.max(depth);
             if info.attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
-                reject_directory_named_streams(&path)?;
+                reject_directory_named_streams(&node, &path)?;
                 totals.directories = totals
                     .directories
                     .checked_add(1)

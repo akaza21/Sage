@@ -173,6 +173,55 @@ pub(super) fn well_known_sid(kind: i32) -> Result<Vec<u8>, ElevatedHelperError> 
 }
 
 #[cfg(test)]
+pub(super) fn grant_fixture_directory_control(path: &Path) -> Result<(), ElevatedHelperError> {
+    use windows_sys::Win32::Security::CONTAINER_INHERIT_ACE;
+    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_DELETE;
+
+    const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
+
+    // A project volume may inherit Modify rather than the Full Control of a
+    // user-profile TEMP. These helper fixtures also exercise WRITE_OWNER.
+    let directory = OpenOptions::new()
+        .access_mode(READ_CONTROL | WRITE_DAC)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|_| ElevatedHelperError::AclApplication)?;
+    file_identity(&directory)?;
+    let user =
+        super::current_process_user_sid().map_err(|_| ElevatedHelperError::HelperIdentity)?;
+    let bytes =
+        std::mem::size_of::<ACL>() + std::mem::size_of::<ACCESS_ALLOWED_ACE>() - 4 + user.len();
+    let mut words = vec![0_u32; bytes.div_ceil(4)];
+    let acl = words.as_mut_ptr().cast::<ACL>();
+    if unsafe { InitializeAcl(acl, bytes as u32, ACL_REVISION) } == 0
+        || unsafe {
+            AddAccessAllowedAceEx(
+                acl,
+                ACL_REVISION,
+                OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+                FILE_ALL_ACCESS,
+                user.as_ptr().cast_mut().cast(),
+            )
+        } == 0
+        || unsafe {
+            SetSecurityInfo(
+                directory.as_raw_handle() as HANDLE,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                acl,
+                std::ptr::null(),
+            )
+        } != 0
+    {
+        return Err(ElevatedHelperError::AclApplication);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use windows_sys::Win32::Foundation::ERROR_INVALID_HANDLE;
