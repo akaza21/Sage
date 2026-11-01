@@ -1,11 +1,17 @@
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
-        // macOS clocks tick in microseconds, so a timestamp can repeat across
-        // parallel tests; a random name cannot.
-        let path = std::env::temp_dir().join(format!("sage-macos-review-{}", uuid::Uuid::new_v4()));
+        // The sequence separates parallel tests even within one clock tick;
+        // the random suffix also separates runs and processes.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "sage-macos-review-{}-{}",
+            uuid::Uuid::new_v4(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir(&path).unwrap();
         Self(path.canonicalize().unwrap())
     }
