@@ -54,3 +54,19 @@ export function testFeatures(
     (feature) => !deviceLaneFeatures.includes(feature),
   );
 }
+
+// The planner emits only requested runners; matrix.include must never add an
+// unrequested platform merely to attach its feature metadata.
+export function runnerFeatures(os) {
+  const platform = {
+    "windows-latest": "win32",
+    "ubuntu-latest": "linux",
+    "macos-latest": "darwin",
+  }[os];
+  if (platform === undefined) throw new Error(`unsupported Rust runner: ${os}`);
+  return {
+    os,
+    "lint-features": lintFeatures(platform).join(","),
+    "test-features": testFeatures(platform).join(","),
+  };
+}
