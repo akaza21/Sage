@@ -105,14 +105,6 @@ pub(crate) fn settle_terminal(
     transaction: &Transaction<'_>,
     session: &str,
 ) -> Result<(), StoreError> {
-    #[cfg(test)]
-    if !transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='acp_turn_workspace_changes')",
-        [],
-        |row| row.get::<_, bool>(0),
-    )? {
-        return Ok(());
-    }
     let mut statement = transaction.prepare("SELECT w.client_intent_id,w.root_path,w.terminal_json,w.ambiguous,w.payload_bytes,w.root_id FROM acp_turn_workspace_changes w JOIN turns t ON t.session_id=w.session_id AND t.client_intent_id=w.client_intent_id WHERE w.session_id=?1 AND w.result_json IS NULL AND t.terminal_at IS NOT NULL LIMIT 65")?;
     let rows = statement
         .query_map([session], |row| {

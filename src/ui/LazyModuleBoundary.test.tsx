@@ -210,17 +210,24 @@ it("keeps the configured fallback for a loaded surface's suspended child", async
   expect(screen.getByText("Nested child ready")).toBeVisible();
 });
 
-it("starts a cold import during the first render without waiting for passive effects", async () => {
-  const load = vi.fn(
-    () => new Promise<{ default: () => null }>(() => undefined),
-  );
-  renderToString(
+it("starts a cold import before any commit and renders the resolved feature", async () => {
+  let finish!: (value: { default: ComponentType<object> }) => void;
+  const load = () =>
+    new Promise<{ default: ComponentType<object> }>((resolve) => {
+      finish = resolve;
+    });
+  const boundary = (
     <LazyModuleBoundary
       label="Cold module"
       load={load}
+      fallback={<p role="status">Waiting for cold import</p>}
       render={(Surface) => <Surface />}
-    />,
+    />
   );
+  expect(renderToString(boundary)).toContain("Waiting for cold import");
   await Promise.resolve();
-  expect(load).toHaveBeenCalledOnce();
+  await act(async () => finish({ default: () => <p>Cold feature ready</p> }));
+  render(boundary);
+  expect(screen.getByText("Cold feature ready")).toBeVisible();
+  expect(screen.queryByRole("status")).toBeNull();
 });

@@ -64,6 +64,11 @@ pub(super) fn setup() -> Connection {
         .unwrap();
     connection
         .execute_batch(include_str!(
+            "../../../migrations/019_turn_workspace_changes.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
             "../../../migrations/020_chat_title_provenance.sql"
         ))
         .unwrap();
