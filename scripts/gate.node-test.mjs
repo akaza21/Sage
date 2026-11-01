@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { lintFeatures, testFeatures } from "./cargo-features.mjs";
 import { environmentForGateStep } from "./gate-env.mjs";
 import { plans, stepConfiguration, steps } from "./gate-plan.mjs";
 
@@ -29,7 +30,8 @@ test("fixture build shares the Rust tests' features and target environment", () 
     "build",
     "--manifest-path",
     "src-tauri/Cargo.toml",
-    "--all-features",
+    "--features",
+    testFeatures().join(","),
     "--bin",
     "acp-adversarial-fixture",
   ]);
@@ -37,8 +39,17 @@ test("fixture build shares the Rust tests' features and target environment", () 
   for (const name of ["rust-parallel", "rust-git-proc", "rust-preview"]) {
     const rust = stepConfiguration(name);
     assert.equal(rust.env, fixture.env);
-    assert.deepEqual(rust.command.slice(2, 5), fixture.command.slice(2, 5));
+    assert.deepEqual(rust.command.slice(2, 6), fixture.command.slice(2, 6));
   }
+});
+
+test("Clippy lints every feature that builds on this platform", () => {
+  const clippy = stepConfiguration("clippy").command;
+  assert.ok(!clippy.includes("--all-features"));
+  assert.equal(
+    clippy[clippy.indexOf("--features") + 1],
+    lintFeatures().join(","),
+  );
 });
 
 test("gate serializes Vitest by default without changing other steps", () => {

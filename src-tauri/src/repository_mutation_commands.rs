@@ -767,13 +767,16 @@ mod tests {
             )
             .await
             .unwrap_err();
-            assert!(matches!(
-                first,
-                AppError::GitContainment {
-                    state: crate::error::GitContainmentState::TerminatedUnreaped,
-                    ..
-                }
-            ));
+            assert!(
+                matches!(
+                    first,
+                    AppError::GitContainment {
+                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        ..
+                    }
+                ),
+                "{first:?}"
+            );
 
             let blocked = mutate_git_file_inner_with_process_policy(
                 &state,
@@ -783,13 +786,16 @@ mod tests {
             )
             .await
             .unwrap_err();
-            assert!(matches!(
-                blocked,
-                AppError::GitContainment {
-                    state: crate::error::GitContainmentState::TerminatedUnreaped,
-                    ..
-                }
-            ));
+            assert!(
+                matches!(
+                    blocked,
+                    AppError::GitContainment {
+                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        ..
+                    }
+                ),
+                "{blocked:?}"
+            );
 
             reaper.release_wait();
             reaper

@@ -13,7 +13,8 @@ struct TwoRootProject {
 
 impl TwoRootProject {
     fn new() -> Self {
-        let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+        let base =
+            crate::test_paths::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
         let root_a = base.join("repo-a");
         let root_b = base.join("repo-b");
         for root in [&root_a, &root_b] {
