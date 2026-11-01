@@ -290,6 +290,76 @@ it("drops input refused as busy for too long and says why", async () => {
   }
 });
 
+it("sends no input after the dock is disposed during a busy backoff", async () => {
+  let refuse: ((error: unknown) => void) | undefined;
+  native.write.mockImplementationOnce(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        refuse = reject;
+      }),
+  );
+  const onStatus = vi.fn();
+  const { unmount } = render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={onStatus}
+    />,
+  );
+  await waitFor(() => expect(xterm.data).not.toBeNull());
+  vi.useFakeTimers();
+  try {
+    act(() => xterm.data?.("x"));
+    expect(native.write).toHaveBeenCalledTimes(1);
+    // The refusal starts the backoff; the user then closes the terminal.
+    await act(async () => {
+      refuse?.({ code: "busy" });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    unmount();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(native.write).toHaveBeenCalledTimes(1);
+    expect(onStatus).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("refuses typing past the native input limit while a write is pending", async () => {
+  let accept: (() => void) | undefined;
+  native.write.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        accept = resolve;
+      }),
+  );
+  const onStatus = vi.fn();
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={onStatus}
+    />,
+  );
+  await waitFor(() => expect(xterm.data).not.toBeNull());
+  act(() => xterm.data?.("a"));
+  // Queued while "a" is in flight: 4,096 UTF-8 bytes fit, one more does not.
+  act(() => xterm.data?.("é".repeat(2_048)));
+  expect(onStatus).not.toHaveBeenCalled();
+  act(() => xterm.data?.("y"));
+  expect(onStatus).toHaveBeenCalledWith(
+    "Input was not sent: terminal input buffer limit reached.",
+  );
+  accept?.();
+  await waitFor(() => expect(native.write).toHaveBeenCalledTimes(2));
+  expect(native.write.mock.calls.map((call) => call[2])).toEqual([
+    "a",
+    "é".repeat(2_048),
+  ]);
+});
+
 it("retries a transient native reader conflict after remount", async () => {
   native.read.mockRejectedValueOnce({ code: "busy" });
   const onStatus = vi.fn();

@@ -8,7 +8,6 @@ import {
   createUserTerminal,
   readUserTerminal,
   resizeUserTerminal,
-  TERMINAL_INPUT_BYTES,
   writeUserTerminal,
   type UserTerminalScope,
 } from "./userTerminalDesktop";
@@ -54,11 +53,51 @@ it("decodes a bounded binary output page and preserves cursor strings", async ()
   });
 });
 
-it("rejects oversized input before invoking native", async () => {
-  await expect(
-    writeUserTerminal(scope, handle, "x".repeat(TERMINAL_INPUT_BYTES + 1)),
-  ).rejects.toThrow();
-  expect(invokeNative).not.toHaveBeenCalled();
+it("sends input up to 4,096 UTF-8 bytes and rejects empty or larger input", async () => {
+  invokeNative.mockResolvedValue(undefined);
+  await writeUserTerminal(scope, handle, "x".repeat(4_096));
+  await writeUserTerminal(scope, handle, "é".repeat(2_048));
+  expect(invokeNative).toHaveBeenCalledTimes(2);
+  for (const text of ["", "x".repeat(4_097), "é".repeat(2_048) + "x"])
+    await expect(writeUserTerminal(scope, handle, text)).rejects.toThrow();
+  expect(invokeNative).toHaveBeenCalledTimes(2);
+});
+
+const acceptedGrids = [
+  [1, 1],
+  [500, 300],
+] as const;
+const rejectedGrids = [
+  [0, 24],
+  [80, 0],
+  [501, 24],
+  [80, 301],
+  [80.5, 24],
+  [80, Number.NaN],
+] as const;
+
+it("creates terminals only within the native 500 by 300 grid", async () => {
+  invokeNative.mockResolvedValue({ ...handle, shellPath: "/bin/sh" });
+  for (const [columns, rows] of acceptedGrids)
+    await createUserTerminal(scope, columns, rows);
+  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+  for (const [columns, rows] of rejectedGrids)
+    await expect(createUserTerminal(scope, columns, rows)).rejects.toThrow(
+      "Invalid terminal dimensions",
+    );
+  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+});
+
+it("resizes terminals only within the native 500 by 300 grid", async () => {
+  invokeNative.mockResolvedValue(undefined);
+  for (const [columns, rows] of acceptedGrids)
+    await resizeUserTerminal(scope, handle, columns, rows);
+  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+  for (const [columns, rows] of rejectedGrids)
+    await expect(
+      resizeUserTerminal(scope, handle, columns, rows),
+    ).rejects.toThrow("Invalid terminal dimensions");
+  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
 });
 
 it("sends only opaque handle fields when a session also carries shell metadata", async () => {

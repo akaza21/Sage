@@ -79,6 +79,54 @@ async function gridGeometry(page: Page) {
   });
 }
 
+async function dockGeometry(page: Page) {
+  return page.locator(".terminal-dock").evaluate((dock) => {
+    const header = dock.querySelector<HTMLElement>(".terminal-dock__header")!;
+    const viewport = dock.querySelector<HTMLElement>(
+      ".terminal-dock__viewport",
+    )!;
+    const pty = (
+      window as unknown as {
+        terminalPtySize: { columns: number; rows: number };
+      }
+    ).terminalPtySize;
+    return {
+      unusedHeight: Math.round(
+        dock.clientHeight -
+          header.getBoundingClientRect().height -
+          viewport.getBoundingClientRect().height,
+      ),
+      columns: pty.columns,
+      rows: pty.rows,
+    };
+  });
+}
+
+test("the terminal viewport follows the dock as the window shrinks and grows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openTerminal(page);
+  await expect
+    .poll(async () => (await dockGeometry(page)).unusedHeight)
+    .toBe(0);
+  const first = await dockGeometry(page);
+  let tallest = first;
+  for (const [width, height] of [
+    [900, 620],
+    [1700, 1000],
+    [1280, 800],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect
+      .poll(async () => (await dockGeometry(page)).unusedHeight)
+      .toBe(0);
+    if (height === 1000) tallest = await dockGeometry(page);
+  }
+  expect(tallest.rows).toBeGreaterThan(first.rows);
+  await expect.poll(() => dockGeometry(page)).toEqual(first);
+});
+
 for (const deviceScaleFactor of [1, 1.25, 2]) {
   test.describe(`terminal grid at ${deviceScaleFactor} device scale`, () => {
     test.use({ deviceScaleFactor });

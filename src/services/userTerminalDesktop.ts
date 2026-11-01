@@ -1,7 +1,10 @@
 import { invokeNative } from "../ports/nativeInvoke";
 import { utf8ByteLength } from "../domain/text";
 
-/** Native limits, mirrored from `src-tauri/src/user_terminal.rs` (parity-tested). */
+/**
+ * Native limits, mirrored from `src-tauri/src/user_terminal.rs`. Both sides
+ * test the same literal bounds, so a change to one side fails its tests.
+ */
 export const TERMINAL_MAX_COLUMNS = 500;
 export const TERMINAL_MAX_ROWS = 300;
 export const TERMINAL_INPUT_BYTES = 4_096;
