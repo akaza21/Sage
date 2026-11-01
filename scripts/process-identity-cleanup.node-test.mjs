@@ -165,3 +165,35 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
     stops: [101],
   });
 });
+
+test("a process with unknown creation never vouches for its children or grants partial cleanup authority", () => {
+  const observed = runPowerShellFixture(String.raw`
+$rootId=[int]::MaxValue;$orphanId=$rootId-2;$childId=$rootId-4;
+$started=[DateTime]::Parse('2026-08-30T00:00:00Z');
+$rows=@(
+  [pscustomobject]@{ProcessId=$rootId;ParentProcessId=1;ExecutablePath='C:\Apps\sage.exe';CreationDate=$started},
+  [pscustomobject]@{ProcessId=$orphanId;ParentProcessId=$rootId;ExecutablePath='';CreationDate=$null},
+  [pscustomobject]@{ProcessId=$childId;ParentProcessId=$orphanId;ExecutablePath='C:\Windows\System32\svchost.exe';CreationDate=$started.AddSeconds(5)}
+);
+$descendants=@(Get-FootprintDescendants $rootId $rows | ForEach-Object { [int]$_.ProcessId });
+$staged=New-FootprintIdentityStore;
+$stagedFailed=$false;try{Add-FootprintRememberedIdentities $staged @($rows[2],$rows[1])}catch{$stagedFailed=$true};
+$script:exited=$false;
+$process=[pscustomobject]@{Id=$rootId;Path='C:\Apps\sage.exe';MainWindowHandle=[IntPtr]::Zero;StartTime=$started};
+$process|Add-Member -MemberType ScriptProperty -Name HasExited -Value {$script:exited};
+$process|Add-Member -MemberType ScriptMethod -Name Refresh -Value {};
+$process|Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {param([int]$milliseconds) return $script:exited};
+$process|Add-Member -MemberType ScriptMethod -Name Kill -Value {param([AllowNull()][object]$entireTree) if($entireTree){throw 'tree kill unavailable'};$script:exited=$true};
+$known=New-FootprintIdentityStore;
+$boundary='';try{[void](Stop-FootprintLaunchedProcessObject $process 'C:\Apps\sage.exe' $known $rows 0 100)}catch{$boundary=$_.Exception.Message};
+[ordered]@{descendants=$descendants;stagedFailed=$stagedFailed;stagedCount=$staged.Count;rootExited=$script:exited;rememberedCount=$known.Count;boundaryRefused=$boundary.StartsWith('Exact launched process-object cleanup could not establish a process-tree boundary.')}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    descendants: [2147483645, 2147483647],
+    stagedFailed: true,
+    stagedCount: 0,
+    rootExited: true,
+    rememberedCount: 0,
+    boundaryRefused: true,
+  });
+});

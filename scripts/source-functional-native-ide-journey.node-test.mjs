@@ -47,6 +47,10 @@ import {
   verificationFor,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
+import {
+  HELPER_DIAGNOSTIC_CHARS_MAX,
+  processIdentityHelperOutput,
+} from "./source-functional-native-ide-bounded-tool.mjs";
 import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 import { parseAcp04ProbeArguments } from "./source-functional-acp04-live-contract.mjs";
 import { parseAv01PreviewArguments } from "./source-functional-av01-preview-contract.mjs";
@@ -4200,3 +4204,103 @@ function assertWindowsPortFree(port) {
   );
   assert.equal(result.status, 0, `port ${port} retained a listener`);
 }
+
+test("process identity helper failures keep the stable code and carry what PowerShell reported", () => {
+  const failure = (result) => {
+    try {
+      processIdentityHelperOutput(result);
+    } catch (error) {
+      assert.equal(error.message, "journey-tool-cleanup-unproven");
+      return error.cause;
+    }
+    assert.fail("the helper result was accepted");
+  };
+
+  assert.deepEqual(
+    processIdentityHelperOutput({ status: 0, stdout: '{"processId":7}\n' }),
+    { processId: 7 },
+  );
+  assert.equal(
+    failure({ status: 1, signal: null, stderr: "  Access is denied.\r\n" })
+      .message,
+    "process identity helper exited with status 1: Access is denied.",
+  );
+  assert.equal(
+    failure({ status: null, signal: "SIGTERM", stderr: "" }).message,
+    "process identity helper exited with status null (SIGTERM): ",
+  );
+  const oversized = failure({
+    status: 1,
+    signal: null,
+    stderr: "x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX + 1),
+  }).message;
+  assert.equal(
+    oversized,
+    `process identity helper exited with status 1: ${"x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX)}`,
+  );
+  const spawnError = Object.assign(
+    new Error("spawnSync powershell ETIMEDOUT"),
+    {
+      code: "ETIMEDOUT",
+    },
+  );
+  assert.equal(failure({ error: spawnError, status: null }), spawnError);
+  assert.ok(failure({ status: 0, stdout: "not json" }) instanceof SyntaxError);
+});
+
+function fakeBoundedToolChild(pid) {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.pid = pid;
+  return child;
+}
+
+test("bounded tool rejection carries the identity capture failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-capture-cause-"));
+  try {
+    const captureFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    await assert.rejects(
+      runBoundedTool("tool", [], Date.now() + 5_000, root, {
+        spawn: () => fakeBoundedToolChild(71),
+        captureIdentity: () => {
+          throw captureFailure;
+        },
+      }),
+      (error) => {
+        assert.equal(error.message, "playwright-cli-cleanup-unproven");
+        assert.equal(error.cause, captureFailure);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bounded tool rejection carries the cleanup failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-cleanup-cause-"));
+  try {
+    const child = fakeBoundedToolChild(72);
+    const cleanupFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    const promise = runBoundedTool("tool", [], Date.now() + 5_000, root, {
+      spawn: () => child,
+      captureIdentity: () => ({ processId: 72, creationDate: "exact" }),
+      cleanupIdentity: () => {
+        throw cleanupFailure;
+      },
+    });
+    child.stdout.write(Buffer.alloc(64 * 1024 + 1));
+    await assert.rejects(promise, (error) => {
+      assert.equal(error.message, "playwright-cli-cleanup-unproven");
+      assert.equal(error.cause, cleanupFailure);
+      return true;
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

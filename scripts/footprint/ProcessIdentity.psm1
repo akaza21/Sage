@@ -38,10 +38,10 @@ function Get-FootprintDescendants {
     throw "Process snapshot exceeds its $MaxProcessRows-row limit."
   }
   # Windows keeps a process's parent PID after the parent exits, and PIDs are
-  # reused. A row that started before an included process cannot be its child:
-  # it is an orphan of an older process that held the same PID. Rows whose
-  # creation time is unknown stay included so incomplete identities still fail
-  # closed downstream.
+  # reused, so a row is adopted only when it started no earlier than its
+  # parent. A row whose creation time is unknown is still adopted, so its
+  # incomplete identity fails closed downstream, but its ancestry is unproven
+  # and nothing is adopted through it.
   $creationById = @{}
   foreach ($row in $ProcessRows) {
     $creationById[[int]$row.ProcessId] = Get-FootprintCreationTime $row
@@ -59,6 +59,7 @@ function Get-FootprintDescendants {
       if ($included.Contains($processId) -or -not $included.Contains($parentId)) { continue }
       $created = $creationById[$processId]
       $parentCreated = $creationById[$parentId]
+      if ($null -eq $parentCreated -and $parentId -ne $RootProcessId) { continue }
       if ($null -ne $created -and $null -ne $parentCreated -and $created -lt $parentCreated) { continue }
       [void]$included.Add($processId)
       $changed = $true
@@ -116,6 +117,20 @@ function ConvertTo-FootprintProcessIdentity {
     executablePath = $path
     creationDate = $creation
     identityBytes = [Text.Encoding]::UTF8.GetByteCount("$path`0$creation")
+  }
+}
+
+function Add-FootprintRememberedIdentities {
+  param(
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$Store,
+    [AllowEmptyCollection()][object[]]$ProcessRows
+  )
+  # Stage every row first so a row that lacks identity or exceeds a limit
+  # leaves the store unchanged instead of partly filled.
+  $staged = [Collections.Generic.Dictionary[string, object]]::new($Store, [StringComparer]::Ordinal)
+  foreach ($row in $ProcessRows) { [void](Add-FootprintRememberedIdentity $staged $row) }
+  foreach ($entry in $staged.GetEnumerator()) {
+    if (-not $Store.ContainsKey($entry.Key)) { $Store.Add($entry.Key, $entry.Value) }
   }
 }
 
@@ -298,11 +313,13 @@ function Stop-FootprintLaunchedProcessObject {
       }
     }
     if ($null -ne $rootIdentity) {
-      foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows -RootCreationDate $rootIdentity.creationDate)) {
-        [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
-      }
+      Add-FootprintRememberedIdentities $KnownProcessIdentities @(
+        Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows -RootCreationDate $rootIdentity.creationDate
+      )
     }
   } catch {
+    # A tree whose members cannot all be identified grants no snapshot authority.
+    $snapshotMatched = $false
     $boundaryError = $_.Exception.Message
   }
   if ($identityConflict) {
@@ -423,7 +440,7 @@ function Invoke-FootprintTreeCore {
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = [bool]$plan.identityLost
   if ($plan.rootState -eq "matching") {
-    foreach ($row in @(Get-FootprintDescendants $rootPid $initialRows)) { [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row) }
+    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows)
     $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
     $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
     if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
@@ -498,6 +515,7 @@ function Stop-FootprintTree {
 }
 
 Export-ModuleMember -Function @(
+  "Add-FootprintRememberedIdentities",
   "Add-FootprintRememberedIdentity",
   "ConvertTo-FootprintProcessIdentity",
   "Get-FootprintDescendants",
