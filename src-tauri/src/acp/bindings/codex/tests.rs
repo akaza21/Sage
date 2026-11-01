@@ -901,9 +901,8 @@ fn physical_state_authority_rejects_hardlinks_alternate_streams_and_sparse_exces
     let first = hardlinks.home.join("sessions").join("first.jsonl");
     std::fs::write(&first, b"session").unwrap();
     let second = hardlinks.home.join("sessions").join("second.jsonl");
-    let supported = state_volume::capabilities(&hardlinks.home)
-        & windows_sys::Win32::Storage::FileSystem::FILE_SUPPORTS_HARD_LINKS
-        != 0;
+    let supported =
+        state_volume::capabilities(&hardlinks.home) & state_volume::FILE_SUPPORTS_HARD_LINKS != 0;
     let linked = std::fs::hard_link(&first, &second);
     if supported {
         linked.expect("create supported hard link");

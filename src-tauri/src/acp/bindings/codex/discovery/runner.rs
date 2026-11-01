@@ -77,6 +77,10 @@ impl CodexDiscoveryDeadline {
             .ok_or(CodexDiscoveryRunError::Timeout)
     }
 
+    pub(crate) fn ensure_operation(self) -> Result<(), CodexDiscoveryRunError> {
+        self.ensure_operation_at(Instant::now())
+    }
+
     fn ensure_operation_at(self, now: Instant) -> Result<(), CodexDiscoveryRunError> {
         self.operation_remaining_at(now, Duration::MAX).map(drop)
     }

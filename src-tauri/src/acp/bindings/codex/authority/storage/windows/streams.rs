@@ -8,14 +8,16 @@ use windows_sys::Win32::Foundation::{
     GetLastError, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_NAMED_STREAMS, FILE_STREAM_INFO, FileStreamInfo, FindClose, FindFirstStreamW,
-    FindNextStreamW, FindStreamInfoStandard, GetFileInformationByHandleEx,
-    GetVolumeInformationByHandleW, WIN32_FIND_STREAM_DATA,
+    FILE_STREAM_INFO, FileStreamInfo, FindClose, FindFirstStreamW, FindNextStreamW,
+    FindStreamInfoStandard, GetFileInformationByHandleEx, GetVolumeInformationByHandleW,
+    WIN32_FIND_STREAM_DATA,
 };
 
 use super::StateAuthorityError;
 
 const STREAM_INFO_BYTES_MAX: usize = 64 * 1024;
+// WinBase.h volume flag; no SystemServices binding module is needed for a mask.
+const FILE_NAMED_STREAMS: u32 = 0x0004_0000;
 
 pub(super) fn reject_named_streams(file: &File) -> Result<(), StateAuthorityError> {
     let mut buffer = vec![0_u64; STREAM_INFO_BYTES_MAX / std::mem::size_of::<u64>()];

@@ -3,10 +3,14 @@ use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
 use std::path::Path;
 
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_NAMED_STREAMS, GetVolumeInformationByHandleW,
+    FILE_FLAG_BACKUP_SEMANTICS, GetVolumeInformationByHandleW,
 };
 
 use super::{StateAuthorityError, TestCodexStateRoot, inspect_test_state};
+
+// WinBase.h flags returned by GetVolumeInformationByHandleW.
+const FILE_NAMED_STREAMS: u32 = 0x0004_0000;
+pub(super) const FILE_SUPPORTS_HARD_LINKS: u32 = 0x0040_0000;
 
 pub(super) fn capabilities(directory: &Path) -> u32 {
     let directory = OpenOptions::new()
