@@ -66,6 +66,7 @@ export async function openAgentSnapshotSource(
     !(await openAgentArtifact({
       owner: { ...ref, sessionId },
       target: "file",
+      select: true,
       resource: { rootId: ref.rootId, relativePath: ref.relativePath },
     }))
   )

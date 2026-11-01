@@ -332,6 +332,7 @@ describe("ChatMarkdown code blocks", () => {
     expect(openAgentArtifact).toHaveBeenCalledWith({
       owner,
       target: "file",
+      select: true,
       resource,
     });
     await waitFor(() =>

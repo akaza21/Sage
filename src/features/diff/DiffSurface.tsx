@@ -3,20 +3,23 @@ import { useEffect } from "react";
 
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import { diffCacheKey } from "../../domain/diffIdentity";
+import {
+  completeDiffCounts,
+  diffCacheKey,
+  gitDiffScope,
+} from "../../domain/diffIdentity";
 import { isSnapshotDiffTab } from "../../domain/agentDiffIdentity";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { DiffLineCommentContext } from "../../domain/attachedContext";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import { DiffHunks, completeDiffCounts } from "./DiffHunks";
+import { DiffHunks } from "./DiffHunks";
 import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
-import type { useAgentArtifactGitDiff } from "../../workbench/useAgentArtifactGitDiff";
-import { useAgentChangesScopes } from "../../workbench/agentChangesStateScopes";
+import type { useAgentArtifactGitDiff } from "./changesRead";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { openAgentSnapshotSource } from "../../app/agentDiffSource";
 const loadScopedGitDiff = () =>
-  import("../../workbench/useAgentArtifactGitDiff").then((module) => ({
+  import("../../workbench/AgentDiffSurface").then((module) => ({
     default: module.AgentDiffSurface,
   }));
 
@@ -27,13 +30,7 @@ export function DiffSurface({
   tab: WorkbenchTab;
   readOnly?: boolean;
 }) {
-  const generation = useWorkbenchStore((state) => state.projectGeneration);
-  const scoped = useAgentChangesScopes((state) =>
-    state.gitScopes.some(
-      (entry) => entry.tabId === tab.id && entry.generation === generation,
-    ),
-  );
-  return tab.diffRef || scoped ? (
+  return tab.diffRef || gitDiffScope(tab) ? (
     <LazyModuleBoundary
       load={loadScopedGitDiff}
       label="Diff"

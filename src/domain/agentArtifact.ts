@@ -14,6 +14,7 @@ export type AgentArtifactOpenIntent = {
   target: "file" | "diff";
   resource: ResourceRef;
   diffRef?: AgentDiffRef;
+  select?: boolean;
 };
 
 export type AgentArtifactOpenHandler = (

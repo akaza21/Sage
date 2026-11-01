@@ -281,7 +281,7 @@ export function AgentToolPanel({
       return;
     try {
       if (entry.intent) {
-        if (!(await openAgentArtifact(entry.intent))) {
+        if (!(await openAgentArtifact({ ...entry.intent, select: true }))) {
           setError("This resource is no longer available for this Chat.");
           return;
         }

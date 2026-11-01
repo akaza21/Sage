@@ -81,7 +81,24 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
 ];
+// These surfaces are requested by visible resource actions. Their full bodies
+// must stay out of both first paint and the ready one-Chat static closure.
+const RESOURCE_ON_DEMAND_FACADES = [
+  "src/app/diffLoad.ts",
+  "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/BrowserNewTab.tsx?sage-browser-recovery",
+  "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/browser/browserClipboard.ts",
+  "src/features/browser/browserNewTabLoader.ts",
+  "src/features/diff/changesNavigation.ts",
+  "src/features/diff/changesRead.ts",
+  "src/workbench/AgentArtifactDetails.tsx",
+  "src/workbench/AgentArtifactResourceView.tsx",
+  "src/workbench/AgentArtifactTabStrip.tsx",
+  "src/workbench/AgentDiffSurface.tsx",
+];
 const REQUIRED_DYNAMIC_FACADES = [
+  ...RESOURCE_ON_DEMAND_FACADES,
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
@@ -201,7 +218,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentArtifactFocusGuard.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
-  "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
   "src/workbench/AgentRailFilterMenu.tsx",
@@ -626,6 +642,15 @@ describe("desktop-native chunk topology", () => {
     ).toBe(agentFile);
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
+    }
+    for (const module of RESOURCE_ON_DEMAND_FACADES) {
+      expect(groupedGraph.dynamicFacades, module).toContain(module);
+      expect(closureForModule(groupedGraph, agent), module).not.toContain(
+        path.join(root, module).split(path.sep).join("/"),
+      );
+      expect(groupedGraph.initialModules, module).not.toContain(
+        path.join(root, module).split(path.sep).join("/"),
+      );
     }
     const resources = "src/workbench/AgentTaskResources.tsx";
     const resourcesFile = groupedGraph.moduleFiles.get(resources);

@@ -1,4 +1,8 @@
-import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as SubagentChunk from "./SubagentSurface";
+import type * as ArtifactTabsChunk from "./AgentArtifactTabStrip";
+import type * as ArtifactResourceChunk from "./AgentArtifactHeader";
 import { useStore } from "zustand";
 import type { PreviewTargetRef } from "../domain/previewProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
@@ -49,20 +53,12 @@ import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { useAgentChangesPane } from "./useAgentChangesPane";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
-const SubagentSurface = lazy(() =>
-  loadSubagentSurface().then((module) => ({
-    default: module.SubagentSurface,
-  })),
+const SubagentPart = lazyParts<typeof SubagentChunk>(loadSubagentSurface);
+const ArtifactTabsPart = lazyParts<typeof ArtifactTabsChunk>(
+  () => import("./AgentArtifactTabStrip"),
 );
-const AgentArtifactTabStrip = lazy(() =>
-  import("./AgentArtifactTabStrip").then((module) => ({
-    default: module.AgentArtifactTabStrip,
-  })),
-);
-const AgentArtifactResourceView = lazy(() =>
-  import("./AgentArtifactHeader").then((module) => ({
-    default: module.AgentArtifactResourceView,
-  })),
+const ArtifactResourcePart = lazyParts<typeof ArtifactResourceChunk>(
+  () => import("./AgentArtifactHeader"),
 );
 
 export function AgentArtifactPane({
@@ -311,33 +307,30 @@ export function AgentArtifactPane({
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
           <header className="agent-artifact-pane__header">
             {hasResources ? (
-              <Suspense fallback={null}>
-                <AgentArtifactTabStrip
-                  panelId={panelId}
-                  artifacts={artifacts}
-                  selectedTarget={
-                    changes.selected || subagentSelected ? null : selectedTarget
-                  }
-                  changesTab={changes.tab}
-                  focusedOwner={focusedOwner}
-                  focusedPage={focusedPage}
-                  previewSelected={previewSelected}
-                  previewOpen={previewOpen}
-                  subagentOpen={subagentAvailable}
-                  subagentSelected={subagentSelected}
-                  onSelectSubagent={() => {
-                    useAgentChangesState.getState().select(false);
-                    if (subagentTarget)
-                      useSubagentPaneStore
-                        .getState()
-                        .show(subagentTarget, true);
-                  }}
-                  record={record}
-                  availableTargets={availableTargets}
-                  activateTab={activateTab}
-                  closeTab={closeTab}
-                />
-              </Suspense>
+              <ArtifactTabsPart
+                part="AgentArtifactTabStrip"
+                panelId={panelId}
+                artifacts={artifacts}
+                selectedTarget={
+                  changes.selected || subagentSelected ? null : selectedTarget
+                }
+                changesTab={changes.tab}
+                focusedOwner={focusedOwner}
+                focusedPage={focusedPage}
+                previewSelected={previewSelected}
+                previewOpen={previewOpen}
+                subagentOpen={subagentAvailable}
+                subagentSelected={subagentSelected}
+                onSelectSubagent={() => {
+                  useAgentChangesState.getState().select(false);
+                  if (subagentTarget)
+                    useSubagentPaneStore.getState().show(subagentTarget, true);
+                }}
+                record={record}
+                availableTargets={availableTargets}
+                activateTab={activateTab}
+                closeTab={closeTab}
+              />
             ) : (
               <strong>Files, changes, and preview</strong>
             )}
@@ -355,44 +348,42 @@ export function AgentArtifactPane({
               }}
             />
           </header>
-          <Suspense fallback={null}>
-            <AgentArtifactResourceView
-              tab={activeArtifact}
-              showResource={!previewSelected}
-              panelId={panelId}
-              canvasRef={setCanvasNode}
-              header={{
-                admitted: activeArtifactAdmitted,
-                page: focusedOwner ? focusedPage : null,
-                position: selectedPosition,
-                total: availableTargets.length,
-                onStep: stepArtifact,
-                onOpenInEditor: () => {
-                  if (activeArtifact) onOpenInEditor?.(activeArtifact.id);
-                },
-              }}
-            >
-              {changes.surface}
-              {subagentSelected && focusedPage && subagentTarget ? (
-                <Suspense
-                  fallback={<p role="status">Loading subagent view…</p>}
-                >
-                  <SubagentSurface
-                    page={focusedPage}
-                    projectGeneration={String(nativeTransitionEpoch)}
-                    itemId={subagentTarget.itemId}
-                    agentKey={subagentTarget.agentKey}
-                  />
-                </Suspense>
-              ) : null}
-              {!changes.selected &&
-              !subagentSelected &&
-              !previewSelected &&
-              !activeArtifact ? (
-                <AgentArtifactEmptyState titleId={emptyTitleId} />
-              ) : null}
-            </AgentArtifactResourceView>
-          </Suspense>
+          <ArtifactResourcePart
+            part="AgentArtifactResourceView"
+            tab={activeArtifact}
+            showResource={!previewSelected}
+            panelId={panelId}
+            canvasRef={setCanvasNode}
+            header={{
+              admitted: activeArtifactAdmitted,
+              page: focusedOwner ? focusedPage : null,
+              position: selectedPosition,
+              total: availableTargets.length,
+              onStep: stepArtifact,
+              onOpenInEditor: () => {
+                if (activeArtifact) onOpenInEditor?.(activeArtifact.id);
+              },
+            }}
+          >
+            {changes.surface}
+            {subagentSelected && focusedPage && subagentTarget ? (
+              <SubagentPart
+                part="SubagentSurface"
+                fallback={<p role="status">Loading subagent view…</p>}
+
+                page={focusedPage}
+                projectGeneration={String(nativeTransitionEpoch)}
+                itemId={subagentTarget.itemId}
+                agentKey={subagentTarget.agentKey}
+              />
+            ) : null}
+            {!changes.selected &&
+            !subagentSelected &&
+            !previewSelected &&
+            !activeArtifact ? (
+              <AgentArtifactEmptyState titleId={emptyTitleId} />
+            ) : null}
+          </ArtifactResourcePart>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
         </aside>
       </RetainedActivity>

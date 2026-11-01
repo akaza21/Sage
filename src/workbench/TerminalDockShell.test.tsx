@@ -50,7 +50,7 @@ const scope = {
 const session = (index: number) => ({
   sessionId: `f99cd56a-32d9-4600-a1f6-${String(index).padStart(12, "0")}`,
   revision: "1",
-  shellPath: "C:\\Windows\\System32\\cmd.exe",
+  shellPath: "cmd.exe",
 });
 
 beforeEach(() => {

@@ -17,12 +17,15 @@ import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import { useAgentArtifactAdmissionStore } from "../../app/agentArtifactAdmissionStore";
-import { useAgentArtifactFollowStore } from "../../app/agentArtifactFollowStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../../app/agentArtifactFollowStore";
+import { activeArtifactForTarget } from "../../workbench/agentArtifactTabPresentation";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { AgentArtifactHeader } from "../../workbench/AgentArtifactHeader";
 import { useAgentChangesState } from "../../workbench/agentChangesState";
-import { useAgentChangesScopes } from "../../workbench/agentChangesStateScopes";
 import { openAgentSnapshotSource } from "../../app/agentDiffSource";
 import { openAgentArtifact } from "../../app/openAgentArtifact";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
@@ -96,7 +99,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   pinAgentChatOwner(null);
   useAgentChangesState.getState().close();
-  useAgentChangesScopes.setState({ gitScopes: [] });
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   clearAcpProjectionRegistry();
@@ -104,8 +106,11 @@ afterEach(() => {
 });
 
 function Canvas() {
-  const tab = useWorkbenchStore((state) =>
-    state.tabs.find((item) => item.id === state.activeTabId),
+  const tabs = useWorkbenchStore((state) => state.tabs);
+  const records = useAgentArtifactFollowStore((state) => state.records);
+  const tab = activeArtifactForTarget(
+    tabs,
+    agentArtifactFollowRecordFor(records, ref)?.selected ?? null,
   );
   if (!tab || tab.kind === "chat") return null;
   return (
@@ -136,7 +141,10 @@ it("opens Last turn as a full saved diff, keeps line-comment identity, and retur
       <Canvas />
     </>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Open diff" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Open diff" }));
+    await vi.dynamicImportSettled();
+  });
   await screen.findByRole("button", { name: "Comment on old line 1" });
   fireEvent.click(
     screen.getByRole("button", { name: "Comment on old line 1" }),
@@ -156,16 +164,22 @@ it("opens Last turn as a full saved diff, keeps line-comment identity, and retur
       note: "Preserve saved guard",
     }),
   ]);
-  fireEvent.click(
-    screen.getAllByRole("button", { name: "View live source" })[0],
-  );
+  await act(async () => {
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "View live source" })[0],
+    );
+    await vi.dynamicImportSettled();
+  });
   await screen.findByRole("button", { name: "Changes" });
   expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
     phase: "ready",
     content: "today's live source\n",
   });
   diskText = "changed again on disk\n";
-  fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() =>
     expect(
       useWorkbenchStore
@@ -202,7 +216,11 @@ it.each(["staged", "unstaged"] as const)(
                 oldLine: null,
                 newLine: 1,
                 text:
-                  selectedScope === "staged" ? "INDEX BYTES" : "WORKTREE BYTES",
+                  selectedScope === "staged"
+                    ? "INDEX BYTES"
+                    : selectedScope === "unstaged"
+                      ? "WORKTREE BYTES"
+                      : "HEAD COMPARISON INCLUDING ALL EDITS",
               },
             ],
           },
@@ -288,6 +306,55 @@ it.each(["staged", "unstaged"] as const)(
         scope === "staged" ? "Staged changes" : "Unstaged changes",
       ),
     ).toBeVisible();
+    cleanup();
+    // Native layout restoration returns the persisted resource identity and
+    // clears disposable WebView state. The comparison must still be scoped.
+    const scopedTab = useWorkbenchStore
+      .getState()
+      .tabs.find((tab) => tab.id === useWorkbenchStore.getState().activeTabId)!;
+    const {
+      id,
+      kind,
+      title,
+      position,
+      pinned,
+      dirty,
+      resource: savedResource,
+    } = scopedTab;
+    const restored = {
+      id,
+      kind,
+      title,
+      position,
+      pinned,
+      dirty,
+      resource: savedResource,
+    };
+    useWorkbenchStore.setState({ tabs: [restored], projectGeneration: 2 });
+    render(<DiffSurface tab={restored} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("table", { name: "Unified file diff" }),
+      ).toHaveTextContent(
+        scope === "staged" ? "INDEX BYTES" : "WORKTREE BYTES",
+      ),
+    );
+    cleanup();
+    await act(async () => useWorkbenchStore.getState().openDiff(resource));
+    const editorTab = useWorkbenchStore
+      .getState()
+      .tabs.find((tab) => tab.id === useWorkbenchStore.getState().activeTabId)!;
+    render(<DiffSurface tab={editorTab} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("table", { name: "Unified file diff" }),
+      ).toHaveTextContent("HEAD COMPARISON INCLUDING ALL EDITS"),
+    );
+    expect(
+      screen.queryByText(
+        scope === "staged" ? "Staged changes" : "Unstaged changes",
+      ),
+    ).toBeNull();
   },
 );
 

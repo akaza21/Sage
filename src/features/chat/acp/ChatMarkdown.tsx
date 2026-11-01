@@ -145,6 +145,7 @@ export function ChatMarkdown({
             const opened = await openAgentArtifact({
               owner: fileReferenceOwner,
               target: "file",
+              select: true,
               resource: link.resource,
             });
             if (!opened || link.lineNumber === null) return;

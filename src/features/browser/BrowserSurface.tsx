@@ -30,16 +30,15 @@ import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
 import { BrowserNavigationControls } from "./BrowserNavigationControls";
 import {
+  useBrowserFind,
+  loadBrowserNewTab,
+  loadClosedBrowser,
+  loadBrowserFind,
   performBrowserShortcut,
   useBrowserShortcuts,
 } from "./browserShortcuts";
 import { useBrowserPlacement } from "./useBrowserPlacement";
-import {
-  useBrowserFind,
-  loadBrowserNewTab,
-  ClosedBrowserBoundary,
-  loadBrowserFind,
-} from "./useBrowserSurfaces";
+
 import "./browser.css";
 function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
   const store = useWorkbenchStore.getState();
@@ -50,7 +49,14 @@ function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
 }
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
-  if (tab.status === "closed") return <ClosedBrowserBoundary tabId={tab.id} />;
+  if (tab.status === "closed")
+    return (
+      <LazyModuleBoundary
+        load={loadClosedBrowser}
+        label="Closed browser"
+        render={(Surface) => <Surface tabId={tab.id} />}
+      />
+    );
   return <LiveBrowserSurface tab={tab} />;
 }
 function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
@@ -66,9 +72,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const { findField, findOpen, openFind, closeFind } = useBrowserFind(
     surface,
     addressField,
-    () => {
-      void pageAction(() => browserFind(tab.id, "stop"));
-    },
+    () => void pageAction(() => browserFind(tab.id, "stop")),
   );
   const screenshotEpoch = useRef(0);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);

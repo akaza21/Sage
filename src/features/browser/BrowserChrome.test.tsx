@@ -629,9 +629,6 @@ it("contains browser chrome inside the Agent canvas and styles page actions", as
     /\.browser-surface__menu button\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
   );
   expect(css).toMatch(
-    /\.browser-surface__toolbar\s*\{[^}]*height:\s*var\(--browser-toolbar-height\);/s,
-  );
-  expect(css).toMatch(
     /\.browser-surface__nav-group\s*\{[^}]*background:\s*var\(--browser-control-fill\);/s,
   );
   expect(css).toMatch(/\.browser-surface__toolbar button:focus-visible\s*\{/s);

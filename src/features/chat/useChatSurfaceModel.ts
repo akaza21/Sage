@@ -348,6 +348,7 @@ export function useChatSurfaceModel({
       void openAgentArtifact({
         owner: origin,
         target,
+        select: true,
         resource,
         ...(diffRef ? { diffRef } : {}),
       });

@@ -1,3 +1,5 @@
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
+import type { AgentArtifactResourceView as ResourceView } from "./AgentArtifactResourceView";
 import { SquareArrowOutUpRight, ChevronDown } from "../ui/leanIcons";
 
 import {
@@ -21,16 +23,21 @@ import { openAgentArtifact } from "../app/openAgentArtifact";
 import { useWorkbenchStore } from "../app/store";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
-const ResourceView = lazy(() =>
+const loadResourceView = () =>
   import("./AgentArtifactResourceView").then((module) => ({
     default: module.AgentArtifactResourceView,
-  })),
-);
+  }));
 
 export function AgentArtifactResourceView(
   props: Omit<ComponentProps<typeof ResourceView>, "Header">,
 ) {
-  return <ResourceView {...props} Header={AgentArtifactHeader} />;
+  return (
+    <LazyModuleBoundary
+      load={loadResourceView}
+      label="Resource"
+      render={(Surface) => <Surface {...props} Header={AgentArtifactHeader} />}
+    />
+  );
 }
 
 const AgentArtifactOpenMenu = lazy(() =>
@@ -95,6 +102,7 @@ export function AgentArtifactHeader({
               owner: ref,
               resource: ref,
               target: "diff",
+              select: true,
               diffRef: ref,
             })));
       if (!opened)

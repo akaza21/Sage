@@ -185,7 +185,10 @@ it.each(["session", "runtime"])(
     replaceItems(items);
     render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
     const trigger = screen.getByRole("button", { name: "Show chat resources" });
-    fireEvent.click(trigger);
+    await act(async () => {
+      fireEvent.click(trigger);
+      await vi.dynamicImportSettled();
+    });
     fireEvent.click(await screen.findByRole("button", { name: "View all" }));
     expect(screen.getByText("source-0.example")).toBeVisible();
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Chat resources" }), {

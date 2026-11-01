@@ -1055,7 +1055,12 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
     let inspected_packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let inspection = PhysicallyInspectedPackage::matching_fixture(&inspected_packet);
     let mut changed = packet_value();
-    changed["codexHome"] = json!(r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec");
+    changed["codexHome"] = json!(
+        changed["codexHome"]
+            .as_str()
+            .unwrap()
+            .replace("CodexState", "OtherCodexState")
+    );
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
     let requirements =
         parse_reproduction_requirements(REPRODUCTION_FIXTURE, &changed_packet).unwrap();
@@ -1073,11 +1078,13 @@ fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() 
     let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
 
     let mut changed = packet_value();
-    relocate_package_root(&mut changed, r"C:\SageHarnesses\Codex\0.146.0\package");
-    relocate_codex_home(
-        &mut changed,
-        r"C:\SageHarnesses\CodexState\codex-app-server-0.146.0-d3992fec",
-    );
+    let other_root = PACKAGE_ROOT.replace("SageHarnesses", "OtherHarnesses");
+    let other_home = changed["codexHome"]
+        .as_str()
+        .unwrap()
+        .replace("SageHarnesses", "OtherHarnesses");
+    relocate_package_root(&mut changed, &other_root);
+    relocate_codex_home(&mut changed, &other_home);
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
     let changed_reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
 

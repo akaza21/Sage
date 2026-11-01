@@ -734,6 +734,7 @@ describe("AgentTaskHeader working status", () => {
         sessionId: "session-1",
       },
       target: "file",
+      select: true,
       resource: { rootId: "root-a", relativePath: "report.md" },
     });
     expect(screen.queryByRole("button", { name: /private.txt/ })).toBeNull();

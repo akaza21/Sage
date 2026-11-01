@@ -175,6 +175,7 @@ export function AgentResourcesPopover({
               void openAgentArtifact({
                 owner: output.owner,
                 target: output.target,
+                select: true,
                 resource: output.resource,
                 ...(output.diffRef ? { diffRef: output.diffRef } : {}),
               }).then((opened) => {

@@ -746,7 +746,10 @@ describe("visual scenario surface ownership", () => {
         createElement(AgentArtifactPane),
       ),
     );
-    await installVisualScenario("diff");
+    await act(async () => {
+      await installVisualScenario("diff");
+      await vi.dynamicImportSettled();
+    });
     const snapshotBridge = acpDesktop.getFileSnapshot;
     const snapshot = vi
       .spyOn(acpDesktop, "getFileSnapshot")
@@ -760,12 +763,17 @@ describe("visual scenario surface ownership", () => {
         { timeout: 5_000 },
       ),
     ).toHaveTextContent("1 file changed");
-    fireEvent.click(screen.getByRole("button", { name: /file changed/i }));
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
-      }),
-    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /file changed/i }));
+      await vi.dynamicImportSettled();
+    });
+    const openDiff = await screen.findByRole("button", {
+      name: "Open diff Sage / src/workbench/AgentChatPanes.tsx",
+    });
+    await act(async () => {
+      fireEvent.click(openDiff);
+      await vi.dynamicImportSettled();
+    });
 
     expect(
       await screen.findByRole("table", { name: "Unified file diff" }),

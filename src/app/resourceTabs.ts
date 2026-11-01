@@ -1,4 +1,8 @@
-import { isNestedRepository, sameRepository } from "../domain/diffIdentity";
+import {
+  gitDiffScope,
+  isNestedRepository,
+  sameRepository,
+} from "../domain/diffIdentity";
 import {
   resourceKey,
   resourceTitle,
@@ -17,6 +21,7 @@ export function resourceTabUpdate(
   resource: ResourceRef,
   repository?: RepositoryRef,
   diffRef?: AgentDiffRef,
+  gitScope?: "staged" | "unstaged",
 ): Partial<WorkbenchState> {
   if (
     diffRef &&
@@ -33,6 +38,7 @@ export function resourceTabUpdate(
   const existing = state.tabs.find(
     (tab) =>
       tab.kind === kind &&
+      gitDiffScope(tab) === gitScope &&
       sameResource(tab.resource, resource) &&
       (diffRef
         ? Boolean(
@@ -76,9 +82,11 @@ export function resourceTabUpdate(
     1;
   const id = diffRef
     ? `diff:snapshot:${crypto.randomUUID()}`
-    : isNestedRepository(repository)
-      ? `${kind}:${resourceKey(repository)}:${resourceKey(resource)}`
-      : `${kind}:${resourceKey(resource)}`;
+    : gitScope
+      ? `diff:git:${gitScope}:${resourceKey(resource)}`
+      : isNestedRepository(repository)
+        ? `${kind}:${resourceKey(repository)}:${resourceKey(resource)}`
+        : `${kind}:${resourceKey(resource)}`;
 
   return {
     ...(evicted?.diffRef

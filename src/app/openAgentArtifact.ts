@@ -121,6 +121,7 @@ export async function openAgentArtifact(
     changes.owner.chatId === displayOwner.chatId &&
     changes.owner.sessionId === displayOwner.sessionId;
   if (
+    intent.select ||
     changesSelected ||
     (subagent.selected &&
       sameAgentArtifactOwner(subagent.open?.owner, displayOwner))

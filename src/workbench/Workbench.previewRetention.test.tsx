@@ -160,7 +160,7 @@ async function openPreview() {
       },
     });
   });
-  const frame = screen.getByTitle("Sage browser");
+  const frame = await screen.findByTitle("Sage browser");
   expect(frame).toBeVisible();
   return frame;
 }
@@ -181,7 +181,9 @@ it("keeps the Preview frame asleep behind Settings through a resize", async () =
 
   fireEvent.keyDown(window, { key: ",", ctrlKey: true });
   await settleLazyModules();
-  expect(screen.getByRole("dialog", { name: "Agent settings" })).toBeVisible();
+  expect(
+    await screen.findByRole("dialog", { name: "Agent settings" }),
+  ).toBeVisible();
   expect(frame.isConnected).toBe(true);
   expect(frame).not.toBeVisible();
   expect(previewBridge.stop).not.toHaveBeenCalled();

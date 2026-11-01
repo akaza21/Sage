@@ -6,7 +6,6 @@ import { resourceTabUpdate } from "../../app/resourceTabs";
 import { useAgentArtifactAdmissionStore } from "../../app/agentArtifactAdmissionStore";
 import { useAgentArtifactFollowStore } from "../../app/agentArtifactFollowStore";
 import { useAgentChangesState } from "../../workbench/agentChangesState";
-import { useAgentChangesScopes } from "../../workbench/agentChangesStateScopes";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { AcpChatPage } from "../../domain/acpProjection";
 import type { ChangesEntry, ChangesScope } from "./agentChanges";
@@ -32,6 +31,7 @@ export async function openChangesEntry(
         : await openAgentArtifact({
             owner: entry.diffRef,
             target: "diff",
+            select: true,
             resource: entry.resource,
             diffRef: entry.diffRef,
           }))
@@ -63,7 +63,14 @@ export async function openChangesEntry(
     )
       return;
     useWorkbenchStore.setState(
-      resourceTabUpdate(current, "diff", entry.resource),
+      resourceTabUpdate(
+        current,
+        "diff",
+        entry.resource,
+        undefined,
+        undefined,
+        entry.gitScope,
+      ),
     );
     const retained = useWorkbenchStore.getState().tabs;
     for (const old of current.tabs)
@@ -89,9 +96,6 @@ export async function openChangesEntry(
   );
   if (!tab) return;
   if (!source && entry.gitScope) {
-    useAgentChangesScopes
-      .getState()
-      .setGitScope(tab, entry.gitScope, state.projectGeneration);
     useWorkbenchStore.setState({ activeEditor: null });
     void state.revealFile(entry.resource);
   }

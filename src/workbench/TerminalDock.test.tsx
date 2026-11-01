@@ -58,7 +58,8 @@ vi.mock("@xterm/xterm", () => ({
 }));
 
 import { TerminalDock } from "./TerminalDock";
-import { terminalTheme, TerminalDockForWorkbench } from "./TerminalDockShell";
+import { TerminalDockForWorkbench } from "./TerminalDockShell";
+import { terminalTheme } from "./terminalTheme";
 
 const initialWorkbenchState = useWorkbenchStore.getState();
 const scope = {
@@ -69,7 +70,7 @@ const scope = {
 const handle = {
   sessionId: "f99cd56a-32d9-4600-a1f6-269e05734268",
   revision: "1",
-  shellPath: "C:\\Windows\\System32\\cmd.exe",
+  shellPath: "cmd.exe",
 };
 
 beforeEach(() => {

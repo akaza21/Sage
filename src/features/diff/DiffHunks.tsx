@@ -71,15 +71,3 @@ export function DiffHunks({
     </div>
   );
 }
-
-/** Only complete text diffs can supersede the repository status counts. */
-export function completeDiffCounts(diff: FileDiff | undefined) {
-  if (!diff || diff.binary || diff.truncated) return null;
-  const counts = { additions: 0, deletions: 0 };
-  for (const hunk of diff.hunks)
-    for (const line of hunk.lines) {
-      if (line.kind === "added") counts.additions += 1;
-      if (line.kind === "removed") counts.deletions += 1;
-    }
-  return counts;
-}

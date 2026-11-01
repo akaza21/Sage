@@ -3,7 +3,6 @@ import type { StateCreator } from "zustand";
 import { errorMessage } from "../domain/errors";
 import type { AgentDiffRef } from "../domain/agentDiff";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
-import { runLoadDiff } from "./diffLoad";
 import {
   childResource,
   resourceKey,
@@ -361,5 +360,7 @@ export const createResourceSlice: StateCreator<
   },
 
   loadDiff: (resource, repository, diffRef) =>
-    runLoadDiff(get, set, resource, repository, diffRef),
+    import("./diffLoad").then(({ runLoadDiff }) =>
+      runLoadDiff(get, set, resource, repository, diffRef),
+    ),
 });

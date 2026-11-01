@@ -261,8 +261,14 @@ afterEach(() => {
 describe("Agent artifact file chips", () => {
   it("unmounts Changes when selecting a normal file tab", async () => {
     admit("file:app");
-    render(<AgentArtifactPane expanded onExpandedChange={vi.fn()} />);
-    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    await act(async () => {
+      render(<AgentArtifactPane expanded onExpandedChange={vi.fn()} />);
+      await vi.dynamicImportSettled();
+    });
+    await act(async () => {
+      useAgentChangesState.getState().show(focusedOwner, 0);
+      await vi.dynamicImportSettled();
+    });
     expect(await screen.findByRole("tab", { name: /Changes/ })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -455,10 +461,9 @@ describe("Agent artifact file chips", () => {
     view.rerender(
       <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
     );
-    expect(screen.getByRole("tab", { name: "Subagents" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      await screen.findByRole("tab", { name: "Subagents" }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(
       await screen.findByRole("heading", { name: "Reviewer" }),
     ).toBeVisible();
@@ -512,7 +517,10 @@ describe("Agent artifact file chips", () => {
       agentKey: "child-a",
     });
 
-    render(<AgentArtifactPane expanded />);
+    await act(async () => {
+      render(<AgentArtifactPane expanded />);
+      await vi.dynamicImportSettled();
+    });
 
     await waitFor(() =>
       expect(childBridge.read).toHaveBeenCalledWith({
@@ -589,7 +597,7 @@ describe("Agent artifact file chips", () => {
     ).toBe("accepted");
     admit("file:app");
     render(<AgentArtifactPane />);
-    const tab = screen.getByRole("tab", { name: "Subagents" });
+    const tab = await screen.findByRole("tab", { name: "Subagents" });
     expect(tab).toHaveAttribute("aria-selected", "false");
     // Codex s4/f0244: a person outline, not sparkles, marks the tab.
     expect(tab.querySelector(".tab__person")).not.toBeNull();
