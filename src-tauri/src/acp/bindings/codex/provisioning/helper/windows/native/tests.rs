@@ -10,7 +10,9 @@ impl TempRoot {
     fn new(label: &str) -> Self {
         let path = std::env::temp_dir().join(format!("sage-{label}-{}", Uuid::new_v4()));
         fs::create_dir(&path).unwrap();
-        Self(path.canonicalize().unwrap())
+        let root = Self(path.canonicalize().unwrap());
+        super::super::security::grant_fixture_directory_control(&root.0).unwrap();
+        root
     }
 }
 
