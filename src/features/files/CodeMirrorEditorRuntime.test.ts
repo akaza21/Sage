@@ -733,6 +733,40 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
       vi.resetModules();
     }
   });
+
+  it("rejects a same-count reorder of specs with matching style shapes", () => {
+    const reordered = [...defaultHighlightStyle.specs];
+    [reordered[11], reordered[12]] = [reordered[12], reordered[11]];
+    expect(() => assertDefaultSpecFingerprint(reordered)).toThrow();
+  });
+
+  it("rejects drift in a non-color style value", () => {
+    expect(() =>
+      assertDefaultSpecFingerprint(
+        defaultHighlightStyle.specs.map((spec, index) =>
+          index === 1 ? { ...spec, textDecoration: "overline" } : spec,
+        ),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects a changed default spec count", () => {
+    expect(() =>
+      assertDefaultSpecFingerprint([
+        { tag: defaultHighlightStyle.specs[0].tag, color: "currentColor" },
+      ]),
+    ).toThrow();
+  });
+
+  it("rejects drift in a default palette value", () => {
+    expect(() =>
+      assertDefaultSpecFingerprint(
+        defaultHighlightStyle.specs.map((spec, index) =>
+          index === 6 ? { ...spec, color: "currentColor" } : spec,
+        ),
+      ),
+    ).toThrow();
+  });
 });
 
 describe("CodeMirrorEditorRuntime focus across a save", () => {
