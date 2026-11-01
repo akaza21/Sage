@@ -77,7 +77,9 @@ fn alive(pid: libc::pid_t) -> bool {
 
 /// Starts a background job that prints its pid, and returns that pid.
 fn start_job(process: &mut UnixPtyProcess, output: &TerminalOutputSink, job: &str) -> libc::pid_t {
-    let command = format!("{job} & printf 'job=%s.\\n' \"$!\"\n");
+    // `$!` ends the line: an interactive bash (macOS `/bin/sh`) would read
+    // `!"` as a history event, but never a `!` before a newline.
+    let command = format!("{job} & printf 'job=%s.\\n' $!\n");
     process.write(command.as_bytes()).unwrap();
     let text = wait_for(output, ".\r\n");
     let pid = text

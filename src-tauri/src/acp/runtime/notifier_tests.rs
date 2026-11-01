@@ -42,9 +42,17 @@ impl GateSink {
         }
     }
 
+    // Both waits register for the wakeup before reading the counter, so a
+    // `notify_waiters` between the read and the await is never lost.
     async fn wait_for_entries(&self, expected: usize) {
-        while self.entries.load(Ordering::SeqCst) < expected {
-            self.entered.notified().await;
+        loop {
+            let entered = self.entered.notified();
+            tokio::pin!(entered);
+            entered.as_mut().enable();
+            if self.entries.load(Ordering::SeqCst) >= expected {
+                return;
+            }
+            entered.await;
         }
     }
 
@@ -53,8 +61,14 @@ impl GateSink {
     }
 
     async fn wait_for_idle(&self) {
-        while self.active.load(Ordering::SeqCst) != 0 {
-            self.settled.notified().await;
+        loop {
+            let settled = self.settled.notified();
+            tokio::pin!(settled);
+            settled.as_mut().enable();
+            if self.active.load(Ordering::SeqCst) == 0 {
+                return;
+            }
+            settled.await;
         }
     }
 }
@@ -171,14 +185,16 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
         );
         sink.release(1);
         sink.wait_for_entries(2).await;
-        // Coalescing applies while this delivery is in flight. Releasing the
-        // sink first races the worker clearing its disposable pending slot.
+        // A repeat of the child epoch being delivered coalesces into it. Once
+        // that delivery settles the notifier is idle and would schedule the
+        // repeat again, so publish it while the delivery is still held.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Coalesced)
         );
-        assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         sink.release(1);
+        sink.wait_for_idle().await;
+        assert_eq!(*lock(&sink.revisions), vec![4, 4]);
         notifier.shutdown().await;
     });
 }

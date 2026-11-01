@@ -112,7 +112,11 @@ function runSmoke(
   t,
   args,
   environment = {},
-  { timeoutMs = CHILD_TIMEOUT_MS, entry = smokeEntry } = {},
+  {
+    timeoutMs = CHILD_TIMEOUT_MS,
+    entry = smokeEntry,
+    armWatchdogOnOutput = false,
+  } = {},
 ) {
   const directory = resolve(runRoot, `test-${randomUUID()}`);
   t.after(() => removeRun(directory));
@@ -128,7 +132,8 @@ function runSmoke(
       },
     );
     let surrender;
-    const watchdog = setTimeout(async () => {
+    let watchdog;
+    const reap = async () => {
       const reaped = await killProcessTree(child.pid);
       if (!reaped) child.kill("SIGKILL");
       surrender = setTimeout(() => {
@@ -138,7 +143,21 @@ function runSmoke(
           ),
         );
       }, WATCHDOG_GRACE_MS);
-    }, timeoutMs);
+    };
+    // A run's start-up time varies by machine, so a watchdog meant to cut a
+    // run short mid-flight starts counting once the run has made its output
+    // directory, within the normal child budget.
+    const armedAt = Date.now();
+    const arm = () => {
+      if (!armWatchdogOnOutput || existsSync(directory)) {
+        watchdog = setTimeout(reap, timeoutMs);
+      } else if (Date.now() - armedAt >= CHILD_TIMEOUT_MS) {
+        reap();
+      } else {
+        watchdog = setTimeout(arm, 25);
+      }
+    };
+    arm();
     t.after(() => {
       clearTimeout(watchdog);
       clearTimeout(surrender);
@@ -360,7 +379,7 @@ test(
       t,
       [`--url=http://127.0.0.1:${site.port}/`],
       {},
-      { timeoutMs: 500 },
+      { timeoutMs: 500, armWatchdogOnOutput: true },
     ).catch((error) => error);
 
     assert.ok(Date.now() - started < 60_000);

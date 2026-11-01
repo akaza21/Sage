@@ -1,3 +1,4 @@
+import { testFeatures } from "./cargo-features.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -117,7 +118,8 @@ export function createDevPlan(
               "test",
               "--manifest-path",
               "src-tauri/Cargo.toml",
-              "--all-features",
+              "--features",
+              testFeatures(platform).join(","),
               filter,
             ],
             cwd: root,

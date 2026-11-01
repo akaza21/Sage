@@ -171,11 +171,41 @@ fn safe_ref_path(branch: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, SystemTime};
+
     use super::*;
+
+    static NEXT_WRITE: AtomicU64 = AtomicU64::new(1);
 
     fn write(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().expect("parent")).expect("dir");
         fs::write(path, text).expect("write");
+        // This fingerprint observes metadata. Back-to-back ref creations can
+        // share a filesystem clock tick, so supply distinct observable times.
+        let tick = NEXT_WRITE.fetch_add(1, Ordering::Relaxed);
+        let modified = UNIX_EPOCH + Duration::from_secs(1_600_000_000 + tick * 4);
+        set_modified(path, modified);
+        set_modified(path.parent().expect("parent"), modified);
+    }
+
+    fn set_modified(path: &Path, modified: SystemTime) {
+        #[cfg(windows)]
+        let file = {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+
+            // FILE_WRITE_ATTRIBUTES; BACKUP_SEMANTICS also admits directories.
+            fs::OpenOptions::new()
+                .access_mode(0x0000_0100)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+                .expect("open fixture timestamps")
+        };
+        #[cfg(not(windows))]
+        let file = fs::File::open(path).expect("open fixture timestamps");
+        file.set_times(fs::FileTimes::new().set_modified(modified))
+            .expect("set fixture timestamps");
     }
 
     struct TempTree(PathBuf);

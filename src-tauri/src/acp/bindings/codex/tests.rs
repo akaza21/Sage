@@ -12,6 +12,8 @@ use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 
 mod file_change_sequence_tests;
+#[cfg(windows)]
+mod state_volume;
 mod terminal_error_tests;
 
 struct Mapper;
@@ -819,8 +821,8 @@ struct TestCodexStateRoot {
 #[cfg(windows)]
 impl TestCodexStateRoot {
     fn new() -> Self {
-        let parent =
-            std::env::temp_dir().join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
+        let parent = crate::test_paths::temp_dir()
+            .join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
         let home = parent
             .join("CodexState")
             .join("codex-app-server-0.146.0-d3992fec");
@@ -898,30 +900,33 @@ fn physical_state_authority_rejects_hardlinks_alternate_streams_and_sparse_exces
     let hardlinks = TestCodexStateRoot::new();
     let first = hardlinks.home.join("sessions").join("first.jsonl");
     std::fs::write(&first, b"session").unwrap();
-    std::fs::hard_link(&first, hardlinks.home.join("sessions").join("second.jsonl")).unwrap();
-    assert!(matches!(
-        inspect_test_state(&hardlinks),
-        Err(StateAuthorityError::Alias)
-    ));
+    let second = hardlinks.home.join("sessions").join("second.jsonl");
+    let supported = crate::test_paths::volume_flags(&hardlinks.home)
+        & state_volume::FILE_SUPPORTS_HARD_LINKS
+        != 0;
+    let linked = std::fs::hard_link(&first, &second);
+    if supported {
+        linked.expect("create supported hard link");
+        assert!(matches!(
+            inspect_test_state(&hardlinks),
+            Err(StateAuthorityError::Alias)
+        ));
+    } else {
+        assert!(linked.is_err(), "this volume must refuse hard links");
+        assert!(!second.exists());
+        inspect_test_state(&hardlinks).expect("bounded state without a hard link");
+    }
     hardlinks.cleanup();
 
     let streams = TestCodexStateRoot::new();
     let ordinary = streams.home.join("history.jsonl");
     std::fs::write(&ordinary, b"history").unwrap();
-    std::fs::write(format!("{}:secret", ordinary.display()), b"hidden").unwrap();
-    assert!(matches!(
-        inspect_test_state(&streams),
-        Err(StateAuthorityError::Stream)
-    ));
+    state_volume::assert_named_stream_policy(&streams, &ordinary);
     streams.cleanup();
 
     let directory_streams = TestCodexStateRoot::new();
     let directory = directory_streams.home.join("sessions");
-    std::fs::write(format!("{}:secret", directory.display()), b"hidden").unwrap();
-    assert!(matches!(
-        inspect_test_state(&directory_streams),
-        Err(StateAuthorityError::Stream)
-    ));
+    state_volume::assert_named_stream_policy(&directory_streams, &directory);
     directory_streams.cleanup();
 
     let sparse = TestCodexStateRoot::new();
@@ -1056,8 +1061,9 @@ fn reproduction_prerequisite_rejects_an_inspection_for_a_different_codex_home() 
     let inspection = PhysicallyInspectedPackage::matching_fixture(&inspected_packet);
     let mut changed = packet_value();
     changed["codexHome"] =
-        json!(ISOLATED_CODEX_HOME.replace("SageHarnesses", "AlternateHarnesses"));
+        json!(ISOLATED_CODEX_HOME.replacen("\\CodexState\\", "\\Relocated\\CodexState\\", 1,));
     let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert_ne!(changed_packet.codex_home(), inspected_packet.codex_home());
     let requirements =
         parse_reproduction_requirements(REPRODUCTION_FIXTURE, &changed_packet).unwrap();
 
@@ -1072,23 +1078,29 @@ fn managed_staging_prerequisite_rejects_a_different_package_and_state_binding() 
     let packet = parse_packet_metadata(PACKET_FIXTURE).unwrap();
     let reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&packet);
     let managed = managed::ManagedStagingPrerequisite::fixture(&packet, &reproduced);
+    let relocated_package = PACKAGE_ROOT.replacen("\\Codex\\", "\\Relocated\\Codex\\", 1);
+    let relocated_home =
+        ISOLATED_CODEX_HOME.replacen("\\CodexState\\", "\\Relocated\\CodexState\\", 1);
+    assert_ne!(relocated_package, PACKAGE_ROOT);
+    assert_ne!(relocated_home, ISOLATED_CODEX_HOME);
 
-    let mut changed = packet_value();
-    relocate_package_root(
-        &mut changed,
-        &PACKAGE_ROOT.replace("SageHarnesses", "AlternateHarnesses"),
-    );
-    relocate_codex_home(
-        &mut changed,
-        &ISOLATED_CODEX_HOME.replace("SageHarnesses", "AlternateHarnesses"),
-    );
-    let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
-    let changed_reproduced = reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
+    for (package_root, codex_home) in [
+        (relocated_package.as_str(), ISOLATED_CODEX_HOME),
+        (PACKAGE_ROOT, relocated_home.as_str()),
+        (relocated_package.as_str(), relocated_home.as_str()),
+    ] {
+        let mut changed = packet_value();
+        relocate_package_root(&mut changed, package_root);
+        relocate_codex_home(&mut changed, codex_home);
+        let changed_packet = parse_packet_metadata(&serde_json::to_vec(&changed).unwrap()).unwrap();
+        let changed_reproduced =
+            reproduction::ReproducedPackagePrerequisite::fixture(&changed_packet);
 
-    assert_eq!(
-        managed.revalidate(&changed_packet, &changed_reproduced),
-        Err(ManagedStagingError::Binding)
-    );
+        assert_eq!(
+            managed.revalidate(&changed_packet, &changed_reproduced),
+            Err(ManagedStagingError::Binding)
+        );
+    }
 }
 
 #[cfg(windows)]
