@@ -197,6 +197,7 @@ test("CI plans Rust from both sides of every changed path", async () => {
     "tests/fixtures/harness-traces/claude-code/smoke/frames.jsonl",
     "src/features/chat/acp/rendererRecreationPacket.ts",
     "rust-toolchain.toml",
+    "scripts/cargo-features.mjs",
     ".github/workflows/ci.yml",
   ]) {
     assert.ok(rustPath.test(file), `${file} must run Rust`);
