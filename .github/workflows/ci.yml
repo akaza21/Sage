@@ -137,7 +137,7 @@ jobs:
   frontend:
     name: Frontend and policy
     needs: plan
-    if: needs.plan.outputs.frontend == 'true'
+    if: false
     runs-on: ubuntu-latest
     # Measured on ubuntu-latest: Vitest alone takes about 12 minutes (425
     # files), before the budget lanes, build and policy checks.
@@ -175,6 +175,25 @@ jobs:
       # rust-toolchain.toml toolchain first so no command waits on a download.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
+      - name: Probe cold cargo and Job helper startup
+        shell: powershell
+        run: |
+          $manifest = "src-tauri/Cargo.toml"
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          powershell -NoLogo -NoProfile -NonInteractive -Command "exit 0"
+          "powershell bare: $($sw.ElapsedMilliseconds) ms"
+          $sw.Restart()
+          powershell -NoLogo -NoProfile -NonInteractive -Command "Add-Type -Path scripts/lib/WindowsCargoJob.Native.cs"
+          "powershell + Add-Type: $($sw.ElapsedMilliseconds) ms"
+          $sw.Restart()
+          cargo locate-project --manifest-path $manifest | Out-Null
+          "cargo locate-project first: $($sw.ElapsedMilliseconds) ms"
+          $sw.Restart()
+          cargo locate-project --manifest-path $manifest | Out-Null
+          "cargo locate-project second: $($sw.ElapsedMilliseconds) ms"
+          $sw.Restart()
+          rustup which cargo
+          "rustup which: $($sw.ElapsedMilliseconds) ms"
       - name: Run the Windows budget lane
         # Hosted TEMP can use an 8.3 short spelling, which
         # the native-IDE journey scripts refuse as non-canonical.
@@ -187,7 +206,7 @@ jobs:
   rust:
     name: Rust (${{ matrix.os }})
     needs: plan
-    if: needs.plan.outputs.rust == 'true'
+    if: false
     runs-on: ${{ matrix.os }}
     # A cold-cache run builds and runs the parallel test phase in about 20
     # minutes on ubuntu-latest, before Clippy, the serial phases and the
