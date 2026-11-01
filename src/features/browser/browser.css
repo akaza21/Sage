@@ -157,12 +157,53 @@
   cursor: pointer;
 }
 
-.browser-surface__attachment select {
+/* The chat picker shows the chat's title, ellipsised only past its cap. In a
+   narrow toolbar it becomes a chat icon over the same native select, so it
+   stays reachable without a clipped title. */
+.browser-surface__chat-picker {
+  position: relative;
+  display: flex;
   flex: 0 1 auto;
   min-width: 10ch;
   max-width: 160px;
+}
+.browser-surface__attachment select {
+  width: 100%;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+.browser-surface__chat-icon {
+  position: absolute;
+  inset: 0;
+  display: none;
+  margin: auto;
+  color: var(--browser-control-text);
+  pointer-events: none;
+}
+@container (max-width: 480px) {
+  .browser-surface__address input {
+    padding: 0 var(--space-2);
+    text-overflow: ellipsis;
+  }
+  .browser-surface__address-security {
+    display: none;
+  }
+  .browser-surface__chat-picker {
+    flex: none;
+    width: var(--control-height-compact);
+    min-width: 0;
+  }
+  .browser-surface__attachment select {
+    padding: 0;
+    color: transparent;
+    appearance: none;
+  }
+  .browser-surface__attachment option {
+    color: var(--browser-control-text);
+  }
+  .browser-surface__chat-icon {
+    display: block;
+  }
 }
 .browser-surface__attachment button:hover:not(:disabled),
 .browser-surface__attachment select:hover:not(:disabled) {

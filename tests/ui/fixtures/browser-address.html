@@ -17,6 +17,7 @@
       import { createRoot } from "react-dom/client";
       import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
       import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
+      import { BrowserDownloadsControl } from "/src/features/browser/BrowserDownloadsControl.tsx";
       import "/src/styles/global.css";
       import "/src/features/browser/browser.css";
 
@@ -24,9 +25,13 @@
       const params = new URLSearchParams(location.search);
       const newTab = params.has("new-tab");
       const chatTitle = params.get("chat");
+      const width = params.get("width");
+      if (width)
+        document.querySelector(".browser-surface").style.width = `${width}px`;
       function Fixture() {
         const [address, setAddress] = React.useState(newTab ? "" : url);
         const addressField = React.useRef(null);
+        const [downloadsOpen, setDownloadsOpen] = React.useState(false);
         return React.createElement(BrowserNavigationControls, {
           navigation: {
             tabId: "browser-visual",
@@ -79,6 +84,13 @@
                 { "aria-label": "Attach page" },
                 "▣",
               ),
+          downloadsControl: chatTitle
+            ? React.createElement(BrowserDownloadsControl, {
+                tabId: "browser-visual",
+                open: downloadsOpen,
+                onOpenChange: setDownloadsOpen,
+              })
+            : undefined,
         });
       }
       createRoot(document.getElementById("toolbar")).render(

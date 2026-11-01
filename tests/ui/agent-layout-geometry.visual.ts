@@ -339,3 +339,63 @@ test("the browser toolbar shows the attached chat's title, truncating only long 
     await select.evaluate((node) => getComputedStyle(node).textOverflow),
   ).toBe("ellipsis");
 });
+
+test("a narrow browser toolbar keeps every action whole, separate and reachable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 400 });
+  const select = page.getByRole("combobox", { name: "Chat for browser tab" });
+  for (const width of [339, 420, 560]) {
+    await page.goto(
+      `/tests/ui/fixtures/browser-address.html?chat=${encodeURIComponent(
+        "Chat: Walking skeleton for the agent workbench",
+      )}&width=${width}`,
+    );
+    const toolbar = page.locator(".browser-surface__toolbar");
+    const edge = await bounds(toolbar);
+    expect(Math.round(edge.width)).toBe(width);
+
+    const controls = [
+      ...(await toolbar.getByRole("button").all()),
+      page.getByRole("textbox", { name: "Address or search" }),
+      select,
+    ];
+    const boxes = [];
+    for (const control of controls) {
+      const box = await bounds(control);
+      expectInside(box, edge);
+      boxes.push(box);
+    }
+    for (const [i, a] of boxes.entries()) {
+      for (const b of boxes.slice(i + 1)) {
+        const apart =
+          a.x + a.width <= b.x + SUBPIXEL || b.x + b.width <= a.x + SUBPIXEL;
+        expect(apart).toBe(true);
+      }
+    }
+    for (const name of ["Downloads", "More options"]) {
+      const button = toolbar.getByRole("button", { name });
+      const box = await bounds(button);
+      const hit = await page.evaluate(
+        ([x, y]) =>
+          document.elementFromPoint(x, y)?.closest("button")?.ariaLabel ?? null,
+        [box.x + box.width / 2, box.y + box.height / 2],
+      );
+      expect(hit).toBe(name);
+    }
+
+    // The chat picker shows its title, or only its icon; never a sliver.
+    const picker = await bounds(select);
+    const compact = await select.evaluate(
+      (node) => getComputedStyle(node).color === "rgba(0, 0, 0, 0)",
+    );
+    if (compact) {
+      await expect(page.locator(".browser-surface__chat-icon")).toBeVisible();
+      expect(picker.width).toBeGreaterThanOrEqual(24);
+    } else {
+      await expect(page.locator(".browser-surface__chat-icon")).toBeHidden();
+      expect(picker.width).toBeGreaterThanOrEqual(120);
+    }
+    expect(compact).toBe(width <= 480);
+  }
+});

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Link2, MessageCircleQuestion, Unlink2 } from "../../ui/leanIcons";
+import {
+  Link2,
+  MessageCircleQuestion,
+  MessageSquare,
+  Unlink2,
+} from "../../ui/leanIcons";
 import {
   pinnedAgentChatOwner,
   usePinnedAgentChatOwner,
@@ -208,18 +213,26 @@ export function BrowserAttachmentControls({
   return (
     <div className="browser-surface__attachment">
       <BrowserAskPageButton tabId={tabId} ready={ready} onError={setError} />
-      <select
-        aria-label="Chat for browser tab"
-        value={chosen}
-        onChange={(event) => setChatId(event.target.value)}
-        disabled={!chats.length || busy}
-      >
-        {chats.map((chat) => (
-          <option key={chat.id} value={chat.id}>
-            {chat.title}
-          </option>
-        ))}
-      </select>
+      <span className="browser-surface__chat-picker">
+        <MessageSquare
+          className="browser-surface__chat-icon"
+          size={16}
+          aria-hidden="true"
+        />
+        <select
+          aria-label="Chat for browser tab"
+          title={chats.find((chat) => chat.id === chosen)?.title}
+          value={chosen}
+          onChange={(event) => setChatId(event.target.value)}
+          disabled={!chats.length || busy}
+        >
+          {chats.map((chat) => (
+            <option key={chat.id} value={chat.id}>
+              {chat.title}
+            </option>
+          ))}
+        </select>
+      </span>
       {attachedChat === chosen ? (
         <button
           type="button"
