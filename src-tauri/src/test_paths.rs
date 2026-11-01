@@ -28,3 +28,35 @@ pub(crate) fn temp_dir() -> PathBuf {
         path
     }
 }
+
+#[cfg(windows)]
+pub(crate) fn volume_flags(directory: &std::path::Path) -> u32 {
+    use std::fs::OpenOptions;
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, GetVolumeInformationByHandleW,
+    };
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(directory)
+        .unwrap();
+    let mut flags = 0;
+    assert_ne!(
+        unsafe {
+            GetVolumeInformationByHandleW(
+                directory.as_raw_handle().cast(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut flags,
+                std::ptr::null_mut(),
+                0,
+            )
+        },
+        0,
+        "inspect fixture volume capabilities"
+    );
+    flags
+}
