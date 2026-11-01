@@ -12,6 +12,7 @@ import {
   type KeymapChordEvent,
 } from "../../domain/keymapRegistry";
 import type { AcpConfigOption } from "../../domain/acpSessionConfig";
+import type { HarnessDefinition } from "../../domain/harness";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
@@ -26,14 +27,20 @@ export const COMPOSER_PROMPT_PLACEHOLDER_DISABLED =
   "Choose an available harness before starting a session";
 export const COMPOSER_WORKSPACE_NAME_CAP = 48;
 
-export function harnessIconKind(
-  name: string | null | undefined,
+// Brand marks belong to the curated built-in harnesses, keyed by their
+// catalogue id; registry and custom harnesses never borrow one by name.
+const BUILT_IN_HARNESS_LOGOS: ReadonlyMap<string, HarnessLogoKind> = new Map([
+  ["claude-code", "claude"],
+  ["codex", "codex"],
+  ["opencode", "opencode"],
+  ["pi", "pi"],
+]);
+
+export function harnessLogoKind(
+  harness: Pick<HarnessDefinition, "id" | "source">,
 ): HarnessLogoKind {
-  if (/claude/i.test(name ?? "")) return "claude";
-  if (/codex/i.test(name ?? "")) return "codex";
-  if (/opencode/i.test(name ?? "")) return "opencode";
-  if (/^pi\b/i.test(name ?? "")) return "pi";
-  return "generic";
+  if (harness.source !== "builtIn") return "generic";
+  return BUILT_IN_HARNESS_LOGOS.get(harness.id) ?? "generic";
 }
 
 interface VoiceEvent {

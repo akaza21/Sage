@@ -1376,7 +1376,7 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
-          id: "claude",
+          id: "claude-code",
           name: "Claude Code",
           description: "",
           installState: "available",
@@ -1384,6 +1384,26 @@ describe("composer permission mode picker", () => {
           accountModelDiscovery: false,
           transport: "acp",
           bindingId: "claude-agent-acp",
+        },
+        {
+          id: "pi",
+          name: "Pi",
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-acp",
+        },
+        {
+          id: "pi-helper",
+          name: "Pi helper",
+          description: "",
+          installState: "available",
+          source: "custom",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-helper-acp",
         },
         {
           id: "codex",
@@ -1407,7 +1427,7 @@ describe("composer permission mode picker", () => {
         },
       ],
     });
-    renderControls({ selectedHarnessId: "claude" });
+    renderControls({ selectedHarnessId: "claude-code" });
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen
@@ -1430,11 +1450,22 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /OpenCode/ })
         .querySelector('[data-harness-icon="opencode"]'),
     ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("option", { name: /^Pi —/ })
+        .querySelector('[data-harness-icon="pi"]'),
+    ).not.toBeNull();
+    // A custom harness never borrows a built-in brand by its name.
+    expect(
+      screen
+        .getByRole("option", { name: /Pi helper/ })
+        .querySelector('[data-harness-icon="generic"]'),
+    ).not.toBeNull();
   });
 
   it("shows confirmed model subtitles without installation details and keeps reasons accessible", () => {
     const claude = {
-      id: "claude",
+      id: "claude-code",
       name: "Claude Code",
       description: "",
       installState: "available" as const,
