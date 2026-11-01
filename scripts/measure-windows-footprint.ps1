@@ -143,9 +143,9 @@ function Get-ExactRootIdentity {
         [string]::Equals([IO.Path]::GetFullPath([string]$_.ExecutablePath), $LaunchIdentity.executablePath, [StringComparison]::OrdinalIgnoreCase) -and
         (ConvertTo-FootprintProcessIdentity $_).creationDate -eq $LaunchIdentity.creationDate
       }).Count -eq 1) {
-        foreach ($row in @(Get-FootprintDescendants ([int]$LaunchIdentity.processId) $rows)) {
-          [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
-        }
+        Add-FootprintRememberedIdentities $KnownProcessIdentities @(
+          Get-FootprintDescendants ([int]$LaunchIdentity.processId) $rows -RootCreationDate $LaunchIdentity.creationDate
+        )
       }
       return Get-FootprintRootIdentity $LaunchIdentity.processId $resolvedExecutable $LaunchIdentity.creationDate $rows
     } catch {

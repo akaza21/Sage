@@ -38,16 +38,25 @@ function Get-FootprintDescendants {
     throw "Process snapshot exceeds its $MaxProcessRows-row limit."
   }
   # Windows keeps a process's parent PID after the parent exits, and PIDs are
-  # reused, so a row is adopted only when it started no earlier than its
-  # parent. A row whose creation time is unknown is still adopted, so its
-  # incomplete identity fails closed downstream, but its ancestry is unproven
-  # and nothing is adopted through it.
+  # reused, so a row is adopted only when its parent's creation time is known
+  # and the row started no earlier than that parent. A row whose own creation
+  # time is unknown is still adopted, so its incomplete identity fails closed
+  # downstream, but nothing is adopted through it. The root's creation time
+  # comes from -RootCreationDate when given, which also rejects a reused root
+  # PID, and otherwise from its snapshot row.
   $creationById = @{}
   foreach ($row in $ProcessRows) {
     $creationById[[int]$row.ProcessId] = Get-FootprintCreationTime $row
   }
-  if ($null -eq $creationById[$RootProcessId] -and $null -ne $RootCreationDate) {
-    $creationById[$RootProcessId] = ConvertTo-FootprintCreationTime $RootCreationDate
+  $rootCreated = $creationById[$RootProcessId]
+  if ($null -ne $RootCreationDate) {
+    $expectedRootCreated = ConvertTo-FootprintCreationTime $RootCreationDate
+    if ($null -eq $expectedRootCreated) { throw "The root creation time is not a valid timestamp." }
+    $expectedRootIdentity = ConvertTo-FootprintCreationIdentity $expectedRootCreated
+    if ($null -ne $rootCreated -and (ConvertTo-FootprintCreationIdentity $rootCreated) -ne $expectedRootIdentity) {
+      return @()
+    }
+    $creationById[$RootProcessId] = $expectedRootCreated
   }
   $included = [Collections.Generic.HashSet[int]]::new()
   [void]$included.Add($RootProcessId)
@@ -59,8 +68,8 @@ function Get-FootprintDescendants {
       if ($included.Contains($processId) -or -not $included.Contains($parentId)) { continue }
       $created = $creationById[$processId]
       $parentCreated = $creationById[$parentId]
-      if ($null -eq $parentCreated -and $parentId -ne $RootProcessId) { continue }
-      if ($null -ne $created -and $null -ne $parentCreated -and $created -lt $parentCreated) { continue }
+      if ($null -eq $parentCreated) { continue }
+      if ($null -ne $created -and $created -lt $parentCreated) { continue }
       [void]$included.Add($processId)
       $changed = $true
     }
@@ -419,7 +428,7 @@ function Get-FootprintForceKillCandidates {
   if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
   $root = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$RootIdentity.processId }) | Select-Object -First 1
   if ($null -eq $root -or -not (Test-FootprintProcessIdentity $root $RootIdentity.executablePath $RootIdentity.creationDate)) { return @() }
-  return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows)
+  return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate)
 }
 
 function Invoke-FootprintTreeCore {
@@ -440,7 +449,7 @@ function Invoke-FootprintTreeCore {
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = [bool]$plan.identityLost
   if ($plan.rootState -eq "matching") {
-    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows)
+    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows -RootCreationDate $RootIdentity.creationDate)
     $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
     $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
     if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }

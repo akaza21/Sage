@@ -197,3 +197,30 @@ $boundary='';try{[void](Stop-FootprintLaunchedProcessObject $process 'C:\Apps\sa
     boundaryRefused: true,
   });
 });
+
+test("descendants need a proven root creation time, and a reused root PID vouches for nothing", () => {
+  const observed = runPowerShellFixture(String.raw`
+$started=[DateTime]::Parse('2026-08-30T00:00:00Z').ToUniversalTime();
+$ids={param($rows,$creation) $arguments=@{RootProcessId=101;ProcessRows=$rows};if($null -ne $creation){$arguments.RootCreationDate=$creation};@(Get-FootprintDescendants @arguments | ForEach-Object { [int]$_.ProcessId })};
+$exited=@(
+  [pscustomobject]@{ProcessId=303;ParentProcessId=101;ExecutablePath='C:\Windows\System32\svchost.exe';CreationDate=$started.AddMinutes(-1)},
+  [pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath='C:\Apps\node.exe';CreationDate=$started.AddSeconds(1)}
+);
+$live=@(
+  [pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath='C:\Apps\vite.cmd';CreationDate=$started},
+  [pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath='C:\Apps\node.exe';CreationDate=$started.AddSeconds(1)}
+);
+[ordered]@{
+  exitedWithoutLaunchTime=@(& $ids $exited $null);
+  exitedWithLaunchTime=@(& $ids $exited '2026-08-30T00:00:00.000Z');
+  liveWithLaunchTime=@(& $ids $live '2026-08-30T00:00:00.000Z');
+  reusedRoot=@(& $ids $live '2026-08-29T23:00:00.000Z')
+}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    exitedWithoutLaunchTime: [],
+    exitedWithLaunchTime: [202],
+    liveWithLaunchTime: [101, 202],
+    reusedRoot: [],
+  });
+});

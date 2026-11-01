@@ -210,9 +210,9 @@ function Stop-UnadmittedOwnedRuntime(
   }
   try {
     $ProcessRows = @(Get-FootprintProcessSnapshot)
-    foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $ProcessRows)) {
-      [void](Add-FootprintRememberedIdentity $RememberedIdentities $row)
-    }
+    Add-FootprintRememberedIdentities $RememberedIdentities @(
+      Get-FootprintDescendants ([int]$Process.Id) $ProcessRows -RootCreationDate $Process.StartTime
+    )
   } catch {
     $ProcessRows = $null
   }
@@ -276,9 +276,9 @@ function Capture-OwnedRuntimeOrQuarantine(
     if ($refreshSucceeded) {
       try {
         $snapshot = @(Get-FootprintProcessSnapshot)
-        foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $snapshot)) {
-          [void](Add-FootprintRememberedIdentity $remembered $row)
-        }
+        Add-FootprintRememberedIdentities $remembered @(
+          Get-FootprintDescendants ([int]$Process.Id) $snapshot -RootCreationDate $Process.StartTime
+        )
         $lastSnapshot = $snapshot
       } catch {
         # Cleanup retains any identities remembered by an earlier attempt.
@@ -540,15 +540,21 @@ function Update-OwnedRuntimeTree([Collections.IDictionary]$Runtime) {
     } catch { }
     throw
   }
-  foreach ($row in @(Get-FootprintDescendants ([int]$Runtime.identity.processId) $rows)) {
+  # Stage the whole tree so one incomplete row leaves the runtime store as it was.
+  $staged = [Collections.Generic.Dictionary[string, object]]::new($Runtime.store, [StringComparer]::Ordinal)
+  $descendants = @(Get-FootprintDescendants ([int]$Runtime.identity.processId) $rows -RootCreationDate $Runtime.identity.creationDate)
+  foreach ($row in $descendants) {
     $isRoot = $false
     try { $isRoot = [int]$row.ProcessId -eq [int]$Runtime.identity.processId } catch { }
     try {
-      [void](Add-FootprintRememberedIdentity $Runtime.store $row)
+      [void](Add-FootprintRememberedIdentity $staged $row)
     } catch {
       try { [void](Add-StartupIncompleteIdentityFact $_ "update-descendant" $row $isRoot) } catch { }
       throw
     }
+  }
+  foreach ($entry in $staged.GetEnumerator()) {
+    if (-not $Runtime.store.ContainsKey($entry.Key)) { $Runtime.store.Add($entry.Key, $entry.Value) }
   }
 }
 
