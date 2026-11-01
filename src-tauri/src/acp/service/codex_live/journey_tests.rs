@@ -559,8 +559,8 @@ fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
             b"sage-disposable-profile-v1\n",
         )
         .unwrap();
-        let artifact_root =
-            std::env::temp_dir().join(format!("sage-cp14-artifact-{}", uuid::Uuid::new_v4()));
+        let artifact_root = crate::test_paths::temp_dir()
+            .join(format!("sage-cp14-artifact-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&artifact_root).unwrap();
         let artifact = artifact_root.join("acp-adversarial-fixture.exe");
         let source = std::env::current_exe()
@@ -577,8 +577,8 @@ fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
         let profile = crate::launch_profile::resolve_launch_profile(
             Some(profile_root.as_os_str()),
             Some(project_root.as_os_str()),
-            std::env::temp_dir().join("sage-cp14-normal-durable"),
-            std::env::temp_dir().join("sage-cp14-normal-webview"),
+            crate::test_paths::temp_dir().join("sage-cp14-normal-durable"),
+            crate::test_paths::temp_dir().join("sage-cp14-normal-webview"),
         )
         .unwrap();
         let selection = crate::launch_profile::resolve_codex_fixture_selection(
