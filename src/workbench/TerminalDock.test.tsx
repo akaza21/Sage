@@ -24,7 +24,9 @@ const xterm = vi.hoisted(() => ({
   measured: true,
   scrollbar: 0,
   cell: [8, 16],
+  initial: [80, 24],
 }));
+let ptySize = { columns: 80, rows: 24 };
 let resizeCallback: (() => void) | null = null;
 
 vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
@@ -42,8 +44,22 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
-    cols = 80;
-    rows = 24;
+    cols = xterm.initial[0];
+    rows = xterm.initial[1];
+    _core = {
+      _renderService: {
+        get dimensions() {
+          return {
+            device: {
+              cell: {
+                width: xterm.measured ? xterm.cell[0] * devicePixelRatio : 0,
+                height: xterm.measured ? xterm.cell[1] * devicePixelRatio : 0,
+              },
+            },
+          };
+        },
+      },
+    };
     constructor(options: Record<string, unknown>) {
       xterm.options = options;
     }
@@ -105,6 +121,21 @@ function setScreenSize(width: number, height: number) {
   space.height = height;
 }
 
+function expectGrid(
+  container: HTMLElement,
+  width: number,
+  height: number,
+  columns: number,
+  rows: number,
+) {
+  const grid = container
+    .querySelector(".xterm-screen")!
+    .getBoundingClientRect();
+  expect(grid.width).toBe(width);
+  expect(grid.height).toBe(height);
+  expect(ptySize).toEqual({ columns, rows });
+}
+
 const initialWorkbenchState = useWorkbenchStore.getState();
 const scope = {
   projectId: "project-1",
@@ -122,11 +153,15 @@ beforeEach(() => {
   xterm.measured = true;
   xterm.scrollbar = 0;
   xterm.cell = [8, 16];
+  xterm.initial = [80, 24];
+  ptySize = { columns: 80, rows: 24 };
   Object.values(native).forEach((mock) => mock.mockReset());
   native.create.mockResolvedValue(handle);
   native.read.mockImplementation(() => new Promise(() => undefined));
   native.close.mockResolvedValue(undefined);
-  native.resize.mockResolvedValue(undefined);
+  native.resize.mockImplementation(async (_scope, _handle, columns, rows) => {
+    ptySize = { columns, rows };
+  });
   native.write.mockResolvedValue(undefined);
   xterm.refresh.mockReset();
   xterm.data = null;
@@ -271,7 +306,7 @@ it("retries a transient native reader conflict after remount", async () => {
 });
 
 it("resizes the active terminal after a pane or DPI change", async () => {
-  render(
+  const { container } = render(
     <TerminalDock
       scope={scope}
       session={handle}
@@ -281,9 +316,7 @@ it("resizes the active terminal after a pane or DPI change", async () => {
   );
   setScreenSize(804, 170);
   resizeCallback?.();
-  await waitFor(() =>
-    expect(native.resize).toHaveBeenCalledWith(scope, handle, 100, 10),
-  );
+  await waitFor(() => expectGrid(container, 800, 160, 100, 10));
   const before = window.devicePixelRatio;
   Object.defineProperty(window, "devicePixelRatio", {
     configurable: true,
@@ -297,8 +330,61 @@ it("resizes the active terminal after a pane or DPI change", async () => {
   });
 });
 
+it.each([1, 80])(
+  "fills an exact-fit container starting at %i columns",
+  async (columns) => {
+    xterm.initial = [columns, 24];
+    setScreenSize(800, 160);
+    const { container } = render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    await waitFor(() => expectGrid(container, 800, 160, 100, 10));
+  },
+);
+
+it.each([
+  [16, 16],
+  [1600, 320],
+])(
+  "fits the same grid after resizing from %i by %i pixels",
+  async (width, height) => {
+    setScreenSize(width, height);
+    const { container } = render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    setScreenSize(800, 160);
+    resizeCallback?.();
+    await waitFor(() => expectGrid(container, 800, 160, 100, 10));
+    // Cross to the other side, then return to the identical destination.
+    setScreenSize(width === 16 ? 1600 : 16, height === 16 ? 320 : 16);
+    resizeCallback?.();
+    await waitFor(() =>
+      expectGrid(
+        container,
+        width === 16 ? 1600 : 16,
+        height === 16 ? 320 : 16,
+        width === 16 ? 200 : 2,
+        height === 16 ? 20 : 1,
+      ),
+    );
+    setScreenSize(800, 160);
+    resizeCallback?.();
+    await waitFor(() => expectGrid(container, 800, 160, 100, 10));
+  },
+);
+
 it("keeps a measured grid inside the native size limits", async () => {
-  render(
+  const { container } = render(
     <TerminalDock
       scope={scope}
       session={handle}
@@ -306,15 +392,16 @@ it("keeps a measured grid inside the native size limits", async () => {
       onStatus={() => undefined}
     />,
   );
-  setScreenSize(8 * 900, 15);
+  setScreenSize(8 * 900, 16 * 400);
   resizeCallback?.();
-  await waitFor(() =>
-    expect(native.resize).toHaveBeenCalledWith(scope, handle, 500, 1),
-  );
+  await waitFor(() => expectGrid(container, 4000, 4800, 500, 300));
+  setScreenSize(1, 1);
+  resizeCallback?.();
+  await waitFor(() => expectGrid(container, 16, 16, 2, 1));
 });
 
 it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
-  render(
+  const { container } = render(
     <TerminalDock
       scope={scope}
       session={handle}
@@ -323,35 +410,33 @@ it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
     />,
   );
   xterm.scrollbar = 14;
-  setScreenSize(804, 170);
+  setScreenSize(814, 160);
   resizeCallback?.();
-  await waitFor(() =>
-    expect(native.resize).toHaveBeenCalledWith(scope, handle, 98, 10),
-  );
+  await waitFor(() => expectGrid(container, 800, 160, 100, 10));
 });
 
-it("never admits a column that a fractional cell would clip", async () => {
-  // A 7.2 px cell: 80 columns render 576 px wide, 97 columns 698.4 px.
-  xterm.cell = [7.2, 16];
-  render(
-    <TerminalDock
-      scope={scope}
-      session={handle}
-      ended={false}
-      onStatus={() => undefined}
-    />,
-  );
-  setScreenSize(700, 170);
-  resizeCallback?.();
-  await waitFor(() => expect(native.resize).toHaveBeenCalledTimes(2));
-  const [, , columns, rows] = native.resize.mock.lastCall ?? [];
-  expect(columns * 7.2).toBeLessThanOrEqual(700);
-  expect(columns).toBe(97);
-  expect(rows).toBe(10);
-});
+it.each([1, 80])(
+  "fits fractional cells from %i columns without clipping",
+  async (columns) => {
+    // A 7.2 px cell: 80 columns render 576 px wide, 97 columns 698.4 px.
+    xterm.cell = [7.2, 15.5];
+    xterm.initial = [columns, 24];
+    const { container } = render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    setScreenSize(700, 170);
+    resizeCallback?.();
+    await waitFor(() => expectGrid(container, 698, 155, 97, 10));
+  },
+);
 it("keeps the grid until xterm has laid out its screen", async () => {
   xterm.measured = false;
-  render(
+  const { container } = render(
     <TerminalDock
       scope={scope}
       session={handle}
@@ -361,8 +446,10 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   );
   setScreenSize(800, 160);
   resizeCallback?.();
-  await waitFor(() => expect(native.resize).toHaveBeenCalledTimes(1));
-  expect(native.resize).toHaveBeenLastCalledWith(scope, handle, 80, 24);
+  await waitFor(() => expect(ptySize).toEqual({ columns: 80, rows: 24 }));
+  xterm.measured = true;
+  resizeCallback?.();
+  await waitFor(() => expectGrid(container, 800, 160, 100, 10));
 });
 
 it("closes every owned session when the focused chat changes", async () => {

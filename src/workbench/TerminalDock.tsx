@@ -24,39 +24,50 @@ const INPUT_RETRY_MAX_DELAY_MS = 500;
 /** Pause before reading again after another reader held the output. */
 const READ_RETRY_DELAY_MS = 100;
 const SCROLLBACK_LINES = 1_000;
+// xterm requires two columns for wide characters and at least one row.
+const MIN_COLUMNS = 2;
+const MIN_ROWS = 1;
 
 interface Dimensions {
   columns: number;
   rows: number;
 }
 
-/**
- * The grid that fits `element`. xterm sizes its screen to the cells' exact
- * (fractional) width rounded to whole CSS pixels, so a cell is at most half a
- * pixel more than the screen over its cells; fitting that bound never admits
- * a column that would clip. xterm's vertical scrollbar overlays the right
- * edge, so its width stays free. Before xterm lays out, the grid stays.
- */
+/** xterm 6 has no public cell metrics API. Keep this private seam local. */
+type MeasuredTerminal = Terminal & {
+  _core: {
+    _renderService: {
+      dimensions: { device: { cell: { width: number; height: number } } };
+    };
+  };
+};
+
+/** Fit unrounded device cells, independent of the previous grid's rounding. */
 function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
-  const box = (selector: string) =>
-    element.querySelector(selector)?.getBoundingClientRect() ?? new DOMRect();
-  const screen = box(".xterm-screen");
-  const fit = (space: number, cells: number, size: number, max: number) =>
-    size > 0
-      ? Math.max(1, Math.min(max, Math.floor((space * cells) / (size + 0.5))))
-      : cells;
+  const cell = (terminal as MeasuredTerminal)._core._renderService.dimensions
+    .device.cell;
+  if (cell.width <= 0 || cell.height <= 0)
+    return { columns: terminal.cols, rows: terminal.rows };
+  const scrollbarWidth =
+    element.querySelector(".scrollbar.vertical")?.getBoundingClientRect()
+      .width ?? 0;
   return {
-    columns: fit(
-      element.clientWidth - box(".scrollbar.vertical").width,
-      terminal.cols,
-      screen.width,
-      TERMINAL_MAX_COLUMNS,
+    columns: Math.max(
+      MIN_COLUMNS,
+      Math.min(
+        TERMINAL_MAX_COLUMNS,
+        Math.floor(
+          ((element.clientWidth - scrollbarWidth) * devicePixelRatio) /
+            cell.width,
+        ),
+      ),
     ),
-    rows: fit(
-      element.clientHeight,
-      terminal.rows,
-      screen.height,
-      TERMINAL_MAX_ROWS,
+    rows: Math.max(
+      MIN_ROWS,
+      Math.min(
+        TERMINAL_MAX_ROWS,
+        Math.floor((element.clientHeight * devicePixelRatio) / cell.height),
+      ),
     ),
   };
 }
