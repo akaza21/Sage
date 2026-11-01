@@ -7,7 +7,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use std::time::Instant;
 
-use sage_lib::codex_helper_boundary::{BoundaryStatus, direct_non_elevated_probe};
+use sage_lib::codex_helper_boundary::{
+    BoundaryError, BoundaryStatus, current_process_elevated, direct_non_elevated_probe,
+};
 use uuid::Uuid;
 
 struct TempRoot(PathBuf);
@@ -27,7 +29,7 @@ impl Drop for TempRoot {
 }
 
 #[test]
-fn direct_non_elevated_helper_returns_sealed_unavailable_without_residue() {
+fn direct_probe_honours_caller_elevation_without_residue() {
     let root = TempRoot::new();
     let helper = root.0.join("sage-codex-0146-elevated-helper.exe");
     fs::copy(
@@ -37,22 +39,27 @@ fn direct_non_elevated_helper_returns_sealed_unavailable_without_residue() {
     .unwrap();
     let before = fs::read_dir(&root.0).unwrap().count();
 
-    let receipt = direct_non_elevated_probe(
+    let result = direct_non_elevated_probe(
         &helper,
         b"sealed-core-request-placeholder-v1",
         Duration::from_secs(10),
-    )
-    .unwrap();
-
-    assert_eq!(receipt.status, BoundaryStatus::ElevationRequired);
-    assert_eq!(fs::read_dir(&root.0).unwrap().count(), before);
-    assert!(
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&receipt.pipe_name)
-            .is_err()
     );
+
+    if current_process_elevated().unwrap() {
+        // Elevated callers are refused before the helper starts.
+        assert_eq!(result, Err(BoundaryError::Authority));
+    } else {
+        let receipt = result.unwrap();
+        assert_eq!(receipt.status, BoundaryStatus::ElevationRequired);
+        assert!(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&receipt.pipe_name)
+                .is_err()
+        );
+    }
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), before);
     assert_eq!(
         fs::read(&helper).unwrap(),
         fs::read(env!("CARGO_BIN_EXE_sage-codex-0146-elevated-helper")).unwrap()

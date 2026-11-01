@@ -178,6 +178,7 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
         }
     }
@@ -202,6 +203,7 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
         }
     }
@@ -220,6 +222,7 @@ impl GitProcessPolicy {
             containment_registry: None,
             before_spawn_hook: None,
             after_process_hook: None,
+            spawned_hook: None,
             deadline_wait_gate: None,
         }
     }
@@ -237,6 +240,13 @@ impl GitProcessPolicy {
         hook: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         self.after_process_hook = Some(Arc::new(hook));
+        self
+    }
+
+    /// Receives the Git child's process id right after it spawns, so a test
+    /// can observe the child's lifecycle from outside the code under test.
+    pub(crate) fn with_spawned_hook(mut self, hook: impl Fn(u32) + Send + Sync + 'static) -> Self {
+        self.spawned_hook = Some(Arc::new(hook));
         self
     }
 
@@ -334,6 +344,7 @@ impl GitProcessTestHarness {
                 containment_registry: Some(Arc::clone(&self.registry)),
                 before_spawn_hook: None,
                 after_process_hook: None,
+                spawned_hook: None,
                 deadline_wait_gate: None,
             },
             GitReaperTestHandle {

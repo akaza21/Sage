@@ -27,6 +27,15 @@ pub use protocol::{BoundaryError, BoundaryStatus, HelperIdentity, OneShotSecret}
 #[cfg(windows)]
 pub use caller::{BoundaryProbeReceipt, direct_non_elevated_probe};
 
+/// Reports whether the current process runs with an elevated token.
+///
+/// Direct probes refuse elevated callers with [`BoundaryError::Authority`]
+/// before a helper is started.
+#[cfg(windows)]
+pub fn current_process_elevated() -> Result<bool, BoundaryError> {
+    windows::authority::current_process_subject().map(|subject| subject.elevated)
+}
+
 #[cfg(windows)]
 pub fn run_helper_process(arguments: impl Iterator<Item = std::ffi::OsString>) -> i32 {
     match entrypoint::run(arguments) {
