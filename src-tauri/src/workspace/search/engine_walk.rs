@@ -29,7 +29,7 @@ use super::{
 /// An entry of the folder being walked: listed by the walk itself, or
 /// borrowed from a listing read ahead.
 enum FolderEntry<'a> {
-    Listed(DirEntry),
+    Listed(Box<DirEntry>),
     ReadAhead(&'a DirEntry),
 }
 
@@ -149,7 +149,9 @@ impl SearchEngine {
                         }
                         None => match fs::read_dir(&directory) {
                             Ok(entries) => Box::new(
-                                entries.map(|entry| entry.map(FolderEntry::Listed).map_err(drop)),
+                                entries.map(|entry| {
+                                    entry.map(Box::new).map(FolderEntry::Listed).map_err(drop)
+                                }),
                             ),
                             Err(_) => {
                                 counters.error_count += 1;
