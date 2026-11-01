@@ -645,9 +645,13 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
   const pidPath = path.join(root, "descendant.pid");
   const readyPath = path.join(root, "descendant.ready");
   const target = path.join(root, "target");
-  const source = `const {spawn}=require("node:child_process");const fs=require("node:fs");const pidPath=process.argv[1];const readyPath=process.argv[2];const child=spawn(process.execPath,["-e","require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)",readyPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(pidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForReady(){if(fs.existsSync(readyPath))process.exit(0);if(Date.now()>=deadline)throw new Error("descendant-ready handshake timed out");setTimeout(waitForReady,10)})();`;
+  // A non-ASCII image name proves the stall report survives the proof's
+  // serialization byte for byte.
+  const descendantImage = path.join(root, "caf\u00e9.exe");
+  const source = `const {spawn}=require("node:child_process");const fs=require("node:fs");const pidPath=process.argv[1];const readyPath=process.argv[2];const child=spawn(process.argv[3],["-e","require('node:fs').writeFileSync(process.argv[1],'ready');setInterval(()=>{},1000)",readyPath],{detached:true,stdio:"ignore",windowsHide:true});fs.writeFileSync(pidPath,String(child.pid));const deadline=Date.now()+2000;(function waitForReady(){if(fs.existsSync(readyPath))process.exit(0);if(Date.now()>=deadline)throw new Error("descendant-ready handshake timed out");setTimeout(waitForReady,10)})();`;
   let descendantPid;
   try {
+    await copyFile(process.execPath, descendantImage);
     await assert.rejects(
       runCommandGroups([
         {
@@ -660,7 +664,7 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
             {
               label: "owned-timeout",
               command: process.execPath,
-              args: ["-e", source, pidPath, readyPath],
+              args: ["-e", source, pidPath, readyPath, descendantImage],
               cwd: root,
               // The root has a bounded two-second readiness handshake before
               // its natural exit; preserve a margin so the command timeout
@@ -681,7 +685,7 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
         assert.equal(error.teardown, null);
         assert.deepEqual(error.stall, {
           rootRunning: false,
-          memberImages: ["node.exe"],
+          memberImages: ["caf\u00e9.exe"],
           omittedMembers: 0,
         });
         return true;

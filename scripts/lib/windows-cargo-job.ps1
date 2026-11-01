@@ -79,7 +79,11 @@ $result = Invoke-CargoValidationJob `
   -MaximumActiveProcesses $MaximumActiveProcesses
 
 $json = $result | ConvertTo-Json -Compress -Depth 4
-if ([Text.Encoding]::UTF8.GetByteCount($json) -gt $MaximumProofBytes) { throw "proof-oversize" }
-[Console]::Out.WriteLine($json)
-[Console]::Out.Flush()
+# The consumer decodes every protocol line as UTF-8, so the proof bypasses the
+# console's code page just as the native protocol frames do.
+$proofBytes = [Text.UTF8Encoding]::new($false).GetBytes($json + "`n")
+if ($proofBytes.Length -gt $MaximumProofBytes) { throw "proof-oversize" }
+$standardOutput = [Console]::OpenStandardOutput()
+$standardOutput.Write($proofBytes, 0, $proofBytes.Length)
+$standardOutput.Flush()
 [Environment]::Exit(0)
