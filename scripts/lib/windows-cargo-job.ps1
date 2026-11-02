@@ -30,7 +30,12 @@ if (-not $nativePhysical.StartsWith($repositoryRoot + [IO.Path]::DirectorySepara
 }
 Import-Module $modulePhysical -Force
 
-$line = [Console]::In.ReadLine()
+# The request is UTF-8 JSON; reading it through the console's code page would
+# corrupt non-ASCII paths and arguments before they reach the Job.
+$requestReader = [IO.StreamReader]::new(
+  [Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false, $true)
+)
+$line = $requestReader.ReadLine()
 if ($null -eq $line -or [Text.Encoding]::UTF8.GetByteCount($line) -gt $MaximumRequestBytes) {
   throw "request-size-invalid"
 }
@@ -79,7 +84,11 @@ $result = Invoke-CargoValidationJob `
   -MaximumActiveProcesses $MaximumActiveProcesses
 
 $json = $result | ConvertTo-Json -Compress -Depth 4
-if ([Text.Encoding]::UTF8.GetByteCount($json) -gt $MaximumProofBytes) { throw "proof-oversize" }
-[Console]::Out.WriteLine($json)
-[Console]::Out.Flush()
+# The consumer decodes every protocol line as UTF-8, so the proof bypasses the
+# console's code page just as the native protocol frames do.
+$proofBytes = [Text.UTF8Encoding]::new($false).GetBytes($json + "`n")
+if ($proofBytes.Length -gt $MaximumProofBytes) { throw "proof-oversize" }
+$standardOutput = [Console]::OpenStandardOutput()
+$standardOutput.Write($proofBytes, 0, $proofBytes.Length)
+$standardOutput.Flush()
 [Environment]::Exit(0)
