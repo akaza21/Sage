@@ -1,8 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
+import {
+  AgentPrimaryNavigation,
+  AgentRailOptionsMenu,
+} from "./AgentRailOptionsMenu";
 import {
   agentRailSectionCollapsed,
+  agentRailViewPrefs,
   resetAgentRailViewPrefs,
   toggleAgentRailSection,
 } from "./agentRailViewPrefs";
@@ -58,4 +62,19 @@ it("retains search and settings actions for the collapsed rail", () => {
   );
   expect(onSearch).toHaveBeenCalledOnce();
   expect(onSettings).toHaveBeenCalledOnce();
+});
+
+it("keeps a submenu open when a hover is followed by a click", async () => {
+  render(<AgentRailOptionsMenu />);
+  fireEvent.click(screen.getByRole("button", { name: "Sidebar options" }));
+  const organize = await screen.findByRole("menuitem", {
+    name: "Organize sidebar",
+  });
+  fireEvent.pointerEnter(organize);
+  fireEvent.click(organize);
+  expect(organize).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "In one list" }),
+  );
+  expect(agentRailViewPrefs().organize).toBe("list");
 });

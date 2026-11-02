@@ -138,7 +138,7 @@ function SubmenuItem<T extends string>({
         aria-expanded={open}
         aria-controls={open ? submenuId : undefined}
         onPointerEnter={() => onOpenChange(true)}
-        onClick={() => onOpenChange(!open)}
+        onClick={() => onOpenChange(true)}
         onKeyDown={(event) => {
           if (event.key !== "ArrowRight") return;
           event.preventDefault();

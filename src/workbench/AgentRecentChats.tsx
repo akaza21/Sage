@@ -8,16 +8,30 @@ export function AgentRecentChats({
   items,
   currentProjectId,
   recent = false,
+  activeChatId = null,
   onSearchMore,
 }: {
   items: readonly AgentRailChatItem[];
   currentProjectId: string | null;
   /** Recents rows name themselves as recent and never take the highlight. */
   recent?: boolean;
+  /** The open chat: the list pages far enough to show it. */
+  activeChatId?: string | null;
   /** Continues past the last row in Chat search when the rail holds fewer chats than exist. */
   onSearchMore?: () => void;
 }) {
-  const [limit, setLimit] = useState(MAX_AGENT_RAIL_RECENT_CHATS);
+  const [paged, setLimit] = useState(MAX_AGENT_RAIL_RECENT_CHATS);
+  const activeIndex = activeChatId
+    ? items.findIndex(
+        (item) =>
+          item.projectId === currentProjectId && item.chat.id === activeChatId,
+      )
+    : -1;
+  const pageSize = MAX_AGENT_RAIL_RECENT_CHATS;
+  const limit = Math.max(
+    paged,
+    (Math.floor(activeIndex / pageSize) + 1) * pageSize,
+  );
   return (
     <>
       <div className="agent-rail-flat-list">
@@ -39,9 +53,7 @@ export function AgentRecentChats({
         <button
           className="project-chat-more"
           type="button"
-          onClick={() =>
-            setLimit((value) => value + MAX_AGENT_RAIL_RECENT_CHATS)
-          }
+          onClick={() => setLimit(limit + pageSize)}
         >
           Show more
         </button>

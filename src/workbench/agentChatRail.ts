@@ -206,6 +206,7 @@ export function deriveAgentRailSections(
   groups: ReadonlyArray<AgentRailProjectGroup>,
   chatCountByProjectId?: Readonly<Record<string, number>>,
   ordering: AgentRailOrdering = "recency",
+  activeChatId: string | null = null,
 ): AgentRailSections {
   const pinned: AgentRailChatItem[] = [];
   const unpinned: AgentRailChatItem[] = [];
@@ -261,11 +262,15 @@ export function deriveAgentRailSections(
       compareAgentRailViewChats(left.chat, right.chat, ordering),
     );
   }
+  const all = unpinned.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES);
+  // The open chat always stays in the list, even past its cap.
+  const active = unpinned.find((item) => item.chat.id === activeChatId);
+  if (active && !all.includes(active)) all[all.length - 1] = active;
   return {
     pinned,
     projects,
     recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
-    all: unpinned.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
+    all,
     allOverflowProjectId:
       unpinned[MAX_AGENT_RAIL_RECENT_CANDIDATES]?.projectId ??
       groups.find((group) => group.truncated)?.id ??

@@ -303,6 +303,7 @@ export function AgentRailSections({
             part="AgentRecentChats"
             items={all}
             currentProjectId={currentProjectId}
+            activeChatId={currentChatId}
             onSearchMore={
               allOverflowProjectId === null
                 ? undefined

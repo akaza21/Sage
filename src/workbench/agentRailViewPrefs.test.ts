@@ -15,6 +15,8 @@ import {
 const settings = vi.hoisted(() => ({
   stored: null as null | { organize: string; ordering: string },
   refuseWrites: false,
+  // When set, the first read waits until the test releases it.
+  slowRead: null as null | Promise<void>,
 }));
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -22,8 +24,14 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
     command: string,
     args?: { view: { organize: string; ordering: string } },
   ) => {
-    if (command === "agent_rail_view")
-      return settings.stored ?? { organize: "project", ordering: "recency" };
+    if (command === "agent_rail_view") {
+      const stored = settings.stored ?? {
+        organize: "project",
+        ordering: "recency",
+      };
+      if (settings.slowRead) await settings.slowRead;
+      return stored;
+    }
     if (command === "agent_rail_set_view") {
       if (settings.refuseWrites) throw new Error("disk full");
       if (!args) throw new Error("missing view");
@@ -38,6 +46,7 @@ beforeEach(() => {
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   settings.stored = null;
   settings.refuseWrites = false;
+  settings.slowRead = null;
   resetAgentRailViewPrefs();
 });
 
@@ -91,4 +100,26 @@ it("ignores stored values the rail does not know", async () => {
     organize: "project",
     ordering: "recency",
   });
+});
+
+it("keeps a choice made while the stored layout is still loading", async () => {
+  settings.stored = { organize: "project", ordering: "manual" };
+  let release = () => {};
+  settings.slowRead = new Promise((resolve) => {
+    release = resolve;
+  });
+  const loading = restoreAgentRailViewPrefs();
+  act(() => setAgentRailOrganize("list"));
+  expect(agentRailViewPrefs().organize).toBe("list");
+
+  release();
+  await act(() => loading);
+  // The pick survives the late read, and the untouched sort is restored.
+  expect(agentRailViewPrefs()).toMatchObject({
+    organize: "list",
+    ordering: "manual",
+  });
+  await waitFor(() =>
+    expect(settings.stored).toEqual({ organize: "list", ordering: "manual" }),
+  );
 });

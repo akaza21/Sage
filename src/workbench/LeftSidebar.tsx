@@ -135,8 +135,9 @@ export function LeftSidebar({
     );
   }, [groups]);
   const sections = useMemo(
-    () => deriveAgentRailSections(groups, undefined, prefs.ordering),
-    [groups, prefs.ordering],
+    () =>
+      deriveAgentRailSections(groups, undefined, prefs.ordering, railChatId),
+    [groups, prefs.ordering, railChatId],
   );
 
   useEffect(() => {

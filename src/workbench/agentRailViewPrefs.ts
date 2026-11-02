@@ -54,7 +54,14 @@ function admitPrefs(input: unknown): AgentRailViewPrefs {
   };
 }
 
-/** Load the stored layout once; a failed load keeps the defaults. */
+type AgentRailViewField = "organize" | "ordering";
+// Choices made while the stored layout is still loading; they win over it.
+const editedWhileLoading = new Set<AgentRailViewField>();
+
+/**
+ * Load the stored layout once; a failed load keeps the defaults. A choice made
+ * before the load returns is kept, and the merged layout is stored.
+ */
 export function restoreAgentRailViewPrefs(): Promise<void> {
   if (restored || !isTauriRuntime()) return Promise.resolve();
   restoring ??= invokeNative("agent_rail_view")
@@ -62,8 +69,19 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
       restored = true;
       const next = admitPrefs(stored);
       writes.persisted(next);
-      prefs = { ...prefs, ...next };
+      const merged = {
+        organize: editedWhileLoading.has("organize")
+          ? prefs.organize
+          : next.organize,
+        ordering: editedWhileLoading.has("ordering")
+          ? prefs.ordering
+          : next.ordering,
+      };
+      const reconcile = editedWhileLoading.size > 0;
+      editedWhileLoading.clear();
+      prefs = { ...prefs, ...merged };
       emit();
+      if (reconcile) persist(merged);
     })
     .catch(() => undefined)
     .finally(() => {
@@ -72,11 +90,7 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
   return restoring;
 }
 
-function update(next: AgentRailViewPrefs) {
-  prefs = next;
-  emit();
-  if (!isTauriRuntime()) return;
-  const view = { organize: next.organize, ordering: next.ordering };
+function persist(view: Pick<AgentRailViewPrefs, AgentRailViewField>) {
   writes.write(
     view,
     (value) => invokeNative("agent_rail_set_view", { view: value }),
@@ -85,6 +99,20 @@ function update(next: AgentRailViewPrefs) {
       emit();
     },
   );
+}
+
+function update(next: AgentRailViewPrefs, field: AgentRailViewField) {
+  prefs = next;
+  emit();
+  if (!isTauriRuntime()) return;
+  // Until the stored layout arrives, hold the write: the load merges this
+  // choice and stores the result.
+  if (!restored) {
+    editedWhileLoading.add(field);
+    void restoreAgentRailViewPrefs();
+    return;
+  }
+  persist({ organize: next.organize, ordering: next.ordering });
 }
 
 function emit() {
@@ -105,6 +133,7 @@ export function agentRailViewPrefs(): AgentRailViewPrefs {
 export function resetAgentRailViewPrefs() {
   prefs = DEFAULT_PREFS;
   restored = false;
+  editedWhileLoading.clear();
   writes.persisted(DEFAULT_PREFS);
   collapsed.clear();
   emit();
@@ -112,12 +141,12 @@ export function resetAgentRailViewPrefs() {
 
 export function setAgentRailOrganize(organize: AgentRailOrganizeMode) {
   if (prefs.organize === organize) return;
-  update({ ...prefs, organize });
+  update({ ...prefs, organize }, "organize");
 }
 
 export function setAgentRailOrdering(ordering: AgentRailOrdering) {
   if (prefs.ordering === ordering) return;
-  update({ ...prefs, ordering });
+  update({ ...prefs, ordering }, "ordering");
 }
 
 export function agentRailSectionCollapsed(id: string): boolean {

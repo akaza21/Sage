@@ -11,7 +11,11 @@ import { useWorkbenchStore } from "../app/store";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
-import { resetAgentRailViewPrefs } from "./agentRailViewPrefs";
+import {
+  resetAgentRailViewPrefs,
+  setAgentRailOrdering,
+  setAgentRailOrganize,
+} from "./agentRailViewPrefs";
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -252,4 +256,80 @@ it("pins, unpins and archives a chat from its hover actions", async () => {
   expect(
     projects().queryByRole("button", { name: "Open chat Beta" }),
   ).toBeNull();
+});
+
+it("keeps the open chat in view In one list, even far down a manual order", () => {
+  seed();
+  const tabs = Array.from({ length: 40 }, (_, position) => ({
+    id: `chat-${position}`,
+    kind: "chat" as const,
+    title: `Task ${position}`,
+    position,
+    pinned: false,
+    dirty: false,
+    status: "idle" as const,
+    updatedAt: 100 - position,
+  }));
+  useWorkbenchStore.setState({ tabs, activeTabId: "chat-39" });
+  act(() => {
+    setAgentRailOrganize("list");
+    setAgentRailOrdering("manual");
+  });
+  render(<LeftSidebar />);
+  const recents = within(screen.getByRole("region", { name: "Recents" }));
+  const open = recents.getByRole("button", { name: "Open chat Task 39" });
+  expect(open).toHaveAttribute("aria-current", "page");
+  // Its page opens in order, rather than the chat jumping the queue.
+  expect(
+    recents.getByRole("button", { name: "Open chat Task 38" }),
+  ).toBeVisible();
+  expect(
+    recents.getByRole("button", { name: "Open chat Task 0" }),
+  ).toBeVisible();
+});
+
+it("keeps the open chat In one list when it is past the list's cap", () => {
+  seed();
+  const tabs = Array.from({ length: 64 }, (_, position) => ({
+    id: `chat-${position}`,
+    kind: "chat" as const,
+    title: `Task ${position}`,
+    position,
+    pinned: false,
+    dirty: false,
+    status: "idle" as const,
+    updatedAt: 1_000 - position,
+  }));
+  useWorkbenchStore.setState({
+    tabs,
+    activeTabId: "chat-63",
+    projects: [
+      { id: "project-a", name: "A", rootCount: 0, lastOpenedAt: 2 },
+      {
+        id: "project-b",
+        name: "B",
+        rootCount: 0,
+        lastOpenedAt: 1,
+        railChats: [
+          {
+            id: "chat:b",
+            title: "Elsewhere",
+            pinned: false,
+            position: 0,
+            updatedAt: 999,
+          },
+        ],
+      },
+    ],
+  });
+  act(() => setAgentRailOrganize("list"));
+  render(<LeftSidebar />);
+  expect(
+    within(screen.getByRole("region", { name: "Recents" })).getByRole(
+      "button",
+      {
+        name: "Open chat Task 63",
+      },
+    ),
+  ).toHaveAttribute("aria-current", "page");
 });
