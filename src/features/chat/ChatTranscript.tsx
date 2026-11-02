@@ -12,7 +12,7 @@ import {
   type ProjectRootSummary,
   type ResourceRef,
 } from "../../domain/workbench";
-import { ArrowDown, Folder } from "../../ui/leanIcons";
+import { ArrowDown } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatHome } from "./ChatHome";
 import { ChatLegacyTranscript } from "./ChatLegacyTranscript";
@@ -268,19 +268,7 @@ export function ChatTranscript({
         <ArrowDown size={24} aria-hidden="true" />
       </button>
       {useNativeAcp && !projectTransitioning ? (
-        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer}>
-          {/* A side chat inherits its parent's Project. */}
-          {showHome && projectName && !isSideChatId(page?.chatId) ? (
-            <div
-              className="chat-home__scope"
-              role="group"
-              aria-label="Project scope"
-            >
-              <Folder size={14} aria-hidden="true" />
-              <span>{projectName}</span>
-            </div>
-          ) : null}
-        </div>
+        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer} />
       ) : null}
     </AnswerCopyFeedback.Provider>
   );

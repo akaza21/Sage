@@ -133,6 +133,10 @@
 }
 .workbench--agent .agent-chat-center,
 .workbench--agent .agent-artifact-pane {
+  margin: var(--space-2);
+  overflow: hidden;
+  border: var(--card-border);
+  border-radius: var(--radius-xl);
   background: var(--agent-shell-center);
 }
 .workbench--agent .agent-task-header {

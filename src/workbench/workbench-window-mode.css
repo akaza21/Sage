@@ -76,7 +76,7 @@
   position: absolute;
   z-index: var(--z-overlay);
   inset: 0;
-  width: 100%;
+  width: auto;
 }
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
@@ -187,13 +187,19 @@
   .workbench--agent .chat-follow-end,
   .workbench--agent .message-list,
   .workbench--agent .composer {
-    --chat-column-trailing: 0px;
+    --chat-column-trailing: max(
+      0px,
+      calc(var(--scrollbar-size) - var(--chat-column-gutter))
+    );
   }
 
   .workbench--agent .message-list {
-    padding-inline-end: calc(
-      var(--chat-column-gutter) + var(--chat-column-trailing) -
-        var(--scrollbar-size)
+    padding-inline-end: max(
+      0px,
+      calc(
+        var(--chat-column-gutter) + var(--chat-column-trailing) -
+          var(--scrollbar-size)
+      )
     );
   }
 

@@ -2,7 +2,10 @@
 
 .chat-surface {
   --reading-measure: 660px;
-  --chat-column-gutter: var(--space-4);
+  /* The card inset and the card/composer borders share the column spacing. */
+  --chat-column-gutter: calc(
+    var(--space-2) - var(--border-width) - var(--border-width)
+  );
   --chat-column-trailing: calc(var(--scrollbar-size) + var(--space-3));
   position: relative;
   container-name: chat;

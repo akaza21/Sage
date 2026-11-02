@@ -6,6 +6,7 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
@@ -19,7 +20,10 @@ import {
   useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
-import { useComposerFocusHotkey } from "./composerChrome";
+import {
+  composerWorkspaceName,
+  useComposerFocusHotkey,
+} from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
@@ -227,6 +231,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
   ]);
 
+  const newProjectChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
   return (
     <section
       ref={surfaceRef}
@@ -369,17 +381,13 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={
-          isNewProjectChat({
-            useNativeAcp,
-            page: acpPage,
-            project,
-            projectTransitioning,
-            ...acpHistory,
-            retentionIncomplete: acpRetentionIncomplete,
-          })
-            ? null
-            : project
+        project={newProjectChat ? null : project}
+        projectScopeName={
+          newProjectChat &&
+          !acpPage?.forkedFrom &&
+          !isSideChatId(acpPage?.chatId)
+            ? composerWorkspaceName(project, 1024)
+            : null
         }
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}

@@ -706,7 +706,16 @@ test.describe("Artifact-constrained composer", () => {
 
     for (const width of [560, 589, 590, 630, 720, 721, 775] as const) {
       await page.locator(".workbench__body").evaluate((body, centerWidth) => {
-        body.style.gridTemplateColumns = `224px 8px ${centerWidth}px 8px minmax(0, 1fr)`;
+        const card = getComputedStyle(
+          body.querySelector(".agent-chat-center")!,
+        );
+        const frame = [
+          card.marginLeft,
+          card.marginRight,
+          card.borderLeftWidth,
+          card.borderRightWidth,
+        ].reduce((sum, value) => sum + Number.parseFloat(value), 0);
+        body.style.gridTemplateColumns = `224px 8px ${centerWidth + frame}px 8px minmax(0, 1fr)`;
       }, width);
       await expect(page.locator(".agent-chat-pane")).toHaveCSS(
         "width",

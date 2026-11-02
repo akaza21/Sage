@@ -268,7 +268,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
     );
     expect(surfaceCss).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*1px solid var\(--composer-border\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--composer-border\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,

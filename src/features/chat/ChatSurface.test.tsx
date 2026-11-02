@@ -377,6 +377,42 @@ describe("ChatSurface approval slot", () => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("attaches the full project name above the input only for an established empty chat", () => {
+    hooks.page = { ...projection(), turns: [], nextCursor: null };
+    const name =
+      "Sage parity project with a long but authoritative workspace name";
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name, roots: [] },
+    });
+    const { rerender, container } = render(<ChatSurface />);
+    const row = screen.getByRole("group", { name: "Project scope" });
+    expect(row).toHaveTextContent(name);
+    expect(container.querySelector("form.composer")).toContainElement(row);
+    expect(
+      screen.getByRole("region", { name: "New chat" }),
+    ).not.toContainElement(row);
+    expect(
+      container.querySelector(".chat-edit-summary-zone"),
+    ).not.toContainElement(row);
+    hooks.page = projection();
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+  });
+
+  it("adds no project scope row above an empty side chat's input (Codex s2/f0244)", () => {
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      nextCursor: null,
+      chatId: "side-1" as never,
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+    });
+    render(<ChatSurface chatId="side-1" />);
+    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+  });
+
   it("retains composer project scope while an empty retained page is not the new-chat home", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
     useWorkbenchStore.setState({

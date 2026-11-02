@@ -71,7 +71,7 @@ describe("glass grey surfaces", () => {
       /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
     );
     expect(css("composer-surface.css")).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*1px solid var\(--composer-border\);/s,
+      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--composer-border\);/s,
     );
     expect(css("global.css")).toMatch(/--composer-border:\s*#383838;/);
     expect(css("global.css")).toMatch(/--composer-fill:\s*#363636;/);

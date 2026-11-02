@@ -47,10 +47,10 @@ describe("CP-28 transcript style contracts", () => {
     )?.[1];
     expect(narrow).toBeDefined();
     expect(narrow).toMatch(
-      /\.workbench--agent \.message-list,\s*\.workbench--agent \.composer\s*\{[^}]*--chat-column-trailing:\s*0px;/u,
+      /\.workbench--agent \.message-list,\s*\.workbench--agent \.composer\s*\{[^}]*--chat-column-trailing:\s*max\(\s*0px,\s*calc\(var\(--scrollbar-size\) - var\(--chat-column-gutter\)\)\s*\);/u,
     );
     expect(narrow).toMatch(
-      /padding-inline-end:\s*calc\(\s*var\(--chat-column-gutter\)\s*\+\s*var\(--chat-column-trailing\)\s*-\s*var\(--scrollbar-size\)\s*\);/u,
+      /padding-inline-end:\s*max\(\s*0px,\s*calc\(\s*var\(--chat-column-gutter\)\s*\+\s*var\(--chat-column-trailing\)\s*-\s*var\(--scrollbar-size\)\s*\)\s*\);/u,
     );
     expect(narrow).toMatch(
       /\.workbench--agent \.acp-turn\s*\{[^}]*column-gap:\s*0;/u,
@@ -73,8 +73,10 @@ describe("CP-28 transcript style contracts", () => {
   it("declares a 660px reading-measure token and matching composer width/offset expressions", () => {
     const surface = declaration("src/styles/chat-surface.css", ".chat-surface");
     expect(surface.getPropertyValue("--reading-measure")).toBe("660px");
-    expect(surface.getPropertyValue("--chat-column-gutter")).toBe(
-      "var(--space-4)",
+    expect(compact(surface.getPropertyValue("--chat-column-gutter"))).toBe(
+      compact(
+        "calc(var(--space-2) - var(--border-width) - var(--border-width))",
+      ),
     );
     expect(surface.getPropertyValue("--chat-column-trailing")).toBe(
       "calc(var(--scrollbar-size) + var(--space-3))",

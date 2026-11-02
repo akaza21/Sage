@@ -166,6 +166,7 @@ export function Host({ state }: { state: ParityState }) {
                 missingBindingNotice={false}
                 disabledReason={null}
                 project={home ? null : project}
+                projectScopeName={home ? project.name : null}
                 usage={null}
                 goal={{ kind: "unsupported" }}
                 onSubmit={(event) => event.preventDefault()}

@@ -11,6 +11,7 @@ import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
+import { Folder } from "../../ui/leanIcons";
 import "../../styles/queued-messages.css";
 import type { ChatUsage } from "./acp/chatUsage";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
@@ -80,6 +81,7 @@ export function ChatComposerRegion({
   disabledReason,
   onRetryLoad,
   project,
+  projectScopeName = null,
   usage,
   goal,
   onSubmit,
@@ -140,6 +142,7 @@ export function ChatComposerRegion({
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
   project: { name: string } | null | undefined;
+  projectScopeName?: string | null;
   usage: ChatUsage | null;
   goal: AcpGoalState;
   onSubmit: FormEventHandler<HTMLFormElement>;
@@ -203,6 +206,16 @@ export function ChatComposerRegion({
         composerRef.current?.focus();
       }}
     >
+      {projectScopeName ? (
+        <div
+          className="composer__scope"
+          role="group"
+          aria-label="Project scope"
+        >
+          <Folder size={14} aria-hidden="true" />
+          <span>{projectScopeName}</span>
+        </div>
+      ) : null}
       {otherContext.length < attachedContext.length ? (
         <TranscriptPart
           part="ComposerAnnotations"

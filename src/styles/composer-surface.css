@@ -26,7 +26,7 @@
     var(--chat-column-gutter),
     calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
   );
-  border: 1px solid var(--composer-border);
+  border: var(--border-width) solid var(--composer-border);
   border-radius: var(--radius-xl);
 }
 
@@ -39,9 +39,32 @@
   display: block;
   min-height: 0;
   overflow-y: auto;
-  border-start-start-radius: var(--radius-xl);
-  border-start-end-radius: var(--radius-xl);
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
   overscroll-behavior: contain;
+}
+
+/* The form owns the whole attached surface. Neither child paints an edge at
+   the join; keeping overflow visible preserves the queued tray above it. */
+.composer__scope {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.composer__scope > svg {
+  flex: none;
+}
+
+.composer__scope ~ .composer__body {
+  border-start-start-radius: var(--radius-none);
+  border-start-end-radius: var(--radius-none);
 }
 
 .composer__input-area {
