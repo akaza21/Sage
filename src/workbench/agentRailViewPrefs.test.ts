@@ -157,3 +157,28 @@ it("tries the read again after a failure with no pending choice", async () => {
     ordering: "manual",
   });
 });
+
+it("loads the stored layout once storage recovers from a failed read and save", async () => {
+  settings.stored = { organize: "project", ordering: "manual" };
+  settings.refuseReads = true;
+  settings.refuseWrites = true;
+  let release = () => {};
+  settings.slowRead = new Promise((resolve) => {
+    release = resolve;
+  });
+  const loading = restoreAgentRailViewPrefs();
+  act(() => setAgentRailOrganize("list"));
+  release();
+  await act(() => loading);
+  // Neither the read nor the save landed, so the rail shows the defaults.
+  await waitFor(() => expect(agentRailViewPrefs().organize).toBe("project"));
+
+  settings.refuseReads = false;
+  settings.refuseWrites = false;
+  settings.slowRead = null;
+  await restoreAgentRailViewPrefs();
+  expect(agentRailViewPrefs()).toMatchObject({
+    organize: "project",
+    ordering: "manual",
+  });
+});

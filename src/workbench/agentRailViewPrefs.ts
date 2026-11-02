@@ -87,10 +87,13 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
       // The stored layout is unreadable. A choice already made must not be
       // lost on restart, so store it with the defaults for the rest; with no
       // pending choice, the next read tries again.
+      // Only a successful save completes restoration; if it fails too, the
+      // rail rolls back and a later read loads the stored layout.
       if (editedWhileLoading.size === 0) return;
-      restored = true;
       editedWhileLoading.clear();
-      persist({ organize: prefs.organize, ordering: prefs.ordering });
+      persist({ organize: prefs.organize, ordering: prefs.ordering }, () => {
+        restored = true;
+      });
     })
     .finally(() => {
       restoring = null;
@@ -98,10 +101,16 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
   return restoring;
 }
 
-function persist(view: Pick<AgentRailViewPrefs, AgentRailViewField>) {
+function persist(
+  view: Pick<AgentRailViewPrefs, AgentRailViewField>,
+  onSaved?: () => void,
+) {
   writes.write(
     view,
-    (value) => invokeNative("agent_rail_set_view", { view: value }),
+    async (value) => {
+      await invokeNative("agent_rail_set_view", { view: value });
+      onSaved?.();
+    },
     (persisted) => {
       prefs = { ...prefs, ...persisted };
       emit();
