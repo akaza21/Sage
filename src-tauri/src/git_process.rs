@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::Command,
-    task::JoinHandle,
     time::timeout,
 };
 
@@ -19,7 +18,9 @@ use crate::{
 };
 
 mod containment;
+mod readers;
 mod root_authority;
+use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
@@ -197,14 +198,6 @@ struct PostSpawnFailure {
     reaped: bool,
 }
 
-type ReaderTask = JoinHandle<std::io::Result<BoundedBytes>>;
-
-#[derive(Default)]
-struct ReaderTasks {
-    stdout: Option<ReaderTask>,
-    stderr: Option<ReaderTask>,
-}
-
 pub(crate) async fn run(
     root: &Path,
     args: &[&str],
@@ -280,6 +273,7 @@ async fn run_inner(
                 ReaderTasks {
                     stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
                     stderr: None,
+                    ..ReaderTasks::default()
                 },
                 reaper_lease,
                 PostSpawnFailure {
@@ -296,6 +290,7 @@ async fn run_inner(
     let mut readers = ReaderTasks {
         stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
         stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
+        ..ReaderTasks::default()
     };
     #[cfg(test)]
     if policy.post_spawn_failure {
@@ -331,6 +326,7 @@ async fn run_inner(
         }
         let stdout = await_reader(
             &mut readers.stdout,
+            &mut readers.failed,
             "stdout",
             #[cfg(test)]
             policy.stdout_reader_failure,
@@ -338,7 +334,8 @@ async fn run_inner(
             false,
         )
         .await?;
-        let stderr = await_reader(&mut readers.stderr, "stderr", false).await?;
+        let stderr =
+            await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
         Ok::<GitOutput, PostSpawnFailure>(GitOutput {
             status,
             stdout: stdout.bytes,
@@ -420,6 +417,7 @@ fn configured_command(
 
 async fn await_reader(
     slot: &mut Option<ReaderTask>,
+    failed: &mut bool,
     stream: &str,
     inject_read_failure: bool,
 ) -> Result<BoundedBytes, PostSpawnFailure> {
@@ -428,6 +426,7 @@ async fn await_reader(
         .expect("reader slots are consumed exactly once")
         .await;
     let _completed = slot.take();
+    *failed |= !matches!(&result, Ok(Ok(_)));
     let output = result
         .map_err(|error| PostSpawnFailure {
             message: format!("Git {stream} task failed: {error}"),
@@ -467,3 +466,6 @@ async fn read_bounded<R: AsyncRead + Unpin>(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod descendant_tests;

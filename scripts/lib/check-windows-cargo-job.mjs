@@ -243,6 +243,7 @@ export function executeWindowsCargoJobCommand(
     let child;
     let controlSocket;
     let diagnosticBytes = 0;
+    let wrapperDiagnostic = "";
     let finished = false;
     let pendingAbort = false;
     let wrapperTimer;
@@ -262,6 +263,8 @@ export function executeWindowsCargoJobCommand(
       clearTimeout(wrapperTimer);
       signal.removeEventListener("abort", abort);
       closeControl();
+      if (error && wrapperDiagnostic)
+        error.wrapperDiagnostic = wrapperDiagnostic;
       if (error) reject(error);
       else resolve(result);
     };
@@ -321,6 +324,9 @@ export function executeWindowsCargoJobCommand(
       frames.catch(() => child?.kill());
       child.stderr.on("data", (chunk) => {
         diagnosticBytes += chunk.length;
+        wrapperDiagnostic += chunk
+          .toString("utf8")
+          .slice(0, 4_096 - wrapperDiagnostic.length);
         if (diagnosticBytes > 64 * 1_024) child.kill();
       });
       child.once("error", unavailable);

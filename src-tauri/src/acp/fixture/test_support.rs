@@ -13,21 +13,31 @@ use crate::acp::{
 
 #[derive(Clone, Copy)]
 pub(super) struct FixtureDeadline {
+    started: Instant,
     deadline: Instant,
 }
 
 impl FixtureDeadline {
     pub(super) fn new() -> Self {
+        let started = Instant::now();
         Self {
-            deadline: Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc),
+            started,
+            // Bound fixture setup and scheduling with the shared test hang guard.
+            deadline: started + crate::test_wait::HANG_GUARD,
         }
     }
 
+    #[track_caller]
     pub(super) fn operation_before_cleanup(self) -> Duration {
         let remaining = self
             .operation_end_before_cleanup()
             .saturating_duration_since(Instant::now());
-        assert!(!remaining.is_zero(), "fixture cleanup deadline reached");
+        assert!(
+            !remaining.is_zero(),
+            "fixture cleanup deadline reached: test hang guard elapsed {:?}, cleanup reserve {:?}",
+            self.started.elapsed(),
+            self.cleanup_reserve(),
+        );
         remaining
     }
 
