@@ -26,6 +26,8 @@
     "security": {
       "csp": {
         "default-src": "'self'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
         "connect-src": "'self' ipc: http://ipc.localhost http://tauri.localhost",
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost data:",
