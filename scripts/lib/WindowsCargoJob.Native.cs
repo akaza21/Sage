@@ -348,6 +348,26 @@ namespace SageValidation {
       )) NativeFailure("QueryInformationJobObject");
       return accounting.ActiveProcesses;
     }
+    // File names of the Job's live members, for diagnosing a command that
+    // outlives its deadline. A member whose image cannot be read is "?".
+    public string[] MemberImageNames() {
+      uint[] processIds;
+      if (!TryJobProcessIds(out processIds)) return new string[0];
+      var names = new string[processIds.Length];
+      for (int index = 0; index < processIds.Length; index++) {
+        names[index] = "?";
+        IntPtr member = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processIds[index]);
+        if (member == IntPtr.Zero) continue;
+        try {
+          string imagePath;
+          if (TryImagePath(member, out imagePath)) names[index] = Path.GetFileName(imagePath);
+        } finally {
+          CloseIfPresent(member);
+        }
+      }
+      Array.Sort(names, StringComparer.OrdinalIgnoreCase);
+      return names;
+    }
     public uint RootProcessId { get { return rootProcessId; } }
     public bool RootRunning {
       get {
