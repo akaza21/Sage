@@ -13,6 +13,8 @@ const STEPS = [
   "data-overflow-actions",
 ] as const;
 const LAST = STEPS.length;
+/** Layers that hang from the toolbar row without taking part in its width. */
+const POPOVERS = ".browser-downloads__popover, .browser-surface__menu";
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;
 
@@ -71,10 +73,22 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
     };
     fit();
     // The toolbar's own size never depends on the steps, so observing it
-    // cannot loop; the actions' content changes arrive as mutations.
+    // cannot loop; the actions' content changes arrive as mutations. Changes
+    // inside a popover hanging from the row (the Downloads list ticking its
+    // progress, the More menu) cannot change the row's width, so they never
+    // refit it.
     const resize = new ResizeObserver(fit);
     resize.observe(toolbar);
-    const content = new MutationObserver(fit);
+    const inRow = (record: MutationRecord) => {
+      const node =
+        record.target instanceof Element
+          ? record.target
+          : record.target.parentElement;
+      return !node?.closest(POPOVERS);
+    };
+    const content = new MutationObserver((records) => {
+      if (records.some(inRow)) fit();
+    });
     content.observe(group, {
       subtree: true,
       childList: true,

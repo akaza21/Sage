@@ -724,3 +724,53 @@ test("attaching the Agent moves only the toolbar actions that no longer fit", as
     surface.getByRole("group", { name: "Page actions" }),
   ).toHaveCount(0);
 });
+
+test("download progress in the open Downloads popover does not refit the toolbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  // A toolbar that has taken some compaction steps but keeps Downloads.
+  await page.goto(
+    `/tests/ui/fixtures/browser-address.html?chat=${encodeURIComponent(
+      "Chat: Walking skeleton for the agent workbench",
+    )}&width=480`,
+  );
+  const toolbar = page.locator(".browser-surface__toolbar");
+  await expect(toolbar).toHaveAttribute("data-compact-chat", "");
+  await toolbar.getByRole("button", { name: "Downloads" }).click();
+  const popover = page.getByRole("dialog", { name: "Downloads" });
+  await expect(popover).toBeVisible();
+  const before = await toolbar.evaluate((node) =>
+    [...node.querySelectorAll("button, select, input")].map((control) =>
+      JSON.stringify(control.getBoundingClientRect()),
+    ),
+  );
+  // Record every compaction attribute the toolbar writes while the popover's
+  // content ticks, as a transfer's progress does.
+  const writes = await page.evaluate(async () => {
+    const toolbar = document.querySelector(".browser-surface__toolbar")!;
+    const popover = document.querySelector(".browser-downloads__popover")!;
+    let count = 0;
+    const watch = new MutationObserver((records) => (count += records.length));
+    watch.observe(toolbar, { attributes: true });
+    const status = document.createElement("p");
+    popover.append(status);
+    for (let percent = 0; percent <= 100; percent += 5) {
+      status.textContent = `${percent}%`;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    status.remove();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    watch.disconnect();
+    return count;
+  });
+  expect(writes).toBe(0);
+  await expect(toolbar).toHaveAttribute("data-compact-chat", "");
+  expect(
+    await toolbar.evaluate((node) =>
+      [...node.querySelectorAll("button, select, input")].map((control) =>
+        JSON.stringify(control.getBoundingClientRect()),
+      ),
+    ),
+  ).toEqual(before);
+});
