@@ -155,7 +155,9 @@ export function TitleBar({
             <span className="title-bar__search-label">Search files</span>
           </button>
         ) : sessionTitle ? (
-          <h1 className="title-bar__session">{sessionTitle}</h1>
+          <h1 className="title-bar__session" title={sessionTitle}>
+            {sessionTitle}
+          </h1>
         ) : null}
       </div>
       <div className="title-bar__end">

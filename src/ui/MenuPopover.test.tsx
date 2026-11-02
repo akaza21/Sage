@@ -169,6 +169,25 @@ describe("MenuPopover", () => {
     });
   });
 
+  it("moves focus to the enabled item under the mouse so one item is highlighted", () => {
+    render(<MenuHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    const first = screen.getByRole("menuitem", { name: "First" });
+    const last = screen.getByRole("menuitem", { name: "Last" });
+    const mouse = { pointerType: "mouse" };
+    expect(first).toHaveFocus();
+    fireEvent.pointerMove(
+      screen.getByRole("menuitem", { name: "Disabled" }),
+      mouse,
+    );
+    expect(first).toHaveFocus();
+    fireEvent.pointerMove(last, { pointerType: "touch" });
+    expect(first).toHaveFocus();
+    fireEvent.pointerMove(last, mouse);
+    expect(last).toHaveFocus();
+    expect(first).toHaveAttribute("tabindex", "-1");
+  });
+
   it("dismisses when a resize stops rendering its trigger instead of anchoring to an empty rect", () => {
     render(<MenuHarness />);
     const trigger = screen.getByRole("button", { name: "Actions" });

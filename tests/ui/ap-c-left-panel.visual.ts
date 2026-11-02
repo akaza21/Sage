@@ -52,6 +52,38 @@ async function installRailBrowseFixture(page: Page) {
   });
 }
 
+test("AP-C chat rows fill on hover and keep the selected fill", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const rows = page
+    .getByRole("region", { name: "Projects" })
+    .locator(".project-chat-row");
+  const fill = (index: number) =>
+    rows.nth(index).evaluate((row) => getComputedStyle(row).backgroundColor);
+  const tokens = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    document.querySelector(".workbench--agent")!.append(probe);
+    const resolve = (token: string) => {
+      probe.style.backgroundColor = `var(${token})`;
+      return getComputedStyle(probe).backgroundColor;
+    };
+    const resolved = {
+      hover: resolve("--agent-shell-hover"),
+      selected: resolve("--agent-shell-selected"),
+    };
+    probe.remove();
+    return resolved;
+  });
+  await rows.nth(0).locator(".project-chat").click();
+  await expect(rows.nth(0)).toHaveClass(/project-chat-row--active/);
+  await rows.nth(1).hover();
+  await expect.poll(() => fill(1)).toBe(tokens.hover);
+  await rows.nth(0).hover();
+  await expect.poll(() => fill(0)).toBe(tokens.selected);
+});
+
 test("AP-C project disclosure, context actions, and honest project menu", async ({
   page,
 }) => {

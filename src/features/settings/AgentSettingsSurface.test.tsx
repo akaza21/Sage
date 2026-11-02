@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -220,6 +221,51 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
     page: "Browser",
     browserTabId: "tab-a",
   });
+});
+
+function AgentSettingsSurfaceHost() {
+  const page = useAgentSettingsState((state) => state.page);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => useAgentSettingsState.getState().open("Chats")}
+      >
+        Open settings
+      </button>
+      {page ? <AgentSettingsSurface /> : null}
+    </>
+  );
+}
+
+it("returns focus to the control that opened it when it closes", () => {
+  useAgentSettingsState.getState().close();
+  render(<AgentSettingsSurfaceHost />);
+  const opener = screen.getByRole("button", { name: "Open settings" });
+  opener.focus();
+  fireEvent.click(opener);
+  const section = screen.getByRole("button", { name: "Chats" });
+  section.focus();
+  fireEvent.keyDown(section, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(opener).toHaveFocus();
+});
+
+it("leaves focus where a Settings action moved it when Settings closes", () => {
+  useAgentSettingsState.getState().close();
+  render(
+    <>
+      <button type="button">Restored chat</button>
+      <AgentSettingsSurfaceHost />
+    </>,
+  );
+  const opener = screen.getByRole("button", { name: "Open settings" });
+  opener.focus();
+  fireEvent.click(opener);
+  const target = screen.getByRole("button", { name: "Restored chat" });
+  target.focus();
+  act(() => useAgentSettingsState.getState().close());
+  expect(target).toHaveFocus();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {

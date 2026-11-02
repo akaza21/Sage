@@ -246,7 +246,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(screen.getByRole("option", { name: /Chat: B.*Attached/ }));
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
     expect(activateChat).toHaveBeenCalledWith("chat-b");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -257,9 +257,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(reopenedInput, { target: { value: "needle" } });
     fireEvent.submit(reopenedInput.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Old.*Archived/ }),
-    );
+    fireEvent.click(screen.getByRole("option", { name: "Old — Archived" }));
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "project-a");
     expect(dialog).not.toBeInTheDocument();
   });
@@ -281,7 +279,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(firstInput, { target: { value: "needle" } });
     fireEvent.submit(firstInput.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
-    fireEvent.click(screen.getByRole("option", { name: /Chat: B.*Attached/ }));
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
     await waitFor(() => expect(activateChat).toHaveBeenCalledWith("chat-b"));
     expect(priorReturn).not.toHaveBeenCalled();
     expect(activated).toHaveFocus();
@@ -367,7 +365,7 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
-      await screen.findByRole("option", { name: /Chat: Research/ }),
+      await screen.findByRole("option", { name: /^Research/ }),
     ).toBeInTheDocument();
     expect(search).toHaveBeenCalledWith({
       projectId: "cross",
@@ -376,7 +374,7 @@ describe("ChatSearchControl", () => {
       query: "Research",
     });
     fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Research.*Archived/ }),
+      screen.getByRole("option", { name: "Research — Archived" }),
     );
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "cross");
     expect(switchProject).not.toHaveBeenCalled();
@@ -490,14 +488,14 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "Research" } });
     fireEvent.submit(input.closest("form")!);
     expect(
-      await screen.findByRole("option", { name: /Chat: Research/ }),
+      await screen.findByRole("option", { name: /^Research/ }),
     ).toHaveTextContent("Cross");
     expect(search.mock.calls.map((call) => call[0]?.projectId)).toEqual([
       "project-a",
       "cross",
     ]);
     fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Research.*Archived/ }),
+      screen.getByRole("option", { name: "Research — Archived" }),
     );
     expect(restoreChat).toHaveBeenCalledWith("chat-old", "cross");
     expect(switchProject).not.toHaveBeenCalled();
@@ -598,9 +596,7 @@ describe("ChatSearchControl", () => {
         },
       ],
     });
-    fireEvent.click(
-      screen.getByRole("option", { name: /Chat: Old.*Archived/ }),
-    );
+    fireEvent.click(screen.getByRole("option", { name: "Old — Archived" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "result changed",
     );

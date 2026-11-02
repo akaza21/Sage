@@ -117,6 +117,10 @@
   backdrop-filter: none;
 }
 
+.workbench--agent .project-chat-row:not(.project-chat-row--active):hover {
+  background: var(--agent-shell-hover);
+}
+
 .workbench--agent .project-chat-row--active {
   background: var(--agent-shell-selected);
 }

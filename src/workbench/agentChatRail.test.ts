@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { chatSearchFolderOptions } from "../features/chatSearch/chatSearchFanout";
 import {
   MAX_AGENT_RAIL_CHATS_PER_PROJECT,
   MAX_AGENT_RAIL_CURRENT_CHATS,
@@ -75,6 +76,27 @@ describe("agent chat rail", () => {
     expect(group?.chats).toHaveLength(MAX_AGENT_RAIL_CURRENT_CHATS);
     expect(group?.chats.at(-1)?.id).toBe("chat:63");
     expect(group?.truncated).toBe(true);
+  });
+
+  it("keeps a long folder name whole in the rail, the move list and Search Chats", () => {
+    const name =
+      "cross-platform-desktop-shell-with-an-extraordinarily-long-project-name-x";
+    const projects = [
+      { id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 2 },
+      { id: "long", name, rootCount: 1, lastOpenedAt: 1 },
+    ];
+    const groups = groupAgentRailProjects({
+      projects,
+      currentProjectId: "sage",
+      currentChats: [],
+    });
+    expect(groups.map((group) => group.name)).toEqual(["Sage", name]);
+    expect(
+      agentChatMoveDestinations(projects, "sage").map((entry) => entry.name),
+    ).toEqual([name]);
+    expect(
+      chatSearchFolderOptions(projects).map((entry) => entry.name),
+    ).toContain(name);
   });
 
   it("lists other projects for a move popover and marks 0-root as Local", () => {

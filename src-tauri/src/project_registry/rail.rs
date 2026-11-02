@@ -7,13 +7,15 @@ use super::MAX_PROJECTS;
 
 pub(super) const MAX_AGENT_RAIL_CHATS_PER_PROJECT: i64 = 8;
 
+/// Projects in the order they were added. Opening a project or one of its
+/// chats must not move rows under the pointer, so recency never orders them.
 pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<ProjectListItem>> {
     let mut statement = connection.prepare(
         "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
          FROM projects p
          LEFT JOIN project_roots r ON r.project_id = p.id
          GROUP BY p.id
-         ORDER BY p.last_opened_at DESC, p.name
+         ORDER BY p.created_at, p.rowid
          LIMIT ?1",
     )?;
     let mut projects = statement

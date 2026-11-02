@@ -26,8 +26,8 @@ describe("title bar center labels", () => {
   it.each([
     ["Chat: Onboarding", "Onboarding"],
     ["Review PR", "Review PR"],
-    [`Chat: ${"n".repeat(50)}`, `${"n".repeat(47)}…`],
-  ])("shows a bounded session title: %s", (input, expected) => {
+    [`Chat: ${"n".repeat(120)}`, "n".repeat(120)],
+  ])("shows the whole session title: %s", (input, expected) => {
     show([input]);
     expect(screen.getByRole("heading")).toHaveTextContent(expected);
   });

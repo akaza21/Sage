@@ -47,7 +47,11 @@ function enabledMenuItems(container: HTMLElement) {
   return menuItems(container).filter((item) => !item.hasAttribute("disabled"));
 }
 
-function activateMenuItem(container: HTMLElement, next: number) {
+function activateMenuItem(
+  container: HTMLElement,
+  next: number,
+  options?: FocusOptions,
+) {
   const all = menuItems(container);
   const enabled = enabledMenuItems(container);
   all.forEach((item) => {
@@ -62,7 +66,14 @@ function activateMenuItem(container: HTMLElement, next: number) {
     return;
   }
   item.tabIndex = 0;
-  item.focus();
+  item.focus(options);
+}
+
+/** The roving index of the enabled item an event came from, or -1. */
+function enabledItemIndex(container: HTMLElement, target: EventTarget) {
+  const item = (target as Element).closest?.<HTMLElement>(ITEM_SELECTOR);
+  if (!item || item.hasAttribute("disabled")) return -1;
+  return enabledMenuItems(container).indexOf(item);
 }
 
 function selectedItemIndex(items: HTMLElement[]) {
@@ -395,13 +406,22 @@ export function MenuPopover({
         onKeyDown={moveFocus}
         onFocus={(event) => {
           if (focusStrategy === "none") return;
-          const item = (event.target as HTMLElement).closest<HTMLElement>(
-            ITEM_SELECTOR,
-          );
-          if (!item || item.hasAttribute("disabled")) return;
-          const items = enabledMenuItems(event.currentTarget);
-          const index = items.indexOf(item);
+          const index = enabledItemIndex(event.currentTarget, event.target);
           if (index >= 0) activateMenuItem(event.currentTarget, index);
+        }}
+        // Focus follows the mouse, so the focused item is the one highlighted
+        // item whichever input moved last. It never scrolls the list, and a
+        // touch or pen drag that scrolls the menu does not move focus.
+        onPointerMove={(event) => {
+          if (focusStrategy === "none" || role === "dialog") return;
+          if (event.pointerType !== "mouse") return;
+          const index = enabledItemIndex(event.currentTarget, event.target);
+          const items = enabledMenuItems(event.currentTarget);
+          if (index >= 0 && items[index] !== document.activeElement) {
+            activateMenuItem(event.currentTarget, index, {
+              preventScroll: true,
+            });
+          }
         }}
       >
         {children}

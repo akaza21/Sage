@@ -1,7 +1,5 @@
 import { chatDisplayTitle } from "../domain/chatTitle";
 
-const TITLE_BAR_LABEL_CAP = 48;
-
 function hasControlCharacter(value: string): boolean {
   return value.split("").some((character) => {
     const code = character.charCodeAt(0);
@@ -15,8 +13,8 @@ export function titleBarSessionTitle(
   if (!tabTitle) return null;
   const name = chatDisplayTitle(tabTitle).trim();
   if (!name || hasControlCharacter(name)) return null;
-  if (name.length <= TITLE_BAR_LABEL_CAP) return name;
-  return `${name.slice(0, TITLE_BAR_LABEL_CAP - 1)}…`;
+  // The title bar ellipsizes in CSS, so the label fills the room it has.
+  return name;
 }
 
 export function titleBarFocusedChatId(

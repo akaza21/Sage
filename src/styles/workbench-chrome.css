@@ -13,7 +13,11 @@
 .title-bar {
   display: grid;
   grid-template-areas: "start center end";
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* The sides keep their controls; the chat title takes the rest and ellipsizes. */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(
+      max-content,
+      1fr
+    );
   align-items: center;
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--agent-shell-title-divider);

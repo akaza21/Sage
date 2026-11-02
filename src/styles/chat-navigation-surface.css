@@ -99,6 +99,11 @@
   cursor: pointer;
 }
 
+/*
+ * The row's time and its "More" button share one grid cell, so they swap in
+ * sequence: the outgoing one fades out before the incoming one fades in, and
+ * the two are never drawn over each other.
+ */
 .project-chat__actions {
   grid-area: 1 / 1;
   justify-self: end;
@@ -112,11 +117,13 @@
 .project-entry__header:focus-within .project-chat__actions,
 .project-chat__actions[aria-expanded="true"] {
   opacity: 1;
+  transition-delay: var(--motion-duration-fast);
 }
 
 .project-chat-row:hover .project-chat__state,
 .project-chat-row:focus-within .project-chat__state {
   opacity: 0;
+  transition-delay: 0s;
 }
 
 .project-chat__actions:hover,
@@ -291,7 +298,8 @@
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity var(--motion-duration-fast) ease;
+  transition: opacity var(--motion-duration-fast) ease
+    var(--motion-duration-fast);
 }
 
 .project-chat__state--failed {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import {
   Archive,
@@ -55,6 +55,22 @@ export function AgentSettingsSurface() {
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
+  // Settings is modal: when it closes, focus goes back to whatever opened it
+  // (the Settings button, a menu's trigger, or the composer for the shortcut),
+  // unless an action in Settings already moved focus somewhere that remains.
+  const [opener] = useState(() =>
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+  useEffect(
+    () => () => {
+      const focused = document.activeElement;
+      const dropped = !focused || focused === document.body;
+      if (dropped && opener?.isConnected) opener.focus();
+    },
+    [opener],
+  );
   const normalized = query.trim().toLowerCase();
   const matching = groups
     .map((group) => ({

@@ -129,10 +129,17 @@
   background: var(--color-surface-hover);
 }
 
-.menu-item:focus-visible {
+/*
+ * The focused item is the menu's highlighted item, including the first item a
+ * menu focuses when it opens; keyboard focus also draws the edge.
+ */
+.menu-item:focus {
   outline: 0;
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+.menu-item:focus-visible {
   box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
 }
 
@@ -303,7 +310,7 @@
     background: Canvas;
   }
 
-  .menu-item:focus-visible,
+  .menu-item:focus,
   .menu-item[aria-checked="true"],
   .menu-item[aria-selected="true"] {
     color: HighlightText;

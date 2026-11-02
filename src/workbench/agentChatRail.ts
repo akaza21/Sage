@@ -1,4 +1,5 @@
 import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
+import { projectDisplayName } from "../domain/project";
 import type {
   AgentRailChat,
   ArchivedChatSummary,
@@ -111,10 +112,7 @@ export function groupAgentRailProjects(input: {
     const source = current
       ? admitRailChats(input.currentChats, MAX_AGENT_RAIL_CURRENT_CHATS)
       : admitRailChats(project.railChats, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectDisplayName(project.name);
     groups.push({
       id,
       name,
@@ -290,10 +288,7 @@ export function agentChatMoveDestinations(
     ) {
       continue;
     }
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectDisplayName(project.name);
     next.push({
       id: project.id,
       name,

@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
+import { chatDisplayTitle } from "../../domain/chatTitle";
 import { boundedError } from "../../domain/errors";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
@@ -18,8 +19,7 @@ import {
   admitChatSearchFolder,
   chatSearchAttachment,
   chatSearchFolderOptions,
-  chatSearchResultFolderName,
-  isChatSearchFanout,
+  chatSearchResultMeta,
   matchesChatSearchScope,
   runScopedChatSearch,
   type ChatSearchFanoutPick,
@@ -281,8 +281,7 @@ export function ChatSearchControl({
           <form className="chat-search-dialog__form" onSubmit={submit}>
             <h2 id="chat-search-title">Search Chats</h2>
             <p>
-              Search durable titles and primary conversation text in the
-              selected folder, or across listed folders.
+              Search chat titles and messages in one folder or in all folders.
             </p>
             <label className="chat-search-dialog__query">
               <span>Search Chats</span>
@@ -320,12 +319,12 @@ export function ChatSearchControl({
               />
             </label>
             <div className="chat-search-dialog__actions">
-              <button className="button" type="button" onClick={() => close()}>
-                Cancel
-              </button>
               <span role="status">
                 {phase === "searching" ? "Searching…" : "Type to search chats"}
               </span>
+              <button className="button" type="button" onClick={() => close()}>
+                Cancel
+              </button>
             </div>
             {error ? (
               <div className="composer__error" role="alert">
@@ -366,14 +365,8 @@ export function ChatSearchControl({
                     }}
                   >
                     {response.results.map((result) => {
-                      const folderName = chatSearchResultFolderName(
-                        folders,
-                        result.projectId,
-                      );
-                      const showFolder =
-                        Boolean(folderName) &&
-                        (isChatSearchFanout(scope.searchProjectId) ||
-                          result.projectId !== scope.activeProjectId);
+                      const title = chatDisplayTitle(result.title);
+                      const meta = chatSearchResultMeta(folders, scope, result);
                       return (
                         <button
                           className="chat-search-result"
@@ -381,15 +374,14 @@ export function ChatSearchControl({
                           type="button"
                           role="option"
                           aria-selected="false"
-                          aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
+                          aria-label={
+                            result.attached ? title : `${title} — Archived`
+                          }
                           onClick={() => void selectResult(result)}
                         >
                           <span className="chat-search-result__heading">
-                            <strong>{result.title}</strong>
-                            <span>
-                              {result.attached ? "Attached" : "Archived"}
-                              {showFolder ? ` · ${folderName}` : ""}
-                            </span>
+                            <strong>{title}</strong>
+                            {meta ? <span>{meta}</span> : null}
                           </span>
                           {result.snippet ? (
                             <span>{result.snippet}</span>

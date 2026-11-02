@@ -13,6 +13,7 @@ import type {
   WorkbenchTab,
 } from "../../domain/workbench";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
+import { projectDisplayName } from "../../domain/project";
 import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
   type ChatSearchFolderOption,
@@ -48,10 +49,7 @@ export function chatSearchFolderOptions(
     ) {
       continue;
     }
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectDisplayName(project.name);
     next.push({ id: project.id, name });
   }
   if (next.length === 0) return next;
@@ -114,17 +112,32 @@ export function isChatSearchFanout(id: string) {
   return id === CHAT_SEARCH_ALL_FOLDERS_ID;
 }
 
+/**
+ * A result's secondary line. Attached is the usual case, so only Archived is
+ * named; the folder shows when the search spans folders or the result comes
+ * from another folder.
+ */
+export function chatSearchResultMeta(
+  folders: ReadonlyArray<{ id: string; name: string }>,
+  scope: { searchProjectId: string; activeProjectId: string },
+  result: { projectId: string; attached: boolean },
+): string {
+  const folderName = chatSearchResultFolderName(folders, result.projectId);
+  const showFolder =
+    folderName &&
+    (isChatSearchFanout(scope.searchProjectId) ||
+      result.projectId !== scope.activeProjectId);
+  return [result.attached ? "" : "Archived", showFolder ? folderName : ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function chatSearchResultFolderName(
   folders: ReadonlyArray<{ id: string; name: string }>,
   projectId: string,
 ): string | null {
   if (isChatSearchFanout(projectId)) return null;
-  for (const folder of folders) {
-    if (folder.id === projectId && !isChatSearchFanout(folder.id)) {
-      return folder.name;
-    }
-  }
-  return null;
+  return folders.find((folder) => folder.id === projectId)?.name ?? null;
 }
 
 export function chatSearchFanoutFolderIds(

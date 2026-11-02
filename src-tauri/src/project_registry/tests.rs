@@ -554,6 +554,37 @@ fn snapshot_layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayout
 }
 
 #[test]
+fn project_list_keeps_the_added_order_when_projects_are_opened() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let added: Vec<String> = ["sage", "angle", "docs"]
+        .into_iter()
+        .map(|name| {
+            database
+                .create_project_from_root(&folders.root(name))
+                .unwrap()
+                .id
+        })
+        .collect();
+    for target in [&added[2], &added[1]] {
+        let current = database.bootstrap_snapshot().unwrap();
+        database
+            .switch_project(&ProjectSwitchRequest {
+                target_project_id: target.clone(),
+                current_layout: layout(&current),
+            })
+            .unwrap();
+    }
+    let listed: Vec<String> = database
+        .project_list()
+        .unwrap()
+        .into_iter()
+        .map(|project| project.id)
+        .collect();
+    assert_eq!(listed, added);
+}
+
+#[test]
 fn project_list_includes_bounded_chats_for_every_project() {
     let base = std::env::temp_dir().join(format!("sage-rail-{}", Uuid::new_v4()));
     let first_root = base.join("cross");

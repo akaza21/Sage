@@ -19,6 +19,21 @@ export interface AgentRailChat {
   updatedAt?: number;
 }
 
+/**
+ * Project names come from folder names (at most 255 units on every supported
+ * filesystem) or from the create dialog, so this bound never cuts a real name.
+ */
+export const MAX_PROJECT_NAME_CHARS = 255;
+
+/** The name to show for a project, or a generic label for a malformed one. */
+export function projectDisplayName(name: unknown): string {
+  return typeof name === "string" &&
+    name.length > 0 &&
+    name.length <= MAX_PROJECT_NAME_CHARS
+    ? name
+    : "Project";
+}
+
 export interface ProjectListItem {
   id: string;
   name: string;
