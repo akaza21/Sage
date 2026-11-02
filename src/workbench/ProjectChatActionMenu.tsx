@@ -245,11 +245,10 @@ export function ProjectChatRailGlyph({
 }
 
 const HOVER_CARD_WIDTH = 288;
-const HOVER_CARD_OVERLAP = 6;
 
 /**
  * The card beside a rested-on rail row, as in Codex: level with the row and
- * just past the rail's edge, over the center pane. It never takes the
+ * starting where the row ends, over the center pane. It never takes the
  * pointer and adds nothing for assistive technology, which reads the row.
  */
 export function ProjectChatHoverCard({
@@ -269,10 +268,7 @@ export function ProjectChatHoverCard({
   const age = agentRailHoverAge(updatedAt, shownAt);
   const left = Math.max(
     8,
-    Math.min(
-      row.right - HOVER_CARD_OVERLAP,
-      window.innerWidth - HOVER_CARD_WIDTH - 8,
-    ),
+    Math.min(row.right, window.innerWidth - HOVER_CARD_WIDTH - 8),
   );
   return createPortal(
     <div

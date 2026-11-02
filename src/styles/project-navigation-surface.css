@@ -10,18 +10,38 @@
 .workbench--agent .project-chat__trailing {
   position: relative;
   grid-row: 1;
-  padding-bottom: 0;
+  padding: 0 var(--space-1) 0 0;
   /* Clicks pass through to the title button; only the cell's visible
      controls take the pointer (agent-rail-surface.css). */
   pointer-events: none;
 }
 
-/* Codex clips every title about 42 px before the row's end, whether or not
-   the row shows a dot, so the trailing glyph and hover actions sit in space
-   the title already leaves free and the text box never changes size. */
+/* Codex clips every title at the same point whether or not the row shows a
+   dot, so the trailing glyph sits in space the title already leaves free.
+   Beside Pin and Archive the clip moves in to clear them. */
 .workbench--agent .project-chat-row > .project-chat {
   grid-column: 1 / -1;
-  padding-inline-end: 42px;
+  padding-inline-end: var(--agent-rail-title-end);
+}
+
+.workbench--agent
+  .project-chat-row:is(:hover, :has(:focus-visible))
+  > .project-chat {
+  padding-inline-end: var(--agent-rail-title-end-hover);
+}
+
+/* Titles fade out at the clip instead of ending in an ellipsis. Only a title
+   long enough to reach the clip is affected. */
+.workbench--agent .project-chat-row .project-chat__copy {
+  mask-image: linear-gradient(
+    to right,
+    currentColor calc(100% - var(--agent-rail-title-fade)),
+    transparent
+  );
+}
+
+.workbench--agent .project-chat-row .project-chat__title-label {
+  text-overflow: clip;
 }
 
 .workbench--agent .project-chat__working {

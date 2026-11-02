@@ -350,7 +350,9 @@ test("AP-C resting on a chat row shows its title, age and project beside the rai
   // Level with the row, starting at the rail's edge and reaching over the
   // center pane rather than covering the rows below.
   expect(Math.abs(cardBox.y - rowBox.y)).toBeLessThanOrEqual(1);
-  expect(cardBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width - 8);
+  expect(Math.abs(cardBox.x - (rowBox.x + rowBox.width))).toBeLessThanOrEqual(
+    2,
+  );
   expect(cardBox.x + cardBox.width).toBeGreaterThan(
     railBox.x + railBox.width + 200,
   );
@@ -379,6 +381,82 @@ test("AP-C resting on a chat row shows its title, age and project beside the rai
 
   await page.mouse.move(900, 900);
   await expect(card).toHaveCount(0);
+});
+
+test("AP-C chat rows keep one box in both organize modes, with the dot where Archive appears", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 1080 });
+  await openScenario(page, "agent-dual", "agent");
+  const geometry = () =>
+    page.evaluate(() => {
+      const edge = (node: Element | null) => {
+        const box = node!.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          centre: box.left + box.width / 2,
+        };
+      };
+      const rows = [...document.querySelectorAll(".project-chat-row")];
+      const dotted = rows.find((row) =>
+        row.querySelector(
+          ".project-chat__state--unread, .project-chat__state--working",
+        ),
+      );
+      return {
+        row: edge(rows[0]),
+        trigger: edge(document.querySelector(".agent-rail-options__trigger")),
+        dot: dotted
+          ? edge(dotted.querySelector(".project-chat__state")).centre
+          : null,
+        title: rows.map((row) => {
+          const button = row.querySelector(".project-chat")!;
+          return (
+            button.getBoundingClientRect().right -
+            parseFloat(getComputedStyle(button).paddingRight)
+          );
+        }),
+      };
+    });
+  const byProject = await geometry();
+  // A project's chats fill the whole list, like Recents rows.
+  expect(byProject.row.left).toBe(
+    (await page.locator(".project-entry__header").first().boundingBox())!.x,
+  );
+  // Every title clips at one point, with or without a trailing dot.
+  expect(new Set(byProject.title).size).toBe(1);
+  expect(byProject.dot).not.toBeNull();
+
+  const row = page.locator(".project-chat-row").first();
+  await row.hover();
+  const archive = row.getByRole("button", { name: /^Archive / });
+  const archiveBox = (await archive.boundingBox())!;
+  expect(
+    Math.abs(archiveBox.x + archiveBox.width / 2 - byProject.dot!),
+  ).toBeLessThanOrEqual(1);
+  const hoveredClip = await row
+    .locator(".project-chat")
+    .evaluate(
+      (button) =>
+        button.getBoundingClientRect().right -
+        parseFloat(getComputedStyle(button).paddingRight),
+    );
+  const pinBox = (await row
+    .getByRole("button", { name: /^(Pin|Unpin) / })
+    .boundingBox())!;
+  expect(hoveredClip).toBeLessThanOrEqual(pinBox.x);
+
+  await page.mouse.move(900, 900);
+  await page.evaluate(async () => {
+    const prefs = await import("/src/workbench/agentRailViewPrefs.ts");
+    prefs.setAgentRailOrganize("list");
+  });
+  await page.getByRole("region", { name: "Recents" }).waitFor();
+  const oneList = await geometry();
+  expect(oneList.row.right).toBe(byProject.row.right);
+  expect(oneList.trigger).toEqual(byProject.trigger);
+  expect(oneList.title[0]).toBe(byProject.title[0]);
 });
 
 test("AP-C sidebar options open from the trigger toward the center pane", async ({

@@ -47,8 +47,11 @@
   grid-column: 2;
 }
 
+/* The gutter is always reserved, so rows keep one box (and the "…" trigger
+   stays put) whether or not the list is long enough to scroll. */
 .workbench--agent .project-sidebar__scroll {
   scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 
@@ -189,8 +192,14 @@
   gap: 0;
 }
 
+/* A project's chats span the full list, so their hover and selected fill
+   does too; only the title is indented under the project name. */
 .workbench--agent .project-chats {
-  padding: 0 0 0 20px;
+  padding: 0;
+}
+
+.workbench--agent .project-entry .project-chat {
+  padding-inline-start: calc(var(--space-2) + 20px);
 }
 
 .workbench--agent :is(.project-chat, .project-row) {
@@ -242,6 +251,7 @@
   transform: rotate(-90deg);
 }
 
+.agent-rail-section__header:hover .agent-rail-section__chevron,
 .agent-rail-section__disclosure:hover .agent-rail-section__chevron,
 .agent-rail-section__disclosure:focus-visible .agent-rail-section__chevron,
 .agent-rail-section__disclosure[aria-expanded="false"]
@@ -407,7 +417,7 @@
   grid-area: 1 / 1;
   justify-self: end;
   align-self: center;
-  padding-inline: var(--space-1);
+  gap: 2px;
   border-radius: var(--radius-sm);
   background: var(--agent-shell-selected);
   opacity: 0;
@@ -417,8 +427,8 @@
 
 .workbench--agent .project-chat__quick-actions > button {
   display: grid;
-  width: var(--control-height-compact);
-  height: var(--control-height-compact);
+  width: var(--agent-rail-trailing-control);
+  height: var(--agent-rail-trailing-control);
   place-items: center;
   padding: 0;
   border: 0;
@@ -470,4 +480,10 @@
    project header: one 28 px row pitch plus this gap. */
 .workbench--agent .project-entry > .project-chats:not(:empty) {
   padding-bottom: 7px;
+}
+
+/* The dot or spinner is centered where Archive appears on hover. */
+.workbench--agent .project-chat__trailing > .project-chat__state {
+  min-width: var(--agent-rail-trailing-control);
+  justify-content: center;
 }
