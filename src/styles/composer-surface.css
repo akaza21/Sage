@@ -1,15 +1,9 @@
-.composer {
-  position: relative;
-  container-name: composer;
-  container-type: inline-size;
+.chat-dock {
+  --chat-dock-summary-space: 0px;
   display: flex;
   min-height: 0;
   max-height: 100%;
   flex-direction: column;
-}
-
-.composer,
-.chat-surface > .acp-permission-prompt {
   width: min(
     var(--reading-measure),
     calc(
@@ -23,9 +17,28 @@
   );
 }
 
-.chat-surface > .acp-permission-prompt {
-  border: var(--border-width) solid var(--composer-border);
-  border-radius: var(--radius-xl);
+.chat-dock:has(> .chat-edit-summary-zone:not(:empty)) {
+  --chat-dock-summary-space: 40px;
+}
+
+.chat-dock > .chat-edit-summary-zone {
+  min-height: var(--chat-dock-summary-space);
+}
+
+.chat-dock > .acp-permission-prompt {
+  max-height: calc(100% - var(--chat-dock-summary-space));
+  flex: none;
+}
+
+.composer {
+  position: relative;
+  container-name: composer;
+  container-type: inline-size;
+  display: flex;
+  min-height: 0;
+  max-height: calc(100% - var(--chat-dock-summary-space));
+  flex: none;
+  flex-direction: column;
 }
 
 /* An approval holds the slot; the form stays mounted so the draft survives. */
@@ -380,7 +393,7 @@
 }
 
 @media (forced-colors: active) {
-  .composer,
+  .chat-dock,
   .composer__attachment,
   .project-scope,
   .project-scope__icon,
@@ -390,7 +403,7 @@
     border: 1px solid CanvasText;
   }
 
-  .composer:focus-within {
+  .chat-dock:focus-within {
     border-color: Highlight;
     outline: 2px solid Highlight;
     outline-offset: -2px;

@@ -68,6 +68,7 @@ test("clips notice fills inside the composer and keeps harness controls on its s
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   const form = page.locator("form.composer").first();
+  const dock = page.locator(".chat-dock").first();
   await form.locator(".composer__body").evaluate((body) => {
     const notice = document.createElement("div");
     notice.className = "composer__notice";
@@ -78,15 +79,15 @@ test("clips notice fills inside the composer and keeps harness controls on its s
   const body = form.locator(".composer__body");
   await expect(body).toHaveCSS("overflow-y", "auto");
   await expect(body).toHaveCSS("border-top-left-radius", "0px");
-  await expect(form).toHaveCSS("border-top-left-radius", "16px");
-  await expect(form).toHaveCSS("overflow", "clip");
+  await expect(dock).toHaveCSS("border-top-left-radius", "16px");
+  await expect(dock).toHaveCSS("overflow", "clip");
   const harness = form.getByRole("button", { name: "Harness", exact: true });
   await expect(harness).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   expect((await harness.boundingBox())!.height).toBe(28);
-  await expect(form).toHaveScreenshot("agent-polish-composer-notice.png");
+  await expect(dock).toHaveScreenshot("agent-polish-composer-notice.png");
   await harness.click();
   await expect(page.getByRole("listbox")).toBeVisible();
-  await expect(form).toHaveCSS("overflow", "clip");
+  await expect(dock).toHaveCSS("overflow", "clip");
   expect(
     await page
       .getByRole("listbox")

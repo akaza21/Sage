@@ -18,12 +18,12 @@ test("dock owns clipping and keeps a block-end inset at every viewport", async (
     const geometry = await page.locator("form.composer").evaluate((form) => {
       const chat = form.closest(".chat-surface")!;
       const body = form.querySelector(".composer__body")!;
-      const css = getComputedStyle(form);
+      const css = getComputedStyle(form.closest(".chat-dock")!);
       return {
         clip: css.overflow,
         inset:
           chat.getBoundingClientRect().bottom -
-          form.getBoundingClientRect().bottom,
+          form.closest(".chat-dock")!.getBoundingClientRect().bottom,
         expectedInset: Number.parseFloat(
           getComputedStyle(chat).getPropertyValue(
             "--chat-column-inset-block-end",
@@ -269,14 +269,14 @@ test("queued messages and the edit disclosure share the dock and never overlap i
           inputBox.bottom <= outer.bottom,
         toolbarVisible:
           toolbar.top >= outer.top && toolbar.bottom <= outer.bottom,
-        ownsSummary: form.contains(summary),
+        ownsSummary: form.closest(".chat-dock")!.contains(summary),
         queuePosition: getComputedStyle(queue).position,
         queueFill: getComputedStyle(queue.firstElementChild!).backgroundColor,
         inputGap:
           input.getBoundingClientRect().top -
           queue.getBoundingClientRect().bottom,
         bounded:
-          form.getBoundingClientRect().height <=
+          form.closest(".chat-dock")!.getBoundingClientRect().height <=
           form.closest(".chat-surface")!.getBoundingClientRect().height * 0.6,
       };
     });

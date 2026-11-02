@@ -28,6 +28,7 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
 
 export function ChatComposerRegion({
   hidden = false,
+  approvalSlot,
   onEditSummaryMount,
   composerRef,
   fieldId,
@@ -118,217 +119,224 @@ export function ChatComposerRegion({
     composerRef,
   );
   return (
-    <form
-      className="composer surface surface--dock"
-      role="form"
-      hidden={hidden}
-      aria-busy={projectTransitioning || imageUploading}
-      onDragOver={imageInput.onDragOver}
-      onDrop={imageInput.onDrop}
-      onPaste={imageInput.onPaste}
-      onSubmit={(event) => {
-        if (dispatchBlocked) {
-          event.preventDefault();
-          return;
-        }
-        dictation.cancel();
-        onSubmit(event);
-        composerRef.current?.focus();
-      }}
-    >
-      {projectScopeName ? (
-        <div
-          className="composer__scope"
-          role="group"
-          aria-label="Project scope"
-        >
-          <Folder size={14} aria-hidden="true" />
-          <span>{projectScopeName}</span>
-        </div>
-      ) : null}
+    <div className="chat-dock surface surface--dock">
       <div className="chat-edit-summary-zone" ref={onEditSummaryMount} />
-      {otherContext.length < attachedContext.length ? (
-        <TranscriptPart
-          part="ComposerAnnotations"
-          contexts={attachedContext}
-          disabled={actionBusy || projectTransitioning}
-          onRemove={onRemoveContext}
-          chatId={dictationScope}
-        />
-      ) : null}
-      <QueuedRows
-        composerRef={composerRef}
-        prompts={queuedPrompts}
-        steerAvailable={steerAvailable}
-        disabled={actionBusy || projectTransitioning}
-        onDelete={onDeleteQueuedPrompt}
-        onRetry={onRetryQueuedPrompt}
-        onSteer={onSteerQueuedPrompt}
-      />
-      <div className="composer__body">
-        {goal.kind === "goal" ? (
-          <BoundChatGoalControl
-            state={goal}
+      {approvalSlot}
+      <form
+        className="composer"
+        role="form"
+        hidden={hidden}
+        aria-busy={projectTransitioning || imageUploading}
+        onDragOver={imageInput.onDragOver}
+        onDrop={imageInput.onDrop}
+        onPaste={imageInput.onPaste}
+        onSubmit={(event) => {
+          if (dispatchBlocked) {
+            event.preventDefault();
+            return;
+          }
+          dictation.cancel();
+          onSubmit(event);
+          composerRef.current?.focus();
+        }}
+      >
+        {projectScopeName ? (
+          <div
+            className="composer__scope"
+            role="group"
+            aria-label="Project scope"
+          >
+            <Folder size={14} aria-hidden="true" />
+            <span>{projectScopeName}</span>
+          </div>
+        ) : null}
+        {otherContext.length < attachedContext.length ? (
+          <TranscriptPart
+            part="ComposerAnnotations"
+            contexts={attachedContext}
+            disabled={actionBusy || projectTransitioning}
+            onRemove={onRemoveContext}
             chatId={dictationScope}
-            detailsRef={goalDetails.detailsRef}
-            canMutate={goalDetails.canMutate}
           />
         ) : null}
-        {workbenchError ? (
-          <div className="composer__error" role="alert">
-            {workbenchError}
-          </div>
-        ) : null}
-        {chatError ? (
-          <div className="composer__error" role="alert">
-            {chatError}
-            {claudeSignInRequired ? (
-              <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
-            ) : null}
-          </div>
-        ) : null}
-        {imageInput.status ? (
-          <div className="composer__error" role="alert">
-            {imageInput.status}
-          </div>
-        ) : null}
-        {missingBindingNotice &&
-        !["checking", "signInRequired", "consent", "waiting", "error"].includes(
-          discoveryPhase,
-        ) ? (
-          <div className="composer__notice">
-            No reviewed local binding is available for this harness.
-          </div>
-        ) : null}
-        <label className="sr-only" htmlFor={fieldId}>
-          Message agent
-        </label>
-        <span className="sr-only" id={descriptionId}>
-          {queueing ? "Queue" : "Send"} a message to the selected harness and
-          model
-        </span>
-        {!composerDisabled ? (
-          <span className="sr-only" id={shortcutDescriptionId}>
-            {shortcutLabel} focuses the composer.{" "}
-            {queueing
-              ? "Enter queues a message while this turn runs."
-              : "Enter sends."}{" "}
-            Shift+Enter adds a new line.
+        <QueuedRows
+          composerRef={composerRef}
+          prompts={queuedPrompts}
+          steerAvailable={steerAvailable}
+          disabled={actionBusy || projectTransitioning}
+          onDelete={onDeleteQueuedPrompt}
+          onRetry={onRetryQueuedPrompt}
+          onSteer={onSteerQueuedPrompt}
+        />
+        <div className="composer__body">
+          {goal.kind === "goal" ? (
+            <BoundChatGoalControl
+              state={goal}
+              chatId={dictationScope}
+              detailsRef={goalDetails.detailsRef}
+              canMutate={goalDetails.canMutate}
+            />
+          ) : null}
+          {workbenchError ? (
+            <div className="composer__error" role="alert">
+              {workbenchError}
+            </div>
+          ) : null}
+          {chatError ? (
+            <div className="composer__error" role="alert">
+              {chatError}
+              {claudeSignInRequired ? (
+                <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
+              ) : null}
+            </div>
+          ) : null}
+          {imageInput.status ? (
+            <div className="composer__error" role="alert">
+              {imageInput.status}
+            </div>
+          ) : null}
+          {missingBindingNotice &&
+          ![
+            "checking",
+            "signInRequired",
+            "consent",
+            "waiting",
+            "error",
+          ].includes(discoveryPhase) ? (
+            <div className="composer__notice">
+              No reviewed local binding is available for this harness.
+            </div>
+          ) : null}
+          <label className="sr-only" htmlFor={fieldId}>
+            Message agent
+          </label>
+          <span className="sr-only" id={descriptionId}>
+            {queueing ? "Queue" : "Send"} a message to the selected harness and
+            model
           </span>
-        ) : null}
-        <div className="composer__input-area">
-          <textarea
-            ref={composerRef}
-            id={fieldId}
-            aria-label="Message agent"
-            aria-description={
-              queueing
+          {!composerDisabled ? (
+            <span className="sr-only" id={shortcutDescriptionId}>
+              {shortcutLabel} focuses the composer.{" "}
+              {queueing
                 ? "Enter queues a message while this turn runs."
-                : undefined
-            }
-            aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
-            value={text}
-            maxLength={MAX_CHAT_COMPOSER_BYTES}
-            rows={2}
-            placeholder={composerPromptPlaceholder(
-              canPrompt,
-              sessionPromptUnavailable,
-            )}
-            disabled={composerDisabled}
-            onChange={(event) => onTextChange(event.target.value)}
-            onBlur={dictation.cancel}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && dictation.listening) {
-                event.preventDefault();
-                dictation.cancel();
-                return;
+                : "Enter sends."}{" "}
+              Shift+Enter adds a new line.
+            </span>
+          ) : null}
+          <div className="composer__input-area">
+            <textarea
+              ref={composerRef}
+              id={fieldId}
+              aria-label="Message agent"
+              aria-description={
+                queueing
+                  ? "Enter queues a message while this turn runs."
+                  : undefined
               }
-              if (
-                enabled &&
-                matchesKeymapChord(keymapBinding("sendMessage"), event)
-              ) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-        </div>
-        {disabledReason ? (
-          <p className="composer__disabled-reason" id={disabledReasonId}>
-            {disabledReason}
-            {onRetryLoad ? (
-              <button
-                type="button"
-                className="composer__disabled-retry"
-                onClick={onRetryLoad}
-              >
-                Retry
-              </button>
-            ) : null}
-          </p>
-        ) : null}
-        {otherContext.length > 0 ? (
-          <div className="composer__attachment-row">
-            <ComposerAttachments
-              contexts={otherContext}
-              imagePreviews={imagePreviews}
-              disabled={actionBusy || projectTransitioning}
-              onRemove={onRemoveContext}
+              aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
+              value={text}
+              maxLength={MAX_CHAT_COMPOSER_BYTES}
+              rows={2}
+              placeholder={composerPromptPlaceholder(
+                canPrompt,
+                sessionPromptUnavailable,
+              )}
+              disabled={composerDisabled}
+              onChange={(event) => onTextChange(event.target.value)}
+              onBlur={dictation.cancel}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && dictation.listening) {
+                  event.preventDefault();
+                  dictation.cancel();
+                  return;
+                }
+                if (
+                  enabled &&
+                  matchesKeymapChord(keymapBinding("sendMessage"), event)
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
             />
           </div>
-        ) : null}
-      </div>
-      <div className="composer__toolbar">
-        {imageInputAvailable ? (
-          <ComposerImageInput
-            inputRef={imageInput.chooserRef}
-            disabled={composerDisabled || imageUploading}
-            onChoose={imageInput.accept}
+          {disabledReason ? (
+            <p className="composer__disabled-reason" id={disabledReasonId}>
+              {disabledReason}
+              {onRetryLoad ? (
+                <button
+                  type="button"
+                  className="composer__disabled-retry"
+                  onClick={onRetryLoad}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+          {otherContext.length > 0 ? (
+            <div className="composer__attachment-row">
+              <ComposerAttachments
+                contexts={otherContext}
+                imagePreviews={imagePreviews}
+                disabled={actionBusy || projectTransitioning}
+                onRemove={onRemoveContext}
+              />
+            </div>
+          ) : null}
+        </div>
+        <div className="composer__toolbar">
+          {imageInputAvailable ? (
+            <ComposerImageInput
+              inputRef={imageInput.chooserRef}
+              disabled={composerDisabled || imageUploading}
+              onChoose={imageInput.accept}
+            />
+          ) : null}
+          <ChatHarnessControls
+            modelLabelScope={JSON.stringify([dictationScope, sessionId])}
+            inheritScope={dictationScope}
+            accessBindingId={accessBindingId}
+            onOpenGoal={goalDetails.onOpen}
+            imageAction={imageInput.action}
+            availableBinding={availableBinding}
+            canPrompt={canPrompt}
+            discoveryPhase={discoveryPhase}
+            sessionHarnessId={sessionHarnessId}
+            sessionModelId={sessionModelId}
+            selectedHarnessId={selectedHarnessId}
+            selectedModelId={selectedModelId}
+            projectName={composerWorkspaceName(project)}
+            turnBusy={actionBusy || activeTurn}
+            sessionConfig={sessionConfig}
+            modePending={modePending}
+            modeError={modeError}
+            focused={focused}
+            onSetSessionMode={onSetSessionMode}
+            onSetSessionConfigOption={onSetSessionConfigOption}
+            onSelectHarness={onSelectHarness}
+            onSelectModel={onSelectModel}
+            onModeRemoved={() => composerRef.current?.focus()}
           />
-        ) : null}
-        <ChatHarnessControls
-          modelLabelScope={JSON.stringify([dictationScope, sessionId])}
-          inheritScope={dictationScope}
-          accessBindingId={accessBindingId}
-          onOpenGoal={goalDetails.onOpen}
-          imageAction={imageInput.action}
-          availableBinding={availableBinding}
-          canPrompt={canPrompt}
-          discoveryPhase={discoveryPhase}
-          sessionHarnessId={sessionHarnessId}
-          sessionModelId={sessionModelId}
-          selectedHarnessId={selectedHarnessId}
-          selectedModelId={selectedModelId}
-          projectName={composerWorkspaceName(project)}
-          turnBusy={actionBusy || activeTurn}
-          sessionConfig={sessionConfig}
-          modePending={modePending}
-          modeError={modeError}
-          focused={focused}
-          onSetSessionMode={onSetSessionMode}
-          onSetSessionConfigOption={onSetSessionConfigOption}
-          onSelectHarness={onSelectHarness}
-          onSelectModel={onSelectModel}
-          onModeRemoved={() => composerRef.current?.focus()}
-        />
-        {!composerDisabled ? (
-          <span className="composer__shortcut" aria-hidden="true">
-            {shortcutLabel} to focus <span>/</span>{" "}
-            {queueing ? "Enter to queue" : "Enter to send"}
-          </span>
-        ) : null}
-        <ComposerContext usage={usage} />
-        <ComposerTurnControl
-          dictation={dictation}
-          disabled={composerDisabled}
-          onCancelTurn={onCancelTurn}
-          cancelDisabled={actionBusy || projectTransitioning}
-          queueing={Boolean(activeTurn && queueAvailable)}
-          sendDisabled={
-            dispatchBlocked || (!text.trim() && !attachedContext.length)
-          }
-        />
-      </div>
-    </form>
+          {!composerDisabled ? (
+            <span className="composer__shortcut" aria-hidden="true">
+              {shortcutLabel} to focus <span>/</span>{" "}
+              {queueing ? "Enter to queue" : "Enter to send"}
+            </span>
+          ) : null}
+          <ComposerContext usage={usage} />
+          <ComposerTurnControl
+            dictation={dictation}
+            disabled={composerDisabled}
+            onCancelTurn={onCancelTurn}
+            cancelDisabled={actionBusy || projectTransitioning}
+            queueing={Boolean(activeTurn && queueAvailable)}
+            sendDisabled={
+              dispatchBlocked || (!text.trim() && !attachedContext.length)
+            }
+          />
+        </div>
+      </form>
+    </div>
   );
 }

@@ -29,7 +29,7 @@
   grid-area: transcript;
 }
 
-.chat-surface--agent > .composer {
+.chat-surface--agent > .chat-dock {
   grid-area: composer;
 }
 

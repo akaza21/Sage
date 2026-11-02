@@ -70,7 +70,7 @@ describe("CP-28 transcript style contracts", () => {
     );
     const composer = declaration(
       "src/styles/composer-surface.css",
-      ".composer, .chat-surface > .acp-permission-prompt",
+      ".chat-dock",
     );
     expect(compact(composer.width)).toBe(
       compact(

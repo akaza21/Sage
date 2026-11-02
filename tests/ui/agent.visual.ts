@@ -1409,7 +1409,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .poll(
         () =>
           focusVisible.evaluate((trigger) => {
-            const owner = trigger.closest<HTMLElement>(".composer");
+            const owner = trigger.closest<HTMLElement>(".chat-dock");
             if (!owner) return false;
             const edgeProbe = document.createElement("span");
             edgeProbe.style.border = "1px solid var(--composer-border)";
@@ -1437,7 +1437,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         getComputedStyle(transparentProbe).borderTopColor;
       transparentProbe.remove();
 
-      const owner = trigger.closest<HTMLElement>(".composer");
+      const owner = trigger.closest<HTMLElement>(".chat-dock");
       const ownerStyle = owner ? getComputedStyle(owner) : null;
       const workbench = trigger.closest<HTMLElement>(".workbench");
       const workbenchStyle = workbench ? getComputedStyle(workbench) : null;
@@ -1529,7 +1529,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .poll(
         () =>
           keyboardFocus.evaluate((trigger) => {
-            const owner = trigger.closest<HTMLElement>(".composer");
+            const owner = trigger.closest<HTMLElement>(".chat-dock");
             if (!owner) return false;
             const borderProbe = document.createElement("span");
             borderProbe.style.border = "1px solid Highlight";
@@ -1550,7 +1550,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           .join("");
         return `${element.tagName.toLowerCase()}${id}${classes}`;
       };
-      const owner = trigger.closest<HTMLElement>(".composer");
+      const owner = trigger.closest<HTMLElement>(".chat-dock");
       const ownerStyle = owner ? getComputedStyle(owner) : null;
       const systemProbe = document.createElement("span");
       systemProbe.style.border = "1px solid Highlight";

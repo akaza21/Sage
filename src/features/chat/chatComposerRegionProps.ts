@@ -1,4 +1,4 @@
-import type { FormEventHandler, RefObject } from "react";
+import type { FormEventHandler, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import type {
@@ -12,6 +12,7 @@ import type { ChatUsage } from "./acp/chatUsage";
 export interface ChatComposerRegionProps {
   /** Kept mounted while an approval holds the slot, so the draft survives. */
   hidden?: boolean;
+  approvalSlot?: ReactNode;
   onEditSummaryMount?: (element: HTMLDivElement | null) => void;
   composerRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;

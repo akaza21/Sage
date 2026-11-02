@@ -4,6 +4,49 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
+for (const width of [480, 1280]) {
+  test(`expanded edits leave a bounded dock and reachable controls at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 560 });
+    await openScenario(page, "diff", "agent");
+    await settleChatProjections(page);
+    await page.evaluate(async () => {
+      const fixture = await import("/tests/ui/fixtures/cp30cEditFixture.ts");
+      fixture.installCp30cDisclosure("partial");
+    });
+    const summary = page.getByRole("region", {
+      name: "Files edited in this chat",
+    });
+    await summary.getByRole("button", { name: /files changed/ }).click();
+    const dock = page.locator(".chat-dock");
+    const bounds = (await dock.boundingBox())!;
+    const surface = (await page.locator(".chat-surface").boundingBox())!;
+    expect(bounds.height).toBeLessThanOrEqual(surface.height * 0.6 + 1);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+      surface.y + surface.height,
+    );
+    const input = page.getByRole("textbox", { name: "Message agent" });
+    await input.fill("Review these edits");
+    for (const control of [
+      input,
+      dock.getByRole("button", { name: "Access options", exact: true }),
+      dock.getByRole("button", { name: "Harness", exact: true }),
+      dock.getByRole("button", { name: "Send message", exact: true }),
+    ]) {
+      const box = (await control.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+      expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      await control.click({ trial: true });
+    }
+    await summary
+      .getByRole("button", { name: /Open file .*disclosure-15.tsx/ })
+      .click({ trial: true });
+  });
+}
+
 for (const viewport of [
   { width: 900, height: 800 },
   { width: 1280, height: 800 },
@@ -39,12 +82,13 @@ for (const viewport of [
     await expect(scope).toBeVisible();
     const composer = page.locator("form.composer");
     const geometry = await composer.evaluate((form) => {
+      const dock = form.closest(".chat-dock")!;
       const scope = document.querySelector(
         '[role="group"][aria-label="Project scope"]',
       )!;
       const body = form.querySelector(".composer__body")!;
-      const style = getComputedStyle(form);
-      const box = form.getBoundingClientRect();
+      const style = getComputedStyle(dock);
+      const box = dock.getBoundingClientRect();
       const row = scope.getBoundingClientRect();
       const input = body.getBoundingClientRect();
       const corners = (element: Element) => {
@@ -58,8 +102,8 @@ for (const viewport of [
       };
       return {
         token: style.getPropertyValue("--radius-xl").trim(),
-        corners: corners(form),
-        ownsScope: form.contains(scope),
+        corners: corners(dock),
+        ownsScope: dock.contains(scope),
         touching: [
           getComputedStyle(scope).borderBottomLeftRadius,
           getComputedStyle(scope).borderBottomRightRadius,

@@ -331,8 +331,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {approval.slot}
       <ChatComposerRegion
+        approvalSlot={approval.slot}
         onEditSummaryMount={setEditSummaryContainer}
         hidden={approval.awaiting}
         composerRef={composerRef}

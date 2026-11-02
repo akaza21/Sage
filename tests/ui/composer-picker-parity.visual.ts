@@ -154,7 +154,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   await openScenario(page, "agent-picker-harness-model", "agent");
 
   const composer = page.locator("form.composer").first();
-  const composerBox = await composer.boundingBox();
+  const composerBox = await page.locator(".chat-dock").first().boundingBox();
   expect(composerBox).not.toBeNull();
   const columnBox = await page
     .locator(".message-list__content")
