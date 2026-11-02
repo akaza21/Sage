@@ -3582,7 +3582,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;try{$rejected=$false;try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)))}catch{$rejected=$_.Exception.Message -match 'not owned'};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{rejected=$rejected;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;try{$outcome='accepted';try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)))}catch{$outcome=$_.Exception.Message};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{outcome=$outcome;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}}`;
     const result = spawnSync(
       powershell,
       [
@@ -3594,8 +3594,15 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       { encoding: "utf8", windowsHide: true, timeout: 15000 },
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.deepEqual(JSON.parse(result.stdout.trim()), {
-      rejected: true,
+    const observed = JSON.parse(result.stdout.trim());
+    assert.doesNotMatch(
+      observed.outcome,
+      /startup deadline/,
+      `readiness timed out instead of rejecting the unowned listener: ${observed.outcome}`,
+    );
+    assert.deepEqual(observed, {
+      outcome:
+        "The frontend listener is not owned by the captured runtime tree.",
       identityLost: false,
       remainingCount: 0,
     });
