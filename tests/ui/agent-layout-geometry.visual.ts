@@ -340,62 +340,123 @@ test("the browser toolbar shows the attached chat's title, truncating only long 
   ).toBe("ellipsis");
 });
 
-test("a narrow browser toolbar keeps every action whole, separate and reachable", async ({
+const SECONDARY_ACTIONS = [
+  { role: "button", name: "Ask about this page" },
+  { role: "combobox", name: "Chat for browser tab" },
+  { role: "button", name: "Attach tab to chat" },
+] as const;
+
+test("a narrow browser toolbar keeps the address usable and every action reachable", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1100, height: 400 });
-  const select = page.getByRole("combobox", { name: "Chat for browser tab" });
+  await page.setViewportSize({ width: 1100, height: 600 });
+  const title = "Chat: Walking skeleton for the agent workbench";
   for (const width of [339, 420, 560]) {
     await page.goto(
       `/tests/ui/fixtures/browser-address.html?chat=${encodeURIComponent(
-        "Chat: Walking skeleton for the agent workbench",
+        title,
       )}&width=${width}`,
     );
     const toolbar = page.locator(".browser-surface__toolbar");
     const edge = await bounds(toolbar);
     expect(Math.round(edge.width)).toBe(width);
 
-    const controls = [
-      ...(await toolbar.getByRole("button").all()),
-      page.getByRole("textbox", { name: "Address or search" }),
-      select,
-    ];
+    // The address never falls below its token minimum.
+    const address = page.getByRole("textbox", { name: "Address or search" });
+    const minimum = await page.evaluate(() =>
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--browser-address-min-width",
+        ),
+      ),
+    );
+    expect(minimum).toBeGreaterThan(0);
+    expect((await bounds(address)).width).toBeGreaterThanOrEqual(
+      minimum - SUBPIXEL,
+    );
+
+    // Whatever the toolbar shows is whole, inside it and apart.
+    const shown: Locator[] = [address];
+    for (const control of await toolbar
+      .locator("button, select")
+      .filter({ visible: true })
+      .all())
+      shown.push(control);
     const boxes = [];
-    for (const control of controls) {
+    for (const control of shown) {
       const box = await bounds(control);
       expectInside(box, edge);
       boxes.push(box);
     }
-    for (const [i, a] of boxes.entries()) {
-      for (const b of boxes.slice(i + 1)) {
-        const apart =
-          a.x + a.width <= b.x + SUBPIXEL || b.x + b.width <= a.x + SUBPIXEL;
-        expect(apart).toBe(true);
-      }
-    }
-    for (const name of ["Downloads", "More options"]) {
-      const button = toolbar.getByRole("button", { name });
-      const box = await bounds(button);
-      const hit = await page.evaluate(
-        ([x, y]) =>
-          document.elementFromPoint(x, y)?.closest("button")?.ariaLabel ?? null,
-        [box.x + box.width / 2, box.y + box.height / 2],
+    for (const [i, a] of boxes.entries())
+      for (const b of boxes.slice(i + 1))
+        expect(
+          a.x + a.width <= b.x + SUBPIXEL || b.x + b.width <= a.x + SUBPIXEL,
+        ).toBe(true);
+
+    // Each secondary action is on the toolbar, or in the More menu.
+    const more = toolbar.getByRole("button", { name: "More options" });
+    await expectHitTestable(page, more);
+    const inToolbar = await toolbar
+      .getByRole("button", { name: "Downloads" })
+      .isVisible();
+    await more.click();
+    const menu = page.getByRole("menu", { name: "Browser menu" });
+    await expect(menu).toBeVisible();
+    for (const action of SECONDARY_ACTIONS) {
+      const control = page.getByRole(action.role, { name: action.name });
+      await expectHitTestable(page, control);
+      const moved = await control.evaluate(
+        (node) => node.closest('[role="menu"]') !== null,
       );
-      expect(hit).toBe(name);
+      // Page actions move only after Downloads has, and only when needed.
+      expect(moved).toBe(width === 339);
+      if (moved && action.role === "combobox")
+        expect((await bounds(control)).width).toBeGreaterThanOrEqual(120);
     }
 
-    // The chat picker shows its title, or only its icon; never a sliver.
-    const picker = await bounds(select);
-    const compact = await select.evaluate(
-      (node) => getComputedStyle(node).color === "rgba(0, 0, 0, 0)",
+    // Attach behaves the same wherever it is: the fixture has no native
+    // browser, so the attempt reports its failure.
+    await page.getByRole("button", { name: "Attach tab to chat" }).click();
+    await expect(page.getByRole("alert")).toHaveText(
+      "Could not attach this tab to the selected chat.",
     );
-    if (compact) {
-      await expect(page.locator(".browser-surface__chat-icon")).toBeVisible();
-      expect(picker.width).toBeGreaterThanOrEqual(24);
-    } else {
-      await expect(page.locator(".browser-surface__chat-icon")).toBeHidden();
-      expect(picker.width).toBeGreaterThanOrEqual(120);
-    }
-    expect(compact).toBe(width <= 480);
+
+    // Downloads opens the same popover from the menu as from the toolbar.
+    if (!(await menu.isVisible())) await more.click();
+    await menu.getByRole("menuitem", { name: "Downloads" }).click();
+    await expect(page.getByRole("dialog", { name: "Downloads" })).toBeVisible();
+    expect(inToolbar).toBe(width === 560);
   }
+
+  // Widening the pane brings the moved actions back to the toolbar.
+  await page.keyboard.press("Escape");
+  await page.locator(".browser-surface").evaluate((node) => {
+    (node as HTMLElement).style.width = "339px";
+  });
+  const toolbar = page.locator(".browser-surface__toolbar");
+  await expect(toolbar.getByRole("button", { name: "Downloads" })).toBeHidden();
+  await expect(page.getByRole("combobox")).toBeHidden();
+  await page.locator(".browser-surface").evaluate((node) => {
+    (node as HTMLElement).style.width = "560px";
+  });
+  await expect(
+    toolbar.getByRole("button", { name: "Downloads" }),
+  ).toBeVisible();
+  await expectHitTestable(
+    page,
+    toolbar.getByRole("combobox", { name: "Chat for browser tab" }),
+  );
 });
+
+async function expectHitTestable(page: Page, control: Locator) {
+  const box = await bounds(control);
+  const hit = await control.evaluate(
+    (node, [x, y]) => {
+      const top = document.elementFromPoint(x, y);
+      return top !== null && (top === node || node.contains(top));
+    },
+    [box.x + box.width / 2, box.y + box.height / 2],
+  );
+  expect(hit).toBe(true);
+}

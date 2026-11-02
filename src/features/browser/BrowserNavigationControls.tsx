@@ -27,6 +27,7 @@ import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
 import { useDismissOnOutsidePointer } from "./browserPopover";
+import { useToolbarOverflow } from "./useToolbarOverflow";
 
 interface Props {
   navigation: BrowserNavigation | null;
@@ -82,6 +83,7 @@ export function BrowserNavigationControls({
   const addressText = useAddressText(editing, page, address);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const overflow = useToolbarOverflow(menuOpen, pageControls);
   useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
   useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useLayoutEffect(() => {
@@ -202,7 +204,7 @@ export function BrowserNavigationControls({
         />
       </form>
       <div className="browser-surface__right-group" onKeyDown={onMenuKeyDown}>
-        {pageControls}
+        {overflow.toolbarActions}
         {downloadsControl}
         <button
           ref={menuTrigger}
@@ -221,6 +223,7 @@ export function BrowserNavigationControls({
             aria-label="Browser menu"
             onClickCapture={onMenuClickCapture}
           >
+            {overflow.menuActions}
             <div className="browser-surface__menu-group">
               <button
                 role="menuitem"
