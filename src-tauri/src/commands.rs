@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::{
     domain::{HarnessDefinition, ModelOption, SimulatorTurnResult},
-    harnesses::{SIMULATOR_DEFAULT_MODEL_ID, SIMULATOR_ID},
+    harnesses::{HarnessCatalog, SIMULATOR_DEFAULT_MODEL_ID, SIMULATOR_ID},
     state::AppState,
 };
 
@@ -16,16 +16,25 @@ pub fn list_harnesses(state: State<'_, AppState>) -> Vec<HarnessDefinition> {
 }
 
 #[tauri::command]
-pub fn list_harness_models(
+pub async fn list_harness_models(
     state: State<'_, AppState>,
     harness_id: String,
 ) -> Result<Vec<ModelOption>, String> {
+    let harnesses = state.harnesses.clone();
+    tauri::async_runtime::spawn_blocking(move || list_harness_models_inner(&harnesses, &harness_id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn list_harness_models_inner(
+    harnesses: &HarnessCatalog,
+    harness_id: &str,
+) -> Result<Vec<ModelOption>, String> {
     if harness_id == "codex" {
-        let _ = state.harnesses.refresh_codex_registration();
+        let _ = harnesses.refresh_codex_registration();
     }
-    state
-        .harnesses
-        .models(&harness_id)
+    harnesses
+        .models(harness_id)
         .map_err(|error| error.to_string())
 }
 
@@ -74,3 +83,23 @@ pub async fn send_simulated_prompt(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod model_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn model_lookup_preserves_catalog_models() {
+        let harnesses = HarnessCatalog::default();
+        for definition in harnesses.definitions() {
+            let expected = harnesses.models(&definition.id).unwrap();
+            let actual = list_harness_models_inner(&harnesses, &definition.id).unwrap();
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                serde_json::to_value(expected).unwrap(),
+                "models for {}",
+                definition.id
+            );
+        }
+    }
+}
