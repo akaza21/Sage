@@ -816,9 +816,54 @@ impl FixtureSetup {
 
     async fn send_and_wait_completed(&self, owner: &RuntimeOwner) -> SageTurnId {
         let completed_before = self.completed_turns(owner);
-        self.service
-            .send_codex_turn(self.turn_command(owner))
-            .unwrap();
+        let command = self.turn_command(owner);
+        let revision = command.expected_projection_revision;
+        if let Err(error) = self.service.send_codex_turn(command) {
+            let page =
+                self.service
+                    .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None);
+            let slot_error = self.service.host_for(owner).err();
+            let host = self
+                .service
+                .lane_for(owner)
+                .and_then(|lane| lane.runtime.active())
+                .map(|host| {
+                    (
+                        host.lifecycle.load(std::sync::atomic::Ordering::Acquire),
+                        *host
+                            .last_shutdown_phase
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    )
+                });
+            let sessions = page.as_ref().ok().map(|page| {
+                page.sessions
+                    .as_slice()
+                    .iter()
+                    .map(|session| {
+                        (
+                            &session.id,
+                            &session.state,
+                            &session.residency,
+                            &session.runtime_epoch,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let turns = page.as_ref().ok().map(|page| {
+                page.turns
+                    .as_slice()
+                    .iter()
+                    .map(|turn| (&turn.id, &turn.state))
+                    .collect::<Vec<_>>()
+            });
+            let page_error = page.as_ref().err();
+            panic!(
+                "sequential chat send failed: {error:?}; owner={owner:?}; expected revision={revision:?}; \
+                 completed before={completed_before:?}; slot={slot_error:?}; host={host:?}; \
+                 sessions={sessions:?}; turns={turns:?}; page error={page_error:?}"
+            );
+        }
         self.wait_for_completed_after(owner, &completed_before)
     }
 

@@ -10,13 +10,13 @@ describe("Project and chat navigation stylesheet seams", () => {
       "utf8",
     );
     expect(projectCss).toMatch(
-      /\.workbench--agent \.project-chat__working\s*\{[^}]*animation:\s*sage-rail-spin/s,
+      /\.workbench--agent \.project-chat__working\s*\{[^}]*animation:\s*sage-spin var\(--motion-duration-spin\)/s,
     );
     expect(projectCss).toMatch(
       /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.workbench--agent \.project-chat__working\s*\{\s*animation:\s*none;/s,
     );
     expect(projectCss.indexOf("prefers-reduced-motion")).toBeGreaterThan(
-      projectCss.indexOf("animation: sage-rail-spin"),
+      projectCss.indexOf("animation: sage-spin"),
     );
   });
 

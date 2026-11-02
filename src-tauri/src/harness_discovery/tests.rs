@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use super::{
@@ -18,13 +18,49 @@ use super::{
 use super::{InstallLayout, candidates::known_install_roots_from_windows};
 
 fn scratch_dir() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
+    try_scratch_dir().expect("exclusively create scratch directory")
+}
+
+fn try_scratch_dir() -> std::io::Result<PathBuf> {
+    let nonce = uuid::Uuid::new_v4();
     let directory = std::env::temp_dir().join(format!("sage-host-discovery-{nonce}"));
-    fs::create_dir_all(&directory).expect("create scratch directory");
-    directory
+    fs::create_dir(&directory)?;
+    Ok(directory)
+}
+
+#[test]
+fn parallel_scratch_directories_have_exclusive_ownership() {
+    let barrier = std::sync::Barrier::new(2);
+    let paths = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                scope.spawn(|| {
+                    (0..500)
+                        .map(|_| {
+                            barrier.wait();
+                            let path = try_scratch_dir();
+                            barrier.wait();
+                            path
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let paths: Vec<_> = paths.into_iter().map(Result::unwrap).collect();
+    let unique: std::collections::HashSet<_> = paths.iter().collect();
+    for path in &unique {
+        fs::remove_dir_all(path).unwrap();
+    }
+    assert_eq!(
+        unique.len(),
+        paths.len(),
+        "scratch directory ownership collided"
+    );
 }
 
 fn test_basename(harness: HarnessExecutable) -> &'static str {
@@ -79,18 +115,14 @@ fn timeout_limits() -> ProbeLimits {
 }
 
 #[test]
-fn presence_projection_does_not_wait_for_a_slow_version_command() {
+fn presence_projection_does_not_execute_a_version_command() {
     let directory = scratch_dir();
+    let marker = directory.join("version-command-executed");
     let executable = write_script(
         &directory,
         test_basename(HarnessExecutable::Codex),
-        if cfg!(windows) {
-            "ping 127.0.0.1 -n 6 > nul"
-        } else {
-            "sleep 1"
-        },
+        &format!("echo executed > \"{}\"", marker.display()),
     );
-    let started = std::time::Instant::now();
     let candidate = present_candidate(
         HarnessExecutable::Codex,
         vec![super::candidates::Candidate {
@@ -100,7 +132,10 @@ fn presence_projection_does_not_wait_for_a_slow_version_command() {
     );
 
     assert!(candidate.is_some());
-    assert!(started.elapsed() < Duration::from_millis(200));
+    assert!(
+        !marker.exists(),
+        "presence discovery executed a version probe"
+    );
     fs::remove_dir_all(directory).expect("remove scratch directory");
 }
 

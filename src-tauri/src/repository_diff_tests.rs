@@ -44,6 +44,37 @@ fn text(diff: &FileDiff) -> String {
 }
 
 #[tokio::test]
+async fn scoped_diffs_show_raw_content_without_running_repository_textconv() {
+    let (repo, workspace) = fixture();
+    fs::write(repo.0.join(".gitattributes"), "*.txt diff=sentinel\n").unwrap();
+    fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
+    git(&repo.0, &["add", "."]);
+    git(&repo.0, &["commit", "-q", "-m", "fixture"]);
+    git(
+        &repo.0,
+        &["config", "diff.sentinel.textconv", "echo converted"],
+    );
+    fs::write(repo.0.join("tracked.txt"), "indexed\n").unwrap();
+    git(&repo.0, &["add", "tracked.txt"]);
+    fs::write(repo.0.join("tracked.txt"), "working\n").unwrap();
+    let resource = workspace.resource("tracked.txt").unwrap();
+    for (scope, removed, added) in [
+        (None, "base", "working"),
+        (Some(GitDiffScope::Staged), "base", "indexed"),
+        (Some(GitDiffScope::Unstaged), "indexed", "working"),
+    ] {
+        let diff = scoped_file_diff(&workspace, &resource, scope)
+            .await
+            .unwrap();
+        assert_eq!(diff.hunks.len(), 1);
+        assert_eq!(diff.hunks[0].lines[0].kind, "removed");
+        assert_eq!(diff.hunks[0].lines[0].text, removed);
+        assert_eq!(diff.hunks[0].lines[1].kind, "added");
+        assert_eq!(diff.hunks[0].lines[1].text, added);
+    }
+}
+
+#[tokio::test]
 async fn staged_content_excludes_a_later_external_edit_even_with_cached_status() {
     let (repo, workspace) = fixture();
     fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();

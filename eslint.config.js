@@ -21,6 +21,31 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ["src/**/*.{js,jsx,ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        ...["confirm", "alert", "prompt"].map((name) => ({
+          name,
+          message:
+            "Use Sage's in-app dialogs; native dialog globals are unsafe in Tauri.",
+        })),
+      ],
+      "no-restricted-properties": [
+        "error",
+        ...["window", "globalThis", "self"].flatMap((object) =>
+          ["confirm", "alert", "prompt"].map((property) => ({
+            object,
+            property,
+            message:
+              "Use Sage's in-app dialogs; native dialog globals are unsafe in Tauri.",
+          })),
+        ),
+      ],
+    },
+  },
+  {
     rules: {
       "no-restricted-syntax": [
         "error",

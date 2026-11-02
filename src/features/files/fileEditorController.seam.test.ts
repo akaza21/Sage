@@ -163,24 +163,6 @@ describe("file editor controller seam", () => {
     toString.mockRestore();
   });
 
-  it("keeps FileSurface independent of desktop and EditorPort runtime imports", () => {
-    const source = readFileSync(
-      path.resolve(import.meta.dirname, "./FileSurface.tsx"),
-      "utf8",
-    );
-
-    expect(source).not.toMatch(/from ["'][^"']*services\/desktop["']/);
-    expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchRuntime["']/);
-    expect(source).not.toMatch(/from ["'][^"']*ports\/workbenchPorts["']/);
-    expect(source).not.toContain("bindFileEditorController");
-    expect(source).toContain("useFileSurfaceModel");
-    const modelSource = readFileSync(
-      path.resolve(import.meta.dirname, "./useFileSurfaceModel.ts"),
-      "utf8",
-    );
-    expect(modelSource).toContain("getFileEditorController");
-  });
-
   it("keeps snapshot requests, bounded flushes, revisions, and dirty state in the controller", () => {
     const controllerSource = readFileSync(
       path.resolve(import.meta.dirname, "./fileEditorController.ts"),

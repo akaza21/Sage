@@ -300,6 +300,21 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           .locator(".file-surface .cm-content .cm-line span[class]")
           .first(),
       ).toBeVisible();
+      // Language support loads asynchronously; whitespace spans can precede
+      // syntax colours, so wait for the rendered palette before comparing modes.
+      await expect
+        .poll(() =>
+          target.locator(".file-surface").evaluate((surface) => {
+            const editor = surface.querySelector(".editor-input")!;
+            const plain = getComputedStyle(editor).color;
+            return new Set(
+              Array.from(surface.querySelectorAll(".cm-line span[class]"))
+                .map((span) => getComputedStyle(span).color)
+                .filter((color) => color !== plain),
+            ).size;
+          }),
+        )
+        .toBeGreaterThanOrEqual(2);
       return target.locator(".file-surface").evaluate((surface, tokens) => {
         const header = surface.querySelector<HTMLElement>(".file-header");
         const editor = surface.querySelector<HTMLElement>(".editor-input");

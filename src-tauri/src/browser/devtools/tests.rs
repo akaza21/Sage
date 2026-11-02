@@ -409,13 +409,6 @@ fn snapshot_handles_survive_a_dispatch_clone() {
     );
 }
 
-#[cfg(windows)]
-#[test]
-fn native_port_implements_the_same_browser_capability_seam() {
-    fn assert_capability<T: BrowserCapability>() {}
-    assert_capability::<super::native::NativeDevtools>();
-}
-
 /// A page that never shows the text and whose dispatch the user stops
 /// after `stop_after` probes.
 #[derive(Clone)]

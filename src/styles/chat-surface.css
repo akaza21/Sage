@@ -236,10 +236,6 @@
 }
 
 @media (max-width: 760px) and (max-height: 320px) {
-  .surface-header .eyebrow {
-    display: none;
-  }
-
   .surface-header h1 {
     margin: 0;
     font-size: var(--font-size-md);

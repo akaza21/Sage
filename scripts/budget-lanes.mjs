@@ -930,7 +930,8 @@ function runNodeTests(files, directory, { testNamePattern, environment } = {}) {
   // Lane tests assume the repository root as cwd (repo-relative evidence,
   // manifest, and Cargo paths); the file arguments stay absolute.
   const root = path.dirname(directory);
-  const args = ["--test", "--test-concurrency=1"];
+  // The spec reporter prints each failure's cause chain; TAP drops it.
+  const args = ["--test", "--test-concurrency=1", "--test-reporter=spec"];
   if (testNamePattern !== undefined) {
     args.push(`--test-name-pattern=${testNamePattern}`);
   }

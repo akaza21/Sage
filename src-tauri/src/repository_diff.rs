@@ -47,7 +47,13 @@ pub async fn scoped_file_diff(
     } else {
         Some(repository_diff_base(workspace.root()).await?)
     };
-    let mut args = vec!["diff", "--no-ext-diff", "--no-color", "--unified=3"];
+    let mut args = vec![
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--unified=3",
+    ];
     if matches!(scope, Some(GitDiffScope::Staged)) {
         args.push("--cached");
     }

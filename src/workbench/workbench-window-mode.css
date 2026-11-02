@@ -74,14 +74,14 @@
 }
 .workbench--agent .workbench__body .agent-artifact-pane--maximized {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   inset: 0;
   width: 100%;
 }
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   top: 0;
   right: 0;
   bottom: 0;
@@ -91,7 +91,7 @@
 
 .agent-artifact-backdrop {
   position: absolute;
-  z-index: 11;
+  z-index: var(--z-overlay-backdrop);
   inset: 0;
   padding: 0;
   border: 0;
@@ -213,7 +213,7 @@
 
 .workbench-sidebar-splitter {
   position: relative;
-  z-index: 2;
+  z-index: var(--z-sticky);
   min-width: 8px;
   cursor: col-resize;
   touch-action: none;

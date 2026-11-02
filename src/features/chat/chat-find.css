@@ -80,7 +80,7 @@
 }
 .chat-find__spinner {
   flex: none;
-  animation: agent-chat-chip-spin 1s linear infinite;
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 .chat-find__icon {
   flex: none;

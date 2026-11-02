@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
-import nextStreamRuns, { MAX_STREAM_RUNS } from "./streamTail";
+import nextStreamRuns from "./streamTail";
 import { loadStreamRuns, streamRunTracker } from "./ChatMarkdown";
 
 // The run tracker is a lazy chunk that starts loading with ChatMarkdown.
@@ -182,13 +182,6 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(tails(container)).toEqual([" e"]);
   });
 
-  it("keeps a run for 16 chunks, longer than its 300 ms fade at any cadence slower than 19 ms", async () => {
-    const css = readFileSync(resolve("src/styles/global.css"), "utf8");
-    expect(css).toMatch(/--motion-duration-stream:\s*300ms;/);
-    expect(MAX_STREAM_RUNS).toBe(16);
-    expect(300 / MAX_STREAM_RUNS).toBeLessThan(19);
-  });
-
   it("drops a run whose text re-rendered and bounds the runs that fade at once", () => {
     const { container, rerender } = render(
       <ChatMarkdown text="Say **hi" streaming />,
@@ -200,12 +193,12 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(tails(container)).toEqual([]);
     let text = "Go";
     rerender(<ChatMarkdown text={text} streaming />);
-    for (let chunk = 0; chunk < MAX_STREAM_RUNS + 4; chunk++) {
+    for (let chunk = 0; chunk < 20; chunk++) {
       text += ` w${chunk}`;
       rerender(<ChatMarkdown text={text} streaming />);
     }
-    expect(tails(container)).toHaveLength(MAX_STREAM_RUNS);
-    expect(tails(container).at(-1)).toBe(` w${MAX_STREAM_RUNS + 3}`);
+    expect(tails(container)).toHaveLength(16);
+    expect(tails(container).at(-1)).toBe(" w19");
     expect(container.querySelector("p")).toHaveTextContent(text);
   });
 

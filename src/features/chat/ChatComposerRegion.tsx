@@ -248,7 +248,10 @@ export function ChatComposerRegion({
             {imageInput.status}
           </div>
         ) : null}
-        {missingBindingNotice ? (
+        {missingBindingNotice &&
+        !["checking", "signInRequired", "consent", "waiting", "error"].includes(
+          discoveryPhase,
+        ) ? (
           <div className="composer__notice">
             No reviewed local binding is available for this harness.
           </div>

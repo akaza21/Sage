@@ -22,7 +22,7 @@
   padding: 4px 8px;
   border-bottom: 1px solid var(--browser-chrome-divider);
   background: var(--browser-start-fill);
-  z-index: 5;
+  z-index: var(--z-floating);
 }
 .browser-surface__toolbar button {
   display: grid;
@@ -121,7 +121,7 @@
 
 .browser-surface__address-security {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
@@ -186,7 +186,7 @@
 }
 .browser-surface__menu {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -197,6 +197,10 @@
   padding: 8px;
   box-shadow: var(--browser-popover-shadow);
   font-size: 12px;
+}
+
+.browser-surface__menu[hidden] {
+  display: none;
 }
 
 .browser-surface__menu-group + .browser-surface__menu-group {
@@ -249,7 +253,7 @@
   padding: 0;
 }
 .browser-surface__drawer {
-  z-index: 2;
+  z-index: var(--z-sticky);
   max-height: 192px;
   overflow: auto;
   border-bottom: 1px solid var(--browser-control-hover);
@@ -310,12 +314,12 @@
   min-width: 0;
 }
 .browser-surface__error {
-  z-index: 1;
+  z-index: var(--z-raised);
   padding: 4px 8px;
   background: var(--bg);
 }
 .browser-surface__status {
-  z-index: 1;
+  z-index: var(--z-raised);
   margin: 0;
   padding: 4px 8px;
   color: var(--color-text-secondary);
@@ -492,12 +496,7 @@
   pointer-events: none;
 }
 .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
-  animation: browser-download-spin 1s linear infinite;
-}
-@keyframes browser-download-spin {
-  to {
-    transform: rotate(1turn);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
@@ -506,7 +505,7 @@
 }
 .browser-downloads__popover {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;

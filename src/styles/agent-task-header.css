@@ -130,7 +130,7 @@
 
 .agent-task-header__harness-status p {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-sticky);
   inset: 100% var(--space-2) auto;
   margin: 0;
   padding: var(--space-2);
@@ -193,7 +193,7 @@
 
   .agent-task-header__rename [role="alert"] {
     position: absolute;
-    z-index: 1;
+    z-index: var(--z-raised);
     inset: 100% var(--space-2) auto;
     padding: var(--space-2);
     border: 1px solid var(--color-danger);

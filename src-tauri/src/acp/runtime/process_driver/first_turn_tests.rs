@@ -53,6 +53,9 @@ mod steer_cancel_tests;
 #[path = "first_turn_tests/model_catalog_tests.rs"]
 mod model_catalog_tests;
 
+#[path = "first_turn_tests/cancel_shutdown_tests.rs"]
+mod cancel_shutdown_tests;
+
 struct Authority(IntentSnapshot);
 
 struct MutableAuthority(Arc<Mutex<IntentSnapshot>>);

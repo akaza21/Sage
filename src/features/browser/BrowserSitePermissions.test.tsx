@@ -21,8 +21,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPermissionStatus: (tabId: string) => status(tabId),
   browserPermissionResolve: (tabId: string, id: number, allow: boolean) =>
     resolve(tabId, id, allow),
-  browserPermissionRevoke: (tabId: string, origin: string, kind: string) =>
-    revoke(tabId, origin, kind),
+  browserSiteSettingReset: (origin: string, kind: string) =>
+    revoke(origin, kind),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
@@ -115,7 +115,7 @@ it("disposes late permission registration after Activity sleeps without reading 
   view.unmount();
 });
 
-it("shows session decisions and revokes a site's camera access", async () => {
+it("shows the saved site decisions and resets a site's camera access", async () => {
   status.mockResolvedValueOnce({
     tabId: "browser-1",
     origin: "https://a.example",
@@ -135,10 +135,20 @@ it("shows session decisions and revokes a site's camera access", async () => {
     screen.getByRole("button", { name: "Revoke camera for https://a.example" }),
   );
   await waitFor(() =>
-    expect(revoke).toHaveBeenCalledWith(
-      "browser-1",
-      "https://a.example",
-      "camera",
-    ),
+    expect(revoke).toHaveBeenCalledWith("https://a.example", "camera"),
+  );
+});
+
+it("warns while the page may still use access that was revoked", async () => {
+  status.mockResolvedValueOnce({
+    tabId: "browser-1",
+    origin: "https://a.example",
+    pending: [],
+    decisions: [],
+    staleAccess: true,
+  });
+  render(<BrowserSitePermissions tabId="browser-1" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Reload this page to end revoked access.",
   );
 });

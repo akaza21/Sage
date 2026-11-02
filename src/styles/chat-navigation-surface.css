@@ -103,7 +103,7 @@
   grid-area: 1 / 1;
   justify-self: end;
   opacity: 0;
-  transition: opacity 110ms ease;
+  transition: opacity var(--motion-duration-fast) ease;
 }
 
 .project-chat-row:hover .project-chat__actions,
@@ -291,7 +291,7 @@
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 110ms ease;
+  transition: opacity var(--motion-duration-fast) ease;
 }
 
 .project-chat__state--failed {

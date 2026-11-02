@@ -19,7 +19,6 @@ import {
   useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
-import { bindingNoticeAllowed } from "./composerBindingNotice";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
@@ -367,11 +366,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
-        missingBindingNotice={
-          useNativeAcp &&
-          !availableBinding &&
-          bindingNoticeAllowed(discoveryPhase)
-        }
+        missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={

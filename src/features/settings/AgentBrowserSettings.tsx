@@ -14,7 +14,10 @@ const loadBrowserPreferences = () =>
   import("../../workbench/settings/SettingsBrowserPage").then(
     ({ SettingsBrowserPage }) => ({ default: SettingsBrowserPage }),
   );
-const generalPreferences = new Set(["browser.showFullUrl"]);
+const generalPreferences = new Set([
+  "browser.showFullUrl",
+  "browser.sitePermissions",
+]);
 
 const loadDownloadsPanel = () => import("../browser/BrowserDownloadsPanel");
 
@@ -49,10 +52,7 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
   }, [tabId]);
   return (
     <section aria-label="Browsing history">
-      <p>
-        Recent history for this live tab only; Sage does not expose a persistent
-        global history.
-      </p>
+      <p>Recent pages visited by this live tab.</p>
       {error ? (
         <p role="alert">{error}</p>
       ) : entries === null ? (
@@ -84,7 +84,7 @@ function LiveTabSettings({
     <div className="agent-settings__card">
       <SettingsRow
         title="Site permissions"
-        description="Review and revoke permissions for this live tab. Revoking reloads the page."
+        description="Review and reset this tab's permissions. Reload to end revoked access."
       >
         <button
           type="button"

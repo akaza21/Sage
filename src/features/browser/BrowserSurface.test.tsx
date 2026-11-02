@@ -752,6 +752,46 @@ it("covers the native page while a toolbar popover is open, even across a resize
   expect(hideBrowser).not.toHaveBeenCalled();
 });
 
+it("keeps the native page covered until the clear-data confirmation is dismissed", async () => {
+  let nativePage: "hidden" | "visible" | "covered" = "hidden";
+  positionBrowser.mockImplementation(async () => {
+    nativePage = "visible";
+  });
+  coverBrowser.mockImplementation(async () => {
+    nativePage = "covered";
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  const paint = () =>
+    act(async () => {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await waitFor(() => expect(nativePage).toBe("visible"));
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Clear browsing data" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Clear browsing data?" }),
+    ).toBeVisible();
+    await paint();
+    expect(nativePage).toBe("covered");
+    fireEvent(window, new Event("resize"));
+    await paint();
+    expect(nativePage).toBe("covered");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(nativePage).toBe("visible"));
+  } finally {
+    positionBrowser.mockResolvedValue(undefined);
+    coverBrowser.mockResolvedValue(undefined);
+  }
+});
+
 it("still hides the native page for real on unmount or a tab switch while a popover covers it", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
     DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),

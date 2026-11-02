@@ -40,7 +40,9 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|app[\\/]snapshotProjection\.ts)$/,
+    // FileKindIcon is shared by the Agent body and the lazy Editor tab strip;
+    // it stays here rather than in either side's chunk.
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker)|features[\\/]files[\\/]FileKindIcon)\.tsx|app[\\/]snapshotProjection\.ts)$/,
   },
   {
     name: "agent-workbench",

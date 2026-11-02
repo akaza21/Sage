@@ -21,7 +21,7 @@ import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
-import { TabStrip } from "./TabStrip";
+import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
@@ -64,6 +64,10 @@ const loadRailStatus = () =>
   }));
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
+
+// The Editor's tab strip stays off the Agent startup path.
+const loadTabStrip = () =>
+  import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
 
 const loadTerminalDock = () =>
   import("./TerminalDockShell").then(({ TerminalDockForWorkbench }) => ({
@@ -269,7 +273,17 @@ export function Workbench() {
             aria-hidden={drawerOpen || undefined}
           >
             <div className="workbench__tabs">
-              <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
+              <LazyModuleBoundary<TabStripProps>
+                label="tabs"
+                load={loadTabStrip}
+                fallback={null}
+                render={(TabStrip) => (
+                  <TabStrip
+                    kinds={[...EDITOR_CANVAS_KINDS]}
+                    showNewChat={false}
+                  />
+                )}
+              />
             </div>
             <LazyModuleBoundary
               label="Editor"

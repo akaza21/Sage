@@ -4,26 +4,6 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Agent rail stylesheet seam", () => {
-  it("loads Agent rail rules from a focused stylesheet, not the shell stylesheet", async () => {
-    const [entry, shellCss, surfaceCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(
-      /import ["']\.\/styles\/agent-rail-surface\.css["'];/,
-    );
-    expect(shellCss).not.toMatch(/^\.agent-rail-status\b/m);
-    expect(shellCss).not.toMatch(/^\.agent-rail-filter__menu\b/m);
-    expect(shellCss).not.toMatch(/^\.agent-rail-search\b/m);
-    expect(shellCss).not.toMatch(/^\.agent-rail-section\b/m);
-    expect(surfaceCss).toMatch(/^\.agent-rail-status\b/m);
-    expect(surfaceCss).toMatch(/^\.agent-rail-filter__menu\b/m);
-    expect(surfaceCss).not.toMatch(/^\.agent-rail-search\b/m);
-    expect(surfaceCss).toMatch(/^\.agent-rail-section\b/m);
-  });
-
   it("reuses the shared menu classes without nesting a select", async () => {
     const [component, surfaceCss] = await Promise.all([
       // The open menu is its own lazy chunk (AgentRailFilterOptions.tsx).

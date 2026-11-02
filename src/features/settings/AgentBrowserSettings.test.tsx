@@ -14,6 +14,7 @@ import {
   browserHistory,
   browserLiveTabs,
   browserPermissionStatus,
+  browserSiteSettingReset,
 } from "../../ports/nativeBrowserPort";
 import {
   browserDownloads,
@@ -41,8 +42,17 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     decisions: [],
   })),
   browserPermissionRevoke: vi.fn(),
+  browserSiteSettingReset: vi.fn(),
   browserPermissionResolve: vi.fn(),
   browserClearData: vi.fn(),
+}));
+vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
+  browserSiteSettings: vi.fn(async () => ({
+    settings: [
+      { origin: "https://saved.example", kind: "camera", decision: "allow" },
+    ],
+    staleSites: [],
+  })),
 }));
 vi.mock("../../ports/nativeBrowserDownloadsPort", () => ({
   browserDownloads: vi.fn(async () => []),
@@ -119,6 +129,25 @@ it("does not fake browser settings outside the native runtime", () => {
   expect(
     screen.queryByRole("button", { name: "Clear browsing data" }),
   ).toBeNull();
+});
+
+it("resets a saved site permission even when no browser tab is live", async () => {
+  vi.mocked(browserLiveTabs).mockResolvedValueOnce([]);
+  vi.mocked(browserSiteSettingReset).mockResolvedValueOnce({
+    settings: [],
+    staleSites: [],
+  });
+  render(<AgentBrowserSettings />);
+  await screen.findByText("No live browser tabs");
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Reset Camera for https://saved.example",
+    }),
+  );
+  expect(
+    await screen.findByText("No site permissions saved yet."),
+  ).toBeVisible();
+  expect(screen.queryByText("https://saved.example")).toBeNull();
 });
 
 it("manages live-tab downloads through the shared lazy downloads panel", async () => {

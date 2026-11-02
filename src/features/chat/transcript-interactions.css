@@ -3,14 +3,14 @@
 .transcript-annotation-badge,
 .transcript-selection-status {
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-popover);
 }
 
 /* The live controls sit above the retained badges they may overlap, so a
    badge never takes the click meant for "Add to chat" or the comment. */
 .chat-selection-popover,
 .annotation-comment {
-  z-index: 81;
+  z-index: var(--z-popover-stacked);
 }
 
 .chat-selection-popover,
@@ -199,7 +199,7 @@
 
 .annotation-card {
   position: fixed;
-  z-index: 85;
+  z-index: var(--z-popover-card);
   max-height: 50vh;
   padding: 12px 16px;
   overflow: auto;

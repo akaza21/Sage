@@ -568,7 +568,8 @@ it("dismisses the browser menu with Escape and restores trigger focus", async ()
   const menu = screen.getByRole("menu", { name: "Browser menu" });
   expect(menu).toBeInTheDocument();
   fireEvent.keyDown(menu, { key: "Escape" });
-  expect(menu).not.toBeInTheDocument();
+  expect(menu).not.toBeVisible();
+  expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("moves keyboard focus through browser menu items and closes from the trigger", async () => {
@@ -593,10 +594,6 @@ it("moves keyboard focus through browser menu items and closes from the trigger"
   expect(trigger).toHaveFocus();
 });
 it("returns focus to the overflow trigger when clearing data is cancelled", async () => {
-  vi.stubGlobal(
-    "confirm",
-    vi.fn(() => false),
-  );
   render(<BrowserSurface tab={tab} />);
   const trigger = screen.getByRole("button", { name: "More options" });
   fireEvent.click(trigger);
@@ -604,6 +601,10 @@ it("returns focus to the overflow trigger when clearing data is cancelled", asyn
     screen.getByRole("menuitem", { name: "Clear browsing data" }),
   );
   expect(screen.queryByRole("menu")).toBeNull();
+  const dialog = screen.getByRole("dialog", { name: "Clear browsing data?" });
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("hides the native browser when its host pane unmounts", () => {
