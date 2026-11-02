@@ -48,7 +48,7 @@ pub(super) fn authentic_descendant_file(root: &Path, relative: impl AsRef<Path>)
     let relative = relative.as_ref();
     if !is_local_probe_root(root)
         || relative.as_os_str().is_empty()
-        || has_current_dir_segment(relative)
+        || has_aliased_segment(relative)
         || relative.components().any(|part| {
             matches!(
                 part,
@@ -84,7 +84,10 @@ pub(super) fn authentic_descendant_file(root: &Path, relative: impl AsRef<Path>)
 }
 
 fn authentic_file_with_parents(path: &Path) -> bool {
-    if path.as_os_str().is_empty() || path_native_bytes(path.as_os_str()) > PATH_BYTES_MAX {
+    if path.as_os_str().is_empty()
+        || path_native_bytes(path.as_os_str()) > PATH_BYTES_MAX
+        || has_aliased_segment(path)
+    {
         return false;
     }
     let Some(parent) = path.parent() else {
@@ -97,7 +100,7 @@ fn authentic_file_with_parents(path: &Path) -> bool {
 pub(super) fn is_local_probe_root(dir: &Path) -> bool {
     if dir.as_os_str().is_empty()
         || path_native_bytes(dir.as_os_str()) > PATH_BYTES_MAX
-        || has_current_dir_segment(dir)
+        || has_aliased_segment(dir)
     {
         return false;
     }
@@ -140,11 +143,15 @@ pub(super) fn is_local_probe_root(dir: &Path) -> bool {
 
 // Path::components normalizes embedded and trailing `.` segments away. Inspect
 // the native spelling first; ASCII separators are preserved by as_encoded_bytes.
-fn has_current_dir_segment(path: &Path) -> bool {
+// Windows also aliases trailing dots/spaces. Reject those spellings for ordinary
+// and verbatim paths alike, including segments made entirely of dots/spaces.
+fn has_aliased_segment(path: &Path) -> bool {
     path.as_os_str()
         .as_encoded_bytes()
         .split(|byte| *byte == b'/' || (cfg!(windows) && *byte == b'\\'))
-        .any(|segment| segment == b".")
+        .any(|segment| {
+            segment == b"." || (cfg!(windows) && matches!(segment.last(), Some(b'.' | b' ')))
+        })
 }
 
 fn usable_probe_directory(dir: &Path) -> bool {
@@ -270,6 +277,96 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    fn windows_root(fixture: &Fixture, verbatim: bool) -> PathBuf {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        let canonical = fixture.0.canonicalize().expect("canonical fixture root");
+        if verbatim {
+            canonical
+        } else {
+            // canonicalize produces a verbatim disk path; preserve all native
+            // UTF-16 units while removing only its four-unit namespace prefix.
+            let units: Vec<_> = canonical.as_os_str().encode_wide().collect();
+            PathBuf::from(std::ffi::OsString::from_wide(&units[4..]))
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_aliased_probe_roots_are_rejected() {
+        for verbatim in [false, true] {
+            for alias in [
+                ". ",
+                "..  ",
+                "node_modules.",
+                "node_modules ",
+                "...",
+                " . . ",
+                " ",
+            ] {
+                for intermediate in [false, true] {
+                    let fixture = Fixture::new();
+                    fixture.package();
+                    let root = windows_root(&fixture, verbatim);
+                    assert!(is_local_probe_root(&root));
+                    let mut aliased = root.join(alias);
+                    if intermediate {
+                        aliased.push("pkg");
+                    }
+                    assert!(!is_local_probe_root(&aliased), "{aliased:?}");
+                    assert!(!authentic_descendant_file(&aliased, "package.json"));
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_aliased_descendants_and_regular_files_are_rejected() {
+        for verbatim in [false, true] {
+            for relative in [
+                "node_modules./pkg/package.json",
+                "node_modules /pkg/package.json",
+                "node_modules/. /pkg/package.json",
+                "node_modules/pkg/..  /pkg/package.json",
+                "node_modules/pkg/package.json.",
+                "node_modules/pkg/package.json ",
+                "node_modules/pkg/...",
+                "node_modules/pkg/ . . ",
+                "node_modules/pkg/ ",
+            ] {
+                for separator in ["/", "\\"] {
+                    let fixture = Fixture::new();
+                    let package = fixture.package();
+                    let root = windows_root(&fixture, verbatim);
+                    assert!(authentic_descendant_file(&root, &package));
+                    assert!(authentic_regular_file(&root.join(&package)));
+                    let relative = relative.replace('/', separator);
+                    assert!(!authentic_descendant_file(&root, &relative), "{relative}");
+                    assert!(!authentic_regular_file(&root.join(relative)));
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_literal_dot_and_space_suffixes_are_accepted() {
+        for name in [". ", "..  ", "pkg.", "pkg ", "...", " . . ", " "] {
+            let fixture = Fixture::new();
+            let directory = fixture.0.join(name);
+            fs::create_dir(&directory).unwrap();
+            let file = directory.join("package.json ");
+            fs::write(&file, "{}").unwrap();
+            assert!(is_local_probe_root(&directory));
+            assert!(authentic_descendant_file(
+                &fixture.0,
+                Path::new(name).join("package.json ")
+            ));
+            assert!(authentic_regular_file(&file));
+        }
+    }
+
     #[test]
     fn intermediate_regular_file_is_rejected() {
         let fixture = Fixture::new();
@@ -301,15 +398,9 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&target, &link).expect("create directory symlink");
         #[cfg(windows)]
-        if let Err(error) = std::os::windows::fs::symlink_dir(&target, &link) {
-            if error.kind() == std::io::ErrorKind::PermissionDenied
-                || error.raw_os_error() == Some(1314)
-            {
-                eprintln!("skipping directory symlink test: symlink creation not permitted");
-                return;
-            }
-            panic!("create directory symlink: {error}");
-        }
+        std::os::windows::fs::symlink_dir(&target, &link).expect(
+            "directory symlink creation is required; enable Developer Mode or symlink privileges",
+        );
         assert!(!authentic_descendant_file(
             &fixture.0,
             "node_modules/pkg/package.json"
@@ -327,15 +418,9 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&target, &link).expect("create file symlink");
         #[cfg(windows)]
-        if let Err(error) = std::os::windows::fs::symlink_file(&target, &link) {
-            if error.kind() == std::io::ErrorKind::PermissionDenied
-                || error.raw_os_error() == Some(1314)
-            {
-                eprintln!("skipping file symlink test: symlink creation not permitted");
-                return;
-            }
-            panic!("create file symlink: {error}");
-        }
+        std::os::windows::fs::symlink_file(&target, &link).expect(
+            "file symlink creation is required; enable Developer Mode or symlink privileges",
+        );
         assert!(!authentic_descendant_file(&fixture.0, relative));
     }
 }
