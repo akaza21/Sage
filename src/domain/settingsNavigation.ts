@@ -201,6 +201,12 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
       "The folder downloads save to without asking. Programs and scripts always ask.",
     group: "Downloads",
   },
+  {
+    id: "browser.sitePermissions",
+    label: "Site permissions",
+    description: "Camera, microphone, location, notifications, clipboard",
+    group: "Site permissions",
+  },
 ]);
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([

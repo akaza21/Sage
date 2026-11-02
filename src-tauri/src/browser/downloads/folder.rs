@@ -20,8 +20,8 @@ pub(crate) use file_types::{is_dangerous, is_dangerous_mime};
 
 const MAX_NAME_BYTES: usize = 200;
 const MAX_EXTENSION_BYTES: usize = 24;
-// Each attempt is a file-system check on the WebView2 UI thread, so the
-// search stays short; past it the download asks instead.
+// Bound file-system attempts on the download worker. Planning asks after
+// exhaustion; publication fails without replacing any existing file.
 const MAX_SUFFIX: u32 = 99;
 const FALLBACK_NAME: &str = "download";
 
@@ -236,32 +236,35 @@ fn split_extension(name: &str) -> (&str, &str) {
     }
 }
 
-/// Reserves `folder/name`, or `folder/stem (n).ext` for the first free `n`,
-/// by creating it empty with `create_new` and keeping it open, so no
-/// existing file, folder or link is ever reused during allocation. The
-/// registry protects the name between Sage downloads after handoff. Any error other than
-/// "already exists" fails closed, and the download asks instead. The result
-/// is always a direct child of `folder`. Once the registry claims the name,
-/// [`super::reservation::Reservation`] retires the placeholder through its
-/// handle before WebView2 resumes, so the native writer holds no Sage handles.
-pub(crate) fn unique_destination(
-    folder: &Path,
-    file_name: &str,
-    taken: impl Fn(&Path) -> bool,
-) -> Option<Placeholder> {
+/// Candidate names shared by planning and atomic publication. Never leave
+/// the admitted folder, and keep each search bounded.
+pub(super) fn destination_candidates<'a>(
+    folder: &'a Path,
+    file_name: &'a str,
+) -> impl Iterator<Item = PathBuf> + 'a {
     let (stem, extension) = split_extension(file_name);
-    for attempt in 0..=MAX_SUFFIX {
+    (0..=MAX_SUFFIX).map_while(move |attempt| {
         let name = if attempt == 0 {
             file_name.to_owned()
         } else {
             format!("{stem} ({attempt}){extension}")
         };
         let candidate = folder.join(&name);
-        if candidate.parent() != Some(folder)
-            || candidate.file_name().and_then(|value| value.to_str()) != Some(name.as_str())
-        {
-            return None;
-        }
+        (candidate.parent() == Some(folder)
+            && candidate.file_name().and_then(|value| value.to_str()) == Some(name.as_str()))
+        .then_some(candidate)
+    })
+}
+
+/// Reserves the first available candidate with create_new. This is only a
+/// planning claim: WebView2 writes privately and publication claims the final
+/// name again atomically, since another process can take it in the meantime.
+pub(crate) fn unique_destination(
+    folder: &Path,
+    file_name: &str,
+    taken: impl Fn(&Path) -> bool,
+) -> Option<Placeholder> {
+    for candidate in destination_candidates(folder, file_name) {
         if taken(&candidate) {
             continue;
         }

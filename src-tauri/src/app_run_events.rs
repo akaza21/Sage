@@ -36,6 +36,9 @@ fn handle_exit_request(
 }
 
 pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
+    if let RunEvent::WindowEvent { label, event, .. } = &event {
+        crate::window_memory::handle_window_event(app_handle, label, event);
+    }
     if matches!(
         &event,
         RunEvent::WindowEvent {

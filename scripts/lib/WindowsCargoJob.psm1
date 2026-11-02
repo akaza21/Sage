@@ -26,6 +26,34 @@ function Wait-CargoJobZero {
   return $false
 }
 
+# The stall report shares the proof's protocol line, so its member names are
+# kept within a fixed serialized budget and the remainder is only counted.
+$StallImageBudgetBytes = 2048
+
+function New-CargoJobStallReport {
+  param(
+    [Parameter(Mandatory)][bool]$RootRunning,
+    [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$MemberImages
+  )
+  $kept = [Collections.Generic.List[string]]::new()
+  # The serialized array is "[" + names joined by "," + "]"; charging every
+  # name its separator keeps the total at or below the budget.
+  $usedBytes = 2
+  foreach ($name in $MemberImages) {
+    $nameBytes = 1 + [Text.Encoding]::UTF8.GetByteCount(
+      (ConvertTo-Json -Compress -InputObject $name)
+    )
+    if ($usedBytes + $nameBytes -gt $StallImageBudgetBytes) { break }
+    $kept.Add($name)
+    $usedBytes += $nameBytes
+  }
+  return [ordered]@{
+    rootRunning = $RootRunning
+    memberImages = @($kept)
+    omittedMembers = $MemberImages.Count - $kept.Count
+  }
+}
+
 function Request-CargoJobGracefulExit {
   param(
     [Parameter(Mandatory)][SageValidation.CargoJob]$Job,
@@ -128,8 +156,11 @@ function Invoke-CargoValidationJob {
     if ($null -eq $rootExitCode -and -not $job.RootRunning) {
       $rootExitCode = $job.ExitCode()
     }
+    $stall = $null
     if ($null -eq $reason -and $job.ActiveProcesses() -ne 0) {
       $reason = "command-timeout"
+      # Record what was still running at the deadline before teardown.
+      $stall = New-CargoJobStallReport ([bool]$job.RootRunning) @($job.MemberImageNames())
     }
     if ($null -ne $reason) {
       $graceDeadline = [DateTime]::UtcNow.AddMilliseconds($TerminationGraceMilliseconds)
@@ -166,6 +197,7 @@ function Invoke-CargoValidationJob {
       exitCode = $exitCode
       reason = $reason
       teardown = $teardown
+      stall = $stall
     }
   } finally {
     if ($null -ne $control) { $control.Dispose() }

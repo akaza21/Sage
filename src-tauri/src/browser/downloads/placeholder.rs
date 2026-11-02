@@ -1,5 +1,6 @@
 //! The empty file that reserves a silent download's name during planning.
-//! Sage retires it after the registry claims the name, before WebView2 resumes.
+//! WebView2 writes elsewhere; Sage retires this claim just before atomic
+//! publication. An absence check here never authorizes a native writer.
 //!
 //! Sage only ever deletes a placeholder through a handle to the file it created, and
 //! only while that file is still empty, so it can never remove a different
@@ -35,7 +36,7 @@ impl Eq for Placeholder {}
 
 /// Creates `path` as a new empty file, failing if anything exists there.
 /// On Windows cleanup acquires a writer-excluding lease through this identity.
-/// All Sage handles must close before the native download starts.
+/// The native writer uses a separate private staging destination.
 pub(crate) fn create(path: &Path) -> io::Result<Placeholder> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -72,10 +73,10 @@ fn reopen(file: &File, access: u32, sharing: u32) -> io::Result<File> {
 }
 
 impl Placeholder {
-    /// Retire our empty reservation before a path-only native handoff. A file
-    /// that replaced it is preserved and prevents the download from starting.
+    /// Retire our empty claim before publication. A replacement is preserved;
+    /// publication must still use an atomic no-replace operation.
     #[cfg(windows)]
-    pub(crate) fn handoff(self) -> Option<PathBuf> {
+    pub(crate) fn retire(self) -> Option<PathBuf> {
         let path = self.path.clone();
         if !self.delete_if_empty() {
             return None;
@@ -173,13 +174,13 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn handoff_removes_the_reservation_before_the_native_destination_is_created() {
+    fn retiring_the_claim_closes_its_handles_before_publication() {
         use std::{io::Write, os::windows::fs::OpenOptionsExt};
         use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
 
         let directory = scratch("handoff");
         let path = directory.join("report-b.txt");
-        let selected = create(&path).unwrap().handoff().unwrap();
+        let selected = create(&path).unwrap().retire().unwrap();
         assert_eq!(selected, path);
         assert!(
             !path.exists(),
@@ -199,13 +200,13 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn handoff_refuses_a_replacement_and_preserves_its_contents() {
+    fn retiring_the_claim_preserves_a_replacement_and_its_contents() {
         let directory = scratch("handoff-replaced");
         let path = directory.join("report-b.txt");
         let placeholder = create(&path).unwrap();
         std::fs::rename(&path, directory.join("reserved.bin")).unwrap();
         std::fs::write(&path, b"another file").unwrap();
-        assert!(placeholder.handoff().is_none());
+        assert!(placeholder.retire().is_none());
         assert_eq!(std::fs::read(&path).unwrap(), b"another file");
         std::fs::remove_dir_all(directory).unwrap();
     }

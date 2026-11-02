@@ -22,6 +22,7 @@ use super::{BrowserState, DownloadView, reservation::Reservation};
 
 mod ask;
 mod choice;
+mod settlement;
 mod watchdog;
 
 struct PendingDownload {
@@ -41,7 +42,7 @@ thread_local! {
     // WebView2 interfaces are apartment-bound and must never enter BrowserState.
     static PENDING: RefCell<BTreeMap<u64, PendingDownload>> = const { RefCell::new(BTreeMap::new()) };
     static ACTIVE: RefCell<BTreeMap<u64, ICoreWebView2DownloadOperation>> = const { RefCell::new(BTreeMap::new()) };
-    // Empty placeholders reserved for silent saves, released if unused.
+    // Public name claims and private destinations for silent saves.
     static RESERVED: RefCell<BTreeMap<u64, Reservation>> = const { RefCell::new(BTreeMap::new()) };
 }
 
@@ -214,7 +215,13 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
                     choice::accept_destination(
                         &mut registry,
                         id,
-                        path,
+                        RESERVED
+                            .with_borrow(|reserved| {
+                                reserved
+                                    .get(&id)
+                                    .map(|reservation| reservation.path().to_owned())
+                            })
+                            .unwrap_or(path),
                         pending.armed_at,
                         Instant::now(),
                     )
@@ -266,20 +273,15 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
         let _ = unsafe { pending.deferral.Complete() };
     }
     if !ACTIVE.with_borrow(|active| active.contains_key(&id)) {
-        release_reserved(id, None);
+        release_reserved(id);
     }
     emit_views(app, tab_id);
 }
 
-/// Lets go of the placeholder reserved for `id`: kept if the download
-/// finished writing to it (`saved`), otherwise released on the worker.
-fn release_reserved(id: u64, saved: Option<&Path>) {
-    // A reservation not kept here is dropped, which releases it.
-    if let Some(reservation) = RESERVED.with_borrow_mut(|reserved| reserved.remove(&id))
-        && saved == Some(reservation.path())
-    {
-        reservation.keep();
-    }
+/// Unstarted/canceled silent saves release their claim and private staging
+/// destination on the download worker.
+fn release_reserved(id: u64) {
+    RESERVED.with_borrow_mut(|reserved| reserved.remove(&id));
 }
 
 fn install_progress(
@@ -333,23 +335,13 @@ fn install_progress(
                             .ok()
                             .map(|()| CoTaskMemPWSTR::from(raw).to_string());
                         let saved = saved.filter(|saved| !saved.is_empty());
-                        release_reserved(
+                        settlement::finish(
+                            &app,
+                            &tab_id,
                             id,
-                            saved
-                                .as_deref()
-                                .filter(|_| terminal == "completed")
-                                .map(Path::new),
+                            terminal,
+                            saved.map(std::path::PathBuf::from),
                         );
-                        if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock() {
-                            if let Some(saved) = &saved {
-                                registry.saved_as(id, Path::new(saved));
-                            }
-                            registry.settle(id, terminal);
-                        }
-                        ACTIVE.with_borrow_mut(|active| {
-                            active.remove(&id);
-                        });
-                        emit_views(&app, &tab_id);
                     }
                 }
                 Ok(())
@@ -377,7 +369,14 @@ pub(crate) fn cancel_native(webview: &Webview, ids: Vec<u64>) -> Result<(), Stri
                 } else if let Some(operation) =
                     ACTIVE.with_borrow(|entries| entries.get(&id).cloned())
                 {
-                    if unsafe { operation.Cancel() }.is_err() {
+                    // Completed silent downloads stay tracked while publication
+                    // waits on the worker. The registry cancellation below is
+                    // enough to prevent that queued publication from running.
+                    let mut state = COREWEBVIEW2_DOWNLOAD_STATE::default();
+                    if unsafe { operation.State(&mut state) }.is_err()
+                        || (state != COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED
+                            && unsafe { operation.Cancel() }.is_err())
+                    {
                         result = Err("browser download cancellation failed".into());
                     }
                 } else {

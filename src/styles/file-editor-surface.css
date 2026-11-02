@@ -182,7 +182,7 @@
    row's children share the same columns, so both boxes line up. */
 .editor-find--overlay {
   position: absolute;
-  z-index: 3;
+  z-index: var(--z-floating);
   top: 8px;
   right: 12px;
   display: grid;
@@ -330,7 +330,7 @@
 
 .editor-loading {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   inset: 50% auto auto 50%;
   transform: translate(-50%, -50%);
   color: var(--color-text-muted);
@@ -457,7 +457,7 @@
   background: var(--resource-document-fold-placeholder);
 }
 
-/* The focus frame is an overlay above the sticky gutter (z-index 200), so
+/* The focus frame is an overlay above the sticky gutter (CodeMirror layer), so
    it runs along the left edge too instead of starting after the gutter. */
 .editor-input .cm-focused {
   outline: 0;
@@ -465,7 +465,7 @@
 
 .editor-input .cm-editor.cm-focused::after {
   position: absolute;
-  z-index: 201;
+  z-index: calc(var(--z-codemirror-gutters) + 1);
   inset: 0;
   border-radius: var(--radius-sm);
   box-shadow: var(

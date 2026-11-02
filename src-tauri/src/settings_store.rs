@@ -10,10 +10,12 @@ use crate::error::{AppError, AppResult};
 mod access;
 mod browser_download_folder;
 mod browser_preferences;
+mod browser_site_permissions;
 mod editor_settings;
 mod side_chat;
 pub use access::SessionAccessModes;
 pub use browser_preferences::BrowserPreferences;
+pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +111,7 @@ impl SettingsStore {
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
             browser_download_folder::migrate(&migration)?;
+            browser_site_permissions::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

@@ -38,7 +38,7 @@ fn free(_: &Path) -> bool {
 /// One download through the same steps the WebView2 handler takes: plan
 /// against the stored folder, record the destination in the registry, and
 /// remember the folder when the plan asked to.
-fn download(
+async fn download(
     store: &SettingsStore,
     registry: &mut DownloadRegistry,
     suggested: &str,
@@ -61,7 +61,7 @@ fn download(
         assert!(registry.destination_chosen(id));
         if matches!(plan, Plan::Ask { remember: true, .. }) {
             let folder = folder_of_choice(path).unwrap();
-            remember_folder(store, &folder).unwrap();
+            remember_folder(store, &folder).await.unwrap();
         }
     }
     (plan, destination)
@@ -73,13 +73,13 @@ fn user_registry() -> DownloadRegistry {
     registry
 }
 
-#[test]
-fn first_download_asks_then_later_downloads_save_silently_to_that_folder() {
+#[tokio::test]
+async fn first_download_asks_then_later_downloads_save_silently_to_that_folder() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
     let chosen = Scratch::new("first-ask");
 
-    let (first, destination) = download(&store, &mut registry, "report.pdf", Some(&chosen.0));
+    let (first, destination) = download(&store, &mut registry, "report.pdf", Some(&chosen.0)).await;
     assert_eq!(
         first,
         Plan::Ask {
@@ -94,32 +94,32 @@ fn first_download_asks_then_later_downloads_save_silently_to_that_folder() {
         Some(chosen.0.clone())
     );
 
-    let (second, _) = download(&store, &mut registry, "photo.png", None);
+    let (second, _) = download(&store, &mut registry, "photo.png", None).await;
     assert_eq!(silent_path(&second), Some(chosen.0.join("photo.png")));
 }
 
-#[test]
-fn a_canceled_first_save_dialog_saves_no_folder() {
+#[tokio::test]
+async fn a_canceled_first_save_dialog_saves_no_folder() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
-    let (plan, destination) = download(&store, &mut registry, "report.pdf", None);
+    let (plan, destination) = download(&store, &mut registry, "report.pdf", None).await;
     assert!(matches!(plan, Plan::Ask { remember: true, .. }));
     assert_eq!(destination, None);
     assert_eq!(store.browser_download_folder().unwrap(), None);
 }
 
-#[test]
-fn a_silent_save_never_overwrites_an_existing_file_or_an_in_flight_download() {
+#[tokio::test]
+async fn a_silent_save_never_overwrites_an_existing_file_or_an_in_flight_download() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
     let folder = Scratch::new("suffix");
-    remember_folder(&store, &folder.0).unwrap();
+    remember_folder(&store, &folder.0).await.unwrap();
     std::fs::write(folder.0.join("data.csv"), b"keep me").unwrap();
 
-    let (first, _) = download(&store, &mut registry, "data.csv", None);
+    let (first, _) = download(&store, &mut registry, "data.csv", None).await;
     assert_eq!(silent_path(&first), Some(folder.0.join("data (1).csv")));
     // The first is still downloading; the next one takes the next number.
-    let (second, _) = download(&store, &mut registry, "data.csv", None);
+    let (second, _) = download(&store, &mut registry, "data.csv", None).await;
     assert_eq!(silent_path(&second), Some(folder.0.join("data (2).csv")));
     assert_eq!(
         std::fs::read(folder.0.join("data.csv")).unwrap(),
@@ -127,16 +127,16 @@ fn a_silent_save_never_overwrites_an_existing_file_or_an_in_flight_download() {
     );
 }
 
-#[test]
-fn a_missing_saved_folder_asks_again_and_remembers_the_new_choice() {
+#[tokio::test]
+async fn a_missing_saved_folder_asks_again_and_remembers_the_new_choice() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
     let old = Scratch::new("missing-old");
-    remember_folder(&store, &old.0).unwrap();
+    remember_folder(&store, &old.0).await.unwrap();
     std::fs::remove_dir_all(&old.0).unwrap();
     let new = Scratch::new("missing-new");
 
-    let (plan, _) = download(&store, &mut registry, "notes.txt", Some(&new.0));
+    let (plan, _) = download(&store, &mut registry, "notes.txt", Some(&new.0)).await;
     assert!(matches!(
         plan,
         Plan::Ask {
@@ -162,13 +162,13 @@ fn a_saved_path_that_became_a_file_asks_again() {
     ));
 }
 
-#[test]
-fn dangerous_types_always_ask_and_keep_the_saved_folder() {
+#[tokio::test]
+async fn dangerous_types_always_ask_and_keep_the_saved_folder() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
     let saved = Scratch::new("dangerous-saved");
     let elsewhere = Scratch::new("dangerous-elsewhere");
-    remember_folder(&store, &saved.0).unwrap();
+    remember_folder(&store, &saved.0).await.unwrap();
     for name in [
         "setup.exe",
         "Installer.MSI",
@@ -179,7 +179,7 @@ fn dangerous_types_always_ask_and_keep_the_saved_folder() {
         "invoice.pdf.exe",
         "trailing.exe. . ",
     ] {
-        let (plan, _) = download(&store, &mut registry, name, Some(&elsewhere.0));
+        let (plan, _) = download(&store, &mut registry, name, Some(&elsewhere.0)).await;
         let Plan::Ask {
             remember,
             directory,
@@ -309,15 +309,15 @@ fn a_read_only_saved_folder_asks_again() {
     }
 }
 
-#[test]
-fn downloads_differing_only_in_case_never_share_a_destination() {
+#[tokio::test]
+async fn downloads_differing_only_in_case_never_share_a_destination() {
     let store = SettingsStore::in_memory().unwrap();
     let mut registry = user_registry();
     let folder = Scratch::new("case");
-    remember_folder(&store, &folder.0).unwrap();
-    let (first, _) = download(&store, &mut registry, "Report.pdf", None);
+    remember_folder(&store, &folder.0).await.unwrap();
+    let (first, _) = download(&store, &mut registry, "Report.pdf", None).await;
     assert_eq!(silent_path(&first), Some(folder.0.join("Report.pdf")));
-    let (second, _) = download(&store, &mut registry, "report.pdf", None);
+    let (second, _) = download(&store, &mut registry, "report.pdf", None).await;
     assert_eq!(silent_path(&second), Some(folder.0.join("report (1).pdf")));
 }
 

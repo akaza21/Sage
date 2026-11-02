@@ -85,8 +85,7 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
     match step {
         Step::Silent(mut reservation) => {
             let path = reservation.path().to_owned();
-            // Claim while the placeholder still exists. Other downloads must
-            // avoid this name even after its file is retired on the worker.
+            // Keep the public name claimed while WebView2 writes privately.
             let claimed = app
                 .state::<BrowserState>()
                 .downloads
@@ -101,13 +100,14 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
             let worker_tab = tab_id.to_owned();
             let queued = worker::submit(move || {
                 let ready = reservation.handoff();
+                let writer_path = ready.then(|| reservation.writer_path().to_owned());
                 let ui_app = worker_app.clone();
                 let ui_tab = worker_tab.clone();
                 on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
                     RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
                     // complete_choice rechecks the pending id and watchdog:
                     // cancellation while queued must never restart a download.
-                    complete_choice(&ui_app, &ui_tab, id, ready.then_some(path));
+                    complete_choice(&ui_app, &ui_tab, id, writer_path);
                 });
             });
             if !queued {

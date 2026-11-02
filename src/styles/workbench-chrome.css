@@ -263,10 +263,23 @@
   object-fit: contain;
 }
 
-.tab__activate span:not(.tab__status, .tab__dirty, .tab__count) {
+.tab__activate
+  span:not(.tab__status, .tab__dirty, .tab__count, .git-badge, .tab__git-slot) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
+ * while the decoration chunk loads, so the mark never shifts the strip.
+ */
+.tab__activate .git-badge,
+.tab__git-slot {
+  width: 1.25em;
+  flex: none;
+  margin-left: 0;
+  font-size: var(--font-size-xs);
 }
 
 .tab__close {
@@ -373,7 +386,7 @@
 
   .right-region .sidebar {
     position: absolute;
-    z-index: 10;
+    z-index: var(--z-sidebar-overlay);
     top: 0;
     right: 46px;
     width: min(272px, calc(100vw - 92px));

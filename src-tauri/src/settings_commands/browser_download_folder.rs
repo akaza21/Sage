@@ -3,7 +3,13 @@
 //! none takes a path: Change opens a native folder picker in Rust, so neither
 //! the renderer, a page nor the Agent can point downloads somewhere else.
 
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
+
+use tokio::sync::Semaphore;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -26,18 +32,61 @@ pub(crate) struct DownloadFolderView {
     pub(crate) available: bool,
 }
 
-pub(crate) fn folder_view(store: &SettingsStore) -> AppResult<DownloadFolderView> {
+const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+static PROBES: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+pub(crate) async fn folder_view(store: &SettingsStore) -> AppResult<DownloadFolderView> {
     let stored = store.browser_download_folder()?;
-    Ok(DownloadFolderView {
-        available: stored.as_deref().and_then(admit_folder).is_some(),
+    Ok(view_with_probe(stored, PROBE_TIMEOUT, probe_slots(), admit_folder).await)
+}
+
+fn probe_slots() -> Arc<Semaphore> {
+    PROBES.get_or_init(|| Arc::new(Semaphore::new(2))).clone()
+}
+
+async fn view_with_probe(
+    stored: Option<PathBuf>,
+    timeout: Duration,
+    slots: Arc<Semaphore>,
+    probe: impl FnOnce(&Path) -> Option<PathBuf> + Send + 'static,
+) -> DownloadFolderView {
+    let available = if let Some(path) = stored.clone() {
+        bounded_probe(path, timeout, slots, probe).await.is_some()
+    } else {
+        false
+    };
+    DownloadFolderView {
+        available,
         path: stored.map(|path| path.to_string_lossy().into_owned()),
-    })
+    }
+}
+
+async fn bounded_probe(
+    path: PathBuf,
+    timeout: Duration,
+    slots: Arc<Semaphore>,
+    probe: impl FnOnce(&Path) -> Option<PathBuf> + Send + 'static,
+) -> Option<PathBuf> {
+    // No queue: a disconnected share retains its permit even after timeout,
+    // until the OS call returns. Repeated reads cannot accumulate blocked jobs.
+    let permit = slots.try_acquire_owned().ok()?;
+    let work = tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        probe(&path)
+    });
+    tokio::time::timeout(timeout, work).await.ok()?.ok()?
 }
 
 /// Saves `chosen` as the download folder after admitting it.
-pub(crate) fn remember_folder(store: &SettingsStore, chosen: &Path) -> Result<(), String> {
-    let folder = admit_folder(chosen)
-        .ok_or("That folder can't be used for downloads. Choose a folder you can write to.")?;
+pub(crate) async fn remember_folder(store: &SettingsStore, chosen: &Path) -> Result<(), String> {
+    let folder = bounded_probe(
+        chosen.to_owned(),
+        PROBE_TIMEOUT,
+        probe_slots(),
+        admit_folder,
+    )
+    .await
+    .ok_or("That folder can't be used for downloads. Choose a folder you can write to.")?;
     store
         .set_browser_download_folder(&folder)
         .map_err(|error| error.to_string())
@@ -58,7 +107,13 @@ pub(crate) fn remember_first_choice(store: &SettingsStore, revision: i64, chosen
 
 /// Tells an open Settings page that the download folder changed.
 pub(crate) fn emit_folder_changed(app: &AppHandle, store: &SettingsStore) {
-    if let Ok(view) = folder_view(store) {
+    // Every caller has just admitted and saved the folder. Announce that
+    // value without starting another filesystem probe or delayed event.
+    if let Ok(stored) = store.browser_download_folder() {
+        let view = DownloadFolderView {
+            available: stored.is_some(),
+            path: stored.map(|path| path.to_string_lossy().into_owned()),
+        };
         let _ = app.emit_to("main", FOLDER_CHANGED, view);
     }
 }
@@ -66,10 +121,12 @@ pub(crate) fn emit_folder_changed(app: &AppHandle, store: &SettingsStore) {
 pub(crate) const FOLDER_CHANGED: &str = "browser:download-folder";
 
 #[tauri::command]
-pub(crate) fn browser_download_folder(
+pub(crate) async fn browser_download_folder(
     state: State<'_, AppState>,
 ) -> Result<DownloadFolderView, String> {
-    folder_view(&state.settings).map_err(|error| error.to_string())
+    folder_view(&state.settings)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -77,12 +134,10 @@ pub(crate) async fn browser_choose_download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DownloadFolderView, String> {
-    let start = state
-        .settings
-        .browser_download_folder()
-        .map_err(|error| error.to_string())?
-        .as_deref()
-        .and_then(admit_folder);
+    let view = folder_view(&state.settings)
+        .await
+        .map_err(|error| error.to_string())?;
+    let start = view.path.filter(|_| view.available);
     let mut dialog = app.dialog().file().set_title("Choose download folder");
     if let Some(window) = app.get_window("main") {
         dialog = dialog.set_parent(&window);
@@ -94,20 +149,24 @@ pub(crate) async fn browser_choose_download_folder(
         .await
         .map_err(|error| error.to_string())?;
     if let Some(path) = picked.and_then(|file| file.into_path().ok()) {
-        remember_folder(&state.settings, &path)?;
+        remember_folder(&state.settings, &path).await?;
         emit_folder_changed(&app, &state.settings);
     }
-    folder_view(&state.settings).map_err(|error| error.to_string())
+    folder_view(&state.settings)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(crate) fn browser_reset_download_folder(
+pub(crate) async fn browser_reset_download_folder(
     state: State<'_, AppState>,
 ) -> Result<DownloadFolderView, String> {
     state
         .settings
         .clear_browser_download_folder()
-        .and_then(|()| folder_view(&state.settings))
+        .map_err(|error| error.to_string())?;
+    folder_view(&state.settings)
+        .await
         .map_err(|error| error.to_string())
 }
 
@@ -124,11 +183,11 @@ mod tests {
         directory
     }
 
-    #[test]
-    fn settings_change_saves_the_canonical_folder_and_reset_clears_it() {
+    #[tokio::test]
+    async fn settings_change_saves_the_canonical_folder_and_reset_clears_it() {
         let store = SettingsStore::in_memory().unwrap();
         assert_eq!(
-            folder_view(&store).unwrap(),
+            folder_view(&store).await.unwrap(),
             DownloadFolderView {
                 path: None,
                 available: false
@@ -138,50 +197,128 @@ mod tests {
         let nested = directory.join("inner");
         std::fs::create_dir_all(&nested).unwrap();
         // A path with `..` in it is stored in canonical form.
-        remember_folder(&store, &nested.join("..").join("inner")).unwrap();
-        let view = folder_view(&store).unwrap();
+        remember_folder(&store, &nested.join("..").join("inner"))
+            .await
+            .unwrap();
+        let view = folder_view(&store).await.unwrap();
         assert!(view.available);
         assert_eq!(
             view.path.as_deref().map(Path::new),
             Some(admit_folder(&nested).unwrap().as_path())
         );
         store.clear_browser_download_folder().unwrap();
-        assert_eq!(folder_view(&store).unwrap().path, None);
+        assert_eq!(folder_view(&store).await.unwrap().path, None);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
-    #[test]
-    fn settings_change_refuses_a_missing_folder_or_a_file() {
+    #[tokio::test]
+    async fn settings_change_refuses_a_missing_folder_or_a_file() {
         let store = SettingsStore::in_memory().unwrap();
         let directory = scratch("refuse");
         let file = directory.join("note.txt");
         std::fs::write(&file, b"x").unwrap();
-        assert!(remember_folder(&store, &directory.join("missing")).is_err());
-        assert!(remember_folder(&store, &file).is_err());
+        assert!(
+            remember_folder(&store, &directory.join("missing"))
+                .await
+                .is_err()
+        );
+        assert!(remember_folder(&store, &file).await.is_err());
         assert_eq!(store.browser_download_folder().unwrap(), None);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
-    #[test]
-    fn a_saved_folder_that_was_deleted_shows_as_unavailable() {
+    #[tokio::test]
+    async fn a_saved_folder_that_was_deleted_shows_as_unavailable() {
         let store = SettingsStore::in_memory().unwrap();
         let directory = scratch("deleted");
-        remember_folder(&store, &directory).unwrap();
+        remember_folder(&store, &directory).await.unwrap();
         std::fs::remove_dir_all(&directory).unwrap();
-        let view = folder_view(&store).unwrap();
+        let view = folder_view(&store).await.unwrap();
         assert!(view.path.is_some());
         assert!(!view.available);
     }
 
-    #[test]
-    fn the_first_save_choice_is_remembered_only_if_settings_did_not_change_meanwhile() {
+    #[tokio::test]
+    async fn timed_out_probes_keep_the_limit_until_the_os_work_finishes() {
+        let directory = scratch("probe-limit");
+        let slots = Arc::new(Semaphore::new(1));
+        let (release, blocked) = std::sync::mpsc::channel();
+        let first = view_with_probe(
+            Some(directory.clone()),
+            Duration::from_millis(20),
+            slots.clone(),
+            move |path| {
+                let _ = blocked.recv_timeout(Duration::from_secs(5));
+                Some(path.to_owned())
+            },
+        )
+        .await;
+        let second = view_with_probe(
+            Some(directory.clone()),
+            Duration::from_millis(20),
+            slots.clone(),
+            |path| Some(path.to_owned()),
+        )
+        .await;
+        release.send(()).unwrap();
+        // Wait for the real blocked job to return before testing recovery.
+        drop(
+            tokio::time::timeout(Duration::from_secs(5), slots.acquire())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        let recovered = view_with_probe(
+            Some(directory.clone()),
+            Duration::from_secs(2),
+            slots,
+            |path| Some(path.to_owned()),
+        )
+        .await;
+        assert!(!first.available);
+        assert!(
+            !second.available,
+            "a timeout must not free an occupied probe slot"
+        );
+        assert!(recovered.available);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_slow_folder_probe_reports_unavailable_without_blocking_the_runtime() {
+        let directory = scratch("slow");
+        let (release, blocked) = std::sync::mpsc::channel();
+        // Release even a synchronous, broken implementation so the red test
+        // terminates. The async timeout must win before this fallback does.
+        let fallback = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = release.send(());
+        });
+        let view = view_with_probe(
+            Some(directory.clone()),
+            Duration::from_millis(20),
+            Arc::new(Semaphore::new(1)),
+            move |path| {
+                blocked.recv_timeout(Duration::from_secs(2)).unwrap();
+                Some(path.to_owned())
+            },
+        )
+        .await;
+        fallback.join().unwrap();
+        assert_eq!(view.path.as_deref(), directory.to_str());
+        assert!(!view.available, "a slow share must time out as unavailable");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_first_save_choice_is_remembered_only_if_settings_did_not_change_meanwhile() {
         let store = SettingsStore::in_memory().unwrap();
         let dialog = scratch("first-dialog");
         let settings = scratch("first-settings");
         // The download read "nothing saved"; Settings chose a folder and
         // then reset it, so the store looks unchanged but is not.
         let read = store.browser_download_folder_record().unwrap();
-        remember_folder(&store, &settings).unwrap();
+        remember_folder(&store, &settings).await.unwrap();
         store.clear_browser_download_folder().unwrap();
         assert!(!remember_first_choice(
             &store,

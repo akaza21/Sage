@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { BrowserClearData } from "../../features/browser/BrowserClearData";
 import { BrowserDownloadFolder } from "../../features/browser/BrowserDownloadFolder";
+import { BrowserSiteSettings } from "../../features/browser/BrowserSiteSettings";
 import {
   DEFAULT_BROWSER_PREFERENCES,
   ensureBrowserPreferences,
@@ -113,6 +114,25 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
         >
           <h3 id="browser-downloads-heading">Downloads</h3>
           <BrowserDownloadFolder />
+        </section>
+      ) : null}
+      {desktop && visible.has("browser.sitePermissions") ? (
+        <section
+          className="settings-surface__group"
+          role="group"
+          aria-labelledby="browser-site-permissions-heading"
+        >
+          <h3 id="browser-site-permissions-heading">Site permissions</h3>
+          <p
+            className="settings-surface__group-note"
+            id="browser-site-permissions-description"
+          >
+            Your answers to sites that asked for your camera, microphone,
+            location, notifications, or clipboard. They apply to every browser
+            tab and stay after Clear browsing data. Reset one to have the site
+            ask again.
+          </p>
+          <BrowserSiteSettings describedBy="browser-site-permissions-description" />
         </section>
       ) : null}
     </section>

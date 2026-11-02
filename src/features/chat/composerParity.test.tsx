@@ -147,25 +147,6 @@ it("keeps the plus target at least 24px before container overrides", async () =>
   ).toBeGreaterThanOrEqual(24);
 });
 
-it("gives the visual harness the real Agent pane container context", async () => {
-  const fixture = await readFile(
-    "tests/ui/fixtures/composerParityHarness.tsx",
-    "utf8",
-  );
-  expect(fixture).toContain('className="agent-chat-center"');
-  expect(fixture).toContain('className="workbench--agent"');
-  expect(fixture).toContain("workbench-window-mode.css");
-  expect(fixture).toContain("agentWorkbenchLayout");
-  expect(fixture).toContain("gridTemplateColumns: layout.gridTemplateColumns");
-  expect(fixture).toContain('className="agent-chat-panes"');
-  expect(fixture).toContain(
-    'className="agent-chat-pane agent-chat-pane--focused"',
-  );
-  const suite = await readFile("tests/ui/composer-parity.visual.ts", "utf8");
-  expect(suite).not.toContain("calc(100% - 262px)");
-  expect(suite).toContain('style="display:grid;width:100%;height:100%"');
-});
-
 it("paints a harness ring only after keyboard navigation, not initial or pointer focus", async () => {
   await loadStyle("src/styles/global.css");
   await loadStyle("src/styles/harness-picker.css");

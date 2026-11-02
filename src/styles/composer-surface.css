@@ -272,20 +272,6 @@
   box-shadow: var(--glass-highlight);
 }
 
-.select-control__unsupported {
-  min-width: 0;
-  min-height: var(--control-height-compact);
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  color: var(--color-text-disabled);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: default;
-}
-
 .composer__shortcut {
   display: none;
   grid-area: shortcut;

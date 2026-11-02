@@ -60,7 +60,10 @@ pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>
     let step = match folder::plan(record.path.as_deref(), suggested, mime, |path| {
         claimed.contains(path)
     }) {
-        Plan::Silent(placeholder) => Step::Silent(Reservation::adopt(placeholder)),
+        Plan::Silent(placeholder) => Step::Silent(Reservation::adopt(
+            placeholder,
+            &folder::sanitize_file_name(suggested),
+        )),
         Plan::Ask {
             file_name,
             remember,

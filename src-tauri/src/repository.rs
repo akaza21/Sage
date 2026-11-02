@@ -69,6 +69,55 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn repository_textconv_drivers_cannot_launch_from_the_diff_view() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!("sage-git-textconv-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
+        git(&root, &["config", "user.email", "sage@example.invalid"]);
+        git(&root, &["config", "user.name", "Sage Test"]);
+        fs::write(root.join(".gitattributes"), "*.txt diff=sentinel\n").unwrap();
+        fs::write(root.join("notes.txt"), "old\n").unwrap();
+        git(&root, &["add", "--", ".gitattributes", "notes.txt"]);
+        git(&root, &["commit", "-q", "-m", "fixture"]);
+        fs::write(root.join("notes.txt"), "new\n").unwrap();
+        let sentinel = root.join("textconv-ran");
+        let driver = root.join("sentinel-textconv");
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\necho ran > \"{}\"\ncat \"$1\"\n",
+                sentinel.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o755)).unwrap();
+        git(
+            &root,
+            &[
+                "config",
+                "diff.sentinel.textconv",
+                &driver.display().to_string(),
+            ],
+        );
+
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let diff = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(file_diff(
+                &workspace,
+                &workspace.resource("notes.txt").unwrap(),
+            ))
+            .unwrap();
+
+        assert!(!sentinel.exists());
+        assert_eq!(diff.hunks.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(windows)]
     #[test]
     fn numstat_casing_is_canonicalized_before_status_merge() {

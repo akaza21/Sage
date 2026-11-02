@@ -59,13 +59,7 @@
 
 .acp-tool-running > svg {
   flex: 0 0 auto;
-  animation: acp-tool-spin 1s linear infinite;
-}
-
-@keyframes acp-tool-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 .acp-activity-card.acp-activity-card--tool-rollup {

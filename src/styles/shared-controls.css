@@ -53,12 +53,6 @@
   color: var(--color-text-muted);
 }
 
-.input--compact,
-.select--compact {
-  min-height: var(--control-height-compact);
-  font-size: var(--font-size-xs);
-}
-
 .select {
   color-scheme: dark;
 }
@@ -73,7 +67,7 @@
   --menu-selected-fill: var(--color-accent-muted);
 
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-popover);
   display: grid;
   width: min(260px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);

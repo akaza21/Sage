@@ -12,6 +12,8 @@ mod native;
 pub(crate) mod placeholder;
 pub(crate) mod reservation;
 pub(crate) mod show;
+#[cfg(windows)]
+mod staging;
 pub(crate) mod worker;
 pub(super) use close::cancel_tab_after_native;
 #[cfg(windows)]
