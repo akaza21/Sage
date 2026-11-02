@@ -63,28 +63,28 @@ describe("agentPreviewControllerOwner", () => {
     ).toBeNull();
   });
 
-  it("withholds the owner when the browse generation is stale", () => {
+  it("withholds the owner when the workbench project generation moved past the browse owner", () => {
     expect(
       agentPreviewControllerOwner({
-        browseOwner,
+        browseOwner: alignedBrowseOwner,
         focusedOwner,
         focusedPage,
-        focusedScope,
-        nativeTransitionEpoch: 0,
-        projectGeneration: 8,
+        focusedScope: alignedScope,
+        nativeTransitionEpoch: 4,
+        projectGeneration: 5,
       }),
     ).toBeNull();
   });
 
-  it("withholds the owner when the native transition epoch moved on", () => {
+  it("withholds the owner when its transition epoch lags the native transition epoch", () => {
     expect(
       agentPreviewControllerOwner({
-        browseOwner,
+        browseOwner: { ...alignedBrowseOwner, transitionEpoch: 3 },
         focusedOwner,
         focusedPage,
-        focusedScope,
-        nativeTransitionEpoch: 1,
-        projectGeneration: 7,
+        focusedScope: alignedScope,
+        nativeTransitionEpoch: 4,
+        projectGeneration: 4,
       }),
     ).toBeNull();
   });

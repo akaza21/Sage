@@ -256,12 +256,101 @@ for (const paneWidth of [560, 414, 400]) {
       content: `.agent-chat-panes { grid-template-columns: ${paneWidth}px; }`,
     });
     const composer = page.locator("form.composer").first();
-    await expectResponsiveToolbar(
-      composer,
-      (await composer.evaluate((element) => element.clientWidth)) <= 400,
-    );
+    const compact =
+      (await composer.evaluate((element) => element.clientWidth)) <= 400;
+    await expectResponsiveToolbar(composer, compact);
+    if (!compact) {
+      // The chip keeps its natural width in a narrowed pane: its label is
+      // shown whole rather than clipped to a fixed chip width.
+      const label = composer.locator(
+        ".project-scope .searchable-picker__trigger-label",
+      );
+      await expect(label).toBeVisible();
+      expect(
+        await label.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      ).toBe(true);
+    }
   });
 }
+
+test("composer controls compact by their own container width, not the window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  const access = composer.getByRole("button", { name: "Access options" });
+  const accessText = access.locator(".composer__access-text");
+  const harnessLabel = composer
+    .getByRole("button", { name: "Harness", exact: true })
+    .locator(".searchable-picker__trigger-label");
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  const modelLabel = model.locator(".composer__model-label");
+  const modelIcon = model.locator(".composer__model-icon");
+  for (const contentWidth of [
+    580, 521, 520, 401, 400, 321, 320, 281, 280, 180,
+  ]) {
+    await composer.evaluate((element, width) => {
+      const computed = getComputedStyle(element);
+      element.style.width = `${width + Number.parseFloat(computed.borderLeftWidth) + Number.parseFloat(computed.borderRightWidth)}px`;
+    }, contentWidth);
+    expect(await composer.evaluate((element) => element.clientWidth)).toBe(
+      contentWidth,
+    );
+    const at = `at ${contentWidth}px`;
+    const plus = (await composer
+      .getByRole("button", { name: "Composer options", exact: true })
+      .boundingBox())!;
+    expect(plus.width, at).toBe(24);
+    expect(plus.height, at).toBe(28);
+    // The access label drops its text below 521px but stays a target.
+    await expect(access, at).toBeVisible();
+    expect((await access.boundingBox())!.width, at).toBeGreaterThanOrEqual(24);
+    if (contentWidth > 520) await expect(accessText, at).toBeVisible();
+    else await expect(accessText, at).toBeHidden();
+    if (contentWidth > 400) await expect(harnessLabel, at).toBeVisible();
+    else await expect(harnessLabel, at).toBeHidden();
+    // The model name stays until 281px; the icon joins it from 320px so a
+    // squeezed label never leaves a bare chevron.
+    if (contentWidth > 280) await expect(modelLabel, at).toBeVisible();
+    else await expect(modelLabel, at).toBeHidden();
+    if (contentWidth <= 320) await expect(modelIcon, at).toBeVisible();
+    else await expect(modelIcon, at).toBeHidden();
+    await expect(composer.locator(".composer__shortcut"), at).toBeHidden();
+    if (contentWidth > 280) {
+      // The label truncates inside its own box, between the leading icon
+      // and the chevron, without clipping the trigger's leading edge.
+      const geometry = await model.evaluate((trigger) => {
+        const label = trigger.querySelector(".composer__model-label")!;
+        const chevron = trigger.querySelector("svg:last-child")!;
+        const icon = trigger.querySelector(".composer__model-icon")!;
+        const box = trigger.getBoundingClientRect();
+        const text = label.getBoundingClientRect();
+        const glyph = chevron.getBoundingClientRect();
+        const leading = icon.getBoundingClientRect();
+        return {
+          labelStart: text.left - box.left,
+          afterIcon: leading.width === 0 || text.left >= leading.right,
+          beforeChevron: text.right <= glyph.left + 0.5,
+          chevron: [glyph.width, glyph.height],
+          chevronInside: glyph.left >= box.left && glyph.right <= box.right,
+          labelWidth: text.width,
+          truncated: label.scrollWidth > label.clientWidth,
+        };
+      });
+      expect(geometry.labelStart, at).toBeGreaterThanOrEqual(0);
+      expect(geometry.afterIcon, at).toBe(true);
+      expect(geometry.beforeChevron, at).toBe(true);
+      expect(geometry.chevron, at).toEqual([16, 16]);
+      expect(geometry.chevronInside, at).toBe(true);
+      expect(geometry.labelWidth, at).toBeGreaterThan(0);
+      if (contentWidth === 281) expect(geometry.truncated, at).toBe(true);
+    }
+  }
+});
 
 test.describe("Project chip 200% zoom reflow proxy", () => {
   test.use({ viewport: { width: 480, height: 360 }, deviceScaleFactor: 2 });

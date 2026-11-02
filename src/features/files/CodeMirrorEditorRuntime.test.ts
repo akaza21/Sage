@@ -1,11 +1,5 @@
 import { undo } from "@codemirror/commands";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import {
-  defaultHighlightStyle,
-  syntaxTree,
-  type TagStyle,
-} from "@codemirror/language";
+import { syntaxTree, type TagStyle } from "@codemirror/language";
 import { EditorState, Text, type Extension } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -547,225 +541,66 @@ describe("CodeMirrorEditorRuntime controlled identity", () => {
   });
 });
 
-describe("documentSyntaxHighlightStyle token wiring", () => {
-  const syntaxTokens = [
-    "--doc-syntax-meta",
-    "--doc-syntax-keyword",
-    "--doc-syntax-atom",
-    "--doc-syntax-literal",
-    "--doc-syntax-string",
-    "--doc-syntax-regexp",
-    "--doc-syntax-variable-definition",
-    "--doc-syntax-variable-local",
-    "--doc-syntax-type",
-    "--doc-syntax-class",
-    "--doc-syntax-variable-special",
-    "--doc-syntax-property-definition",
-    "--doc-syntax-comment",
-    "--doc-syntax-invalid",
-  ];
-
-  function tokenDrivenColors(): string[] {
-    const found: string[] = [];
-    for (const sheet of Array.from(document.styleSheets)) {
-      let rules: CSSRuleList | undefined;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        continue;
-      }
-      for (const rule of Array.from(rules)) {
-        if (!(rule instanceof CSSStyleRule)) {
-          continue;
-        }
-        const color = rule.style.getPropertyValue("color");
-        if (color.includes("var(--doc-syntax-")) {
-          found.push(color);
-        }
-      }
-    }
-    return found;
-  }
-
-  const expectedSpecFingerprint = [
-    "meta::1000159661",
-    "link::2608474521",
-    "heading::543165884",
-    "emphasis::1849161160",
-    "strong::1092292736",
-    "strikethrough::2460384273",
-    "keyword::4094803337",
-    "atom|bool|url|contentSeparator|labelName::3049790944",
-    "literal|inserted::3643890061",
-    "string|deleted::1766536593",
-    "regexp|escape|special(string)::717015775",
-    "definition(variableName)::682143542",
-    "local(variableName)::1717408810",
-    "typeName|namespace::3885285675",
-    "className::3593557204",
-    "special(variableName)|macroName::886169641",
-    "definition(propertyName)::766031637",
-    "comment::3104485131",
-    "invalid::290080614",
-  ];
-
-  function stableStringFingerprint(value: string): number {
-    let fingerprint = 0x811c9dc5;
-    for (let index = 0; index < value.length; index += 1) {
-      fingerprint ^= value.charCodeAt(index);
-      fingerprint = Math.imul(fingerprint, 0x01000193);
-    }
-    return fingerprint >>> 0;
-  }
-
-  function specDescriptor(spec: TagStyle): string {
-    const tagIdentity = (Array.isArray(spec.tag) ? spec.tag : [spec.tag])
-      .map((tag) => String(tag))
-      .join("|");
-    const treatments = Object.entries(spec)
-      .filter(([key]) => key !== "tag")
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${String(value)}`)
-      .join(",");
-    return `${tagIdentity}::${stableStringFingerprint(treatments)}`;
-  }
-
-  function assertDefaultSpecFingerprint(specs: readonly TagStyle[]): void {
-    expect(specs.map(specDescriptor)).toEqual(expectedSpecFingerprint);
-  }
-
-  const expectedTokenTable = [
-    "var(--doc-syntax-meta)",
-    "null",
-    "null",
-    "null",
-    "null",
-    "null",
-    "var(--doc-syntax-keyword)",
-    "var(--doc-syntax-atom)",
-    "var(--doc-syntax-literal)",
-    "var(--doc-syntax-string)",
-    "var(--doc-syntax-regexp)",
-    "var(--doc-syntax-variable-definition)",
-    "var(--doc-syntax-variable-local)",
-    "var(--doc-syntax-type)",
-    "var(--doc-syntax-class)",
-    "var(--doc-syntax-variable-special)",
-    "var(--doc-syntax-property-definition)",
-    "var(--doc-syntax-comment)",
-    "var(--doc-syntax-invalid)",
-  ];
-
-  function tokenTableEntries(source: string): string[] {
-    const table = source.match(
-      /const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly \(string \| null\)\[\] = \[([^\]]*)\];/,
-    );
-    expect(table).not.toBeNull();
-    return (table?.[1] ?? "")
-      .split(",")
-      .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-      .filter((entry) => entry.length > 0);
-  }
-
-  function assertTokenTableMatchesSpecs(source: string): void {
-    const entries = tokenTableEntries(source);
-    expect(entries).toHaveLength(expectedSpecFingerprint.length);
-    expect(entries).toEqual(expectedTokenTable);
-  }
-
-  function runtimeSource(): Promise<string> {
-    return readFile(
-      resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
-      "utf8",
-    );
-  }
-
-  it("pins the runtime token table to the default spec count and order in CI", async () => {
-    assertTokenTableMatchesSpecs(await runtimeSource());
-    expect(expectedTokenTable).toHaveLength(defaultHighlightStyle.specs.length);
-  });
-
-  it("mounts token-driven syntax declarations for every syntax token", () => {
-    const { runtime } = runtimeForPath("notes.txt");
-    const colors = tokenDrivenColors();
-    for (const token of syntaxTokens) {
-      expect(colors.join("\n")).toContain(`var(${token})`);
-    }
-    runtime.destroy();
-  });
-
-  it("mounts no raw default palette colors", () => {
-    const { runtime } = runtimeForPath("notes.txt");
-    const colors = tokenDrivenColors();
-    expect(colors.length).toBeGreaterThan(0);
-    for (const color of colors) {
-      expect(color).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    }
-    runtime.destroy();
-  });
-
-  it("pins the installed default spec count, order, and treatments in CI", () => {
-    assertDefaultSpecFingerprint(defaultHighlightStyle.specs);
-  });
-
-  it("keeps the editor module importable when the test-owned spec guard sees drift", async () => {
+// The effective colours and treatments of highlighted syntax are asserted
+// in a real browser by tests/ui/editor-syntax.visual.ts.
+describe("documentSyntaxHighlightStyle after a dependency drift", () => {
+  it("keeps the editor usable and token-coloured when the default specs change", async () => {
     vi.resetModules();
     vi.doMock("@codemirror/language", async (importOriginal) => {
       const actual = (await importOriginal()) as Record<string, unknown> & {
-        defaultHighlightStyle: typeof defaultHighlightStyle;
+        defaultHighlightStyle: { specs: readonly TagStyle[] };
       };
+      const keyword = actual.defaultHighlightStyle.specs.find(
+        (spec) => String(spec.tag) === "keyword",
+      )!.tag;
       return {
         ...actual,
+        // A new release that reorders and shrinks the default table, with
+        // its own raw palette colour.
         defaultHighlightStyle: {
-          specs: [
-            {
-              tag: actual.defaultHighlightStyle.specs[0].tag,
-              color: "currentColor",
-            },
-          ],
+          specs: [{ tag: keyword, color: "#123456" }],
         },
       };
     });
     try {
-      await expect(import("./CodeMirrorEditorRuntime")).resolves.toBeDefined();
+      const { createCodeMirrorEditorRuntime: createDrifted } =
+        await import("./CodeMirrorEditorRuntime");
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      const onChange = vi.fn();
+      const runtime = createDrifted({
+        parent,
+        ariaLabel: "Edit main.ts",
+        path: "main.ts",
+        content: "const value = 1;\n",
+        disabled: false,
+        maxContentLength: 1024,
+        onChange,
+      });
+      const content = parent.querySelector<HTMLElement>(".cm-content")!;
+      expect(content.textContent).toBe("const value = 1;");
+
+      const keyword = await vi.waitFor(() => {
+        const span = [...content.querySelectorAll("span[class]")].find(
+          (node) => node.textContent === "const",
+        );
+        expect(span).toBeDefined();
+        return span!;
+      });
+      expect(getComputedStyle(keyword).color).toMatch(/^var\(--doc-syntax-/);
+
+      // The view class of the same fresh module graph as the editor.
+      const { EditorView: DriftedView } = await import("@codemirror/view");
+      DriftedView.findFromDOM(content)!.dispatch({
+        changes: { from: 0, to: 5, insert: "let" },
+      });
+      expect(content.textContent).toBe("let value = 1;");
+      expect(String(onChange.mock.lastCall?.[0])).toBe("let value = 1;\n");
+      runtime.destroy();
     } finally {
       vi.doUnmock("@codemirror/language");
       vi.resetModules();
     }
-  });
-
-  it("rejects a same-count reorder of specs with matching style shapes", () => {
-    const reordered = [...defaultHighlightStyle.specs];
-    [reordered[11], reordered[12]] = [reordered[12], reordered[11]];
-    expect(() => assertDefaultSpecFingerprint(reordered)).toThrow();
-  });
-
-  it("rejects drift in a non-color style value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 1 ? { ...spec, textDecoration: "overline" } : spec,
-        ),
-      ),
-    ).toThrow();
-  });
-
-  it("rejects a changed default spec count", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint([
-        { tag: defaultHighlightStyle.specs[0].tag, color: "currentColor" },
-      ]),
-    ).toThrow();
-  });
-
-  it("rejects drift in a default palette value", () => {
-    expect(() =>
-      assertDefaultSpecFingerprint(
-        defaultHighlightStyle.specs.map((spec, index) =>
-          index === 6 ? { ...spec, color: "currentColor" } : spec,
-        ),
-      ),
-    ).toThrow();
   });
 });
 

@@ -194,6 +194,19 @@ for (const width of [1888, 720, 480]) {
                 ),
               ),
             ),
+            // Controls lead the row; the mic and send actions trail it.
+            order: (() => {
+              const right = (selector: string) =>
+                toolbar.querySelector(selector)!.getBoundingClientRect();
+              const send = right(".send-button");
+              const mic = right(".composer__mic");
+              const plus = right(".composer__plus");
+              return (
+                boxes.every((box) => box.right <= send.right) &&
+                mic.right <= send.left &&
+                boxes.every((box) => box.left >= plus.left)
+              );
+            })(),
           };
         });
       expect(geometry).toEqual({
@@ -202,6 +215,7 @@ for (const width of [1888, 720, 480]) {
         aligned: true,
         disjoint: true,
         hitTestable: true,
+        order: true,
       });
       if (width === 480) {
         expect((await composer.boundingBox())!.width).toBeGreaterThanOrEqual(

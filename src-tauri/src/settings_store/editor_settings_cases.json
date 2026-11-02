@@ -1,0 +1,102 @@
+{
+  "comment": "Shared by settings_store/editor_settings.rs tests and src/domain/editorSettingsCatalogue.test.ts. The Rust store must send exactly these values and admit or reject exactly these writes, and the webview catalogue must read and admit them the same way.",
+  "defaults": {
+    "editor.autoClosingBrackets": true,
+    "editor.folding": true,
+    "editor.fontSize": 13,
+    "editor.lineNumbers": true,
+    "editor.matchBrackets": true,
+    "editor.multiCursorModifier": "alt",
+    "editor.occurrencesHighlight": true,
+    "editor.renderWhitespace": false,
+    "editor.tabSize": 2,
+    "editor.wordWrap": false,
+    "explorer.showIgnored": "dimmed",
+    "files.exclude": [
+      "**/.git",
+      "**/.svn",
+      "**/.hg",
+      "**/CVS",
+      "**/.DS_Store",
+      "**/Thumbs.db"
+    ],
+    "git.autoRefresh": true,
+    "git.decorations": true,
+    "search.useIgnoreFiles": true
+  },
+  "writes": [
+    {
+      "changes": { "editor.fontSize": 15, "editor.tabSize": 7 },
+      "stored": { "editor.fontSize": 14, "editor.tabSize": 8 }
+    },
+    {
+      "changes": { "editor.fontSize": 99, "editor.tabSize": 3 },
+      "stored": { "editor.fontSize": 16, "editor.tabSize": 2 }
+    },
+    {
+      "changes": { "editor.fontSize": -3, "editor.tabSize": 6 },
+      "stored": { "editor.fontSize": 12, "editor.tabSize": 4 }
+    },
+    {
+      "changes": {
+        "editor.lineNumbers": false,
+        "editor.wordWrap": true,
+        "editor.renderWhitespace": true
+      },
+      "stored": {
+        "editor.lineNumbers": false,
+        "editor.wordWrap": true,
+        "editor.renderWhitespace": true
+      }
+    },
+    {
+      "changes": {
+        "editor.matchBrackets": false,
+        "editor.autoClosingBrackets": false,
+        "editor.folding": false,
+        "editor.occurrencesHighlight": false,
+        "editor.multiCursorModifier": "ctrlCmd"
+      },
+      "stored": {
+        "editor.matchBrackets": false,
+        "editor.autoClosingBrackets": false,
+        "editor.folding": false,
+        "editor.occurrencesHighlight": false,
+        "editor.multiCursorModifier": "ctrlCmd"
+      }
+    },
+    {
+      "changes": {
+        "search.useIgnoreFiles": false,
+        "explorer.showIgnored": "hidden",
+        "git.autoRefresh": false,
+        "git.decorations": false
+      },
+      "stored": {
+        "search.useIgnoreFiles": false,
+        "explorer.showIgnored": "hidden",
+        "git.autoRefresh": false,
+        "git.decorations": false
+      }
+    },
+    {
+      "changes": { "files.exclude": ["*.log", "**/dist", "*.log"] },
+      "stored": { "files.exclude": ["*.log", "**/dist"] }
+    },
+    {
+      "changes": { "editor.unknown": 1, "editor.wordWrap": true },
+      "stored": { "editor.wordWrap": true }
+    }
+  ],
+  "rejected": [
+    { "editor.fontSize": "large" },
+    { "editor.fontSize": 13.5 },
+    { "editor.tabSize": 9007199254740992 },
+    { "editor.wordWrap": 1 },
+    { "editor.multiCursorModifier": "meta" },
+    { "explorer.showIgnored": "shown" },
+    { "files.exclude": "**/dist" },
+    { "files.exclude": ["dist/"] },
+    { "git.decorations": null }
+  ]
+}

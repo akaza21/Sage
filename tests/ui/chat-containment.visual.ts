@@ -746,3 +746,276 @@ for (const profile of profiles) {
     });
   }
 }
+
+async function setComposerContentWidth(composer: Locator, width: number) {
+  await composer.evaluate((element, width) => {
+    const computed = getComputedStyle(element);
+    element.style.width = `${width + Number.parseFloat(computed.borderLeftWidth) + Number.parseFloat(computed.borderRightWidth)}px`;
+  }, width);
+  expect(await composer.evaluate((element) => element.clientWidth)).toBe(width);
+}
+
+async function queuePrompts(page: Page, count: number) {
+  await page.evaluate(async (count) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    const template = {
+      text: "Review " + "long-resource-and-project-name-".repeat(12),
+      attachedContext: [],
+      bindingId: state.harnesses[0].bindingId!,
+      modelId: state.selectedModelId,
+      status: "outcomeUnknown" as const,
+    };
+    useWorkbenchStore.setState({
+      chatUiById: Object.fromEntries(
+        Object.entries(state.chatUiById).map(([id, ui]) => [
+          id,
+          {
+            ...ui,
+            queuedPrompts: Array.from({ length: count }, (_, index) => ({
+              ...template,
+              id: `geometry-queue-${index}`,
+            })),
+          },
+        ]),
+      ),
+    });
+  }, count);
+  await expect(
+    page.locator("form.composer").first().locator(".composer__queued-row"),
+  ).toHaveCount(count);
+}
+
+// Whether a flex row's visible children sit on one line or several.
+async function rowLines(row: Locator) {
+  return row.evaluate((element) => {
+    const boxes = [...element.children]
+      .map((child) => child.getBoundingClientRect())
+      .filter((box) => box.width > 0);
+    return boxes.some((box) =>
+      boxes.some((other) => other.top >= box.bottom - 0.5),
+    )
+      ? "wrapped"
+      : "single";
+  });
+}
+
+test("the wide queue floats above the composer with a 320px cap and reflows inside it from 520px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  await queuePrompts(page, 12);
+  const composer = page.locator("form.composer").first();
+  const queue = composer.locator(".composer__queued");
+  const row = composer.locator(".composer__queued-row").first();
+  const scrolls = () =>
+    queue.evaluate((element) => element.scrollHeight > element.clientHeight);
+
+  await setComposerContentWidth(composer, 521);
+  await expect
+    .poll(async () => (await queue.boundingBox())!.height)
+    .toBe(Math.min(320, 1096 * 0.4));
+  const wide = (await queue.boundingBox())!;
+  const form = (await composer.boundingBox())!;
+  expect(wide.y + wide.height).toBeLessThanOrEqual(form.y);
+  expect(await scrolls()).toBe(true);
+  expect(await rowLines(row)).toBe("single");
+
+  await setComposerContentWidth(composer, 520);
+  await expect
+    .poll(async () => (await queue.boundingBox())!.height)
+    .toBe(Math.min(160, 1096 * 0.24));
+  const narrow = (await queue.boundingBox())!;
+  const narrowForm = (await composer.boundingBox())!;
+  expect(narrow.y).toBeGreaterThanOrEqual(narrowForm.y);
+  expect(narrow.x).toBeGreaterThanOrEqual(narrowForm.x);
+  expect(narrow.x + narrow.width).toBeLessThanOrEqual(
+    narrowForm.x + narrowForm.width,
+  );
+  expect(await scrolls()).toBe(true);
+  await expectSiblings(row);
+  // Narrower still, the row wraps its state and actions onto a second line
+  // instead of squeezing or overlapping them.
+  await setComposerContentWidth(composer, 300);
+  expect(await rowLines(row)).toBe("wrapped");
+  await expectSiblings(row);
+});
+
+test("a floating queue overlays the transcript without moving the composer when no edits row is shown", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  // Drop the file changes so the transcript has turns but no edits row.
+  await page.evaluate(async () => {
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const chatId = document.querySelector<HTMLElement>(
+      ".acp-chat-projection[data-chat-id]",
+    )!.dataset.chatId!;
+    const projection = acpProjectionStoreFor(chatId).getState();
+    projection.applyAuthoritativePage(projection.scope!, {
+      ...projection.page!,
+      turns: projection.page!.turns.map((turn) => ({
+        ...turn,
+        items: turn.items.filter((item) => item.kind !== "fileChangeDiff"),
+      })),
+    });
+  });
+  const composer = page.locator("form.composer").first();
+  await expect(page.locator(".chat-edit-summary-zone")).toBeHidden();
+  const transcript = page.locator(".message-list").first();
+  await queuePrompts(page, 0);
+  const before = (await composer.boundingBox())!;
+  const transcriptBefore = (await transcript.boundingBox())!;
+  await queuePrompts(page, 3);
+  await expect(page.locator(".chat-edit-summary-zone")).toBeHidden();
+  // Wait for the tray to be measured before reading the settled layout.
+  await expect
+    .poll(() =>
+      composer.evaluate((element) =>
+        Number.parseFloat(
+          element.style.getPropertyValue("--queued-tray-space"),
+        ),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  const queue = (await composer.locator(".composer__queued").boundingBox())!;
+  expect(queue.height).toBeGreaterThan(0);
+  // The tray floats over the transcript's lower edge; only a populated
+  // edits row reserves space for it, so neither row moves here.
+  expect(queue.y).toBeGreaterThanOrEqual(transcriptBefore.y);
+  expect(queue.y + queue.height).toBeLessThanOrEqual(before.y);
+  expect(await transcript.boundingBox()).toEqual(transcriptBefore);
+  expect(await composer.boundingBox()).toEqual(before);
+});
+
+test("a short pane caps the composer row at 60% and scrolls its upper content above a fixed toolbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 560 });
+  await prepare(page, profiles[0], false, true);
+  const surface = (await page.locator(".chat-surface").boundingBox())!;
+  const composer = page.locator("form.composer").first();
+  const form = (await composer.boundingBox())!;
+  expect(form.height).toBeLessThanOrEqual(surface.height * 0.6 + 0.5);
+  expect(
+    (await page.locator(".message-list").boundingBox())!.height,
+  ).toBeGreaterThanOrEqual(120);
+  const body = composer.locator(".composer__body");
+  expect(
+    await body.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  const toolbarLocator = composer.locator(".composer__toolbar");
+  const toolbar = (await toolbarLocator.boundingBox())!;
+  const scroller = (await body.boundingBox())!;
+  expect(scroller.y + scroller.height).toBeLessThanOrEqual(toolbar.y + 0.5);
+  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
+    form.y + form.height + 0.5,
+  );
+  // The toolbar keeps its natural height instead of shrinking with the body.
+  expect(toolbar.height).toBe(
+    await toolbarLocator.evaluate((element) => element.scrollHeight),
+  );
+});
+
+test("a harness notice takes its own row above the transcript and composer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, false);
+  const surface = page.locator(".chat-surface");
+  const transcript = surface.locator(".message-list");
+  const composer = surface.locator("form.composer");
+  const before = (await transcript.boundingBox())!;
+  const composerBefore = (await composer.boundingBox())!;
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        characterisation: "uncharacterised" as const,
+      })),
+    });
+  });
+  const notice = surface.locator(":scope > .composer__notice");
+  await expect(notice).toBeVisible();
+  const noticeBox = (await notice.boundingBox())!;
+  const transcriptBox = (await transcript.boundingBox())!;
+  const composerBox = (await composer.boundingBox())!;
+  expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(
+    transcriptBox.y + 0.5,
+  );
+  expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(
+    composerBox.y + 0.5,
+  );
+  expect(transcriptBox.height).toBeGreaterThanOrEqual(120);
+  // The notice row comes out of the transcript, never the composer.
+  expect(transcriptBox.height).toBeLessThan(before.height);
+  expect(composerBox).toEqual(composerBefore);
+});
+
+test("the goal strip reflows with its composer container at 280px, not the window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  const composer = page.locator("form.composer").first();
+  const row = composer.locator(".chat-goal-strip__row");
+  await setComposerContentWidth(composer, 281);
+  await expect(row).toBeVisible();
+  expect(await rowLines(row)).toBe("single");
+  expect((await row.boundingBox())!.height).toBe(32);
+  await setComposerContentWidth(composer, 280);
+  expect(await rowLines(row)).toBe("wrapped");
+  const wrapped = (await row.boundingBox())!;
+  expect(wrapped.height).toBeGreaterThan(32);
+  await expectSiblings(row);
+});
+
+test("attached chips stay on a centred row in a 360px-tall viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 360 });
+  await prepare(page, profiles[0], false, false);
+  const row = page.locator("form.composer .composer__attachment-row").first();
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeVisible();
+  const geometry = await row.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    // Centre of the content box: the row has a top border only.
+    const top = box.top + Number.parseFloat(style.borderTopWidth);
+    const centre = (top + box.bottom) / 2;
+    return {
+      chips: [...element.querySelectorAll(".composer__attachment")].map(
+        (chip) => {
+          const chipBox = chip.getBoundingClientRect();
+          return chipBox.width > 0 &&
+            chipBox.height > 0 &&
+            chipBox.top >= box.top &&
+            chipBox.bottom <= box.bottom
+            ? "visible"
+            : "clipped";
+        },
+      ),
+      offCentre: [...element.children].map((child) => {
+        const childBox = child.getBoundingClientRect();
+        return Math.abs(childBox.top + childBox.height / 2 - centre);
+      }),
+    };
+  });
+  expect(geometry.chips).toEqual(["visible", "visible"]);
+  for (const offset of geometry.offCentre)
+    expect(offset).toBeLessThanOrEqual(1);
+});

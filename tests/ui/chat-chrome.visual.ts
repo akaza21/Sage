@@ -194,12 +194,25 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
           ),
         )
         .toBeLessThanOrEqual(1);
+      const followingBox = (await transcript.boundingBox())!;
+      const composerBox = (await page.locator("form.composer").boundingBox())!;
       await transcript.evaluate((element) => element.scrollTo(0, 0));
       const jump = page.getByRole("button", {
         name: "Jump to latest",
         exact: true,
       });
       await expect(jump).toBeVisible();
+      // The control overlays the transcript: neither the transcript nor the
+      // composer row moves when it appears.
+      expect(await transcript.boundingBox()).toEqual(followingBox);
+      expect(await page.locator("form.composer").boundingBox()).toEqual(
+        composerBox,
+      );
+      const overlay = (await jump.boundingBox())!;
+      expect(overlay.y).toBeGreaterThanOrEqual(followingBox.y);
+      expect(overlay.y + overlay.height).toBeLessThanOrEqual(
+        followingBox.y + followingBox.height,
+      );
       await expect(jump).toHaveText("");
       await expect(jump.locator('svg[aria-hidden="true"]')).toHaveCount(1);
       await expect(jump).toHaveCSS("border-radius", "50%");
@@ -317,6 +330,43 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     await expectNoOverflow(page);
   });
 }
+
+test("header status compacts with its chat column, not the window", async ({
+  page,
+}) => {
+  const center = page.locator(".agent-chat-center");
+  for (const [status, tone] of [
+    ["Running", "working"],
+    ["Completed", "idle"],
+  ]) {
+    await openChrome(page, "codex", 1888, "transcript", status, tone);
+    const indicator = page.getByRole("status", {
+      name: `Chat status: ${status}`,
+      exact: true,
+    });
+    const label = indicator.locator(".agent-task-header__status-label");
+    for (const width of [401, 400]) {
+      await center.evaluate((element, width) => {
+        (element as HTMLElement).style.width = `${width}px`;
+      }, width);
+      await expectSingleHeaderRow(page, width);
+      if (width > 400) {
+        await expect(label).toBeVisible();
+        await expect(label).toHaveText(status);
+      } else if (tone === "idle") {
+        // An idle pane spends the whole compact width on its title.
+        await expect(indicator).toBeHidden();
+      } else {
+        // Working keeps its announced, focusable glyph without the label.
+        await expect(label).toBeHidden();
+        await expect(indicator).toBeVisible();
+        await expect(
+          indicator.locator(".agent-chat-chip__spinner"),
+        ).toBeVisible();
+      }
+    }
+  }
+});
 
 async function expectNoOverflow(page: Page) {
   expect(
