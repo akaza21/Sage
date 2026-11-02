@@ -72,6 +72,7 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
 
 const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAccessMenu.tsx",
+  "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
 ];

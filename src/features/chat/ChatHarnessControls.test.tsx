@@ -471,7 +471,7 @@ describe("last confirmed model label", () => {
       { container: host },
     );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-    const project = screen.getByRole("menuitem", { name: "Project: A" });
+    const project = await screen.findByRole("menuitem", { name: "Project: A" });
     expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
     fireEvent.click(project);
     const projects = screen.getByRole("combobox", { name: "Project: A" });

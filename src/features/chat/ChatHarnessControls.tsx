@@ -1,7 +1,7 @@
 import { Plus, Settings } from "../../ui/leanIcons";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from "react";
 
 import {
   cachedHarnessModels,
@@ -23,9 +23,9 @@ import { useOverflowSteps } from "../../ui/useOverflowSteps";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ComposerOptionsMenu } from "./ComposerAddActions";
 import { composerOptionLabel } from "./composerChrome";
 import { formatContextWindow } from "./composerModelContext";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { useComposerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
@@ -56,6 +56,8 @@ const TOOLBAR_STEPS = [
   "dense",
   "wrap",
 ] as const;
+
+const ComposerOptionsMenu = lazy(() => import("./ComposerAddActions"));
 
 interface Props {
   accessBindingId?: string | null;
@@ -389,32 +391,41 @@ export function ChatHarnessControls({
         />
       ) : null}
       {active === "options" && hasActions ? (
-        <ComposerOptionsMenu
-          id={optionsId}
-          triggerRef={optionsTriggerRef}
-          onDismiss={dismiss}
-          projectAction={
-            projectInMenu && projectName ? (
-              <ProjectScopeChip projectName={projectName} menuItem />
-            ) : undefined
+        <Suspense
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={optionsTriggerRef}
+              onDismiss={dismiss}
+            />
           }
-          sessionConfig={selectedSessionConfig}
-          pending={modePending}
-          disabled={turnBusy || projectTransitioning}
-          imageAction={imageAction}
-          onOpenGoal={onOpenGoal}
-          onOpenEffort={
-            canSelectEffort && effortInMenu
-              ? () => {
-                  setEffortFromAdd(true);
-                  toggle("effort");
-                }
-              : undefined
-          }
-          onClose={closeActions}
-          onSetSessionMode={onSetSessionMode}
-          onSetSessionConfigOption={onSetSessionConfigOption}
-        />
+        >
+          <ComposerOptionsMenu
+            id={optionsId}
+            triggerRef={optionsTriggerRef}
+            onDismiss={dismiss}
+            projectAction={
+              projectInMenu && projectName ? (
+                <ProjectScopeChip projectName={projectName} menuItem />
+              ) : undefined
+            }
+            sessionConfig={selectedSessionConfig}
+            pending={modePending}
+            disabled={turnBusy || projectTransitioning}
+            imageAction={imageAction}
+            onOpenGoal={onOpenGoal}
+            onOpenEffort={
+              canSelectEffort && effortInMenu
+                ? () => {
+                    setEffortFromAdd(true);
+                    toggle("effort");
+                  }
+                : undefined
+            }
+            onClose={closeActions}
+            onSetSessionMode={onSetSessionMode}
+            onSetSessionConfigOption={onSetSessionConfigOption}
+          />
+        </Suspense>
       ) : null}
       {modePending ? (
         <span className="select-control__reason" role="status">

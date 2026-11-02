@@ -132,7 +132,7 @@ describe("composer image input", () => {
     expect(prompt).toHaveAccessibleDescription(/Enter queues a message/);
   });
 
-  it("gates only Add Goal by binding and picker identity, preserving native details actions", () => {
+  it("gates only Add Goal by binding and picker identity, preserving native details actions", async () => {
     const goal = {
       kind: "goal" as const,
       snapshot: {
@@ -193,7 +193,7 @@ describe("composer image input", () => {
     });
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) fireEvent.click(options);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Goal" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.getByText("Ship safely", { selector: "p" })).toBeVisible();
     expect(screen.getByLabelText("Goal details")).toHaveFocus();
@@ -278,20 +278,22 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledTimes(2);
   });
 
-  it("opens the persistent chooser from Add and closes the only menu", () => {
+  it("opens the persistent chooser from Add and closes the only menu", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");
     const choose = vi.spyOn(chooser, "click");
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add images" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Add images" }),
+    );
     expect(choose).toHaveBeenCalledOnce();
     expect(chooser.isConnected).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
-  it("refuses a fifth image before upload", () => {
+  it("refuses a fifth image before upload", async () => {
     const { onAddImages } = renderComposer({
       imageInputAvailable: true,
       attachedContext: [0, 1, 2, 3].map((index) => ({
@@ -312,7 +314,9 @@ describe("composer image input", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("four images");
     const options = screen.queryByRole("button", { name: "Composer options" });
     if (options) fireEvent.click(options);
-    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
+    expect(
+      await screen.findByRole("menuitem", { name: "Add images" }),
+    ).toBeDisabled();
   });
 
   it("shows an uploaded image thumbnail and removes its context", () => {

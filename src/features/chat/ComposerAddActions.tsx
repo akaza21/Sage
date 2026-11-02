@@ -8,7 +8,7 @@ import type {
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { sessionModeActions } from "../../domain/acpSessionConfigControls";
 
-export function ComposerOptionsMenu({
+export default function ComposerOptionsMenu({
   id,
   triggerRef,
   onDismiss,

@@ -73,9 +73,12 @@ const nativeReadOnly = [
   },
 ];
 
-function openComposerOptions() {
+async function openComposerOptions() {
   const options = screen.queryByRole("button", { name: "Composer options" });
-  if (options) fireEvent.click(options);
+  if (!options) return;
+  fireEvent.click(options);
+  // The options menu loads on first open.
+  await screen.findByRole("menu", { name: "Composer options menu" });
 }
 
 function openComposerModel() {
@@ -1555,7 +1558,7 @@ describe("ChatSurface ACP resource integration", () => {
     }
   });
 
-  it("renders only provider-advertised session modes and preserves their order", () => {
+  it("renders only provider-advertised session modes and preserves their order", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1575,7 +1578,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const modes = screen.getByRole("group", { name: "Session mode" });
     expect(
@@ -1594,9 +1597,9 @@ describe("ChatSurface ACP resource integration", () => {
     );
   });
 
-  it("does not render a session mode picker without advertised modes", () => {
+  it("does not render a session mode picker without advertised modes", async () => {
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
   });
 
@@ -1648,7 +1651,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByRole("group", { name: "Session mode" })).toBeTruthy();
     expect(
@@ -1691,7 +1694,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.queryByText("Thinking budget")).toBeNull();
     expect(
@@ -1709,7 +1712,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeTruthy();
   });
 
-  it("lets a prompt-capable harness without a model catalog use its own default", () => {
+  it("lets a prompt-capable harness without a model catalog use its own default", async () => {
     hooks.page = {
       ...projection(),
       turns: [],
@@ -1750,7 +1753,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(
       screen.getByRole("textbox", { name: "Message agent" }),
@@ -1891,7 +1894,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     const { rerender } = render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     const modeInput = screen.getByRole("menuitemradio", {
       name: "Review changes",
     });
@@ -1967,7 +1970,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(foregroundDraft).toHaveFocus();
   });
 
-  it("announces pending mode state and errors outside the action menu", () => {
+  it("announces pending mode state and errors outside the action menu", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1990,7 +1993,7 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.modeError = "Mode change was rejected";
     hooks.actions.error = "Prompt dispatch failed";
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const modeTrigger = screen.getByRole("menuitemradio", {
       name: "Review changes",
@@ -2135,7 +2138,7 @@ describe("ChatSurface ACP resource integration", () => {
         </section>
       </main>,
     );
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
   });
@@ -2238,7 +2241,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
+  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2298,7 +2301,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
@@ -2333,7 +2336,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBe(true);
   });
 
-  it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
+  it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2373,7 +2376,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
@@ -2391,7 +2394,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[2]).toBeDisabled();
   });
 
-  it("keeps the available development fallback visible when the selected harness is absent", () => {
+  it("keeps the available development fallback visible when the selected harness is absent", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2420,7 +2423,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("No harness")).toBeInTheDocument();
     const harness = screen.getByRole("button", { name: "Harness" });
@@ -2472,10 +2475,10 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
   });
 
-  it("shows an available ACP binding as ready before a session starts", () => {
+  it("shows an available ACP binding as ready before a session starts", async () => {
     hooks.page = { ...hooks.page!, turns: [] };
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
@@ -2484,7 +2487,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toHaveTextContent("Read-only");
   });
 
-  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", () => {
+  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", async () => {
     hooks.page = {
       ...projection(),
       currentSessionId: null,
@@ -2516,7 +2519,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
       screen.queryByRole("menuitemradio", { name: "Ask each time" }),
@@ -5169,7 +5172,7 @@ describe("ChatSurface composer context", () => {
     ).toBeNull();
   });
 
-  it("names the active project in the composer scope control", () => {
+  it("names the active project in the composer scope control", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "  micrograd  ", roots: [] },
       harnesses: [
@@ -5187,7 +5190,7 @@ describe("ChatSurface composer context", () => {
       selectedHarnessId: "sage-simulator",
     });
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const scope = document.querySelector(".project-scope");
     expect(scope).not.toBeNull();
