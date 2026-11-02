@@ -1,5 +1,6 @@
 import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
 import type { Text } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
@@ -83,6 +84,7 @@ export function FileSurfaceContent({
   agentMarkdown = false,
   onCaretOffset,
   onLimitExceeded,
+  onEditorView,
   onEditorChange,
   onSurfaceKeyDown,
   onTogglePreview,
@@ -104,6 +106,7 @@ export function FileSurfaceContent({
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
   onLimitExceeded: () => void;
+  onEditorView?: (view: EditorView | null, text: string | null) => void;
   onEditorChange: (
     content: EditorContent,
     base?: EditorContentBase | null,
@@ -192,6 +195,7 @@ export function FileSurfaceContent({
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
             onLimitExceeded={onLimitExceeded}
+            onView={onEditorView}
           />
         </div>
       )}
