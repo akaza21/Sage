@@ -17,6 +17,9 @@ use crate::{
 
 pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
 
+// Allow 32 tabs per project across 8 workspace watches, even though only active
+// File canvases normally watch. This bounds native threads and handles while
+// leaving headroom for every tab in those workspaces to be watched concurrently.
 const MAX_GLOBAL_WATCHES: usize = 256;
 
 const FILE_ACTION_ADDED: u32 = 1;

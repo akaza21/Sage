@@ -1,8 +1,17 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { createElement } from "react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { createElement, useMemo, useState } from "react";
+
+import { FileEditorNotices } from "./FileEditorNotices";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -146,6 +155,60 @@ describe("IDE-2 editor external watch seam", () => {
     await waitFor(() => {
       expect(secondCancel).toHaveBeenCalledOnce();
     });
+  });
+
+  it("shows a capped File as not watched and recovers delivery on focus", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const delivery = createInjectedEditorWatchDelivery();
+    let occupied = true;
+    vi.spyOn(editor, "watchEditorDocument").mockImplementation(async () => {
+      if (occupied) {
+        throw "resource limit exceeded: editor watch capacity reached";
+      }
+      occupied = true;
+      return {
+        resource,
+        delivery: delivery.delivery,
+        cancel: async () => {
+          occupied = false;
+        },
+      };
+    });
+    const controller = bindFileEditorController(editor);
+    let current = controller.ready(document);
+    function CappedFile() {
+      const [active, setActive] = useState(current);
+      const bridge = useMemo<EditorStateBridge>(
+        () => ({
+          getActiveEditor: () => current,
+          setActiveEditor: (next) => {
+            current = next;
+            setActive(next);
+          },
+        }),
+        [],
+      );
+      useEditorExternalWatch(resource, bridge);
+      return active.phase === "ready"
+        ? createElement(FileEditorNotices, {
+            conflict: active.document.conflict,
+            message: active.message,
+          })
+        : null;
+    }
+    const { unmount } = render(createElement(CappedFile));
+    await screen.findByText(/File is not watched.*watch limit/);
+    fireEvent.focusIn(window);
+    await screen.findByText(/File is not watched.*watch limit/);
+    occupied = false;
+    fireEvent.focusIn(window);
+    await waitFor(() => {
+      expect(screen.queryByText(/File is not watched/)).toBeNull();
+    });
+    act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
+    await screen.findByText(/This file was deleted outside Sage/);
+    unmount();
+    await waitFor(() => expect(occupied).toBe(false));
   });
 
   it("observes a native watch notice without peekEditorDiskVersion", async () => {

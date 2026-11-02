@@ -71,7 +71,10 @@ fn global_watch_limit_rejects_overflow_and_releases_stopped_slots() {
     let first = resource("first.md");
     let first_generation = start_watch(&first).unwrap();
     let first_cancelled = watch_control(&first, first_generation).unwrap();
-    assert!(matches!(start_watch(&first), Err(AppError::InvalidRequest(_))));
+    assert!(matches!(
+        start_watch(&first),
+        Err(AppError::InvalidRequest(_))
+    ));
 
     let mut active = vec![first.clone()];
     for index in 1..MAX_GLOBAL_WATCHES {
@@ -83,19 +86,31 @@ fn global_watch_limit_rejects_overflow_and_releases_stopped_slots() {
         active.push(file);
     }
     let overflow = resource("overflow.md");
-    assert!(matches!(start_watch(&overflow), Err(AppError::ResourceLimit(_))));
-    assert!(matches!(start_watch(&first), Err(AppError::InvalidRequest(_))));
+    assert!(matches!(
+        start_watch(&overflow),
+        Err(AppError::ResourceLimit(_))
+    ));
+    assert!(matches!(
+        start_watch(&first),
+        Err(AppError::InvalidRequest(_))
+    ));
     assert!(can_emit(&first, first_generation, &first_cancelled));
 
     stop_watch(&first).unwrap();
     assert!(first_cancelled.load(Ordering::Acquire));
     let generation = start_watch(&overflow).unwrap();
-    assert!(matches!(start_watch(&first), Err(AppError::ResourceLimit(_))));
+    assert!(matches!(
+        start_watch(&first),
+        Err(AppError::ResourceLimit(_))
+    ));
     stop_watch(&overflow).unwrap();
     let next_generation = start_watch(&first).unwrap();
     assert!(next_generation > first_generation);
     finish_watch(&first, first_generation);
-    assert!(matches!(start_watch(&overflow), Err(AppError::ResourceLimit(_))));
+    assert!(matches!(
+        start_watch(&overflow),
+        Err(AppError::ResourceLimit(_))
+    ));
     finish_watch(&first, next_generation);
     assert!(start_watch(&overflow).unwrap() > generation);
 

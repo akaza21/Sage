@@ -6,6 +6,8 @@ import {
   type EditorExternalWatchNotice,
   type EditorWatchSubscription,
 } from "../../domain/editorWatch";
+import { errorMessage } from "../../domain/errors";
+import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import type {
@@ -86,21 +88,77 @@ export function useEditorExternalWatch(
       );
     };
 
-    const start = cancellation.current.then(async () => {
-      const nextSubscription = await bindEditorExternalWatch(
-        editor,
-        watchResource,
-        { onNotice: applyNotice },
-      );
-      if (cancelled) {
-        await nextSubscription.cancel();
+    let retryable = false;
+    let starting = false;
+    let watchMessage: string | undefined;
+    let start = cancellation.current;
+    const tryStart = () => {
+      if (cancelled || subscription || starting) {
         return;
       }
-      subscription = nextSubscription;
-    });
-    void start.catch(() => undefined);
+      starting = true;
+      start = cancellation.current
+        .then(async () => {
+          if (cancelled) return;
+          const nextSubscription = await bindEditorExternalWatch(
+            editor,
+            watchResource,
+            { onNotice: applyNotice },
+          );
+          if (cancelled) {
+            await nextSubscription.cancel();
+            return;
+          }
+          subscription = nextSubscription;
+          retryable = false;
+          const active = bridge.getActiveEditor();
+          if (
+            active?.phase === "ready" &&
+            sameResource(active.resource, watchResource) &&
+            watchMessage &&
+            active.message === watchMessage
+          ) {
+            bridge.setActiveEditor(
+              { ...active, message: null },
+              {
+                tabStatus: active.document.conflict ? "failed" : null,
+              },
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          retryable = errorMessage(error).startsWith(
+            "resource limit exceeded:",
+          );
+          watchMessage = retryable
+            ? "File is not watched: the external-change watch limit was reached. Focus this File to retry."
+            : "File is not watched: external-change notifications could not start.";
+          const active = bridge.getActiveEditor();
+          if (
+            active?.phase === "ready" &&
+            sameResource(active.resource, watchResource)
+          ) {
+            bridge.setActiveEditor(
+              { ...active, message: watchMessage },
+              { tabStatus: "failed" },
+            );
+          }
+        })
+        .finally(() => {
+          starting = false;
+        });
+    };
+    const retryOnFocus = () => {
+      if (retryable) tryStart();
+    };
+    window.addEventListener("focus", retryOnFocus);
+    window.addEventListener("focusin", retryOnFocus);
+    tryStart();
 
     return () => {
+      window.removeEventListener("focus", retryOnFocus);
+      window.removeEventListener("focusin", retryOnFocus);
       cancelled = true;
       pendingNotice = undefined;
       cancellation.current = start
