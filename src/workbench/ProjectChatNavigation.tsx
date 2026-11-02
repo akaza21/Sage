@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AgentRailChat, ArchivedChatSummary } from "../domain/workbench";
 
 import { useWorkbenchStore } from "../app/store";
+import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import {
@@ -94,6 +95,7 @@ export function ProjectChatNavigation({
   const activeTabId = useRailChatId(
     useWorkbenchStore((state) => state.activeTabId),
   );
+  const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
@@ -169,16 +171,17 @@ export function ProjectChatNavigation({
             />
           );
         }
+        const viewed = selected && tab.id === viewedChatId;
         const focused = !suppressActive && selected && tab.id === activeTabId;
         const status = parentChatStatus(tab.id, tab.status);
         const fingerprint = sessionRailFingerprint(status, tab.updatedAt);
-        if (focused && fingerprint.length > 0) {
+        if (viewed && fingerprint.length > 0) {
           ackSessionRailUnread(tab.id, fingerprint);
         }
         const unread =
           interactions.unread.has(tab.id) ||
           sessionRailUnreadVisible({
-            focused,
+            focused: viewed,
             status: tab.status,
             updatedAt: tab.updatedAt,
             seenFingerprint: seenSessionRailFingerprint(tab.id),

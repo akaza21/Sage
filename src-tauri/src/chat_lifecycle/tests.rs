@@ -16,6 +16,73 @@ fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
 }
 
 #[test]
+fn rename_preserves_chat_activity_in_the_recent_rail() {
+    let root = std::env::temp_dir().join(format!("sage-rename-activity-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(&root.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let initial = database.bootstrap_snapshot().unwrap();
+    let chat_id = initial.active_tab_id.clone().unwrap();
+    database
+        .append_simulator_turn(&chat_id, "question", "answer")
+        .unwrap();
+    let mut completed = database.bootstrap_snapshot().unwrap();
+    completed
+        .tabs
+        .iter_mut()
+        .find(|tab| tab.id == chat_id)
+        .unwrap()
+        .status = Some("complete".into());
+    database
+        .persist_project_layout(&layout(&completed))
+        .unwrap();
+    // A known prior activity time makes the rename observable without a sleep.
+    database
+        .connection()
+        .execute("UPDATE chats SET updated_at=100 WHERE id=?1", [&chat_id])
+        .unwrap();
+    let before = database.bootstrap_snapshot().unwrap();
+    let previous = before
+        .projects
+        .iter()
+        .find(|p| p.id == project.id)
+        .unwrap()
+        .rail_chats
+        .iter()
+        .find(|c| c.id == chat_id)
+        .unwrap();
+    assert_eq!(previous.updated_at, Some(100));
+    assert_eq!(previous.status.as_deref(), Some("complete"));
+    database
+        .rename_chat(&RenameChatRequest {
+            project_id: project.id.clone(),
+            chat_id: chat_id.clone(),
+            title: "Renamed task".into(),
+            current_layout: layout(&before),
+        })
+        .unwrap();
+    let after = database.bootstrap_snapshot().unwrap();
+    let renamed = after
+        .projects
+        .iter()
+        .find(|p| p.id == project.id)
+        .unwrap()
+        .rail_chats
+        .iter()
+        .find(|c| c.id == chat_id)
+        .unwrap();
+    assert_eq!(renamed.title, "Chat: Renamed task");
+    assert_eq!(renamed.status, previous.status);
+    assert_eq!(
+        renamed.updated_at, previous.updated_at,
+        "a rename is not new chat activity"
+    );
+    assert_eq!(after.active_tab_id, before.active_tab_id);
+    drop(database);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn chat_title_contract_trims_and_bounds_utf8_bytes() {
     let two_byte = "\u{00e9}";
     assert_eq!(canonical_chat_title("  Focus  ").unwrap(), "Chat: Focus");

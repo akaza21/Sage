@@ -34,7 +34,13 @@ vi.mock("../features/preview/previewDesktop", () => ({
   stopPreviewTarget: previewBridge.stop,
 }));
 
-const nativeBrowser = vi.hoisted(() => ({ open: vi.fn() }));
+const nativeBrowser = vi.hoisted(() => ({
+  open: vi.fn(),
+  control: vi.fn(),
+  popupPending: vi.fn(),
+  popupOpen: vi.fn(),
+  popupAck: vi.fn(),
+}));
 const browserEvents = vi.hoisted(() => ({ listen: vi.fn() }));
 
 vi.mock("@tauri-apps/api/event", () => browserEvents);
@@ -42,6 +48,11 @@ vi.mock("@tauri-apps/api/event", () => browserEvents);
 vi.mock("../ports/nativeBrowserPort", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   openBrowser: nativeBrowser.open,
+  browserAgentControl: nativeBrowser.control,
+  browserPopupPending: nativeBrowser.popupPending,
+  browserOpenPopup: nativeBrowser.popupOpen,
+  browserPopupAck: nativeBrowser.popupAck,
+  closeBrowser: async () => undefined,
 }));
 
 vi.mock("../services/acpDesktop", () => ({
@@ -197,6 +208,11 @@ function seedFocusedPage(): void {
 }
 
 beforeEach(() => {
+  nativeBrowser.open.mockReset();
+  nativeBrowser.control.mockReset().mockResolvedValue(null);
+  nativeBrowser.popupPending.mockReset().mockResolvedValue([]);
+  nativeBrowser.popupOpen.mockReset();
+  nativeBrowser.popupAck.mockReset().mockResolvedValue(undefined);
   childBridge.read.mockReset();
   childBridge.read.mockResolvedValue({
     kind: "current",
@@ -2139,6 +2155,98 @@ describe("Agent artifact file chips", () => {
       expect(
         screen.getByRole("button", { name: "Pinned resource" }),
       ).toHaveAttribute("aria-pressed", "false");
+    },
+  );
+
+  it.each(["unattached", "user takeover", "agent handback"])(
+    "inherits popup selection intent from the opener: %s",
+    async (control) => {
+      vi.stubGlobal("__TAURI_INTERNALS__", {});
+      nativeBrowser.open.mockResolvedValueOnce("browser:opener");
+      nativeBrowser.control.mockResolvedValue(
+        control === "unattached"
+          ? null
+          : {
+              projectId: "project-a",
+              chatId: "chat-focused",
+              userControl: true,
+            },
+      );
+      nativeBrowser.popupPending.mockResolvedValue([]);
+      nativeBrowser.popupAck.mockResolvedValue(undefined);
+      browserEvents.listen.mockReset().mockResolvedValue(() => undefined);
+      createBrowserSlice(
+        useWorkbenchStore.setState,
+        useWorkbenchStore.getState,
+        {
+          subscribe: () => () => undefined,
+        } as never,
+      );
+      let onPopup: (event: {
+        payload: { id: number; openerTabId: string; url: string };
+      }) => void;
+      await waitFor(() => {
+        onPopup = browserEvents.listen.mock.calls.find(
+          ([name]) => name === "browser:popup-request",
+        )?.[1];
+        if (!onPopup) throw new Error("Popup listener not ready");
+      });
+      admit("diff:other");
+      render(<AgentArtifactPane />);
+      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("tab", { name: "Browser New tab" }),
+        ).toHaveAttribute("aria-selected", "true"),
+      );
+      nativeBrowser.popupOpen.mockResolvedValueOnce({
+        tabId: "browser:popup",
+        openerTabId: "browser:opener",
+        url: "https://signin.example.com/",
+      });
+      act(() =>
+        onPopup({
+          payload: {
+            id: 1,
+            openerTabId: "browser:opener",
+            url: "https://signin.example.com/",
+          },
+        }),
+      );
+      const popup = await screen.findByRole("tab", {
+        name: "Browser signin.example.com",
+      });
+      await waitFor(() =>
+        expect(popup).toHaveAttribute("aria-selected", "true"),
+      );
+
+      if (control !== "agent handback") return;
+      const diff = screen.getByRole("tab", { name: "Diff src/other.ts" });
+      fireEvent.click(diff);
+      nativeBrowser.control.mockResolvedValue({
+        projectId: "project-a",
+        chatId: "chat-focused",
+        userControl: false,
+      });
+      nativeBrowser.popupOpen.mockResolvedValueOnce({
+        tabId: "browser:agent-popup",
+        openerTabId: "browser:opener",
+        url: "https://agent.example.com/",
+      });
+      act(() =>
+        onPopup({
+          payload: {
+            id: 2,
+            openerTabId: "browser:opener",
+            url: "https://agent.example.com/",
+          },
+        }),
+      );
+      const agentPopup = await screen.findByRole("tab", {
+        name: "Browser agent.example.com",
+      });
+      expect(agentPopup).toHaveAttribute("aria-selected", "false");
+      expect(diff).toHaveAttribute("aria-selected", "true");
     },
   );
 

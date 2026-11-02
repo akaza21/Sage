@@ -1,6 +1,7 @@
 import type { StoreApi } from "zustand";
 
 import {
+  browserAgentControl,
   browserPopupAbandon,
   browserPopupAck,
   browserOpenPopup,
@@ -86,6 +87,13 @@ export async function adoptPopup(
     if (!matchesProjectIntent(get(), generation, projectId)) {
       throw new Error("Project changed");
     }
+    const openerControl = await browserAgentControl(
+      intent.openerTabId,
+      "agentControl",
+    );
+    if (!matchesProjectIntent(get(), generation, projectId)) {
+      throw new Error("Project changed");
+    }
     const opened = await browserOpenPopup(intent.id, intent.openerTabId);
     popup.opened = opened;
     if (
@@ -119,6 +127,10 @@ export async function adoptPopup(
         return {
           tabs: tabs.map(positionTab),
           activeTabId: opened.tabId,
+          userOpenedBrowserTabId:
+            !openerControl || openerControl.userControl
+              ? opened.tabId
+              : state.userOpenedBrowserTabId,
           activeEditor: null,
         };
       });

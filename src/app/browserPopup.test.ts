@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const events = vi.hoisted(() => ({ listen: vi.fn() }));
 const native = vi.hoisted(() => ({
+  browserAgentControl: vi.fn(),
   browserPopupPending: vi.fn(),
   browserOpenPopup: vi.fn(),
   browserPopupAck: vi.fn(),
@@ -26,6 +27,7 @@ beforeEach(() => {
   clearAcpProjectionRegistry();
   events.listen.mockReset();
   for (const method of Object.values(native)) method.mockReset();
+  native.browserAgentControl.mockResolvedValue(null);
 });
 
 it("replays one native popup after listener registration and places it beside its opener once", async () => {

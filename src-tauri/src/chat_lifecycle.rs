@@ -348,9 +348,9 @@ fn apply_chat_title(
     let now = now_millis();
     require_one(
         transaction.execute(
-            "UPDATE chats SET title=?3,updated_at=?4,title_is_default=0
+            "UPDATE chats SET title=?3,title_is_default=0
              WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, title, now],
+            params![request.project_id, request.chat_id, title],
         )?,
         "Chat disappeared during rename",
     )?;
