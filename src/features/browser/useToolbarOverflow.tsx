@@ -1,16 +1,28 @@
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-/** Tier 1 moves Downloads into the More menu; tier 2 adds the page actions. */
-const OVERFLOW_TIERS = 2;
+/**
+ * The toolbar's compaction steps, in order; each is an attribute on the
+ * toolbar that browser.css keys on. A tier is how many have been taken.
+ */
+const STEPS = [
+  "data-compact-annotate",
+  "data-compact-chat",
+  "data-compact-presence",
+  "data-overflow-downloads",
+  "data-overflow-actions",
+] as const;
+const LAST = STEPS.length;
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;
 
 /**
- * Moves secondary toolbar actions into the More menu when the toolbar row
- * would overflow, as in Chrome and Edge. The address keeps its token minimum,
- * so the row sheds the next tier until it fits; each tier is written to the
- * toolbar and measured before paint.
+ * Compacts secondary toolbar actions, and moves them into the More menu,
+ * only as far as the toolbar row needs, as in Chrome and Edge. The address
+ * keeps its token minimum, so each fit lays the row out in full and takes
+ * the next step until it fits; every step is written to the toolbar and
+ * measured before paint, and a fit always starts again from the full row,
+ * so actions that appear later (an Agent attaching) never count twice.
  *
  * The page actions render once into a host that moves between the toolbar
  * and the menu, so they keep their state (the chosen chat, a pending attach)
@@ -30,7 +42,7 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
     const toolbar = group?.closest<HTMLElement>(".browser-surface__toolbar");
     if (!group || !toolbar) return;
     return () => {
-      delete toolbar.dataset.overflow;
+      for (const step of STEPS) toolbar.removeAttribute(step);
     };
   }, [slot]);
   useLayoutEffect(() => {
@@ -40,10 +52,10 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
     // measure without them: keep the tier and refit once it closes.
     if (!group || !toolbar || menuOpen || typeof ResizeObserver === "undefined")
       return;
-    const apply = (next: number) => {
-      if (next) toolbar.dataset.overflow = String(next);
-      else delete toolbar.dataset.overflow;
-    };
+    const apply = (taken: number) =>
+      STEPS.forEach((step, index) =>
+        toolbar.toggleAttribute(step, index < taken),
+      );
     // The right group ends the row, so the row overflows when the group ends
     // past the toolbar's content edge.
     const overflows = () =>
@@ -54,14 +66,24 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
     const fit = () => {
       let next = 0;
       apply(next);
-      while (next < OVERFLOW_TIERS && overflows()) apply(++next);
+      while (next < LAST && overflows()) apply(++next);
       setTier(next);
     };
     fit();
+    // The toolbar's own size never depends on the steps, so observing it
+    // cannot loop; the actions' content changes arrive as mutations.
     const resize = new ResizeObserver(fit);
     resize.observe(toolbar);
-    resize.observe(group);
-    return () => resize.disconnect();
+    const content = new MutationObserver(fit);
+    content.observe(group, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    return () => {
+      resize.disconnect();
+      content.disconnect();
+    };
   }, [slot, menuOpen]);
   const menuSlot = useCallback(
     (node: HTMLDivElement | null) => {
@@ -79,7 +101,7 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
       </>
     ),
     menuActions:
-      pageControls && tier >= OVERFLOW_TIERS ? (
+      pageControls && tier >= LAST ? (
         <div
           ref={menuSlot}
           role="group"

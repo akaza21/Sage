@@ -493,14 +493,19 @@ interface NativeBounds {
 
 /**
  * Opens a loaded page in the Agent browser over a native bridge that records
- * where Sage places the native page window, and fails every attach.
+ * where Sage places the native page window. Attach fails, or with `attach`
+ * succeeds and hands the tab to the chat's Agent, as Rust does.
  */
-async function openNativeBrowser(page: Page) {
+async function openNativeBrowser(
+  page: Page,
+  attach: "fail" | "succeed" = "fail",
+) {
   await openScenario(page, "agent-single", "agent");
-  await page.evaluate(() => {
+  await page.evaluate((attach) => {
     const placed: NativeBounds[] = [];
     Object.assign(window, { __placed: placed });
     const url = "https://example.com/";
+    let attached: Record<string, unknown> | null = null;
     const replies: Record<string, (args: Record<string, unknown>) => unknown> =
       {
         browser_open: () => "browser-1",
@@ -526,9 +531,21 @@ async function openNativeBrowser(page: Page) {
           pending: [],
           decisions: [],
         }),
-        attach_browser_tab: () => {
-          throw new Error("visual fixture");
+        attach_browser_tab: ({ projectId, chatId }) => {
+          if (attach === "fail") throw new Error("visual fixture");
+          attached = { projectId, chatId, tabId: "browser-1", url };
+          return attached;
         },
+        browser_attachment_status: ({ chatId }) =>
+          attached?.chatId === chatId ? attached : null,
+        browser_control: ({ action }) =>
+          action === "agentControl" && attached
+            ? {
+                projectId: attached.projectId,
+                chatId: attached.chatId,
+                userControl: false,
+              }
+            : null,
         "plugin:event|listen": () => 1,
       };
     Object.assign(window, {
@@ -543,7 +560,7 @@ async function openNativeBrowser(page: Page) {
         unregisterCallback: () => {},
       },
     });
-  });
+  }, attach);
   // Re-render the workbench so it sees the desktop runtime.
   const modeSwitch = (name: string) =>
     page.getByRole("radio", { name, exact: true });
@@ -577,6 +594,17 @@ test("an attach error shows above the native page, never behind it", async ({
   await expect(error).toHaveText(
     "Could not attach this tab to the selected chat.",
   );
+  // It reads as an error, in the danger text colour.
+  expect(await error.evaluate((node) => getComputedStyle(node).color)).toBe(
+    await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-danger)";
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    }),
+  );
   const shown = await bounds(error);
   // The native page is a window above Sage's DOM: whatever it covers is
   // hidden, so it must be placed wholly below the error.
@@ -591,7 +619,8 @@ test("an attached Agent's controls stack whole inside the More menu", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1100, height: 600 });
-  for (const width of [339, 560]) {
+  // Toolbars too narrow to keep the page actions, even compacted.
+  for (const width of [300, 339]) {
     await page.goto(
       `/tests/ui/fixtures/browser-address.html?chat=${encodeURIComponent(
         "Chat: Walking skeleton for the agent workbench",
@@ -642,4 +671,56 @@ test("an attached Agent's controls stack whole inside the More menu", async ({
       /Walking skeleton for the agent workbench/,
     );
   }
+});
+
+test("attaching the Agent moves only the toolbar actions that no longer fit", async ({
+  page,
+}) => {
+  // A preview pane whose toolbar fits every action before the attach.
+  await page.setViewportSize({ width: 1410, height: 900 });
+  const surface = await openNativeBrowser(page, "succeed");
+  const toolbar = surface.locator(".browser-surface__toolbar");
+  const edge = await bounds(toolbar);
+  expect(edge.width).toBeGreaterThan(600);
+  expect(edge.width).toBeLessThan(640);
+  // Before the attach nothing has moved into More.
+  await expect(toolbar).not.toHaveAttribute("data-overflow-downloads", /.*/);
+
+  await surface.getByRole("button", { name: "Attach tab to chat" }).click();
+  await expect(surface.getByRole("status")).toContainText("Agent attached");
+  // Detach, Take over and Stop fit, so they stay on the bar, whole and
+  // reachable, and the address keeps its minimum beside them.
+  const shown = [
+    surface.getByRole("button", { name: "Detach tab from chat" }),
+    surface.getByRole("button", { name: "Take over" }),
+    surface.getByRole("button", { name: "Stop agent" }),
+    surface.getByRole("button", { name: "More options" }),
+    surface.getByRole("textbox", { name: "Address or search" }),
+  ];
+  const boxes = [];
+  for (const control of shown) {
+    const box = await bounds(control);
+    expectInside(box, edge);
+    await expectHitTestable(page, control);
+    boxes.push(box);
+  }
+  for (const [i, a] of boxes.entries())
+    for (const b of boxes.slice(i + 1))
+      expect(
+        a.x + a.width <= b.x + SUBPIXEL || b.x + b.width <= a.x + SUBPIXEL,
+      ).toBe(true);
+  expect(boxes[4].width).toBeGreaterThanOrEqual(
+    await page.evaluate(() =>
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--browser-address-min-width",
+        ),
+      ),
+    ),
+  );
+  // The page actions stayed on the bar; More holds no copy of them.
+  await surface.getByRole("button", { name: "More options" }).click();
+  await expect(
+    surface.getByRole("group", { name: "Page actions" }),
+  ).toHaveCount(0);
 });

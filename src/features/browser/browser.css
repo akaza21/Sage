@@ -75,34 +75,43 @@
 .browser-surface__toolbar .browser-surface__annotate:disabled {
   opacity: 0.5;
 }
-/* A narrow pane keeps the address legible: the pill drops its label. */
-@container (max-width: 640px) {
-  .browser-surface__toolbar .browser-surface__annotate {
-    width: 28px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
-}
 .browser-surface__address {
   position: relative;
   flex: 1 1 auto;
   min-width: var(--browser-address-min-width);
 }
 /* The address is the primary control. When it would fall below its minimum,
-   secondary actions move into the More menu (useToolbarOverflow): first
-   Downloads, then the page actions. Only with nothing left to move does the
-   address shrink further. */
+   the toolbar compacts one step at a time, each step only as needed
+   (useToolbarOverflow): the Annotate pill drops its label, the chat picker
+   drops its title, the Agent's presence drops its label, then Downloads and
+   last the page actions move into the More menu. Only with nothing left to
+   move does the address shrink further. */
+.browser-surface__toolbar[data-compact-annotate] .browser-surface__annotate {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  font-size: 0;
+}
+.browser-surface__toolbar[data-compact-presence]
+  .browser-surface__page-actions-slot
+  .browser-surface__agent-presence-label {
+  /* Still announced and in the presence row's title; just not drawn. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .browser-surface__page-actions-slot,
 .browser-surface__page-actions-host {
   display: contents;
 }
-.browser-surface__toolbar[data-overflow] .browser-downloads__trigger,
-.browser-surface__toolbar[data-overflow="2"]
+.browser-surface__toolbar[data-overflow-downloads] .browser-downloads__trigger,
+.browser-surface__toolbar[data-overflow-actions]
   .browser-surface__page-actions-slot {
   display: none;
 }
-.browser-surface__toolbar[data-overflow="2"] .browser-surface__address {
+.browser-surface__toolbar[data-overflow-actions] .browser-surface__address {
   min-width: 0;
 }
 .browser-surface__nav-group,
@@ -204,22 +213,29 @@
   .browser-surface__address-security {
     display: none;
   }
+}
+.browser-surface__toolbar[data-compact-chat]
+  .browser-surface__page-actions-slot
   .browser-surface__chat-picker {
-    flex: none;
-    width: var(--control-height-compact);
-    min-width: 0;
-  }
-  .browser-surface__attachment select {
-    padding: 0;
-    color: transparent;
-    appearance: none;
-  }
-  .browser-surface__attachment option {
-    color: var(--browser-control-text);
-  }
+  flex: none;
+  width: var(--control-height-compact);
+  min-width: 0;
+}
+.browser-surface__toolbar[data-compact-chat]
+  .browser-surface__page-actions-slot
+  .browser-surface__attachment
+  select {
+  padding: 0;
+  color: transparent;
+  appearance: none;
+}
+.browser-surface__attachment option {
+  color: var(--browser-control-text);
+}
+.browser-surface__toolbar[data-compact-chat]
+  .browser-surface__page-actions-slot
   .browser-surface__chat-icon {
-    display: block;
-  }
+  display: block;
 }
 /* In the More menu the page actions stack: the attachment row, which has
    room for the chat's title, above the Agent's presence row. */
@@ -394,6 +410,7 @@
 }
 .browser-surface__error {
   z-index: 1;
+  color: var(--color-danger);
   padding: 4px 8px;
   background: var(--bg);
 }
