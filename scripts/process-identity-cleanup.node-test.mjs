@@ -79,7 +79,7 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
   });
 });
 
-test("root PID reuse before exact root termination remains fatal", () => {
+test("root PID reuse proves exit before exact root termination without killing its replacement", () => {
   const observed = runPowerShellFixture(`${commonFixture}
 $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stops=@();
 $snapshot={return @($reusedRootRow)};
@@ -89,10 +89,111 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 [ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds);stops=@($script:stops)}|ConvertTo-Json -Compress
 `);
   assert.deepEqual(observed, {
-    identityLost: true,
+    identityLost: false,
     remaining: [],
     reused: [101],
     stops: [],
+  });
+});
+
+test("remembered child PID reuse proves exit after the root is absent", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+[void](Add-FootprintRememberedIdentity $store $childRow);
+$replacement=[pscustomobject]@{ProcessId=202;ParentProcessId=1;ExecutablePath=$childRow.ExecutablePath;CreationDate='2026-08-30T00:02:00.000Z'};
+$snapshot={return @($replacement)};
+$result=Invoke-TestFootprintTree $root $store $snapshot {throw 'replacement must not be stopped'} {[DateTime]::UtcNow} {};
+[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    identityLost: false,
+    remaining: [],
+    reused: [202],
+  });
+});
+
+test("an unavailable creation time or executable identity cannot prove exit", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+[void](Add-FootprintRememberedIdentity $store $childRow);
+$results=@();
+foreach($missing in @('CreationDate','ExecutablePath')){
+  $row=[pscustomobject]@{ProcessId=202;ParentProcessId=1;ExecutablePath=$childRow.ExecutablePath;CreationDate=$childRow.CreationDate};
+  $row.$missing=$null;
+  $result=Invoke-TestFootprintTree $root $store {return @($row)} {throw 'unproven identity must not be stopped'} {[DateTime]::UtcNow} {};
+  $results+=,[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}
+};
+ConvertTo-Json -InputObject $results -Compress
+`);
+  assert.deepEqual(observed, [
+    { identityLost: true, remaining: [], reused: [] },
+    { identityLost: true, remaining: [], reused: [] },
+  ]);
+});
+
+test("a process snapshot query failure cannot establish terminal zero", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$failed=$false;
+try{[void](Invoke-TestFootprintTree $root $store {throw [UnauthorizedAccessException]::new('snapshot query denied')} {throw 'must not stop'} {[DateTime]::UtcNow} {})}catch{$failed=$_.Exception.Message -eq 'snapshot query denied'};
+[ordered]@{failed=$failed}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, { failed: true });
+});
+
+test("a later snapshot can prove an initially unobservable process exited", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$results=@();
+foreach($mode in @('absent','reused')){
+  $unknown=[pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath=$rootRow.ExecutablePath;CreationDate=$null};
+  $script:queries=0;
+  $snapshot={$script:queries++;if($script:queries-eq1){return @($unknown)};if($mode-eq'reused'){return @($reusedRootRow)};return @()};
+  $result=Invoke-TestFootprintTree $root $store $snapshot {throw 'must not stop'} {[DateTime]::UtcNow} {};
+  $results+=,[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}
+};
+ConvertTo-Json -InputObject $results -Compress
+`);
+  assert.deepEqual(observed, [
+    { identityLost: false, remaining: [], reused: [] },
+    { identityLost: false, remaining: [], reused: [101] },
+  ]);
+});
+
+test("a Vite snapshot query failure leaves the live process untouched and blocks receipt promotion", () => {
+  const observed = runPowerShellFixture(String.raw`
+$wrapper=Join-Path (Get-Location) 'scripts/run-source-functional-native-ide-journey.ps1';
+$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($wrapper,[ref]$tokens,[ref]$errors);
+foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree','Publish-PendingJourneyReceipt')){
+  $fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);
+  Invoke-Expression $fn.Extent.Text
+};
+$evidence=Join-Path ([IO.Path]::GetTempPath()) ('sage-vite-query-failure-'+[Guid]::NewGuid().ToString('N'));
+[void][IO.Directory]::CreateDirectory($evidence);
+$powershell=(Get-Process -Id $PID).Path;
+$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+try{
+  $identity=Get-FootprintLaunchIdentity $child $powershell;
+  $runtime=[ordered]@{process=$child;identity=$identity;store=(New-FootprintIdentityStore)};
+  $pending=Join-Path $evidence 'machine-receipt.pending.json';$final=Join-Path $evidence 'machine-receipt.json';
+  [IO.File]::WriteAllText($pending,'{}');
+  & (Get-Module ProcessIdentity) {function script:Get-CimInstance {[CmdletBinding()]param($ClassName,$Property) Write-Error -Exception ([UnauthorizedAccessException]::new('snapshot query denied'))}};
+  $failed=$false;$cleanup=$null;
+  try{$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime $evidence}catch{$failed=$_.Exception.Message -eq 'The vite runtime cleanup could not be proven.'};
+  $published=$true;try{Publish-PendingJourneyReceipt $pending $final $cleanup $cleanup}catch{$published=$false};
+  $child.Refresh();
+  $record=Get-Content -LiteralPath (Join-Path $evidence 'runtime-cleanup-quarantine-vite.json') -Raw|ConvertFrom-Json;
+  [ordered]@{failed=$failed;alive=(-not $child.HasExited);published=$published;pending=(Test-Path -LiteralPath $pending);final=(Test-Path -LiteralPath $final);stage=$record.stage;identityLost=$record.identityLost;remainingCount=$record.remainingCount}|ConvertTo-Json -Compress
+}finally{
+  $child.Refresh();if(-not $child.HasExited){$child.Kill();[void]$child.WaitForExit(5000)};
+  Remove-Item -LiteralPath $evidence -Recurse -Force
+}
+`);
+  assert.deepEqual(observed, {
+    failed: true,
+    alive: true,
+    published: false,
+    pending: true,
+    final: false,
+    stage: "stop-tree",
+    identityLost: null,
+    remainingCount: null,
   });
 });
 
