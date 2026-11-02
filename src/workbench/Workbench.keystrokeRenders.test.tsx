@@ -4,7 +4,11 @@ import { Profiler, type ComponentType, type ReactNode } from "react";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
+import type {
+  BufferSnapshotRequest,
+  EditorDocument,
+  WorkbenchTab,
+} from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { settleLazyModules } from "../test/settleLazyModules";
 import type * as DirtyTabDialogModule from "./DirtyTabDialog";
@@ -103,15 +107,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("re-renders nothing outside the File surface for keystrokes after the first", async () => {
+it("re-renders nothing outside the File surface for keystrokes after the first, and loses no edit", async () => {
+  // The desktop's buffer store: it keeps each snapshot it is sent.
+  const persisted: BufferSnapshotRequest[] = [];
   vi.spyOn(
     getWorkbenchPorts().editor,
     "snapshotEditorBuffer",
-  ).mockImplementation(async (request) => ({
-    revision: request.revision,
-    persistedAt: 1,
-    dirty: true,
-  }));
+  ).mockImplementation(async (request) => {
+    persisted.push(request);
+    return { revision: request.revision, persistedAt: 1, dirty: true };
+  });
   useWorkbenchStore.setState({
     tabs,
     activeTabId: "file:current",
@@ -161,4 +166,24 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
     Object.fromEntries(commits);
   expect(others).toEqual({});
   expect(statusCommits).toBeLessThanOrEqual(4);
+
+  // Skipping those renders lost nothing: the edit, its caret and the dirty
+  // tab all show, and the buffer persisted is the text that was typed.
+  const typed = "abcdeconst current = 1;";
+  expect(view.state.doc.toString()).toBe(typed);
+  expect(editor).toHaveTextContent(typed);
+  expect(screen.getByTitle("Caret position")).toHaveTextContent("Ln 1, Col 6");
+  expect(screen.getByTitle("Unsaved changes")).toBeInTheDocument();
+  await vi.waitFor(() =>
+    expect(persisted.at(-1)).toMatchObject({
+      resource,
+      content: typed,
+      revision: 5,
+    }),
+  );
+  const active = useWorkbenchStore.getState().activeEditor;
+  if (active?.phase !== "ready") throw new Error("Expected a ready editor");
+  // The store keeps the editor's own document, not a string copy.
+  expect(String(active.content)).toBe(typed);
+  expect(active.persistedRevision).toBe(5);
 });
