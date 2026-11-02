@@ -87,6 +87,7 @@ export function MenuPopover({
   onDismiss,
   open,
   placement: preferredPlacement = "below-end",
+  positionAt,
   portalTarget = "document",
   restoreFocusOnTab = false,
   role = "menu",
@@ -108,6 +109,12 @@ export function MenuPopover({
   open: boolean;
   /** Top-level menus only; nested menus follow their parent. */
   placement?: MenuPlacement;
+  /**
+   * Places the popover itself, for example at a right-click's pointer
+   * (`pointerPopoverPosition`), instead of beside the trigger. The trigger
+   * still takes the focus back when the menu closes.
+   */
+  positionAt?: (popover: HTMLElement) => CSSProperties;
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
   role?: PopoverRole;
@@ -140,14 +147,16 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const next = menuPopoverPosition(
-        trigger,
-        popover,
-        originRef.current ?? trigger,
-        gap,
-        matchTriggerWidth,
-        preferredPlacement,
-      );
+      const next = positionAt
+        ? positionAt(popover)
+        : menuPopoverPosition(
+            trigger,
+            popover,
+            originRef.current ?? trigger,
+            gap,
+            matchTriggerWidth,
+            preferredPlacement,
+          );
       const current = positionRef.current;
       if (
         current.left === next.left &&

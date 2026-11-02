@@ -1,0 +1,30 @@
+/* Editor menus: VS Code's density, with an icon column beside the label. */
+.menu-popover.editor-menu {
+  gap: 0;
+  padding: var(--space-1) 0;
+  transition-duration: var(--popup-duration-close);
+}
+
+.editor-menu .menu-item {
+  width: auto;
+  min-height: var(--menu-row-height);
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.editor-menu .menu-item:has(> svg) {
+  display: grid;
+  grid-template-columns: [icon] var(--popup-icon-slot) [label] minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.editor-menu .menu-item > svg {
+  grid-column: icon;
+  justify-self: center;
+}
+
+.editor-menu .menu-item > :not(svg) {
+  grid-column: label;
+}
