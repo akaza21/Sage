@@ -7,7 +7,11 @@ test("app commands are allowed only in the exact main webview capability", () =>
   const main = {
     identifier: "main",
     webviews: ["main"],
-    permissions: ["core:default", "main-commands"],
+    permissions: [
+      "core:event:allow-listen",
+      "core:event:allow-unlisten",
+      "main-commands",
+    ],
   };
   assert.doesNotThrow(() => validateMainCapabilityPermissions(main));
   for (const capability of [
@@ -16,7 +20,9 @@ test("app commands are allowed only in the exact main webview capability", () =>
     { ...main, windows: ["main"] },
     { ...main, remote: { urls: ["https://example.com"] } },
     { ...main, identifier: "other" },
-    { ...main, permissions: ["core:default", "other-command-set"] },
+    { ...main, permissions: ["core:event:allow-listen", "other-command-set"] },
+    { ...main, permissions: ["core:default", "main-commands"] },
+    { ...main, permissions: ["core:event:allow-emit", "main-commands"] },
   ]) {
     assert.throws(() => validateMainCapabilityPermissions(capability));
   }

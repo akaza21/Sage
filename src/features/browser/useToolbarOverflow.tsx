@@ -114,8 +114,10 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
         {pageControls ? createPortal(pageControls, host) : null}
       </>
     ),
+    // Only an open menu holds the actions, so the closed row always fits
+    // with them in place.
     menuActions:
-      pageControls && tier >= LAST ? (
+      menuOpen && pageControls && tier >= LAST ? (
         <div
           ref={menuSlot}
           role="group"

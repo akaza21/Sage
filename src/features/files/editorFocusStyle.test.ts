@@ -7,6 +7,10 @@ const editorStyles = readFileSync(
   resolve(process.cwd(), "src/styles/file-editor-surface.css"),
   "utf8",
 );
+const tokenStyles = readFileSync(
+  resolve(process.cwd(), "src/styles/global.css"),
+  "utf8",
+);
 
 describe("editor focus style policy", () => {
   it("keeps the shared focus frame for editable and read-only editors", () => {
@@ -27,7 +31,7 @@ describe("editor focus style policy", () => {
   });
 
   // ED-9: the frame used to be an inset shadow on the editor, which the
-  // sticky gutter (z-index 200) painted over along the left edge.
+  // sticky gutter (CodeMirror's z-index 200) painted over along the left edge.
   it("draws the focus frame above the gutter without taking clicks", () => {
     const frame = editorStyles.match(
       /\.editor-input\s+\.cm-editor\.cm-focused::after\s*\{(?<declarations>[^}]*)\}/,
@@ -35,7 +39,10 @@ describe("editor focus style policy", () => {
 
     expect(frame).toMatch(/position:\s*absolute;/);
     expect(frame).toMatch(/inset:\s*0;/);
-    expect(Number(frame?.match(/z-index:\s*(\d+);/)?.[1])).toBeGreaterThan(200);
+    expect(frame).toMatch(
+      /z-index:\s*calc\(var\(--z-codemirror-gutters\) \+ 1\);/,
+    );
+    expect(tokenStyles).toMatch(/--z-codemirror-gutters:\s*200;/);
     expect(frame).toMatch(/pointer-events:\s*none;/);
     expect(frame).toMatch(/border-radius:/);
   });

@@ -124,6 +124,9 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   expect(screen.getByRole("menuitem", { name: "Find in page" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Zoom out" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Downloads" })).toBeEnabled();
   await waitFor(() =>
     expect(screen.getByRole("menuitem", { name: "Downloads" })).toHaveFocus(),
@@ -428,7 +431,9 @@ it("groups supported page controls in an overflow menu without dead features", a
     screen.getByRole("menuitem", { name: "Browser settings" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
-  expect(screen.queryByText("Show device toolbar")).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeEnabled();
   expect(
     screen.getByRole("menuitem", { name: "Take a screenshot" }),
   ).toBeInTheDocument();
@@ -579,7 +584,8 @@ it("dismisses the browser menu with Escape and restores trigger focus", async ()
   const menu = screen.getByRole("menu", { name: "Browser menu" });
   expect(menu).toBeInTheDocument();
   fireEvent.keyDown(menu, { key: "Escape" });
-  expect(menu).not.toBeInTheDocument();
+  expect(menu).not.toBeVisible();
+  expect(screen.queryByRole("menu", { name: "Browser menu" })).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("moves keyboard focus through browser menu items and closes from the trigger", async () => {
@@ -604,10 +610,6 @@ it("moves keyboard focus through browser menu items and closes from the trigger"
   expect(trigger).toHaveFocus();
 });
 it("returns focus to the overflow trigger when clearing data is cancelled", async () => {
-  vi.stubGlobal(
-    "confirm",
-    vi.fn(() => false),
-  );
   render(<BrowserSurface tab={tab} />);
   const trigger = screen.getByRole("button", { name: "More options" });
   fireEvent.click(trigger);
@@ -615,6 +617,10 @@ it("returns focus to the overflow trigger when clearing data is cancelled", asyn
     screen.getByRole("menuitem", { name: "Clear browsing data" }),
   );
   expect(screen.queryByRole("menu")).toBeNull();
+  const dialog = screen.getByRole("dialog", { name: "Clear browsing data?" });
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(trigger).toHaveFocus();
 });
 it("hides the native browser when its host pane unmounts", () => {
@@ -667,7 +673,7 @@ it("clips native webview bounds to the Agent canvas below browser chrome", async
         return rect(630, 100, 740, 760);
       if (this.classList.contains("browser-surface__toolbar"))
         return rect(630, 100, 740, 40);
-      if (this.classList.contains("browser-surface__frame"))
+      if (this.classList.contains("browser-surface__viewport"))
         return rect(600, 110, 800, 800);
       return rect(0, 0, 0, 0);
     },

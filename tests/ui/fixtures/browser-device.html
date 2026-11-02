@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser device toolbar visual fixture</title>
+    <style>
+      body {
+        margin: 0;
+        background: #181818;
+      }
+      /* Stands in for the native page the WebView2 draws over the device. */
+      .fixture-page {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="surface"
+      class="browser-surface"
+      style="position: relative; width: 878px; height: 960px"
+    ></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
+      import { BrowserDeviceController } from "/src/features/browser/BrowserDeviceController.tsx";
+      import "/src/styles/global.css";
+      import "/src/features/browser/browser.css";
+
+      const url = "https://en.wikipedia.org/wiki/Web_browser";
+      const h = React.createElement;
+      const noop = () => {};
+      function Fixture() {
+        const frame = React.useRef(null);
+        return h(
+          React.Fragment,
+          null,
+          h(
+            "div",
+            { className: "browser-surface__toolbar" },
+            h(BrowserNavigationControls, {
+              navigation: {
+                tabId: "browser-visual",
+                url,
+                revision: "1",
+                loading: false,
+                canGoBack: true,
+                canGoForward: false,
+                zoomPercent: 100,
+              },
+              page: {
+                origin: "https://en.wikipedia.org",
+                transport: "secure",
+                url,
+              },
+              address: url,
+              addressField: React.createRef(),
+              onAddressChange: noop,
+              onNavigate: noop,
+              onControl: noop,
+              onError: noop,
+              onFind: noop,
+              onPrint: noop,
+              onScreenshot: noop,
+              onZoom: noop,
+              onZoomReset: noop,
+              deviceOpen: true,
+              onDevice: noop,
+              onDownloads: noop,
+              onHistory: noop,
+              onSettings: noop,
+              onCopy: noop,
+              onExternal: noop,
+              clearDataControl: null,
+            }),
+          ),
+          // The real controller: Responsive opens at the room it has, and
+          // its updates fail quietly here, with no native host.
+          h(BrowserDeviceController, {
+            tabId: "browser-visual",
+            open: true,
+            restored: null,
+            frame,
+            onOpenChange: noop,
+            onError: noop,
+          }),
+          h(
+            "div",
+            { ref: frame, className: "browser-surface__frame" },
+            h(
+              "div",
+              { className: "browser-surface__viewport" },
+              h("div", { className: "fixture-page" }),
+            ),
+          ),
+        );
+      }
+      createRoot(document.getElementById("surface")).render(h(Fixture));
+    </script>
+  </body>
+</html>

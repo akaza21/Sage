@@ -20,7 +20,9 @@
       import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
       import { BrowserDownloadsControl } from "/src/features/browser/BrowserDownloadsControl.tsx";
       import { BrowserAgentPresence } from "/src/features/browser/BrowserAgentPresence.tsx";
+      import { BrowserClearData } from "/src/features/browser/BrowserClearData.tsx";
       import "/src/styles/global.css";
+      import "/src/styles/shared-dialogs.css";
       import "/src/features/browser/browser.css";
 
       const url = "https://en.wikipedia.org/wiki/Web_browser";
@@ -65,11 +67,9 @@
           onSettings: () => {},
           onCopy: () => {},
           onExternal: () => {},
-          clearDataControl: React.createElement(
-            "button",
-            { role: "menuitem", type: "button" },
-            "Clear browsing data",
-          ),
+          clearDataControl: React.createElement(BrowserClearData, {
+            menuItem: true,
+          }),
           pageControls: chatTitle
             ? React.createElement(
                 "div",

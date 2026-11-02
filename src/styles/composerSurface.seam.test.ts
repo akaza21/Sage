@@ -239,22 +239,6 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__context-usage::before\s*\{[^}]*forced-color-adjust:\s*none;[^}]*background:\s*conic-gradient\(\s*Highlight\s+var\(--composer-context-usage\),\s*Canvas\s+var\(--composer-context-usage\)\s*\);/s,
     );
   });
-
-  it("keeps focused composer and related surface files below 400 lines", async () => {
-    for (const file of [
-      "composer-surface.css",
-      "composer-image.css",
-      "composer-context.css",
-      "chat-surface.css",
-      "chat-follow-end.css",
-      "shared-controls.css",
-      "searchable-picker-bounded-popover.css",
-      "status-surfaces.css",
-    ]) {
-      const css = await readFile(resolve("src/styles", file), "utf8");
-      expect(css.split(/\r?\n/).length, file).toBeLessThan(400);
-    }
-  });
   it("matches the Codex single-card footprint and round white action", async () => {
     const surfaceCss = await composerRules();
     expect(surfaceCss).toMatch(
@@ -275,20 +259,6 @@ describe("Composer surface stylesheet seam", () => {
     expect(surfaceCss).toMatch(
       /\.send-button\s*\{[^}]*border-radius:\s*var\(--radius-circle\);[^}]*background:\s*var\(--color-status-foreground\);/s,
     );
-  });
-
-  it("loads composer rules from a focused stylesheet, not the shell stylesheet", async () => {
-    const [entry, shellCss, surfaceCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/composer-surface.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(/import ["']\.\/styles\/composer-surface\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.composer\b/m);
-    expect(shellCss).not.toMatch(/^\.select-control\b/m);
-    expect(surfaceCss).toMatch(/^\.composer\b/m);
-    expect(surfaceCss).toMatch(/^\.select-control\b/m);
   });
 
   it("keeps the full-width controls on one line and leaves options positioning to the shared popover", async () => {

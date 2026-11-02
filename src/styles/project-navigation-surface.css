@@ -18,13 +18,7 @@
   border: 2px solid var(--agent-shell-spinner-track);
   border-top-color: var(--agent-shell-spinner-head);
   background: transparent;
-  animation: sage-rail-spin 800ms linear infinite;
-}
-
-@keyframes sage-rail-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

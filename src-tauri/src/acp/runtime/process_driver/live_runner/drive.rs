@@ -329,18 +329,7 @@ where
             }
             RunnerAction::Shutdown(state, envelope) => {
                 fail_pending_config(&mut pending_config, HostError::Closed);
-                let reason = if state.has_durable_completed_cursor()
-                    || state.has_durable_cancelled_cursor()
-                {
-                    TreeExit::Cancelled
-                } else {
-                    TreeExit::ParentShutdown
-                };
-                return RunnerExit {
-                    state: *state,
-                    shutdown: Some(envelope),
-                    reason,
-                };
+                return super::requested_shutdown(*state, envelope);
             }
         }
     }

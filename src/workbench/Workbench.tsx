@@ -19,7 +19,7 @@ import { DirtyTabDialog } from "./DirtyTabDialog";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
-import { TabStrip } from "./TabStrip";
+import type { TabStripProps } from "./TabStrip";
 import { useTerminalDockHost } from "./TerminalDockSlot";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
@@ -63,6 +63,10 @@ const loadAgentWorkbenchBody = () =>
   import("./AgentWorkbenchBody").then(({ AgentWorkbenchBody }) => ({
     default: AgentWorkbenchBody,
   }));
+
+// The Editor's tab strip stays off the Agent startup path.
+const loadTabStrip = () =>
+  import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
 
 const loadTerminalDock = () =>
   import("./TerminalDockShell").then(({ TerminalDockForWorkbench }) => ({
@@ -353,7 +357,17 @@ export function Workbench() {
             aria-hidden={drawerOpen || undefined}
           >
             <div className="workbench__tabs">
-              <TabStrip kinds={[...EDITOR_CANVAS_KINDS]} showNewChat={false} />
+              <LazyModuleBoundary<TabStripProps>
+                label="tabs"
+                load={loadTabStrip}
+                fallback={null}
+                render={(TabStrip) => (
+                  <TabStrip
+                    kinds={[...EDITOR_CANVAS_KINDS]}
+                    showNewChat={false}
+                  />
+                )}
+              />
             </div>
             <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
             {terminalDockSlot}

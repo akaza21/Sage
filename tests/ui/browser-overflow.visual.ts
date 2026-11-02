@@ -21,6 +21,7 @@ test("new-tab browser menu retains unavailable page actions at 560 px", async ({
     "Zoom out",
     "Zoom in",
     "Reset zoom",
+    "Show device toolbar",
   ])
     await expect(menu.getByRole("menuitem", { name })).toBeDisabled();
   for (const name of [
