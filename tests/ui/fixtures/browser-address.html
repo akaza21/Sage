@@ -11,6 +11,7 @@
       style="position: relative; width: 560px; height: 400px"
     >
       <div id="toolbar" class="browser-surface__toolbar"></div>
+      <div id="error" class="browser-surface__error" role="alert" hidden></div>
     </div>
     <script type="module">
       import React from "react";
@@ -76,14 +77,17 @@
                   projectId: "project-visual",
                   tabId: "browser-visual",
                   ready: true,
+                  onError: (message) => {
+                    const row = document.getElementById("error");
+                    row.textContent = message ?? "";
+                    row.hidden = !message;
+                  },
                   chats: [
                     { id: "chat-visual", title: chatTitle },
-                    ...params
-                      .getAll("also")
-                      .map((title, index) => ({
-                        id: `chat-also-${index}`,
-                        title,
-                      })),
+                    ...params.getAll("also").map((title, index) => ({
+                      id: `chat-also-${index}`,
+                      title,
+                    })),
                   ],
                 }),
               )

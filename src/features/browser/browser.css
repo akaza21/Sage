@@ -256,36 +256,6 @@
   opacity: 0.5;
   cursor: default;
 }
-/* An attach error hangs under the toolbar like its popovers, so it never
-   widens the row and pushes actions into the More menu. In the menu it
-   wraps beneath the actions. */
-.browser-surface__attachment [role="alert"] {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  right: 0;
-  max-width: calc(100cqi - 2 * var(--space-2));
-  border: 1px solid var(--browser-control-hover);
-  border-radius: var(--radius-md);
-  background: var(--browser-control-fill);
-  padding: var(--space-1) var(--space-2);
-  box-shadow: var(--browser-popover-shadow);
-  color: var(--color-danger);
-  font-size: 11px;
-}
-.browser-surface__menu-page-actions .browser-surface__attachment {
-  flex-wrap: wrap;
-}
-.browser-surface__menu-page-actions
-  .browser-surface__attachment
-  [role="alert"] {
-  position: static;
-  flex-basis: 100%;
-  border: 0;
-  background: none;
-  padding: 0;
-  box-shadow: none;
-}
 .browser-surface__menu {
   position: absolute;
   z-index: 20;

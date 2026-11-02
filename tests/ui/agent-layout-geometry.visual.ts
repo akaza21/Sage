@@ -483,3 +483,106 @@ test("the chat picker in the More menu changes chat by keyboard", async ({
   await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem", { name: "Print" })).toBeFocused();
 });
+
+interface NativeBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Opens a loaded page in the Agent browser over a native bridge that records
+ * where Sage places the native page window, and fails every attach.
+ */
+async function openNativeBrowser(page: Page) {
+  await openScenario(page, "agent-single", "agent");
+  await page.evaluate(() => {
+    const placed: NativeBounds[] = [];
+    Object.assign(window, { __placed: placed });
+    const url = "https://example.com/";
+    const replies: Record<string, (args: Record<string, unknown>) => unknown> =
+      {
+        browser_open: () => "browser-1",
+        browser_status: () => ({
+          tabId: "browser-1",
+          url,
+          title: "Example",
+          revision: "1",
+          loading: false,
+          canGoBack: false,
+          canGoForward: false,
+          zoomPercent: 100,
+          error: null,
+        }),
+        browser_set_bounds: ({ x, y, width, height }) => {
+          placed.push({ x, y, width, height } as NativeBounds);
+        },
+        browser_downloads: () => [],
+        browser_live_tabs: () => [],
+        browser_permission_status: () => ({
+          tabId: "browser-1",
+          origin: "https://example.com",
+          pending: [],
+          decisions: [],
+        }),
+        attach_browser_tab: () => {
+          throw new Error("visual fixture");
+        },
+        "plugin:event|listen": () => 1,
+      };
+    Object.assign(window, {
+      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener() {} },
+    });
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {
+        invoke: async (command: string, args: Record<string, unknown> = {}) =>
+          replies[command]?.(args) ?? null,
+        transformCallback: () => 0,
+        unregisterCallback: () => {},
+      },
+    });
+  });
+  // Re-render the workbench so it sees the desktop runtime.
+  const modeSwitch = (name: string) =>
+    page.getByRole("radio", { name, exact: true });
+  await modeSwitch("Editor").check({ force: true });
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    await useWorkbenchStore.getState().openBrowser("https://example.com/");
+  });
+  await modeSwitch("Agent").check({ force: true });
+  const surface = page.getByRole("region", { name: "Browser page" });
+  await expect(
+    surface.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue("example.com");
+  return surface;
+}
+
+const lastPlacement = (page: Page) =>
+  page.evaluate(() =>
+    (window as unknown as { __placed: NativeBounds[] }).__placed.at(-1),
+  );
+
+test("an attach error shows above the native page, never behind it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const surface = await openNativeBrowser(page);
+  await expect.poll(() => lastPlacement(page)).toBeTruthy();
+
+  await surface.getByRole("button", { name: "Attach tab to chat" }).click();
+  const error = surface.getByRole("alert");
+  await expect(error).toHaveText(
+    "Could not attach this tab to the selected chat.",
+  );
+  const shown = await bounds(error);
+  // The native page is a window above Sage's DOM: whatever it covers is
+  // hidden, so it must be placed wholly below the error.
+  await expect
+    .poll(async () => (await lastPlacement(page))!.y)
+    .toBeGreaterThanOrEqual(shown.y + shown.height - SUBPIXEL);
+  const toolbar = await bounds(surface.locator(".browser-surface__toolbar"));
+  expect(shown.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - SUBPIXEL);
+});

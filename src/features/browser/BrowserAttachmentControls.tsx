@@ -77,7 +77,7 @@ export function BrowserToolbarPageActions({
   operation: BrowserOperationProjection | null;
   attachmentEpoch: number;
   onStopped: () => void;
-  onError: (message: string) => void;
+  onError: (message: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [attachments, setAttachments] = useState(0);
@@ -105,6 +105,7 @@ export function BrowserToolbarPageActions({
         ready={ready}
         chats={chats}
         onChanged={() => setAttachments((current) => current + 1)}
+        onError={onError}
       />
       {agent ? (
         <BrowserAgentPresence
@@ -144,17 +145,23 @@ export function BrowserAttachmentControls({
   ready,
   chats,
   onChanged,
+  onError: setError,
 }: {
   projectId: string | null;
   tabId: string;
   ready: boolean;
   chats: readonly ChatChoice[];
   onChanged?: () => void;
+  /**
+   * Reports a failure, or null to clear one. The surface shows it in its
+   * error row, which takes layout space above the page, because the page is
+   * a native window that would cover anything drawn over it.
+   */
+  onError: (message: string | null) => void;
 }) {
   const [chatId, setChatId] = useState("");
   const [attachedChat, setAttachedChat] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const attachmentRevision = useRef(0);
   const chosen = chats.some((chat) => chat.id === chatId)
     ? chatId
@@ -254,7 +261,6 @@ export function BrowserAttachmentControls({
           <Link2 size={16} aria-hidden="true" />
         </button>
       )}
-      {error ? <span role="alert">{error}</span> : null}
     </div>
   );
 }
