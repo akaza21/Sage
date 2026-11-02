@@ -1,8 +1,8 @@
 mod filesystem;
 
 use self::filesystem::{
-    DiskDocument, atomic_replace, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,
-    sync_parent_directory, temporary_contract_path, write_temporary_file,
+    DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,
+    split_contract_path, temporary_contract_path,
 };
 use crate::{
     domain::{
@@ -83,6 +83,17 @@ pub fn save_document(
     workspace: &Workspace,
     resource: &ResourceRef,
 ) -> AppResult<EditorSaveResult> {
+    save_document_with(database, workspace, resource, || {})
+}
+
+/// Saves through the document's held parent directory. `after_resolve` runs
+/// once the parent is held and before anything is written.
+fn save_document_with(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+    after_resolve: impl FnOnce(),
+) -> AppResult<EditorSaveResult> {
     let resource = normalized_resource(workspace, resource)?;
     let path = resource.relative_path.clone();
     let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? else {
@@ -113,38 +124,52 @@ pub fn save_document(
         });
     }
 
-    let target = workspace.resolve_existing_file(&path)?;
+    let (parent_path, file_name) = split_contract_path(&path);
+    let parent = HeldParent::open(workspace, parent_path)?;
+    after_resolve();
+    // The target handle closes here, so none is open across the replace.
+    let permissions = parent.open_file(file_name)?.metadata()?.permissions();
     let temp_path = temporary_contract_path(&path)?;
-    let temp = workspace.resolve_for_write(&temp_path)?;
+    let (_, temp_name) = split_contract_path(&temp_path);
     database.set_editor_pending_temp(workspace.project_id(), &resource, &temp_path)?;
+    let abandon = || {
+        cleanup_failed_save(
+            database,
+            workspace.project_id(),
+            &resource,
+            &parent,
+            temp_name,
+        )
+    };
 
-    if let Err(error) = write_temporary_file(&target, &temp, materialized.as_bytes()) {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+    if let Err(error) = parent.write_temporary_file(temp_name, permissions, materialized.as_bytes())
+    {
+        abandon();
         return Err(error);
     }
 
-    let latest_disk = match read_disk_document(workspace, &path) {
+    let latest_disk = match parent.read_document(file_name) {
         Ok(document) => document,
         Err(error) => {
-            cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+            abandon();
             return Err(error);
         }
     };
     if latest_disk.version.fingerprint != buffer.base_fingerprint {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+        abandon();
         return Ok(conflict_result(resource, latest_disk, buffer));
     }
 
-    if let Err(error) = atomic_replace(&target, &temp) {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+    if let Err(error) = parent.replace(temp_name, file_name) {
+        abandon();
         return Err(error);
     }
-    sync_parent_directory(&target)?;
+    parent.sync()?;
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
 
     Ok(EditorSaveResult {
         outcome: "saved".into(),
-        document: clean_document(resource, read_disk_document(workspace, &path)?),
+        document: clean_document(resource, parent.read_document(file_name)?),
     })
 }
 

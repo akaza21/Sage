@@ -38,6 +38,12 @@ pub(crate) use identity::root_identity_file;
 pub(crate) use identity::root_identity_metadata;
 pub(crate) use identity::{leaf_identity, root_identity_path};
 
+/// Opens a canonical root-relative directory through held, no-follow handles
+/// from the verified root, for operations that must stay inside that
+/// directory after the walk.
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+pub(crate) use file_create::platform::open_parent as open_held_parent;
+
 pub(crate) const MAX_DIRECTORY_ENTRIES: usize = 500;
 
 #[derive(Debug, Clone)]
@@ -305,21 +311,6 @@ impl Workspace {
 
     pub(crate) fn resolve_existing_file(&self, relative_path: &str) -> AppResult<PathBuf> {
         self.resolve_existing(relative_path, false)
-    }
-
-    pub(crate) fn resolve_for_write(&self, relative_path: &str) -> AppResult<PathBuf> {
-        validate_relative_path(relative_path, false)?;
-        let candidate = self.root.join(relative_path);
-        let parent = candidate
-            .parent()
-            .ok_or_else(|| AppError::InvalidRequest("file has no parent directory".into()))?
-            .canonicalize()?;
-        if !parent.starts_with(&self.root) {
-            return Err(AppError::InvalidRequest(
-                "write path escapes the workspace".into(),
-            ));
-        }
-        Ok(candidate)
     }
 
     fn resolve_existing(&self, relative_path: &str, allow_root: bool) -> AppResult<PathBuf> {

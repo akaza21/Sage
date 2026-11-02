@@ -64,7 +64,7 @@ unsafe extern "C" {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn open_parent(
+pub(crate) fn open_parent(
     root: &Path,
     expected_root: super::super::RootIdentity,
     parent: &str,
@@ -263,7 +263,7 @@ mod windows {
         Ok(directory)
     }
 
-    fn open_parent(
+    pub(crate) fn open_parent(
         root: &Path,
         expected_root: super::super::super::RootIdentity,
         parent: &str,
@@ -363,6 +363,8 @@ mod windows {
     }
 }
 
+#[cfg(windows)]
+pub(crate) use windows::open_parent;
 #[cfg(windows)]
 pub(super) use windows::{create_new, create_new_directory};
 

@@ -5,7 +5,7 @@ use std::{
 
 use uuid::Uuid;
 
-use super::filesystem::{cleanup_failed_save_with, temporary_contract_path};
+use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
 use crate::{
     domain::BufferSnapshotRequest,
@@ -524,6 +524,146 @@ fn oversized_file_and_buffer_are_rejected() {
         Err(AppError::ResourceLimit(_))
     ));
     assert!(fixture.buffer(path).is_none());
+}
+
+#[test]
+fn bounded_read_accepts_the_cap_and_rejects_one_byte_more() {
+    let exact = vec![b'a'; MAX_EDITABLE_BYTES as usize];
+    assert_eq!(
+        read_editable_bytes(exact.as_slice()).unwrap().len(),
+        exact.len()
+    );
+    let over = vec![b'a'; MAX_EDITABLE_BYTES as usize + 1];
+    assert!(matches!(
+        read_editable_bytes(over.as_slice()),
+        Err(AppError::ResourceLimit(_))
+    ));
+}
+
+#[test]
+fn held_read_rejects_a_file_that_grows_after_its_metadata_check() {
+    use std::io::Write;
+
+    let fixture = Fixture::new();
+    let path = "growing.txt";
+    fixture.write(path, b"small\n");
+    let file = fs::File::open(fixture.root.join(path)).unwrap();
+    assert!(file.metadata().unwrap().len() <= MAX_EDITABLE_BYTES);
+
+    fs::OpenOptions::new()
+        .append(true)
+        .open(fixture.root.join(path))
+        .unwrap()
+        .write_all(&vec![b'a'; MAX_EDITABLE_BYTES as usize])
+        .unwrap();
+
+    assert!(matches!(
+        read_editable_bytes(&file),
+        Err(AppError::ResourceLimit(_))
+    ));
+}
+
+#[cfg(unix)]
+fn dirty_fixture(path: &str, base: &[u8], dirty: &str) -> Fixture {
+    let fixture = Fixture::new();
+    fixture.write(path, base);
+    let opened = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    snapshot_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        snapshot_request(&opened, dirty, 1),
+    )
+    .unwrap();
+    fixture
+}
+
+#[cfg(unix)]
+#[test]
+fn read_refuses_a_target_or_parent_swapped_for_a_symlink_after_resolution() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new();
+    let outside = fixture.root.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("doc.txt"), b"outside\n").unwrap();
+    fixture.write("doc.txt", b"inside\n");
+    fixture.write("dir/doc.txt", b"inside\n");
+    fixture.resource("doc.txt");
+    fixture.resource("dir/doc.txt");
+
+    fs::remove_file(fixture.root.join("doc.txt")).unwrap();
+    symlink(outside.join("doc.txt"), fixture.root.join("doc.txt")).unwrap();
+    assert!(read_disk_document(&fixture.workspace, "doc.txt").is_err());
+
+    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-old")).unwrap();
+    symlink(&outside, fixture.root.join("dir")).unwrap();
+    assert!(read_disk_document(&fixture.workspace, "dir/doc.txt").is_err());
+
+    fs::remove_dir_all(outside).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn save_refuses_a_target_swapped_for_a_symlink_after_resolution() {
+    use std::os::unix::fs::symlink;
+
+    let path = "target.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let outside = fixture.root.with_extension("outside.txt");
+    fs::write(&outside, b"base\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        || {
+            fs::remove_file(fixture.root.join(path)).unwrap();
+            symlink(&outside, fixture.root.join(path)).unwrap();
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&outside).unwrap(), b"base\n");
+    assert!(
+        fs::symlink_metadata(fixture.root.join(path))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(fixture.buffer(path).unwrap().pending_temp_path.is_none());
+    fs::remove_file(outside).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn save_stays_in_the_held_parent_when_the_parent_is_swapped_after_resolution() {
+    use std::os::unix::fs::symlink;
+
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let outside = fixture.root.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("doc.txt"), b"base\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        || {
+            fs::rename(fixture.root.join("dir"), fixture.root.join("dir-held")).unwrap();
+            symlink(&outside, fixture.root.join("dir")).unwrap();
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(fs::read(outside.join("doc.txt")).unwrap(), b"base\n");
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 1);
+    assert_eq!(
+        fs::read(fixture.root.join("dir-held/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    fs::remove_dir_all(outside).unwrap();
 }
 
 #[test]
