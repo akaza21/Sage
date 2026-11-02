@@ -179,6 +179,21 @@ describe("useFollowEnd", () => {
     expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 2000 });
   });
 
+  it("follows growth that stays within the follow threshold", () => {
+    const { scrollTo, transcript } = mountFollowEnd();
+    scrollTo.mockClear();
+
+    // An actions row mounts under the last answer after the first anchor.
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2446,
+      scrollTop: 2000,
+    });
+    act(() => growTranscript());
+
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 2046 });
+  });
+
   it("leaves the transcript alone when growth keeps it at the end", () => {
     const { scrollTo, transcript } = mountFollowEnd();
     scrollTo.mockClear();

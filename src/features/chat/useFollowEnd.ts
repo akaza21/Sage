@@ -198,10 +198,17 @@ export function useFollowEnd({
         return;
       }
       followedHeightRef.current = current.scrollHeight;
-      // Keep stale smooth steps protected until the anchor actually lands.
-      if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
-      if (transcriptIsAtEnd(current)) return;
-      anchorToEnd("auto");
+      if (distanceFromEnd(current) <= 1) {
+        // Keep stale smooth steps protected until the anchor actually lands.
+        anchoringRef.current = false;
+        return;
+      }
+      // Growth within the follow threshold, such as the last answer's actions
+      // row mounting after the first anchor, still has to be followed. Glide
+      // there, retargeting any smooth step in flight; jump from further away.
+      anchorToEnd(
+        transcriptIsAtEnd(current) ? followEndScrollBehavior() : "auto",
+      );
     });
     observer.observe(transcript);
     const content = contentRef.current;
