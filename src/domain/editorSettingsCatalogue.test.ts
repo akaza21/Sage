@@ -26,132 +26,74 @@ const spec = (key: string): EditorSettingSpec => {
   return found;
 };
 
-/** The comparable part of an entry: what Rust also stores. */
-interface StoredShape {
-  key: string;
-  kind: "boolean" | "integer" | "choice" | "globs";
-  default: boolean | number | string | string[];
-  min?: number;
-  max?: number;
-  choices?: (number | string)[];
-  ticket: string;
+/**
+ * The cases the Rust store's own test also runs: the values it sends to the
+ * webview, the writes it admits and the writes it refuses.
+ */
+interface NativeSettingsCases {
+  defaults: Record<string, unknown>;
+  writes: {
+    changes: Record<string, unknown>;
+    stored: Record<string, unknown>;
+  }[];
+  rejected: Record<string, unknown>[];
 }
 
-function rustRegistry(): StoredShape[] {
-  const source = readFileSync(
+const nativeCases = JSON.parse(
+  readFileSync(
     path.resolve(
       __dirname,
-      "../../src-tauri/src/settings_store/editor_settings.rs",
+      "../../src-tauri/src/settings_store/editor_settings_cases.json",
     ),
     "utf8",
-  );
-  const block =
-    /pub const EDITOR_SETTINGS: &\[SettingSpec\] = &\[([\s\S]*?)\n\];/u.exec(
-      source,
-    )?.[1];
-  if (!block) throw new Error("EDITOR_SETTINGS not found in the Rust store");
-  return block
-    .split("SettingSpec {")
-    .slice(1)
-    .map((entry) => {
-      const key = /key: "([^"]+)"/u.exec(entry)?.[1];
-      const ticket = /ticket: "([^"]+)"/u.exec(entry)?.[1];
-      const flag = /default: SettingValue::Bool\((true|false)\)/u.exec(entry);
-      const number = /default: SettingValue::Int\((-?\d+)\)/u.exec(entry);
-      const name = /default: SettingValue::Text\("([^"]+)"\)/u.exec(entry);
-      const list = /default: SettingValue::Globs\(&\[([^\]]*)\]\)/u.exec(entry);
-      if (!key || !ticket || (!flag && !number && !name && !list)) {
-        throw new Error(`unreadable Rust entry: ${entry}`);
-      }
-      if (/kind: SettingKind::Globs,/u.test(entry) && list) {
-        const patterns = [...list[1].matchAll(/"([^"]+)"/gu)];
-        return {
-          key,
-          kind: "globs",
-          default: patterns.map((match) => match[1]),
-          ticket,
-        };
-      }
-      if (/kind: SettingKind::Bool/u.test(entry)) {
-        return { key, kind: "boolean", default: flag?.[1] === "true", ticket };
-      }
-      const names =
-        /kind: SettingKind::Choice \{\s*choices: &\[([^\]]*)\],?\s*\}/u.exec(
-          entry,
-        );
-      if (names) {
-        return {
-          key,
-          kind: "choice",
-          default: name?.[1] ?? "",
-          choices: [...names[1].matchAll(/"([^"]+)"/gu)].map(
-            (match) => match[1],
-          ),
-          ticket,
-        };
-      }
-      const range =
-        /kind: SettingKind::Int \{\s*min: (-?\d+),\s*max: (-?\d+),\s*choices: &\[([^\]]*)\],?\s*\}/u.exec(
-          entry,
-        );
-      if (!range) throw new Error(`unreadable Rust kind for ${key}`);
-      return {
-        key,
-        kind: "integer",
-        default: Number(number?.[1]),
-        min: Number(range[1]),
-        max: Number(range[2]),
-        choices: range[3]
-          .split(",")
-          .map((choice) => choice.trim())
-          .filter(Boolean)
-          .map(Number),
-        ticket,
-      };
-    });
-}
+  ),
+) as NativeSettingsCases;
 
-function storedShape(entry: EditorSettingSpec): StoredShape {
-  if (entry.kind === "globs") {
-    return {
-      key: entry.key,
-      kind: entry.kind,
-      default: [...entry.default],
-      ticket: entry.ticket,
-    };
-  }
-  if (entry.kind === "choice") {
-    return {
-      key: entry.key,
-      kind: entry.kind,
-      default: entry.default,
-      choices: [...entry.choices],
-      ticket: entry.ticket,
-    };
-  }
-  return entry.kind === "boolean"
-    ? {
-        key: entry.key,
-        kind: entry.kind,
-        default: entry.default,
-        ticket: entry.ticket,
-      }
-    : {
-        key: entry.key,
-        kind: entry.kind,
-        default: entry.default,
-        min: entry.min,
-        max: entry.max,
-        choices: [...entry.choices],
-        ticket: entry.ticket,
-      };
-}
+const catalogueSpec = (key: string) =>
+  EDITOR_SETTINGS.find((entry) => entry.key === key);
 
 describe("editor settings catalogue", () => {
-  it("matches the Rust registry key for key, in order", () => {
-    const rust = rustRegistry();
-    expect(rust.length).toBeGreaterThan(0);
-    expect(EDITOR_SETTINGS.map(storedShape)).toEqual(rust);
+  it("reads the native store's defaults as its own and shows them as the default appearance", () => {
+    expect(Object.keys(nativeCases.defaults).sort()).toEqual(
+      EDITOR_SETTINGS.map((entry) => entry.key).sort(),
+    );
+    const settings = admitEditorSettings(nativeCases.defaults);
+    expect(settings).toEqual(nativeCases.defaults);
+    expect(settings).toEqual(DEFAULT_EDITOR_SETTINGS);
+    expect(editorAppearanceFrom(settings)).toEqual(DEFAULT_EDITOR_APPEARANCE);
+  });
+
+  it("admits and refuses the same writes as the native store and reads its answer unchanged", () => {
+    const written = new Set<string>();
+    for (const { changes, stored } of nativeCases.writes) {
+      for (const [key, value] of Object.entries(changes)) {
+        const entry = catalogueSpec(key);
+        if (!entry) {
+          expect(stored).not.toHaveProperty(key);
+          continue;
+        }
+        written.add(key);
+        expect(admitEditorSetting(entry, value), key).toEqual(stored[key]);
+      }
+      const answer = { ...nativeCases.defaults, ...stored };
+      const settings = admitEditorSettings(answer);
+      expect(settings).toEqual(answer);
+      expect(editorAppearanceFrom(settings)).toEqual({
+        fontSize: answer["editor.fontSize"],
+        tabSize: answer["editor.tabSize"],
+        wordWrap: answer["editor.wordWrap"],
+        lineNumbers: answer["editor.lineNumbers"],
+        showWhitespace: answer["editor.renderWhitespace"],
+      });
+    }
+    expect([...written].sort()).toEqual(
+      EDITOR_SETTINGS.map((entry) => entry.key).sort(),
+    );
+    for (const change of nativeCases.rejected) {
+      for (const [key, value] of Object.entries(change)) {
+        expect(admitEditorSetting(spec(key), value), key).toBeUndefined();
+      }
+    }
   });
 
   it("gives every entry a unique key, words in a known group and a default it admits", () => {
