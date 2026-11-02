@@ -1,8 +1,9 @@
 import { createContext } from "react";
 
 export const agentRailSectionSelectors = {
-  Recent: '[aria-label="Recent"]',
-  Projects: '[aria-label="Projects"], [aria-label="Chats"]',
+  Recent: '[aria-label="Recents"]',
+  // In one list there is no Projects section, so Recents stands in.
+  Projects: '[aria-label="Projects"], [aria-label="Recents"]',
 } as const;
 
 export function navigateAgentHome() {

@@ -14,6 +14,10 @@
   --chat-annotation-badge-rim: rgb(255 255 255 / 75%);
   --chat-annotation-sent-edge: #3e3e3e;
   --chat-dialog-cancel-fill: #353535;
+  --dialog-primary-fill: var(--color-text-emphasis);
+  --dialog-primary-hover: var(--composer-send-hover);
+  --dialog-primary-text: var(--composer-send-text);
+  --dialog-primary-disabled-text: var(--composer-send-disabled-text);
   --chat-dialog-option-hover: #353535;
   --chat-dialog-checkbox-edge: #858585;
   --chat-annotation-shadow: 0 4px 18px #0004;

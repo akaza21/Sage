@@ -155,8 +155,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentSettingsSurface.tsx",
   "src/features/settings/openEditorSettings.ts",
   "src/workbench/ActiveEditorCanvas.tsx",
-  // The Chat list options menu loads on its first open.
-  "src/workbench/AgentRailFilterOptions.tsx",
+  // The sidebar options menu loads on its first open.
+  "src/workbench/AgentRailOptionsPopover.tsx",
+  // The Create project dialog loads on the rail's first "+".
+  "src/workbench/CreateProjectDialog.tsx",
   "src/workbench/AgentTaskResources.tsx",
   "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactOpenMenu.tsx",
@@ -208,7 +210,7 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
-  "src/workbench/AgentRailFilterMenu.tsx",
+  "src/workbench/AgentRailOptionsMenu.tsx",
   "src/workbench/AgentRailSections.tsx",
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
@@ -220,7 +222,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/LeftSidebar.tsx",
   "src/workbench/ProjectChatActionMenu.tsx",
   "src/workbench/ProjectChatNavigation.tsx",
-  "src/workbench/ProjectChatRailGlyph.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
   "src/workbench/useAgentArtifactPaneFocus.ts",
   "src/workbench/useSubagentPaneExpansion.ts",

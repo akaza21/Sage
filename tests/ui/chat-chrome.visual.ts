@@ -167,14 +167,15 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(
         page.getByRole("region", { name: "Archived chats" }),
       ).toBeVisible();
+      // The row's "…" stays keyboard-only, as in the target; a pointer opens
+      // the same chat actions by right click.
       await page
         .getByRole("button", {
-          name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
+          name: "Open chat A long chat title that must truncate instead of wrapping the header, pinned",
           exact: true,
         })
-        // AP-C4: Recents lists every chat, so a pinned chat has two rows.
         .first()
-        .click();
+        .click({ button: "right" });
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
       ).toHaveCount(0);

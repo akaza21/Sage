@@ -187,37 +187,56 @@ for (const harness of ["codex", "claude-code", "pi"]) {
   });
 }
 
-for (const [control, section, grouping] of [
-  ["Go to recent chats", "Recent", "folder"],
-  ["Go to projects", "Projects", "folder"],
-  ["Go to projects", "Chats", "status"],
+test("AP-A5: collapsed rail Go to projects reopens and focuses a folded Projects", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1080 });
+  await openScenario(page, "agent-single", "agent");
+  const target = page.getByRole("region", { name: "Projects", exact: true });
+  const disclosure = target.getByRole("button", {
+    name: "Projects",
+    exact: true,
+  });
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "Hide projects and chats" }).click();
+  await expect(page.locator(".project-sidebar__scroll")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Go to projects", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Hide projects and chats" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(target).toBeVisible();
+  await expect(disclosure).toBeFocused();
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expectNoViewportOverflow(page);
+});
+
+for (const [control, organize] of [
+  ["Go to recent chats", "project"],
+  // In one list there is no Projects section; Recents stands in.
+  ["Go to projects", "list"],
 ] as const) {
-  test(`AP-A5: collapsed rail ${control} reveals and focuses ${section}`, async ({
+  test(`AP-A5: collapsed rail ${control} focuses Recents (${organize})`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1888, height: 1080 });
-    await openScenario(page, "agent-single", "agent");
-    await page.evaluate(async (group) => {
-      const { setAgentRailGrouping } =
+    // agent-dual has an unpinned chat, so Recents has a row to list.
+    await openScenario(page, "agent-dual", "agent");
+    await page.evaluate(async (mode) => {
+      const { setAgentRailOrganize } =
         await import("/src/workbench/agentRailViewPrefs.ts");
-      setAgentRailGrouping(group);
-    }, grouping);
-    const target = page.getByRole("region", { name: section, exact: true });
-    const disclosure = target.getByRole("button", {
-      name: section,
-      exact: true,
-    });
-    await disclosure.click();
-    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      setAgentRailOrganize(mode);
+    }, organize);
     await page.getByRole("button", { name: "Hide projects and chats" }).click();
     await expect(page.locator(".project-sidebar__scroll")).toHaveCount(0);
     await page.getByRole("button", { name: control, exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "Hide projects and chats" }),
-    ).toHaveAttribute("aria-expanded", "true");
+    const target = page.getByRole("region", { name: "Recents", exact: true });
     await expect(target).toBeVisible();
-    await expect(disclosure).toBeFocused();
-    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      target.getByRole("heading", { name: "Recents" }),
+    ).toBeFocused();
     await expectNoViewportOverflow(page);
   });
 }

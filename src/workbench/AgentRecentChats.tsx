@@ -1,17 +1,18 @@
 import { useState } from "react";
 import type { AgentRailChatItem } from "./agentChatRail";
 import { MAX_AGENT_RAIL_RECENT_CHATS } from "./agentChatRail";
-import type { AgentRailViewPrefs } from "./agentRailViewPrefs";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
+/** A flat, paged chat list: Recents, or every chat "In one list". */
 export function AgentRecentChats({
   items,
   currentProjectId,
-  prefs,
+  recent = false,
 }: {
   items: readonly AgentRailChatItem[];
   currentProjectId: string | null;
-  prefs: AgentRailViewPrefs;
+  /** Recents rows name themselves as recent and never take the highlight. */
+  recent?: boolean;
 }) {
   const [limit, setLimit] = useState(MAX_AGENT_RAIL_RECENT_CHATS);
   return (
@@ -23,14 +24,11 @@ export function AgentRecentChats({
             projectId={item.projectId}
             chats={[item.chat]}
             selected={item.projectId === currentProjectId}
-            workspaceLabel={prefs.show.workspace ? item.projectName : undefined}
-            showUpdated={prefs.show.updated}
-            showBranch={prefs.show.branch}
             hideArchived
             flat
             projectChatCount={item.projectChatCount}
-            relativeTimeSuffix
-            suppressActive
+            recent={recent}
+            suppressActive={recent}
           />
         ))}
       </div>
@@ -42,7 +40,7 @@ export function AgentRecentChats({
             setLimit((value) => value + MAX_AGENT_RAIL_RECENT_CHATS)
           }
         >
-          Show more recent tasks
+          Show more
         </button>
       ) : null}
     </>

@@ -11,6 +11,8 @@ import {
   type EditorSaveResult,
   type ProjectLayoutRequest,
   type ProjectSwitchRequest,
+  type CreateProjectRequest,
+  type ProjectSourceFolder,
   type ProjectTransitionResult,
   type RenameProjectFileRequest,
   type RenameProjectFileResult,
@@ -46,11 +48,16 @@ const project: ProjectPort = {
       prompts,
     });
   },
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null> {
+    return invokeNative("pick_project_source_folder");
+  },
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    return invokeNative("create_project_from_picker", {
+    return invokeNative("create_project", {
+      request,
       expectedActiveProjectId,
       expectedTransitionEpoch,
     });

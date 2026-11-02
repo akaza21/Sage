@@ -12,10 +12,7 @@ import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
-import {
-  resetAgentRailViewPrefs,
-  syncAgentRailClock,
-} from "./agentRailViewPrefs";
+import { resetAgentRailViewPrefs } from "./agentRailViewPrefs";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -147,8 +144,7 @@ async function openChatActions(title: string) {
   await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
-it("shows one prioritized trailing state per chat and keeps actions separate", () => {
-  syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
+it("shows one glyph per chat: spinner while running, dot when unread, nothing when idle", () => {
   seedChats();
   render(
     <ProjectChatNavigation
@@ -157,129 +153,53 @@ it("shows one prioritized trailing state per chat and keeps actions separate", (
       selected
     />,
   );
+  const row = (title: string) =>
+    screen.getByTitle(`Open chat ${title}`).closest(".project-chat-row");
 
   const focused = screen.getByTitle("Open chat Alpha");
   expect(focused).toHaveAttribute("aria-current", "page");
-  expect(focused).toHaveAttribute("data-chat-id", "chat:a");
-  const focusedRow = focused.closest(".project-chat-row");
-  expect(focusedRow).toHaveClass("project-chat-row--active");
-  expect(focusedRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
-  expect(focusedRow?.querySelector(".project-chat__state")).toHaveTextContent(
-    "Working…",
+  expect(row("Alpha")).toHaveClass("project-chat-row--active");
+  expect(row("Alpha")?.querySelectorAll(".project-chat__state")).toHaveLength(
+    1,
   );
-  const betaRow = screen
-    .getByTitle("Open chat Beta")
-    .closest(".project-chat-row");
-  expect(betaRow).not.toHaveClass("project-chat-row--active");
-  expect(betaRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
-  expect(betaRow?.querySelector(".project-chat__state")).toHaveTextContent(
-    "Unread",
+  expect(
+    row("Alpha")?.querySelector(".project-chat__state"),
+  ).toHaveAccessibleName("Working");
+  expect(row("Alpha")?.querySelector(".project-chat__state")).toHaveTextContent(
+    "",
   );
-  const gammaRow = screen
-    .getByTitle("Open chat Gamma")
-    .closest(".project-chat-row");
-  expect(gammaRow?.querySelectorAll(".project-chat__state")).toHaveLength(1);
-  expect(gammaRow?.querySelector(".project-chat__state")).toHaveTextContent(
-    "53d",
-  );
-  expect(screen.getAllByText("feat/onboarding")).toHaveLength(3);
-  expect(gammaRow?.querySelector("time")).toHaveTextContent("53d");
-  expect(focusedRow?.querySelector(".project-chat__trailing")).toContainElement(
-    screen.getByRole("button", { name: "Chat actions for Alpha" }),
-  );
+  expect(row("Beta")).not.toHaveClass("project-chat-row--active");
+  expect(
+    row("Beta")?.querySelector(".project-chat__state"),
+  ).toHaveAccessibleName("Unread updates");
+  expect(row("Gamma")?.querySelector(".project-chat__state")).toBeNull();
+  expect(screen.queryByText("feat/onboarding")).toBeNull();
 });
 
-it("suffixes only numeric recent ages", () => {
-  syncAgentRailClock(Date.UTC(2026, 7, 26, 18, 0, 0));
-  useWorkbenchStore.setState({
-    project: { id: "project-a", name: "A", roots: [] },
-    tabs: [],
-    activeTabId: null,
-  });
-  render(
-    <ProjectChatNavigation
-      projectId="project-a"
-      chats={[
-        {
-          id: "chat:now",
-          title: "Now",
-          position: 0,
-          pinned: false,
-          status: "idle",
-          updatedAt: Date.UTC(2026, 7, 26, 17, 59, 30),
-        },
-        {
-          id: "chat:yesterday",
-          title: "Yesterday",
-          position: 1,
-          pinned: false,
-          status: "idle",
-          updatedAt: Date.UTC(2026, 7, 25, 12, 0, 0),
-        },
-        {
-          id: "chat:hours",
-          title: "Hours",
-          position: 2,
-          pinned: false,
-          status: "idle",
-          updatedAt: Date.UTC(2026, 7, 26, 16, 0, 0),
-        },
-        {
-          id: "chat:capped",
-          title: "Capped",
-          position: 3,
-          pinned: false,
-          status: "idle",
-          updatedAt: Date.UTC(2026, 3, 1, 18, 0, 0),
-        },
-      ]}
-      selected
-      relativeTimeSuffix
-      suppressActive
-    />,
-  );
-
-  expect(screen.getByText("now")).toBeInTheDocument();
-  expect(screen.getByText("yesterday")).toBeInTheDocument();
-  expect(screen.getByText("2h ago")).toBeInTheDocument();
-  expect(screen.getByText("99d+ ago")).toBeInTheDocument();
-  expect(screen.queryByText("now ago")).toBeNull();
-  expect(screen.queryByText("yesterday ago")).toBeNull();
-});
-
-it("animates only a live working turn and marks waiting as attention", () => {
+it("marks a waiting chat as needing attention and names a failed one", () => {
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
     tabs: [
       {
-        id: "chat:run",
-        kind: "chat",
-        title: "Live turn",
-        position: 0,
-        pinned: false,
-        dirty: false,
-        status: "working",
-      },
-      {
         id: "chat:wait",
         kind: "chat",
         title: "Need a decision",
-        position: 1,
+        position: 0,
         pinned: false,
         dirty: false,
         status: "waiting",
       },
       {
-        id: "chat:idle",
+        id: "chat:failed",
         kind: "chat",
-        title: "Idle",
-        position: 2,
+        title: "Broke",
+        position: 1,
         pinned: false,
         dirty: false,
-        status: "idle",
+        status: "failed",
       },
     ],
-    activeTabId: "chat:idle",
+    activeTabId: null,
   });
   render(
     <ProjectChatNavigation
@@ -288,25 +208,40 @@ it("animates only a live working turn and marks waiting as attention", () => {
       selected
     />,
   );
+  const state = (title: string) =>
+    screen
+      .getByTitle(`Open chat ${title}`)
+      .closest(".project-chat-row")
+      ?.querySelector(".project-chat__state");
+  expect(state("Need a decision")).toHaveAccessibleName("Needs attention");
+  expect(state("Broke")).toHaveTextContent("Failed");
+});
 
-  expect(
-    screen
-      .getByTitle("Open chat Live turn")
-      .closest(".project-chat-row")
-      ?.querySelector(".project-chat__state"),
-  ).toHaveTextContent("Working…");
-  expect(
-    screen
-      .getByTitle("Open chat Need a decision")
-      .closest(".project-chat-row")
-      ?.querySelector(".project-chat__state"),
-  ).toHaveTextContent("Waiting");
-  expect(
-    screen
-      .getByTitle("Open chat Idle")
-      .closest(".project-chat-row")
-      ?.querySelector(".project-chat__state"),
-  ).toBeNull();
+it("pins and archives a chat from its hover actions", async () => {
+  const pinChat = vi.fn(async () => undefined);
+  const archiveChat = vi.fn(async () => true);
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [],
+    activeTabId: null,
+    pinChat,
+    archiveChat,
+  });
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={[
+        { id: "chat:a", title: "Alpha", position: 0, pinned: false },
+        { id: "chat:b", title: "Beta", position: 1, pinned: true },
+      ]}
+      selected
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Pin Alpha" }));
+  expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
+  expect(screen.getByRole("button", { name: "Unpin Beta" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Archive Beta" }));
+  expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
 });
 
 it("keeps pin state visible and restores focus from one chat actions menu", async () => {

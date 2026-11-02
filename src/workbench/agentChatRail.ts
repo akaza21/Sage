@@ -4,12 +4,17 @@ import type {
   ArchivedChatSummary,
   ProjectListItem,
 } from "../domain/workbench";
-import { compareAgentRailViewChats } from "./agentRailStatusView";
+import {
+  compareAgentRailViewChats,
+  type AgentRailOrdering,
+} from "./agentRailStatusView";
 
 export { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 
 export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
+// A project lists its first few chats until "Show more" (Codex shows five).
+export const MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS = 5;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
 // Keep the ready rail small; retain a bounded page for explicit expansion.
@@ -186,13 +191,17 @@ export interface AgentRailSections {
   pinned: AgentRailChatItem[];
   projects: AgentRailProjectGroup[];
   recent: AgentRailChatItem[];
+  /** Every unpinned chat in the chosen order, for "In one list". */
+  all: AgentRailChatItem[];
 }
 
 export function deriveAgentRailSections(
   groups: ReadonlyArray<AgentRailProjectGroup>,
   chatCountByProjectId?: Readonly<Record<string, number>>,
+  ordering: AgentRailOrdering = "recency",
 ): AgentRailSections {
   const pinned: AgentRailChatItem[] = [];
+  const unpinned: AgentRailChatItem[] = [];
   const recentCandidates: AgentRailChatItem[] = [];
   const projects: AgentRailProjectGroup[] = [];
 
@@ -202,7 +211,13 @@ export function deriveAgentRailSections(
       chatCountByProjectId?.[group.id] ??
       group.totalChatCount ??
       group.chats.length;
-    for (const chat of group.chats) {
+    const chats =
+      ordering === "manual"
+        ? group.chats
+            .slice()
+            .sort((left, right) => left.position - right.position)
+        : group.chats;
+    for (const chat of chats) {
       const item = {
         projectId: group.id,
         projectName: group.name,
@@ -213,6 +228,7 @@ export function deriveAgentRailSections(
         pinned.push(item);
       } else {
         projectChats.push(chat);
+        unpinned.push(item);
       }
       if (
         !chat.pinned &&
@@ -232,10 +248,17 @@ export function deriveAgentRailSections(
   recentCandidates.sort((left, right) =>
     compareAgentRailViewChats(left.chat, right.chat, "recency"),
   );
+  // Manual order keeps the projects' order and each project's own order.
+  if (ordering === "recency") {
+    unpinned.sort((left, right) =>
+      compareAgentRailViewChats(left.chat, right.chat, ordering),
+    );
+  }
   return {
     pinned,
     projects,
     recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
+    all: unpinned.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
   };
 }
 
@@ -310,4 +333,24 @@ export function compareAgentRailChats(
 ): number {
   if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
   return left.position - right.position;
+}
+
+/**
+ * The chats a project shows: its first few in the chosen order, or every
+ * admitted chat once expanded. The open chat always stays in view.
+ */
+export function visibleProjectChats(
+  chats: ReadonlyArray<AgentRailChat>,
+  activeId: string | null,
+  ordering: AgentRailOrdering,
+  expanded: boolean,
+): AgentRailChat[] {
+  const sorted = chats
+    .slice()
+    .sort((left, right) => compareAgentRailViewChats(left, right, ordering));
+  if (expanded) return sorted;
+  const visible = sorted.slice(0, MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS);
+  const active = sorted.find((chat) => chat.id === activeId);
+  if (active && !visible.includes(active)) visible[visible.length - 1] = active;
+  return visible;
 }

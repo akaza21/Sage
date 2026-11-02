@@ -51,7 +51,9 @@ const project: ProjectPort = {
   getBootstrapSnapshot: () => browserDesktop.getBootstrapSnapshot(),
   getProjectChatQueuedPrompts: async () => ({}),
   replaceChatQueuedPrompts: async () => {},
-  createProjectFromPicker: (
+  pickProjectSourceFolder: () => Promise.resolve(null),
+  createProject: (
+    _request,
     _expectedActiveProjectId,
     expectedTransitionEpoch,
   ) => Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),

@@ -11,11 +11,7 @@ import { useWorkbenchStore } from "../app/store";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
-import {
-  agentRailClockMs,
-  resetAgentRailViewPrefs,
-  syncAgentRailClock,
-} from "./agentRailViewPrefs";
+import { resetAgentRailViewPrefs } from "./agentRailViewPrefs";
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -45,12 +41,6 @@ function seed() {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
 }
-
-it("never moves the rail clock backwards when activity or archive changes", () => {
-  syncAgentRailClock(100_000);
-  syncAgentRailClock(20_000);
-  expect(agentRailClockMs()).toBe(100_000);
-});
 
 it("collapses projects without activating them and reopens the section from the rail", () => {
   seed();
@@ -127,7 +117,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   await act(async () => undefined);
 });
 
-it("caps long projects at eight rows and Show more opens the focused project palette", async () => {
+it("previews five chats per project and Show more expands the list in place", () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 12 }, (_, position) => ({
@@ -140,22 +130,28 @@ it("caps long projects at eight rows and Show more opens the focused project pal
       status: "idle",
       updatedAt: position + 1,
     })),
+    activeTabId: null,
   });
   render(<LeftSidebar />);
-  expect(
+  const rows = () =>
     within(screen.getByRole("region", { name: "Projects" })).getAllByRole(
       "button",
       { name: /^Open chat / },
-    ),
-  ).toHaveLength(8);
-  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-  expect(
-    await screen.findByRole("searchbox", { name: "Search Chats" }),
-  ).toHaveFocus();
-  expect(screen.getByRole("button", { name: "Search in" })).toHaveAttribute(
-    "data-selected-id",
-    "project-a",
-  );
+    );
+  expect(rows().map((row) => row.textContent)).toEqual([
+    "Task 11",
+    "Task 10",
+    "Task 9",
+    "Task 8",
+    "Task 7",
+  ]);
+  const projects = () =>
+    within(screen.getByRole("region", { name: "Projects" }));
+  fireEvent.click(projects().getByRole("button", { name: "Show more" }));
+  expect(rows()).toHaveLength(12);
+  expect(screen.queryByRole("searchbox", { name: "Search Chats" })).toBeNull();
+  fireEvent.click(projects().getByRole("button", { name: "Show less" }));
+  expect(rows()).toHaveLength(5);
 });
 
 it("does not offer Undo for an archive rejected by the durable store", async () => {
@@ -175,7 +171,7 @@ it("does not offer Undo for an archive rejected by the durable store", async () 
   expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
 });
 
-it("classifies all admitted chats before applying the folder row cap", async () => {
+it("shows a collapsed project as running when any of its chats runs, even past the preview", () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 10 }, (_, position) => ({
@@ -185,21 +181,17 @@ it("classifies all admitted chats before applying the folder row cap", async () 
       position,
       pinned: false,
       dirty: false,
-      status: position === 8 ? "waiting" : position === 9 ? "working" : "idle",
+      status: position === 0 ? "working" : "idle",
+      updatedAt: position + 1,
     })),
+    activeTabId: null,
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Status" }));
-  fireEvent.click(
-    await screen.findByRole("menuitemradio", { name: "Needs Attention" }),
-  );
-  expect(
-    screen.getByRole("button", { name: "Open chat Task 8" }),
-  ).toBeVisible();
+  const header = screen
+    .getByRole("button", { name: "Project A" })
+    .closest(".project-entry__header") as HTMLElement;
+  expect(within(header).queryByRole("img", { name: "Working" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Project A" }));
+  expect(within(header).getByRole("img", { name: "Working" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Open chat Task 0" })).toBeNull();
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Working" }));
-  expect(
-    screen.getByRole("button", { name: "Open chat Task 9" }),
-  ).toBeVisible();
 });

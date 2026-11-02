@@ -6,6 +6,7 @@ use std::{
 
 use uuid::Uuid;
 
+use super::create::MAX_PROJECT_NAME_CHARS;
 use super::*;
 use crate::{
     acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
@@ -464,7 +465,11 @@ fn create_add_and_switch_reject_stale_project_intents_without_mutation() {
 
     assert!(
         database
-            .create_project_from_root_if_active(&folders.root("stale-create"), Some(&project_a.id),)
+            .create_named_project_if_active(
+                "Stale",
+                &[folders.root("stale-create")],
+                Some(&project_a.id),
+            )
             .is_err()
     );
     assert_eq!(database.project_count().unwrap(), before_projects);
@@ -634,4 +639,67 @@ fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
     assert_eq!(item.rail_chats[0].id, pinned);
     assert!(item.rail_chats[0].pinned);
     assert!(item.rail_chats_truncated);
+}
+
+#[test]
+fn named_project_keeps_its_name_and_source_folders_in_order() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let active = database
+        .create_project_from_root(&folders.root("active"))
+        .unwrap();
+    let project = database
+        .create_named_project_if_active(
+            "  Client work  ",
+            &[folders.root("web"), folders.root("api")],
+            Some(&active.id),
+        )
+        .unwrap();
+    assert_eq!(project.name, "Client work");
+    let names: Vec<_> = project
+        .roots
+        .iter()
+        .map(|root| root.name.as_str())
+        .collect();
+    assert_eq!(names, ["web", "api"]);
+    assert_eq!(
+        database.bootstrap_snapshot().unwrap().project.unwrap().id,
+        project.id
+    );
+}
+
+#[test]
+fn named_project_may_start_without_source_folders() {
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database
+        .create_named_project_if_active("Notes", &[], None)
+        .unwrap();
+    assert_eq!(project.name, "Notes");
+    assert!(project.roots.is_empty());
+}
+
+#[test]
+fn named_project_rejects_bad_names_and_duplicate_folders_without_mutation() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let web = folders.root("dup-web");
+    for (name, roots) in [
+        ("   ", vec![]),
+        ("tab\tname", vec![]),
+        (&*"x".repeat(MAX_PROJECT_NAME_CHARS + 1), vec![]),
+        ("Dup", vec![web.clone(), web.join(".")]),
+    ] {
+        assert!(
+            database
+                .create_named_project_if_active(name, &roots, None)
+                .is_err(),
+            "{name:?} should be rejected"
+        );
+    }
+    assert_eq!(database.project_count().unwrap(), 0);
+    assert!(
+        database
+            .create_named_project_if_active(&"x".repeat(MAX_PROJECT_NAME_CHARS), &[], None)
+            .is_ok()
+    );
 }

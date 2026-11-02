@@ -1,9 +1,10 @@
 import {
+  Archive,
   ChevronDown,
   ChevronRight,
-  GitBranch,
   MessageSquare,
   Pin,
+  PinOff,
   RotateCcw,
 } from "../ui/leanIcons";
 
@@ -18,8 +19,6 @@ import {
   ackSessionRailUnread,
   seenSessionRailFingerprint,
   sessionRailFingerprint,
-  sessionRailGitLabel,
-  sessionRailLive,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -31,12 +30,10 @@ import {
   useAgentRailInteractions,
 } from "./agentRailInteractions";
 import {
-  agentRailAgeStamp,
   agentRailTrailingState,
+  type AgentRailTrailingState,
 } from "./agentRailStatusView";
-import { agentRailClockMs } from "./agentRailViewPrefs";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
-import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
 import type * as RenameChunk from "./ProjectChatRename";
 import {
   isSideChatId,
@@ -51,31 +48,25 @@ export function ProjectChatNavigation({
   projectId,
   chats,
   archived,
-  truncated = false,
+  more,
   selected,
-  onShowMore,
-  workspaceLabel,
-  showUpdated = true,
-  showBranch = true,
   hideArchived = false,
   flat = false,
   projectChatCount,
-  relativeTimeSuffix = false,
+  recent = false,
   suppressActive = false,
 }: {
   projectId: string;
   chats: AgentRailChat[];
   archived?: ArchivedChatSummary[];
-  truncated?: boolean;
+  /** A trailing "Show more" / "Show less" row. */
+  more?: { label: string; onClick: () => void };
   selected: boolean;
-  onShowMore?: (projectId: string) => void;
-  workspaceLabel?: string;
-  showUpdated?: boolean;
-  showBranch?: boolean;
   hideArchived?: boolean;
   flat?: boolean;
   projectChatCount?: number;
-  relativeTimeSuffix?: boolean;
+  /** Rows of the Recents list, which name themselves as recent chats. */
+  recent?: boolean;
   suppressActive?: boolean;
 }) {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
@@ -102,14 +93,6 @@ export function ProjectChatNavigation({
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
-  );
-  const gitLabel = sessionRailGitLabel(
-    useWorkbenchStore((state) =>
-      selected
-        ? (state.repositories.roots.find((root) => root.branch)?.branch ??
-          state.selectedRepositoryStatus?.branch)
-        : undefined,
-    ),
   );
   // Temporary side chats never list; a parent shows working while one runs.
   const parentChatStatus = useParentChatStatus();
@@ -186,27 +169,27 @@ export function ProjectChatNavigation({
             updatedAt: tab.updatedAt,
             seenFingerprint: seenSessionRailFingerprint(tab.id),
           });
-        const branchLabel = showBranch ? gitLabel : "";
-        const stamp = showUpdated
-          ? agentRailAgeStamp({
-              updatedAt: tab.updatedAt,
-              live: sessionRailLive(status),
-              nowMs: agentRailClockMs(),
-            })
-          : "";
-        const trailingState = agentRailTrailingState({
-          status,
-          unread,
-          stamp,
-        });
+        const trailingState = agentRailTrailingState({ status, unread });
+        const PinIcon = tab.pinned ? PinOff : Pin;
+        const archiveDisabled =
+          projectTransitioning || (projectChatCount ?? chatTabs.length) <= 1;
+        const archive = () => {
+          void useWorkbenchStore
+            .getState()
+            .archiveChat(tab.id, projectId)
+            .then((committed) => {
+              if (committed)
+                setAgentRailArchiveUndo({
+                  projectId,
+                  chatId: tab.id,
+                  title: displayTitle,
+                });
+            });
+        };
         const approvalLabel =
           awaitingApprovalIds.has(tab.id) || interactions.approval.has(tab.id)
             ? sessionRailStatusLabel(tab.status, true)
             : "";
-        const updatedDateTime =
-          tab.updatedAt && Number.isFinite(tab.updatedAt)
-            ? new Date(tab.updatedAt).toISOString()
-            : undefined;
         return (
           <div
             className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
@@ -222,8 +205,8 @@ export function ProjectChatNavigation({
                 focused ? "project-chat--active" : ""
               }`}
               type="button"
-              title={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}`}
-              aria-label={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
+              title={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}`}
+              aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
@@ -236,11 +219,6 @@ export function ProjectChatNavigation({
                 void openRailChat(projectId, tab.id);
               }}
             >
-              <MessageSquare
-                className="project-chat__identity"
-                size={14}
-                aria-hidden="true"
-              />
               <span className="project-chat__copy">
                 <span className="project-chat__title">
                   <span className="project-chat__title-label">
@@ -261,29 +239,34 @@ export function ProjectChatNavigation({
                 </span>
               </span>
             </button>
-            {branchLabel || workspaceLabel ? (
-              <span className="project-chat__context" aria-hidden="true">
-                {workspaceLabel ? (
-                  <span className="project-chat__workspace">
-                    {workspaceLabel}
-                  </span>
-                ) : null}
-                {branchLabel ? (
-                  <span className="project-chat__git project-chat__git--chip">
-                    <GitBranch size={10} aria-hidden="true" />
-                    {branchLabel}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
             <div className="project-chat__trailing">
               <ProjectChatTrailingState
                 awaitingApproval={Boolean(approvalLabel)}
                 focused={focused}
                 state={trailingState}
-                dateTime={updatedDateTime}
-                relative={relativeTimeSuffix}
               />
+              <div className="project-chat__quick-actions">
+                <button
+                  type="button"
+                  aria-label={`${tab.pinned ? "Unpin" : "Pin"} ${displayTitle}`}
+                  title={tab.pinned ? "Unpin chat" : "Pin chat"}
+                  disabled={projectTransitioning}
+                  onClick={() =>
+                    void useWorkbenchStore.getState().pinChat(tab.id, projectId)
+                  }
+                >
+                  <PinIcon size={14} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Archive ${displayTitle}`}
+                  title="Archive chat"
+                  disabled={archiveDisabled}
+                  onClick={archive}
+                >
+                  <Archive size={14} aria-hidden="true" />
+                </button>
+              </div>
               <ProjectChatActionMenu
                 chatId={tab.id}
                 projectId={projectId}
@@ -291,10 +274,7 @@ export function ProjectChatNavigation({
                 pinned={tab.pinned}
                 open={actionMenuChatId === tab.id}
                 disabled={projectTransitioning}
-                archiveDisabled={
-                  projectTransitioning ||
-                  (projectChatCount ?? chatTabs.length) <= 1
-                }
+                archiveDisabled={archiveDisabled}
                 onOpenChange={(open) =>
                   setActionMenuChatId(open ? tab.id : null)
                 }
@@ -304,19 +284,7 @@ export function ProjectChatNavigation({
                   setRenamingChatId(tab.id);
                 }}
                 onMarkUnread={() => markAgentRailUnread(tab.id)}
-                onArchive={() => {
-                  void useWorkbenchStore
-                    .getState()
-                    .archiveChat(tab.id, projectId)
-                    .then((committed) => {
-                      if (committed)
-                        setAgentRailArchiveUndo({
-                          projectId,
-                          chatId: tab.id,
-                          title: displayTitle,
-                        });
-                    });
-                }}
+                onArchive={archive}
                 triggerRef={(node) => {
                   if (node) renameTriggerRefs.current.set(tab.id, node);
                   else renameTriggerRefs.current.delete(tab.id);
@@ -327,14 +295,13 @@ export function ProjectChatNavigation({
         );
       })}
 
-      {truncated ? (
+      {more ? (
         <button
           className="project-chat-more"
           type="button"
-          title="Show more"
-          onClick={() => onShowMore?.(projectId)}
+          onClick={more.onClick}
         >
-          Show more
+          {more.label}
         </button>
       ) : null}
 
@@ -385,5 +352,70 @@ export function ProjectChatNavigation({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A rail row's trailing state. Running and unread rows show only a glyph
+ * (spinner, dot); a failed or waiting row that is open keeps its label.
+ */
+function ProjectChatTrailingState({
+  awaitingApproval,
+  focused,
+  state,
+}: {
+  awaitingApproval: boolean;
+  focused: boolean;
+  state: AgentRailTrailingState | null;
+}) {
+  if (awaitingApproval)
+    return (
+      <span
+        className="project-chat__state project-chat__approval-spinner"
+        aria-hidden="true"
+      >
+        <span className="spinner agent-chat-chip__spinner" />
+      </span>
+    );
+  if (focused && (state?.kind === "failed" || state?.kind === "waiting"))
+    return (
+      <span
+        className={`project-chat__state project-chat__status-chip project-chat__status-chip--${state.kind}`}
+      >
+        {state.label}
+      </span>
+    );
+  return <ProjectChatRailGlyph state={state} />;
+}
+
+const GLYPH_LABELS = {
+  unread: "Unread updates",
+  working: "Working",
+  recovering: "Recovering",
+  waiting: "Needs attention",
+} as const;
+
+export function ProjectChatRailGlyph({
+  state,
+}: {
+  state: AgentRailTrailingState | null;
+}) {
+  if (!state) return null;
+  if (state.kind === "failed")
+    return (
+      <span className="project-chat__state project-chat__state--failed">
+        {state.label}
+      </span>
+    );
+  return (
+    <span
+      className={`project-chat__state project-chat__state--${state.kind}`}
+      role="img"
+      aria-label={GLYPH_LABELS[state.kind]}
+    >
+      {state.kind === "working" || state.kind === "recovering" ? (
+        <span className="project-chat__working" aria-hidden="true" />
+      ) : null}
+    </span>
   );
 }

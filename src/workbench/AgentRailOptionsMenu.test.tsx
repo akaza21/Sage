@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
+import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
 import {
   agentRailSectionCollapsed,
   resetAgentRailViewPrefs,

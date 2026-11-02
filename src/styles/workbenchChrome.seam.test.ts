@@ -53,7 +53,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.workbench--agent \.project-row--active\s*\{[^}]*background:\s*transparent;/s,
     );
     expect(css).toMatch(
-      /\.agent-rail-section__disclosure > svg\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:\s*var\(--space-1\);[^}]*opacity:\s*0;/s,
+      /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
   });
   it("matches every artifact grid header row to the rendered header height", async () => {

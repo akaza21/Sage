@@ -1,32 +1,66 @@
 import { useSyncExternalStore } from "react";
 
 import {
-  AGENT_RAIL_SHOW_FIELDS,
-  type AgentRailGrouping,
+  AGENT_RAIL_ORDERINGS,
+  AGENT_RAIL_ORGANIZE_MODES,
   type AgentRailOrdering,
-  type AgentRailShowField,
-  type AgentRailStatusFilter,
+  type AgentRailOrganizeMode,
 } from "./agentRailStatusView";
 
 export interface AgentRailViewPrefs {
-  grouping: AgentRailGrouping;
+  organize: AgentRailOrganizeMode;
   ordering: AgentRailOrdering;
-  show: Record<AgentRailShowField, boolean>;
-  statusFilter: AgentRailStatusFilter;
-  showArchived: boolean;
 }
+
+/** Disposable view state: how this WebView lays out the rail. */
+export const AGENT_RAIL_VIEW_STORAGE_KEY = "sage.agent-rail.view.v1";
+
+const DEFAULT_PREFS: AgentRailViewPrefs = {
+  organize: "project",
+  ordering: "recency",
+};
 
 const listeners = new Set<() => void>();
 const collapsed = new Set<string>();
-let clockMs = 0;
 
-let prefs: AgentRailViewPrefs = {
-  grouping: "folder",
-  ordering: "recency",
-  show: { updated: true, workspace: true, branch: true },
-  statusFilter: "all",
-  showArchived: true,
-};
+let prefs: AgentRailViewPrefs = readStoredPrefs();
+
+function oneOf<T extends string>(
+  values: ReadonlyArray<T>,
+  value: unknown,
+): value is T {
+  return values.some((candidate) => candidate === value);
+}
+
+function readStoredPrefs(): AgentRailViewPrefs {
+  try {
+    const stored = localStorage.getItem(AGENT_RAIL_VIEW_STORAGE_KEY);
+    if (stored === null) return DEFAULT_PREFS;
+    const parsed: unknown = JSON.parse(stored);
+    if (typeof parsed !== "object" || parsed === null) return DEFAULT_PREFS;
+    const { organize, ordering } = parsed as Record<string, unknown>;
+    return {
+      organize: oneOf(AGENT_RAIL_ORGANIZE_MODES, organize)
+        ? organize
+        : DEFAULT_PREFS.organize,
+      ordering: oneOf(AGENT_RAIL_ORDERINGS, ordering)
+        ? ordering
+        : DEFAULT_PREFS.ordering,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+function update(next: AgentRailViewPrefs) {
+  prefs = next;
+  try {
+    localStorage.setItem(AGENT_RAIL_VIEW_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Private or quota-limited WebViews keep the choice for this session.
+  }
+  emit();
+}
 
 function emit() {
   for (const listener of listeners) listener();
@@ -44,62 +78,19 @@ export function agentRailViewPrefs(): AgentRailViewPrefs {
 }
 
 export function resetAgentRailViewPrefs() {
-  prefs = {
-    grouping: "folder",
-    ordering: "recency",
-    show: { updated: true, workspace: true, branch: true },
-    statusFilter: "all",
-    showArchived: true,
-  };
+  prefs = DEFAULT_PREFS;
   collapsed.clear();
-  clockMs = 0;
   emit();
 }
 
-export function agentRailClockMs(): number {
-  return clockMs;
-}
-
-export function syncAgentRailClock(nowMs: number) {
-  if (!Number.isFinite(nowMs) || nowMs <= clockMs) return;
-  clockMs = nowMs;
-  prefs = { ...prefs };
-  emit();
-}
-
-export function setAgentRailGrouping(grouping: AgentRailGrouping) {
-  if (prefs.grouping === grouping) return;
-  prefs = { ...prefs, grouping };
-  emit();
+export function setAgentRailOrganize(organize: AgentRailOrganizeMode) {
+  if (prefs.organize === organize) return;
+  update({ ...prefs, organize });
 }
 
 export function setAgentRailOrdering(ordering: AgentRailOrdering) {
   if (prefs.ordering === ordering) return;
-  prefs = { ...prefs, ordering };
-  emit();
-}
-
-export function setAgentRailShowField(
-  field: AgentRailShowField,
-  value: boolean,
-) {
-  if (!AGENT_RAIL_SHOW_FIELDS.includes(field) || prefs.show[field] === value) {
-    return;
-  }
-  prefs = { ...prefs, show: { ...prefs.show, [field]: value } };
-  emit();
-}
-
-export function setAgentRailStatusFilter(statusFilter: AgentRailStatusFilter) {
-  if (prefs.statusFilter === statusFilter) return;
-  prefs = { ...prefs, statusFilter };
-  emit();
-}
-
-export function setAgentRailShowArchived(showArchived: boolean) {
-  if (prefs.showArchived === showArchived) return;
-  prefs = { ...prefs, showArchived };
-  emit();
+  update({ ...prefs, ordering });
 }
 
 export function agentRailSectionCollapsed(id: string): boolean {
@@ -115,12 +106,6 @@ export function toggleAgentRailSection(id: string) {
 
 export function expandAgentRailSection(id: string) {
   if (!collapsed.delete(id)) return;
-  prefs = { ...prefs };
-  emit();
-}
-
-export function collapseAllAgentRailSections(ids: ReadonlyArray<string>) {
-  for (const id of ids) collapsed.add(id);
   prefs = { ...prefs };
   emit();
 }

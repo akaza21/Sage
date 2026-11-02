@@ -172,7 +172,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await expect(query).toHaveValue("");
 });
 
-test("AP-C status filters find approval and running chats beyond eight idle rows", async ({
+test("AP-C sidebar options organize chats in one list and sort them", async ({
   page,
 }) => {
   await openScenario(page, "agent-dual", "agent");
@@ -180,33 +180,37 @@ test("AP-C status filters find approval and running chats beyond eight idle rows
   const sidebar = page.getByRole("complementary", {
     name: "Projects and chats",
   });
-  await sidebar.getByRole("button", { name: "Chat list options" }).click();
+  const options = sidebar.getByRole("button", { name: "Sidebar options" });
+  await options.click();
+  await page.getByRole("menuitem", { name: "Organize sidebar" }).hover();
+  await page.getByRole("menuitemradio", { name: "In one list" }).click();
+  await expect(options).toBeFocused();
+  await expect(sidebar.getByRole("region", { name: "Projects" })).toHaveCount(
+    0,
+  );
+  const recents = sidebar.getByRole("region", { name: "Recents" });
+  const titles = recents.locator(".project-chat__title-label");
+  await expect(titles.first()).toHaveText("Agent rail task 9");
+
+  await options.click();
   await page
-    .getByRole("menuitemradio", { name: "Status", exact: true })
-    .click();
-  await page.getByRole("menuitemradio", { name: "Needs Attention" }).click();
-  await page.keyboard.press("Escape");
+    .getByRole("menuitem", { name: "Sort chats by" })
+    .press("ArrowRight");
+  const manual = page.getByRole("menuitemradio", { name: "Manual order" });
   await expect(
-    sidebar.getByRole("button", {
-      name: "Open chat Agent rail task 8",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await takeCanonicalScreenshot(page, "ap-c-attention-overflow.png");
-  await sidebar.getByRole("button", { name: "Chat list options" }).click();
-  await page
-    .getByRole("menuitemradio", { name: "Working", exact: true })
-    .click();
-  await page.keyboard.press("Escape");
-  await expect(
-    sidebar.getByRole("button", {
-      name: "Open chat Agent rail task 9",
-      exact: true,
-    }),
-  ).toBeVisible();
+    page.getByRole("menuitemradio", { name: "Last updated" }),
+  ).toHaveAttribute("aria-checked", "true");
+  await manual.click();
+  await expect(titles.first()).not.toHaveText("Agent rail task 9");
+  // Manual order follows each chat's place in its project, not its activity.
+  const order = await titles.allTextContents();
+  expect(order.indexOf("Agent rail task 0")).toBeGreaterThanOrEqual(0);
+  expect(order.indexOf("Agent rail task 0")).toBeLessThan(
+    order.indexOf("Agent rail task 1"),
+  );
 });
 
-test("AP-C Show more browses and opens a hidden chat without query text", async ({
+test("AP-C Show more lists a project's hidden chats in place", async ({
   page,
 }) => {
   await openScenario(page, "agent-dual", "agent");
@@ -215,24 +219,16 @@ test("AP-C Show more browses and opens a hidden chat without query text", async 
     name: "Projects and chats",
   });
   const projects = sidebar.getByRole("region", { name: "Projects" });
-  await expect(
-    projects.getByRole("button", {
-      name: "Open chat Agent rail task 8",
-      exact: true,
-    }),
-  ).toHaveCount(0);
-  await projects.getByRole("button", { name: "Show more" }).click();
-  const query = page.getByRole("searchbox", { name: "Search Chats" });
-  await expect(query).toBeFocused();
-  await expect(query).toHaveValue("");
-  await page.clock.runFor(250);
-  const result = page.getByRole("option", { name: /^Agent rail task 8/ });
-  await expect(result).toBeVisible();
-  await takeCanonicalScreenshot(page, "ap-c-browse-hidden-chats.png");
-  await result.click();
+  const hidden = projects.getByRole("button", {
+    name: "Open chat Agent rail task 0",
+    exact: true,
+  });
+  await expect(hidden).toHaveCount(0);
+  await projects.getByRole("button", { name: "Show more" }).first().click();
   await expect(page.getByRole("dialog", { name: "Search Chats" })).toHaveCount(
     0,
   );
+  await hidden.click();
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -240,5 +236,12 @@ test("AP-C Show more browses and opens a hidden chat without query text", async 
         return useWorkbenchStore.getState().activeTabId;
       }),
     )
-    .toBe("rail-fixture-8");
+    .toBe("rail-fixture-0");
+  await projects.getByRole("button", { name: "Show less" }).first().click();
+  await expect(
+    projects.getByRole("button", {
+      name: "Open chat Agent rail task 1",
+      exact: true,
+    }),
+  ).toHaveCount(0);
 });
