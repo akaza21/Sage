@@ -9,6 +9,7 @@ import {
   type BrowserSiteSetting,
 } from "../../ports/nativeBrowserSiteSettingsPort";
 import type { BrowserPermissionKind } from "../../ports/nativeBrowserPort";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import {
   admitSiteSettingsView,
   SITE_PERMISSION_LABELS,
@@ -31,6 +32,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
   // Sites of tabs whose page may still use an Allow that ended; Rust
   // tracks them until the page reloads or closes.
   const [staleSites, setStaleSites] = useState<string[]>([]);
@@ -120,13 +122,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
     run(key, action, SAVE_FAILURE);
 
   function resetAll() {
-    if (
-      !window.confirm(
-        "Reset every site permission? Sites will ask again, and pages that were allowed access reload.",
-      )
-    ) {
-      return;
-    }
+    setConfirmResetAll(false);
     void change("all", browserSiteSettingsResetAll);
   }
 
@@ -134,6 +130,15 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
 
   return (
     <div className="settings-surface__site-permissions">
+      {confirmResetAll ? (
+        <ConfirmDialog
+          title="Reset all site permissions?"
+          description="This removes every saved Allow and Block decision. Sites will ask again, and pages that were allowed access will reload."
+          confirmLabel="Reset all site permissions"
+          onConfirm={resetAll}
+          onCancel={() => setConfirmResetAll(false)}
+        />
+      ) : null}
       {error ? (
         <div className="settings-surface__error" role="alert">
           <span>{error}</span>
@@ -240,7 +245,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
               className="button button--compact"
               type="button"
               disabled={busy !== null}
-              onClick={resetAll}
+              onClick={() => setConfirmResetAll(true)}
             >
               Reset all site permissions
             </button>

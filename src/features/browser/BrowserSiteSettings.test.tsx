@@ -120,22 +120,60 @@ it("resets one answer so the site asks again", async () => {
   );
 });
 
-it("resets every answer only after confirmation", async () => {
-  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false);
-  resetAll.mockResolvedValue(view([]));
-  renderSettings();
-  const button = await screen.findByRole("button", {
-    name: "Reset all site permissions",
-  });
-  fireEvent.click(button);
-  expect(resetAll).not.toHaveBeenCalled();
-  confirm.mockReturnValueOnce(true);
-  fireEvent.click(button);
-  expect(resetAll).toHaveBeenCalledOnce();
-  expect(
-    await screen.findByText("No site permissions saved yet."),
-  ).toBeVisible();
-});
+it.each(["Cancel", "Escape", "Confirm"])(
+  "resets every answer only on Confirm, after %s",
+  async (answer) => {
+    // Tauri's native confirm resolves asynchronously, including on dismissal.
+    vi.spyOn(window, "confirm").mockImplementation(
+      () => Promise.resolve(false) as unknown as boolean,
+    );
+    let saved = [camera, location];
+    list.mockImplementation(async () => view(saved));
+    resetAll.mockImplementation(async () => {
+      saved = [];
+      return view(saved);
+    });
+    renderSettings();
+    const button = await screen.findByRole("button", {
+      name: "Reset all site permissions",
+    });
+    fireEvent.click(button);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Reset all site permissions?",
+    });
+    expect(dialog).toHaveAccessibleDescription(
+      "This removes every saved Allow and Block decision. Sites will ask again, and pages that were allowed access will reload.",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toHaveFocus();
+    if (answer === "Escape") {
+      fireEvent.keyDown(dialog, { key: "Escape" });
+    } else {
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: answer === "Confirm" ? "Reset all site permissions" : "Cancel",
+        }),
+      );
+    }
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Remount to read the stored data, rather than trusting the current UI.
+    cleanup();
+    renderSettings();
+    if (answer === "Confirm") {
+      expect(
+        await screen.findByText("No site permissions saved yet."),
+      ).toBeVisible();
+    } else {
+      expect(await cameraSelect()).toHaveValue("allow");
+      expect(
+        screen.getByRole("combobox", {
+          name: "Location for https://b.example:8443",
+        }),
+      ).toHaveValue("deny");
+    }
+  },
+);
 
 it("shows the sites Rust still reports stale and reloads them on request", async () => {
   const blocked = [{ ...camera, decision: "deny" }, location];
