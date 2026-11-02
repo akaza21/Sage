@@ -1,0 +1,25 @@
+[graph]
+all-features = true
+
+# Vulnerability advisories are errors; informational advisories cover all crates.
+[advisories]
+unmaintained = "all"
+unsound = "all"
+ignore = [
+    { id = "RUSTSEC-2024-0429", reason = "glib VariantStrIter unsoundness is in the transitive Tauri GTK stack on Linux; retained pending an upstream compatible GTK upgrade." },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is a transitive GTK macro dependency through Tauri on Linux; no maintained compatible replacement upstream." },
+    { id = "RUSTSEC-2025-0075", reason = "unic-char-range is transitively required by Tauri urlpattern; upstream has no compatible maintained replacement." },
+    { id = "RUSTSEC-2025-0080", reason = "unic-common is transitively required by Tauri urlpattern; upstream has no compatible maintained replacement." },
+    { id = "RUSTSEC-2025-0081", reason = "unic-char-property is transitively required by Tauri urlpattern; upstream has no compatible maintained replacement." },
+    { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version is transitively required by Tauri urlpattern; upstream has no compatible maintained replacement." },
+    { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident is transitively required by Tauri urlpattern; upstream has no compatible maintained replacement." },
+]
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

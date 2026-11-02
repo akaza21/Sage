@@ -125,15 +125,42 @@ impl<P: LiveRuntimePort> LiveRuntimeEngine<P> {
         owner: &RuntimeOwner,
         turn_id: &SageTurnId,
     ) -> Result<PromptWrite, HostError> {
-        match self.port.dispatch_prompt(owner, turn_id)? {
+        let started = Instant::now();
+        match self
+            .port
+            .dispatch_prompt(owner, turn_id)
+            .inspect_err(|error| {
+                super::prompt_diagnostics::failed(
+                    "engine.write",
+                    started,
+                    error,
+                    owner.runtime_epoch,
+                );
+            })? {
             LiveWrite::Complete => {
                 self.port
-                    .observe_send(owner, turn_id, SendObservation::CompleteBytes)?;
+                    .observe_send(owner, turn_id, SendObservation::CompleteBytes)
+                    .inspect_err(|error| {
+                        super::prompt_diagnostics::failed(
+                            "engine.observe_complete",
+                            started,
+                            error,
+                            owner.runtime_epoch,
+                        );
+                    })?;
                 Ok(PromptWrite::Complete(turn_id.clone()))
             }
             LiveWrite::ZeroBytes => {
                 self.port
-                    .observe_send(owner, turn_id, SendObservation::ZeroBytes)?;
+                    .observe_send(owner, turn_id, SendObservation::ZeroBytes)
+                    .inspect_err(|error| {
+                        super::prompt_diagnostics::failed(
+                            "engine.observe_zero",
+                            started,
+                            error,
+                            owner.runtime_epoch,
+                        );
+                    })?;
                 Ok(PromptWrite::ZeroBytes(turn_id.clone()))
             }
             LiveWrite::PossibleBytes => Ok(PromptWrite::PossibleBytes(turn_id.clone())),
