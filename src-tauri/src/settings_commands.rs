@@ -16,7 +16,10 @@ pub fn get_terminal_dock_visible(state: State<'_, AppState>) -> Result<bool, Str
 }
 
 #[tauri::command]
-pub fn set_terminal_dock_visible(state: State<'_, AppState>, visible: bool) -> Result<bool, String> {
+pub fn set_terminal_dock_visible(
+    state: State<'_, AppState>,
+    visible: bool,
+) -> Result<bool, String> {
     state
         .settings
         .set_terminal_dock_visible(visible)
