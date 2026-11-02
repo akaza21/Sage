@@ -269,3 +269,57 @@ test("allows raw colours in custom properties only in the global authority and l
     ],
   );
 });
+
+test("reports rounded per-corner radii and allows only squaring a segment's corner", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .tab { border-top-left-radius: var(--radius-xl); }
+      .split > button { border-start-end-radius: 0; }
+      .split > button + button { border-end-start-radius: var(--radius-none); }
+      .whole { border-radius: var(--radius-xl); }
+    `,
+  });
+
+  assert.deepEqual(inventory.cornerRadii, [
+    {
+      line: 2,
+      property: "border-top-left-radius",
+      relativePath: "src/styles/a.css",
+      value: "var(--radius-xl)",
+    },
+    {
+      line: 3,
+      property: "border-start-end-radius",
+      relativePath: "src/styles/a.css",
+      value: "0",
+    },
+  ]);
+});
+
+test("allows !important only under reduced-motion and forced-colors queries", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .close:hover { color: var(--color-text-primary) !important; }
+      .label::after { content: "!important"; }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0s !important; }
+      }
+      @media (forced-colors: active) {
+        @supports (display: grid) {
+          .chip { color: CanvasText ! important; }
+        }
+      }
+      @media (max-width: 40rem) {
+        .row { padding: 0 !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line, property }) => ({ line, property })),
+    [
+      { line: 2, property: "color" },
+      { line: 13, property: "padding" },
+    ],
+  );
+});

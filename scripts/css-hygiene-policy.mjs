@@ -194,12 +194,36 @@ function atRuleBlockKind(prelude) {
 
 /** A z-index names a stacking layer from global.css, optionally offset by a
  * whole step inside `calc()` when a third-party layer has to be cleared. */
+/** One element owns a surface's radius. A per-corner longhand may only square
+ * a corner where segments of a control meet (a split button). A box rounded
+ * on some corners is a slice of a larger surface, and that surface should own
+ * the radius instead of each slice repeating it. */
+const CORNER_RADIUS =
+  /^border-(?:(?:top|bottom)-(?:left|right)|(?:start|end)-(?:start|end))-radius$/u;
+
+/** `!important` only restates user and system accessibility preferences. */
+const IMPORTANT_CONTEXT = /\((?:prefers-reduced-motion|forced-colors)\s*:/iu;
+
 const Z_INDEX_LAYER =
   /^(?:auto|inherit|initial|unset|revert|var\(\s*--z-[a-z0-9-]+\s*\)|calc\(\s*var\(\s*--z-[a-z0-9-]+\s*\)\s*[+-]\s*\d+\s*\))$/iu;
 
-function declarationRecords(source, masked, start, end, relativePath, lineAt) {
+function declarationRecords(
+  source,
+  masked,
+  start,
+  end,
+  relativePath,
+  lineAt,
+  importantAllowed,
+) {
   const range = trimmedRange(masked, start, end);
-  const none = { rawColors: [], rawRadii: [], rawZIndexes: [] };
+  const none = {
+    cornerRadii: [],
+    importants: [],
+    rawColors: [],
+    rawRadii: [],
+    rawZIndexes: [],
+  };
   if (range.start >= range.end) return none;
   const declaration = masked.slice(range.start, range.end);
   const match = declaration.match(/^((?:--)?[a-z][a-z0-9-]*)\s*:/iu);
@@ -218,6 +242,19 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
   const rawRadii = [];
   const rawColors = [];
   const rawZIndexes = [];
+  const cornerRadii = [];
+  const importants = [];
+
+  if (
+    CORNER_RADIUS.test(property) &&
+    !/^var\(\s*--radius-none\s*\)$/iu.test(maskedValue.trim())
+  ) {
+    cornerRadii.push({ line, property, relativePath, value: rawValue });
+  }
+
+  if (!importantAllowed && /!\s*important\b/iu.test(maskedValue)) {
+    importants.push({ line, property, relativePath });
+  }
 
   if (
     relativePath !== GLOBAL_TOKEN_AUTHORITY &&
@@ -243,7 +280,7 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
       rawColors.push({ line, literal, relativePath });
     }
   }
-  return { rawColors, rawRadii, rawZIndexes };
+  return { cornerRadii, importants, rawColors, rawRadii, rawZIndexes };
 }
 
 function analyzeCss(source, relativePath) {
@@ -253,7 +290,32 @@ function analyzeCss(source, relativePath) {
   const rawColors = [];
   const rawRadii = [];
   const rawZIndexes = [];
-  const stack = [{ kind: "rules", openIndex: -1, statementStart: 0 }];
+  const cornerRadii = [];
+  const importants = [];
+  const stack = [
+    {
+      importantAllowed: false,
+      kind: "rules",
+      openIndex: -1,
+      statementStart: 0,
+    },
+  ];
+  const collect = (frame, end) => {
+    const records = declarationRecords(
+      source,
+      masked,
+      frame.statementStart,
+      end,
+      relativePath,
+      lineAt,
+      frame.importantAllowed,
+    );
+    cornerRadii.push(...records.cornerRadii);
+    importants.push(...records.importants);
+    rawColors.push(...records.rawColors);
+    rawRadii.push(...records.rawRadii);
+    rawZIndexes.push(...records.rawZIndexes);
+  };
 
   for (let index = 0; index < masked.length; index += 1) {
     const frame = stack.at(-1);
@@ -272,21 +334,16 @@ function analyzeCss(source, relativePath) {
           ),
         );
       }
-      stack.push({ kind, openIndex: index, statementStart: index + 1 });
+      stack.push({
+        importantAllowed:
+          frame.importantAllowed ||
+          (prelude.startsWith("@") && IMPORTANT_CONTEXT.test(prelude)),
+        kind,
+        openIndex: index,
+        statementStart: index + 1,
+      });
     } else if (character === ";") {
-      if (frame.kind === "declarations") {
-        const records = declarationRecords(
-          source,
-          masked,
-          frame.statementStart,
-          index,
-          relativePath,
-          lineAt,
-        );
-        rawColors.push(...records.rawColors);
-        rawRadii.push(...records.rawRadii);
-        rawZIndexes.push(...records.rawZIndexes);
-      }
+      if (frame.kind === "declarations") collect(frame, index);
       frame.statementStart = index + 1;
     } else if (character === "}") {
       if (stack.length === 1) {
@@ -294,19 +351,7 @@ function analyzeCss(source, relativePath) {
         frame.statementStart = index + 1;
         continue;
       }
-      if (frame.kind === "declarations") {
-        const records = declarationRecords(
-          source,
-          masked,
-          frame.statementStart,
-          index,
-          relativePath,
-          lineAt,
-        );
-        rawColors.push(...records.rawColors);
-        rawRadii.push(...records.rawRadii);
-        rawZIndexes.push(...records.rawZIndexes);
-      }
+      if (frame.kind === "declarations") collect(frame, index);
       stack.pop();
       stack.at(-1).statementStart = index + 1;
     }
@@ -317,7 +362,15 @@ function analyzeCss(source, relativePath) {
       `${relativePath}:${lineAt(stack[1].openIndex)} has an unclosed block.`,
     );
   }
-  return { parseErrors: errors, rawColors, rawRadii, rawZIndexes, selectors };
+  return {
+    cornerRadii,
+    importants,
+    parseErrors: errors,
+    rawColors,
+    rawRadii,
+    rawZIndexes,
+    selectors,
+  };
 }
 
 function compareLocation(left, right) {
@@ -332,6 +385,8 @@ export function analyzeCssInventory(files) {
   const rawColors = [];
   const rawRadii = [];
   const rawZIndexes = [];
+  const cornerRadii = [];
+  const importants = [];
   for (const file of [...files].sort((left, right) =>
     compareText(left.relativePath, right.relativePath),
   )) {
@@ -340,6 +395,8 @@ export function analyzeCssInventory(files) {
     rawColors.push(...result.rawColors);
     rawRadii.push(...result.rawRadii);
     rawZIndexes.push(...result.rawZIndexes);
+    cornerRadii.push(...result.cornerRadii);
+    importants.push(...result.importants);
     for (const occurrence of result.selectors) {
       const owners = ownership.get(occurrence.selector) ?? new Map();
       const current = owners.get(occurrence.relativePath);
@@ -373,7 +430,17 @@ export function analyzeCssInventory(files) {
     (left, right) =>
       compareLocation(left, right) || compareText(left.value, right.value),
   );
-  return { duplicateSelectors, parseErrors, rawColors, rawRadii, rawZIndexes };
+  cornerRadii.sort(compareLocation);
+  importants.sort(compareLocation);
+  return {
+    cornerRadii,
+    duplicateSelectors,
+    importants,
+    parseErrors,
+    rawColors,
+    rawRadii,
+    rawZIndexes,
+  };
 }
 
 function inventoryErrors(inventory) {
@@ -392,6 +459,14 @@ function inventoryErrors(inventory) {
     ...inventory.rawZIndexes.map(
       ({ line, relativePath, value }) =>
         `${relativePath}:${line} uses raw z-index "${value}"; use a --z-* layer.`,
+    ),
+    ...inventory.cornerRadii.map(
+      ({ line, property, relativePath, value }) =>
+        `${relativePath}:${line} sets "${property}: ${value}"; a corner may only be squared with var(--radius-none), so give the whole surface one border-radius.`,
+    ),
+    ...inventory.importants.map(
+      ({ line, property, relativePath }) =>
+        `${relativePath}:${line} marks "${property}" !important; fix the cascade (a variant, token, or the owning rule) instead.`,
     ),
     ...inventory.rawColors.map(
       ({ line, literal, relativePath }) =>

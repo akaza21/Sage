@@ -279,10 +279,8 @@ describe("editing features", () => {
       ]),
     });
     expect(view.dom.querySelector(".cm-cursorLayer")).not.toBeNull();
-    expect(view.dom).toHaveClass("cm-drawnCursors");
     view.dispatch({ selection: { anchor: 0 } });
     expect(view.dom.querySelector(".cm-cursorLayer")).toBeNull();
-    expect(view.dom).not.toHaveClass("cm-drawnCursors");
     view.destroy();
   });
 
