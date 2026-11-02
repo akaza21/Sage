@@ -1,7 +1,7 @@
 use std::{
     fs::{DirEntry, FileType},
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Instant,
 };
 
@@ -38,14 +38,13 @@ pub struct SearchEngine {
     pub(super) test_clock: Option<TestClock>,
 }
 
-/// Time that moves only when an entry's file type is read, by the same step
-/// each time: a filesystem whose listings leave file types out, where each
-/// costs a metadata read.
+/// Time advanced by filesystem operations, without wall-clock waits.
 #[cfg(test)]
 pub(super) struct TestClock {
     started_at: Instant,
     elapsed_nanos: std::sync::atomic::AtomicU64,
     per_file_type: std::time::Duration,
+    slow_listing: Option<(PathBuf, std::time::Duration)>,
 }
 
 #[cfg(test)]
@@ -55,7 +54,17 @@ impl TestClock {
             started_at: Instant::now(),
             elapsed_nanos: std::sync::atomic::AtomicU64::new(0),
             per_file_type,
+            slow_listing: None,
         }
+    }
+
+    pub(super) fn with_slow_listing(
+        mut self,
+        directory: PathBuf,
+        per_entry: std::time::Duration,
+    ) -> Self {
+        self.slow_listing = Some((directory, per_entry));
+        self
     }
 
     fn now(&self) -> Instant {
@@ -65,8 +74,20 @@ impl TestClock {
     }
 
     fn read_file_type(&self) {
+        self.advance(self.per_file_type);
+    }
+
+    fn read_directory_entry(&self, directory: &Path) {
+        if let Some((slow, per_entry)) = &self.slow_listing
+            && slow == directory
+        {
+            self.advance(*per_entry);
+        }
+    }
+
+    fn advance(&self, duration: std::time::Duration) {
         use std::sync::atomic::Ordering;
-        let step = u64::try_from(self.per_file_type.as_nanos()).unwrap_or(u64::MAX);
+        let step = u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX);
         self.elapsed_nanos.fetch_add(step, Ordering::Relaxed);
     }
 }
@@ -235,6 +256,18 @@ impl SearchEngine {
             return true;
         }
         false
+    }
+
+    pub(super) fn read_directory(
+        &self,
+        directory: &Path,
+    ) -> io::Result<impl Iterator<Item = io::Result<DirEntry>>> {
+        Ok(std::fs::read_dir(directory)?.inspect(move |_| {
+            #[cfg(test)]
+            if let Some(clock) = &self.test_clock {
+                clock.read_directory_entry(directory);
+            }
+        }))
     }
 
     /// The entry's file type, which costs a metadata read where the listing

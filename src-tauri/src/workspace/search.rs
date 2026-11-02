@@ -7,6 +7,8 @@ mod file_prefetch;
 mod file_scan;
 mod helper_process;
 mod helper_protocol;
+#[cfg(test)]
+mod listing_deadline_tests;
 mod literal_match;
 #[cfg(test)]
 mod parallel_tests;

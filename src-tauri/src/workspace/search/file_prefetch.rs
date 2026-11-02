@@ -2,7 +2,7 @@ use std::{
     cell::Cell,
     cmp::Ordering as NameOrder,
     collections::{HashMap, VecDeque},
-    fs::{self, DirEntry},
+    fs::DirEntry,
     io,
     panic::{AssertUnwindSafe, catch_unwind},
     path::PathBuf,
@@ -99,8 +99,9 @@ struct Job {
     directory: PathBuf,
     relative: String,
     parent_rules: FolderChain,
-    /// What is left of the page when the job was handed out. Both only
-    /// shrink, so reads past them are never needed.
+    /// The active phase's deadline, including continuation replay.
+    phase_deadline: Option<Instant>,
+    /// The page's remaining read budget; None during continuation replay.
     reads: Option<ReadBudget>,
 }
 
@@ -108,8 +109,6 @@ struct Job {
 /// replays, which reads no Files.
 #[derive(Clone, Copy)]
 pub(super) struct ReadBudget {
-    /// None when the time limit is too far off to represent.
-    pub(super) deadline: Option<Instant>,
     pub(super) bytes_left: u64,
 }
 
@@ -209,6 +208,7 @@ impl Prefetch {
         &mut self,
         queue: &VecDeque<QueuedFolder>,
         front: u64,
+        phase_deadline: Option<Instant>,
         reads: Option<ReadBudget>,
     ) {
         let Some(jobs) = &self.jobs else {
@@ -224,6 +224,7 @@ impl Prefetch {
                 directory: folder.path.clone(),
                 relative: folder.relative.clone(),
                 parent_rules: folder.parent_rules.clone(),
+                phase_deadline,
                 reads,
             };
             if jobs.send(job).is_err() {
@@ -269,19 +270,37 @@ fn read_folder(
     stop: &AtomicBool,
     deliver: impl FnOnce(Listing) -> bool,
 ) {
-    let Ok(listed) = fs::read_dir(&job.directory) else {
+    let stopped = || {
+        stop.load(Ordering::Relaxed)
+            || job
+                .phase_deadline
+                .is_some_and(|deadline| context.engine.now() >= deadline)
+    };
+    if stopped() {
+        return;
+    }
+    let Ok(mut listed) = context.engine.read_directory(&job.directory) else {
         return;
     };
     let mut entries = Vec::new();
     let mut rule_files = RuleFiles::default();
-    for entry in listed {
-        if entries.len() == MAX_LISTED_ENTRIES || stop.load(Ordering::Relaxed) {
+    loop {
+        if stopped() {
+            return;
+        }
+        let Some(entry) = listed.next() else {
+            break;
+        };
+        if entries.len() == MAX_LISTED_ENTRIES {
             return;
         }
         if let Ok(entry) = &entry {
             rule_files.note(&entry.file_name());
         }
         entries.push(entry);
+    }
+    if stopped() {
+        return;
     }
     let entries = Arc::<[_]>::from(entries);
     let folder_rules = context
@@ -323,8 +342,8 @@ fn read_folder(
         }
         if found >= max_results
             || bytes > reads.bytes_left
-            || reads
-                .deadline
+            || job
+                .phase_deadline
                 .is_some_and(|deadline| context.engine.now() >= deadline)
         {
             break;

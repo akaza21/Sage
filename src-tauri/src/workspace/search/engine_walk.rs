@@ -1,8 +1,4 @@
-use std::{
-    collections::VecDeque,
-    fs::{self, DirEntry},
-    ops::Deref,
-};
+use std::{collections::VecDeque, fs::DirEntry, ops::Deref};
 
 use crate::workspace::{
     Workspace,
@@ -108,14 +104,17 @@ impl SearchEngine {
 
             loop {
                 if let Some(prefetch) = prefetch.as_mut() {
+                    let started_at = seek
+                        .as_ref()
+                        .map_or(budget.started_at, |seek| seek.started_at);
+                    let phase_deadline = started_at.checked_add(self.limits.max_duration);
                     let reads = seek.is_none().then(|| ReadBudget {
-                        deadline: budget.started_at.checked_add(self.limits.max_duration),
                         bytes_left: self
                             .limits
                             .max_total_bytes
                             .saturating_sub(budget.bytes_scanned),
                     });
-                    prefetch.submit_ahead(&directories, front, reads);
+                    prefetch.submit_ahead(&directories, front, phase_deadline, reads);
                 }
                 let Some(QueuedFolder {
                     path: directory,
@@ -131,6 +130,11 @@ impl SearchEngine {
                     break;
                 }
                 let listing = prefetch.as_mut().and_then(|prefetch| prefetch.take(front));
+                // An expired read-ahead must not trigger another directory read.
+                if self.limit_reached_for_phase(budget, matches.len(), seek.as_ref()) {
+                    counters.partial = true;
+                    break;
+                }
                 front += 1;
                 let (listed_ahead, mut ahead) = match listing {
                     Some(listing) => (
@@ -147,7 +151,7 @@ impl SearchEngine {
                                 entry.as_ref().map(FolderEntry::ReadAhead).map_err(drop)
                             }))
                         }
-                        None => match fs::read_dir(&directory) {
+                        None => match self.read_directory(&directory) {
                             Ok(entries) => Box::new(entries.map(|entry| {
                                 entry.map(Box::new).map(FolderEntry::Listed).map_err(drop)
                             })),
