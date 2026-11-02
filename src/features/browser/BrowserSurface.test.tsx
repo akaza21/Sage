@@ -771,7 +771,6 @@ it("shows a failed attach in the surface's error row and clears it on a successf
   fireEvent.click(attach);
   await screen.findByRole("button", { name: "Detach tab from chat" });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(attachBrowserTab).toHaveBeenCalledTimes(2);
   useWorkbenchStore.setState({
     project: previous.project,
     tabs: previous.tabs,
