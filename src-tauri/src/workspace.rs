@@ -41,8 +41,25 @@ pub(crate) use identity::{leaf_identity, root_identity_path};
 /// Opens a canonical root-relative directory through held, no-follow handles
 /// from the verified root, for operations that must stay inside that
 /// directory after the walk.
-#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) use file_create::platform::open_parent as open_held_parent;
+
+/// Windows uses the rename walk: each handle denies delete sharing, so no
+/// component can be renamed or removed, but shares write, so a file inside
+/// the held directory can still be replaced. Returns the root first and the
+/// parent last.
+#[cfg(windows)]
+pub(crate) fn open_held_parent(
+    root: &Path,
+    expected_root: RootIdentity,
+    relative_path: &str,
+) -> AppResult<Vec<fs::File>> {
+    file_rename::platform::open_parent(file_rename::platform::ParentAuthority {
+        root,
+        expected_root,
+        relative_path,
+    })
+}
 
 pub(crate) const MAX_DIRECTORY_ENTRIES: usize = 500;
 

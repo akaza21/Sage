@@ -394,8 +394,12 @@ mod platform {
 
     impl HeldParent {
         pub(in crate::editor) fn open(workspace: &Workspace, parent: &str) -> AppResult<Self> {
-            let (guards, directory) =
-                open_held_parent(workspace.root(), workspace.root_identity(), parent)?;
+            let guards = open_held_parent(workspace.root(), workspace.root_identity(), parent)?;
+            let directory = if parent.is_empty() {
+                workspace.root().to_path_buf()
+            } else {
+                workspace.root().join(parent)
+            };
             Ok(Self {
                 guards,
                 directory,
