@@ -49,6 +49,7 @@ pub(crate) use process_driver::{
     protocol_failure_requests_tree_exit,
 };
 mod projection_publisher;
+pub(crate) mod prompt_diagnostics;
 mod runtime_host;
 mod session_coordinator;
 pub(crate) mod terminal_detail;

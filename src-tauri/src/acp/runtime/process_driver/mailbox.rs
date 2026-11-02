@@ -16,7 +16,7 @@ use crate::acp::{
 use super::{DriverClock, DriverError, DriverProgress};
 
 mod queue;
-use queue::{map_queue, pop_driver_message, reader_chunk_limit};
+use queue::{ReceiveMode, map_queue, pop_driver_message, reader_chunk_limit};
 
 pub(crate) struct PromptIntent {
     pub(crate) prompt: crate::acp::intent::Prompt,
@@ -255,7 +255,7 @@ impl DriverMailbox {
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
     ) -> Result<Option<ControlMessage>, MailboxError> {
-        self.wait_until(deadline_millis, clock, false)
+        self.wait_until(deadline_millis, clock, ReceiveMode::All)
     }
 
     pub(super) fn wait_control_until(
@@ -263,18 +263,26 @@ impl DriverMailbox {
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
     ) -> Result<Option<ControlMessage>, MailboxError> {
-        self.wait_until(deadline_millis, clock, true)
+        self.wait_until(deadline_millis, clock, ReceiveMode::Control)
+    }
+
+    pub(super) fn wait_write_observation_until(
+        &self,
+        deadline_millis: Option<i64>,
+        clock: &dyn DriverClock,
+    ) -> Result<Option<ControlMessage>, MailboxError> {
+        self.wait_until(deadline_millis, clock, ReceiveMode::WriteObservation)
     }
 
     fn wait_until(
         &self,
         deadline_millis: Option<i64>,
         clock: &dyn DriverClock,
-        control_only: bool,
+        mode: ReceiveMode,
     ) -> Result<Option<ControlMessage>, MailboxError> {
         let mut state = self.lock();
         loop {
-            let message = pop_driver_message(&mut state.queue, control_only);
+            let message = pop_driver_message(&mut state.queue, mode);
             if let Some(message) = message {
                 self.space.notify_all();
                 return Ok(Some(message));
