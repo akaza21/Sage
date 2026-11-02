@@ -86,6 +86,7 @@ export function useEditorExternalWatch(
     if (!watchResource) {
       return;
     }
+    const watched: ResourceRef = watchResource;
     let cancelled = false;
     let subscription: EditorWatchSubscription | undefined;
     let applying = false;
@@ -149,7 +150,7 @@ export function useEditorExternalWatch(
           if (cancelled) return;
           const nextSubscription = await bindEditorExternalWatch(
             editor,
-            watchResource,
+            watched,
             { onNotice: applyNotice },
           );
           if (cancelled) {
@@ -161,7 +162,7 @@ export function useEditorExternalWatch(
           const active = bridge.getActiveEditor();
           if (
             active?.phase === "ready" &&
-            sameResource(active.resource, watchResource) &&
+            sameResource(active.resource, watched) &&
             watchMessage &&
             active.message === watchMessage
           ) {
@@ -180,7 +181,7 @@ export function useEditorExternalWatch(
           const active = bridge.getActiveEditor();
           if (
             active?.phase === "ready" &&
-            sameResource(active.resource, watchResource)
+            sameResource(active.resource, watched)
           ) {
             bridge.setActiveEditor({ ...active, message: watchMessage });
           }
