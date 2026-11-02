@@ -345,6 +345,10 @@ where
         self.fence.stdout_allowed()
     }
 
+    pub(crate) fn awaiting_write_observation(&self) -> bool {
+        self.fence.awaiting_observation()
+    }
+
     pub(crate) fn ready_for_write(&self) -> bool {
         !self.durable_mutation_unknown && self.fence.ready_for_write()
     }
