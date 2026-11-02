@@ -69,19 +69,6 @@ fn on_ui(
 fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: choice::Planned) {
     let choice::Planned { step, revision } = planned;
     let remember = matches!(step, Step::Ask { remember: true, .. });
-    let step = match step {
-        Step::Silent(reservation) => {
-            let path = reservation.path().to_owned();
-            // Tracked first, so every exit below releases it.
-            RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
-            Ok(path)
-        }
-        Step::Ask {
-            file_name,
-            directory,
-            ..
-        } => Err((file_name, directory)),
-    };
     let still_pending = PENDING.with_borrow_mut(|pending| {
         pending.get_mut(&id).is_some_and(|download| {
             if remember {
@@ -96,8 +83,42 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         return;
     }
     match step {
-        Ok(path) => complete_choice(app, tab_id, id, Some(path)),
-        Err((file_name, directory)) => {
+        Step::Silent(mut reservation) => {
+            let path = reservation.path().to_owned();
+            // Claim while the placeholder still exists. Other downloads must
+            // avoid this name even after its file is retired on the worker.
+            let claimed = app
+                .state::<BrowserState>()
+                .downloads
+                .lock()
+                .is_ok_and(|mut registry| registry.record_destination(id, path.clone()));
+            if !claimed {
+                complete_choice(app, tab_id, id, None);
+                return;
+            }
+            let worker_app = app.clone();
+            let worker_webview = webview.clone();
+            let worker_tab = tab_id.to_owned();
+            let queued = worker::submit(move || {
+                let ready = reservation.handoff();
+                let ui_app = worker_app.clone();
+                let ui_tab = worker_tab.clone();
+                on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
+                    RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
+                    // complete_choice rechecks the pending id and watchdog:
+                    // cancellation while queued must never restart a download.
+                    complete_choice(&ui_app, &ui_tab, id, ready.then_some(path));
+                });
+            });
+            if !queued {
+                complete_choice(app, tab_id, id, None);
+            }
+        }
+        Step::Ask {
+            file_name,
+            directory,
+            ..
+        } => {
             open_save_dialog(app, webview, tab_id, id, file_name, directory);
         }
     }

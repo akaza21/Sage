@@ -238,12 +238,12 @@ fn split_extension(name: &str) -> (&str, &str) {
 
 /// Reserves `folder/name`, or `folder/stem (n).ext` for the first free `n`,
 /// by creating it empty with `create_new` and keeping it open, so no
-/// existing file, folder or link is ever reused and two downloads (or
-/// another program) cannot claim the same name. Any error other than
+/// existing file, folder or link is ever reused during allocation. The
+/// registry protects the name between Sage downloads after handoff. Any error other than
 /// "already exists" fails closed, and the download asks instead. The result
-/// is always a direct child of `folder`. WebView2 writes over (or renames
-/// onto) the placeholder; [`super::reservation::Reservation`] deletes it
-/// through its handle if the download never does.
+/// is always a direct child of `folder`. Once the registry claims the name,
+/// [`super::reservation::Reservation`] retires the placeholder through its
+/// handle before WebView2 resumes, so the native writer holds no Sage handles.
 pub(crate) fn unique_destination(
     folder: &Path,
     file_name: &str,

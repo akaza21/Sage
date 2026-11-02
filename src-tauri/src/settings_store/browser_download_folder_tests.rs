@@ -34,6 +34,7 @@ fn the_download_folder_persists_until_reset() {
             .unwrap(),
         None
     );
+    drop(reopened);
     std::fs::remove_dir_all(directory).unwrap();
 }
 
