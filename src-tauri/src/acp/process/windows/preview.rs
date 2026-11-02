@@ -289,11 +289,22 @@ mod tests {
         "acp::process::windows::preview::tests::app_preview_system_shell_child";
     const EXPECTED_OUTPUT: &str = "sage-preview-system-shell";
 
+    /// Removes the scratch directory even when an assertion panics.
+    struct ScratchDir(std::path::PathBuf);
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn app_preview_system_shell_ignores_comspec() {
         let executable = std::env::current_exe().unwrap();
-        let missing = std::env::temp_dir().join(format!("sage-preview-shell-{}", Uuid::new_v4()));
-        std::fs::create_dir(&missing).unwrap();
+        let scratch =
+            ScratchDir(std::env::temp_dir().join(format!("sage-preview-shell-{}", Uuid::new_v4())));
+        let missing = &scratch.0;
+        std::fs::create_dir(missing).unwrap();
         for comspec in [
             None,
             Some(missing.join(SYSTEM_CMD_EXE)),
@@ -317,7 +328,6 @@ mod tests {
             );
             assert!(String::from_utf8_lossy(&output.stdout).contains(EXPECTED_OUTPUT));
         }
-        std::fs::remove_dir(&missing).unwrap();
     }
 
     #[test]
