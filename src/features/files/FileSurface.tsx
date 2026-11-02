@@ -1,3 +1,4 @@
+import type { EditorView } from "@codemirror/view";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
@@ -29,6 +30,7 @@ import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
 
 const LIMIT_EXCEEDED_STATUS =
   "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
@@ -113,6 +115,22 @@ export function FileSurface({
     editor?.phase === "ready" &&
     !!resource &&
     sameResource(editor.resource, resource);
+  // The editor, with the File it was made for, so markers never cross Files.
+  const [gutterEditor, setGutterEditor] = useState<
+    (GitGutterEditor & { key: string }) | null
+  >(null);
+  const onEditorView = useCallback(
+    (view: EditorView | null, text: string | null) =>
+      setGutterEditor(
+        view && { view, text, doc: view.state.doc, key: activeResourceKey },
+      ),
+    [activeResourceKey],
+  );
+  useGitGutter(
+    gutterEditor?.key === activeResourceKey ? gutterEditor : null,
+    resource ?? null,
+    editorShown,
+  );
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
     () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
@@ -299,6 +317,7 @@ export function FileSurface({
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onLimitExceeded={reportLimitExceeded}
+      onEditorView={onEditorView}
       onEditorChange={readOnly ? () => undefined : editorChanged}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {

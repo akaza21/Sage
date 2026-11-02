@@ -61,6 +61,9 @@
    resources button (36 px past the trigger), two 28 px rows. */
 .agent-header-more__menu.menu-popover {
   width: 272px;
+  /* An auto grid column grows to the project name's min-content width and
+     scrolls the menu sideways; pin the single column to the menu instead. */
+  grid-template-columns: minmax(0, 1fr);
   margin-left: 36px;
   padding: 8px;
   gap: 0;
@@ -88,7 +91,13 @@
   height: 24px;
   opacity: 1;
 }
+.agent-header-more__project > .project-chat-actions {
+  flex: none;
+}
+/* A flex item keeps min-width: auto and would push a long project name past
+   the 272 px menu; letting it shrink is what makes the ellipsis appear. */
 .agent-header-more__project > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

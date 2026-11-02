@@ -500,3 +500,121 @@ it("keeps unchanged Explorer rows from re-rendering when a refresh changes anoth
   // The heading re-renders; the a.ts row (memoized) does not.
   expect(fileKindIcon.mock.calls.length - iconRenders).toBe(1);
 });
+
+function expandedRoots(rootIds: string[]) {
+  const roots = rootIds.map((id, ordinal) => ({
+    id,
+    name: id,
+    ordinal,
+    availability: "available" as const,
+    message: null,
+  }));
+  const directoryListings: ReturnType<
+    typeof useWorkbenchStore.getState
+  >["directoryListings"] = {};
+  const expandedDirectories: Record<string, boolean> = {};
+  for (const root of roots) {
+    const resource = childResource(root.id);
+    const folder = childResource(root.id, "src");
+    directoryListings[resourceKey(resource)] = {
+      phase: "ready",
+      value: {
+        resource,
+        truncated: false,
+        entries: [
+          { name: "src", resource: folder, kind: "directory", byteLen: null },
+        ],
+      },
+    };
+    directoryListings[resourceKey(folder)] = {
+      phase: "ready",
+      value: {
+        resource: folder,
+        truncated: false,
+        entries: Array.from({ length: 399 }, (_, index) => ({
+          name: `file-${index}.ts`,
+          resource: childResource(root.id, `src/file-${index}.ts`),
+          kind: "file" as const,
+          byteLen: 1,
+        })),
+      },
+    };
+    expandedDirectories[resourceKey(folder)] = true;
+  }
+  useWorkbenchStore.setState({
+    project: { id: "project-a", name: "A", roots },
+    directoryListings,
+    expandedDirectories,
+    selectedResource: null,
+  });
+}
+
+it("shares the view cap across expanded roots and reallocates it after collapse", () => {
+  expandedRoots(["root-a", "root-b"]);
+  render(<ExplorerSurface />);
+  const rows = screen.getAllByRole("treeitem");
+  expect(rows).toHaveLength(500);
+  expect(rows[399]).toHaveAttribute(
+    "data-resource-key",
+    resourceKey(childResource("root-a", "src/file-398.ts")),
+  );
+  expect(rows[499]).toHaveAttribute(
+    "data-resource-key",
+    resourceKey(childResource("root-b", "src/file-98.ts")),
+  );
+  expect(
+    screen.getByText(/More entries are hidden by the view limit/),
+  ).toBeInTheDocument();
+
+  act(() =>
+    useWorkbenchStore.setState({
+      expandedDirectories: {
+        [resourceKey(childResource("root-b", "src"))]: true,
+      },
+    }),
+  );
+  expect(screen.getAllByRole("treeitem")).toHaveLength(401);
+  expect(
+    screen.getByRole("treeitem", { name: "Open file src/file-398.ts" }),
+  ).toHaveAttribute(
+    "data-resource-key",
+    resourceKey(childResource("root-b", "src/file-398.ts")),
+  );
+  expect(
+    screen.queryByText(/More entries are hidden by the view limit/),
+  ).not.toBeInTheDocument();
+});
+
+it("renders no entries from later roots once the shared budget is exhausted", () => {
+  expandedRoots(["root-a", "root-b", "root-c"]);
+  render(<ExplorerSurface />);
+  expect(screen.getAllByRole("treeitem")).toHaveLength(500);
+  expect(
+    screen
+      .getAllByRole("treeitem")
+      .some(
+        (row) =>
+          row.dataset.resourceKey ===
+          resourceKey(childResource("root-c", "src")),
+      ),
+  ).toBe(false);
+  expect(
+    screen.getAllByText(/More entries are hidden by the view limit/),
+  ).toHaveLength(2);
+});
+
+it("preserves all rows and their order for a single root below the cap", () => {
+  expandedRoots(["root-a"]);
+  render(<ExplorerSurface />);
+  expect(
+    screen.getAllByRole("treeitem").map((row) => row.dataset.resourceKey),
+  ).toEqual([
+    resourceKey(childResource("root-a", "src")),
+    ...Array.from({ length: 399 }, (_, index) =>
+      resourceKey(childResource("root-a", `src/file-${index}.ts`)),
+    ),
+  ]);
+  expect(
+    screen.queryByText(/More entries are hidden by the view limit/),
+  ).not.toBeInTheDocument();
+});

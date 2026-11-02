@@ -115,6 +115,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/git/gitDecorationsUi.ts",
   // The Editor tab strip loads with the Editor.
   "src/workbench/TabStrip.tsx",
+  // Change markers (EP-14) load with the first File in a repository.
+  "src/features/files/gitGutter/index.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",
