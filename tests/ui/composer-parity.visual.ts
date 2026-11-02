@@ -143,6 +143,13 @@ for (const width of [1888, 720, 480]) {
         .getByText("Plan mode is off")
         .boundingBox();
       expect(description!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
+      // Labels share the first row; descriptions wrap inside the item.
+      const item = (await plan.boundingBox())!;
+      expect(description!.x).toBe(label!.x);
+      expect(description!.x + description!.width).toBeLessThanOrEqual(
+        item.x + item.width,
+      );
+      await noClip(page, ".composer__action-description");
       await plan.click();
       await trigger.click();
       await expect(plan).toHaveAttribute("aria-checked", "true");
@@ -215,12 +222,66 @@ for (const width of [1888, 720, 480]) {
           exact: true,
         });
         await expect(access.locator(".lucide-eye")).toHaveCount(1);
+        // Access reads as a plain label, not a bordered or filled chip.
+        expect(
+          await access.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return [
+              style.borderTopWidth,
+              style.borderLeftWidth,
+              style.paddingLeft,
+              style.backgroundColor,
+            ];
+          }),
+        ).toEqual(["0px", "0px", "0px", "rgba(0, 0, 0, 0)"]);
         await access.click();
         await expect(
           page
             .getByRole("menuitemradio", { name: "Read-only", exact: true })
             .locator(".lucide-eye"),
         ).toHaveCount(1);
+      });
+    }
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`a focused composer shows only the caret, with a system outline in forced colors (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ forcedColors });
+        await render(page, "Pi", "home");
+        const composer = page.locator("form.composer");
+        const paint = () =>
+          composer.evaluate((form) => {
+            const style = getComputedStyle(form);
+            return {
+              border: style.borderTopColor,
+              outline: [style.outlineStyle, style.outlineWidth],
+              offset: style.outlineOffset,
+              outlineColor: style.outlineColor,
+              shadow: style.boxShadow,
+            };
+          });
+        const resting = await paint();
+        await page.getByRole("textbox", { name: "Message agent" }).click();
+        const focused = await paint();
+        if (forcedColors === "none") {
+          expect(focused).toEqual(resting);
+          expect(focused.outline[0]).toBe("none");
+        } else {
+          const highlight = await page.evaluate(() => {
+            const system = document.createElement("span");
+            system.style.color = "Highlight";
+            document.body.append(system);
+            const color = getComputedStyle(system).color;
+            system.remove();
+            return color;
+          });
+          expect(focused.outline).toEqual(["solid", "2px"]);
+          expect(focused.offset).toBe("-2px");
+          expect(focused.outlineColor).toBe(highlight);
+          expect(focused.border).toBe(highlight);
+          expect(focused.shadow).toBe("none");
+          expect(resting.outline[0]).toBe("none");
+        }
       });
     }
     test("files-pill counts and table cells never gain an inner horizontal scrollbar", async ({
