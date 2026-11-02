@@ -193,3 +193,20 @@ test("reopening after ending the last session starts a focused usable shell", as
   );
   await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
 });
+
+test("returns to the toggle when opened without a focus target", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    (document.activeElement as HTMLElement | null)?.blur(),
+  );
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  await toggle.click();
+  await expect(page.locator(".xterm-helper-textarea:visible")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+});

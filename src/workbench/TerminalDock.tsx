@@ -17,9 +17,7 @@ import { withStyleNonce } from "../ports/styleNonce";
 const INPUT_RETRY_MS = 10_000;
 
 function errorCode(error: unknown): unknown {
-  return error && typeof error === "object"
-    ? (error as { code?: unknown }).code
-    : undefined;
+  return (error as { code?: unknown } | null | undefined)?.code;
 }
 
 interface Dimensions {
@@ -76,7 +74,6 @@ export function TerminalDock({
     const terminal = new Terminal({
       allowProposedApi: false,
       convertEol: false,
-      cursorBlink: visibleRef.current,
       // xterm measures a concrete face; Menlo keeps macOS off Courier.
       fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
@@ -226,7 +223,6 @@ export function TerminalDock({
       resumeRead?.();
       resumeRead = null;
       refreshDimensions();
-      terminal.refresh(0, terminal.rows - 1);
       terminal.focus();
     };
     displayRef.current(visibleRef.current);

@@ -109,7 +109,7 @@ export function Workbench() {
     );
   const resourceModal =
     windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
-  const terminal = useTerminalDock(resourceModal || agentSettingsPage);
+  const terminal = useTerminalDock(resourceModal);
   const [terminalVisited, setTerminalVisited] = useState(false);
   if (terminal.visible && !terminalVisited) setTerminalVisited(true);
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(

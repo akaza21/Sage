@@ -38,11 +38,13 @@ function selectedScope(
   const activeChat = state.tabs.find(
     (tab) => tab.id === state.activeTabId && tab.kind === "chat",
   )?.id;
+  const hasChat = (id: string | null | undefined) =>
+    state.tabs.some((tab) => tab.kind === "chat" && tab.id === id);
   const chatId =
     activeChat ??
-    (state.tabs.some((tab) => tab.kind === "chat" && tab.id === preferredChatId)
+    (hasChat(preferredChatId)
       ? preferredChatId
-      : state.tabs.some((tab) => tab.kind === "chat" && tab.id === pinnedChatId)
+      : hasChat(pinnedChatId)
         ? pinnedChatId
         : firstChatTabId(state.tabs));
   if (!chatId) return null;
@@ -92,7 +94,7 @@ export function TerminalDockForWorkbench({
       ) {
         setOwner({
           scope: null,
-          uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+          uiProjectGeneration,
         });
         onClose();
       }
@@ -107,9 +109,9 @@ export function TerminalDockForWorkbench({
         inert={inert}
         aria-hidden={inert || undefined}
       >
-        <div className="terminal-dock__header">Terminal unavailable</div>
+        <div className="terminal-dock__header">Terminal</div>
         <p className="terminal-dock__message" role="status">
-          Open a chat in an active project to use the terminal.
+          Open a chat first.
         </p>
         <button type="button" onClick={onClose}>
           Close terminal
@@ -142,10 +144,8 @@ export function TerminalDockShell({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [disclosure, setDisclosure] = useState({ visible, collapsed: false });
-  if (disclosure.visible !== visible)
-    setDisclosure({ visible, collapsed: false });
-  const collapsed = disclosure.visible === visible && disclosure.collapsed;
+  const [collapsed, setCollapsed] = useState(false);
+  if (!visible && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
   const [TerminalView, setTerminalView] =
     useState<ComponentType<TerminalDockProps> | null>(null);
@@ -176,7 +176,7 @@ export function TerminalDockShell({
       owner.dismissWhenCreateSettles = false;
       setEntries(next);
       setActiveId(session.sessionId);
-      setDisclosure({ visible: true, collapsed: false });
+      setCollapsed(false);
     } catch (error) {
       if (!owner.disposed && owner.lifecycle === lifecycle)
         setMessage(terminalErrorLabel(error));
@@ -328,7 +328,7 @@ export function TerminalDockShell({
             type="button"
             aria-label={collapsed ? "Expand terminal" : "Collapse terminal"}
             title={collapsed ? "Expand terminal" : "Collapse terminal"}
-            onClick={() => setDisclosure({ visible, collapsed: !collapsed })}
+            onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? "⌃" : "⌄"}
           </button>

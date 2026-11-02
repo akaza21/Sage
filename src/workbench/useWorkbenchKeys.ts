@@ -101,9 +101,12 @@ export function useTerminalDock(blocked: boolean) {
     state.setVisible(open);
     if (!open) {
       const target = returnFocus.current;
-      if (target?.isConnected && !target.closest(".terminal-dock"))
-        target.focus();
-      else
+      const valid =
+        target?.isConnected &&
+        target !== document.body &&
+        !target.closest(".terminal-dock");
+      if (valid) target.focus();
+      if (!valid || document.activeElement !== target)
         document
           .querySelector<HTMLButtonElement>(".status-bar__terminal")
           ?.focus();
