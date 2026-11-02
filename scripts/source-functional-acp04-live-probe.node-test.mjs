@@ -792,30 +792,60 @@ test("snapshot DOM keys model identity on the selected id, not its label", () =>
   assert.equal(observe("", "1").model, null);
 });
 
-test("Codex picker wait names the unmet precondition", () => {
+test("Codex picker wait times out naming the first unmet precondition", async () => {
   const ui = createAcp04Ui(CODEX_VERSION);
-  const state = (markup) => withDom(markup, () => eval(ui.codexPickerState));
-  assert.equal(state(agentWorkbenchMarkup()), "ready");
-  assert.equal(
-    state(agentWorkbenchMarkup() + agentWorkbenchMarkup()),
-    "pane-count",
-  );
-  assert.equal(
-    state(
-      agentWorkbenchMarkup({
-        controls: composerControlsMarkup().replace('aria-label="Harness"', ""),
-      }),
-    ),
-    "trigger-count",
-  );
-  assert.equal(
-    state(
-      agentWorkbenchMarkup({
-        controls: composerControlsMarkup() + composerControlsMarkup(),
-      }),
-    ),
-    "trigger-count",
-  );
+  const surface =
+    '<section class="chat-surface chat-surface--agent" aria-label="Agent chat">';
+  const harnessExpanded = 'aria-expanded="false" data-selected-id=';
+  const controls = (edit) =>
+    agentWorkbenchMarkup({ controls: edit(composerControlsMarkup()) });
+  const noHarness = (x) => x.replace('aria-label="Harness"', "");
+  const disabled = (x) =>
+    x.replace('aria-label="Harness"', 'aria-label="Harness" disabled');
+  const expanded = (x) =>
+    x.replace(harnessExpanded, harnessExpanded.replace("false", "true"));
+  const cases = [
+    [
+      "pane-count",
+      agentWorkbenchMarkup().replace("agent-chat-pane--focused", ""),
+    ],
+    ["pane-count", agentWorkbenchMarkup() + agentWorkbenchMarkup()],
+    // Two focused panes with no Harness trigger: panes are checked first.
+    ["pane-count", controls(noHarness) + controls(noHarness)],
+    ["surface-count", agentWorkbenchMarkup().replace(surface, "<section>")],
+    [
+      "surface-count",
+      agentWorkbenchMarkup().replace(
+        surface,
+        `${surface.replace(" chat-surface--agent", "")}</section>${surface}`,
+      ),
+    ],
+    // Surface is checked before the trigger it contains.
+    ["surface-count", controls(noHarness).replace(surface, "<section>")],
+    ["trigger-count", controls(noHarness)],
+    ["trigger-count", controls((x) => x + x)],
+    ["trigger-count", controls((x) => disabled(x) + x)],
+    ["trigger-disabled", controls(disabled)],
+    ["trigger-disabled", controls((x) => expanded(disabled(x)))],
+    ["trigger-expanded", controls(expanded)],
+    [
+      "trigger-expanded",
+      controls((x) => x.replace(harnessExpanded, "data-selected-id=")),
+    ],
+  ];
+  const poll = (markup, ms) =>
+    awaitCodexPickerOpenable(
+      async () => withDom(markup, () => eval(ui.codexPickerState)),
+      Date.now() + ms,
+    );
+  await poll(agentWorkbenchMarkup(), 5_000);
+  for (const [state, markup] of cases) {
+    await assert.rejects(
+      poll(markup, 150),
+      new RegExp(`^Error: acp04-codex-picker-${state}-timeout$`),
+      state,
+    );
+  }
 });
 
 test("Codex picker wait retries until openable and fails with the last state", async () => {
