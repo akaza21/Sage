@@ -39,7 +39,7 @@ body:
       description: The exact commands that must pass before the PR leaves draft.
       value: |
         - Frontend changes: `npm ci && npm run check`
-        - Rust changes: `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "acp-fixture,acp-schema,cdp-lane,codex-provisioning-helper,custom-protocol,diagnostics" -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --features "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics"`
+        - Rust changes: the Rust steps of `.github/workflows/ci.yml` for your OS, with the feature lists from `scripts/cargo-features.mjs` (`runnerFeatures`): `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, the parallel `cargo test` phase, the serial `repository_mutation_commands::tests::` and `app_preview` phases (`--test-threads=1`), and `cargo check --release --lib`
         - No performance or bundle regression (`npm run test:budgets` where it applies)
     validations:
       required: true
