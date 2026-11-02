@@ -3,7 +3,9 @@ import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 
 export const Q02_LIMITS = Object.freeze({
-  files: 560,
+  // Scanner input bound on production module reads/checks, not a code-quality
+  // budget. Keep finite headroom for focused modules; byte/entry caps still apply.
+  files: 700,
   depth: 16,
   fileBytes: 64 * 1024,
   // Policy scanner input bound, independent of app runtime budgets.
