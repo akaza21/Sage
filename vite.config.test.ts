@@ -123,6 +123,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
+  // Native file-watch delivery loads only when a document subscribes.
+  "src/ports/editorWatchSession.ts",
   // The Chat list options menu loads on its first open.
   "src/workbench/AgentRailFilterOptions.tsx",
   "src/workbench/AgentTaskResources.tsx",
@@ -834,6 +836,7 @@ describe("desktop-native chunk topology", () => {
       "/src/app/agentDiffAdmission.ts",
       "/src/app/agentDiffLoad.ts",
       "/src/features/diff/snapshotDiff.ts",
+      "/src/ports/editorWatchSession.ts",
       "/src/workbench/AgentWorkbenchBody.tsx",
       "/src/workbench/AgentTaskResources.tsx",
       "/src/workbench/SettingsSurface.tsx",

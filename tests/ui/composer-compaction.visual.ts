@@ -214,7 +214,7 @@ for (const width of [1888, 720, 480]) {
         .click();
       await expect(
         page.locator(
-          '.composer__harness-menu [aria-selected="true"] .searchable-picker__subtitle',
+          '.searchable-picker__popover--harness [aria-selected="true"] .searchable-picker__subtitle',
         ),
       ).toHaveText(`${profile.model}${profile.effort ? " Medium" : ""}`);
       await page.keyboard.press("Escape");

@@ -59,34 +59,28 @@
 
 @container composer (max-width: 400px) {
   .composer .project-scope {
+    --picker-width: 100%;
+    --picker-margin: 0;
+    --picker-trigger-justify: center;
+    --picker-trigger-padding: 0;
+    --picker-label-display: none;
+    --picker-chevron-display: none;
     width: 28px;
     flex: none;
     justify-content: center;
     padding: 0;
   }
 
-  .composer .project-scope .searchable-picker__trigger {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .composer .project-scope .searchable-picker {
-    width: 100%;
-    margin: 0;
-  }
-
   .composer .project-scope {
     border: 0;
   }
 
-  .composer .project-scope .searchable-picker__trigger-label,
-  .composer .project-scope .searchable-picker__chevron,
   .composer .project-scope__label {
     display: none;
   }
 
-  .composer .composer__harness .searchable-picker__chevron {
-    display: none;
+  .composer .composer__harness {
+    --picker-chevron-display: none;
   }
 
   .composer .composer__model-group {
@@ -185,7 +179,6 @@
   .composer .project-scope,
   .composer .composer__plus,
   .composer .composer__effort-picker,
-  .composer .project-scope .searchable-picker__trigger,
   .composer .composer__model-group .composer__model-trigger,
   .composer .composer__mic,
   .composer .composer__access-label,
@@ -196,6 +189,11 @@
 
   .composer .send-button {
     height: 24px;
+  }
+
+  .composer .project-scope {
+    --picker-trigger-min-width: 24px;
+    --picker-trigger-width: 24px;
   }
 }
 

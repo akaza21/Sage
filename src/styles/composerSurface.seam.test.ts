@@ -183,23 +183,6 @@ describe("Composer surface stylesheet seam", () => {
       /background:\s*Highlight;/,
     );
   });
-  it("gives single-line harness rows bounded scrolling and visible keyboard focus", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu > \[role="listbox"\]\s*\{[^}]*min-height:\s*0;[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option\s*\{[^}]*min-height:\s*32px;/s,
-    );
-    expect(css).not.toMatch(/\.searchable-picker__option\[data-active/);
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option:focus-visible\s*\{[^}]*background:\s*var\(--composer-control-hover\);/s,
-    );
-  });
-
   it("truncates the model label within its own shrinkable box instead of clipping the trigger's leading edge", async () => {
     const css = await readFile(
       resolve("src/styles/composer-model-picker.css"),

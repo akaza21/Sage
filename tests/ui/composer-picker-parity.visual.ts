@@ -3,6 +3,68 @@ import { expect, test } from "@playwright/test";
 import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
+test("gives harness and model triggers the same control treatment", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  const composer = page.locator("form.composer").first();
+  const harness = composer.getByRole("button", {
+    name: "Harness",
+    exact: true,
+  });
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  const treatment = (control: typeof harness) =>
+    control.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [
+        style.height,
+        style.fontSize,
+        style.fontWeight,
+        style.borderWidth,
+        style.borderRadius,
+        style.backgroundColor,
+      ];
+    });
+  expect(await treatment(harness)).toEqual(await treatment(model));
+  for (const [icon, size] of [
+    [harness.locator(".harness-logo"), "16px"],
+    [model.locator("svg").last(), "16px"],
+  ] as const) {
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveCSS("width", size);
+    await expect(icon).toHaveCSS("height", size);
+  }
+});
+
+test("gives single-line harness rows bounded scrolling and visible keyboard focus", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-picker-harness-model", "agent");
+  const harness = page.getByRole("button", { name: "Harness", exact: true });
+  await harness.focus();
+  await page.keyboard.press("Enter");
+  const list = page.getByRole("listbox", { name: "Harness", exact: true });
+  await expect(list).toHaveCSS("min-height", "0px");
+  await expect(list).toHaveCSS("flex", "1 1 auto");
+  await expect(list).toHaveCSS("overflow-y", "auto");
+  const row = list.getByRole("option").first();
+  await expect(row).toHaveCSS("min-height", "32px");
+  await expect(row.locator(".searchable-picker__option-copy")).toHaveCSS(
+    "white-space",
+    "nowrap",
+  );
+  await expect(row).toBeFocused();
+  expect(
+    await row.evaluate((element) => element.matches(":focus-visible")),
+  ).toBe(true);
+  const keyboard = await row.evaluate((element) => ({
+    fill: getComputedStyle(element).backgroundColor,
+    shadow: getComputedStyle(element).boxShadow,
+  }));
+  expect(keyboard.fill).toBe("rgb(68, 68, 68)");
+  expect(keyboard.shadow).not.toBe("none");
+});
+
 for (const forcedColors of ["none", "active"] as const) {
   test(`asserts no harness pointer or blur focus ring and preserves keyboard focus (${forcedColors})`, async ({
     page,

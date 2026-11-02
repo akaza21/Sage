@@ -28,7 +28,6 @@ import { composerOptionLabel } from "./composerChrome";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
 import { useComposerCompaction } from "./useComposerCompaction";
-import { useHarnessNameFit } from "./useHarnessNameFit";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
 import {
@@ -98,7 +97,6 @@ export function ChatHarnessControls({
   const [effortFromAdd, setEffortFromAdd] = useState(false);
   const keyboardFocus = useHarnessKeyboardFocus();
   const harnessControl = useRef<HTMLLabelElement>(null);
-  useHarnessNameFit(harnessControl);
   const {
     active,
     modelId,
@@ -109,7 +107,7 @@ export function ChatHarnessControls({
     dismiss,
   } = useComposerPopovers(turnBusy || projectTransitioning);
   const { effort: compactEffort, project: compactProject } =
-    useComposerCompaction(optionsTriggerRef);
+    useComposerCompaction(optionsTriggerRef, harnessControl);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -296,17 +294,17 @@ export function ChatHarnessControls({
       <label
         ref={harnessControl}
         className="composer__control-trigger composer__harness"
-        data-keyboard-focus={keyboardFocus}
       >
         <SearchablePicker
+          variant="harness"
+          keyboardFocus={keyboardFocus}
           ariaLabel="Harness"
           open={active === "harness"}
           onOpenChange={(open) => (open ? toggle("harness") : dismiss())}
           triggerIcon={<Settings size={16} aria-hidden="true" />}
           candidates={harnessCandidates}
-          popoverClassName="composer__popover composer__harness-menu"
+          popoverClassName="composer__popover"
           popoverGap={8}
-          triggerClassName="composer__control-trigger composer__picker-trigger"
           sectionLabel="Harnesses"
           searchable={false}
           disabled={projectTransitioning || turnBusy}

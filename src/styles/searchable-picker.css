@@ -1,0 +1,337 @@
+.searchable-picker {
+  min-width: 0;
+}
+
+.searchable-picker__trigger,
+.searchable-picker__input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height-compact);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--font-size-xs);
+}
+
+.searchable-picker__trigger {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 0 8px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.searchable-picker__trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchable-picker__chevron {
+  flex: 0 0 auto;
+}
+
+.searchable-picker__popover {
+  display: block;
+  overflow: hidden;
+}
+
+.searchable-picker__input {
+  padding: 0 8px;
+}
+
+.searchable-picker__popover > [role="listbox"] {
+  max-height: min(224px, calc(100vh - 148px));
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.searchable-picker__current,
+.searchable-picker__footer,
+.searchable-picker__limit,
+.searchable-picker__reason {
+  margin: 4px 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.searchable-picker__footer {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-subtle);
+  line-height: 1.4;
+}
+
+.searchable-picker__current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchable-picker__option[data-active="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
+}
+
+.searchable-picker__option {
+  display: grid;
+  gap: 2px;
+}
+
+.searchable-picker__option:has([data-harness-icon]) {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.searchable-picker__option:has([data-harness-icon]) .searchable-picker__reason {
+  grid-column: 2;
+}
+
+.searchable-picker__reason {
+  margin: 0;
+}
+
+.select-control .searchable-picker__trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height-compact);
+  padding: 0 20px 0 0;
+  overflow: hidden;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.select-control .searchable-picker__trigger:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+@media (forced-colors: active) {
+  .searchable-picker__trigger,
+  .searchable-picker__input {
+    border-color: ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+
+  .searchable-picker__option[data-active="true"] {
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searchable-picker__trigger,
+  .searchable-picker__input {
+    transition: none;
+  }
+}
+
+/* SearchablePicker variants (the unqualified picker is a standard field).
+ * Layout owners may project these tokens onto their own wrappers:
+ * --picker-width / --picker-margin: chip bounds;
+ * --picker-trigger-width / --picker-trigger-min-width / --picker-trigger-height:
+ * hit area; --picker-trigger-padding / --picker-trigger-justify: contents;
+ * --picker-label-display / --picker-chevron-display: compact presentation;
+ * --picker-trigger-icon-size / --picker-chevron-size: trigger icon slots;
+ * --picker-option-icon-size / --picker-option-check-size / --picker-option-gap /
+ * --picker-option-padding / --picker-option-min-height: harness menu row slots.
+ * Portaled menus carry their own variant class and defaults; trigger-local
+ * tokens intentionally do not leak across the portal.
+ */
+.searchable-picker:where([data-variant="project"]) {
+  width: var(--picker-width, calc(100% + 2px));
+  margin: var(--picker-margin, -1px);
+}
+
+.searchable-picker:where([data-variant="project"]) .searchable-picker__trigger {
+  width: var(--picker-trigger-width, 100%);
+  min-width: var(--picker-trigger-min-width, 28px);
+  min-height: 28px;
+  justify-content: var(--picker-trigger-justify, space-between);
+  padding: var(--picker-trigger-padding, 0 var(--space-1));
+  border-radius: var(--radius-md);
+}
+
+.searchable-picker:where([data-variant="project"])
+  .searchable-picker__trigger-label {
+  display: var(--picker-label-display, block);
+}
+
+.searchable-picker:where([data-variant="project"]) .searchable-picker__chevron {
+  display: var(--picker-chevron-display, block);
+}
+
+.searchable-picker:where([data-variant="harness"]) {
+  --harness-logo-size: var(--picker-trigger-icon-size, var(--icon-size-md));
+  width: 100%;
+  height: 100%;
+}
+
+.searchable-picker:where([data-variant="harness"]) .searchable-picker__trigger {
+  display: inline-flex;
+  width: 100%;
+  height: var(--picker-trigger-height, 100%);
+  min-height: 0;
+  justify-content: var(--picker-trigger-justify, space-between);
+  gap: var(--space-1);
+  padding: var(--picker-trigger-padding, 0 var(--space-1));
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--composer-control-text);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.searchable-picker:where([data-variant="harness"])[data-keyboard-focus="false"]
+  .searchable-picker__trigger {
+  outline: none;
+  box-shadow: none;
+}
+
+.searchable-picker:where([data-variant="harness"])
+  .searchable-picker__trigger-label {
+  display: var(--picker-label-display, block);
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.searchable-picker:where([data-variant="harness"]) .searchable-picker__chevron {
+  display: var(--picker-chevron-display, block);
+  width: var(--picker-chevron-size, 12px);
+  height: var(--picker-chevron-size, 12px);
+}
+
+.searchable-picker:where([data-variant="harness"])
+  .searchable-picker__trigger
+  > svg:first-child {
+  width: var(--picker-trigger-icon-size, var(--icon-size-md));
+  height: var(--picker-trigger-icon-size, var(--icon-size-md));
+  flex: 0 0 auto;
+}
+
+.searchable-picker__popover--harness.menu-popover {
+  --harness-logo-size: var(--picker-option-icon-size, var(--icon-size-lg));
+  --menu-focus-edge: var(--color-border-strong);
+  --menu-selected-fill: var(--color-surface-hover);
+  display: flex;
+  flex-direction: column;
+  width: min(232px, calc(100vw - 32px));
+  border-radius: var(--radius-composer-menu);
+  background: var(--color-plane-raised);
+  backdrop-filter: none;
+}
+
+.searchable-picker__popover--harness .searchable-picker__current,
+.searchable-picker__popover--harness .searchable-picker__section-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.searchable-picker__popover--harness .searchable-picker__option {
+  min-height: var(--picker-option-min-height, 32px);
+  grid-template-columns:
+    var(--picker-option-icon-size, 20px) minmax(0, 1fr)
+    var(--picker-option-check-size, 16px);
+  gap: var(--picker-option-gap, var(--space-2));
+  padding: var(--picker-option-padding, var(--space-1) var(--space-2));
+  border-radius: var(--radius-md);
+}
+
+.searchable-picker__popover--harness > [role="listbox"] {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.searchable-picker__popover--harness .searchable-picker__option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.searchable-picker__popover--harness .searchable-picker__subtitle {
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchable-picker__popover--harness .searchable-picker__option:hover,
+.searchable-picker__popover--harness .searchable-picker__option:focus-visible {
+  background: var(--composer-control-hover);
+  box-shadow: var(--glass-highlight);
+}
+
+.searchable-picker__popover--harness .searchable-picker__selected-check {
+  grid-column: 3;
+  color: var(--composer-control-text);
+}
+
+.searchable-picker__popover--harness .searchable-picker__reason {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@media (forced-colors: active) {
+  .searchable-picker__popover--harness.menu-popover {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .searchable-picker__popover--harness
+    .searchable-picker__option:is(
+      :hover,
+      :focus-visible,
+      [aria-selected="true"]
+    ) {
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  .searchable-picker__popover--harness .searchable-picker__selected-check {
+    color: inherit;
+  }
+}

@@ -174,7 +174,9 @@ for (const width of [1888, 720, 480]) {
       const sub = await subtitle.boundingBox();
       expect(sub!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
       await expect(
-        page.locator(".composer__harness-menu .searchable-picker__subtitle"),
+        page.locator(
+          ".searchable-picker__popover--harness .searchable-picker__subtitle",
+        ),
       ).toHaveCount(1);
     });
     for (const forcedColors of ["none", "active"] as const) {

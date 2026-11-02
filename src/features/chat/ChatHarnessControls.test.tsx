@@ -1308,16 +1308,6 @@ describe("composer permission mode picker", () => {
     ).toBeNull();
   });
 
-  it("gives harness and model triggers the same control treatment", () => {
-    renderControls();
-    const harness = screen.getByRole("button", { name: "Harness" });
-    const model = screen.getByRole("button", { name: "Model" });
-    expect(harness).toHaveClass("composer__picker-trigger");
-    expect(model).toHaveClass("composer__picker-trigger");
-    expect(harness.querySelector("svg")).not.toBeNull();
-    expect(model.querySelector("svg")).not.toBeNull();
-  });
-
   it("does not offer harness changes during an active turn", () => {
     renderControls({ turnBusy: true });
     expect(screen.getByRole("button", { name: "Harness" })).toBeDisabled();

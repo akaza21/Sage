@@ -10,7 +10,6 @@ export const PickerOption = memo(function PickerOption({
   id,
   onSelect,
   onActivate,
-  onOptionElement,
   onRender,
   selected,
   showSelectedCheck = false,
@@ -20,7 +19,6 @@ export const PickerOption = memo(function PickerOption({
   disabled?: boolean;
   id: string;
   onActivate?: (id: string) => void;
-  onOptionElement?: (id: string, element: HTMLButtonElement | null) => void;
   onRender?: (id: string) => void;
   onSelect: (id: string) => void;
   selected: boolean;
@@ -30,7 +28,6 @@ export const PickerOption = memo(function PickerOption({
   const unavailable = disabled || Boolean(candidate.disabledReason);
   return (
     <button
-      ref={(element) => onOptionElement?.(candidate.id, element)}
       id={id}
       type="button"
       role="option"

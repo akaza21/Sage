@@ -16,6 +16,7 @@ import { PickerOption } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
+import "../styles/searchable-picker.css";
 
 export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
 export const SEARCHABLE_PICKER_MAX_RENDERED = 200;
@@ -53,6 +54,8 @@ export function SearchablePicker({
   triggerClassName,
   triggerRole,
   triggerIcon,
+  variant,
+  keyboardFocus,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -76,6 +79,15 @@ export function SearchablePicker({
   triggerClassName?: string;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
+  /**
+   * Omit for a standard field. Harness uses a plain brand trigger and compact
+   * icon/copy/check rows; project uses a chip that can collapse to its icon.
+   * searchable-picker.css owns both surfaces and documents their --picker-*
+   * size, padding, icon-slot and compact-visibility tokens.
+   */
+  variant?: "harness" | "project";
+  /** Preserve keyboard focus styling while suppressing pointer-restored focus. */
+  keyboardFocus?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -88,7 +100,6 @@ export function SearchablePicker({
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
@@ -97,10 +108,11 @@ export function SearchablePicker({
   const [activeId, setActiveId] = useState<string | null>(null);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
   const admittedCandidates = invalid ? EMPTY_CANDIDATES : candidates;
-  const selected = useMemo(
-    () => admittedCandidates.find((candidate) => candidate.id === selectedId),
-    [admittedCandidates, selectedId],
+  const selected = admittedCandidates.find(
+    (candidate) => candidate.id === selectedId,
   );
+  const selectedLabel = selected?.triggerLabel ?? selected?.label;
+  const expanded = open && !disabled;
   const visible = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return admittedCandidates.filter((candidate) =>
@@ -115,18 +127,8 @@ export function SearchablePicker({
     () => rendered.filter((candidate) => !candidate.disabledReason),
     [rendered],
   );
-  const active = useMemo(
-    () => selectable.find((candidate) => candidate.id === activeId) ?? null,
-    [activeId, selectable],
-  );
-
-  const setOptionElement = useCallback(
-    (option: string, element: HTMLButtonElement | null) => {
-      if (element) optionRefs.current.set(option, element);
-      else optionRefs.current.delete(option);
-    },
-    [],
-  );
+  const active =
+    selectable.find((candidate) => candidate.id === activeId) ?? null;
 
   useEffect(() => {
     if (!open || disabled) return;
@@ -143,8 +145,10 @@ export function SearchablePicker({
   }, [disabled, open, searchable]);
   useLayoutEffect(() => {
     if (!active) return;
-    optionRefs.current.get(active.id)?.scrollIntoView?.({ block: "nearest" });
-  }, [active]);
+    triggerRef.current?.ownerDocument
+      .getElementById(optionId(id, active.id))
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [active, id]);
 
   const close = useCallback(
     (reason?: MenuDismissReason) => {
@@ -178,12 +182,6 @@ export function SearchablePicker({
       : (current + direction * offset + selectable.length) % selectable.length;
     setActiveId(selectable[next]?.id ?? null);
   };
-  const selectActive = () => {
-    if (!active) return;
-    onSelect(active.id);
-    close();
-    triggerRef.current?.focus();
-  };
   const selectCandidate = useCallback(
     (next: string) => {
       if (disabled) return;
@@ -211,7 +209,7 @@ export function SearchablePicker({
       moveActive(event.key === "PageDown" ? 1 : -1, true);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      selectActive();
+      if (active) selectCandidate(active.id);
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -238,7 +236,11 @@ export function SearchablePicker({
   }
 
   return (
-    <div className={["searchable-picker", className].filter(Boolean).join(" ")}>
+    <div
+      className={["searchable-picker", className].filter(Boolean).join(" ")}
+      data-variant={variant}
+      data-keyboard-focus={keyboardFocus}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -246,9 +248,9 @@ export function SearchablePicker({
           .filter(Boolean)
           .join(" ")}
         aria-label={ariaLabel}
-        aria-description={selected?.triggerLabel ?? selected?.label}
-        title={stateTitle ?? selected?.triggerLabel ?? selected?.label}
-        aria-expanded={open && !disabled}
+        aria-description={selectedLabel}
+        title={stateTitle ?? selectedLabel}
+        aria-expanded={expanded}
         aria-haspopup="listbox"
         aria-controls={`${id}-listbox`}
         role={triggerRole}
@@ -266,7 +268,7 @@ export function SearchablePicker({
       >
         {selected?.icon ? <HarnessLogo kind={selected.icon} /> : triggerIcon}
         <span className="searchable-picker__trigger-label">
-          {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
+          {selectedLabel ?? emptyLabel}
         </span>
         <ChevronDown
           className="searchable-picker__chevron"
@@ -279,6 +281,7 @@ export function SearchablePicker({
         className={[
           "searchable-picker__popover",
           "menu-popover--editor",
+          variant && `searchable-picker__popover--${variant}`,
           popoverClassName,
         ]
           .filter(Boolean)
@@ -294,7 +297,7 @@ export function SearchablePicker({
         matchTriggerWidth
         gap={popoverGap}
         onDismiss={close}
-        open={open && !disabled}
+        open={expanded}
         portalTarget={portalTarget}
         role="none"
         triggerRef={triggerRef}
@@ -308,7 +311,7 @@ export function SearchablePicker({
             aria-activedescendant={active ? optionId(id, active.id) : undefined}
             aria-autocomplete="list"
             aria-controls={`${id}-listbox`}
-            aria-expanded={open && !disabled}
+            aria-expanded={expanded}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
@@ -346,7 +349,6 @@ export function SearchablePicker({
               candidate={candidate}
               id={optionId(id, candidate.id)}
               onActivate={searchable ? setActiveId : undefined}
-              onOptionElement={setOptionElement}
               onRender={onOptionRender}
               onSelect={selectCandidate}
               selected={candidate.id === selectedId}

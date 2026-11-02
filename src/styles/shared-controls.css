@@ -170,108 +170,6 @@
   line-height: 1.4;
 }
 
-.searchable-picker {
-  min-width: 0;
-}
-
-.searchable-picker__trigger,
-.searchable-picker__input {
-  width: 100%;
-  min-width: 0;
-  min-height: var(--control-height-compact);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font: inherit;
-  font-size: var(--font-size-xs);
-}
-
-.searchable-picker__trigger {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
-  padding: 0 8px;
-  overflow: hidden;
-  text-align: left;
-}
-
-.searchable-picker__trigger-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.searchable-picker__chevron {
-  flex: 0 0 auto;
-}
-
-.searchable-picker__popover {
-  display: block;
-  overflow: hidden;
-}
-
-.searchable-picker__input {
-  padding: 0 8px;
-}
-
-.searchable-picker__popover > [role="listbox"] {
-  max-height: min(224px, calc(100vh - 148px));
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.searchable-picker__current,
-.searchable-picker__footer,
-.searchable-picker__limit,
-.searchable-picker__reason {
-  margin: 4px 8px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.searchable-picker__footer {
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--color-border-subtle);
-  line-height: 1.4;
-}
-
-.searchable-picker__current {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.searchable-picker__option[data-active="true"] {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-  box-shadow: inset 0 0 0 1px var(--menu-focus-edge);
-}
-
-.searchable-picker__option {
-  display: grid;
-  gap: 2px;
-}
-
-.searchable-picker__option:has([data-harness-icon]) {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-
-.searchable-picker__option:has([data-harness-icon]) .searchable-picker__reason {
-  grid-column: 2;
-}
-
-.searchable-picker__reason {
-  margin: 0;
-}
-
 @keyframes menu-popover-enter {
   from {
     opacity: 0;
@@ -296,22 +194,9 @@
     forced-color-adjust: auto;
   }
 
-  .searchable-picker__trigger,
-  .searchable-picker__input {
-    border-color: ButtonText;
-    color: ButtonText;
-    background: Canvas;
-  }
-
   .menu-item:focus-visible,
   .menu-item[aria-checked="true"],
   .menu-item[aria-selected="true"] {
-    color: HighlightText;
-    background: Highlight;
-    box-shadow: none;
-  }
-
-  .searchable-picker__option[data-active="true"] {
     color: HighlightText;
     background: Highlight;
     box-shadow: none;
@@ -327,11 +212,6 @@
 
   .menu-popover {
     animation: none;
-    transition: none;
-  }
-
-  .searchable-picker__trigger,
-  .searchable-picker__input {
     transition: none;
   }
 }
@@ -361,8 +241,7 @@
   color: var(--color-danger);
 }
 
-.select-control select,
-.select-control .searchable-picker__trigger {
+.select-control select {
   width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
@@ -384,8 +263,7 @@
   background: var(--color-surface-hover);
 }
 
-.select-control select:disabled,
-.select-control .searchable-picker__trigger:disabled {
+.select-control select:disabled {
   color: var(--color-text-disabled);
   cursor: not-allowed;
 }

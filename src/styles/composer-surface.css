@@ -246,18 +246,6 @@
   overflow: visible;
 }
 
-.project-scope .searchable-picker {
-  width: calc(100% + 2px);
-  margin: -1px;
-}
-
-.project-scope .searchable-picker__trigger {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-md);
-}
-
 .project-scope__icon,
 .select-control__icon {
   flex: 0 0 auto;

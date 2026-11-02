@@ -179,7 +179,7 @@ for (const width of [1888, 720, 480]) {
             ]
           : []),
         ["Model", ".composer__model-menu"],
-        ["Harness", ".composer__harness-menu"],
+        ["Harness", ".searchable-picker__popover--harness"],
       ]) {
         const trigger = composer.getByRole("button", { name, exact: true });
         // Without an advertised access mode the composer is blocked

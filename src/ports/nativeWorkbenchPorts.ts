@@ -8,7 +8,6 @@ import type {
 import { invokeNative } from "./nativeInvoke";
 import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
 import { nativeSettingsPort } from "./nativeSettingsPort";
-import { startNativeEditorWatchSession } from "./editorWatchSession";
 import type { EditorWatchSubscription } from "../domain/editorWatch";
 import type {
   BufferSnapshotAck,
@@ -147,7 +146,10 @@ const editor: EditorPort = {
     return invokeNative("discard_editor_buffer", { resource });
   },
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription> {
-    return startNativeEditorWatchSession(resource);
+    return import("./editorWatchSession").then(
+      ({ startNativeEditorWatchSession }) =>
+        startNativeEditorWatchSession(resource),
+    );
   },
 };
 

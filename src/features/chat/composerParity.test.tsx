@@ -150,6 +150,7 @@ it("keeps the plus target at least 24px before container overrides", async () =>
 it("paints a harness ring only after keyboard navigation, not initial or pointer focus", async () => {
   await loadStyle("src/styles/global.css");
   await loadStyle("src/styles/harness-picker.css");
+  await loadStyle("src/styles/searchable-picker.css");
   render(
     <ChatHarnessControls
       availableBinding

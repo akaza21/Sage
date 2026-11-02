@@ -1,135 +1,24 @@
 /* Codex-style plain control: brand mark and name on the composer fill, with
    the shared control hover. The name shows whole or not at all:
-   useHarnessNameFit hides it when the toolbar has no room, leaving the mark. */
+   useComposerCompaction hides it when the toolbar has no room, leaving the mark. */
 .composer__harness.composer__control-trigger {
-  --harness-logo-size: var(--icon-size-md);
-  --harness-chevron-size: 12px;
-  min-width: calc(var(--harness-logo-size) + 2 * var(--space-1));
+  --picker-trigger-icon-size: var(--icon-size-md);
+  min-width: calc(var(--picker-trigger-icon-size) + 2 * var(--space-1));
   max-width: 160px;
   flex: 0 1 auto;
 }
 
-.composer__harness[data-name-hidden] .searchable-picker__trigger {
-  justify-content: center;
-}
-
-.composer__harness[data-name-hidden] .searchable-picker__trigger-label,
-.composer__harness[data-name-hidden] .searchable-picker__chevron {
-  display: none;
+.composer__harness[data-name-hidden] {
+  --picker-trigger-justify: center;
+  --picker-label-display: none;
+  --picker-chevron-display: none;
 }
 
 .composer__harness.composer__control-trigger:hover {
   background: transparent;
 }
 
-.composer__harness .searchable-picker {
-  min-width: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.composer__harness .searchable-picker__trigger {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  gap: var(--space-1);
-  padding: 0 var(--space-1);
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--composer-control-text);
-  background: transparent;
-}
-
-.composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
-  outline: none;
-  box-shadow: none;
-}
-
-.composer__harness-menu {
-  --harness-logo-size: var(--icon-size-lg);
-}
-
-.composer__harness .searchable-picker__trigger-label,
-.composer__harness-menu .searchable-picker__option-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.2;
-}
-
-.composer__harness-menu .searchable-picker__option-copy {
-  font-weight: 600;
-}
-
-.composer__harness .searchable-picker__trigger-label {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.composer__harness .searchable-picker__chevron {
-  width: var(--harness-chevron-size);
-  height: var(--harness-chevron-size);
-}
-
-.composer__harness-menu.menu-popover {
-  display: flex;
-  flex-direction: column;
-  width: min(232px, calc(100vw - 32px));
-  border-radius: var(--radius-composer-menu);
-  background: var(--color-plane-raised);
-  backdrop-filter: none;
-}
-
-.composer__harness-menu .searchable-picker__current,
-.composer__harness-menu .searchable-picker__section-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-.composer__harness-menu .searchable-picker__option {
-  min-height: 32px;
-  grid-template-columns: 20px minmax(0, 1fr) 16px;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
-}
-
-.composer__harness-menu > [role="listbox"] {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
-}
-
-.composer__harness-menu .searchable-picker__subtitle {
-  overflow: hidden;
-  color: var(--composer-muted-text);
-  font-size: 11px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer__harness-menu .searchable-picker__option:hover,
-.composer__harness-menu .searchable-picker__option:focus-visible {
-  background: var(--composer-control-hover);
-  box-shadow: var(--glass-highlight);
-}
-
-.composer__harness-menu .searchable-picker__selected-check {
-  grid-column: 3;
-  color: var(--composer-control-text);
-}
-
-.composer__popover.menu-popover,
-.composer__harness-menu.menu-popover {
+.composer__popover.menu-popover {
   --menu-focus-edge: var(--color-border-strong);
   --menu-selected-fill: var(--color-surface-hover);
 }
@@ -198,36 +87,4 @@
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   white-space: normal;
-}
-
-.composer__harness-menu .searchable-picker__reason {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-@media (forced-colors: active) {
-  .composer__harness-menu.menu-popover {
-    border-color: CanvasText;
-    color: CanvasText;
-    background: Canvas;
-    box-shadow: none;
-  }
-
-  .composer__harness-menu
-    .searchable-picker__option:is(
-      :hover,
-      :focus-visible,
-      [aria-selected="true"]
-    ) {
-    color: HighlightText;
-    background: Highlight;
-    box-shadow: none;
-  }
-
-  .composer__harness-menu .searchable-picker__selected-check {
-    color: inherit;
-  }
 }
