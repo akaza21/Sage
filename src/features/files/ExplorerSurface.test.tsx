@@ -347,3 +347,207 @@ it("hides what files.exclude names, .DS_Store by default", async () => {
   });
   expect(shown()).toEqual(["Open file .DS_Store", "Open file main.ts"]);
 });
+
+it("marks changed Files and the folders holding them from the Git status (EP-13)", async () => {
+  const root = childResource("root-a");
+  const src = childResource("root-a", "src");
+  const edited = childResource("root-a", "src/edited.ts");
+  const fresh = childResource("root-a", "notes.md");
+  const log = childResource("root-a", "build.log");
+  const clean = childResource("root-a", "clean.ts");
+  const status = (
+    relativePath: string,
+    worktreeStatus: "modified" | "untracked",
+  ) => ({
+    resource: { rootId: "root-a", relativePath },
+    indexStatus: "unchanged" as const,
+    worktreeStatus,
+    additions: null,
+    deletions: null,
+  });
+  const repository = {
+    rootId: "root-a",
+    state: "repository" as const,
+    branch: "main",
+    changes: [
+      status("src/edited.ts", "modified"),
+      status("notes.md", "untracked"),
+      status("build.log", "modified"),
+    ],
+    truncated: false,
+    elapsedMs: 3,
+    message: null,
+  };
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: { roots: [repository], truncated: false, elapsedMs: 3 },
+    selectedResource: null,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [
+            { name: "src", resource: src, kind: "directory", byteLen: null },
+            { name: "notes.md", resource: fresh, kind: "file", byteLen: 1 },
+            {
+              name: "build.log",
+              resource: log,
+              kind: "file",
+              byteLen: 1,
+              ignored: true,
+            },
+            { name: "clean.ts", resource: clean, kind: "file", byteLen: 1 },
+          ],
+          truncated: false,
+        },
+      },
+      [resourceKey(src)]: {
+        phase: "ready",
+        value: {
+          resource: src,
+          entries: [
+            { name: "edited.ts", resource: edited, kind: "file", byteLen: 1 },
+          ],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: { [resourceKey(src)]: true },
+  });
+
+  render(<ExplorerSurface />);
+
+  // The marks arrive with their lazy chunk.
+  const folder = await screen.findByRole("treeitem", {
+    name: "Toggle folder src, Contains changes",
+  });
+  expect(folder).toHaveClass("tree__row--git", "git-tone--modified");
+  expect(folder).toHaveTextContent("src•");
+  const editedRow = screen.getByRole("treeitem", {
+    name: "Open file src/edited.ts, Modified",
+  });
+  expect(editedRow).toHaveTextContent("edited.tsM");
+  expect(editedRow).toHaveAttribute("title", "src/edited.ts, Modified");
+  expect(
+    screen.getByRole("treeitem", { name: "Open file notes.md, Untracked" }),
+  ).toHaveClass("git-tone--untracked");
+  // Ignored and changed: both states show.
+  expect(
+    screen.getByRole("treeitem", { name: "Open file build.log, Modified" }),
+  ).toHaveClass("tree__row--ignored", "tree__row--git");
+  expect(
+    screen.getByRole("treeitem", { name: "Open file clean.ts" }),
+  ).not.toHaveClass("tree__row--git");
+  expect(
+    screen.getByRole("button", { name: "A, Contains changes" }),
+  ).toHaveClass("root-tree__heading--git");
+
+  // An EP-12 refresh that changes the status updates the marks.
+  act(() => {
+    useWorkbenchStore.setState({
+      repositories: {
+        roots: [{ ...repository, changes: [status("clean.ts", "modified")] }],
+        truncated: false,
+        elapsedMs: 3,
+      },
+    });
+  });
+  expect(
+    screen.getByRole("treeitem", { name: "Toggle folder src" }),
+  ).not.toHaveClass("tree__row--git");
+  expect(
+    screen.getByRole("treeitem", { name: "Open file clean.ts, Modified" }),
+  ).toBeInTheDocument();
+
+  // `git.decorations` off: no marks.
+  act(() => {
+    useEditorSettingsStore.setState({
+      settings: {
+        ...useEditorSettingsStore.getState().settings,
+        "git.decorations": false,
+      },
+    });
+  });
+  expect(
+    screen.getByRole("treeitem", { name: "Open file clean.ts" }),
+  ).not.toHaveClass("tree__row--git");
+  expect(screen.getByRole("button", { name: "A" })).not.toHaveClass(
+    "root-tree__heading--git",
+  );
+});
+
+it("keeps unchanged Explorer rows from re-rendering when a refresh changes another File", async () => {
+  const root = childResource("root-a");
+  const a = childResource("root-a", "a.ts");
+  const change = (relativePath: string) => ({
+    resource: { rootId: "root-a", relativePath },
+    indexStatus: "unchanged" as const,
+    worktreeStatus: "modified" as const,
+    additions: null,
+    deletions: null,
+  });
+  const repo = (paths: string[]) => ({
+    roots: [
+      {
+        rootId: "root-a",
+        state: "repository" as const,
+        branch: "main",
+        changes: paths.map(change),
+        truncated: false,
+        elapsedMs: 1,
+        message: null,
+      },
+    ],
+    truncated: false,
+    elapsedMs: 1,
+  });
+  useWorkbenchStore.setState({
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+    repositories: repo(["a.ts"]),
+    selectedResource: null,
+    directoryListings: {
+      [resourceKey(root)]: {
+        phase: "ready",
+        value: {
+          resource: root,
+          entries: [{ name: "a.ts", resource: a, kind: "file", byteLen: 1 }],
+          truncated: false,
+        },
+      },
+    },
+    expandedDirectories: {},
+  });
+  render(<ExplorerSurface />);
+  await screen.findByRole("treeitem", { name: "Open file a.ts, Modified" });
+  const iconRenders = fileKindIcon.mock.calls.length;
+  act(() => {
+    useWorkbenchStore.setState({ repositories: repo(["a.ts", "b.ts"]) });
+  });
+  // The heading re-renders; the a.ts row (memoized) does not.
+  expect(fileKindIcon.mock.calls.length - iconRenders).toBe(1);
+});

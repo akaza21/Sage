@@ -95,14 +95,15 @@ function setReady(state: RootRepositoryStatus["state"] = "repository") {
   });
 }
 
-function stubBase() {
+function stubBase(staged = () => ({ oid: "oid-1", content: "one\ntwo\n" })) {
   return vi
     .spyOn(getWorkbenchPorts().repository, "getFileGitBase")
-    .mockImplementation(async (_resource, knownOid): Promise<FileGitBase> =>
-      knownOid === "oid-1"
-        ? { state: "unchanged", oid: "oid-1" }
-        : { state: "ready", oid: "oid-1", content: "one\ntwo\n" },
-    );
+    .mockImplementation(async (_resource, knownOid): Promise<FileGitBase> => {
+      const { oid, content } = staged();
+      return knownOid === oid
+        ? { state: "unchanged", oid }
+        : { state: "ready", oid, content };
+    });
 }
 
 afterEach(() => {
@@ -113,33 +114,37 @@ afterEach(() => {
 });
 
 describe("FileSurface change markers (EP-14)", () => {
-  it("marks an Editor File's changes and reloads the staged text on a status change", async () => {
-    const getBase = stubBase();
-    setReady();
-    const { container } = render(<FileSurface tab={tab} />);
-    await screen.findByRole("textbox", { name: "Edit gutter.txt" });
-    await waitFor(
-      () =>
-        expect(
-          container.querySelector(".git-gutter-marker--modified"),
-        ).not.toBeNull(),
-      { timeout: 2_000 },
-    );
-    expect(getBase).toHaveBeenCalledWith(resource, null);
-
-    // EP-12 publishes a new root object when Git state changed.
-    useWorkbenchStore.setState((state) => ({
-      repositories: { ...state.repositories, roots: [root()] },
-    }));
-    await waitFor(() => expect(getBase).toHaveBeenCalledTimes(2));
-    expect(getBase).toHaveBeenLastCalledWith(resource, "oid-1");
-
-    // Staging another hunk can leave the status equal (EP-12 then keeps the
-    // root object); the finished refresh still reloads the staged text.
-    useWorkbenchStore.setState({ repositoryRefreshing: true });
-    useWorkbenchStore.setState({ repositoryRefreshing: false });
-    await waitFor(() => expect(getBase).toHaveBeenCalledTimes(3));
-  });
+  it.each(["status change", "finished refresh"])(
+    "reloads staged text on a %s and clears visible markers",
+    async (refresh) => {
+      let staged = { oid: "oid-1", content: "one\ntwo\n" };
+      stubBase(() => staged);
+      setReady();
+      const { container } = render(<FileSurface tab={tab} />);
+      await screen.findByRole("textbox", { name: "Edit gutter.txt" });
+      await waitFor(
+        () =>
+          expect(
+            container.querySelector(".git-gutter-marker--modified"),
+          ).not.toBeNull(),
+        { timeout: 2_000 },
+      );
+      staged = { oid: "oid-2", content: document.buffer.content };
+      if (refresh === "status change") {
+        // EP-12 publishes a new root object when Git state changed.
+        useWorkbenchStore.setState((state) => ({
+          repositories: { ...state.repositories, roots: [root()] },
+        }));
+      } else {
+        // Staging another hunk can leave status equal, preserving the root.
+        useWorkbenchStore.setState({ repositoryRefreshing: true });
+        useWorkbenchStore.setState({ repositoryRefreshing: false });
+      }
+      await waitFor(() =>
+        expect(container.querySelector(".git-gutter-marker")).toBeNull(),
+      );
+    },
+  );
 
   it("gives the Agent pane's read-only File no gutter and asks Git nothing", async () => {
     const getBase = stubBase();

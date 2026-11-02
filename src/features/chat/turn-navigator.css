@@ -1,7 +1,7 @@
 .turn-navigator {
   position: absolute;
   left: 13px;
-  z-index: 6;
+  z-index: var(--z-floating);
   transform: translateY(-50%);
 }
 .turn-navigator ol {
@@ -25,8 +25,8 @@
   height: var(--dash-height);
   background: var(--agent-nav-dash);
   transition:
-    width 200ms ease-out,
-    background-color 200ms;
+    width var(--motion-duration-indicator) ease-out,
+    background-color var(--motion-duration-indicator);
 }
 .turn-navigator button[data-visible="true"]::before {
   background: var(--agent-nav-dash-visible);

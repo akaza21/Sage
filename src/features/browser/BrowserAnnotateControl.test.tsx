@@ -112,6 +112,8 @@ it("sits between the navigation group and the address", () => {
         onScreenshot={vi.fn()}
         onZoom={vi.fn()}
         onZoomReset={vi.fn()}
+        deviceOpen={false}
+        onDevice={vi.fn()}
         onDownloads={vi.fn()}
         onHistory={vi.fn()}
         onSettings={vi.fn()}
@@ -208,7 +210,7 @@ it("covers the page frame with the comment box while an element waits", async ()
         onControl={onControl}
         onError={onError}
       />
-      <div className="browser-surface__frame" data-testid="frame" />
+      <div className="browser-surface__viewport" data-testid="frame" />
     </section>,
   );
   await act(async () => undefined);

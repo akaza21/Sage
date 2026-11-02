@@ -5,7 +5,7 @@ use crate::workspace::Workspace;
 use super::{
     contained_file::open_contained_file,
     engine::{RootCounters, SearchBudget, SearchEngine},
-    literal_match::literal_matches,
+    file_scan::{BINARY_SNIFF_BYTES, LineMatches, ScanQuery, one_based},
     types::{
         ContinuationCursor, SearchLimitReason, SearchRootReport, SearchRootState,
         WorkspaceSearchMatch, push_reason,
@@ -27,7 +27,7 @@ impl SearchEngine {
     ) -> bool {
         if let Some(seek) = seek {
             return seek.entries_visited >= self.limits.max_entries
-                || seek.started_at.elapsed() >= self.limits.max_duration;
+                || self.time_since(seek.started_at) >= self.limits.max_duration;
         }
         self.limit_reached(budget, result_count)
     }
@@ -36,9 +36,7 @@ impl SearchEngine {
         &self,
         workspace: &Workspace,
         relative_path: &str,
-        query: &str,
-        case_sensitive: bool,
-        whole_word: bool,
+        query: ScanQuery<'_>,
         cursor: &ContinuationCursor,
     ) -> bool {
         let resource = workspace.resource_unchecked(relative_path);
@@ -60,15 +58,24 @@ impl SearchEngine {
         let Ok(content) = std::str::from_utf8(&bytes) else {
             return false;
         };
-        content
+        // Only the cursor's own line can hold it.
+        let Some(raw_line) = content
             .split('\n')
-            .enumerate()
-            .any(|(line_index, raw_line)| {
-                let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-                literal_positions(line, query, case_sensitive, whole_word).any(|column| {
-                    cursor.line_number == one_based(line_index) && cursor.column_number == column
-                })
-            })
+            .nth(cursor.line_number.saturating_sub(1) as usize)
+        else {
+            return false;
+        };
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let mut columns = LineMatches::new(line, self.limits.max_preview_chars);
+        let mut found = false;
+        query
+            .literal
+            .for_each_match(line, query.whole_word, |(start, _)| {
+                let column = columns.column(start);
+                found = column == cursor.column_number;
+                column < cursor.column_number
+            });
+        found
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -76,9 +83,7 @@ impl SearchEngine {
         &self,
         workspace: &Workspace,
         relative_path: String,
-        query: &str,
-        case_sensitive: bool,
-        whole_word: bool,
+        query: ScanQuery<'_>,
         cursor: &ContinuationCursor,
         matches: &mut Vec<WorkspaceSearchMatch>,
         budget: &mut SearchBudget,
@@ -115,7 +120,11 @@ impl SearchEngine {
         // Binary files are skipped like symlinks: counted, but the search stays
         // complete, as in VS Code. Text that is not UTF-8 was not searched, so it
         // still marks the root partial.
-        if bytes.iter().take(8_192).any(|byte| *byte == 0) {
+        if bytes
+            .iter()
+            .take(BINARY_SNIFF_BYTES as usize)
+            .any(|byte| *byte == 0)
+        {
             counters.skipped_files += 1;
             return;
         }
@@ -128,26 +137,27 @@ impl SearchEngine {
         budget.bytes_scanned += bytes.len() as u64;
         counters.files_scanned += 1;
         counters.bytes_scanned += bytes.len() as u64;
-        for (line_index, raw_line) in content.split('\n').enumerate() {
+        // Lines before the cursor's hold nothing new.
+        let skipped = cursor.line_number.saturating_sub(1) as usize;
+        for (line_index, raw_line) in content.split('\n').enumerate().skip(skipped) {
             let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
-            for column in literal_positions(line, query, case_sensitive, whole_word) {
-                let line_number = one_based(line_index);
-                if line_number < cursor.line_number
-                    || (line_number == cursor.line_number && column <= cursor.column_number)
-                {
-                    continue;
-                }
-                matches.push(WorkspaceSearchMatch {
-                    resource: resource.clone(),
-                    line_number,
-                    column_number: column,
-                    preview: bounded_preview(line, self.limits.max_preview_chars),
+            let line_number = one_based(line_index);
+            let mut found = LineMatches::new(line, self.limits.max_preview_chars);
+            query
+                .literal
+                .for_each_match(line, query.whole_word, |(start, _)| {
+                    let found_match = found.at(&resource, line_number, start);
+                    if line_number > cursor.line_number
+                        || found_match.column_number > cursor.column_number
+                    {
+                        matches.push(found_match);
+                    }
+                    matches.len() < self.limits.max_results
                 });
-                if matches.len() == self.limits.max_results {
-                    push_reason(&mut budget.reasons, SearchLimitReason::Results);
-                    counters.partial = true;
-                    return;
-                }
+            if matches.len() == self.limits.max_results {
+                push_reason(&mut budget.reasons, SearchLimitReason::Results);
+                counters.partial = true;
+                return;
             }
         }
     }
@@ -165,36 +175,4 @@ pub(super) fn stale_report(root_id: &str, root_name: String) -> SearchRootReport
         error_count: 0,
         message: None,
     }
-}
-
-fn literal_positions<'a>(
-    line: &'a str,
-    query: &'a str,
-    case_sensitive: bool,
-    whole_word: bool,
-) -> impl Iterator<Item = u32> + 'a {
-    literal_matches(line, query, case_sensitive, whole_word)
-        .into_iter()
-        .map(|(start, _)| column_number(line, start))
-}
-
-fn one_based(zero_based: usize) -> u32 {
-    u32::try_from(zero_based.saturating_add(1)).unwrap_or(u32::MAX)
-}
-
-fn column_number(line: &str, byte_offset: usize) -> u32 {
-    u32::try_from(line[..byte_offset].chars().count().saturating_add(1)).unwrap_or(u32::MAX)
-}
-
-fn bounded_preview(line: &str, max_chars: usize) -> String {
-    let trimmed = line.trim();
-    if trimmed.chars().count() <= max_chars {
-        return trimmed.into();
-    }
-    let mut preview = trimmed
-        .chars()
-        .take(max_chars.saturating_sub(1))
-        .collect::<String>();
-    preview.push('…');
-    preview
 }

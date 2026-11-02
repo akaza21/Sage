@@ -5,31 +5,71 @@ import "@xterm/xterm/css/xterm.css";
 import {
   readUserTerminal,
   resizeUserTerminal,
+  TERMINAL_INPUT_BYTES,
+  TERMINAL_MAX_COLUMNS,
+  TERMINAL_MAX_ROWS,
+  terminalErrorCode,
   terminalErrorLabel,
   writeUserTerminal,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { utf8ByteLength } from "../domain/text";
+import { withStyleNonce } from "../ports/styleNonce";
 
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
-
-function errorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
-    ? (error as { code?: unknown }).code
-    : undefined;
-}
+/** Backoff between offers of input the native side refused as busy. */
+const INPUT_RETRY_FIRST_DELAY_MS = 50;
+const INPUT_RETRY_MAX_DELAY_MS = 500;
+/** Pause before reading again after another reader held the output. */
+const READ_RETRY_DELAY_MS = 100;
+const SCROLLBACK_LINES = 1_000;
+// xterm requires two columns for wide characters and at least one row.
+const MIN_COLUMNS = 2;
+const MIN_ROWS = 1;
 
 interface Dimensions {
   columns: number;
   rows: number;
 }
 
-function dimensionsFor(element: HTMLElement): Dimensions {
+/** xterm 6 has no public cell metrics API. Keep this private seam local. */
+type MeasuredTerminal = Terminal & {
+  _core: {
+    _renderService: {
+      dimensions: { device: { cell: { width: number; height: number } } };
+    };
+  };
+};
+
+/** Fit unrounded device cells, independent of the previous grid's rounding. */
+function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
+  const cell = (terminal as MeasuredTerminal)._core._renderService.dimensions
+    .device.cell;
+  if (cell.width <= 0 || cell.height <= 0)
+    return { columns: terminal.cols, rows: terminal.rows };
+  const scrollbarWidth =
+    element.querySelector(".scrollbar.vertical")?.getBoundingClientRect()
+      .width ?? 0;
   return {
-    columns: Math.max(1, Math.min(500, Math.floor(element.clientWidth / 7.3))),
-    rows: Math.max(1, Math.min(300, Math.floor(element.clientHeight / 16))),
+    columns: Math.max(
+      MIN_COLUMNS,
+      Math.min(
+        TERMINAL_MAX_COLUMNS,
+        Math.floor(
+          ((element.clientWidth - scrollbarWidth) * devicePixelRatio) /
+            cell.width,
+        ),
+      ),
+    ),
+    rows: Math.max(
+      MIN_ROWS,
+      Math.min(
+        TERMINAL_MAX_ROWS,
+        Math.floor((element.clientHeight * devicePixelRatio) / cell.height),
+      ),
+    ),
   };
 }
 
@@ -46,7 +86,7 @@ export function TerminalDock({
   ended,
   onStatus,
 }: TerminalDockProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
   useEffect(() => {
     onStatusRef.current = onStatus;
@@ -61,7 +101,7 @@ export function TerminalDock({
   );
 
   useEffect(() => {
-    const element = viewportRef.current;
+    const element = screenRef.current;
     if (!element) return;
     let stopped = false;
     let sessionEnded = ended;
@@ -70,16 +110,14 @@ export function TerminalDock({
     let inputSending = false;
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
-    let observedPixelRatio = window.devicePixelRatio;
+    let observedPixelRatio = devicePixelRatio;
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
       cursorBlink: true,
+      scrollback: SCROLLBACK_LINES,
       // xterm measures a concrete face; Menlo keeps macOS off Courier.
       fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
       lineHeight: 1.3,
-      scrollback: 1_000,
       theme: {
         background: "#141414",
         foreground: "#dedede",
@@ -87,8 +125,10 @@ export function TerminalDock({
         selectionBackground: "#444444",
       },
     });
-    terminal.open(element);
-    const initial = dimensionsFor(element);
+    // xterm has no nonce option; its renderer and viewport create their
+    // <style> elements inside open().
+    withStyleNonce(element.ownerDocument, () => terminal.open(element));
+    const initial = dimensionsFor(element, terminal);
     terminal.resize(initial.columns, initial.rows);
 
     async function pollOutput(): Promise<void> {
@@ -99,8 +139,10 @@ export function TerminalDock({
           try {
             page = await readUserTerminal(ownerScope, session, cursor);
           } catch (error) {
-            if (errorCode(error) === "busy") {
-              await new Promise((resolve) => setTimeout(resolve, 100));
+            if (terminalErrorCode(error) === "busy") {
+              await new Promise((resolve) =>
+                setTimeout(resolve, READ_RETRY_DELAY_MS),
+              );
               continue;
             }
             throw error;
@@ -146,13 +188,17 @@ export function TerminalDock({
     // again after a growing pause, for up to INPUT_RETRY_MS.
     async function writeWhenAccepted(chunk: string): Promise<void> {
       const started = Date.now();
-      for (let delay = 50; ; delay = Math.min(delay * 2, 500)) {
+      for (
+        let delay = INPUT_RETRY_FIRST_DELAY_MS;
+        !stopped;
+        delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
+      ) {
         try {
           await writeUserTerminal(ownerScope, session, chunk);
           return;
         } catch (error) {
           if (
-            errorCode(error) !== "busy" ||
+            terminalErrorCode(error) !== "busy" ||
             stopped ||
             Date.now() - started >= INPUT_RETRY_MS
           )
@@ -175,7 +221,7 @@ export function TerminalDock({
           } catch (error) {
             pendingInput = "";
             pendingInputBytes = 0;
-            sessionEnded = errorCode(error) === "ended";
+            sessionEnded = terminalErrorCode(error) === "ended";
             if (!stopped)
               onStatusRef.current(terminalErrorLabel(error), sessionEnded);
             break;
@@ -190,7 +236,7 @@ export function TerminalDock({
       if (stopped || sessionEnded) return;
       const byteLength = utf8ByteLength(data);
       if (byteLength === 0) return;
-      if (byteLength > 4_096 || pendingInputBytes + byteLength > 4_096) {
+      if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
         onStatusRef.current(
           "Input was not sent: terminal input buffer limit reached.",
         );
@@ -202,11 +248,11 @@ export function TerminalDock({
     });
     const refreshDimensions = () => {
       if (stopped) return;
-      if (window.devicePixelRatio !== observedPixelRatio) {
-        observedPixelRatio = window.devicePixelRatio;
+      if (devicePixelRatio !== observedPixelRatio) {
+        observedPixelRatio = devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
       }
-      const next = dimensionsFor(element);
+      const next = dimensionsFor(element, terminal);
       if (terminal.cols === next.columns && terminal.rows === next.rows) return;
       terminal.resize(next.columns, next.rows);
       latestResize = next;
@@ -215,14 +261,8 @@ export function TerminalDock({
     const observer = new ResizeObserver(refreshDimensions);
     observer.observe(element);
     window.addEventListener("resize", refreshDimensions);
-    void resizeUserTerminal(
-      ownerScope,
-      session,
-      initial.columns,
-      initial.rows,
-    ).catch((error: unknown) => {
-      if (!stopped) onStatusRef.current(terminalErrorLabel(error));
-    });
+    latestResize = initial;
+    void drainResizes();
     void pollOutput();
     terminal.focus();
     return () => {
@@ -234,5 +274,9 @@ export function TerminalDock({
     };
   }, [ended, ownerScope, session]);
 
-  return <div className="terminal-dock__viewport" ref={viewportRef} />;
+  return (
+    <div className="terminal-dock__viewport">
+      <div className="terminal-dock__screen" ref={screenRef} />
+    </div>
+  );
 }

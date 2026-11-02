@@ -205,26 +205,85 @@ fn input_and_resize_accept_exact_bounds_and_reject_plus_one_without_effect() {
         );
         fixture
             .port
-            .resize(&fixture.authority(), &fixture.scope, handle, 500, 300)
+            .resize(
+                &fixture.authority(),
+                &fixture.scope,
+                handle,
+                MAX_COLUMNS,
+                MAX_ROWS,
+            )
             .await
             .unwrap();
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 501, 300)
+                .resize(
+                    &fixture.authority(),
+                    &fixture.scope,
+                    handle,
+                    MAX_COLUMNS + 1,
+                    MAX_ROWS
+                )
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         assert_eq!(
             fixture
                 .port
-                .resize(&fixture.authority(), &fixture.scope, handle, 500, 0)
+                .resize(&fixture.authority(), &fixture.scope, handle, MAX_COLUMNS, 0)
                 .await,
             Err(TerminalError::InvalidDimensions)
         );
         let record = fixture.record.lock().unwrap();
         assert_eq!(record.writes, vec![exact.into_bytes()]);
-        assert_eq!(record.sizes, vec![(500, 300)]);
+        assert_eq!(record.sizes, vec![(MAX_COLUMNS, MAX_ROWS)]);
+    });
+}
+
+#[test]
+fn create_and_resize_admit_only_a_one_to_500_by_one_to_300_grid() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let rejected = [(0, 24), (80, 0), (501, 24), (80, 301)];
+        for (columns, rows) in rejected {
+            assert_eq!(
+                fixture
+                    .port
+                    .create(&fixture.authority(), &fixture.scope, columns, rows)
+                    .await,
+                Err(TerminalError::InvalidDimensions),
+                "create {columns}x{rows}"
+            );
+        }
+        assert!(fixture.record.lock().unwrap().roots.is_empty());
+        let handle = fixture
+            .port
+            .create(&fixture.authority(), &fixture.scope, 500, 300)
+            .await
+            .unwrap();
+        fixture
+            .port
+            .create(&fixture.authority(), &fixture.scope, 1, 1)
+            .await
+            .unwrap();
+        for (columns, rows) in rejected {
+            assert_eq!(
+                fixture
+                    .port
+                    .resize(&fixture.authority(), &fixture.scope, handle, columns, rows)
+                    .await,
+                Err(TerminalError::InvalidDimensions),
+                "resize {columns}x{rows}"
+            );
+        }
+        fixture
+            .port
+            .resize(&fixture.authority(), &fixture.scope, handle, 1, 1)
+            .await
+            .unwrap();
+        let record = fixture.record.lock().unwrap();
+        assert_eq!(record.roots.len(), 2);
+        assert_eq!(record.sizes, vec![(1, 1)]);
     });
 }
 

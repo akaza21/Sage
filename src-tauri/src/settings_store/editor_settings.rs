@@ -207,6 +207,12 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         ticket: "EP-12",
     },
     SettingSpec {
+        key: "git.decorations",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-13",
+    },
+    SettingSpec {
         key: "editor.gitGutter",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
@@ -736,6 +742,7 @@ mod tests {
                     "**/Thumbs.db",
                 ],
                 "git.autoRefresh": true,
+                "git.decorations": true,
                 "editor.gitGutter": true,
             })
         );

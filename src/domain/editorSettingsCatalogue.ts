@@ -136,6 +136,11 @@ export const EDITOR_SETTINGS = [
     default: true,
   },
   {
+    key: "git.decorations",
+    kind: "boolean",
+    default: true,
+  },
+  {
     key: "editor.gitGutter",
     kind: "boolean",
     default: true,

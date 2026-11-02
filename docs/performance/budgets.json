@@ -21,6 +21,12 @@
         "reason": "Agent header resources panel and inline rename form; prewarmed while idle or on header intent, mounted on first use and unmounted while closed. Measured 1493 B; cap 1650 B."
       },
       {
+        "entry": "src/features/browser/BrowserDeviceController.tsx",
+        "maxGzipBytes": 3310,
+        "maxCssGzipBytes": 1200,
+        "reason": "Device toolbar (BF-7a): state, update queue, IPC, bar, grips, tokens and styles, off BrowserSurface; loads on Show device toolbar or a restore. Measured JS 3006 B, CSS 1087 B plus 10%."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,

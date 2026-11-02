@@ -30,6 +30,10 @@ const SLOW_DELAY: Duration = Duration::from_secs(8);
 
 const PAGES: &[(&str, &str)] = &[
     (
+        "/device.html",
+        include_str!("../../testdata/native-lane/device.html"),
+    ),
+    (
         "/annotate.html",
         include_str!("../../testdata/browser-site/annotate.html"),
     ),
