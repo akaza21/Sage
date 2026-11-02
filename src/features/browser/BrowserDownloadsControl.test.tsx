@@ -98,6 +98,23 @@ it("shows active progress on the toolbar button while the popover is shut", asyn
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+it("keeps saving downloads active without offering cancellation or a completed folder", async () => {
+  browserDownloads.mockResolvedValueOnce([
+    { ...download, state: "publishing" },
+  ]);
+  render(<Harness />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Downloads, 1 active" }),
+  );
+  expect(await screen.findByText("Saving · example.com")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel report.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Show report.pdf in folder" }),
+  ).toBeNull();
+});
+
 it("opens a popover listing downloads newest first instead of a bar", async () => {
   browserDownloads.mockResolvedValueOnce([
     { ...download, state: "completed", fileName: "old.zip" },

@@ -11,6 +11,7 @@ export interface BrowserDownload {
   state:
     | "choosingDestination"
     | "downloading"
+    | "publishing"
     | "completed"
     | "interrupted"
     | "canceled"
