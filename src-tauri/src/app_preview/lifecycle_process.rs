@@ -285,6 +285,9 @@ fn drain_preview_output(
         let mut notified = false;
         while let Ok(read) = reader.read(&mut bytes) {
             if read == 0 {
+                if !notified && let Some(observation) = parse_origin_observation(&prefix, true) {
+                    let _ = sender.try_send(observation);
+                }
                 break;
             }
             progress.fetch_add(read as u64, Ordering::SeqCst);
@@ -306,7 +309,8 @@ fn drain_preview_output(
                 }
                 prefix.push_str(&decoded);
             }
-            if !notified && let Some(observation) = parse_origin_observation(&prefix) {
+            debug_assert!(prefix.len() <= MAX_STARTUP_OUTPUT_BYTES);
+            if !notified && let Some(observation) = parse_origin_observation(&prefix, false) {
                 let _ = sender.try_send(observation);
                 notified = true;
             }
@@ -325,10 +329,20 @@ fn trailing_utf8(value: &str, max_bytes: usize) -> &str {
     &value[start..]
 }
 
-fn parse_origin_observation(output: &str) -> Option<StartupObservation> {
-    for token in output.split(|character: char| {
+fn parse_origin_observation(output: &str, eof: bool) -> Option<StartupObservation> {
+    let is_delimiter = |character: char| {
         character.is_whitespace() || matches!(character, '\'' | '"' | '(' | ')' | ',')
-    }) {
+    };
+    // A pipe read may stop anywhere inside a URL. Only EOF completes the
+    // final token without a delimiter; read errors do not establish EOF.
+    let complete = if eof {
+        output
+    } else {
+        output
+            .rsplit_once(is_delimiter)
+            .map_or("", |(prefix, _)| prefix)
+    };
+    for token in complete.split(is_delimiter) {
         let Some(start) = token.find("http") else {
             continue;
         };
@@ -372,6 +386,110 @@ mod tests {
     use super::{
         StartupObservation, join_unattached_drainers_before, wait_for_startup_observation,
     };
+
+    fn observations_from_chunks(chunks: Vec<Vec<u8>>) -> Vec<StartupObservation> {
+        struct ChunkReader(std::collections::VecDeque<Vec<u8>>);
+        impl std::io::Read for ChunkReader {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let Some(chunk) = self.0.front_mut() else {
+                    return Ok(0);
+                };
+                let count = buffer.len().min(chunk.len());
+                buffer[..count].copy_from_slice(&chunk[..count]);
+                chunk.drain(..count);
+                if chunk.is_empty() {
+                    self.0.pop_front();
+                }
+                Ok(count)
+            }
+        }
+        let (sender, receiver) = mpsc::sync_channel(4);
+        super::drain_preview_output(
+            ChunkReader(chunks.into()),
+            sender,
+            super::Arc::new(super::AtomicU64::new(0)),
+        )
+        .join()
+        .unwrap();
+        receiver.try_iter().collect()
+    }
+
+    #[test]
+    fn output_origin_requires_a_delimiter_or_eof() {
+        let url = "http://127.0.0.1:4321";
+        assert_eq!(super::parse_origin_observation(url, false), None);
+        for delimiter in [' ', '\n', '\t', '\'', '"', '(', ')', ','] {
+            assert_eq!(
+                super::parse_origin_observation(&format!("{url}{delimiter}pending"), false),
+                Some(StartupObservation::Origin(url.into()))
+            );
+        }
+    }
+
+    #[test]
+    fn output_origin_discards_unfinished_tokens_beyond_the_cap() {
+        assert!(
+            observations_from_chunks(vec![
+                b"http".to_vec(),
+                vec![b'x'; super::MAX_STARTUP_OUTPUT_BYTES],
+            ])
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn output_origin_waits_for_split_port() {
+        assert_eq!(
+            observations_from_chunks(vec![
+                b"  Local:   http://127.0.0.1:51".to_vec(),
+                b"73/\n".to_vec(),
+            ]),
+            vec![StartupObservation::Origin("http://127.0.0.1:5173".into())]
+        );
+    }
+
+    #[test]
+    fn output_origin_waits_for_split_host_or_scheme() {
+        for split in ["http", "http://127.0"] {
+            let url = "http://127.0.0.1:5173/\n";
+            assert_eq!(
+                observations_from_chunks(vec![
+                    split.as_bytes().to_vec(),
+                    url.as_bytes()[split.len()..].to_vec(),
+                ]),
+                vec![StartupObservation::Origin("http://127.0.0.1:5173".into())]
+            );
+        }
+    }
+
+    #[test]
+    fn output_origin_accepts_unterminated_url_at_eof() {
+        assert_eq!(
+            observations_from_chunks(vec![b"http://127.0.0.1:4321".to_vec()]),
+            vec![StartupObservation::Origin("http://127.0.0.1:4321".into())]
+        );
+    }
+
+    #[test]
+    fn output_origin_rejects_complete_non_loopback_url() {
+        for url in ["http://example.com:80 ", "http://localhost:5173 "] {
+            assert_eq!(
+                observations_from_chunks(vec![url.as_bytes().to_vec()]),
+                vec![StartupObservation::OriginNotLoopback]
+            );
+        }
+    }
+
+    #[test]
+    fn output_origin_survives_output_larger_than_startup_cap() {
+        assert_eq!(
+            observations_from_chunks(vec![
+                vec![b'x'; super::MAX_STARTUP_OUTPUT_BYTES * 2],
+                b" http://127.0.0.1:4321\n".to_vec(),
+            ]),
+            vec![StartupObservation::Origin("http://127.0.0.1:4321".into())]
+        );
+    }
 
     #[test]
     fn disconnected_output_waits_for_late_root_exit() {
