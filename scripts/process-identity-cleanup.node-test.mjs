@@ -118,7 +118,9 @@ $results=@();
 foreach($missing in @('CreationDate','ExecutablePath')){
   $row=[pscustomobject]@{ProcessId=202;ParentProcessId=1;ExecutablePath=$childRow.ExecutablePath;CreationDate=$childRow.CreationDate};
   $row.$missing=$null;
-  $result=Invoke-TestFootprintTree $root $store {return @($row)} {throw 'unproven identity must not be stopped'} {[DateTime]::UtcNow} {};
+  $script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');
+  $clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+  $result=Invoke-TestFootprintTree $root $store {return @($row)} {throw 'unproven identity must not be stopped'} $clock $delay;
   $results+=,[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}
 };
 ConvertTo-Json -InputObject $results -Compress
@@ -144,7 +146,7 @@ $results=@();
 foreach($mode in @('absent','reused')){
   $unknown=[pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath=$rootRow.ExecutablePath;CreationDate=$null};
   $script:queries=0;
-  $snapshot={$script:queries++;if($script:queries-eq1){return @($unknown)};if($mode-eq'reused'){return @($reusedRootRow)};return @()};
+  $snapshot={$script:queries++;if($script:queries-le2){return @($unknown)};if($mode-eq'reused'){return @($reusedRootRow)};return @()};
   $result=Invoke-TestFootprintTree $root $store $snapshot {throw 'must not stop'} {[DateTime]::UtcNow} {};
   $results+=,[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}
 };
@@ -154,6 +156,54 @@ ConvertTo-Json -InputObject $results -Compress
     { identityLost: false, remaining: [], reused: [] },
     { identityLost: false, remaining: [], reused: [101] },
   ]);
+});
+
+test("post-kill teardown waits for exit proof when a snapshot temporarily loses identity", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:stopped=$false;$script:afterStop=0;
+$unknown=[pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath=$null;CreationDate=$rootRow.CreationDate};
+$snapshot={if(-not $script:stopped){return @($rootRow)};$script:afterStop++;if($script:afterStop-eq1){return @($unknown)};return @()};
+$stop={param($identity)$script:stopped=$true;$true};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{forced=$result.forced;identityLost=$result.identityLost;remaining=@($result.remaining);reused=@($result.reusedProcessIds)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    forced: true,
+    identityLost: false,
+    remaining: [],
+    reused: [],
+  });
+});
+
+test("a recovered root remembers its visible descendants before termination", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:queries=0;$script:rootAlive=$true;
+$unknown=[pscustomobject]@{ProcessId=101;ParentProcessId=1;ExecutablePath=$null;CreationDate=$rootRow.CreationDate};
+$snapshot={$script:queries++;if(-not $script:rootAlive){return @($childRow)};if($script:queries-le2){return @($unknown,$childRow)};return @($rootRow,$childRow)};
+$stop={param($identity)if([int]$identity.processId-eq101){$script:rootAlive=$false};$true};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{identityLost=$result.identityLost;remaining=@($result.remaining)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, { identityLost: false, remaining: [202] });
+});
+
+test("remembered descendants do not require fresh admission while exiting", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+$script:now=[DateTime]::Parse('2026-08-30T00:00:00Z');$script:childStopped=$false;$script:rootStopped=$false;
+$unknownChild=[pscustomobject]@{ProcessId=202;ParentProcessId=101;ExecutablePath=$null;CreationDate=$childRow.CreationDate};
+$snapshot={if($script:rootStopped){return @()};if($script:childStopped){return @($rootRow,$unknownChild)};return @($rootRow,$childRow)};
+$stop={param($identity)if([int]$identity.processId-eq202){$script:childStopped=$true}else{$script:rootStopped=$true};$true};
+$clock={return $script:now};$delay={param([int]$milliseconds)$script:now=$script:now.AddSeconds(2)};
+$result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
+[ordered]@{forced=$result.forced;identityLost=$result.identityLost;remaining=@($result.remaining)}|ConvertTo-Json -Compress
+`);
+  assert.deepEqual(observed, {
+    forced: true,
+    identityLost: false,
+    remaining: [],
+  });
 });
 
 test("a Vite snapshot query failure leaves the live process untouched and blocks receipt promotion", () => {

@@ -449,6 +449,26 @@ function Get-FootprintForceKillCandidates {
   return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate)
 }
 
+function Update-FootprintTeardownPlan {
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$ProcessRows,
+    [Parameter(Mandatory)][ref]$TreeObserved
+  )
+  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $ProcessRows
+  if (-not $TreeObserved.Value -and $plan.rootState -eq "matching") {
+    # A recovered root must establish the same bounded descendant boundary as
+    # the initial observation before its tree can be terminated or proven zero.
+    Add-FootprintRememberedIdentities $KnownProcessIdentities @(
+      Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate
+    )
+    $TreeObserved.Value = $true
+    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $ProcessRows
+  }
+  return $plan
+}
+
 function Invoke-FootprintTreeCore {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
@@ -464,12 +484,11 @@ function Invoke-FootprintTreeCore {
   $rootPid = [int]$RootIdentity.processId
   [void](Add-FootprintRememberedIdentity $KnownProcessIdentities ([pscustomobject]@{ ProcessId = $rootPid; ExecutablePath = $RootIdentity.executablePath; CreationDate = $RootIdentity.creationDate }))
   $reusedProcessIds = [Collections.Generic.HashSet[int]]::new()
+  $treeObserved = $false
   $initialRows = @(& $SnapshotProvider)
-  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
+  $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows ([ref]$treeObserved)
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   if ($plan.rootState -eq "matching") {
-    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows -RootCreationDate $RootIdentity.creationDate)
-    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
     try {
       $root = Open-FootprintExactProcess $RootIdentity
       if ($null -ne $root) {
@@ -485,17 +504,17 @@ function Invoke-FootprintTreeCore {
   }
   $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
   do {
-    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-    if ($plan.candidates.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = [bool]$plan.identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
+    if ($plan.candidates.Count -eq 0 -and -not $plan.identityLost) { return [ordered]@{ forced = $false; identityLost = [bool]$plan.identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
     & $Delay 100
   } while ([DateTime](& $UtcNow) -lt $deadline)
-  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+  $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $candidates = @($plan.candidates | Sort-Object @{ Expression = { [int]$_.ProcessId -eq $rootPid } }, @{ Expression = { [int]$_.ProcessId }; Descending = $true })
   $killed = @()
   foreach ($candidate in $candidates) {
-    $currentPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $currentPlan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($currentPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
@@ -503,7 +522,7 @@ function Invoke-FootprintTreeCore {
     try {
       $terminated = [bool](& $StopExactProcess $currentIdentity)
     } catch {
-      $afterStopFailure = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+      $afterStopFailure = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
       foreach ($reusedProcessId in @($afterStopFailure.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
       $stillPresent = @($afterStopFailure.candidates | Where-Object {
           [int]$_.ProcessId -eq [int]$candidate.ProcessId -and
@@ -520,9 +539,11 @@ function Invoke-FootprintTreeCore {
   }
   $postKillDeadline = ([DateTime](& $UtcNow)).AddSeconds($script:PostKillWaitSeconds)
   do {
-    $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $remainingPlan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($remainingPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-    if ($remainingPlan.candidates.Count -eq 0) { break }
+    # An empty kill set is not exit proof while an identity is unobservable.
+    # Keep observing within the existing deadline until terminal zero is proven.
+    if ($remainingPlan.candidates.Count -eq 0 -and -not $remainingPlan.identityLost) { break }
     & $Delay 100
   } while ([DateTime](& $UtcNow) -lt $postKillDeadline)
   return [ordered]@{
