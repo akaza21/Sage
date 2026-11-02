@@ -36,8 +36,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
-  const cancelRequested = useRef(false);
-  const importRunning = useRef(false);
+  const activeImport = useRef<{ cancelRequested: boolean } | null>(null);
   const [overview, setOverview] = useState<PasswordsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -97,7 +96,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     return () => {
       mounted.current = false;
       // Leaving the page stops an import nobody is waiting on.
-      if (importRunning.current) void passwordsCancelImport();
+      if (activeImport.current) void passwordsCancelImport();
       for (const timer of timers.values()) window.clearTimeout(timer);
       timers.clear();
     };
@@ -164,35 +163,44 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   };
 
   const importCsv = () => {
-    cancelRequested.current = false;
-    importRunning.current = true;
+    const request = { cancelRequested: false };
+    activeImport.current = request;
     setImporting(true);
     void run(async () => {
-      const report = await importPasswordsCsv();
+      const report = await importPasswordsCsv().finally(() => {
+        activeImport.current = null;
+        setNotice(null);
+      });
       if (report) {
         setImported(report);
         reload();
-      } else if (cancelRequested.current) {
+      } else if (request.cancelRequested) {
         setNotice("Import cancelled. Nothing was saved.");
       }
     }).finally(() => {
-      importRunning.current = false;
       if (mounted.current) setImporting(false);
     });
   };
 
   const cancelImport = () => {
-    cancelRequested.current = true;
+    const request = activeImport.current;
+    if (!request) return;
+    request.cancelRequested = true;
     void passwordsCancelImport().then(
       (accepted) => {
-        if (mounted.current && accepted === false) {
+        if (
+          mounted.current &&
+          activeImport.current === request &&
+          accepted === false
+        ) {
           setNotice(
             "The import can no longer be cancelled. Its results will appear when it finishes.",
           );
         }
       },
       (cause: unknown) => {
-        if (mounted.current) setError(errorText(cause));
+        if (mounted.current && activeImport.current === request)
+          setError(errorText(cause));
       },
     );
   };

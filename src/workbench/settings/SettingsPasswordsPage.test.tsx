@@ -38,7 +38,7 @@ vi.mock("../../ports/nativePasswordsPort", () => ({
 
 import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { SettingsPasswordsPage } from "./SettingsPasswordsPage";
-import { REVEAL_MS } from "./savedPasswords";
+import { REVEAL_MS, type PasswordImportReport } from "./savedPasswords";
 
 const all = () => matchingSettingsEntryIds("", "passwords");
 const ADA = { id: "a1", origin: "https://example.com", username: "ada" };
@@ -386,4 +386,75 @@ it("reports too-late cancellation before displaying a delayed committed import",
   ).toBeVisible();
   expect(await screen.findByText("example.com")).toBeVisible();
   expect(screen.queryByText("Import cancelled. Nothing was saved.")).toBeNull();
+  expect(
+    screen.queryByText(/Its results will appear when it finishes/),
+  ).toBeNull();
 });
+
+it.each([
+  ["completed import", false],
+  ["next import", false],
+  ["completed import", true],
+  ["next import", true],
+  ["completion response", false],
+  ["completion response", true],
+])(
+  "ignores a late cancel response during the %s (rejection: %s)",
+  async (phase, rejection) => {
+    let finishImport: (report: PasswordImportReport) => void = () => {};
+    let answerCancel: () => void = () => {};
+    native.importCsv.mockImplementation(
+      () => new Promise((resolve) => (finishImport = resolve)),
+    );
+    native.cancelImport.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          answerCancel = () =>
+            rejection ? reject("Cancellation unavailable.") : resolve(false);
+        }),
+    );
+    render(<SettingsPasswordsPage visible={all()} />);
+    await screen.findByText("No saved passwords");
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
+    const report = {
+      added: 1,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      fileName: "first.csv",
+    };
+    await act(async () => {
+      finishImport(report);
+      if (phase === "completion response") {
+        await Promise.resolve();
+        answerCancel();
+      }
+    });
+    expect(
+      await screen.findByText(/Imported first.csv: 1 added/),
+    ).toBeVisible();
+
+    if (phase === "next import") {
+      fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+      expect(
+        screen.getByRole("button", { name: "Cancel import" }),
+      ).toBeVisible();
+    }
+    if (phase !== "completion response") await act(async () => answerCancel());
+    expect(
+      screen.queryByText(/Its results will appear when it finishes/),
+    ).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    if (phase === "next import") {
+      await act(async () =>
+        finishImport({ ...report, fileName: "second.csv" }),
+      );
+      expect(
+        await screen.findByText(/Imported second.csv: 1 added/),
+      ).toBeVisible();
+    }
+    expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
+  },
+);
