@@ -176,7 +176,12 @@ async function settleWindowsTree(pid, leader, startedAt, command) {
     deadline,
     startedAt + command.terminationGraceMs,
   );
-  const graceful = await runBoundedTaskkill(pid, false, deadline - Date.now());
+  // Leave the rest of the settlement deadline for forced tree termination.
+  const graceful = await runBoundedTaskkill(
+    pid,
+    false,
+    graceDeadline - Date.now(),
+  );
   let treeProven = graceful.success;
   if (!treeProven) {
     await delayUntil(graceDeadline);
