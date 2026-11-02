@@ -3564,9 +3564,10 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
   );
   let ambientIdentity;
   let cleanupFailure;
-  // The controller records the owned root's identity as soon as it is known,
-  // so a controller killed by its timeout still leaves the tree reachable.
-  const ownedRuntimeFile = path.join(root, "owned-runtime.json");
+  // The controller records the owned root's identity with one small write as
+  // soon as it is known, so a controller killed by its timeout still leaves
+  // the tree reachable.
+  const ownedRuntimeFile = path.join(root, "owned-root.txt");
   let ownedCleanupProven = false;
   try {
     await waitForText(ambient.stdout, "ready", 5000);
@@ -3589,7 +3590,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
       "Write-RuntimeCleanupQuarantine",
       "Stop-OwnedRuntimeTree",
     ];
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;$recordOwned={param([object[]]$remembered=@())[IO.File]::WriteAllText(${quote(ownedRuntimeFile)},([ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=$identity.creationDate;remembered=$remembered}|ConvertTo-Json -Depth 5 -Compress))};try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};& $recordOwned;$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$outcome='accepted';try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddMilliseconds(-1)))}catch{$outcome=$_.Exception.Message};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{outcome=$outcome;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};[IO.File]::WriteAllLines(${quote(ownedRuntimeFile)},[string[]]@([string]$identity.processId,[string]$identity.executablePath,[string]$identity.creationDate));$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$outcome='accepted';try{[void](Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddMilliseconds(-1)))}catch{$outcome=$_.Exception.Message};$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};[ordered]@{outcome=$outcome;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount}|ConvertTo-Json -Compress}finally{if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
     const result = spawnSync(
       powershell,
       [
@@ -3624,7 +3625,7 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
     }
     if (!ownedCleanupProven) {
       try {
-        cleanupRecordedRuntime(ownedRuntimeFile);
+        cleanupRecordedRuntime(root);
       } catch (error) {
         failures.push(error);
       }
@@ -3644,10 +3645,11 @@ test("Windows frontend readiness rejects an ambient listener race outside the ow
 test("Windows frontend readiness admits an owned grandchild listener that appears after the tree snapshot", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-grandchild-race-"));
   const port = await availableLoopbackPort();
-  // The controller records the owned root's identity as soon as it is known,
-  // and the descendants' identities once they listen, so a controller killed
-  // by its timeout still leaves the whole tree reachable.
-  const ownedRuntimeFile = path.join(root, "owned-runtime.json");
+  // The controller records the owned root's identity with one small write as
+  // soon as it is known, and each node descendant records its own identity
+  // when it starts, so a controller killed by its timeout still leaves the
+  // whole tree reachable without spending the readiness deadline on it.
+  const ownedRuntimeFile = path.join(root, "owned-root.txt");
   let ownedCleanupProven = false;
   let cleanupFailure;
   const powershell = path.join(
@@ -3669,11 +3671,11 @@ test("Windows frontend readiness admits an owned grandchild listener that appear
   try {
     writeFileSync(
       path.join(root, "child.cjs"),
-      `require("node:child_process").spawn(process.execPath,["grandchild.cjs"],{stdio:"ignore",windowsHide:true});setTimeout(()=>process.exit(0),30000);`,
+      `require("node:fs").writeFileSync("child-identity.json",JSON.stringify({processId:process.pid,executablePath:process.execPath,startedAt:performance.timeOrigin}));require("node:child_process").spawn(process.execPath,["grandchild.cjs"],{stdio:"ignore",windowsHide:true});setTimeout(()=>process.exit(0),30000);`,
     );
     writeFileSync(
       path.join(root, "grandchild.cjs"),
-      `const server=require("node:http").createServer((_q,r)=>r.end("ready"));server.listen(${port},"127.0.0.1",()=>require("node:fs").writeFileSync("listening",""));setTimeout(()=>process.exit(0),30000);`,
+      `require("node:fs").writeFileSync("grandchild-identity.json",JSON.stringify({processId:process.pid,executablePath:process.execPath,startedAt:performance.timeOrigin}));const server=require("node:http").createServer((_q,r)=>r.end("ready"));server.listen(${port},"127.0.0.1",()=>require("node:fs").writeFileSync("listening",""));setTimeout(()=>process.exit(0),30000);`,
     );
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
     const names = [
@@ -3695,7 +3697,7 @@ test("Windows frontend readiness admits an owned grandchild listener that appear
     // before and after probes, with no second loop iteration.
     const ownedTeardownMs = 5000;
     const rootCommand = `for($i=0;$i -lt 1500 -and -not (Test-Path -LiteralPath 'signal');$i++){Start-Sleep -Milliseconds 20};if(Test-Path -LiteralPath 'signal'){& ${quote(process.execPath)} 'child.cjs'}`;
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;$runtime=$null;$cleanup=$null;$owned=@();$alive=0;$recordOwned={param([object[]]$remembered=@())[IO.File]::WriteAllText(${quote(ownedRuntimeFile)},([ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=$identity.creationDate;remembered=$remembered}|ConvertTo-Json -Depth 5 -Compress))};try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command',${quote(rootCommand)}) -WorkingDirectory ${quote(root)} -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};& $recordOwned;$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$script:probe=0;$listener={param($value)$script:probe++;if($script:probe-eq1){[IO.File]::WriteAllText(${quote(path.join(root, "signal"))},'');$fixture=[Diagnostics.Stopwatch]::StartNew();while(-not [IO.File]::Exists(${quote(path.join(root, "listening"))})){if($fixture.ElapsedMilliseconds -ge 10000){throw 'The grandchild fixture did not start listening.'};Start-Sleep -Milliseconds 20};& $recordOwned @(Get-FootprintDescendants ([int]$identity.processId) @(Get-FootprintProcessSnapshot) -RootCreationDate $identity.creationDate|ForEach-Object {ConvertTo-FootprintProcessIdentity $_})};Get-FrontendListenerIdentity $value};$http={param($ignored,$timeout)$true};$outcome='';$ready=$null;try{$ready=Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)) $listener $http;$outcome='accepted'}catch{$outcome=$_.Exception.Message};$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$owned=@($ownedIds|ForEach-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}|Where-Object {$null -ne $_.Handle});$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};$alive=@($owned|Where-Object {-not $_.WaitForExit(${ownedTeardownMs})}).Count;[ordered]@{outcome=$outcome;readyMode=$(if($null-ne$ready){$ready.mode}else{$null});frontendReady=$(if($null-ne$ready){$ready.frontendReady}else{$false});probeCount=$script:probe;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and ($null -eq $cleanup -or $alive -gt 0)){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}};foreach($owner in $owned){if(-not $owner.HasExited){try{$owner.Kill()}catch{}}};if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @(${names.map(quote).join(",")})){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$contract=[ordered]@{port=${port};origin='http://127.0.0.1:${port}/'};$process=$null;$identity=$null;$runtime=$null;$cleanup=$null;$owned=@();$alive=0;try{$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command',${quote(rootCommand)}) -WorkingDirectory ${quote(root)} -WindowStyle Hidden -PassThru;$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};[IO.File]::WriteAllLines(${quote(ownedRuntimeFile)},[string[]]@([string]$identity.processId,[string]$identity.executablePath,[string]$identity.creationDate));$runtime=New-OwnedRuntime $process ${quote(powershell)} $identity;$script:probe=0;$listener={param($value)$script:probe++;if($script:probe-eq1){[IO.File]::WriteAllText(${quote(path.join(root, "signal"))},'');$fixture=[Diagnostics.Stopwatch]::StartNew();while(-not [IO.File]::Exists(${quote(path.join(root, "listening"))})){if($fixture.ElapsedMilliseconds -ge 10000){throw 'The grandchild fixture did not start listening.'};Start-Sleep -Milliseconds 20}};Get-FrontendListenerIdentity $value};$http={param($ignored,$timeout)$true};$outcome='';$ready=$null;try{$ready=Wait-OwnedFrontendReady $runtime $contract ([DateTime]::UtcNow.AddSeconds(5)) $listener $http;$outcome='accepted'}catch{$outcome=$_.Exception.Message};$ownedIds=@($runtime.store.Values|ForEach-Object {[int]$_.processId}|Sort-Object -Unique);$owned=@($ownedIds|ForEach-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}|Where-Object {$null -ne $_.Handle});$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};$alive=@($owned|Where-Object {-not $_.WaitForExit(${ownedTeardownMs})}).Count;[ordered]@{outcome=$outcome;readyMode=$(if($null-ne$ready){$ready.mode}else{$null});frontendReady=$(if($null-ne$ready){$ready.frontendReady}else{$false});probeCount=$script:probe;identityCount=$ownedIds.Count;identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive}|ConvertTo-Json -Compress}finally{if($null -ne $runtime -and ($null -eq $cleanup -or $alive -gt 0)){try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{}};foreach($owner in $owned){if(-not $owner.HasExited){try{$owner.Kill()}catch{}}};if($null -ne $process){try{if(-not $process.HasExited){$process.Kill()}}catch{}}}`;
     const result = spawnSync(
       powershell,
       [
@@ -3724,7 +3726,7 @@ test("Windows frontend readiness admits an owned grandchild listener that appear
     const failures = [];
     if (!ownedCleanupProven) {
       try {
-        cleanupRecordedRuntime(ownedRuntimeFile);
+        cleanupRecordedRuntime(root);
       } catch (error) {
         failures.push(error);
       }
@@ -4315,16 +4317,66 @@ function waitForChildClose(child, timeoutMs) {
 }
 
 // Tears down a runtime tree whose controller did not prove its own cleanup,
-// for example when its timeout killed it. The recorded identities let the
-// cleanup stop only those exact processes, never a reused PID.
-function cleanupRecordedRuntime(identityFile) {
-  if (!existsSync(identityFile)) return;
-  const identity = JSON.parse(readFileSync(identityFile, "utf8"));
-  const cleanup = processIdentityHelper("cleanup", identity);
-  if (cleanup.identityLost || cleanup.remaining.length !== 0)
-    throw new Error(
-      `runtime cleanup unproven for ${identity.processId}/${identity.creationDate}`,
-    );
+// for example when its timeout killed it. The root's recorded identity stops
+// only that exact process and its live descendants. A node descendant records
+// its PID, executable and start time; it is stopped only when the live process
+// under that PID runs the same executable and was created no later than the
+// recorded start, which a reused PID cannot satisfy.
+function cleanupRecordedRuntime(root) {
+  const failures = [];
+  const rootFile = path.join(root, "owned-root.txt");
+  if (existsSync(rootFile)) {
+    const [processId, executablePath, creationDate] = readFileSync(
+      rootFile,
+      "utf8",
+    ).split(/\r?\n/);
+    try {
+      if (!processId || !executablePath || !creationDate)
+        throw new Error("owned root record is incomplete");
+      const identity = {
+        processId: Number(processId),
+        executablePath,
+        creationDate,
+        remembered: [],
+      };
+      const cleanup = processIdentityHelper("cleanup", identity);
+      if (cleanup.identityLost || cleanup.remaining.length !== 0)
+        throw new Error(
+          `runtime cleanup unproven for ${identity.processId}/${identity.creationDate}`,
+        );
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  for (const name of ["child", "grandchild"]) {
+    const file = path.join(root, `${name}-identity.json`);
+    if (!existsSync(file)) continue;
+    try {
+      const recorded = JSON.parse(readFileSync(file, "utf8"));
+      let live;
+      try {
+        live = processIdentityHelper("capture", recorded.processId);
+      } catch {
+        continue;
+      }
+      const created = Date.parse(live.creationDate);
+      if (
+        path.resolve(live.executablePath).toLowerCase() !==
+          path.resolve(recorded.executablePath).toLowerCase() ||
+        !(created <= recorded.startedAt)
+      )
+        continue;
+      const cleanup = processIdentityHelper("cleanup", live);
+      if (cleanup.identityLost || cleanup.remaining.length !== 0)
+        throw new Error(
+          `${name} cleanup unproven for ${live.processId}/${live.creationDate}`,
+        );
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length)
+    throw new AggregateError(failures, "recorded runtime cleanup failed");
 }
 
 function assertWindowsPortFree(port) {
