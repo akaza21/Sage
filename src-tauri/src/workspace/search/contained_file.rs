@@ -1,4 +1,7 @@
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::{File, Metadata},
+    path::PathBuf,
+};
 
 use crate::{
     domain::ResourceRef,
@@ -38,7 +41,7 @@ fn validate_opened_file(
             "search resource is not a regular file".into(),
         ));
     }
-    if !handle_has_links(file)? {
+    if !handle_has_links(file, &handle_metadata)? {
         return Err(AppError::InvalidRequest(
             "search resource handle is unlinked".into(),
         ));
@@ -53,14 +56,14 @@ fn validate_opened_file(
 }
 
 #[cfg(unix)]
-fn handle_has_links(file: &File) -> AppResult<bool> {
+fn handle_has_links(_file: &File, metadata: &Metadata) -> AppResult<bool> {
     use std::os::unix::fs::MetadataExt;
 
-    Ok(file.metadata()?.nlink() > 0)
+    Ok(metadata.nlink() > 0)
 }
 
 #[cfg(windows)]
-fn handle_has_links(file: &File) -> AppResult<bool> {
+fn handle_has_links(file: &File, _metadata: &Metadata) -> AppResult<bool> {
     use std::{mem::zeroed, os::windows::io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
@@ -77,7 +80,7 @@ fn handle_has_links(file: &File) -> AppResult<bool> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn handle_has_links(_file: &File) -> AppResult<bool> {
+fn handle_has_links(_file: &File, _metadata: &Metadata) -> AppResult<bool> {
     Ok(false)
 }
 

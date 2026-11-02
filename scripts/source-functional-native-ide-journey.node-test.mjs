@@ -47,6 +47,10 @@ import {
   verificationFor,
   writePendingJourneyReceipt,
 } from "./source-functional-native-ide-journey.mjs";
+import {
+  HELPER_DIAGNOSTIC_CHARS_MAX,
+  processIdentityHelperOutput,
+} from "./source-functional-native-ide-bounded-tool.mjs";
 import { revalidateFreshProfile } from "./source-functional-acp04-evidence.mjs";
 import { parseAcp04ProbeArguments } from "./source-functional-acp04-live-contract.mjs";
 import { parseAv01PreviewArguments } from "./source-functional-av01-preview-contract.mjs";
@@ -335,7 +339,7 @@ test("Windows startup diagnostics exercise wrapper seams and preserve failures",
       "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-root'; sameException = [object]::ReferenceEquals($_.Exception, $rootFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
       "$descendant = $childRow",
       "function Get-FootprintRootIdentity { return $identity }",
-      "function Get-FootprintDescendants { param($id, $rows) @($descendant) }",
+      "function Get-FootprintDescendants { param($id, $rows, $RootCreationDate) @($descendant) }",
       "$descendantFailure = New-Incomplete $childRow",
       "function Add-FootprintRememberedIdentity { param($store, $value) throw $script:descendantFailure }",
       "try { Update-OwnedRuntimeTree $runtime } catch { $results += [ordered]@{ seam = 'update-descendant'; sameException = [object]::ReferenceEquals($_.Exception, $descendantFailure.Exception); message = $_.Exception.Message; type = $_.Exception.GetType().FullName; fact = Get-ValidatedStartupIncompleteIdentityFact $_ } }",
@@ -3796,6 +3800,7 @@ test("Windows wrapper emits strict ACP-04 and AV01 collector vectors from actual
 
 test("normal wrapper passes clean Git status with a canonical helper fixture and fails safely before evidence or launch", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-clean-preflight-"));
+  const executable = path.join(root, "sage.cmd");
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3807,7 +3812,27 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
     "scripts",
     "run-source-functional-native-ide-journey.ps1",
   );
+  // Observe only processes owned by this fixture, and fail closed if the
+  // process snapshot itself fails. Other lanes may start or stop Sage.
+  const ownedProcesses = () => {
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process|Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains('${root.replaceAll("'", "''")}') }|ForEach-Object { "$($_.Name):$($_.ProcessId)" }|Sort-Object)-join ','`,
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 60_000 },
+    );
+    assert.equal(result.status, 0, `${result.error ?? ""}\n${result.stderr}`);
+    return result.stdout.trim();
+  };
   try {
+    writeFileSync(
+      executable,
+      '@echo off\r\n> "%~dp0launched.txt" echo launched\r\nexit /b 71\r\n',
+    );
     mkdirSync(path.join(root, "src-tauri"));
     writeFileSync(
       path.join(root, "src-tauri", "tauri.conf.json"),
@@ -3829,15 +3854,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         0,
       );
     }
-    const before = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const before = ownedProcesses();
     const result = spawnSync(
       powershell,
       [
@@ -3846,7 +3863,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         "-File",
         wrapper,
         "-SageExecutable",
-        wrapper,
+        executable,
         "-SourceRoot",
         root,
         "-EvidenceRoot",
@@ -3863,16 +3880,10 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
       `${result.stdout}\n${result.stderr}`,
       /EvidenceRoot must be an absolute canonical path/,
     );
-    const after = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const after = ownedProcesses();
+    assert.equal(before, "");
     assert.equal(after, before);
+    assert.equal(existsSync(path.join(root, "launched.txt")), false);
     assert.equal(existsSync(path.resolve("relative-evidence")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -4200,3 +4211,103 @@ function assertWindowsPortFree(port) {
   );
   assert.equal(result.status, 0, `port ${port} retained a listener`);
 }
+
+test("process identity helper failures keep the stable code and carry what PowerShell reported", () => {
+  const failure = (result) => {
+    try {
+      processIdentityHelperOutput(result);
+    } catch (error) {
+      assert.equal(error.message, "journey-tool-cleanup-unproven");
+      return error.cause;
+    }
+    assert.fail("the helper result was accepted");
+  };
+
+  assert.deepEqual(
+    processIdentityHelperOutput({ status: 0, stdout: '{"processId":7}\n' }),
+    { processId: 7 },
+  );
+  assert.equal(
+    failure({ status: 1, signal: null, stderr: "  Access is denied.\r\n" })
+      .message,
+    "process identity helper exited with status 1: Access is denied.",
+  );
+  assert.equal(
+    failure({ status: null, signal: "SIGTERM", stderr: "" }).message,
+    "process identity helper exited with status null (SIGTERM): ",
+  );
+  const oversized = failure({
+    status: 1,
+    signal: null,
+    stderr: "x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX + 1),
+  }).message;
+  assert.equal(
+    oversized,
+    `process identity helper exited with status 1: ${"x".repeat(HELPER_DIAGNOSTIC_CHARS_MAX)}`,
+  );
+  const spawnError = Object.assign(
+    new Error("spawnSync powershell ETIMEDOUT"),
+    {
+      code: "ETIMEDOUT",
+    },
+  );
+  assert.equal(failure({ error: spawnError, status: null }), spawnError);
+  assert.ok(failure({ status: 0, stdout: "not json" }) instanceof SyntaxError);
+});
+
+function fakeBoundedToolChild(pid) {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.pid = pid;
+  return child;
+}
+
+test("bounded tool rejection carries the identity capture failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-capture-cause-"));
+  try {
+    const captureFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    await assert.rejects(
+      runBoundedTool("tool", [], Date.now() + 5_000, root, {
+        spawn: () => fakeBoundedToolChild(71),
+        captureIdentity: () => {
+          throw captureFailure;
+        },
+      }),
+      (error) => {
+        assert.equal(error.message, "playwright-cli-cleanup-unproven");
+        assert.equal(error.cause, captureFailure);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bounded tool rejection carries the cleanup failure as its cause", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-tool-cleanup-cause-"));
+  try {
+    const child = fakeBoundedToolChild(72);
+    const cleanupFailure = new Error(
+      "process identity helper exited with status 1: denied",
+    );
+    const promise = runBoundedTool("tool", [], Date.now() + 5_000, root, {
+      spawn: () => child,
+      captureIdentity: () => ({ processId: 72, creationDate: "exact" }),
+      cleanupIdentity: () => {
+        throw cleanupFailure;
+      },
+    });
+    child.stdout.write(Buffer.alloc(64 * 1024 + 1));
+    await assert.rejects(promise, (error) => {
+      assert.equal(error.message, "playwright-cli-cleanup-unproven");
+      assert.equal(error.cause, cleanupFailure);
+      return true;
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

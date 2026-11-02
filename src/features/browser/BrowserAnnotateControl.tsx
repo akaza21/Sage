@@ -37,7 +37,7 @@ export function BrowserAnnotateControl({
       setFrame(
         button
           ?.closest(".browser-surface")
-          ?.querySelector(".browser-surface__frame") ?? null,
+          ?.querySelector(".browser-surface__viewport") ?? null,
       ),
     [],
   );

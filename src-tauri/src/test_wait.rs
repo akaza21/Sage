@@ -1,4 +1,3 @@
-#[cfg(windows)]
 use std::time::Instant;
 use std::{
     future::Future,
@@ -34,7 +33,6 @@ where
         })
 }
 
-#[cfg(windows)]
 #[track_caller]
 pub(crate) fn until(label: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + HANG_GUARD;

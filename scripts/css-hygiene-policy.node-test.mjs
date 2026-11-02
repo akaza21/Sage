@@ -115,6 +115,37 @@ test("reports multiline raw radii and allows only one radius custom-property tok
   );
 });
 
+test("reports raw z-index layers and allows only --z-* tokens and offsets", () => {
+  const inventory = analyze({
+    "src/styles/layers.css": `
+      .token { z-index: var(--z-popover); }
+      .offset { z-index: calc(var(--z-codemirror-gutters) + 1); }
+      .auto { z-index: auto; }
+      .raw { z-index: 80; }
+      .negative { z-index: -1; }
+      .arithmetic { z-index: calc(80 + 1); }
+    `,
+    "src/styles/global.css": `
+      :root { --z-modal: 90; }
+      .close-failure { z-index: 1000; }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.rawZIndexes.map(({ relativePath, line, value }) => ({
+      relativePath,
+      line,
+      value,
+    })),
+    [
+      { relativePath: "src/styles/global.css", line: 3, value: "1000" },
+      { relativePath: "src/styles/layers.css", line: 5, value: "80" },
+      { relativePath: "src/styles/layers.css", line: 6, value: "-1" },
+      { relativePath: "src/styles/layers.css", line: 7, value: "calc(80 + 1)" },
+    ],
+  );
+});
+
 test("finds hex, rgb, and rgba literals but ignores comments, strings, and custom-property names", () => {
   const inventory = analyze({
     "src/styles/colors.css": `
@@ -206,4 +237,35 @@ test("fails closed at the CSS file and byte caps", async () => {
   );
   assert.equal(tooMany.length, 1);
   assert.match(tooMany[0], /exceeds.*file scan limit/u);
+});
+
+test("allows raw colours in custom properties only in the global authority and listed feature owners", () => {
+  const inventory = analyze({
+    "src/styles/global.css": `:root { --global-fill: #111111; }`,
+    "src/features/browser/browser-device.css": `
+      .owner { --device-fill: #414141; }
+      .owner-rule { color: #414141; }
+    `,
+    "src/features/other/other.css": `.other { --other-fill: #222222; }`,
+  });
+
+  assert.deepEqual(
+    inventory.rawColors.map(({ relativePath, line, literal }) => ({
+      relativePath,
+      line,
+      literal,
+    })),
+    [
+      {
+        relativePath: "src/features/browser/browser-device.css",
+        line: 3,
+        literal: "#414141",
+      },
+      {
+        relativePath: "src/features/other/other.css",
+        line: 1,
+        literal: "#222222",
+      },
+    ],
+  );
 });

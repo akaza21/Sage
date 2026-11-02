@@ -3,5 +3,9 @@
   "identifier": "main",
   "description": "Minimal capability set for the primary Sage workbench.",
   "webviews": ["main"],
-  "permissions": ["core:default", "main-commands"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "main-commands"
+  ]
 }
