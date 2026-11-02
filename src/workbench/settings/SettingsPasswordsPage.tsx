@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import {
   passwordsCancelImport,
   passwordsCopy,
@@ -42,6 +43,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [imported, setImported] = useState<PasswordImportReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletion, setDeletion] = useState<
+    { entry: SavedPassword } | { total: number } | null
+  >(null);
   const [revealed, setRevealed] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
   );
@@ -143,9 +147,6 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     });
 
   const remove = (entry: SavedPassword) => {
-    const account = entry.username || "the saved password";
-    if (!window.confirm(`Delete ${account} on ${siteLabel(entry.origin)}?`))
-      return;
     void run(async () => {
       await passwordsDelete(entry.id);
       hide(entry.id);
@@ -153,13 +154,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     });
   };
 
-  const removeAll = (total: number) => {
-    if (
-      !window.confirm(
-        `Delete all ${total} saved passwords? This can't be undone.`,
-      )
-    )
-      return;
+  const removeAll = () => {
     void run(async () => {
       await passwordsDeleteAll();
       for (const id of revealed.keys()) hide(id);
@@ -324,7 +319,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
                     onSave={(username, password) =>
                       save(entry.id, username, password)
                     }
-                    onDelete={() => remove(entry)}
+                    onDelete={() => setDeletion({ entry })}
                   />
                 ))}
               </ul>
@@ -342,7 +337,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
                 className="button button--compact button--danger"
                 type="button"
                 disabled={busy}
-                onClick={() => removeAll(ready.total)}
+                onClick={() => setDeletion({ total: ready.total })}
               >
                 Delete all saved passwords
               </button>
@@ -350,6 +345,31 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
           ) : null}
         </>
       )}
+      {deletion ? (
+        <ConfirmDialog
+          title={
+            "entry" in deletion
+              ? `Delete ${deletion.entry.username || "the saved password"} on ${siteLabel(deletion.entry.origin)}?`
+              : `Delete all ${deletion.total} saved passwords?`
+          }
+          description={
+            "entry" in deletion
+              ? "This saved password will be permanently deleted from Sage. This can't be undone."
+              : "Every saved password in Sage will be permanently deleted, including passwords hidden by your search. This can't be undone."
+          }
+          confirmLabel={
+            "entry" in deletion
+              ? "Delete password"
+              : "Delete all saved passwords"
+          }
+          onCancel={() => setDeletion(null)}
+          onConfirm={() => {
+            setDeletion(null);
+            if ("entry" in deletion) remove(deletion.entry);
+            else removeAll();
+          }}
+        />
+      ) : null}
     </section>
   );
 }

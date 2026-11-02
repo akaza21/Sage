@@ -173,12 +173,9 @@ it("imports a CSV, reports counts and offers to delete the plaintext file", asyn
   expect(native.deleteImportedFile).toHaveBeenCalledTimes(1);
 });
 
-it("edits a username, and deletes one or all passwords after confirming", async () => {
+it("edits a username", async () => {
   native.overview.mockResolvedValue(ready());
   native.update.mockResolvedValue(undefined);
-  native.remove.mockResolvedValue(undefined);
-  native.removeAll.mockResolvedValue(undefined);
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
   render(<SettingsPasswordsPage visible={all()} />);
   const row = await screen.findByRole("group", { name: "ada on example.com" });
   fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
@@ -193,22 +190,89 @@ it("edits a username, and deletes one or all passwords after confirming", async 
   await vi.waitFor(() =>
     expect(screen.queryByRole("form", { name: /Edit/ })).toBeNull(),
   );
-  fireEvent.click(
-    within(screen.getByRole("group", { name: "ada on example.com" })).getByRole(
-      "button",
-      { name: "Delete" },
-    ),
-  );
-  expect(confirm).toHaveBeenLastCalledWith("Delete ada on example.com?");
-  await vi.waitFor(() => expect(native.remove).toHaveBeenCalledWith("a1"));
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete all saved passwords" }),
-  );
-  expect(confirm).toHaveBeenLastCalledWith(
-    "Delete all 1 saved passwords? This can't be undone.",
-  );
-  await vi.waitFor(() => expect(native.removeAll).toHaveBeenCalledTimes(1));
 });
+
+it.each(["Delete", "Delete all saved passwords"])(
+  "%s preserves saved entries on Cancel and Escape, and deletes only on confirmation",
+  async (action) => {
+    // Model the native vault at the IPC boundary, including reloads after dismissal.
+    let entries = [
+      { id: "one", origin: "https://one.example.test", username: "user-one" },
+      { id: "two", origin: "https://two.example.test", username: "user-two" },
+    ];
+    native.overview.mockImplementation(async () => ready(entries));
+    native.remove.mockImplementation(async (id: string) => {
+      entries = entries.filter((entry) => entry.id !== id);
+    });
+    native.removeAll.mockImplementation(async () => {
+      entries = [];
+    });
+    // Reproduce Tauri's asynchronous replacement of the browser global.
+    vi.spyOn(window, "confirm").mockImplementation((() =>
+      Promise.resolve(false)) as unknown as typeof window.confirm);
+    render(<SettingsPasswordsPage visible={all()} />);
+    const open = async () => {
+      const row = await screen.findByRole("group", {
+        name: "user-one on one.example.test",
+      });
+      const trigger = action === "Delete" ? within(row) : screen;
+      trigger.getByRole("button", { name: action }).focus();
+      fireEvent.click(trigger.getByRole("button", { name: action }));
+      return screen.getByRole("dialog", {
+        name:
+          action === "Delete"
+            ? "Delete user-one on one.example.test?"
+            : "Delete all 2 saved passwords?",
+      });
+    };
+
+    for (const dismissal of ["Cancel", "Escape"]) {
+      const dialog = await open();
+      expect(dialog).toHaveAccessibleDescription(/can't be undone/);
+      expect(
+        within(dialog).getByRole("button", { name: "Cancel" }),
+      ).toHaveFocus();
+      if (dismissal === "Cancel") {
+        fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      } else {
+        fireEvent.keyDown(dialog, { key: "Escape" });
+      }
+      expect(screen.queryByRole("dialog")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      expect(await screen.findByText("Saved passwords (2)")).toBeVisible();
+      expect(
+        screen.getByRole("group", { name: "user-one on one.example.test" }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("group", { name: "user-two on two.example.test" }),
+      ).toBeVisible();
+      expect(entries).toHaveLength(2);
+    }
+
+    const dialog = await open();
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name:
+          action === "Delete"
+            ? "Delete password"
+            : "Delete all saved passwords",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        action === "Delete" ? "Saved passwords (1)" : "No saved passwords",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("group", { name: "user-one on one.example.test" }),
+    ).toBeNull();
+    if (action === "Delete") {
+      expect(
+        screen.getByRole("group", { name: "user-two on two.example.test" }),
+      ).toBeVisible();
+    }
+  },
+);
 
 it("cancels a running import and says nothing was saved", async () => {
   let finish: (value: null) => void = () => {};
