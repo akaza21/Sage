@@ -3743,7 +3743,7 @@ test("Windows frontend readiness admits an owned grandchild listener that appear
   if (cleanupFailure) throw cleanupFailure;
 });
 
-test("Windows Vite cleanup quarantines post-teardown identity loss with the exact root tuple", () => {
+test("Windows Vite cleanup treats a newer process at a tracked PID as exited and promotes its receipt", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-identity-loss-"));
   const powershell = path.join(
     process.env.SystemRoot,
@@ -3763,7 +3763,7 @@ test("Windows Vite cleanup quarantines post-teardown identity loss with the exac
   );
   try {
     const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$actual=Get-FootprintLaunchIdentity $process ${quote(powershell)};$forged=[ordered]@{processId=$actual.processId;executablePath=$actual.executablePath;creationDate='1900-01-01T00:00:00.000Z'};$runtime=[ordered]@{process=$process;identity=$forged;store=(New-FootprintIdentityStore)};$failed=$false;try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$failed=$true};$alive=$null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue);$record=Get-Content -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json') -Raw|ConvertFrom-Json;[ordered]@{failed=$failed;alive=$alive;record=$record;expectedRoot=$forged}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
+    const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree','Publish-PendingJourneyReceipt')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$actual=Get-FootprintLaunchIdentity $process ${quote(powershell)};$forged=[ordered]@{processId=$actual.processId;executablePath=$actual.executablePath;creationDate='1900-01-01T00:00:00.000Z'};$runtime=[ordered]@{process=$process;identity=$forged;store=(New-FootprintIdentityStore)};$pending=Join-Path ${quote(root)} 'machine-receipt.pending.json';$final=Join-Path ${quote(root)} 'machine-receipt.json';[IO.File]::WriteAllText($pending,'{}');$cleanup=Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)};Publish-PendingJourneyReceipt $pending $final $cleanup $cleanup;$alive=$null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue);[ordered]@{identityLost=$cleanup.identityLost;remainingCount=$cleanup.remainingCount;alive=$alive;published=(Test-Path -LiteralPath $final);pending=(Test-Path -LiteralPath $pending);quarantined=(Test-Path -LiteralPath (Join-Path ${quote(root)} 'runtime-cleanup-quarantine-vite.json'))}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
     const encoded = Buffer.from(source, "utf16le").toString("base64");
     const result = spawnSync(
       powershell,
@@ -3772,16 +3772,14 @@ test("Windows Vite cleanup quarantines post-teardown identity loss with the exac
     );
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const observed = JSON.parse(result.stdout.trim());
-    assert.equal(observed.failed, true);
-    assert.equal(observed.alive, true);
-    assert.equal(observed.record.schemaVersion, 2);
-    assert.equal(observed.record.runtimeRole, "vite");
-    assert.equal(observed.record.category, "cleanup-unproven");
-    assert.equal(observed.record.stage, "post-teardown");
-    assert.equal(observed.record.failureClass, "terminal-zero-invalid");
-    assert.equal(observed.record.identityLost, true);
-    assert.equal(observed.record.remainingCount, 0);
-    assert.deepEqual(observed.record.root, observed.expectedRoot);
+    assert.deepEqual(observed, {
+      identityLost: false,
+      remainingCount: 0,
+      alive: true,
+      published: true,
+      pending: false,
+      quarantined: false,
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
