@@ -29,7 +29,10 @@ pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["redaction-canaries-all-
 const CANARY_COUNT: usize = 25;
 const CANARIES_PER_SINK: usize = 5;
 const NODE_OUTPUT_BYTES: u64 = 64 * 1024;
-const NODE_TIMEOUT: Duration = Duration::from_secs(10);
+// A hang watchdog, not a latency assertion. Allow one minute for cold Node
+// startup and contract loading under hosted-runner contention, while still
+// bounding a stuck child well inside the enclosing CI job's timeout.
+const NODE_TIMEOUT: Duration = Duration::from_secs(60);
 const STRUCTURED_LOG_BYTES: usize = 64 * 1024;
 
 pub(in crate::acp::fixture) fn execute(case: &FrozenCase) -> Value {
@@ -258,6 +261,7 @@ fn observe_curated_evidence(observation: &Value) -> Value {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest.parent().unwrap();
     let script = manifest.join("src/acp/fixture/redaction_curated_observer.mjs");
+    let started = Instant::now();
     let child = Command::new("node")
         .arg(script)
         .arg("--input")
@@ -267,27 +271,38 @@ fn observe_curated_evidence(observation: &Value) -> Value {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    let spawned = Instant::now();
     let mut child = ChildGuard {
         child,
         completed: false,
+        started,
+        spawned,
     };
     let stdout = read_node_stream(child.child.stdout.take().unwrap());
     let stderr = read_node_stream(child.child.stderr.take().unwrap());
-    let deadline = Instant::now() + NODE_TIMEOUT;
+    let deadline = spawned + NODE_TIMEOUT;
     let status = child.wait_until(deadline);
-    let output = receive_node_stream(stdout, deadline, "stdout");
-    let stderr = receive_node_stream(stderr, deadline, "stderr");
+    let output = receive_node_stream(stdout, deadline, "stdout", &child);
+    let stderr = receive_node_stream(stderr, deadline, "stderr", &child);
     let stderr_overflow = stderr.len() as u64 > NODE_OUTPUT_BYTES;
     let stderr = SensitiveBytes::new(stderr).redact(DiagnosticCode::ProtocolFailure);
     assert!(
         !stderr_overflow,
         "curated observer stderr exceeded its bound"
     );
-    assert!(status.success(), "curated observer failed: {stderr:?}");
+    assert!(
+        status.success(),
+        "curated observer failed: {stderr:?}; {}",
+        child.timing()
+    );
     if output.len() as u64 > NODE_OUTPUT_BYTES {
         panic!("curated observer output exceeded its bound");
     }
-    serde_json::from_slice(&output).unwrap()
+    let observation = serde_json::from_slice(&output).unwrap();
+    // Use the OS stream so successful timings remain visible in captured CI
+    // tests too. Log durations only, never child output or evidence paths.
+    let _ = writeln!(std::io::stderr(), "curated observer: {}", child.timing());
+    observation
 }
 
 fn read_node_stream<R>(reader: R) -> mpsc::Receiver<std::io::Result<Vec<u8>>>
@@ -310,19 +325,38 @@ fn receive_node_stream(
     receiver: mpsc::Receiver<std::io::Result<Vec<u8>>>,
     deadline: Instant,
     stream: &str,
+    child: &ChildGuard,
 ) -> Vec<u8> {
     receiver
         .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .unwrap_or_else(|_| panic!("curated observer {stream} did not close"))
+        .unwrap_or_else(|_| {
+            panic!(
+                "curated observer {stream} did not close; {}",
+                child.timing()
+            )
+        })
         .unwrap_or_else(|_| panic!("curated observer {stream} could not be read"))
 }
 
 struct ChildGuard {
     child: Child,
     completed: bool,
+    started: Instant,
+    spawned: Instant,
 }
 
 impl ChildGuard {
+    fn timing(&self) -> String {
+        let now = Instant::now();
+        format!(
+            "elapsed={:.3?}, spawn={:.3?}, post_spawn={:.3?}, limit={:.3?}",
+            now.duration_since(self.started),
+            self.spawned.duration_since(self.started),
+            now.duration_since(self.spawned),
+            NODE_TIMEOUT,
+        )
+    }
+
     fn wait_until(&mut self, deadline: Instant) -> ExitStatus {
         loop {
             match self.child.try_wait() {
@@ -335,7 +369,8 @@ impl ChildGuard {
             }
             assert!(
                 Instant::now() < deadline,
-                "curated observer exceeded its time limit"
+                "curated observer exceeded its time limit; {}",
+                self.timing()
             );
             thread::sleep(Duration::from_millis(10));
         }
