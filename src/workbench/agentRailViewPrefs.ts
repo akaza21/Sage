@@ -1,5 +1,7 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
+import { createSettingWriter } from "../app/settingWriteQueue";
+import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 import {
   AGENT_RAIL_ORDERINGS,
   AGENT_RAIL_ORGANIZE_MODES,
@@ -12,9 +14,6 @@ export interface AgentRailViewPrefs {
   ordering: AgentRailOrdering;
 }
 
-/** Disposable view state: how this WebView lays out the rail. */
-export const AGENT_RAIL_VIEW_STORAGE_KEY = "sage.agent-rail.view.v1";
-
 const DEFAULT_PREFS: AgentRailViewPrefs = {
   organize: "project",
   ordering: "recency",
@@ -23,7 +22,15 @@ const DEFAULT_PREFS: AgentRailViewPrefs = {
 const listeners = new Set<() => void>();
 const collapsed = new Set<string>();
 
-let prefs: AgentRailViewPrefs = readStoredPrefs();
+let prefs: AgentRailViewPrefs = DEFAULT_PREFS;
+// Rust stores the layout choice (settings_store/agent_rail_view.rs); this
+// module holds only its rendered projection.
+const writes =
+  createSettingWriter<Pick<AgentRailViewPrefs, "organize" | "ordering">>(
+    DEFAULT_PREFS,
+  );
+let restoring: Promise<void> | null = null;
+let restored = false;
 
 function oneOf<T extends string>(
   values: ReadonlyArray<T>,
@@ -32,34 +39,52 @@ function oneOf<T extends string>(
   return values.some((candidate) => candidate === value);
 }
 
-function readStoredPrefs(): AgentRailViewPrefs {
-  try {
-    const stored = localStorage.getItem(AGENT_RAIL_VIEW_STORAGE_KEY);
-    if (stored === null) return DEFAULT_PREFS;
-    const parsed: unknown = JSON.parse(stored);
-    if (typeof parsed !== "object" || parsed === null) return DEFAULT_PREFS;
-    const { organize, ordering } = parsed as Record<string, unknown>;
-    return {
-      organize: oneOf(AGENT_RAIL_ORGANIZE_MODES, organize)
-        ? organize
-        : DEFAULT_PREFS.organize,
-      ordering: oneOf(AGENT_RAIL_ORDERINGS, ordering)
-        ? ordering
-        : DEFAULT_PREFS.ordering,
-    };
-  } catch {
-    return DEFAULT_PREFS;
-  }
+function admitPrefs(input: unknown): AgentRailViewPrefs {
+  const { organize, ordering } =
+    typeof input === "object" && input !== null
+      ? (input as Record<string, unknown>)
+      : {};
+  return {
+    organize: oneOf(AGENT_RAIL_ORGANIZE_MODES, organize)
+      ? organize
+      : DEFAULT_PREFS.organize,
+    ordering: oneOf(AGENT_RAIL_ORDERINGS, ordering)
+      ? ordering
+      : DEFAULT_PREFS.ordering,
+  };
+}
+
+/** Load the stored layout once; a failed load keeps the defaults. */
+export function restoreAgentRailViewPrefs(): Promise<void> {
+  if (restored || !isTauriRuntime()) return Promise.resolve();
+  restoring ??= invokeNative("agent_rail_view")
+    .then((stored) => {
+      restored = true;
+      const next = admitPrefs(stored);
+      writes.persisted(next);
+      prefs = { ...prefs, ...next };
+      emit();
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      restoring = null;
+    });
+  return restoring;
 }
 
 function update(next: AgentRailViewPrefs) {
   prefs = next;
-  try {
-    localStorage.setItem(AGENT_RAIL_VIEW_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Private or quota-limited WebViews keep the choice for this session.
-  }
   emit();
+  if (!isTauriRuntime()) return;
+  const view = { organize: next.organize, ordering: next.ordering };
+  writes.write(
+    view,
+    (value) => invokeNative("agent_rail_set_view", { view: value }),
+    (persisted) => {
+      prefs = { ...prefs, ...persisted };
+      emit();
+    },
+  );
 }
 
 function emit() {
@@ -79,6 +104,8 @@ export function agentRailViewPrefs(): AgentRailViewPrefs {
 
 export function resetAgentRailViewPrefs() {
   prefs = DEFAULT_PREFS;
+  restored = false;
+  writes.persisted(DEFAULT_PREFS);
   collapsed.clear();
   emit();
 }
@@ -111,6 +138,7 @@ export function expandAgentRailSection(id: string) {
 }
 
 export function useAgentRailViewPrefs(): AgentRailViewPrefs {
+  useEffect(() => void restoreAgentRailViewPrefs(), []);
   return useSyncExternalStore(
     subscribeAgentRailViewPrefs,
     agentRailViewPrefs,

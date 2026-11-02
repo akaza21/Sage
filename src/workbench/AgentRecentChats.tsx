@@ -8,11 +8,14 @@ export function AgentRecentChats({
   items,
   currentProjectId,
   recent = false,
+  onSearchMore,
 }: {
   items: readonly AgentRailChatItem[];
   currentProjectId: string | null;
   /** Recents rows name themselves as recent and never take the highlight. */
   recent?: boolean;
+  /** Continues past the last row in Chat search when the rail holds fewer chats than exist. */
+  onSearchMore?: () => void;
 }) {
   const [limit, setLimit] = useState(MAX_AGENT_RAIL_RECENT_CHATS);
   return (
@@ -39,6 +42,14 @@ export function AgentRecentChats({
           onClick={() =>
             setLimit((value) => value + MAX_AGENT_RAIL_RECENT_CHATS)
           }
+        >
+          Show more
+        </button>
+      ) : onSearchMore ? (
+        <button
+          className="project-chat-more"
+          type="button"
+          onClick={onSearchMore}
         >
           Show more
         </button>

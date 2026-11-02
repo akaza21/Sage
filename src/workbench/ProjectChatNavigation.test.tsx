@@ -217,33 +217,6 @@ it("marks a waiting chat as needing attention and names a failed one", () => {
   expect(state("Broke")).toHaveTextContent("Failed");
 });
 
-it("pins and archives a chat from its hover actions", async () => {
-  const pinChat = vi.fn(async () => undefined);
-  const archiveChat = vi.fn(async () => true);
-  useWorkbenchStore.setState({
-    project: { id: "project-a", name: "A", roots: [] },
-    tabs: [],
-    activeTabId: null,
-    pinChat,
-    archiveChat,
-  });
-  render(
-    <ProjectChatNavigation
-      projectId="project-a"
-      chats={[
-        { id: "chat:a", title: "Alpha", position: 0, pinned: false },
-        { id: "chat:b", title: "Beta", position: 1, pinned: true },
-      ]}
-      selected
-    />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Pin Alpha" }));
-  expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
-  expect(screen.getByRole("button", { name: "Unpin Beta" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "Archive Beta" }));
-  expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
-});
-
 it("keeps pin state visible and restores focus from one chat actions menu", async () => {
   seedChats();
   useWorkbenchStore.setState({

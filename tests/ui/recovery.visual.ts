@@ -45,7 +45,7 @@ test.describe("Wave 2 canonical visual states", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
-  test("swaps a row's state for Pin and Archive on hover without moving the title", async ({
+  test("swaps a row's state for Pin and Archive on hover without moving or resizing the title", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
@@ -62,7 +62,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const origin = () =>
       title.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
-        return [bounds.x, bounds.y, bounds.height];
+        return [bounds.x, bounds.y, bounds.width, bounds.height];
       });
     const before = await origin();
 
@@ -77,7 +77,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       quickActions.getByRole("button", { name: /^Archive / }),
     ).toBeVisible();
-    // The title may give up width to the actions, but it never moves.
+    // The actions sit over the row's end; the title neither moves nor resizes.
     expect(await origin()).toEqual(before);
     await expectNoViewportOverflow(page);
   });

@@ -12,7 +12,9 @@ import {
 export { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 
 export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
-export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
+// A foreign project arrives with its first eight chats by last update and its
+// first eight by manual order, so either sort previews the right chats.
+export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 16;
 // A project lists its first few chats until "Show more" (Codex shows five).
 export const MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS = 5;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
@@ -193,6 +195,11 @@ export interface AgentRailSections {
   recent: AgentRailChatItem[];
   /** Every unpinned chat in the chosen order, for "In one list". */
   all: AgentRailChatItem[];
+  /**
+   * When "In one list" cannot hold every chat (its own cap, or a project the
+   * rail admitted only in part), the folder where Chat search continues.
+   */
+  allOverflowProjectId: string | null;
 }
 
 export function deriveAgentRailSections(
@@ -259,6 +266,10 @@ export function deriveAgentRailSections(
     projects,
     recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
     all: unpinned.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
+    allOverflowProjectId:
+      unpinned[MAX_AGENT_RAIL_RECENT_CANDIDATES]?.projectId ??
+      groups.find((group) => group.truncated)?.id ??
+      null,
   };
 }
 

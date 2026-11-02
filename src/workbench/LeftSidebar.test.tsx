@@ -21,8 +21,8 @@ import { LeftSidebar } from "./LeftSidebar";
 import { MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS } from "./agentChatRail";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
-  AGENT_RAIL_VIEW_STORAGE_KEY,
   resetAgentRailViewPrefs,
+  setAgentRailOrganize,
 } from "./agentRailViewPrefs";
 
 it("leaves the brand and the window mode switch to the title bar", () => {
@@ -479,6 +479,43 @@ it("opens Chat search on a truncated foreign folder without switching", async ()
   expect(useWorkbenchStore.getState().project?.id).toBe("sage");
 });
 
+it("continues In one list into Chat search when a folder holds more chats than the rail", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "sage", name: "Sage", roots: [] },
+    projects: [
+      {
+        id: "cross",
+        name: "Cross",
+        rootCount: 1,
+        lastOpenedAt: 2,
+        railChats: [
+          {
+            id: "chat:cross",
+            title: "Research agent memory",
+            pinned: false,
+            position: 0,
+            updatedAt: 5,
+          },
+        ],
+        railChatsTruncated: true,
+      },
+      { id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 },
+    ],
+    tabs: [],
+    activeTabId: null,
+    loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  act(() => setAgentRailOrganize("list"));
+  render(<LeftSidebar />);
+  const recents = screen.getByRole("region", { name: "Recents" });
+  fireEvent.click(
+    await within(recents).findByRole("button", { name: "Show more" }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "Search in" }),
+  ).toHaveTextContent("Cross");
+});
+
 it("mounts the lazy Chat search dialog only for a folder request, including one made before the rail", async () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -579,9 +616,6 @@ it("organizes the sidebar by project or in one list, in either sort order", asyn
     "Sage second",
     "Sage first",
   ]);
-  expect(
-    JSON.parse(localStorage.getItem(AGENT_RAIL_VIEW_STORAGE_KEY) ?? "{}"),
-  ).toEqual({ organize: "list", ordering: "recency" });
 });
 
 it("promotes pinned tasks without duplicating them in recents", async () => {

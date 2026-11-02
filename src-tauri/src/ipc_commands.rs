@@ -169,6 +169,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
         browser::page_controls::browser_find,
+        settings_commands::agent_rail_view::agent_rail_view,
+        settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
         settings_commands::browser_preferences::browser_set_preferences
     ];

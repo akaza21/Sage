@@ -195,3 +195,61 @@ it("shows a collapsed project as running when any of its chats runs, even past t
   expect(within(header).getByRole("img", { name: "Working" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Open chat Task 0" })).toBeNull();
 });
+
+it("pins, unpins and archives a chat from its hover actions", async () => {
+  seed();
+  // Stand-ins for the durable store: they change the projection the rail
+  // renders, or refuse, so the test reads what the person would see.
+  let refuseArchive = false;
+  useWorkbenchStore.setState({
+    pinChat: async (chatId: string) =>
+      useWorkbenchStore.setState((state) => ({
+        tabs: state.tabs.map((tab) =>
+          tab.id === chatId ? { ...tab, pinned: !tab.pinned } : tab,
+        ),
+      })),
+    archiveChat: async (chatId: string) => {
+      if (refuseArchive) return false;
+      useWorkbenchStore.setState((state) => ({
+        archivedChats: [{ id: chatId, title: chatId }],
+        tabs: state.tabs.filter((tab) => tab.id !== chatId),
+      }));
+      return true;
+    },
+  });
+  render(<LeftSidebar />);
+  const projects = () =>
+    within(screen.getByRole("region", { name: "Projects" }));
+
+  fireEvent.click(projects().getByRole("button", { name: "Pin Beta" }));
+  const pinned = await screen.findByRole("region", { name: "Pinned" });
+  expect(
+    within(pinned).getByRole("button", { name: /^Open chat Beta/ }),
+  ).toBeVisible();
+  expect(
+    projects().queryByRole("button", { name: /^Open chat Beta/ }),
+  ).toBeNull();
+
+  fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Beta" }));
+  expect(
+    await projects().findByRole("button", { name: "Open chat Beta" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+
+  refuseArchive = true;
+  fireEvent.click(projects().getByRole("button", { name: "Archive Beta" }));
+  await act(async () => undefined);
+  expect(
+    projects().getByRole("button", { name: "Open chat Beta" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
+
+  refuseArchive = false;
+  fireEvent.click(projects().getByRole("button", { name: "Archive Beta" }));
+  expect(
+    await screen.findByRole("button", { name: "Undo archive" }),
+  ).toBeVisible();
+  expect(
+    projects().queryByRole("button", { name: "Open chat Beta" }),
+  ).toBeNull();
+});

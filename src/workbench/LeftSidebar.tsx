@@ -187,6 +187,7 @@ export function LeftSidebar({
           projects={sections.projects}
           recent={sections.recent}
           all={sections.all}
+          allOverflowProjectId={sections.allOverflowProjectId}
           currentProjectId={project?.id ?? null}
           currentChatId={railChatId}
           prefs={prefs}

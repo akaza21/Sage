@@ -376,20 +376,26 @@
   background: var(--color-warning);
 }
 
-/* Hovering a chat row swaps its state glyph for Pin and Archive. The "…"
-   menu stays reachable from the keyboard and by right-click. */
+/* Hovering a chat row lays Pin and Archive over the end of the row on the
+   row's own fill, so the title never moves or resizes. The "…" menu stays
+   reachable from the keyboard and by right-click. */
 .workbench--agent .project-chat__quick-actions {
   display: flex;
   grid-area: 1 / 1;
   justify-self: end;
+  align-self: center;
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--agent-shell-selected);
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--motion-duration-fast) ease;
 }
 
 .workbench--agent .project-chat__quick-actions > button {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
   place-items: center;
   padding: 0;
   border: 0;
@@ -413,16 +419,11 @@
   .project-chat-row:is(:hover, :has(:focus-visible))
   .project-chat__quick-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .workbench--agent .project-chat-row:hover {
   background: var(--agent-shell-selected);
-}
-
-.workbench--agent
-  .project-chat-row:is(:hover, :has(:focus-visible))
-  > .project-chat {
-  padding-inline-end: calc(48px + var(--space-2));
 }
 
 .workbench--agent

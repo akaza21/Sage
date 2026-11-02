@@ -245,6 +245,7 @@ export function AgentRailSections({
   projects,
   recent,
   all,
+  allOverflowProjectId,
   currentProjectId,
   currentChatId,
   prefs,
@@ -258,6 +259,7 @@ export function AgentRailSections({
   recent: ReadonlyArray<AgentRailChatItem>;
   /** Every unpinned chat in the chosen order, for "In one list". */
   all: ReadonlyArray<AgentRailChatItem>;
+  allOverflowProjectId: string | null;
   currentProjectId: string | null;
   currentChatId: string | null;
   prefs: AgentRailViewPrefs;
@@ -301,6 +303,11 @@ export function AgentRailSections({
             part="AgentRecentChats"
             items={all}
             currentProjectId={currentProjectId}
+            onSearchMore={
+              allOverflowProjectId === null
+                ? undefined
+                : () => onShowMore(allOverflowProjectId)
+            }
           />
         </AgentRailSection>
       </>
