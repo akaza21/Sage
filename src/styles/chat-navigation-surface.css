@@ -131,11 +131,6 @@
   opacity: 0.4;
 }
 
-/* Only the Agent rail shows the hover card (agent-rail-surface.css). */
-.project-chat__hover-card {
-  display: none;
-}
-
 .project-chat__title {
   display: flex;
   min-width: 0;
@@ -457,4 +452,53 @@
   .project-chat__state--unread::before {
     background: Highlight;
   }
+}
+
+/* A rested-on Agent rail row's card, portalled beside the rail. */
+.agent-rail-hover-card {
+  position: fixed;
+  z-index: var(--z-floating);
+  display: grid;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--agent-shell-resource-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+  background: var(--color-plane-raised);
+  box-shadow: var(--agent-shell-resource-shadow);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.agent-rail-hover-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.agent-rail-hover-card__head > strong {
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.agent-rail-hover-card__head > span,
+.agent-rail-hover-card__project {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.agent-rail-hover-card__project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-rail-hover-card__project > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

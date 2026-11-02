@@ -28,10 +28,12 @@ import {
   markAgentRailUnread,
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
+  useRailHoverCard,
 } from "./agentRailInteractions";
 import { agentRailTrailingState } from "./agentRailStatusView";
 import {
   ProjectChatActionMenu,
+  ProjectChatHoverCard,
   ProjectChatTrailingState,
 } from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
@@ -96,12 +98,14 @@ export function ProjectChatNavigation({
       state.projects.find((project) => project.id === projectId)?.name ??
       (state.project?.id === projectId ? state.project.name : undefined),
   );
+  const hoverCard = useRailHoverCard();
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   // Temporary side chats never list; a parent shows working while one runs.
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
+  const hoverChat = chatTabs.find((tab) => tab.id === hoverCard.card?.chatId);
   const awaitingApprovalIds = useChatsAwaitingApproval();
 
   useEffect(() => {
@@ -140,6 +144,15 @@ export function ProjectChatNavigation({
 
   return (
     <div className="project-chats">
+      {hoverChat && hoverCard.card ? (
+        <ProjectChatHoverCard
+          row={hoverCard.card.row}
+          shownAt={hoverCard.card.shownAt}
+          title={chatDisplayTitle(hoverChat.title)}
+          updatedAt={hoverChat.updatedAt}
+          project={projectName}
+        />
+      ) : null}
       {chatTabs.map((tab) => {
         const displayTitle = chatDisplayTitle(tab.title);
         if (renamingChatId === tab.id) {
@@ -199,6 +212,11 @@ export function ProjectChatNavigation({
           <div
             className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
             key={tab.id}
+            onPointerEnter={(event) =>
+              hoverCard.show(tab.id, event.currentTarget)
+            }
+            onPointerLeave={hoverCard.hide}
+            onPointerDown={hoverCard.hide}
             onContextMenu={(event) => {
               if (projectTransitioning) return;
               event.preventDefault();
@@ -243,12 +261,6 @@ export function ProjectChatNavigation({
                 </span>
               </span>
             </button>
-            <span
-              className="project-chat__hover-card"
-              aria-hidden="true"
-              data-title={displayTitle}
-              data-project={projectName}
-            />
             <div className="project-chat__trailing">
               <ProjectChatTrailingState
                 awaitingApproval={Boolean(approvalLabel)}

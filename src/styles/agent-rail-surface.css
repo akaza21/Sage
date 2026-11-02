@@ -466,48 +466,8 @@
   opacity: 0;
 }
 
-/* Resting on a chat row shows a card below it with the full title and its
-   project, in place of the native tooltip. The hovered row is raised so the
-   card paints over the rows after it; the card never takes the pointer. */
-.workbench--agent .project-chat__hover-card {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: var(--space-2);
-  display: grid;
-  max-width: calc(100% - 2 * var(--space-2));
-  gap: 2px;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--agent-shell-resource-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  background: var(--color-plane-raised);
-  box-shadow: var(--agent-shell-resource-shadow);
-  font-size: var(--font-size-xs);
-  line-height: 1.35;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-/* The text comes from attributes so the card adds no second copy of the
-   title to the document for queries or assistive technology. */
-.workbench--agent .project-chat__hover-card::before {
-  overflow-wrap: anywhere;
-  content: attr(data-title);
-}
-
-.workbench--agent .project-chat__hover-card[data-project]::after {
-  color: var(--color-text-muted);
-  overflow-wrap: anywhere;
-  content: attr(data-project);
-}
-
-.workbench--agent .project-chat-row:hover {
-  z-index: var(--z-raised);
-}
-
-.workbench--agent .project-chat-row:hover .project-chat__hover-card {
-  opacity: 1;
-  visibility: visible;
-  transition: visibility 0s var(--motion-delay-hover-card);
+/* Codex leaves about 35 px from an expanded project's last chat to the next
+   project header: one 28 px row pitch plus this gap. */
+.workbench--agent .project-entry > .project-chats:not(:empty) {
+  padding-bottom: 7px;
 }

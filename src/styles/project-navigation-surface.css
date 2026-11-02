@@ -16,11 +16,12 @@
   pointer-events: none;
 }
 
-/* The trailing time/state shares the title's line here, so a row that shows
-   one keeps its title to the first column and truncates before the state
-   instead of running under it. */
-.workbench--agent .project-chat-row:has(.project-chat__state) > .project-chat {
-  grid-column: 1;
+/* Codex clips every title about 42 px before the row's end, whether or not
+   the row shows a dot, so the trailing glyph and hover actions sit in space
+   the title already leaves free and the text box never changes size. */
+.workbench--agent .project-chat-row > .project-chat {
+  grid-column: 1 / -1;
+  padding-inline-end: 42px;
 }
 
 .workbench--agent .project-chat__working {

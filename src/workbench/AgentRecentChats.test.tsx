@@ -64,7 +64,7 @@ it.each(["chat-current", "diff:current"])(
     expect(screen.getByLabelText("Unread updates")).toBeVisible();
   },
 );
-it("renders eight recent tasks and expands only on an explicit request", () => {
+it("lists every recent task to fill the rail, without paging", () => {
   const items = Array.from({ length: 20 }, (_, index) => ({
     projectId: "project",
     projectName: "Project",
@@ -77,17 +77,25 @@ it("renders eight recent tasks and expands only on an explicit request", () => {
       updatedAt: 100,
     },
   }));
-  render(<AgentRecentChats items={items} currentProjectId="project" recent />);
-  expect(
-    screen.getAllByRole("button", { name: /^Open recent chat Task / }),
-  ).toHaveLength(8);
-  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-  expect(
-    screen.getAllByRole("button", { name: /^Open recent chat Task / }),
-  ).toHaveLength(16);
-  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+  const searched: string[] = [];
+  const view = render(
+    <AgentRecentChats items={items} currentProjectId="project" recent />,
+  );
   expect(
     screen.getAllByRole("button", { name: /^Open recent chat Task / }),
   ).toHaveLength(20);
   expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+
+  // When the store holds more chats than the rail admitted, the list
+  // continues in Chat search.
+  view.rerender(
+    <AgentRecentChats
+      items={items}
+      currentProjectId="project"
+      recent
+      onSearchMore={() => searched.push("project")}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+  expect(searched).toEqual(["project"]);
 });

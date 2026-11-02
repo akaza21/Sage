@@ -395,7 +395,6 @@
   --motion-duration-fade: 150ms; /* s3/f0021-f0024 send; s2/f0048 jump */
   --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
   --motion-duration-indicator: 200ms; /* turn-navigator dash grow and tint */
-  --motion-delay-hover-card: 500ms; /* rest before a rail row's hover card */
 
   /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);

@@ -301,7 +301,6 @@ export function AgentRailSections({
             part="AgentRecentChats"
             items={all}
             currentProjectId={currentProjectId}
-            paged={false}
             onSearchMore={
               allOverflowProjectId === null
                 ? undefined

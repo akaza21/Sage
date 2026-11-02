@@ -314,54 +314,52 @@ test("AP-C hover Pin and Archive take a real pointer click without opening the c
   expect(await activeChat()).toBe(before);
 });
 
-test("AP-C resting on a chat row shows its full title and project", async ({
+test("AP-C resting on a chat row shows its title, age and project beside the rail", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1872, height: 1080 });
   await openScenario(page, "agent-dual", "agent");
   await installRailBrowseFixture(page);
   const projectName = await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
+    // Pin the clock so the age reads the same on every run.
+    Date.now = () => Date.UTC(2026, 9, 1, 9, 29, 0);
     return useWorkbenchStore.getState().project?.name ?? "";
   });
   expect(projectName).not.toBe("");
-  const projects = page
-    .getByRole("complementary", { name: "Projects and chats" })
-    .getByRole("region", { name: "Projects" });
-  const title = projects.getByRole("button", {
-    name: "Open chat Agent rail task 7",
-    exact: true,
-  });
+  const sidebar = page.locator(".project-sidebar");
+  const title = sidebar
+    .getByRole("region", { name: "Projects" })
+    .getByRole("button", { name: "Open chat Agent rail task 7", exact: true });
   const row = title.locator(
     "xpath=ancestor::*[contains(@class,'project-chat-row')][1]",
   );
-  const card = row.locator(".project-chat__hover-card");
+  const card = page.locator(".agent-rail-hover-card");
   // No native tooltip competes with the card.
   await expect(title).not.toHaveAttribute("title");
-  await expect(card).toBeHidden();
 
   await row.hover();
   await expect(card).toBeVisible();
-  expect(
-    await card.evaluate((node) => [
-      getComputedStyle(node, "::before").content,
-      getComputedStyle(node, "::after").content,
-    ]),
-  ).toEqual(['"Agent rail task 7"', JSON.stringify(projectName)]);
-  const rowBox = await row.boundingBox();
-  const cardBox = await card.boundingBox();
-  expect(cardBox!.y).toBeGreaterThanOrEqual(rowBox!.y + rowBox!.height);
-  const point = { x: cardBox!.x + 8, y: cardBox!.y + cardBox!.height / 2 };
-  // The card never takes the pointer, so the row under it stays clickable.
-  expect(
-    await page.evaluate(
-      ({ x, y }) =>
-        document.elementFromPoint(x, y)?.closest(".project-chat__hover-card") ??
-        null,
-      point,
-    ),
-  ).toBeNull();
+  await expect(card.locator("strong")).toHaveText("Agent rail task 7");
+  await expect(card).toContainText("1mo");
+  await expect(card).toContainText(projectName);
+  await expect(card).toHaveAttribute("aria-hidden", "true");
+  const rowBox = (await row.boundingBox())!;
+  const railBox = (await sidebar.boundingBox())!;
+  const cardBox = (await card.boundingBox())!;
+  // Level with the row, starting at the rail's edge and reaching over the
+  // center pane rather than covering the rows below.
+  expect(Math.abs(cardBox.y - rowBox.y)).toBeLessThanOrEqual(1);
+  expect(cardBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width - 8);
+  expect(cardBox.x + cardBox.width).toBeGreaterThan(
+    railBox.x + railBox.width + 200,
+  );
   // Hit-testing follows paint order: once the card accepts hits it is the
-  // topmost box there, so it paints over the next row rather than under it.
+  // topmost box over the center pane.
+  const point = {
+    x: cardBox.x + cardBox.width - 16,
+    y: cardBox.y + cardBox.height / 2,
+  };
   const onTop = await card.evaluate((node, { x, y }) => {
     (node as HTMLElement).style.pointerEvents = "auto";
     const hit = document.elementFromPoint(x, y);
@@ -369,9 +367,38 @@ test("AP-C resting on a chat row shows its full title and project", async ({
     return Boolean(hit && node.contains(hit));
   }, point);
   expect(onTop).toBe(true);
+  // Normally it never takes the pointer.
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest(".agent-rail-hover-card") ??
+        null,
+      point,
+    ),
+  ).toBeNull();
 
-  await page.mouse.move(0, 0);
-  await expect(card).toBeHidden();
+  await page.mouse.move(900, 900);
+  await expect(card).toHaveCount(0);
+});
+
+test("AP-C sidebar options open from the trigger toward the center pane", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 1080 });
+  await openScenario(page, "agent-dual", "agent");
+  const trigger = page.getByRole("button", { name: "Sidebar options" });
+  await trigger.click();
+  const menu = page.getByRole("menu", { name: "Sidebar options" });
+  await expect(menu).toBeVisible();
+  const triggerBox = (await trigger.boundingBox())!;
+  const menuBox = (await menu.boundingBox())!;
+  expect(Math.round(menuBox.x)).toBe(Math.round(triggerBox.x));
+  await menu.getByRole("menuitem", { name: "Organize sidebar" }).click();
+  const submenu = page.getByRole("menu", { name: "Organize sidebar" });
+  await expect(submenu).toBeVisible();
+  expect((await submenu.boundingBox())!.x).toBeGreaterThanOrEqual(
+    menuBox.x + menuBox.width,
+  );
 });
 
 test("AP-C Create project offers only this computer as a folder location", async ({

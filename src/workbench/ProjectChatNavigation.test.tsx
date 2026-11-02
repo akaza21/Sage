@@ -1,3 +1,4 @@
+import { agentRailHoverAge } from "./agentRailInteractions";
 import {
   act,
   cleanup,
@@ -488,4 +489,17 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
+});
+
+it("ages a rail chat for its hover card the way Codex does", () => {
+  const now = Date.UTC(2026, 9, 1);
+  const ago = (ms: number) => agentRailHoverAge(now - ms, now);
+  expect(ago(20_000)).toBe("now");
+  expect(ago(5 * 60_000)).toBe("5m");
+  expect(ago(3 * 3_600_000)).toBe("3h");
+  expect(ago(6 * 86_400_000)).toBe("6d");
+  expect(ago(31 * 86_400_000)).toBe("1mo");
+  expect(ago(400 * 86_400_000)).toBe("1y");
+  expect(agentRailHoverAge(undefined, now)).toBe("");
+  expect(agentRailHoverAge(now + 1, now)).toBe("");
 });

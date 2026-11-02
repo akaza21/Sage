@@ -72,6 +72,7 @@ export function AgentRailOptionsPopover({
       ariaLabel="Sidebar options"
       className="agent-rail-options__menu"
       initialFocus={openingFocus}
+      placement="below-start"
       triggerRef={triggerRef}
       onDismiss={onDismiss}
     >
