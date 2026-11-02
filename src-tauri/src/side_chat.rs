@@ -158,7 +158,13 @@ pub async fn close_side_chat(
 
 #[tauri::command]
 pub async fn get_confirm_close_side_chat(state: State<'_, AppState>) -> Result<bool, String> {
-    let settings = state.settings.clone();
+    get_confirm_close_side_chat_async(&state.settings).await
+}
+
+async fn get_confirm_close_side_chat_async(
+    settings: &crate::settings_store::SettingsStore,
+) -> Result<bool, String> {
+    let settings = settings.clone();
     tauri::async_runtime::spawn_blocking(move || {
         settings
             .confirm_close_side_chat()
@@ -179,7 +185,11 @@ pub struct SideChatSummary {
 
 #[tauri::command]
 pub async fn list_side_chats(state: State<'_, AppState>) -> Result<Vec<SideChatSummary>, String> {
-    let database = state.database.clone();
+    list_side_chats_async(&state.database).await
+}
+
+async fn list_side_chats_async(database: &Database) -> Result<Vec<SideChatSummary>, String> {
+    let database = database.clone();
     tauri::async_runtime::spawn_blocking(move || list_side_chats_inner(&database))
         .await
         .map_err(|error| error.to_string())?
@@ -210,8 +220,8 @@ fn list_side_chats_inner(database: &Database) -> Result<Vec<SideChatSummary>, St
 mod tests {
     use super::*;
 
-    #[test]
-    fn side_chat_lookup_reports_parent_and_running_and_refuses_overflow() {
+    #[tokio::test]
+    async fn side_chat_lookup_reports_parent_and_running_and_refuses_overflow() {
         let root = std::env::temp_dir().join(format!("sage-side-list-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = Database::open(&root.join("sage.db")).unwrap();
@@ -253,7 +263,7 @@ mod tests {
                 rusqlite::params![project, running],
             ).unwrap();
         }
-        let rows = list_side_chats_inner(&database).unwrap();
+        let rows = list_side_chats_async(&database).await.unwrap();
         assert_eq!(rows.len(), 2);
         for (id, expected_running) in [(&running, true), (&idle, false)] {
             let row = rows.iter().find(|row| &row.id == id).unwrap();
@@ -267,13 +277,26 @@ mod tests {
         for _ in 2..8 {
             add_side();
         }
-        assert_eq!(list_side_chats_inner(&database).unwrap().len(), 8);
+        assert_eq!(list_side_chats_async(&database).await.unwrap().len(), 8);
         add_side();
         assert_eq!(
-            list_side_chats_inner(&database).err().unwrap(),
+            list_side_chats_async(&database).await.err().unwrap(),
             "temporary Chat registry exceeds eight"
         );
         drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn confirm_close_lookup_reads_the_persisted_preference() {
+        let root = std::env::temp_dir().join(format!("sage-side-confirm-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let settings =
+            crate::settings_store::SettingsStore::open(&root.join("settings.db")).unwrap();
+        assert!(get_confirm_close_side_chat_async(&settings).await.unwrap());
+        settings.set_confirm_close_side_chat(false).unwrap();
+        assert!(!get_confirm_close_side_chat_async(&settings).await.unwrap());
+        drop(settings);
         std::fs::remove_dir_all(root).unwrap();
     }
 
