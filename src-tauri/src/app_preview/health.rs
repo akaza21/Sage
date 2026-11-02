@@ -51,9 +51,9 @@ pub(crate) fn get(origin: Option<&str>) -> bool {
     {
         return false;
     }
-    // Only the HTTP prefix is needed. Share one deadline across fragmented reads.
+    // Bound the complete status line, sharing one deadline across fragmented reads.
     let deadline = Instant::now() + HEALTH_TIMEOUT;
-    let mut response = [0_u8; 5];
+    let mut response = [0_u8; 64];
     let mut received = 0;
     while received < response.len() {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -66,8 +66,26 @@ pub(crate) fn get(origin: Option<&str>) -> bool {
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => return false,
         }
+        if let Some(end) = response[..received]
+            .windows(2)
+            .position(|pair| pair == b"\r\n")
+        {
+            return valid_status_line(&response[..end]);
+        }
     }
-    &response == b"HTTP/"
+    false
+}
+
+fn valid_status_line(line: &[u8]) -> bool {
+    line.len() >= 13
+        && line.starts_with(b"HTTP/1.")
+        && line[7].is_ascii_digit()
+        && line[8] == b' '
+        && line[9..12].iter().all(u8::is_ascii_digit)
+        && line[12] == b' '
+        && line[13..]
+            .iter()
+            .all(|&byte| matches!(byte, b'\t' | b' '..=b'~' | 0x80..=0xff))
 }
 
 #[cfg(test)]
@@ -112,9 +130,8 @@ mod tests {
 
     #[test]
     fn ipv6_host_header() {
-        let Ok(listener) = TcpListener::bind("[::1]:0") else {
-            return;
-        };
+        let listener = TcpListener::bind("[::1]:0")
+            .expect("IPv6 loopback is required for the IPv6 Host-header test");
         assert!(probe(listener, |stream| {
             stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
         }));
@@ -166,5 +183,88 @@ mod tests {
                 stream.write_all(b"HT").unwrap();
             }
         ));
+    }
+
+    #[test]
+    fn malformed_status_lines_are_unhealthy() {
+        for response in [
+            b"HTTP/".as_slice(),
+            b"HTTP/garbage",
+            b"HTTP/1.1 20 OK\r\n",
+            b"HTTP/1.1 2000 OK\r\n",
+            b"HTTP/1.1 abc OK\r\n",
+            b"HTTP/2.0 200 OK\r\n",
+            b"HTTP/1.x 200 OK\r\n",
+            b"HTTP/1.1 200\r\n",
+            b"HTTP/1.1 200 O\0K\r\n",
+            b"HTTP/1.1 200 OK\n",
+        ] {
+            assert!(
+                !probe(TcpListener::bind("127.0.0.1:0").unwrap(), move |stream| {
+                    stream.write_all(response).unwrap();
+                }),
+                "accepted {response:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn oversized_unterminated_status_line_is_unhealthy() {
+        assert!(!probe(
+            TcpListener::bind("127.0.0.1:0").unwrap(),
+            |stream| {
+                let mut response = b"HTTP/1.1 200 ".to_vec();
+                response.extend([b'x'; 128]);
+                stream.write_all(&response).unwrap();
+            }
+        ));
+    }
+
+    #[test]
+    fn status_line_byte_cap_includes_crlf() {
+        for (size, healthy) in [(64, true), (65, false)] {
+            assert_eq!(
+                probe(TcpListener::bind("127.0.0.1:0").unwrap(), move |stream| {
+                    let mut response = b"HTTP/1.1 200 ".to_vec();
+                    response.resize(size - 2, b'x');
+                    response.extend(b"\r\n");
+                    stream.write_all(&response).unwrap();
+                }),
+                healthy,
+                "status line size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_status_line_split_is_healthy() {
+        const STATUS: &[u8] = b"HTTP/1.1 200 OK\r\n";
+        for split in 1..STATUS.len() {
+            assert!(
+                probe(TcpListener::bind("127.0.0.1:0").unwrap(), move |stream| {
+                    stream.set_nodelay(true).unwrap();
+                    stream.write_all(&STATUS[..split]).unwrap();
+                    stream.flush().unwrap();
+                    thread::sleep(Duration::from_millis(30));
+                    stream.write_all(&STATUS[split..]).unwrap();
+                }),
+                "status line split at {split}"
+            );
+        }
+    }
+
+    #[test]
+    fn valid_status_lines_do_not_require_a_success_code_or_reason() {
+        for response in [
+            b"HTTP/1.0 200 \r\n".as_slice(),
+            b"HTTP/1.1 503 Unavailable\r\n",
+        ] {
+            assert!(probe(
+                TcpListener::bind("127.0.0.1:0").unwrap(),
+                move |stream| {
+                    stream.write_all(response).unwrap();
+                }
+            ));
+        }
     }
 }
