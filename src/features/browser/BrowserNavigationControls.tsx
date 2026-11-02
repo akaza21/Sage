@@ -213,116 +213,116 @@ export function BrowserNavigationControls({
         >
           <Ellipsis size={18} aria-hidden="true" />
         </button>
-        {menuOpen ? (
-          <div
-            ref={menu}
-            className="browser-surface__menu"
-            role="menu"
-            aria-label="Browser menu"
-            onClickCapture={onMenuClickCapture}
-          >
-            <div className="browser-surface__menu-group">
+        {/* Keep the clear-data confirmation mounted after its menu closes. */}
+        <div
+          hidden={!menuOpen}
+          ref={menu}
+          className="browser-surface__menu"
+          role="menu"
+          aria-label="Browser menu"
+          onClickCapture={onMenuClickCapture}
+        >
+          <div className="browser-surface__menu-group">
+            <button
+              role="menuitem"
+              type="button"
+              disabled={!page}
+              onClick={() => run(onFind)}
+            >
+              Find in page
+            </button>
+            <button
+              role="menuitem"
+              type="button"
+              disabled={!page || Boolean(navigation?.printUnavailableReason)}
+              title={
+                page
+                  ? (navigation?.printUnavailableReason ?? undefined)
+                  : "Open a page to print"
+              }
+              onClick={() => run(onPrint)}
+            >
+              Print
+            </button>
+            <button
+              role="menuitem"
+              type="button"
+              disabled={!page}
+              onClick={() => run(onScreenshot)}
+            >
+              Take a screenshot
+            </button>
+            <div className="browser-surface__menu-zoom">
+              <span>Zoom</span>
               <button
-                role="menuitem"
                 type="button"
+                role="menuitem"
+                aria-label="Zoom out"
+                disabled={!page || (navigation?.zoomPercent ?? 100) <= 50}
+                onClick={() => onZoom(-25)}
+              >
+                −
+              </button>
+              <span>{navigation?.zoomPercent ?? 100}%</span>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Zoom in"
+                disabled={!page || (navigation?.zoomPercent ?? 100) >= 300}
+                onClick={() => onZoom(25)}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Reset zoom"
                 disabled={!page}
-                onClick={() => run(onFind)}
+                onClick={onZoomReset}
               >
-                Find in page
+                ↺
               </button>
-              <button
-                role="menuitem"
-                type="button"
-                disabled={!page || Boolean(navigation?.printUnavailableReason)}
-                title={
-                  page
-                    ? (navigation?.printUnavailableReason ?? undefined)
-                    : "Open a page to print"
-                }
-                onClick={() => run(onPrint)}
-              >
-                Print
-              </button>
-              <button
-                role="menuitem"
-                type="button"
-                disabled={!page}
-                onClick={() => run(onScreenshot)}
-              >
-                Take a screenshot
-              </button>
-              <div className="browser-surface__menu-zoom">
-                <span>Zoom</span>
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-label="Zoom out"
-                  disabled={!page || (navigation?.zoomPercent ?? 100) <= 50}
-                  onClick={() => onZoom(-25)}
-                >
-                  −
-                </button>
-                <span>{navigation?.zoomPercent ?? 100}%</span>
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-label="Zoom in"
-                  disabled={!page || (navigation?.zoomPercent ?? 100) >= 300}
-                  onClick={() => onZoom(25)}
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  aria-label="Reset zoom"
-                  disabled={!page}
-                  onClick={onZoomReset}
-                >
-                  ↺
-                </button>
-              </div>
-            </div>
-            <div className="browser-surface__menu-group">
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => run(onDownloads)}
-              >
-                Downloads
-              </button>
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => run(onHistory)}
-              >
-                History
-              </button>
-              {clearDataControl}
-            </div>
-            <div className="browser-surface__menu-group">
-              <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
-              {page ? (
-                <>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => run(onCopy)}
-                  >
-                    Copy URL
-                  </button>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => run(onExternal)}
-                  >
-                    Open externally
-                  </button>
-                </>
-              ) : null}
             </div>
           </div>
-        ) : null}
+          <div className="browser-surface__menu-group">
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => run(onDownloads)}
+            >
+              Downloads
+            </button>
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => run(onHistory)}
+            >
+              History
+            </button>
+            {clearDataControl}
+          </div>
+          <div className="browser-surface__menu-group">
+            <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
+            {page ? (
+              <>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => run(onCopy)}
+                >
+                  Copy URL
+                </button>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => run(onExternal)}
+                >
+                  Open externally
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
       </div>
     </>
   );
