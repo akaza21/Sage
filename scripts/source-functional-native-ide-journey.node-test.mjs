@@ -3800,6 +3800,7 @@ test("Windows wrapper emits strict ACP-04 and AV01 collector vectors from actual
 
 test("normal wrapper passes clean Git status with a canonical helper fixture and fails safely before evidence or launch", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-clean-preflight-"));
+  const executable = path.join(root, "sage.cmd");
   const powershell = path.join(
     process.env.SystemRoot,
     "System32",
@@ -3811,7 +3812,27 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
     "scripts",
     "run-source-functional-native-ide-journey.ps1",
   );
+  // Observe only processes owned by this fixture, and fail closed if the
+  // process snapshot itself fails. Other lanes may start or stop Sage.
+  const ownedProcesses = () => {
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process|Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains('${root.replaceAll("'", "''")}') }|ForEach-Object { "$($_.Name):$($_.ProcessId)" }|Sort-Object)-join ','`,
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 60_000 },
+    );
+    assert.equal(result.status, 0, `${result.error ?? ""}\n${result.stderr}`);
+    return result.stdout.trim();
+  };
   try {
+    writeFileSync(
+      executable,
+      '@echo off\r\n> "%~dp0launched.txt" echo launched\r\nexit /b 71\r\n',
+    );
     mkdirSync(path.join(root, "src-tauri"));
     writeFileSync(
       path.join(root, "src-tauri", "tauri.conf.json"),
@@ -3833,15 +3854,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         0,
       );
     }
-    const before = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const before = ownedProcesses();
     const result = spawnSync(
       powershell,
       [
@@ -3850,7 +3863,7 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
         "-File",
         wrapper,
         "-SageExecutable",
-        wrapper,
+        executable,
         "-SourceRoot",
         root,
         "-EvidenceRoot",
@@ -3867,16 +3880,10 @@ test("normal wrapper passes clean Git status with a canonical helper fixture and
       `${result.stdout}\n${result.stderr}`,
       /EvidenceRoot must be an absolute canonical path/,
     );
-    const after = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-Command",
-        "@(Get-Process|? ProcessName -match '^(sage|playwright)'|%{\"$($_.ProcessName):$($_.Id)\"}|sort)-join ','",
-      ],
-      { encoding: "utf8", windowsHide: true },
-    ).stdout.trim();
+    const after = ownedProcesses();
+    assert.equal(before, "");
     assert.equal(after, before);
+    assert.equal(existsSync(path.join(root, "launched.txt")), false);
     assert.equal(existsSync(path.resolve("relative-evidence")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
