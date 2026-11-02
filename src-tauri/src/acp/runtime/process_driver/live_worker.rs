@@ -29,6 +29,7 @@ mod idle;
 mod recovery;
 mod reusable;
 mod session_config;
+mod terminal_state;
 mod turn;
 mod turn_park;
 mod turn_steer;
@@ -360,44 +361,6 @@ where
                 _ => {}
             },
             _ => {}
-        }
-    }
-
-    pub(crate) fn has_durable_completed_cursor(&self) -> bool {
-        self.durable_cursor_is(TurnState::Completed)
-    }
-
-    pub(crate) fn has_durable_cancelled_cursor(&self) -> bool {
-        matches!(
-            self.durable_cursor(),
-            Some(TurnState::Cancelled | TurnState::Interrupted)
-        )
-    }
-
-    fn durable_cursor_is(&self, expected: TurnState) -> bool {
-        self.durable_cursor() == Some(expected)
-    }
-
-    fn durable_cursor(&self) -> Option<TurnState> {
-        match self {
-            Self::Reusable(parts) => Some(parts.terminal_cursor().state()),
-            Self::ReusableDraining(closing) => Some(closing.terminal_cursor().state()),
-            Self::ReusableZero(zero) => Some(zero.terminal_cursor().state()),
-            Self::Active(active) => Some(active.durable_turn_state()),
-            Self::Recovery(recovery) => match recovery.as_ref() {
-                FirstTurnWorkerRecovery::Terminal { cursor, .. } => Some(cursor.state()),
-                FirstTurnWorkerRecovery::ReusableBegin(failure) => {
-                    Some(failure.state.terminal_cursor().state())
-                }
-                FirstTurnWorkerRecovery::ReusableConverge(failure) => {
-                    Some(failure.state.terminal_cursor().state())
-                }
-                FirstTurnWorkerRecovery::ReusableFinalize(failure) => {
-                    Some(failure.state.terminal_cursor().state())
-                }
-                _ => None,
-            },
-            _ => None,
         }
     }
 }

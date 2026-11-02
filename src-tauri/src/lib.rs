@@ -97,6 +97,7 @@ mod test_paths;
 mod test_wait;
 pub mod user_terminal;
 mod voice_input;
+mod window_memory;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
@@ -151,6 +152,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(window_memory::init())
         .setup(|app| {
             let disposable_root = std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT");
             let profile = resolve_launch_profile(
@@ -197,9 +199,12 @@ pub fn run() {
                 next_browser_tab_number,
             )
             .map_err(std::io::Error::other)?;
-            app.manage(browser_state);
             let settings =
                 settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
+            browser_state
+                .attach_site_settings(settings.clone())
+                .map_err(std::io::Error::other)?;
+            app.manage(browser_state);
             #[cfg(all(windows, feature = "acp-fixture"))]
             let state = match fixture_mode {
                 DesktopFixtureMode::GenericCharacterization(binding) => {

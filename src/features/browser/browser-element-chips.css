@@ -69,7 +69,7 @@
 
 .browser-element-card {
   position: fixed;
-  z-index: 85;
+  z-index: var(--z-popover-card);
   max-height: 50vh;
   padding: 12px 16px;
   overflow: auto;

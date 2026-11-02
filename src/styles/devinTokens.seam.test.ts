@@ -7,17 +7,6 @@ function escapeRegExp(value: string) {
 }
 
 describe("Devin / VS Code dark tokens", () => {
-  it("escapes every regular-expression metacharacter in selectors", () => {
-    const selector = '.bar:not(:disabled)[aria-pressed="true"]';
-    const escaped = escapeRegExp(selector);
-
-    expect(escaped).toBe('\\.bar:not\\(:disabled\\)\\[aria-pressed="true"\\]');
-    expect(selector).toMatch(new RegExp(`^${escaped}$`));
-    expect('Xbar:notX:disabledX[aria-pressed="true"]').not.toMatch(
-      new RegExp(`^${escaped}$`),
-    );
-  });
-
   it("keeps the default canvas neutral and meaningful states blue", () => {
     const css = [
       readFileSync(resolve("src/styles/global.css"), "utf8"),

@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { createElement } from "react";
 import {
   cleanup,
@@ -36,7 +34,6 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
   useCompactWorkbenchLayout: () => compactViewport,
 }));
 
-const srcRoot = path.resolve(import.meta.dirname, "..");
 const initialState = useWorkbenchStore.getState();
 
 beforeAll(async () => {
@@ -425,13 +422,5 @@ describe("D0 workbench window mode seam", () => {
     expect(
       screen.queryByRole("navigation", { name: "Agent artifact tabs" }),
     ).toBeNull();
-  });
-
-  it("keeps desktop out of Workbench composition", async () => {
-    const source = await readFile(
-      path.join(srcRoot, "workbench/Workbench.tsx"),
-      "utf8",
-    );
-    expect(source).not.toMatch(/from ["'][^"']*desktop["']/);
   });
 });

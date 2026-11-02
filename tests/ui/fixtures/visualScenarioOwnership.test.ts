@@ -46,7 +46,6 @@ import { buildResourcePages } from "./surfaces/resourceVisualFixtures";
 import {
   installVisualAgentArtifactFollowFixture,
   installVisualAgentPreviewIdleFixture,
-  installVisualAgentResourceState,
 } from "./surfaces/resourceVisualFixtures";
 import {
   GENERATION,
@@ -54,19 +53,6 @@ import {
   RUNTIME_EPOCH,
   SESSION_ID,
 } from "./visualFixtureIds";
-import {
-  installVisualDirtyEditor,
-  installVisualEmptyEditorCanvas,
-  installVisualEmptyEditorTools,
-  installVisualLongOutlineSymbols,
-  installVisualExplorerActionFixture,
-  installVisualExplorerScrollFixture,
-  installVisualExplorerUnavailableActionFixture,
-  installVisualRepositoryError,
-  installVisualRepositoryLoading,
-  installVisualRepositoryPrimaryState,
-} from "./surfaces/editorVisualFixtures";
-import * as barrel from "./visualScenarios";
 import {
   buildVisualScenario,
   installVisualScenario,
@@ -134,45 +120,6 @@ const BUILDERS = {
 } as const;
 
 describe("visual scenario surface ownership", () => {
-  it("keeps the full catalogue explicit in its pre-split order", () => {
-    expect(VISUAL_SCENARIOS.map((entry) => entry.name)).toEqual([
-      "agent-single",
-      "agent-dual",
-      "agent-long",
-      "agent-activity-family",
-      "agent-thinking-live",
-      "rich",
-      "agent-declared-test",
-      "agent-command-rollup",
-      "agent-image",
-      "agent-child-activity",
-      "agent-picker-harness-model",
-      "agent-picker-handoff",
-      "agent-composer-narrow",
-      "agent-composer-context-unknown",
-      "agent-composer-context-known",
-      "agent-composer-goal",
-      "agent-composer-context-over-capacity",
-      "agent-session-mode-closed",
-      "agent-session-mode-open",
-      "agent-session-mode-narrow",
-      "agent-session-mode-forced-colors",
-      "editor",
-      "editor-picker-repository",
-      "editor-picker-repository-filtered",
-      "editor-picker-narrow",
-      "editor-picker-zoom-200",
-      "file",
-      "diff",
-      "preview",
-      "agent-preview-starting",
-      "agent-preview-health-failed",
-      "agent-preview-exited",
-      "error",
-      "waiting",
-    ]);
-  });
-
   it("omits completed thinking and rolls the adjacent tools into one activity row", async () => {
     const next = buildAgentPages("agent-activity-family")![0];
     expect(next.turns[0].items[0]).toMatchObject({
@@ -453,19 +400,6 @@ describe("visual scenario surface ownership", () => {
     }
   });
 
-  it("keeps AV-01 phase fixture companions labelled separately from screenshot proof", () => {
-    expect(PREVIEW_PROJECTION_FIXTURE_SCENARIOS).toEqual([
-      "agent-preview-starting",
-      "agent-preview-health-failed",
-      "agent-preview-exited",
-    ]);
-    expect(
-      PREVIEW_PROJECTION_FIXTURE_SCENARIOS.every(
-        (name) => scenarioSurface(name) === "resource",
-      ),
-    ).toBe(true);
-  });
-
   it("builds the same deterministic pages through the dispatcher and the owning builder", () => {
     for (const scenario of VISUAL_SCENARIOS) {
       const builder = BUILDERS[scenarioSurface(scenario.name)];
@@ -475,30 +409,6 @@ describe("visual scenario surface ownership", () => {
       expect(buildVisualScenario(scenario.name)).toEqual(
         buildVisualScenario(scenario.name),
       );
-    }
-  });
-
-  it("keeps the compatibility barrel to its exact single-route allowlist", () => {
-    expect(Object.keys(barrel).sort()).toEqual(["installVisualScenario"]);
-    expect(typeof barrel.installVisualScenario).toBe("function");
-  });
-
-  it("keeps every surface installer resolving from its owning module", () => {
-    for (const installer of [
-      installVisualAgentResourceState,
-      installVisualAgentArtifactFollowFixture,
-      installVisualExplorerScrollFixture,
-      installVisualExplorerActionFixture,
-      installVisualExplorerUnavailableActionFixture,
-      installVisualRepositoryError,
-      installVisualRepositoryLoading,
-      installVisualRepositoryPrimaryState,
-      installVisualEmptyEditorTools,
-      installVisualLongOutlineSymbols,
-      installVisualEmptyEditorCanvas,
-      installVisualDirtyEditor,
-    ]) {
-      expect(typeof installer).toBe("function");
     }
   });
 

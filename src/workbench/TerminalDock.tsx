@@ -11,6 +11,7 @@ import {
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { utf8ByteLength } from "../domain/text";
+import { withStyleNonce } from "../ports/styleNonce";
 
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
@@ -87,7 +88,9 @@ export function TerminalDock({
         selectionBackground: "#444444",
       },
     });
-    terminal.open(element);
+    // xterm has no nonce option; its renderer and viewport create their
+    // <style> elements inside open().
+    withStyleNonce(element.ownerDocument, () => terminal.open(element));
     const initial = dimensionsFor(element);
     terminal.resize(initial.columns, initial.rows);
 
