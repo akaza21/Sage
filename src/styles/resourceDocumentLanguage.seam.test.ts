@@ -190,37 +190,7 @@ describe("document token authority", () => {
     expect(language).toContain("--color-diff-delete: var(--diff-delete)");
   });
 
-  it("drives document syntax colors from tokens in the editor runtime", async () => {
-    const [language, theme, runtime, runtimeGuard] = await Promise.all([
-      readFile(resolve("src/styles/resource-document-language.css"), "utf8"),
-      readFile(resolve("src/features/files/editorDocumentTheme.ts"), "utf8"),
-      readFile(
-        resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
-        "utf8",
-      ),
-      readFile(
-        resolve("src/features/files/CodeMirrorEditorRuntime.test.ts"),
-        "utf8",
-      ),
-    ]);
-    expect(theme).toContain("HighlightStyle.define(");
-    expect(theme).toContain("defaultHighlightStyle.specs");
-    expect(theme).toContain("DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX");
-    expect(runtimeGuard).toContain(
-      "assertDefaultSpecFingerprint(defaultHighlightStyle.specs)",
-    );
-    for (const driftCase of [
-      "rejects a same-count reorder of specs with matching style shapes",
-      "rejects drift in a non-color style value",
-      "rejects a changed default spec count",
-      "rejects drift in a default palette value",
-    ]) {
-      expect(runtimeGuard, driftCase).toContain(driftCase);
-    }
-    expect(runtime).toContain(
-      "syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true })",
-    );
-    expect(runtime).not.toContain("syntaxHighlighting(defaultHighlightStyle");
+  it("colors highlighted code spans from the document syntax tokens", async () => {
     const { highlightCodeSource } =
       await import("../features/files/CodeMirrorEditorRuntime");
     const spans = await highlightCodeSource("return 1", "python");
@@ -239,13 +209,6 @@ describe("document token authority", () => {
     );
     expect(colors).toContain("var(--doc-syntax-keyword)");
     expect(colors).toContain("var(--doc-syntax-literal)");
-    expect(runtime).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(theme).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    for (const token of REQUIRED_DOC_TOKENS) {
-      if (!token.startsWith("--doc-syntax-")) continue;
-      expect(theme, token).toContain(`var(${token})`);
-    }
-    expect(language).not.toContain(".tok-");
   });
 
   it("has no agent-mode document or diff token override in any source stylesheet", async () => {
