@@ -5,23 +5,25 @@ import {
 } from "./shared/visualBrowserPrimitives";
 
 type Resource = "closed" | "file" | "diff" | "preview";
+// Navigation widths follow the owner's Codex desktop capture: the icon rail
+// plus the chat list end at x = 326, and the icon rail alone is 46 px.
 const geometries = [
   {
     width: 1888,
     height: 1096,
-    navigation: 385,
-    closedChat: 1495,
-    openChat: 637,
+    navigation: 326,
+    closedChat: 1554,
+    openChat: 696,
   },
   {
     width: 1280,
     height: 1000,
-    navigation: 385,
-    closedChat: 887,
-    openChat: 360,
+    navigation: 326,
+    closedChat: 946,
+    openChat: 362,
   },
-  { width: 720, height: 1000, navigation: 332, closedChat: 388, openChat: 388 },
-  { width: 480, height: 1000, navigation: 54, closedChat: 426, openChat: 426 },
+  { width: 720, height: 1000, navigation: 326, closedChat: 394, openChat: 394 },
+  { width: 480, height: 1000, navigation: 46, closedChat: 434, openChat: 434 },
 ];
 
 async function box(locator: Locator) {
@@ -194,8 +196,8 @@ for (const geometry of geometries) {
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(
             chat.x + chat.width,
           );
-          if (width === 720) expect(bounds.width).toBe(356);
-          if (width === 480) expect(bounds.width).toBe(394);
+          if (width === 720) expect(bounds.width).toBe(362);
+          if (width === 480) expect(bounds.width).toBe(402);
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {

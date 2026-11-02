@@ -25,7 +25,8 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   const original = await visibleIds();
   expect(original).toEqual(["visual-chat-primary"]);
   for (const centerWidth of [859, 860, 1200, 859, 1200]) {
-    await page.setViewportSize({ width: centerWidth + 393, height: 1000 });
+    // The 326 px navigation plus its 8 px splitter sit beside the center.
+    await page.setViewportSize({ width: centerWidth + 334, height: 1000 });
     await expect
       .poll(async () =>
         Math.round((await page.locator(".center-region").boundingBox())!.width),
@@ -86,7 +87,8 @@ test("AP-A1/A3: only an explicit side-chat action opens a second titled, closabl
     header.getByRole("button", { name: "Close side chat", exact: true }),
   ).toBeVisible();
   const sideId = await panes.last().getAttribute("data-chat-id");
-  await page.setViewportSize({ width: 1252, height: 1000 });
+  // A 859 px center (below the two-pane minimum) beside the navigation.
+  await page.setViewportSize({ width: 1193, height: 1000 });
   await expect(panes).toHaveCount(1);
   await expect(panes.first()).toHaveAttribute("data-chat-id", sideId!);
   await page.setViewportSize({ width: 1888, height: 1080 });
@@ -152,7 +154,7 @@ for (const harness of ["codex", "claude-code", "pi"]) {
         const bounds = await navigation.boundingBox();
         return bounds ? Math.round(bounds.width) : null;
       })
-      .toBe(54);
+      .toBe(46);
     await expect(
       navigation.locator(".project-sidebar__icon-rail"),
     ).toBeVisible();

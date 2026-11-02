@@ -119,6 +119,7 @@
   --title-bar-search-width: 182px;
   --title-bar-search-height: 32px;
   --agent-shell-rail: #202020;
+  --agent-icon-rail-width: 46px; /* AGENT_ICON_RAIL_WIDTH; owner Codex capture */
   --agent-shell-sidebar: #1b1b1b;
   --agent-shell-divider: #2b2b2b;
   --agent-shell-rail-divider: #252525;
