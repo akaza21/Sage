@@ -1,5 +1,4 @@
 .chat-dock {
-  --chat-dock-summary-space: 0px;
   display: flex;
   min-height: 0;
   max-height: 100%;
@@ -17,17 +16,23 @@
   );
 }
 
-.chat-dock:has(> .chat-edit-summary-zone:not(:empty)) {
-  --chat-dock-summary-space: 40px;
+/* Slots take space in the column before the composer shares the remainder. */
+.chat-dock > * {
+  flex: none;
 }
 
 .chat-dock > .chat-edit-summary-zone {
-  min-height: var(--chat-dock-summary-space);
+  /* Expanded edits use spare room without squeezing the input and toolbar. */
+  flex: 1 1 0;
+}
+
+.chat-dock > .chat-edit-summary-zone:not(:empty) {
+  min-height: 40px;
 }
 
 .chat-dock > .acp-permission-prompt {
-  max-height: calc(100% - var(--chat-dock-summary-space));
-  flex: none;
+  min-height: 0;
+  flex: 0 1 auto;
 }
 
 .composer {
@@ -36,8 +41,7 @@
   container-type: inline-size;
   display: flex;
   min-height: 0;
-  max-height: calc(100% - var(--chat-dock-summary-space));
-  flex: none;
+  flex: 0 1 auto;
   flex-direction: column;
 }
 
@@ -48,7 +52,8 @@
 
 .composer__body {
   display: block;
-  min-height: var(--composer-input-min-block-size);
+  min-height: 0;
+  flex: 0 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

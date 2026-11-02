@@ -77,6 +77,83 @@ async function applyApproval(page: Page, state: "received" | "declinePending") {
   }, state);
 }
 
+for (const width of [480, 1280]) {
+  test(`approval load failure keeps the toolbar reachable with a full queue and long draft at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 560 });
+    await page.route(
+      "**/src/features/chat/acp/PermissionPrompt.tsx*",
+      (route) => route.abort("failed"),
+    );
+    await openScenario(page, "diff", "agent");
+    await settleChatProjections(page);
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { MAX_QUEUED_CHAT_PROMPTS } =
+        await import("/src/domain/chatOwnership.ts");
+      useWorkbenchStore.setState((state) => ({
+        chatUiById: {
+          ...state.chatUiById,
+          [state.activeTabId!]: {
+            ...state.chatUiById[state.activeTabId!],
+            queuedPrompts: Array.from(
+              { length: MAX_QUEUED_CHAT_PROMPTS },
+              (_, index) => ({
+                id: `queue-${index}`,
+                text: `Follow-up ${index}`,
+                attachedContext: [],
+                bindingId: "fixture",
+                modelId: null,
+                status: "blocked" as const,
+              }),
+            ),
+          },
+        },
+      }));
+    });
+    const draft = "Keep this draft while approval recovers.\n".repeat(40);
+    const input = page.getByRole("textbox", { name: "Message agent" });
+    await input.fill(draft);
+    await applyApproval(page, "received");
+    const dock = page.locator(".chat-dock");
+    await expect(dock.getByRole("alert")).toContainText(
+      "The approval could not load",
+    );
+    await expect(input).toHaveValue(draft);
+    await expect(
+      dock.getByLabel("Queued messages", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dock.getByRole("region", { name: "Files edited in this chat" }),
+    ).toBeVisible();
+    expect(
+      await dock
+        .locator(".composer__body")
+        .evaluate((body) => body.scrollHeight > body.clientHeight),
+    ).toBe(true);
+    const bounds = (await dock.boundingBox())!;
+    const toolbar = dock.locator(".composer__toolbar");
+    const row = (await toolbar.boundingBox())!;
+    expect(row.y).toBeGreaterThanOrEqual(bounds.y);
+    expect(row.y + row.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    expect(row.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(row.x + row.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    for (const control of [
+      toolbar.getByRole("button", { name: "Harness", exact: true }),
+      toolbar.getByRole("button", { name: "Access options", exact: true }),
+      toolbar.getByRole("button", { name: "Cancel turn", exact: true }),
+    ]) {
+      const box = (await control.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    }
+    await toolbar
+      .getByRole("button", { name: "Cancel turn", exact: true })
+      .click({ trial: true });
+  });
+}
+
 test("edited files and saved diffs stay usable when approval replaces the composer", async ({
   page,
 }) => {

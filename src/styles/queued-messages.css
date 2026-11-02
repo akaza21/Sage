@@ -1,7 +1,8 @@
 .composer__queued {
   position: static;
   min-height: 0;
-  flex-shrink: 1;
+  /* Start at one row; spare composer space expands the queue. */
+  flex: 1 1 40px;
   display: grid;
   max-height: min(320px, 40vh);
   gap: var(--space-1);
