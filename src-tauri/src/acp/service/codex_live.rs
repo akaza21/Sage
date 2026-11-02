@@ -46,6 +46,7 @@ mod cleanup;
 mod live_cancel;
 mod live_commands;
 mod live_recovery;
+mod live_send;
 mod native_end;
 mod projection_recovery;
 mod recovery;

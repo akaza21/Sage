@@ -3,23 +3,34 @@ use super::*;
 
 impl AcpService {
     #[cfg(test)]
-    pub(crate) fn send_codex_turn(
-        &self,
-        command: PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.send_session_turn(crate::acp::runtime::HostPromptIntent {
-            command,
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })
-        .map_err(|failure| failure.error)
-    }
-
-    #[cfg(test)]
     pub(crate) fn cancel_codex_turn(
         &self,
         intent: crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.cancel_session_turn(intent)
+        #[cfg(windows)]
+        let started = Instant::now();
+        #[cfg(windows)]
+        let owner = intent.owner.clone();
+        let result = self.cancel_session_turn(intent);
+        #[cfg(windows)]
+        if let Err(error) = &result {
+            let host = self.runtime.active().map(|host| {
+                (
+                    host.lifecycle.load(std::sync::atomic::Ordering::Acquire),
+                    host.last_shutdown_phase(),
+                )
+            });
+            eprintln!(
+                "ACP cancellation failed: stage={} elapsed_ms={} error={error:?} slot={:?} host={host:?} scheduler={:?}",
+                self.last_cancel_stage(),
+                started.elapsed().as_millis(),
+                self.runtime.for_owner(&owner).err(),
+                self.scheduler
+                    .active()
+                    .map(|allocation| (allocation.turn_reserved, allocation.turn_id)),
+            );
+        }
+        result
     }
 
     #[cfg(test)]
@@ -28,32 +39,6 @@ impl AcpService {
         command: crate::acp::store::CloseSessionCommand,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         self.close_session(command)
-    }
-
-    pub(crate) fn send_session_turn(
-        &self,
-        intent: crate::acp::runtime::HostPromptIntent,
-    ) -> Result<
-        crate::acp::runtime::HostOutcome,
-        crate::acp::service::PromptSendError<CodexSessionError>,
-    > {
-        let owner = RuntimeOwner {
-            project_id: intent.command.project_id.clone(),
-            chat_id: intent.command.chat_id.clone(),
-            session_id: intent.command.session_id.clone(),
-            runtime_epoch: intent.command.runtime_epoch,
-        };
-        let host = self
-            .runtime
-            .for_owner(&owner)
-            .map_err(map_slot_error)
-            .map_err(crate::acp::service::PromptSendError::not_started)?;
-        match host.send(intent) {
-            Ok(outcome) => Ok(outcome),
-            Err(error) => Err(crate::acp::service::PromptSendError::unknown(
-                self.retain_live_host_error(owner, host, LiveHostRecoveryPhase::SendEffect, error),
-            )),
-        }
     }
 
     pub(crate) fn cancel_session_turn(

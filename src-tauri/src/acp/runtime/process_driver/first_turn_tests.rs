@@ -56,6 +56,8 @@ mod model_catalog_tests;
 #[path = "first_turn_tests/cancel_shutdown_tests.rs"]
 mod cancel_shutdown_tests;
 
+mod write_observation_tests;
+
 struct Authority(IntentSnapshot);
 
 struct MutableAuthority(Arc<Mutex<IntentSnapshot>>);
@@ -376,6 +378,7 @@ impl AcpStore for CommitUnknownOnceStore {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CloseBeforeWriteCase {
+    EarlyStdoutBeforeObservation,
     Idle,
     IdleReaderEofPrompt,
     IdleReaderEofClose,
@@ -418,7 +421,8 @@ impl CloseBeforeWriteCase {
         match self {
             Self::BeginSendAppliedUnknown => Some(true),
             Self::BeginSendNotAppliedUnknown => Some(false),
-            Self::Idle
+            Self::EarlyStdoutBeforeObservation
+            | Self::Idle
             | Self::IdleReaderEofPrompt
             | Self::IdleReaderEofClose
             | Self::IdleReaderEofConfigure
@@ -450,7 +454,8 @@ impl CloseBeforeWriteCase {
     }
 
     fn dispatches_prompt(self) -> bool {
-        self == Self::ActiveProcessExitDeadline
+        self == Self::EarlyStdoutBeforeObservation
+            || self == Self::ActiveProcessExitDeadline
             || self == Self::ActiveReadyForWriteProcessExitDeadline
             || self == Self::ActiveReaderEofThenProcessExitDeadline
             || self == Self::ReusableReaderEofThenProcessExitDeadline
@@ -2222,6 +2227,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         || matches!(
                             case,
                             CloseBeforeWriteCase::ReusableReaderEofThenProcessExitDeadline
+                                | CloseBeforeWriteCase::EarlyStdoutBeforeObservation
                                 | CloseBeforeWriteCase::ReusableReaderEofDeadline
                                 | CloseBeforeWriteCase::ReusablePendingConfigReaderEofDeadline
                         ))
@@ -2275,7 +2281,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             turn_revision: None,
         }));
         let mailbox = Arc::new(DriverMailbox::new().unwrap());
-        let context = FirstTurnWorkerContext {
+        let mut context = FirstTurnWorkerContext {
             owner: owner.clone(),
             coordinator: SendCoordinator::new(authority, journal.clone(), publisher.clone()),
             journal: journal.clone(),
@@ -2734,6 +2740,16 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 ));
                 assert!(matches!(&state, FirstTurnWorkerState::Active(_)));
             }
+        }
+        if case == CloseBeforeWriteCase::EarlyStdoutBeforeObservation {
+            write_observation_tests::early_stdout_before_observation(state, &mut context, &database).await;
+            drop(context);
+            drop(sessions);
+            drop(scheduler);
+            drop(journal);
+            journal_task.finish();
+            drop(database);
+            return;
         }
         if case == CloseBeforeWriteCase::ActiveReadyForWriteProcessExitDeadline {
             let turn_id = match &state {
