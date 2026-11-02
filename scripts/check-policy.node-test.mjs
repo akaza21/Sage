@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { validateMainCapabilityPermissions } from "./check-policy-permissions.mjs";
 
@@ -47,4 +48,86 @@ test("reviewed Windows API features include only ConPTY and existing containment
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
   ]);
+});
+
+const { sourceSecurityErrors } = await import("./check-policy.mjs");
+
+for (const [description, source] of [
+  [
+    "dangerouslySetInnerHTML",
+    "<div dangerouslySetInnerHTML={{ __html: input }} />",
+  ],
+  ["innerHTML assignment", "element.innerHTML = input;"],
+  ["eval", "eval (input);"],
+  ["Function constructor", "new Function (input);"],
+]) {
+  test(`source security rejects ${description}`, () => {
+    assert.equal(sourceSecurityErrors("src/example.tsx", source).length, 1);
+  });
+}
+
+test("source security accepts safe rendering and test fixtures", () => {
+  assert.deepEqual(
+    sourceSecurityErrors("src/example.tsx", "element.textContent = input;"),
+    [],
+  );
+  assert.deepEqual(
+    sourceSecurityErrors("src/example.test.tsx", 'element.innerHTML = "";'),
+    [],
+  );
+});
+
+test("process creation requires an exact reviewed module", () => {
+  for (const source of [
+    'Command::new("git")',
+    'std::process::Command::new("git")',
+    "use std::process::Command;",
+  ]) {
+    assert.equal(
+      sourceSecurityErrors("src-tauri/src/unreviewed.rs", source).length,
+      1,
+    );
+    assert.deepEqual(
+      sourceSecurityErrors("src-tauri/src/git_process.rs", source),
+      [],
+    );
+    assert.equal(
+      sourceSecurityErrors("src-tauri/src/git_process/unreviewed.rs", source)
+        .length,
+      1,
+    );
+  }
+});
+
+test("Rust test modules do not hide later production process creation", () => {
+  const tests =
+    '#[cfg(test)]\nmod arbitrary_name { fn check() { let text = "}"; Command::new("git"); } }';
+  assert.deepEqual(sourceSecurityErrors("src-tauri/src/example.rs", tests), []);
+  assert.equal(
+    sourceSecurityErrors(
+      "src-tauri/src/example.rs",
+      `${tests}\nfn run() { Command::new("git"); }`,
+    ).length,
+    1,
+  );
+  for (const file of ["example_tests.rs", "tests.rs", "tests/example.rs"]) {
+    assert.deepEqual(
+      sourceSecurityErrors(`src-tauri/src/${file}`, 'Command::new("git")'),
+      [],
+    );
+  }
+});
+
+test("source security accepts the current source tree", () => {
+  const errors = [];
+  for (const directory of ["src", "src-tauri/src"]) {
+    for (const file of readdirSync(directory, { recursive: true })) {
+      if (!/\.(?:[cm]?[jt]sx?|rs)$/.test(file)) continue;
+      const relative = path.join(directory, file);
+      errors.push(
+        ...sourceSecurityErrors(relative, readFileSync(relative, "utf8")),
+      );
+    }
+  }
+  assert.deepEqual(errors, []);
 });

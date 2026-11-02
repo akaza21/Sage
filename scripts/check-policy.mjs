@@ -14,6 +14,85 @@ import {
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 
+const reviewedSpawnModules = new Map([
+  ["git_process.rs", "Git CLI execution boundary"],
+  ["acp/process/unix/spawn.rs", "Contained ACP harness launch on Unix"],
+  ["user_terminal/unix.rs", "User terminal shell launch on Unix"],
+  ["app_preview/lifecycle.rs", "User-requested app preview server"],
+  ["harness_discovery/version_probe.rs", "Bounded harness version discovery"],
+  ["workspace/search/helper_process.rs", "Bounded workspace search helper"],
+  ["codex_helper_boundary/caller.rs", "Provisioning helper caller"],
+  ["commands/acp/claude_auth.rs", "Claude Code sign-in"],
+  ["acp/fixture/process_ops.rs", "Feature-gated adversarial process fixture"],
+  [
+    "acp/fixture/host/redaction_observer.rs",
+    "Feature-gated redaction observer",
+  ],
+  [
+    "browser/devtools/cdp_lane/chromium.rs",
+    "Feature-gated Chromium measurement lane",
+  ],
+]);
+
+const frontendSecurityPatterns = [
+  [/\bdangerouslySetInnerHTML\b/u, "dangerouslySetInnerHTML"],
+  [/\.\s*innerHTML\s*=(?!=)/u, "innerHTML assignment"],
+  [/\beval\s*\(/u, "eval"],
+  [/\bnew\s+Function\s*\(/u, "Function constructor"],
+];
+const rustProcessPattern =
+  /\bCommand\s*::\s*new\s*\(|\bstd\s*::\s*process\s*::\s*Command\b/u;
+const testSourcePath =
+  /(?:^|\/)tests(?:\/|\.rs$)|_tests\.rs$|\.test\.[cm]?[jt]sx?$/u;
+
+function rustProductionSource(source) {
+  // Mask literals and comments before balancing test-module braces. Preserve
+  // offsets so a test module cannot hide production code that follows it.
+  const masked = source.replace(
+    /r(#+)?"[\s\S]*?"\1|"(?:\\[\s\S]|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*|\/\*[\s\S]*?\*\//gu,
+    (token) => token.replace(/[^\n]/gu, " "),
+  );
+  const testModule =
+    /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/gu;
+  let result = "";
+  let previousEnd = 0;
+  for (const match of masked.matchAll(testModule)) {
+    if (match.index < previousEnd) continue;
+    let end = match.index + match[0].length;
+    let depth = 1;
+    while (end < masked.length && depth > 0) {
+      if (masked[end] === "{") depth += 1;
+      if (masked[end] === "}") depth -= 1;
+      end += 1;
+    }
+    result += masked.slice(previousEnd, match.index);
+    previousEnd = end;
+  }
+  return result + masked.slice(previousEnd);
+}
+
+export function sourceSecurityErrors(file, source) {
+  const relative = canonicalRelative(file);
+  if (testSourcePath.test(relative)) return [];
+  if (relative.startsWith("src/")) {
+    return frontendSecurityPatterns
+      .filter(([pattern]) => pattern.test(source))
+      .map(
+        ([, description]) => `${relative} contains forbidden ${description}.`,
+      );
+  }
+  const rustRoot = "src-tauri/src/";
+  if (
+    relative.startsWith(rustRoot) &&
+    relative.endsWith(".rs") &&
+    !reviewedSpawnModules.has(relative.slice(rustRoot.length)) &&
+    rustProcessPattern.test(rustProductionSource(source))
+  ) {
+    return [`${relative} creates processes outside a reviewed spawn module.`];
+  }
+  return [];
+}
+
 const root = process.cwd();
 const failures = [];
 
@@ -780,10 +859,17 @@ if (
 }
 
 const sourceInventory = await discoverSourceFilesWithCssBound(root);
-const productionFiles = [
+const securityFiles = [
   ...sourceInventory.files,
   ...(await filesBelow("src-tauri/src")),
-].filter(
+];
+for (const file of securityFiles.filter((file) =>
+  /\.(?:[cm]?[jt]sx?|rs)$/.test(file),
+)) {
+  const source = await readFile(path.join(root, file), "utf8");
+  for (const error of sourceSecurityErrors(file, source)) fail(error);
+}
+const productionFiles = securityFiles.filter(
   (file) =>
     /\.(?:ts|tsx|rs)$/.test(file) &&
     !/\.test\.tsx?$/u.test(file) &&
