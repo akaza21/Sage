@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { BrowserDevice } from "../../ports/nativeBrowserPort";
 import {
   browserSetDevice,
-  readDeviceFailure,
   type BrowserDeviceFailure,
 } from "../../ports/nativeBrowserDevicePort";
 import {
@@ -69,7 +68,8 @@ function enqueue(
         // A waiting change would apply again what the failure just undid.
         const resetWaiting = queue.waiting.get(next) === null;
         if (!resetWaiting) queue.waiting.delete(next);
-        onSettled(next, { ...readDeviceFailure(cause), resetWaiting });
+        // The adapter already decoded Rust's tagged held state.
+        onSettled(next, { ...(cause as BrowserDeviceFailure), resetWaiting });
       }
     }
     queue.running = false;

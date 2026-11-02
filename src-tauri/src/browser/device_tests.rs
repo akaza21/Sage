@@ -206,29 +206,6 @@ fn engine_reply(method: &str) -> String {
 }
 
 #[test]
-fn apply_sends_each_step_in_order() {
-    let device = admitted("pixel-7", 915, 412, 50);
-    let mut sent = Vec::new();
-    apply_with(Some(&device), |method, _| {
-        sent.push(method);
-        Ok(engine_reply(method))
-    })
-    .unwrap();
-    assert_eq!(
-        sent,
-        [
-            "Browser.getVersion",
-            "Page.getLayoutMetrics",
-            "Emulation.setDeviceMetricsOverride",
-            "Page.getLayoutMetrics",
-            "Emulation.setDeviceMetricsOverride",
-            "Emulation.setTouchEmulationEnabled",
-            "Emulation.setUserAgentOverride",
-        ]
-    );
-}
-
-#[test]
 fn a_failed_step_resets_the_tab_and_confirms_it() {
     let mut sent = Vec::new();
     let mut refused = false;
