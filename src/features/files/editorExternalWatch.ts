@@ -114,14 +114,18 @@ export function useEditorExternalWatch(
       );
     };
 
-    // Only a focus inside this File's editor retries, so one click elsewhere
-    // does not send a watch request for every capped File.
+    // Only focus entering this File's editor retries, so a click elsewhere, or
+    // focus moving within the editor, sends no watch request.
     const retryWhenFocused = (event: FocusEvent) => {
       const focusedEditor = boundary.current?.();
       if (
         focusedEditor &&
         event.target instanceof Node &&
-        focusedEditor.contains(event.target)
+        focusedEditor.contains(event.target) &&
+        !(
+          event.relatedTarget instanceof Node &&
+          focusedEditor.contains(event.relatedTarget)
+        )
       ) {
         tryStart();
       }

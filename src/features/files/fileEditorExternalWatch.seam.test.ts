@@ -221,7 +221,14 @@ describe("IDE-2 editor external watch seam", () => {
     expect(watch).toHaveBeenCalledTimes(1);
     expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
-    fireEvent.focusIn(fileEditor);
+    // Focus moving within the editor has not entered it, so it does not ask.
+    fireEvent.focusIn(fileEditor, { relatedTarget: fileEditor });
+    await act(async () => undefined);
+    expect(watch).toHaveBeenCalledTimes(1);
+
+    fireEvent.focusIn(fileEditor, {
+      relatedTarget: screen.getByRole("button", { name: "Elsewhere" }),
+    });
     await waitFor(() => {
       expect(screen.queryByText(WATCH_LIMIT_MESSAGE)).toBeNull();
     });
