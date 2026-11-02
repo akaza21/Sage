@@ -777,7 +777,17 @@ function Stop-OwnedRuntimeTree(
       $tracked = @()
       $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
       $truncated = $false
-      foreach ($identity in (@($Runtime.identity) + @($Runtime.store.Values))) {
+      $identities = @($Runtime.identity) + @($Runtime.store.Values)
+      $keysByPid = @{}
+      foreach ($identity in $identities) {
+        $tuple = Get-CleanupRootTuple $identity
+        $processKey = [string]$tuple.processId
+        if (-not $keysByPid.ContainsKey($processKey)) {
+          $keysByPid[$processKey] = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        }
+        [void]$keysByPid[$processKey].Add("$($tuple.executablePath)`0$($tuple.creationDate)")
+      }
+      foreach ($identity in $identities) {
         $tuple = Get-CleanupRootTuple $identity
         $key = "$($tuple.processId)`0$($tuple.executablePath)`0$($tuple.creationDate)"
         if (-not $seen.Add($key)) { continue }
@@ -785,7 +795,8 @@ function Stop-OwnedRuntimeTree(
         # further, including paths, and explicitly report any omitted detail.
         if ($tracked.Count -ge 32) { $truncated = $true; continue }
         $outcome = "unknown"
-        if ($null -ne $Teardown) {
+        $ambiguous = $keysByPid[[string]$tuple.processId].Count -gt 1
+        if ($null -ne $Teardown -and -not $ambiguous) {
           $outcome = if ($tuple.processId -in @($Teardown.reusedProcessIds) -or
               ($Teardown.identityLost -and $tuple.processId -eq $Runtime.identity.processId)) {
             "lost"
@@ -794,6 +805,9 @@ function Stop-OwnedRuntimeTree(
         $tuple.pathTruncated = $null -ne $tuple.executablePath -and $tuple.executablePath.Length -gt 512
         if ($tuple.pathTruncated) { $tuple.executablePath = $tuple.executablePath.Substring(0, 512) }
         $tuple.outcome = $outcome
+        # Teardown exposes PID observations, not exact surviving tuples. Never
+        # claim which generation survived when the store remembers PID reuse.
+        if ($ambiguous) { $tuple.reason = "multiple-identities-for-pid" }
         $tracked += $tuple
       }
       $record = [ordered]@{

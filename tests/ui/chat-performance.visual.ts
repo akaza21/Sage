@@ -177,7 +177,7 @@ for (const mode of ["cap", "stress"] as const) {
     await page.goto("/tests/ui/fixtures/chat-performance.html");
     await page.waitForFunction(() => Boolean(window.chatPerf));
     // CP-24 measures synchronous render/commit, after modules and fixture data
-    // load, excluding teardown, scrolling, layout probes and browser startup.
+    // load, excluding teardown, scrolling, post-mount metric probes and startup.
     // Discard one warm-up, then gate the median of seven fresh Chat mounts:
     // a shared runner's isolated stall cannot decide the unchanged 150 ms bar.
     // Report every sample and nearest-rank p90 so tail latency stays visible.

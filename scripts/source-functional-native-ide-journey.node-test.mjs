@@ -3741,7 +3741,7 @@ test("Windows Vite cleanup records an injected stop failure and blocks receipt p
   }
 });
 
-test("Windows cleanup failure reports the exact surviving identity in the failure log", () => {
+test("Windows cleanup failure reports survivors and distinguishes ambiguous PID generations", () => {
   const root = mkdtempSync(path.join(tmpdir(), "sage-vite-survivor-"));
   const powershell = path.join(
     process.env.SystemRoot,
@@ -3756,34 +3756,59 @@ test("Windows cleanup failure reports the exact surviving identity in the failur
   // failing closed and report that exact survivor without inventing a new probe.
   const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};function Stop-FootprintTree {param($Identity,$Store,$Grace)return [ordered]@{identityLost=$false;remaining=@($Identity.processId);reusedProcessIds=@()}};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=[ordered]@{process=$process;identity=$identity;store=(New-FootprintIdentityStore)};$message='';try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$message=$_.Exception.Message};[ordered]@{message=$message;alive=($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue));identity=(Get-CleanupRootTuple $identity)}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
   try {
-    const result = spawnSync(
-      powershell,
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        Buffer.from(source, "utf16le").toString("base64"),
-      ],
-      { encoding: "utf8", windowsHide: true, timeout: 15000 },
-    );
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    const observed = JSON.parse(result.stdout.trim());
-    assert.equal(
-      observed.message,
-      "The vite runtime cleanup was not terminal-zero.",
-    );
-    assert.equal(observed.alive, true);
-    const diagnostic = JSON.parse(
-      result.stderr.split("[runtime-teardown] ")[1].split(/\r?\n/)[0],
-    );
-    assert.equal(diagnostic.identityLost, false);
-    assert.deepEqual(diagnostic.remainingProcessIds, [
-      observed.identity.processId,
-    ]);
-    assert.deepEqual(
-      diagnostic.tracked.filter((entry) => entry.outcome === "survived"),
-      [{ ...observed.identity, pathTruncated: false, outcome: "survived" }],
-    );
+    for (const reused of [false, true]) {
+      const input = reused
+        ? source.replace(
+            ";$message='';",
+            ";[void](Add-FootprintRememberedIdentity $runtime.store ([pscustomobject]@{ProcessId=$identity.processId;ExecutablePath=$identity.executablePath;CreationDate='1900-01-01T00:00:00.000Z'}));$message='';",
+          )
+        : source;
+      const result = spawnSync(
+        powershell,
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-EncodedCommand",
+          Buffer.from(input, "utf16le").toString("base64"),
+        ],
+        { encoding: "utf8", windowsHide: true, timeout: 15000 },
+      );
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      const observed = JSON.parse(result.stdout.trim());
+      assert.equal(
+        observed.message,
+        "The vite runtime cleanup was not terminal-zero.",
+      );
+      assert.equal(observed.alive, true);
+      const diagnostic = JSON.parse(
+        result.stderr.split("[runtime-teardown] ")[1].split(/\r?\n/)[0],
+      );
+      assert.equal(diagnostic.identityLost, false);
+      assert.deepEqual(diagnostic.remainingProcessIds, [
+        observed.identity.processId,
+      ]);
+      if (reused) {
+        assert.deepEqual(
+          diagnostic.tracked.filter(
+            (entry) => entry.processId === observed.identity.processId,
+          ),
+          [
+            observed.identity,
+            { ...observed.identity, creationDate: "1900-01-01T00:00:00.000Z" },
+          ].map((identity) => ({
+            ...identity,
+            pathTruncated: false,
+            outcome: "unknown",
+            reason: "multiple-identities-for-pid",
+          })),
+        );
+      } else {
+        assert.deepEqual(
+          diagnostic.tracked.filter((entry) => entry.outcome === "survived"),
+          [{ ...observed.identity, pathTruncated: false, outcome: "survived" }],
+        );
+      }
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
