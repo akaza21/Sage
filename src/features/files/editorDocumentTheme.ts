@@ -6,8 +6,9 @@ import { EditorView } from "@codemirror/view";
  * src/styles/global.css). Specs are the public default highlight table with
  * only color sources replaced, so tag order and non-color treatments match
  * the installed runtime exactly and prior pixels are preserved in both modes.
- * Null entries keep specs without color. A CI test pins count, order, and
- * treatments so dependency drift cannot silently mis-map a token.
+ * Null entries keep specs without color. tests/ui/editor-syntax.visual.ts
+ * checks the painted colors and treatments, so dependency drift that
+ * mis-maps a token fails there.
  */
 const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly (string | null)[] = [
   "var(--doc-syntax-meta)",
