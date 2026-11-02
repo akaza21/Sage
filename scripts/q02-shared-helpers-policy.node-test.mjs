@@ -25,17 +25,17 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
-test("default production file cap accepts 600 and rejects 601", async () => {
-  const files = Array.from({ length: 601 }, (_, index) => [
+test("default production file cap accepts 700 and rejects 701", async () => {
+  const files = Array.from({ length: 701 }, (_, index) => [
     `src/f${String(index).padStart(3, "0")}.ts`,
     "",
   ]);
-  await withFixture(Object.fromEntries(files.slice(0, 600)), async (root) => {
+  await withFixture(Object.fromEntries(files.slice(0, 700)), async (root) => {
     assert.deepEqual(await scan(root), []);
   });
   await withFixture(Object.fromEntries(files), async (root) => {
     assert.deepEqual(await scan(root), [
-      "Q02 file limit 600 exceeded at src/f600.ts",
+      "Q02 file limit 700 exceeded at src/f700.ts",
     ]);
   });
 });

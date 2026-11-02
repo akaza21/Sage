@@ -9,6 +9,9 @@
 .menu-popover--editor {
   --radius-sm: 4px;
   --radius-md: 6px;
+  --workbench-card-radius: var(--radius-md);
+  --workbench-card-fill: var(--color-panel);
+  --workbench-card-border: var(--color-border-subtle);
   --radius-lg: 8px;
 
   font-family: var(--font-family-ui);
@@ -109,12 +112,7 @@
 }
 
 .workbench--editor .center-region {
-  margin: var(--space-1) var(--space-1) var(--space-1) 0;
-  overflow: hidden;
-  grid-template-rows: 36px minmax(0, 1fr);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
+  --center-region-rows: var(--tab-height) minmax(0, 1fr);
 }
 
 .workbench--editor .active-canvas {

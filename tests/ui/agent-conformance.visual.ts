@@ -996,6 +996,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       ),
     );
     expect(inventory).toEqual([
+      "2 files changed+44-18",
       "Message agent",
       "Access options",
       "Harness",

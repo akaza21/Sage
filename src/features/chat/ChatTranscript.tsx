@@ -35,6 +35,7 @@ import { isNewProjectChat } from "./newProjectChat";
 import { TranscriptInteractionsGate, TranscriptPart } from "./transcriptLazy";
 
 export function ChatTranscript({
+  editSummaryContainer = null,
   transcriptRef,
   contentRef,
   endRef,
@@ -58,6 +59,7 @@ export function ChatTranscript({
   showJumpToLatest,
   onJumpToLatest,
 }: {
+  editSummaryContainer?: HTMLDivElement | null;
   transcriptRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
   endRef: RefObject<HTMLDivElement | null>;
@@ -91,8 +93,6 @@ export function ChatTranscript({
   onJumpToLatest: () => void;
 }) {
   const copySequence = useRef(0);
-  const [editSummaryContainer, setEditSummaryContainer] =
-    useState<HTMLDivElement | null>(null);
   const focusedRef = useRef(focused);
   useLayoutEffect(() => {
     focusedRef.current = focused;
@@ -267,9 +267,6 @@ export function ChatTranscript({
       >
         <ArrowDown size={24} aria-hidden="true" />
       </button>
-      {useNativeAcp && !projectTransitioning ? (
-        <div className="chat-edit-summary-zone" ref={setEditSummaryContainer} />
-      ) : null}
     </AnswerCopyFeedback.Provider>
   );
 }

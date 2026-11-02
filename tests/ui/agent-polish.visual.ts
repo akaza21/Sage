@@ -77,18 +77,21 @@ test("clips notice fills inside the composer and keeps harness controls on its s
   });
   const body = form.locator(".composer__body");
   await expect(body).toHaveCSS("overflow-y", "auto");
-  expect(
-    await body.evaluate((node) =>
-      parseFloat(getComputedStyle(node).borderTopLeftRadius),
-    ),
-  ).toBeGreaterThan(10);
+  await expect(body).toHaveCSS("border-top-left-radius", "0px");
+  await expect(form).toHaveCSS("border-top-left-radius", "16px");
+  await expect(form).toHaveCSS("overflow", "clip");
   const harness = form.getByRole("button", { name: "Harness", exact: true });
   await expect(harness).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   expect((await harness.boundingBox())!.height).toBe(28);
   await expect(form).toHaveScreenshot("agent-polish-composer-notice.png");
   await harness.click();
   await expect(page.getByRole("listbox")).toBeVisible();
-  await expect(form).toHaveCSS("overflow", "visible");
+  await expect(form).toHaveCSS("overflow", "clip");
+  expect(
+    await page
+      .getByRole("listbox")
+      .evaluate((element) => element.closest("form")),
+  ).toBeNull();
 });
 
 test("keeps title-bar height stable and omits an empty Editor tab row", async ({

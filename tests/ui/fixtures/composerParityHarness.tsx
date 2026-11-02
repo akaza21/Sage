@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { useSessionAccessModeStore } from "../../../src/app/sessionAccessModeStore";
 import { snapshotPage } from "../../../src/app/agentDiff.fixture";
@@ -57,6 +57,8 @@ export function Host({ state }: { state: ParityState }) {
     artifactExpanded: false,
   });
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useState<HTMLDivElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -86,6 +88,7 @@ export function Host({ state }: { state: ParityState }) {
           <div className="agent-chat-pane agent-chat-pane--focused">
             <section className="chat-surface chat-surface--agent">
               <ChatTranscript
+                editSummaryContainer={editSummaryContainer}
                 transcriptRef={transcriptRef}
                 contentRef={contentRef}
                 endRef={endRef}
@@ -108,6 +111,7 @@ export function Host({ state }: { state: ParityState }) {
                 onJumpToLatest={() => {}}
               />
               <ChatComposerRegion
+                onEditSummaryMount={setEditSummaryContainer}
                 composerRef={composerRef}
                 fieldId="message"
                 dictationScope="chat-a"

@@ -12,6 +12,10 @@
 }
 
 .chat-home {
+  --project-scope-trigger-border: 0;
+  --project-scope-trigger-fill: transparent;
+  --project-scope-trigger-blur: none;
+  --project-scope-trigger-shadow: none;
   width: 100%;
   min-width: 0;
   text-align: center;

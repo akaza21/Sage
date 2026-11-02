@@ -67,11 +67,11 @@ describe("glass grey surfaces", () => {
     expect(css("chat-navigation-surface.css")).toMatch(
       /\.project-chat-row\s*\{[^}]*var\(--glass-fill\)/s,
     );
-    expect(css("composer-surface.css")).toMatch(
-      /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
+    expect(css("surface.css")).toMatch(
+      /\.surface--dock\s*\{[^}]*--surface-fill:\s*var\(--composer-fill\);/s,
     );
     expect(css("composer-surface.css")).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--composer-border\);/s,
+      /\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--composer-border\);/s,
     );
     expect(css("global.css")).toMatch(/--composer-border:\s*#383838;/);
     expect(css("global.css")).toMatch(/--composer-fill:\s*#363636;/);

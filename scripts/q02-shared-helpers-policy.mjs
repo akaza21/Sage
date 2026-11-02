@@ -3,7 +3,8 @@ import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 
 export const Q02_LIMITS = Object.freeze({
-  files: 600,
+  // Fail-closed scanner capacity, independent of code-quality budgets.
+  files: 700,
   depth: 16,
   fileBytes: 64 * 1024,
   aggregateBytes: 2.5 * 1024 * 1024,

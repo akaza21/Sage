@@ -1,5 +1,4 @@
 .composer {
-  --queued-tray-space: 0px;
   position: relative;
   container-name: composer;
   container-type: inline-size;
@@ -7,10 +6,6 @@
   min-height: 0;
   max-height: 100%;
   flex-direction: column;
-  margin: 0;
-  overflow: visible;
-  background: var(--composer-fill);
-  box-shadow: var(--composer-shadow);
 }
 
 .composer,
@@ -26,6 +21,9 @@
     var(--chat-column-gutter),
     calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
   );
+}
+
+.chat-surface > .acp-permission-prompt {
   border: var(--border-width) solid var(--composer-border);
   border-radius: var(--radius-xl);
 }
@@ -37,15 +35,12 @@
 
 .composer__body {
   display: block;
-  min-height: 0;
+  min-height: var(--composer-input-min-block-size);
   overflow-y: auto;
-  border-start-start-radius: inherit;
-  border-start-end-radius: inherit;
   overscroll-behavior: contain;
 }
 
-/* The form owns the whole attached surface. Neither child paints an edge at
-   the join; keeping overflow visible preserves the queued tray above it. */
+/* The dock clips its unpainted slots; menus use the shared portal. */
 .composer__scope {
   display: flex;
   min-width: 0;
@@ -62,11 +57,6 @@
   flex: none;
 }
 
-.composer__scope ~ .composer__body {
-  border-start-start-radius: var(--radius-none);
-  border-start-end-radius: var(--radius-none);
-}
-
 .composer__input-area {
   position: relative;
   display: flex;
@@ -78,7 +68,7 @@
   field-sizing: content;
   display: block;
   width: 100%;
-  min-height: calc(2lh + var(--space-3) + var(--space-1));
+  min-height: var(--composer-input-min-block-size);
   max-height: min(180px, 28vh);
   padding: var(--space-3) var(--space-3) var(--space-1);
   resize: none;
@@ -262,16 +252,34 @@
   text-overflow: ellipsis;
 }
 
-/* The trigger overlays the chip's 1px border so its 28px target is neither
-   clipped by the chip nor inset from the chip's visible edge. */
+/* Interactive scope delegates its entire box to the picker trigger. */
 .project-scope.select-control {
+  --select-control-trigger-border: var(
+    --project-scope-trigger-border,
+    var(--border-width) solid var(--glass-border)
+  );
+  --select-control-trigger-fill: var(
+    --project-scope-trigger-fill,
+    var(--glass-fill)
+  );
+  --select-control-trigger-blur: var(
+    --project-scope-trigger-blur,
+    var(--glass-blur)
+  );
+  --select-control-trigger-shadow: var(
+    --project-scope-trigger-shadow,
+    var(--glass-highlight)
+  );
   padding: 0;
   overflow: visible;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
 .project-scope .searchable-picker {
-  width: calc(100% + 2px);
-  margin: -1px;
+  width: 100%;
 }
 
 .project-scope .searchable-picker__trigger {

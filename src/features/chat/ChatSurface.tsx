@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
@@ -6,7 +6,6 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { isSideChatId } from "../../workbench/sideChatState";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
@@ -20,12 +19,9 @@ import {
   useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
-import {
-  composerWorkspaceName,
-  useComposerFocusHotkey,
-} from "./composerChrome";
+import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
-import { isNewProjectChat } from "./newProjectChat";
+import { isNewProjectChat, newProjectScopeName } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
@@ -81,6 +77,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const transcriptContentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useState<HTMLDivElement | null>(null);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
@@ -308,6 +306,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       />
 
       <ChatTranscript
+        editSummaryContainer={editSummaryContainer}
         transcriptRef={messageListRef}
         contentRef={transcriptContentRef}
         endRef={endRef}
@@ -334,6 +333,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
 
       {approval.slot}
       <ChatComposerRegion
+        onEditSummaryMount={setEditSummaryContainer}
         hidden={approval.awaiting}
         composerRef={composerRef}
         fieldId={composerFieldId}
@@ -382,13 +382,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={newProjectChat ? null : project}
-        projectScopeName={
-          newProjectChat &&
-          !acpPage?.forkedFrom &&
-          !isSideChatId(acpPage?.chatId)
-            ? composerWorkspaceName(project, 1024)
-            : null
-        }
+        projectScopeName={newProjectScopeName(newProjectChat, acpPage, project)}
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}

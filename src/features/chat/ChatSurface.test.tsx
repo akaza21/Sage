@@ -820,7 +820,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(composer).toHaveValue("Follow up");
     expect(composer).toBeEnabled();
     expect(composer).toHaveFocus();
-    expect(screen.getByText("Saving…")).toBeVisible();
+    expect(await screen.findByText("Saving…")).toBeVisible();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
 
     acknowledge();

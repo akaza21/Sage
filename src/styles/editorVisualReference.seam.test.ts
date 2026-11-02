@@ -60,9 +60,11 @@ describe("Editor visual-reference seam", () => {
     expect(activityCss).toMatch(
       /\.workbench--editor \.sidebar\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );
-    expect(css).toMatch(
-      /\.workbench--editor \.center-region\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
+    const surface = await readFile(resolve("src/styles/surface.css"), "utf8");
+    expect(surface).toMatch(
+      /\.surface\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--surface-border\);[^}]*border-radius:\s*var\(--radius-surface\);/s,
     );
+    expect(css).toMatch(/--workbench-card-radius:\s*var\(--radius-md\);/);
     expect(css).toMatch(
       /\.center-region\[aria-hidden="true"\]\s*\{[^}]*margin-left:\s*min\(280px,\s*calc\(100% - 160px\)\);/s,
     );
