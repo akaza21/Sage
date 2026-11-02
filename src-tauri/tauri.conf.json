@@ -30,6 +30,8 @@
     "security": {
       "csp": {
         "default-src": "'self'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
         "connect-src": "'self' ipc: http://ipc.localhost http://tauri.localhost",
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost data:",
@@ -40,6 +42,8 @@
       },
       "devCsp": {
         "default-src": "'self'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
         "connect-src": "'self' ipc: http://ipc.localhost http://tauri.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420",
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost data:",

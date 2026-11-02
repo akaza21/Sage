@@ -325,7 +325,12 @@ mod tests {
                     GetConsoleMode(GetStdHandle(-10_i32 as u32), &mut mode) != 0
                 };
                 let cwd = std::env::current_dir().unwrap();
-                std::fs::write(marker, format!("{:?}|{console}|{input}|{}", arguments, cwd.display())).unwrap();
+                // Publish the marker atomically: the test polls for it and
+                // must never read a partly written report.
+                let mut staging = marker.clone();
+                staging.push(".partial");
+                std::fs::write(&staging, format!("{:?}|{console}|{input}|{}", arguments, cwd.display())).unwrap();
+                std::fs::rename(&staging, &marker).unwrap();
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
         "#;
