@@ -98,7 +98,7 @@ export function matchesRenameProjection(
       projected.position === tab.position &&
       projected.pinned === tab.pinned &&
       projected.dirty === tab.dirty &&
-      projected.status === tab.status &&
+      (projected.status ?? null) === (tab.status ?? null) &&
       projected.resource?.rootId === tab.resource?.rootId &&
       projected.resource?.relativePath === tab.resource?.relativePath
     );

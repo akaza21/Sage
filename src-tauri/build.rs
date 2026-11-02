@@ -28,16 +28,14 @@ fn main() {
 
 fn sage_commands() -> &'static [&'static str] {
     println!("cargo:rerun-if-changed=src/ipc_commands.rs");
-    let source = include_str!("src/ipc_commands.rs");
-    let body = source
-        .split_once("tauri::generate_handler![")
-        .expect("Sage command handler must exist")
-        .1
-        .split_once("];")
-        .expect("Sage command handler must close inside the main-webview guard")
-        .0;
-    let commands = build_command_list::parse_handler_body(body)
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR")
+        .expect("Cargo must set CARGO_MANIFEST_DIR for the Sage build script");
+    let commands = build_command_list::commands_from_checkout(std::path::Path::new(&manifest_dir))
         .expect("Sage command manifest must exactly match the handler");
+    let commands = commands
+        .into_iter()
+        .map(|command| &*Box::leak(command.into_boxed_str()))
+        .collect::<Vec<_>>();
     Box::leak(commands.into_boxed_slice())
 }
 

@@ -1068,6 +1068,66 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it("renames a Chat with a newly opened Diff after native nullable status round-trips", async () => {
+    useWorkbenchStore.setState({ tabs: [{ ...chatTab, status: "idle" }] });
+    const target = resource("src/example.ts");
+    vi.spyOn(repositoryPort, "getFileDiff").mockResolvedValue({
+      resource: target,
+      hunks: [],
+      binary: false,
+      truncated: false,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource(""),
+      entries: [],
+      truncated: false,
+    });
+    await useWorkbenchStore.getState().openDiff(target);
+    const opened = useWorkbenchStore.getState().activeTabId!;
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === opened),
+    ).toMatchObject({ kind: "diff", resource: target });
+    vi.spyOn(getWorkbenchPorts().chat, "renameChat").mockImplementation(
+      async (request, epoch) => ({
+        committed: true,
+        transitionEpoch: epoch + 1,
+        snapshot: chatProjection(
+          // Serde serializes WorkbenchTab.status: None as JSON null.
+          JSON.parse(
+            JSON.stringify(
+              request.currentLayout.tabs.map((tab) => ({
+                ...tab,
+                title: tab.id === request.chatId ? "Chat: Focus" : tab.title,
+                status: tab.status ?? null,
+              })),
+            ),
+          ),
+          opened,
+          epoch + 1,
+          null,
+          [],
+          "root-a",
+          target,
+        ),
+        recoveryError: null,
+      }),
+    );
+
+    expect(
+      await useWorkbenchStore.getState().renameChat(chatTab.id, "Focus"),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "ready",
+      error: null,
+      activeTabId: opened,
+      selectedResource: target,
+    });
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === chatTab.id)
+        ?.title,
+    ).toBe("Chat: Focus");
+  });
+
   it("blocks Chat rename when the newest editor snapshot fails", async () => {
     const selectedResource = resource("src/unsnapshotted.ts");
     const fileTab: WorkbenchTab = {
