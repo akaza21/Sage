@@ -17,6 +17,8 @@ use crate::{
 
 pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
 
+const MAX_GLOBAL_WATCHES: usize = 256;
+
 const FILE_ACTION_ADDED: u32 = 1;
 const FILE_ACTION_REMOVED: u32 = 2;
 const FILE_ACTION_MODIFIED: u32 = 3;
@@ -99,6 +101,11 @@ pub fn start_watch(resource: &ResourceRef) -> AppResult<u32> {
     if watches.contains_key(&key) {
         return Err(AppError::InvalidRequest(
             "a watch is already active for this resource".into(),
+        ));
+    }
+    if watches.len() >= MAX_GLOBAL_WATCHES {
+        return Err(AppError::ResourceLimit(
+            "too many active editor file watches".into(),
         ));
     }
     let mut generations = generations();

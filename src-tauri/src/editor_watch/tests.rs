@@ -1,6 +1,8 @@
 use super::*;
 use crate::workspace::notify::unix_events::{UnixWatchKind, unix_watch_delivery};
 
+static WATCH_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 fn resource(relative_path: &str) -> ResourceRef {
     ResourceRef {
         root_id: "root-a".into(),
@@ -26,6 +28,7 @@ fn watched_file_events_emit_changed_or_deleted_and_ignore_siblings() {
 
 #[test]
 fn cancelled_watches_cannot_emit_and_generations_do_not_repeat() {
+    let _guard = WATCH_TEST_LOCK.lock().unwrap();
     let file = resource("notes.md");
     watches().clear();
     generations().clear();
@@ -58,6 +61,48 @@ fn cancelled_watches_cannot_emit_and_generations_do_not_repeat() {
     finish_watch(&file, second);
     assert_eq!(start_watch(&file).unwrap(), second + 1);
     stop_watch(&file).unwrap();
+}
+
+#[test]
+fn global_watch_limit_rejects_overflow_and_releases_stopped_slots() {
+    let _guard = WATCH_TEST_LOCK.lock().unwrap();
+    watches().clear();
+    generations().clear();
+    let first = resource("first.md");
+    let first_generation = start_watch(&first).unwrap();
+    let first_cancelled = watch_control(&first, first_generation).unwrap();
+    assert!(matches!(start_watch(&first), Err(AppError::InvalidRequest(_))));
+
+    let mut active = vec![first.clone()];
+    for index in 1..MAX_GLOBAL_WATCHES {
+        let file = ResourceRef {
+            root_id: format!("root-{index}"),
+            relative_path: "notes.md".into(),
+        };
+        start_watch(&file).unwrap();
+        active.push(file);
+    }
+    let overflow = resource("overflow.md");
+    assert!(matches!(start_watch(&overflow), Err(AppError::ResourceLimit(_))));
+    assert!(matches!(start_watch(&first), Err(AppError::InvalidRequest(_))));
+    assert!(can_emit(&first, first_generation, &first_cancelled));
+
+    stop_watch(&first).unwrap();
+    assert!(first_cancelled.load(Ordering::Acquire));
+    let generation = start_watch(&overflow).unwrap();
+    assert!(matches!(start_watch(&first), Err(AppError::ResourceLimit(_))));
+    stop_watch(&overflow).unwrap();
+    let next_generation = start_watch(&first).unwrap();
+    assert!(next_generation > first_generation);
+    finish_watch(&first, first_generation);
+    assert!(matches!(start_watch(&overflow), Err(AppError::ResourceLimit(_))));
+    finish_watch(&first, next_generation);
+    assert!(start_watch(&overflow).unwrap() > generation);
+
+    stop_watch(&overflow).unwrap();
+    for file in active {
+        stop_watch(&file).unwrap();
+    }
 }
 
 #[test]
