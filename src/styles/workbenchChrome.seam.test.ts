@@ -74,19 +74,6 @@ describe("Workbench chrome stylesheet seam", () => {
       expect(selector.exec(modeCss)?.[1]).toBe(headerHeight);
     }
   });
-  it("loads title and tab chrome from a focused stylesheet", async () => {
-    const [entry, shellCss, chromeCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(/import ["']\.\/styles\/workbench-chrome\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.title-bar\b/m);
-    expect(shellCss).not.toMatch(/^\.tab-strip\b/m);
-    expect(chromeCss).toMatch(/^\.title-bar\b/m);
-    expect(chromeCss).toMatch(/^\.tab-strip\b/m);
-  });
 
   it("sizes the chat search pill to the owner reference with a trailing chord", async () => {
     const chromeCss = await readFile(

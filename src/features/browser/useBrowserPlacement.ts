@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { useModalDialogOpen } from "../../ui/modalDialogState";
 import {
   coverBrowser,
   hideBrowser,
@@ -12,14 +13,15 @@ export function useBrowserPlacement(
   onError: (message: string) => void,
   covered = false,
 ) {
-  // A popover opening or closing places the page again without the cleanup
+  const modalOpen = useModalDialogOpen();
+  // A popover or shared modal places the page again without the cleanup
   // below, whose hide would end Annotate.
-  const coveredRef = useRef(covered);
+  const coveredRef = useRef(covered || modalOpen);
   const placeRef = useRef<() => void>(() => undefined);
   useEffect(() => {
-    coveredRef.current = covered;
+    coveredRef.current = covered || modalOpen;
     placeRef.current();
-  }, [covered]);
+  }, [covered, modalOpen]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -38,7 +40,7 @@ export function useBrowserPlacement(
         void hideBrowser(tabId).catch(reportError);
         return;
       }
-      // A toolbar popover covers it only for a moment, so Annotate stays on.
+      // Popovers and shared dialogs cover the native window, keeping Annotate on.
       if (coveredRef.current) {
         void coverBrowser(tabId).catch(reportError);
         return;

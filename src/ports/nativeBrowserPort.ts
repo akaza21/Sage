@@ -283,6 +283,8 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
+  /** The page held an Allow that ended and has not reloaded since. */
+  staleAccess: boolean;
 }
 
 export function browserPermissionStatus(
@@ -299,10 +301,10 @@ export function browserPermissionResolve(
   return invokeNative("browser_permission_resolve", { tabId, id, allow });
 }
 
-export function browserPermissionRevoke(
-  tabId: string,
+/** Forgets one site's saved answer so it asks again (also Settings > Browser). */
+export function browserSiteSettingReset(
   origin: string,
   kind: BrowserPermissionKind,
-): Promise<void> {
-  return invokeNative("browser_permission_revoke", { tabId, origin, kind });
+): Promise<unknown> {
+  return invokeNative("browser_permission_reset", { origin, kind });
 }

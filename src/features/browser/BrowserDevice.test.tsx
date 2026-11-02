@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -145,7 +146,11 @@ it("opens Responsive at the pane's size and draws the page in a gutter", async (
   );
   expect(screen.getByRole("spinbutton", { name: "Width" })).toHaveValue(842);
   expect(screen.getByRole("spinbutton", { name: "Height" })).toHaveValue(862);
-  expect(screen.getByText("100%")).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("toolbar", { name: "Device toolbar" })).getByText(
+      "100%",
+    ),
+  ).toBeVisible();
   const frame = document.querySelector(".browser-surface__frame")!;
   expect(frame).toHaveAttribute("data-device");
   expect(

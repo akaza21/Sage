@@ -30,22 +30,48 @@ function Get-FootprintDescendants {
     [Parameter(Mandatory)][int]$RootProcessId,
     [AllowNull()][object[]]$ProcessRows,
     [ValidateRange(1, 4096)][int]$MaxProcessRows = $script:MaxProcessSnapshotRows,
-    [ValidateRange(1, 512)][int]$MaxDescendants = $script:MaxRetainedProcessRecords
+    [ValidateRange(1, 512)][int]$MaxDescendants = $script:MaxRetainedProcessRecords,
+    [AllowNull()]$RootCreationDate
   )
   if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
   if ($ProcessRows.Count -gt $MaxProcessRows) {
     throw "Process snapshot exceeds its $MaxProcessRows-row limit."
+  }
+  # Windows keeps a process's parent PID after the parent exits, and PIDs are
+  # reused, so a row is adopted only when its parent's creation time is known
+  # and the row started no earlier than that parent. A row whose own creation
+  # time is unknown is still adopted, so its incomplete identity fails closed
+  # downstream, but nothing is adopted through it. The root's creation time
+  # comes from -RootCreationDate when given, which also rejects a reused root
+  # PID, and otherwise from its snapshot row.
+  $creationById = @{}
+  foreach ($row in $ProcessRows) {
+    $creationById[[int]$row.ProcessId] = Get-FootprintCreationTime $row
+  }
+  $rootCreated = $creationById[$RootProcessId]
+  if ($null -ne $RootCreationDate) {
+    $expectedRootCreated = ConvertTo-FootprintCreationTime $RootCreationDate
+    if ($null -eq $expectedRootCreated) { throw "The root creation time is not a valid timestamp." }
+    $expectedRootIdentity = ConvertTo-FootprintCreationIdentity $expectedRootCreated
+    if ($null -ne $rootCreated -and (ConvertTo-FootprintCreationIdentity $rootCreated) -ne $expectedRootIdentity) {
+      return @()
+    }
+    $creationById[$RootProcessId] = $expectedRootCreated
   }
   $included = [Collections.Generic.HashSet[int]]::new()
   [void]$included.Add($RootProcessId)
   do {
     $changed = $false
     foreach ($row in $ProcessRows) {
-      $pid = [int]$row.ProcessId
-      if (-not $included.Contains($pid) -and $included.Contains([int]$row.ParentProcessId)) {
-        [void]$included.Add($pid)
-        $changed = $true
-      }
+      $processId = [int]$row.ProcessId
+      $parentId = [int]$row.ParentProcessId
+      if ($included.Contains($processId) -or -not $included.Contains($parentId)) { continue }
+      $created = $creationById[$processId]
+      $parentCreated = $creationById[$parentId]
+      if ($null -eq $parentCreated) { continue }
+      if ($null -ne $created -and $created -lt $parentCreated) { continue }
+      [void]$included.Add($processId)
+      $changed = $true
     }
   } while ($changed)
   $result = @($ProcessRows | Where-Object { $included.Contains([int]$_.ProcessId) } | Sort-Object ProcessId)
@@ -66,6 +92,28 @@ function ConvertTo-FootprintCreationIdentity {
   return [string]$CreationDate
 }
 
+function ConvertTo-FootprintCreationTime {
+  param([AllowNull()]$CreationDate)
+  if ($CreationDate -is [DateTime]) { return $CreationDate.ToUniversalTime() }
+  $parsed = [DateTime]::MinValue
+  if ($CreationDate -is [string] -and [DateTime]::TryParse(
+      $CreationDate,
+      [Globalization.CultureInfo]::InvariantCulture,
+      [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal,
+      [ref]$parsed
+    )) {
+    return $parsed
+  }
+  return $null
+}
+
+function Get-FootprintCreationTime {
+  param([Parameter(Mandatory)]$ProcessRow)
+  $property = $ProcessRow.PSObject.Properties["CreationDate"]
+  if ($null -eq $property) { return $null }
+  return ConvertTo-FootprintCreationTime $property.Value
+}
+
 function ConvertTo-FootprintProcessIdentity {
   param([Parameter(Mandatory)]$ProcessRow)
   if (-not $ProcessRow.ExecutablePath -or -not $ProcessRow.CreationDate) {
@@ -78,6 +126,20 @@ function ConvertTo-FootprintProcessIdentity {
     executablePath = $path
     creationDate = $creation
     identityBytes = [Text.Encoding]::UTF8.GetByteCount("$path`0$creation")
+  }
+}
+
+function Add-FootprintRememberedIdentities {
+  param(
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$Store,
+    [AllowEmptyCollection()][object[]]$ProcessRows
+  )
+  # Stage every row first so a row that lacks identity or exceeds a limit
+  # leaves the store unchanged instead of partly filled.
+  $staged = [Collections.Generic.Dictionary[string, object]]::new($Store, [StringComparer]::Ordinal)
+  foreach ($row in $ProcessRows) { [void](Add-FootprintRememberedIdentity $staged $row) }
+  foreach ($entry in $staged.GetEnumerator()) {
+    if (-not $Store.ContainsKey($entry.Key)) { $Store.Add($entry.Key, $entry.Value) }
   }
 }
 
@@ -260,11 +322,13 @@ function Stop-FootprintLaunchedProcessObject {
       }
     }
     if ($null -ne $rootIdentity) {
-      foreach ($row in @(Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows)) {
-        [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row)
-      }
+      Add-FootprintRememberedIdentities $KnownProcessIdentities @(
+        Get-FootprintDescendants ([int]$rootIdentity.processId) $ProcessRows -RootCreationDate $rootIdentity.creationDate
+      )
     }
   } catch {
+    # A tree whose members cannot all be identified grants no snapshot authority.
+    $snapshotMatched = $false
     $boundaryError = $_.Exception.Message
   }
   if ($identityConflict) {
@@ -367,7 +431,7 @@ function Get-FootprintForceKillCandidates {
   if ($null -eq $ProcessRows) { $ProcessRows = @(Get-FootprintProcessSnapshot) }
   $root = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$RootIdentity.processId }) | Select-Object -First 1
   if ($null -eq $root -or -not (Test-FootprintProcessIdentity $root $RootIdentity.executablePath $RootIdentity.creationDate)) { return @() }
-  return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows)
+  return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate)
 }
 
 function Invoke-FootprintTreeCore {
@@ -376,7 +440,9 @@ function Invoke-FootprintTreeCore {
     [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
     [ValidateRange(1, 30)][int]$GraceSeconds = 1,
     [Parameter(Mandatory)][scriptblock]$SnapshotProvider,
-    [Parameter(Mandatory)][scriptblock]$StopProcessById,
+    # Terminates the process an identity names and returns $true, or returns
+    # $false when that PID no longer names the identified process.
+    [Parameter(Mandatory)][scriptblock]$StopExactProcess,
     [Parameter(Mandatory)][scriptblock]$UtcNow,
     [Parameter(Mandatory)][scriptblock]$Delay
   )
@@ -388,10 +454,20 @@ function Invoke-FootprintTreeCore {
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
   $identityLost = [bool]$plan.identityLost
   if ($plan.rootState -eq "matching") {
-    foreach ($row in @(Get-FootprintDescendants $rootPid $initialRows)) { [void](Add-FootprintRememberedIdentity $KnownProcessIdentities $row) }
+    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows -RootCreationDate $RootIdentity.creationDate)
     $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
-    $root = Get-Process -Id $rootPid -ErrorAction SilentlyContinue
-    if ($null -ne $root -and $root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
+    try {
+      $root = Open-FootprintExactProcess $RootIdentity
+      if ($null -ne $root) {
+        try {
+          if ($root.MainWindowHandle -ne [IntPtr]::Zero) { [void]$root.CloseMainWindow() }
+        } finally {
+          $root.Dispose()
+        }
+      }
+    } catch {
+      # A graceful close request is best effort; the exact stop below still applies.
+    }
   }
   $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
   do {
@@ -413,8 +489,9 @@ function Invoke-FootprintTreeCore {
     $identityLost = $identityLost -or $currentPlan.identityLost
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
+    $currentIdentity = ConvertTo-FootprintProcessIdentity $current
     try {
-      & $StopProcessById ([int]$current.ProcessId)
+      $terminated = [bool](& $StopExactProcess $currentIdentity)
     } catch {
       $afterStopFailure = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
       foreach ($reusedProcessId in @($afterStopFailure.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
@@ -426,7 +503,11 @@ function Invoke-FootprintTreeCore {
       if ($stillPresent) { throw }
       continue
     }
-    $killed += ConvertTo-FootprintProcessIdentity $current
+    if (-not $terminated) {
+      [void]$reusedProcessIds.Add([int]$current.ProcessId)
+      continue
+    }
+    $killed += $currentIdentity
     if ([int]$current.ProcessId -eq $rootPid) { $exactRootTerminationIssued = $true }
   }
   $postKillDeadline = ([DateTime](& $UtcNow)).AddSeconds($script:PostKillWaitSeconds)
@@ -446,6 +527,37 @@ function Invoke-FootprintTreeCore {
   }
 }
 
+function Open-FootprintExactProcess {
+  param([Parameter(Mandatory)][Collections.IDictionary]$Identity)
+  # The retained handle pins one process, so the creation-time check and any
+  # later action on the returned object address that same process even if its
+  # PID is reused in between. The caller disposes the returned object.
+  $process = Get-Process -Id ([int]$Identity.processId) -ErrorAction SilentlyContinue
+  if ($null -eq $process) { return $null }
+  try {
+    [void]$process.Handle
+    $sameProcess = (ConvertTo-FootprintCreationIdentity $process.StartTime) -eq [string]$Identity.creationDate
+  } catch {
+    $process.Dispose()
+    throw
+  }
+  if ($sameProcess) { return $process }
+  $process.Dispose()
+  return $null
+}
+
+function Stop-FootprintExactProcess {
+  param([Parameter(Mandatory)][Collections.IDictionary]$Identity)
+  $process = Open-FootprintExactProcess $Identity
+  if ($null -eq $process) { return $false }
+  try {
+    $process.Kill()
+    return $true
+  } finally {
+    $process.Dispose()
+  }
+}
+
 function Stop-FootprintTree {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
@@ -457,12 +569,13 @@ function Stop-FootprintTree {
     $KnownProcessIdentities `
     $GraceSeconds `
     { Get-FootprintProcessSnapshot } `
-    { param([int]$ProcessId) Stop-Process -Id $ProcessId -Force -ErrorAction Stop } `
+    { param([Collections.IDictionary]$Identity) Stop-FootprintExactProcess $Identity } `
     { [DateTime]::UtcNow } `
     { param([int]$Milliseconds) Start-Sleep -Milliseconds $Milliseconds }
 }
 
 Export-ModuleMember -Function @(
+  "Add-FootprintRememberedIdentities",
   "Add-FootprintRememberedIdentity",
   "ConvertTo-FootprintProcessIdentity",
   "Get-FootprintDescendants",
@@ -474,6 +587,8 @@ Export-ModuleMember -Function @(
   "Get-FootprintRootIdentity",
   "Get-FootprintTeardownPlan",
   "New-FootprintIdentityStore",
+  "Open-FootprintExactProcess",
+  "Stop-FootprintExactProcess",
   "Stop-FootprintLaunchedProcessObject",
   "Stop-FootprintTree"
 )

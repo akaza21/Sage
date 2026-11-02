@@ -192,12 +192,18 @@ function atRuleBlockKind(prelude) {
   return "declarations";
 }
 
+/** A z-index names a stacking layer from global.css, optionally offset by a
+ * whole step inside `calc()` when a third-party layer has to be cleared. */
+const Z_INDEX_LAYER =
+  /^(?:auto|inherit|initial|unset|revert|var\(\s*--z-[a-z0-9-]+\s*\)|calc\(\s*var\(\s*--z-[a-z0-9-]+\s*\)\s*[+-]\s*\d+\s*\))$/iu;
+
 function declarationRecords(source, masked, start, end, relativePath, lineAt) {
   const range = trimmedRange(masked, start, end);
-  if (range.start >= range.end) return { rawColors: [], rawRadii: [] };
+  const none = { rawColors: [], rawRadii: [], rawZIndexes: [] };
+  if (range.start >= range.end) return none;
   const declaration = masked.slice(range.start, range.end);
   const match = declaration.match(/^((?:--)?[a-z][a-z0-9-]*)\s*:/iu);
-  if (!match) return { rawColors: [], rawRadii: [] };
+  if (!match) return none;
 
   const property = match[1].toLowerCase();
   const colonOffset = declaration.indexOf(":");
@@ -211,6 +217,7 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
   const line = lineAt(range.start);
   const rawRadii = [];
   const rawColors = [];
+  const rawZIndexes = [];
 
   if (
     relativePath !== GLOBAL_TOKEN_AUTHORITY &&
@@ -218,6 +225,10 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
     !/^var\(\s*--radius-[a-z0-9-]+\s*\)$/iu.test(maskedValue.trim())
   ) {
     rawRadii.push({ line, relativePath, value: rawValue });
+  }
+
+  if (property === "z-index" && !Z_INDEX_LAYER.test(maskedValue.trim())) {
+    rawZIndexes.push({ line, relativePath, value: rawValue });
   }
 
   const ownsTokens =
@@ -232,7 +243,7 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
       rawColors.push({ line, literal, relativePath });
     }
   }
-  return { rawColors, rawRadii };
+  return { rawColors, rawRadii, rawZIndexes };
 }
 
 function analyzeCss(source, relativePath) {
@@ -241,6 +252,7 @@ function analyzeCss(source, relativePath) {
   const selectors = [];
   const rawColors = [];
   const rawRadii = [];
+  const rawZIndexes = [];
   const stack = [{ kind: "rules", openIndex: -1, statementStart: 0 }];
 
   for (let index = 0; index < masked.length; index += 1) {
@@ -273,6 +285,7 @@ function analyzeCss(source, relativePath) {
         );
         rawColors.push(...records.rawColors);
         rawRadii.push(...records.rawRadii);
+        rawZIndexes.push(...records.rawZIndexes);
       }
       frame.statementStart = index + 1;
     } else if (character === "}") {
@@ -292,6 +305,7 @@ function analyzeCss(source, relativePath) {
         );
         rawColors.push(...records.rawColors);
         rawRadii.push(...records.rawRadii);
+        rawZIndexes.push(...records.rawZIndexes);
       }
       stack.pop();
       stack.at(-1).statementStart = index + 1;
@@ -303,7 +317,7 @@ function analyzeCss(source, relativePath) {
       `${relativePath}:${lineAt(stack[1].openIndex)} has an unclosed block.`,
     );
   }
-  return { parseErrors: errors, rawColors, rawRadii, selectors };
+  return { parseErrors: errors, rawColors, rawRadii, rawZIndexes, selectors };
 }
 
 function compareLocation(left, right) {
@@ -317,6 +331,7 @@ export function analyzeCssInventory(files) {
   const parseErrors = [];
   const rawColors = [];
   const rawRadii = [];
+  const rawZIndexes = [];
   for (const file of [...files].sort((left, right) =>
     compareText(left.relativePath, right.relativePath),
   )) {
@@ -324,6 +339,7 @@ export function analyzeCssInventory(files) {
     parseErrors.push(...result.parseErrors);
     rawColors.push(...result.rawColors);
     rawRadii.push(...result.rawRadii);
+    rawZIndexes.push(...result.rawZIndexes);
     for (const occurrence of result.selectors) {
       const owners = ownership.get(occurrence.selector) ?? new Map();
       const current = owners.get(occurrence.relativePath);
@@ -353,7 +369,11 @@ export function analyzeCssInventory(files) {
     (left, right) =>
       compareLocation(left, right) || compareText(left.value, right.value),
   );
-  return { duplicateSelectors, parseErrors, rawColors, rawRadii };
+  rawZIndexes.sort(
+    (left, right) =>
+      compareLocation(left, right) || compareText(left.value, right.value),
+  );
+  return { duplicateSelectors, parseErrors, rawColors, rawRadii, rawZIndexes };
 }
 
 function inventoryErrors(inventory) {
@@ -368,6 +388,10 @@ function inventoryErrors(inventory) {
     ...inventory.rawRadii.map(
       ({ line, relativePath, value }) =>
         `${relativePath}:${line} uses raw border-radius "${value}".`,
+    ),
+    ...inventory.rawZIndexes.map(
+      ({ line, relativePath, value }) =>
+        `${relativePath}:${line} uses raw z-index "${value}"; use a --z-* layer.`,
     ),
     ...inventory.rawColors.map(
       ({ line, literal, relativePath }) =>
