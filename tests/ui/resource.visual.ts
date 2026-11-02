@@ -293,13 +293,22 @@ test.describe("Wave 2 accessibility and responsive states", () => {
 
     const readFileAppearance = async (target: Page) => {
       await expect(target.locator(".file-surface .cm-gutters")).toBeVisible();
-      // Highlight spans carry the runtime's generated classes, so wait for
-      // any classed span inside a rendered line: actually-rendered syntax.
-      await expect(
-        target
-          .locator(".file-surface .cm-content .cm-line span[class]")
-          .first(),
-      ).toBeVisible();
+      // Highlight spans carry the runtime's generated classes, and their
+      // colors apply once the highlight style mounts: wait for a classed span
+      // inside a rendered line that is colored apart from plain code.
+      await expect
+        .poll(() =>
+          target.locator(".file-surface").evaluate((surface) => {
+            const editor = surface.querySelector(".editor-input");
+            if (!editor) return false;
+            const codeColor = getComputedStyle(editor).color;
+            return Array.from(
+              surface.querySelectorAll(".cm-content .cm-line span[class]"),
+              (span) => getComputedStyle(span).color,
+            ).some((color) => color !== codeColor);
+          }),
+        )
+        .toBe(true);
       return target.locator(".file-surface").evaluate((surface, tokens) => {
         const header = surface.querySelector<HTMLElement>(".file-header");
         const editor = surface.querySelector<HTMLElement>(".editor-input");
