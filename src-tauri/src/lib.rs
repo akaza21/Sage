@@ -98,7 +98,10 @@ mod test_wait;
 mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
+#[cfg(windows)]
+mod window_frame;
 mod window_memory;
+mod window_viewport;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
@@ -154,6 +157,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(window_memory::init())
+        .plugin(window_viewport::init())
         .setup(|app| {
             let disposable_root = std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT");
             let profile = resolve_launch_profile(
@@ -291,6 +295,12 @@ pub fn run() {
                             });
                         }
                     });
+            #[cfg(windows)]
+            let main_window = if main_window_config.decorations {
+                main_window
+            } else {
+                main_window.initialization_script(window_frame::initialization_script())
+            };
             let main_window = match profile.webview_dir() {
                 Some(directory) => main_window.data_directory(directory.to_owned()),
                 None => main_window,
