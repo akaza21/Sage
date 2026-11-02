@@ -396,10 +396,10 @@ function Stop-FootprintLaunchedProcessObject {
 function Get-FootprintTrackedProcessState {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$Identity,
-    [AllowEmptyCollection()][object[]]$ProcessRows
+    [Parameter(Mandatory)][hashtable]$ProcessRowsById
   )
-  $rows = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$Identity.processId })
-  if ($rows.Count -eq 0) { return "absent" }
+  $rows = $ProcessRowsById[[int]$Identity.processId]
+  if ($null -eq $rows) { return "absent" }
   if ($rows.Count -ne 1) { return "lost" }
   $created = Get-FootprintCreationTime $rows[0]
   $expectedCreated = ConvertTo-FootprintCreationTime $Identity.creationDate
@@ -421,14 +421,24 @@ function Get-FootprintTeardownPlan {
   if ($ProcessRows.Count -gt $script:MaxProcessSnapshotRows) {
     throw "Process snapshot exceeds its $($script:MaxProcessSnapshotRows)-row limit."
   }
-  $rootState = Get-FootprintTrackedProcessState $RootIdentity $ProcessRows
+  # Keep every row for a PID so an ambiguous snapshot still fails closed.
+  # Build once per plan rather than scanning the snapshot for each identity.
+  $rowsByProcessId = @{}
+  foreach ($row in $ProcessRows) {
+    $processId = [int]$row.ProcessId
+    if (-not $rowsByProcessId.ContainsKey($processId)) {
+      $rowsByProcessId[$processId] = [Collections.Generic.List[object]]::new()
+    }
+    $rowsByProcessId[$processId].Add($row)
+  }
+  $rootState = Get-FootprintTrackedProcessState $RootIdentity $rowsByProcessId
   $identityLost = $rootState -eq "lost"
   $candidates = @()
   $reusedProcessIds = @()
   foreach ($identity in $RememberedIdentities.Values) {
-    $state = Get-FootprintTrackedProcessState $identity $ProcessRows
+    $state = Get-FootprintTrackedProcessState $identity $rowsByProcessId
     switch ($state) {
-      "matching" { $candidates += @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$identity.processId }) }
+      "matching" { $candidates += $rowsByProcessId[[int]$identity.processId][0] }
       "reused" { $reusedProcessIds += [int]$identity.processId }
       "lost" { $identityLost = $true }
     }

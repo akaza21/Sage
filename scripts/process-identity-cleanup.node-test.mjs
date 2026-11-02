@@ -56,6 +56,40 @@ function Invoke-TestFootprintTree($rootIdentity,$knownIdentities,$snapshotProvid
 };
 `;
 
+test("duplicate PID rows fail closed for roots and remembered children", () => {
+  const observed = runPowerShellFixture(`${commonFixture}
+[void](Add-FootprintRememberedIdentity $store $childRow);
+$replacementChild=$childRow.PSObject.Copy();$replacementChild.CreationDate=$reusedRootRow.CreationDate;
+$snapshots=@(
+  @($rootRow,$rootRow,$childRow),
+  @($reusedRootRow,$rootRow,$childRow),
+  @($rootRow,$childRow,$childRow),
+  @($rootRow,$replacementChild,$childRow)
+);
+$results=@(foreach($rows in $snapshots){
+  $plan=Get-FootprintTeardownPlan $root $store $rows;
+  [ordered]@{rootState=$plan.rootState;identityLost=$plan.identityLost;candidates=@($plan.candidates|ForEach-Object ProcessId);reused=@($plan.reusedProcessIds)}
+});
+ConvertTo-Json -InputObject $results -Compress
+`);
+  assert.deepEqual(observed, [
+    { rootState: "lost", identityLost: true, candidates: [202], reused: [] },
+    { rootState: "lost", identityLost: true, candidates: [202], reused: [] },
+    {
+      rootState: "matching",
+      identityLost: true,
+      candidates: [101],
+      reused: [],
+    },
+    {
+      rootState: "matching",
+      identityLost: true,
+      candidates: [101],
+      reused: [],
+    },
+  ]);
+});
+
 test("post-kill root PID reuse is audit-only after an exact successful root stop", () => {
   const observed = runPowerShellFixture(`${commonFixture}
 [void](Add-FootprintRememberedIdentity $store $childRow);
