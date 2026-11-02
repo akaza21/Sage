@@ -1,6 +1,6 @@
 //! Copy writes the password to the clipboard from Rust, marked so clipboard
-//! history, cloud clipboard and clipboard monitors leave it out, and clears
-//! it after `CLEAR_AFTER` if the clipboard still holds that same text.
+//! history, cloud clipboard and clipboard monitors leave it out, and
+//! attempts to clear it after `CLEAR_AFTER` if it still holds that same text.
 //! Windows only for now, like the vault.
 
 use std::time::Duration;
@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use super::{VaultError, VaultResult};
 
 pub(super) const CLEAR_AFTER: Duration = Duration::from_secs(30);
+pub(super) const CLEAR_FAILED: &str = "Sage could not clear the copied password from the clipboard. Copy something else now to replace it.";
 const SALT_LEN: usize = 16;
 
 #[cfg(windows)]
@@ -21,10 +22,46 @@ pub(super) use windows::{clear_if_unchanged, copy_concealed};
 /// clear empties the clipboard only if it still holds exactly that text,
 /// reading no more of the clipboard than the copy wrote. Nothing that can
 /// recover the password is kept.
+#[derive(Clone)]
 pub(super) struct CopiedText {
     salt: [u8; SALT_LEN],
     digest: [u8; 32],
     len: usize,
+}
+
+/// The port must open, compare and conditionally clear atomically on every
+/// attempt. A retry must never clear a newer copy using an earlier comparison.
+fn clear_with_retries(
+    copied: &CopiedText,
+    mut clipboard: impl FnMut(&CopiedText) -> VaultResult<()>,
+) -> VaultResult<()> {
+    let mut result = clipboard(copied);
+    // Four attempts with 700 ms of total backoff, off the UI thread.
+    for backoff_ms in [100, 200, 400] {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(backoff_ms));
+        result = clipboard(copied);
+    }
+    result
+}
+
+/// The warning port is native, so it still reaches the user after Settings
+/// closes. Never log clipboard text or a fingerprint.
+pub(super) fn expire(
+    copied: &CopiedText,
+    clipboard: impl FnMut(&CopiedText) -> VaultResult<()>,
+    warn: impl FnOnce(&str),
+) {
+    if let Err(error) = clear_with_retries(copied, clipboard) {
+        report_failure(&error.to_string(), warn);
+    }
+}
+
+pub(super) fn report_failure(cause: &str, warn: impl FnOnce(&str)) {
+    tracing::error!(cause, "Password clipboard expiry failed");
+    warn(CLEAR_FAILED);
 }
 
 fn fingerprint(salt: &[u8; SALT_LEN], text: &[u8]) -> [u8; 32] {
@@ -84,15 +121,119 @@ pub(super) fn copy_concealed(
 }
 
 #[cfg(not(windows))]
-pub(super) fn clear_if_unchanged(_owner: &tauri::Window, _copied: CopiedText) -> VaultResult<()> {
+pub(super) fn clear_if_unchanged(_owner: &tauri::Window, _copied: &CopiedText) -> VaultResult<()> {
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::{
+        cell::Cell,
+        io::Write,
+        sync::{Arc, Mutex},
+    };
 
-    use super::{CopiedText, VaultError, fingerprint_then_write, random_salt};
+    use super::{
+        CopiedText, VaultError, clear_with_retries, expire, fingerprint_then_write, random_salt,
+    };
+
+    struct Clipboard {
+        text: Vec<u8>,
+        busy: usize,
+        replacement: Option<Vec<u8>>,
+    }
+
+    #[derive(Clone)]
+    struct LogOutput(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for LogOutput {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Clipboard {
+        fn clear_if_unchanged(&mut self, copied: &CopiedText) -> super::VaultResult<()> {
+            if self.busy > 0 {
+                self.busy -= 1;
+                if let Some(text) = self.replacement.take() {
+                    self.text = text;
+                }
+                return Err(VaultError::Invalid("The clipboard is busy."));
+            }
+            if copied.matches(&self.text) {
+                self.text.clear();
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn expiry_clears_a_password_when_a_busy_clipboard_becomes_free() {
+        let mut clipboard = Clipboard {
+            text: b"secret".to_vec(),
+            busy: 1,
+            replacement: None,
+        };
+        clear_with_retries(&copied(b"secret"), |copy| {
+            clipboard.clear_if_unchanged(copy)
+        })
+        .unwrap();
+        assert!(clipboard.text.is_empty());
+    }
+
+    #[test]
+    fn expiry_reports_failure_when_the_clipboard_stays_busy() {
+        let mut clipboard = Clipboard {
+            text: b"secret".to_vec(),
+            busy: usize::MAX,
+            replacement: None,
+        };
+        let mut warning = String::new();
+        let output = LogOutput(Arc::new(Mutex::new(Vec::new())));
+        let writer = output.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            expire(
+                &copied(b"secret"),
+                |copy| clipboard.clear_if_unchanged(copy),
+                |message| warning = message.to_owned(),
+            );
+        });
+        assert_eq!(
+            warning,
+            "Sage could not clear the copied password from the clipboard. Copy something else now to replace it."
+        );
+        assert_eq!(clipboard.text, b"secret");
+        let bytes = output.0.lock().unwrap();
+        let log = String::from_utf8_lossy(&bytes);
+        assert!(log.contains("Password clipboard expiry failed"));
+        assert!(log.contains("The clipboard is busy."));
+        assert!(!log.contains("secret"));
+    }
+
+    #[test]
+    fn expiry_leaves_a_newer_copy_untouched_after_a_busy_attempt() {
+        let mut clipboard = Clipboard {
+            text: b"secret".to_vec(),
+            busy: 1,
+            replacement: Some(b"new copy".to_vec()),
+        };
+        clear_with_retries(&copied(b"secret"), |copy| {
+            clipboard.clear_if_unchanged(copy)
+        })
+        .unwrap();
+        assert_eq!(clipboard.text, b"new copy");
+    }
 
     fn copied(text: &[u8]) -> CopiedText {
         fingerprint_then_write(text, random_salt, |_| Ok(())).unwrap()

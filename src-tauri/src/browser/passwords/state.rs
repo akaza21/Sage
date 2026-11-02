@@ -1,7 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard, PoisonError,
+        Arc, Mutex, MutexGuard, PoisonError, TryLockError,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -9,7 +9,7 @@ use std::{
 use serde::Serialize;
 
 use super::{
-    MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
+    Cancellation, MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
     cipher::VaultKey,
     csv_import,
     key_store::{KeyFile, KeyProtector, platform_protector},
@@ -43,7 +43,12 @@ struct Shared {
     imported_file: Mutex<Option<PathBuf>>,
     /// The running import's own cancel flag, if one is running. Only one
     /// import runs at a time, so Cancel can never reach a later import.
-    running_import: Mutex<Option<Arc<AtomicBool>>>,
+    running_import: Mutex<Option<Arc<ImportStatus>>>,
+}
+
+struct ImportStatus {
+    cancelled: AtomicBool,
+    committed: Mutex<bool>,
 }
 
 /// One admitted import, reserved before its file is chosen so a Cancel sent
@@ -51,19 +56,18 @@ struct Shared {
 /// import ends, lets the next one in.
 pub(super) struct ImportRun {
     state: PasswordsState,
-    cancel: Arc<AtomicBool>,
+    status: Arc<ImportStatus>,
 }
 
 impl ImportRun {
     pub(super) fn cancelled(&self) -> bool {
-        self.cancel.load(Ordering::Relaxed)
+        self.status.cancelled.load(Ordering::Relaxed)
     }
 
     /// Reads `file` and merges it into the vault in one transaction. Returns
     /// the merge counts and how many rows could not be used.
     pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
-        let cancel = self.cancel.as_ref();
-        let parsed = csv_import::read_file(&file, cancel)?;
+        let parsed = csv_import::read_file(&file, self)?;
         let counts = self.state.with_vault(|vault| {
             let Vault {
                 store,
@@ -71,10 +75,26 @@ impl ImportRun {
                 key,
             } = vault;
             let key = unlocked(key, key_file, store, true)?;
-            store.merge(key, Source::Csv, &parsed.credentials, cancel)
+            store.merge(key, Source::Csv, &parsed.credentials, self)
         })?;
         *lock(&self.state.0.imported_file) = Some(file);
         Ok((counts, parsed.skipped))
+    }
+}
+
+impl Cancellation for ImportRun {
+    fn cancelled(&self) -> bool {
+        self.cancelled()
+    }
+
+    fn commit(&self, write: impl FnOnce() -> VaultResult<()>) -> VaultResult<()> {
+        let mut committed = lock(&self.status.committed);
+        if self.cancelled() {
+            return Err(VaultError::Cancelled);
+        }
+        write()?;
+        *committed = true;
+        Ok(())
     }
 }
 
@@ -151,28 +171,57 @@ impl PasswordsState {
         if running.is_some() {
             return Err(VaultError::Invalid("An import is already running."));
         }
-        let cancel = Arc::new(AtomicBool::new(false));
-        *running = Some(Arc::clone(&cancel));
+        let status = Arc::new(ImportStatus {
+            cancelled: AtomicBool::new(false),
+            committed: Mutex::new(false),
+        });
+        *running = Some(Arc::clone(&status));
         Ok(ImportRun {
             state: self.clone(),
-            cancel,
+            status,
         })
     }
 
-    /// Cancels the running import, if any; a later import starts afresh.
-    pub(crate) fn cancel_import(&self) {
-        if let Some(cancel) = lock(&self.0.running_import).as_ref() {
-            cancel.store(true, Ordering::Relaxed);
+    /// Captures this import before the cancellation worker is queued. Its
+    /// request can never reach a later import. True acknowledges rollback;
+    /// false means commit already won. A commit in progress is too late to
+    /// cancel, so this request never waits for a durable write.
+    pub(super) fn cancel_import_request(&self) -> impl FnOnce() -> bool + Send + 'static + use<> {
+        let status = lock(&self.0.running_import).clone();
+        move || {
+            let Some(status) = status else {
+                return false;
+            };
+            if status.cancelled.load(Ordering::Relaxed) {
+                return true;
+            }
+            let committed = match status.committed.try_lock() {
+                Ok(committed) => committed,
+                Err(TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(TryLockError::WouldBlock) => return false,
+            };
+            if *committed {
+                return false;
+            }
+            status.cancelled.store(true, Ordering::Relaxed);
+            true
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn cancel_import(&self) -> bool {
+        self.cancel_import_request()()
     }
 
     /// Deletes the CSV the last import read: it holds every password in
     /// plain text. Only that one file can be deleted this way.
     pub(crate) fn delete_imported_file(&self) -> VaultResult<()> {
-        let file = lock(&self.0.imported_file)
-            .take()
+        let mut imported = lock(&self.0.imported_file);
+        let file = imported
+            .as_ref()
             .ok_or(VaultError::Invalid("There is no imported file to delete."))?;
         std::fs::remove_file(file)?;
+        *imported = None;
         Ok(())
     }
 

@@ -5,7 +5,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, State, Window};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use uuid::Uuid;
 
 use super::{
@@ -90,11 +90,14 @@ pub(crate) async fn browser_passwords_import_csv(
     .await
 }
 
-/// Stops the running import, even while its file dialog is open; it rolls
-/// back and saves nothing.
+/// True means cancellation was accepted and the import will roll back.
+/// False means commit was already admitted or the import had already ended.
 #[tauri::command]
-pub(crate) fn browser_passwords_cancel_import(state: State<'_, PasswordsState>) {
-    state.cancel_import();
+pub(crate) async fn browser_passwords_cancel_import(
+    state: State<'_, PasswordsState>,
+) -> Result<bool, String> {
+    let cancel = state.cancel_import_request();
+    blocking(move || Ok(cancel())).await
 }
 
 #[tauri::command]
@@ -168,10 +171,29 @@ pub(crate) async fn browser_passwords_copy(
     .await?;
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(clipboard::CLEAR_AFTER).await;
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            clipboard::clear_if_unchanged(&owner, copied)
+        let reporter = owner.clone();
+        let cleared = tauri::async_runtime::spawn_blocking(move || {
+            clipboard::expire(
+                &copied,
+                |copied| clipboard::clear_if_unchanged(&owner, copied),
+                |message| clipboard_warning(&owner, message),
+            );
         })
         .await;
+        if let Err(error) = cleared {
+            clipboard::report_failure(&error.to_string(), |message| {
+                clipboard_warning(&reporter, message);
+            });
+        }
     });
     Ok(())
+}
+
+fn clipboard_warning(owner: &Window, message: &str) {
+    owner
+        .dialog()
+        .message(message)
+        .title("Sage clipboard cleanup failed")
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
 }

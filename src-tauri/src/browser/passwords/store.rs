@@ -188,7 +188,7 @@ impl Store {
         key: &VaultKey,
         source: Source,
         credentials: &[NewCredential],
-        cancel: &dyn Cancellation,
+        cancel: &impl Cancellation,
     ) -> VaultResult<MergeCounts> {
         let transaction = self.0.transaction()?;
         let mut counts = MergeCounts::default();
@@ -245,7 +245,10 @@ impl Store {
                 "Sage keeps at most 50,000 saved passwords, and this import would pass that.",
             ));
         }
-        transaction.commit()?;
+        cancel.commit(|| {
+            transaction.commit()?;
+            Ok(())
+        })?;
         Ok(counts)
     }
 

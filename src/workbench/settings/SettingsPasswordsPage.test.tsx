@@ -147,6 +147,19 @@ it("keeps a password hidden when the OS confirmation fails", async () => {
   expect(screen.queryByLabelText("Password for ada on example.com")).toBeNull();
 });
 
+it("says clipboard cleanup is an attempt when a password is copied", async () => {
+  native.overview.mockResolvedValue(ready());
+  native.copy.mockResolvedValue(undefined);
+  render(<SettingsPasswordsPage visible={all()} />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  fireEvent.click(within(row).getByRole("button", { name: "Copy" }));
+  expect(
+    await screen.findByText(
+      "Password copied. Sage will try to clear it from the clipboard in 30 seconds.",
+    ),
+  ).toBeVisible();
+});
+
 it("imports a CSV, reports counts and offers to delete the plaintext file", async () => {
   native.importCsv.mockResolvedValue({
     added: 2,
@@ -274,31 +287,103 @@ it.each(["Delete", "Delete all saved passwords"])(
   },
 );
 
-it("cancels a running import and says nothing was saved", async () => {
-  let finish: (value: null) => void = () => {};
-  native.importCsv.mockReturnValue(
-    new Promise((resolve) => {
-      finish = resolve;
-    }),
+it.each(["Cancel import", "close page"])(
+  "%s prevents a late import from saving or showing passwords, including after reopening",
+  async (action) => {
+    // Model the native import at IPC: completion attempts to persist, unless
+    // cancellation reached it. The Rust suite checks the real vault rollback.
+    let entries: (typeof ADA)[] = [];
+    let cancelled = false;
+    let finish: () => void = () => {};
+    native.overview.mockImplementation(async () => ready(entries));
+    native.importCsv.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => {
+            if (!cancelled) entries = [ADA];
+            resolve(
+              cancelled
+                ? null
+                : {
+                    added: 1,
+                    updated: 0,
+                    unchanged: 0,
+                    skipped: 0,
+                    fileName: "passwords.csv",
+                  },
+            );
+          };
+        }),
+    );
+    native.cancelImport.mockImplementation(async () => {
+      cancelled = true;
+      return true;
+    });
+    const { unmount } = render(<SettingsPasswordsPage visible={all()} />);
+    await screen.findByText("No saved passwords");
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+    const cancel = await screen.findByRole("button", { name: "Cancel import" });
+    if (action === "close page") unmount();
+    else fireEvent.click(cancel);
+
+    await act(async () => finish());
+    if (action === "Cancel import") {
+      expect(
+        screen.getByText("Import cancelled. Nothing was saved."),
+      ).toBeVisible();
+      expect(screen.queryByText(/Imported passwords.csv/)).toBeNull();
+      expect(
+        screen.queryByRole("list", { name: "Saved passwords" }),
+      ).toBeNull();
+      expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
+      unmount();
+    }
+    render(<SettingsPasswordsPage visible={all()} />);
+    expect(await screen.findByText("No saved passwords")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Saved passwords (0)" }),
+    ).toBeVisible();
+    expect(screen.queryByText("example.com")).toBeNull();
+    expect(entries).toEqual([]);
+  },
+);
+
+it("reports too-late cancellation before displaying a delayed committed import", async () => {
+  let entries: (typeof ADA)[] = [];
+  let finish: () => void = () => {};
+  native.overview.mockImplementation(async () => ready(entries));
+  native.importCsv.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve({
+            added: 1,
+            updated: 0,
+            unchanged: 0,
+            skipped: 0,
+            fileName: "passwords.csv",
+          });
+      }),
   );
-  native.cancelImport.mockImplementation(async () => finish(null));
+  native.cancelImport.mockResolvedValue(false);
   render(<SettingsPasswordsPage visible={all()} />);
   await screen.findByText("No saved passwords");
   fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Cancel import" }));
+  const cancel = await screen.findByRole("button", { name: "Cancel import" });
+  // Native commit has finished, but its IPC response has not arrived yet.
+  entries = [ADA];
+  fireEvent.click(cancel);
   expect(
-    await screen.findByText("Import cancelled. Nothing was saved."),
+    await screen.findByText(
+      "The import can no longer be cancelled. Its results will appear when it finishes.",
+    ),
   ).toBeVisible();
-  expect(native.cancelImport).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
-});
-
-it("cancels a running import when the page closes", async () => {
-  native.importCsv.mockReturnValue(new Promise(() => {}));
-  const { unmount } = render(<SettingsPasswordsPage visible={all()} />);
-  await screen.findByText("No saved passwords");
-  fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
-  await screen.findByRole("button", { name: "Cancel import" });
-  unmount();
-  expect(native.cancelImport).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+  expect(
+    await screen.findByText(
+      "Imported passwords.csv: 1 added. The file still holds these passwords in plain text.",
+    ),
+  ).toBeVisible();
+  expect(await screen.findByText("example.com")).toBeVisible();
+  expect(screen.queryByText("Import cancelled. Nothing was saved.")).toBeNull();
 });

@@ -135,7 +135,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     void run(async () => {
       await passwordsCopy(id);
       setNotice(
-        "Password copied. Sage clears it from the clipboard in 30 seconds.",
+        "Password copied. Sage will try to clear it from the clipboard in 30 seconds.",
       );
     });
 
@@ -183,7 +183,18 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
 
   const cancelImport = () => {
     cancelRequested.current = true;
-    void passwordsCancelImport();
+    void passwordsCancelImport().then(
+      (accepted) => {
+        if (mounted.current && accepted === false) {
+          setNotice(
+            "The import can no longer be cancelled. Its results will appear when it finishes.",
+          );
+        }
+      },
+      (cause: unknown) => {
+        if (mounted.current) setError(errorText(cause));
+      },
+    );
   };
 
   const deleteImportedFile = (report: PasswordImportReport) =>

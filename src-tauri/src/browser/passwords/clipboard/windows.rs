@@ -4,8 +4,8 @@ use windows::Win32::{
     Foundation::{GlobalFree, HANDLE, HGLOBAL},
     System::{
         DataExchange::{
-            CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard,
-            RegisterClipboardFormatW, SetClipboardData,
+            CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
+            OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
         },
         Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock},
         Ole::CF_UNICODETEXT,
@@ -124,35 +124,38 @@ pub(in crate::browser::passwords) fn copy_concealed(
 ///
 /// # Safety
 /// The clipboard must be open on this thread.
-unsafe fn still_holds(copied: &CopiedText) -> bool {
+unsafe fn still_holds(copied: &CopiedText) -> VaultResult<bool> {
     // SAFETY: the caller holds the clipboard open; the handle stays valid
     // until it closes, and is read only within `GlobalSize`.
     unsafe {
-        let Ok(handle) = GetClipboardData(u32::from(CF_UNICODETEXT.0)) else {
-            return false;
-        };
+        let format = u32::from(CF_UNICODETEXT.0);
+        if IsClipboardFormatAvailable(format).is_err() {
+            return Ok(false);
+        }
+        let handle = GetClipboardData(format).map_err(io_error)?;
         let memory = HGLOBAL(handle.0);
         if GlobalSize(memory) < copied.len() {
-            return false;
+            return Ok(false);
         }
         let source = GlobalLock(memory).cast::<u8>();
         if source.is_null() {
-            return false;
+            return Err(VaultError::Io(std::io::Error::last_os_error()));
         }
         let held = copied.matches(slice::from_raw_parts(source, copied.len()));
         let _ = GlobalUnlock(memory);
-        held
+        Ok(held)
     }
 }
 
 /// Empties the clipboard if it still holds the text `copied` describes.
 pub(in crate::browser::passwords) fn clear_if_unchanged(
     owner: &tauri::Window,
-    copied: CopiedText,
+    copied: &CopiedText,
 ) -> VaultResult<()> {
+    let copied = copied.clone();
     with_clipboard(owner, move || {
         // SAFETY: the clipboard is open on this thread.
-        if unsafe { still_holds(&copied) } {
+        if unsafe { still_holds(&copied) }? {
             // SAFETY: as above.
             unsafe { EmptyClipboard() }.map_err(io_error)?;
         }

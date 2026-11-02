@@ -69,6 +69,18 @@ type VaultResult<T> = Result<T, VaultError>;
 /// check it between reads and between rows.
 trait Cancellation {
     fn cancelled(&self) -> bool;
+
+    /// Admission to the final write. ImportRun serializes this with Cancel;
+    /// simple signals still get a final cancellation check before committing.
+    fn commit(&self, write: impl FnOnce() -> VaultResult<()>) -> VaultResult<()>
+    where
+        Self: Sized,
+    {
+        if self.cancelled() {
+            return Err(VaultError::Cancelled);
+        }
+        write()
+    }
 }
 
 impl Cancellation for std::sync::atomic::AtomicBool {

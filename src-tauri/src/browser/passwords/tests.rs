@@ -317,6 +317,27 @@ fn a_lost_or_foreign_key_is_reported_and_delete_all_starts_again() {
 }
 
 #[test]
+fn a_failed_csv_deletion_can_be_retried() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let csv = scratch.csv("passwords.csv", CHROME_CSV);
+    import(&state, csv.clone());
+    // A directory at the selected path makes remove_file fail on every OS.
+    let moved = scratch.0.join("held.csv");
+    fs::rename(&csv, &moved).unwrap();
+    fs::create_dir(&csv).unwrap();
+    assert!(matches!(
+        state.delete_imported_file(),
+        Err(VaultError::Io(_))
+    ));
+    fs::remove_dir(&csv).unwrap();
+    fs::rename(&moved, &csv).unwrap();
+    state.delete_imported_file().unwrap();
+    assert!(!csv.exists());
+    assert_eq!(ready(state.overview("").unwrap()).total, 2);
+}
+
+#[test]
 fn only_the_last_imported_csv_can_be_deleted() {
     let scratch = Scratch::new();
     let state = state(&scratch.0.join("profile"), 1);
@@ -436,12 +457,35 @@ fn a_merge_cancelled_partway_rolls_back_every_row_it_wrote() {
 }
 
 #[test]
+fn cancellation_after_the_last_row_still_rolls_back_the_import() {
+    let mut store = Store::in_memory().unwrap();
+    let key = VaultKey::generate().unwrap();
+    merge(
+        &mut store,
+        &key,
+        &[credential("https://example.com", "ada", "old")],
+    );
+    let id = store.page("").unwrap().entries[0].id.clone();
+    assert!(matches!(
+        store.merge(
+            &key,
+            Source::Csv,
+            &[credential("https://example.com", "ada", "new")],
+            &CancelAfter(AtomicUsize::new(1))
+        ),
+        Err(VaultError::Cancelled)
+    ));
+    assert_eq!(store.page("").unwrap().total, 1);
+    assert_eq!(store.password(&key, &id).unwrap().expose(), "old");
+}
+
+#[test]
 fn a_cancel_sent_while_the_file_is_being_chosen_stops_that_import() {
     let scratch = Scratch::new();
     let state = state(&scratch.0.join("profile"), 1);
     let csv = scratch.csv("passwords.csv", CHROME_CSV);
     let run = state.begin_import().unwrap();
-    state.cancel_import();
+    assert!(state.cancel_import());
     assert!(run.cancelled());
     assert!(matches!(
         run.import(csv.clone()),
@@ -451,6 +495,21 @@ fn a_cancel_sent_while_the_file_is_being_chosen_stops_that_import() {
     assert_eq!(ready(state.overview("").unwrap()).total, 0);
     // The cancel belonged to that import alone.
     assert_eq!(import(&state, csv).added, 2);
+}
+
+#[test]
+fn a_queued_cancellation_cannot_reach_a_later_import() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let first = state.begin_import().unwrap();
+    let cancel = state.cancel_import_request();
+    drop(first);
+    let later = state.begin_import().unwrap();
+    assert!(cancel());
+    later
+        .import(scratch.csv("passwords.csv", CHROME_CSV))
+        .unwrap();
+    assert_eq!(ready(state.overview("").unwrap()).total, 2);
 }
 
 #[test]
@@ -481,6 +540,72 @@ fn concurrent_import_requests_admit_exactly_one() {
     drop(runs);
     state.cancel_import();
     assert!(!state.begin_import().unwrap().cancelled());
+}
+
+/// Pauses the actual SQLite commit after ImportRun admits it, allowing a
+/// Cancel request to overlap the durable write without relying on timing.
+struct PausedCommit<'a> {
+    run: &'a super::state::ImportRun,
+    entered: &'a Barrier,
+    release: &'a Barrier,
+}
+
+impl Cancellation for PausedCommit<'_> {
+    fn cancelled(&self) -> bool {
+        self.run.cancelled()
+    }
+
+    fn commit(&self, write: impl FnOnce() -> VaultResult<()>) -> VaultResult<()> {
+        self.run.commit(|| {
+            self.entered.wait();
+            self.release.wait();
+            write()
+        })
+    }
+}
+
+#[test]
+fn cancellation_during_commit_reports_too_late_and_keeps_the_saved_password() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let run = state.begin_import().unwrap();
+    let entered = Barrier::new(2);
+    let release = Barrier::new(2);
+    thread::scope(|scope| {
+        let importing = scope.spawn(|| {
+            let mut store = Store::in_memory().unwrap();
+            let key = VaultKey::generate().unwrap();
+            let counts = store
+                .merge(
+                    &key,
+                    Source::Csv,
+                    &[credential("https://example.com", "ada", "saved")],
+                    &PausedCommit {
+                        run: &run,
+                        entered: &entered,
+                        release: &release,
+                    },
+                )
+                .unwrap();
+            (store, key, counts)
+        });
+        entered.wait();
+        // Commit is paused inside the admitted durable write. Cancel must
+        // reject now, before the test permits SQLite to finish that write.
+        let accepted = state.cancel_import();
+        release.wait();
+        let (store, key, counts) = importing.join().unwrap();
+        assert_eq!(counts.added, 1);
+        let page = store.page("").unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(
+            store.password(&key, &page.entries[0].id).unwrap().expose(),
+            "saved"
+        );
+        assert!(!accepted, "a durable commit cannot acknowledge rollback");
+        // Even before the import reply is delivered, Cancel must say too late.
+        assert!(!state.cancel_import());
+    });
 }
 
 #[test]

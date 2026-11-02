@@ -10,6 +10,7 @@ export function passwordsImportCsv(): Promise<unknown> {
   return invokeNative("browser_passwords_import_csv");
 }
 
+/** True acknowledges rollback; false means cancellation was too late. */
 export function passwordsCancelImport(): Promise<unknown> {
   return invokeNative("browser_passwords_cancel_import");
 }
