@@ -115,6 +115,37 @@ test("reports multiline raw radii and allows only one radius custom-property tok
   );
 });
 
+test("reports raw z-index layers and allows only --z-* tokens and offsets", () => {
+  const inventory = analyze({
+    "src/styles/layers.css": `
+      .token { z-index: var(--z-popover); }
+      .offset { z-index: calc(var(--z-codemirror-gutters) + 1); }
+      .auto { z-index: auto; }
+      .raw { z-index: 80; }
+      .negative { z-index: -1; }
+      .arithmetic { z-index: calc(80 + 1); }
+    `,
+    "src/styles/global.css": `
+      :root { --z-modal: 90; }
+      .close-failure { z-index: 1000; }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.rawZIndexes.map(({ relativePath, line, value }) => ({
+      relativePath,
+      line,
+      value,
+    })),
+    [
+      { relativePath: "src/styles/global.css", line: 3, value: "1000" },
+      { relativePath: "src/styles/layers.css", line: 5, value: "80" },
+      { relativePath: "src/styles/layers.css", line: 6, value: "-1" },
+      { relativePath: "src/styles/layers.css", line: 7, value: "calc(80 + 1)" },
+    ],
+  );
+});
+
 test("finds hex, rgb, and rgba literals but ignores comments, strings, and custom-property names", () => {
   const inventory = analyze({
     "src/styles/colors.css": `

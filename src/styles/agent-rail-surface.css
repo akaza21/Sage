@@ -197,7 +197,7 @@
 
 .agent-rail-search-row {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-sticky);
   top: 100%;
   right: var(--space-3);
   left: var(--space-3);

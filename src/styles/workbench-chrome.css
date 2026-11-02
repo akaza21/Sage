@@ -386,7 +386,7 @@
 
   .right-region .sidebar {
     position: absolute;
-    z-index: 10;
+    z-index: var(--z-sidebar-overlay);
     top: 0;
     right: 46px;
     width: min(272px, calc(100vw - 92px));
