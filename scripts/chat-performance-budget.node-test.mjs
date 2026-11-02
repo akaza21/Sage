@@ -8,7 +8,7 @@ import { resolveUiPort } from "./lib/ui-test-port.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("CP-24 retained Chat envelope stays within browser performance budgets", () => {
+test("CP-24 retained Chat envelope stays within browser performance budgets", (t) => {
   const port = resolveUiPort();
   const cli = path.join(root, "node_modules", "@playwright", "test", "cli.js");
   const result = spawnSync(
@@ -30,6 +30,7 @@ test("CP-24 retained Chat envelope stays within browser performance budgets", ()
       maxBuffer: 4 * 1024 * 1024,
     },
   );
+  t.diagnostic(result.stdout);
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });

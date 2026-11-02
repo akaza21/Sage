@@ -3657,6 +3657,19 @@ test("Windows Vite cleanup quarantines post-teardown identity loss with the exac
     assert.equal(observed.record.identityLost, true);
     assert.equal(observed.record.remainingCount, 0);
     assert.deepEqual(observed.record.root, observed.expectedRoot);
+    const diagnostic = JSON.parse(
+      result.stderr.split("[runtime-teardown] ")[1].split(/\r?\n/)[0],
+    );
+    assert.equal(diagnostic.role, "vite");
+    assert.equal(diagnostic.identityLost, true);
+    assert.deepEqual(diagnostic.remainingProcessIds, []);
+    assert.deepEqual(diagnostic.reusedProcessIds, [
+      observed.expectedRoot.processId,
+    ]);
+    assert.equal(diagnostic.truncated, false);
+    assert.deepEqual(diagnostic.tracked, [
+      { ...observed.expectedRoot, pathTruncated: false, outcome: "lost" },
+    ]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -3701,6 +3714,18 @@ test("Windows Vite cleanup records an injected stop failure and blocks receipt p
     assert.equal(observed.final, false);
     assert.equal(observed.alive, true);
     assert.equal(observed.recordLeakedInjectedMessage, false);
+    const diagnostic = JSON.parse(
+      result.stderr.split("[runtime-teardown] ")[1].split(/\r?\n/)[0],
+    );
+    assert.equal(diagnostic.stage, "stop-tree");
+    assert.equal(diagnostic.identityLost, null);
+    assert.deepEqual(
+      diagnostic.tracked.find(
+        (entry) => entry.processId === observed.expectedRoot.processId,
+      ),
+      { ...observed.expectedRoot, pathTruncated: false, outcome: "unknown" },
+    );
+    assert.ok(diagnostic.tracked.every((entry) => entry.outcome === "unknown"));
     assert.deepEqual(observed.record, {
       schemaVersion: 2,
       runtimeRole: "vite",
@@ -3711,6 +3736,54 @@ test("Windows Vite cleanup records an injected stop failure and blocks receipt p
       identityLost: null,
       remainingCount: null,
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Windows cleanup failure reports the exact surviving identity in the failure log", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "sage-vite-survivor-"));
+  const powershell = path.join(
+    process.env.SystemRoot,
+    "System32/WindowsPowerShell/v1.0/powershell.exe",
+  );
+  const wrapper = path.resolve(
+    "scripts/run-source-functional-native-ide-journey.ps1",
+  );
+  const identityModule = path.resolve("scripts/footprint/ProcessIdentity.psm1");
+  const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+  // Inject a failed stop result for a real live process. The wrapper must keep
+  // failing closed and report that exact survivor without inventing a new probe.
+  const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module ${quote(identityModule)} -Force;$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(wrapper)},[ref]$tokens,[ref]$errors);foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree')){$fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);Invoke-Expression $fn.Extent.Text};function Stop-FootprintTree {param($Identity,$Store,$Grace)return [ordered]@{identityLost=$false;remaining=@($Identity.processId);reusedProcessIds=@()}};$process=Start-Process -FilePath ${quote(powershell)} -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;try{$identity=Get-FootprintLaunchIdentity $process ${quote(powershell)};$runtime=[ordered]@{process=$process;identity=$identity;store=(New-FootprintIdentityStore)};$message='';try{[void](Stop-OwnedRuntimeTree 'vite' $runtime ${quote(root)})}catch{$message=$_.Exception.Message};[ordered]@{message=$message;alive=($null -ne (Get-Process -Id $process.Id -ErrorAction SilentlyContinue));identity=(Get-CleanupRootTuple $identity)}|ConvertTo-Json -Depth 4 -Compress}finally{Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue;[void]$process.WaitForExit(5000)}`;
+  try {
+    const result = spawnSync(
+      powershell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 15000 },
+    );
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const observed = JSON.parse(result.stdout.trim());
+    assert.equal(
+      observed.message,
+      "The vite runtime cleanup was not terminal-zero.",
+    );
+    assert.equal(observed.alive, true);
+    const diagnostic = JSON.parse(
+      result.stderr.split("[runtime-teardown] ")[1].split(/\r?\n/)[0],
+    );
+    assert.equal(diagnostic.identityLost, false);
+    assert.deepEqual(diagnostic.remainingProcessIds, [
+      observed.identity.processId,
+    ]);
+    assert.deepEqual(
+      diagnostic.tracked.filter((entry) => entry.outcome === "survived"),
+      [{ ...observed.identity, pathTruncated: false, outcome: "survived" }],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
