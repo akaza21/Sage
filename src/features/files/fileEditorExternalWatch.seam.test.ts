@@ -214,17 +214,45 @@ describe("IDE-2 editor external watch seam", () => {
     });
     expect(fileEditor).not.toHaveAttribute("contenteditable", "false");
 
+    // Still at the cap: focusing the editor retries and fails, and editing
+    // and snapshotting the File do not clear the warning while it is unwatched.
+    const snapshot = vi
+      .spyOn(editor, "snapshotEditorBuffer")
+      .mockImplementation(async (request) => ({
+        revision: request.revision,
+        persistedAt: 1,
+        dirty: true,
+      }));
+    fireEvent.focusIn(fileEditor);
+    await waitFor(() => {
+      expect(watch).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => undefined);
+    act(() => {
+      useWorkbenchStore.getState().updateEditorContent("base\nedited\n");
+    });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      message: null,
+    });
+    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+    await act(async () => {
+      await useWorkbenchStore.getState().flushActiveEditor();
+    });
+    expect(snapshot).toHaveBeenCalled();
+    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+
     // A slot is free, but focus elsewhere in the app does not ask for it.
     slotFree = true;
     fireEvent.focusIn(screen.getByRole("button", { name: "Elsewhere" }));
     await act(async () => undefined);
-    expect(watch).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenCalledTimes(2);
     expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
     // Focus moving within the editor has not entered it, so it does not ask.
     fireEvent.focusIn(fileEditor, { relatedTarget: fileEditor });
     await act(async () => undefined);
-    expect(watch).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenCalledTimes(2);
 
     fireEvent.focusIn(fileEditor, {
       relatedTarget: screen.getByRole("button", { name: "Elsewhere" }),
@@ -232,13 +260,13 @@ describe("IDE-2 editor external watch seam", () => {
     await waitFor(() => {
       expect(screen.queryByText(WATCH_LIMIT_MESSAGE)).toBeNull();
     });
-    expect(watch).toHaveBeenCalledTimes(2);
+    expect(watch).toHaveBeenCalledTimes(3);
     expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();
 
     // Once watched, further focus changes in the editor send no more requests.
     fireEvent.focusIn(fileEditor);
     await act(async () => undefined);
-    expect(watch).toHaveBeenCalledTimes(2);
+    expect(watch).toHaveBeenCalledTimes(3);
 
     act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
     await screen.findByText(/This file was deleted outside Sage/);

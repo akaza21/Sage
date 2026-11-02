@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   EDITOR_EXTERNAL_WATCH_EVENT,
@@ -64,12 +64,16 @@ export function isEditorWatchLimitError(error: unknown): boolean {
  * Keeps one external-change watch for a ready File. When every native watch
  * slot is taken, the File stays editable and says it is not watched; the next
  * focus inside `focusBoundary` tries again.
+ *
+ * Returns the not-watched notice while this File has no watch, and null once
+ * one starts. The notice is kept apart from the editor's operation message,
+ * so an edit, snapshot or save cannot clear it while the File is unwatched.
  */
 export function useEditorExternalWatch(
   resource: ResourceRef | undefined,
   bridge: EditorStateBridge,
   focusBoundary: EditorFocusBoundary,
-): void {
+): string | null {
   const rootId = resource?.rootId;
   const relativePath = resource?.relativePath;
   const cancellation = useRef<Promise<void>>(Promise.resolve());
@@ -81,6 +85,10 @@ export function useEditorExternalWatch(
     () => (rootId && relativePath ? { rootId, relativePath } : undefined),
     [relativePath, rootId],
   );
+  const [unwatched, setUnwatched] = useState<{
+    resource: ResourceRef;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!watchResource) {
@@ -142,7 +150,6 @@ export function useEditorExternalWatch(
       document.removeEventListener("focusin", retryWhenFocused);
     };
     let starting = false;
-    let watchMessage: string | undefined;
     let start = cancellation.current;
     function tryStart() {
       if (cancelled || subscription || starting) {
@@ -163,15 +170,7 @@ export function useEditorExternalWatch(
           }
           subscription = nextSubscription;
           stopRetryingOnFocus();
-          const active = bridge.getActiveEditor();
-          if (
-            active?.phase === "ready" &&
-            sameResource(active.resource, watched) &&
-            watchMessage &&
-            active.message === watchMessage
-          ) {
-            bridge.setActiveEditor({ ...active, message: null });
-          }
+          setUnwatched(null);
         })
         .catch((error: unknown) => {
           if (cancelled) return;
@@ -179,16 +178,10 @@ export function useEditorExternalWatch(
           if (limited) {
             retryOnFocus();
           }
-          watchMessage = limited
-            ? WATCH_LIMIT_MESSAGE
-            : WATCH_UNAVAILABLE_MESSAGE;
-          const active = bridge.getActiveEditor();
-          if (
-            active?.phase === "ready" &&
-            sameResource(active.resource, watched)
-          ) {
-            bridge.setActiveEditor({ ...active, message: watchMessage });
-          }
+          setUnwatched({
+            resource: watched,
+            message: limited ? WATCH_LIMIT_MESSAGE : WATCH_UNAVAILABLE_MESSAGE,
+          });
         })
         .finally(() => {
           starting = false;
@@ -198,6 +191,7 @@ export function useEditorExternalWatch(
 
     return () => {
       stopRetryingOnFocus();
+      setUnwatched(null);
       cancelled = true;
       pendingNotice = undefined;
       cancellation.current = start
@@ -210,6 +204,12 @@ export function useEditorExternalWatch(
         .catch(() => undefined);
     };
   }, [bridge, watchResource]);
+
+  return unwatched &&
+    watchResource &&
+    sameResource(unwatched.resource, watchResource)
+    ? unwatched.message
+    : null;
 }
 
 export async function applyEditorExternalWatchNotice(

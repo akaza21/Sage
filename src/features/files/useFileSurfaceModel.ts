@@ -90,7 +90,20 @@ export function useFileSurfaceModel(
     () => editorInputRef.current?.view()?.dom ?? null,
     [editorInputRef],
   );
-  useEditorExternalWatch(watchedResource, watchBridge, editorFocusBoundary);
+  const unwatchedMessage = useEditorExternalWatch(
+    watchedResource,
+    watchBridge,
+    editorFocusBoundary,
+  );
+  // An operation message (a failed save, say) shows first; the not-watched
+  // notice returns once it clears, for as long as the File has no watch.
+  const shownEditor = useMemo(
+    () =>
+      unwatchedMessage && editor?.phase === "ready" && !editor.message
+        ? { ...editor, message: unwatchedMessage }
+        : editor,
+    [editor, unwatchedMessage],
+  );
   const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);
   const findControlRef = useRef<FindControl | null>(null);
   useEffect(() => {
@@ -144,7 +157,7 @@ export function useFileSurfaceModel(
     resource,
     path,
     activeResourceKey,
-    editor,
+    editor: shownEditor,
     projectTransitioning,
     updateEditorContent,
     saveActiveEditor,
