@@ -97,7 +97,9 @@ export function processIdentityHelper(action, value) {
   const result = spawnSync(powershell, args, {
     windowsHide: true,
     encoding: "utf8",
-    timeout: 5000,
+    // Cleanup includes a one-second grace period and up to five seconds of
+    // post-kill verification, plus PowerShell startup and CIM snapshots.
+    timeout: action === "cleanup" ? 15_000 : 5000,
     maxBuffer: 64 * 1024,
   });
   if (result.error || result.status !== 0) fail("tool-cleanup-unproven");
