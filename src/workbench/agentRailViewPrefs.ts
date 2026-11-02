@@ -83,7 +83,15 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
       emit();
       if (reconcile) persist(merged);
     })
-    .catch(() => undefined)
+    .catch(() => {
+      // The stored layout is unreadable. A choice already made must not be
+      // lost on restart, so store it with the defaults for the rest; with no
+      // pending choice, the next read tries again.
+      if (editedWhileLoading.size === 0) return;
+      restored = true;
+      editedWhileLoading.clear();
+      persist({ organize: prefs.organize, ordering: prefs.ordering });
+    })
     .finally(() => {
       restoring = null;
     });

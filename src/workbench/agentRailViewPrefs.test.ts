@@ -17,6 +17,7 @@ const settings = vi.hoisted(() => ({
   refuseWrites: false,
   // When set, the first read waits until the test releases it.
   slowRead: null as null | Promise<void>,
+  refuseReads: false,
 }));
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -30,6 +31,7 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
         ordering: "recency",
       };
       if (settings.slowRead) await settings.slowRead;
+      if (settings.refuseReads) throw new Error("database locked");
       return stored;
     }
     if (command === "agent_rail_set_view") {
@@ -47,6 +49,7 @@ beforeEach(() => {
   settings.stored = null;
   settings.refuseWrites = false;
   settings.slowRead = null;
+  settings.refuseReads = false;
   resetAgentRailViewPrefs();
 });
 
@@ -122,4 +125,35 @@ it("keeps a choice made while the stored layout is still loading", async () => {
   await waitFor(() =>
     expect(settings.stored).toEqual({ organize: "list", ordering: "manual" }),
   );
+});
+
+it("stores a choice made during a load that then fails", async () => {
+  settings.stored = { organize: "project", ordering: "manual" };
+  settings.refuseReads = true;
+  let release = () => {};
+  settings.slowRead = new Promise((resolve) => {
+    release = resolve;
+  });
+  const loading = restoreAgentRailViewPrefs();
+  act(() => setAgentRailOrganize("list"));
+  release();
+  await act(() => loading);
+  expect(agentRailViewPrefs().organize).toBe("list");
+  // The choice reaches the store with defaults for what could not be read.
+  await waitFor(() =>
+    expect(settings.stored).toEqual({ organize: "list", ordering: "recency" }),
+  );
+});
+
+it("tries the read again after a failure with no pending choice", async () => {
+  settings.stored = { organize: "list", ordering: "manual" };
+  settings.refuseReads = true;
+  await restoreAgentRailViewPrefs();
+  expect(agentRailViewPrefs().organize).toBe("project");
+  settings.refuseReads = false;
+  await restoreAgentRailViewPrefs();
+  expect(agentRailViewPrefs()).toMatchObject({
+    organize: "list",
+    ordering: "manual",
+  });
 });
