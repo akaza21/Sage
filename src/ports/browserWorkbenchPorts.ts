@@ -116,6 +116,8 @@ const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
   getRepositoryChangeStamp: async () => "browser",
   getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
+  getFileGitBase: (resource, knownOid) =>
+    browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>

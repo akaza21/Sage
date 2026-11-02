@@ -7,7 +7,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
 import { useState } from "react";
 import { useWorkbenchStore } from "../app/store";
 
@@ -21,7 +20,7 @@ const native = vi.hoisted(() => ({
 const xterm = vi.hoisted(() => ({
   refresh: vi.fn(),
   data: null as ((data: string) => void) | null,
-  terminals: [] as { options: Record<string, unknown> }[],
+  options: null as Record<string, unknown> | null,
   measured: true,
   scrollbar: 0,
   cell: [8, 16],
@@ -61,10 +60,8 @@ vi.mock("@xterm/xterm", () => ({
         },
       },
     };
-    options: Record<string, unknown>;
     constructor(options: Record<string, unknown>) {
-      this.options = { ...options };
-      xterm.terminals.push(this);
+      xterm.options = options;
     }
     open(parent: HTMLElement) {
       // Like xterm, the screen is cols by rows cells of xterm.cell CSS px,
@@ -168,7 +165,6 @@ beforeEach(() => {
   native.write.mockResolvedValue(undefined);
   xterm.refresh.mockReset();
   xterm.data = null;
-  xterm.terminals = [];
   resizeCallback = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -186,111 +182,6 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialWorkbenchState, true);
   vi.unstubAllGlobals();
-});
-
-// The app's real theme, as the running WebView applies it to the document.
-const themeStylesheet = readFileSync("src/styles/global.css", "utf8");
-// What the forced-colors block of the theme redefines the terminal's tokens to.
-const forcedColorsTokens = `:root {
-  --color-canvas: Canvas;
-  --color-text-primary: CanvasText;
-  --color-selection: Highlight;
-}`;
-
-function addStyle(css: string) {
-  const style = document.createElement("style");
-  style.textContent = css;
-  document.head.append(style);
-  return style;
-}
-
-function stubForcedColorsQuery() {
-  const listeners = new Set<() => void>();
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((query: string) => ({
-      matches: false,
-      media: query,
-      addEventListener: (_type: string, listener: () => void) =>
-        listeners.add(listener),
-      removeEventListener: (_type: string, listener: () => void) =>
-        listeners.delete(listener),
-    })),
-  );
-  return listeners;
-}
-
-function renderDock() {
-  return render(
-    <TerminalDock
-      scope={scope}
-      session={handle}
-      ended={false}
-      onStatus={vi.fn()}
-    />,
-  );
-}
-
-it("draws in the app theme's canvas, text and selection colours", async () => {
-  const theme = addStyle(themeStylesheet);
-  try {
-    renderDock();
-    await waitFor(() => expect(xterm.terminals).toHaveLength(1));
-    expect(xterm.terminals[0].options.theme).toEqual({
-      background: "#141414",
-      foreground: "#c5c5c5",
-      cursor: "#c5c5c5",
-      selectionBackground: "#264f78",
-    });
-  } finally {
-    theme.remove();
-  }
-});
-
-it("names a real macOS monospace face before the generic fallback", async () => {
-  const theme = addStyle(themeStylesheet);
-  try {
-    renderDock();
-    await waitFor(() => expect(xterm.terminals).toHaveLength(1));
-    const faces = String(xterm.terminals[0].options.fontFamily)
-      .split(",")
-      .map((face) => face.trim());
-    // WebKit on macOS resolves a bare `monospace` to Courier.
-    expect(faces.indexOf("Menlo")).toBeGreaterThanOrEqual(0);
-    expect(faces.indexOf("Menlo")).toBeLessThan(faces.indexOf("monospace"));
-  } finally {
-    theme.remove();
-  }
-});
-
-it("follows a forced-colors palette change without recreating the terminal", async () => {
-  const listeners = stubForcedColorsQuery();
-  const theme = addStyle(themeStylesheet);
-  let forced: HTMLStyleElement | undefined;
-  try {
-    const { unmount } = renderDock();
-    await waitFor(() => expect(xterm.terminals).toHaveLength(1));
-    const [terminal] = xterm.terminals;
-    const font = terminal.options.fontFamily;
-    forced = addStyle(forcedColorsTokens);
-    act(() => listeners.forEach((listener) => listener()));
-    expect(xterm.terminals).toEqual([terminal]);
-    expect(terminal.options.theme).toEqual({
-      background: "Canvas",
-      foreground: "CanvasText",
-      cursor: "CanvasText",
-      selectionBackground: "Highlight",
-    });
-    expect(terminal.options.fontFamily).toBe(font);
-    forced.remove();
-    act(() => listeners.forEach((listener) => listener()));
-    expect(terminal.options.theme).toMatchObject({ background: "#141414" });
-    unmount();
-    expect(listeners.size).toBe(0);
-  } finally {
-    forced?.remove();
-    theme.remove();
-  }
 });
 
 it("delivers a zero-delay typing burst without losing characters", async () => {

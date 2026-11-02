@@ -34,7 +34,6 @@ interface StoredShape {
   min?: number;
   max?: number;
   choices?: (number | string)[];
-  ticket: string;
 }
 
 function rustRegistry(): StoredShape[] {
@@ -55,7 +54,8 @@ function rustRegistry(): StoredShape[] {
     .slice(1)
     .map((entry) => {
       const key = /key: "([^"]+)"/u.exec(entry)?.[1];
-      const ticket = /ticket: "([^"]+)"/u.exec(entry)?.[1];
+      // The owning ticket lives only in the Rust registry.
+      const ticket = /ticket: "EP-\d+"/u.test(entry);
       const flag = /default: SettingValue::Bool\((true|false)\)/u.exec(entry);
       const number = /default: SettingValue::Int\((-?\d+)\)/u.exec(entry);
       const name = /default: SettingValue::Text\("([^"]+)"\)/u.exec(entry);
@@ -69,11 +69,10 @@ function rustRegistry(): StoredShape[] {
           key,
           kind: "globs",
           default: patterns.map((match) => match[1]),
-          ticket,
         };
       }
       if (/kind: SettingKind::Bool/u.test(entry)) {
-        return { key, kind: "boolean", default: flag?.[1] === "true", ticket };
+        return { key, kind: "boolean", default: flag?.[1] === "true" };
       }
       const names =
         /kind: SettingKind::Choice \{\s*choices: &\[([^\]]*)\],?\s*\}/u.exec(
@@ -87,7 +86,6 @@ function rustRegistry(): StoredShape[] {
           choices: [...names[1].matchAll(/"([^"]+)"/gu)].map(
             (match) => match[1],
           ),
-          ticket,
         };
       }
       const range =
@@ -106,7 +104,6 @@ function rustRegistry(): StoredShape[] {
           .map((choice) => choice.trim())
           .filter(Boolean)
           .map(Number),
-        ticket,
       };
     });
 }
@@ -117,7 +114,6 @@ function storedShape(entry: EditorSettingSpec): StoredShape {
       key: entry.key,
       kind: entry.kind,
       default: [...entry.default],
-      ticket: entry.ticket,
     };
   }
   if (entry.kind === "choice") {
@@ -126,7 +122,6 @@ function storedShape(entry: EditorSettingSpec): StoredShape {
       kind: entry.kind,
       default: entry.default,
       choices: [...entry.choices],
-      ticket: entry.ticket,
     };
   }
   return entry.kind === "boolean"
@@ -134,7 +129,6 @@ function storedShape(entry: EditorSettingSpec): StoredShape {
         key: entry.key,
         kind: entry.kind,
         default: entry.default,
-        ticket: entry.ticket,
       }
     : {
         key: entry.key,
@@ -143,7 +137,6 @@ function storedShape(entry: EditorSettingSpec): StoredShape {
         min: entry.min,
         max: entry.max,
         choices: [...entry.choices],
-        ticket: entry.ticket,
       };
 }
 

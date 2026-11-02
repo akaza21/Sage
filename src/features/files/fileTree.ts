@@ -7,6 +7,8 @@ import type {
   WorkspaceEntry,
 } from "../../domain/workbench";
 
+export const EXPLORER_ROW_LIMIT = 500;
+
 export interface VisibleWorkspaceEntry extends WorkspaceEntry {
   depth: number;
 }
@@ -20,7 +22,7 @@ export function flattenFileTree(
   root: ResourceRef,
   listings: Record<string, ResourceState<DirectoryListing>>,
   expanded: Record<string, boolean>,
-  limit = 600,
+  limit = EXPLORER_ROW_LIMIT,
   hideIgnored = false,
   excluded?: PathGlobMatcher,
 ): FlattenedFileTree {

@@ -6,7 +6,8 @@ export const Q02_LIMITS = Object.freeze({
   files: 560,
   depth: 16,
   fileBytes: 64 * 1024,
-  aggregateBytes: 2.25 * 1024 * 1024,
+  // Policy scanner input bound, independent of app runtime budgets.
+  aggregateBytes: 2.5 * 1024 * 1024,
   visitedEntries: 1280,
   errors: 32,
 });
