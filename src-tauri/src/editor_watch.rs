@@ -22,6 +22,11 @@ pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
 // leaving headroom for every tab in those workspaces to be watched concurrently.
 const MAX_GLOBAL_WATCHES: usize = 256;
 
+/// The IPC error a File editor receives when every watch slot is taken. It is a
+/// stable code rather than display text, so the editor can tell "retry later"
+/// apart from a watch that cannot start at all.
+pub const EDITOR_WATCH_LIMIT_ERROR: &str = "editor-watch-limit-reached";
+
 const FILE_ACTION_ADDED: u32 = 1;
 const FILE_ACTION_REMOVED: u32 = 2;
 const FILE_ACTION_MODIFIED: u32 = 3;
@@ -278,7 +283,7 @@ pub fn watch_editor_document(
         })
         .and_then(checked_file_path)
         .map_err(|error| error.to_string())?;
-    let generation = start_watch(&resource).map_err(|error| error.to_string())?;
+    let generation = start_watch(&resource).map_err(watch_command_error)?;
     let Some(cancelled) = watch_control(&resource, generation) else {
         return Err("editor watch was cancelled before it could start".into());
     };
@@ -295,6 +300,13 @@ pub fn unwatch_editor_document(
     resource: ResourceRef,
 ) -> Result<(), String> {
     stop_watch(&resource).map_err(|error| error.to_string())
+}
+
+fn watch_command_error(error: AppError) -> String {
+    match error {
+        AppError::ResourceLimit(_) => EDITOR_WATCH_LIMIT_ERROR.into(),
+        other => other.to_string(),
+    }
 }
 
 fn checked_file_path(path: PathBuf) -> AppResult<PathBuf> {

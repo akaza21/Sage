@@ -19,6 +19,17 @@ import { sameContent } from "./editorContent";
 
 export { EDITOR_EXTERNAL_WATCH_EVENT };
 
+/** Mirrors `EDITOR_WATCH_LIMIT_ERROR` in `src-tauri/src/editor_watch.rs`. */
+export const EDITOR_WATCH_LIMIT_ERROR = "editor-watch-limit-reached";
+
+export const WATCH_LIMIT_MESSAGE =
+  "File is not watched: the external-change watch limit was reached. Focus this File to retry.";
+export const WATCH_UNAVAILABLE_MESSAGE =
+  "File is not watched: external-change notifications could not start.";
+
+/** Returns the element whose focus means the user is back in this File. */
+export type EditorFocusBoundary = () => Element | null;
+
 const DELETION_CONFLICT = {
   kind: "external-change" as const,
   message: "This file was deleted outside Sage.",
@@ -45,13 +56,27 @@ export async function bindEditorExternalWatch(
   };
 }
 
+export function isEditorWatchLimitError(error: unknown): boolean {
+  return errorMessage(error) === EDITOR_WATCH_LIMIT_ERROR;
+}
+
+/**
+ * Keeps one external-change watch for a ready File. When every native watch
+ * slot is taken, the File stays editable and says it is not watched; the next
+ * focus inside `focusBoundary` tries again.
+ */
 export function useEditorExternalWatch(
   resource: ResourceRef | undefined,
   bridge: EditorStateBridge,
+  focusBoundary: EditorFocusBoundary,
 ): void {
   const rootId = resource?.rootId;
   const relativePath = resource?.relativePath;
   const cancellation = useRef<Promise<void>>(Promise.resolve());
+  const boundary = useRef(focusBoundary);
+  useEffect(() => {
+    boundary.current = focusBoundary;
+  }, [focusBoundary]);
   const watchResource = useMemo(
     () => (rootId && relativePath ? { rootId, relativePath } : undefined),
     [relativePath, rootId],
@@ -88,11 +113,33 @@ export function useEditorExternalWatch(
       );
     };
 
-    let retryable = false;
+    // Only a focus inside this File's editor retries, so one click elsewhere
+    // does not send a watch request for every capped File.
+    const retryWhenFocused = (event: FocusEvent) => {
+      const focusedEditor = boundary.current?.();
+      if (
+        focusedEditor &&
+        event.target instanceof Node &&
+        focusedEditor.contains(event.target)
+      ) {
+        tryStart();
+      }
+    };
+    let retrying = false;
+    const retryOnFocus = () => {
+      if (retrying) return;
+      retrying = true;
+      document.addEventListener("focusin", retryWhenFocused);
+    };
+    const stopRetryingOnFocus = () => {
+      if (!retrying) return;
+      retrying = false;
+      document.removeEventListener("focusin", retryWhenFocused);
+    };
     let starting = false;
     let watchMessage: string | undefined;
     let start = cancellation.current;
-    const tryStart = () => {
+    function tryStart() {
       if (cancelled || subscription || starting) {
         return;
       }
@@ -110,7 +157,7 @@ export function useEditorExternalWatch(
             return;
           }
           subscription = nextSubscription;
-          retryable = false;
+          stopRetryingOnFocus();
           const active = bridge.getActiveEditor();
           if (
             active?.phase === "ready" &&
@@ -118,47 +165,34 @@ export function useEditorExternalWatch(
             watchMessage &&
             active.message === watchMessage
           ) {
-            bridge.setActiveEditor(
-              { ...active, message: null },
-              {
-                tabStatus: active.document.conflict ? "failed" : null,
-              },
-            );
+            bridge.setActiveEditor({ ...active, message: null });
           }
         })
         .catch((error: unknown) => {
           if (cancelled) return;
-          retryable = errorMessage(error).startsWith(
-            "resource limit exceeded:",
-          );
-          watchMessage = retryable
-            ? "File is not watched: the external-change watch limit was reached. Focus this File to retry."
-            : "File is not watched: external-change notifications could not start.";
+          const limited = isEditorWatchLimitError(error);
+          if (limited) {
+            retryOnFocus();
+          }
+          watchMessage = limited
+            ? WATCH_LIMIT_MESSAGE
+            : WATCH_UNAVAILABLE_MESSAGE;
           const active = bridge.getActiveEditor();
           if (
             active?.phase === "ready" &&
             sameResource(active.resource, watchResource)
           ) {
-            bridge.setActiveEditor(
-              { ...active, message: watchMessage },
-              { tabStatus: "failed" },
-            );
+            bridge.setActiveEditor({ ...active, message: watchMessage });
           }
         })
         .finally(() => {
           starting = false;
         });
-    };
-    const retryOnFocus = () => {
-      if (retryable) tryStart();
-    };
-    window.addEventListener("focus", retryOnFocus);
-    window.addEventListener("focusin", retryOnFocus);
+    }
     tryStart();
 
     return () => {
-      window.removeEventListener("focus", retryOnFocus);
-      window.removeEventListener("focusin", retryOnFocus);
+      stopRetryingOnFocus();
       cancelled = true;
       pendingNotice = undefined;
       cancellation.current = start

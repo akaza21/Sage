@@ -86,14 +86,14 @@ fn global_watch_limit_rejects_overflow_and_releases_stopped_slots() {
         active.push(file);
     }
     let overflow = resource("overflow.md");
-    assert!(matches!(
-        start_watch(&overflow),
-        Err(AppError::ResourceLimit(_))
-    ));
-    assert!(matches!(
-        start_watch(&first),
-        Err(AppError::InvalidRequest(_))
-    ));
+    assert_eq!(
+        start_watch(&overflow).map_err(watch_command_error),
+        Err(EDITOR_WATCH_LIMIT_ERROR.to_string())
+    );
+    assert_eq!(
+        start_watch(&first).map_err(watch_command_error),
+        Err("invalid request: a watch is already active for this resource".to_string())
+    );
     assert!(can_emit(&first, first_generation, &first_cancelled));
 
     stop_watch(&first).unwrap();
