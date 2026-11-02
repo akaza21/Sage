@@ -12,6 +12,7 @@ mod browser_preferences;
 mod browser_site_permissions;
 mod editor_settings;
 mod side_chat;
+mod terminal_dock;
 pub use access::SessionAccessModes;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
@@ -110,6 +111,7 @@ impl SettingsStore {
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
+            terminal_dock::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

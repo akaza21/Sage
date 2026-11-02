@@ -27,7 +27,7 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
-import { useWorkbenchKeys } from "./useWorkbenchKeys";
+import { useWorkbenchKeys, useTerminalDock } from "./useWorkbenchKeys";
 import "./workbench-window-mode.css";
 import {
   AgentCenterKeeper,
@@ -87,7 +87,6 @@ export function Workbench() {
     (state) => state.page !== null,
   );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
-  const [terminalOpen, setTerminalOpen] = useState(false);
   const compact = useCompactWorkbenchLayout();
   const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
@@ -110,6 +109,9 @@ export function Workbench() {
     );
   const resourceModal =
     windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
+  const terminal = useTerminalDock(resourceModal || agentSettingsPage);
+  const [terminalVisited, setTerminalVisited] = useState(false);
+  if (terminal.visible && !terminalVisited) setTerminalVisited(true);
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -178,7 +180,7 @@ export function Workbench() {
             onAgentLeftRailWidthChange={(width) =>
               changeAgentSidebarWidth("left", width)
             }
-            onOpenTerminal={() => setTerminalOpen(true)}
+            onOpenTerminal={terminal.open}
             onAgentArtifactWidthChange={(width) =>
               changeAgentSidebarWidth("artifact", width)
             }
@@ -196,6 +198,7 @@ export function Workbench() {
       narrowAgent,
       openArtifactInEditor,
       onPreviewTargetChange,
+      terminal.open,
     ],
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
@@ -298,13 +301,14 @@ export function Workbench() {
           <QuickOpenHost />
         </div>
       ) : null}
-      {terminalOpen ? (
+      {terminalVisited ? (
         <LazyModuleBoundary
           label="Terminal"
           load={loadTerminalDock}
           render={(TerminalDock) => (
             <TerminalDock
-              setOpen={setTerminalOpen}
+              setOpen={terminal.setOpen}
+              visible={terminal.visible}
               inert={resourceModal}
               pinnedChatId={pinnedAgentChatOwner()}
             />
@@ -316,11 +320,9 @@ export function Workbench() {
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
         showEditorSettings={windowMode === "editor"}
-        onOpenTerminal={
-          !terminalOpen && isTauriRuntime()
-            ? () => setTerminalOpen(true)
-            : undefined
-        }
+        terminalOpen={terminal.visible}
+        terminalError={terminal.error}
+        onToggleTerminal={terminal.available ? terminal.toggle : undefined}
       />
       <DirtyTabDialog />
     </main>

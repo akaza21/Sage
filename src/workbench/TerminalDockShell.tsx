@@ -57,16 +57,27 @@ export function TerminalDockForWorkbench({
   inert = false,
   setOpen,
   pinnedChatId,
+  visible = true,
 }: {
   inert?: boolean;
   setOpen: (open: boolean) => void;
   pinnedChatId: string | null;
+  visible?: boolean;
 }) {
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  const [uiProjectGeneration] = useState(
-    () => useWorkbenchStore.getState().projectGeneration,
-  );
-  const [scope] = useState(() => selectedScope(pinnedChatId));
+  const [owner, setOwner] = useState(() => ({
+    scope: selectedScope(pinnedChatId),
+    uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+  }));
+  const { scope, uiProjectGeneration } = owner;
+  if (visible && !scope) {
+    const next = selectedScope(pinnedChatId);
+    if (next)
+      setOwner({
+        scope: next,
+        uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+      });
+  }
   useEffect(() => {
     if (!scope) return;
     return useWorkbenchStore.subscribe(() => {
@@ -79,6 +90,10 @@ export function TerminalDockForWorkbench({
         current.projectGeneration !== scope.projectGeneration ||
         current.chatId !== scope.chatId
       ) {
+        setOwner({
+          scope: null,
+          uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+        });
         onClose();
       }
     });
@@ -88,6 +103,7 @@ export function TerminalDockForWorkbench({
       <section
         className="terminal-dock"
         aria-label="Terminal"
+        hidden={!visible}
         inert={inert}
         aria-hidden={inert || undefined}
       >
@@ -101,23 +117,35 @@ export function TerminalDockForWorkbench({
       </section>
     );
   }
-  return <TerminalDockShell scope={scope} onClose={onClose} inert={inert} />;
+  return (
+    <TerminalDockShell
+      scope={scope}
+      onClose={onClose}
+      inert={inert}
+      visible={visible}
+    />
+  );
 }
 
 export function TerminalDockShell({
   inert = false,
   scope,
   onClose,
+  visible = true,
 }: {
   inert?: boolean;
   scope: UserTerminalScope;
   onClose: () => void;
+  visible?: boolean;
 }) {
   const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [disclosure, setDisclosure] = useState({ visible, collapsed: false });
+  if (disclosure.visible !== visible)
+    setDisclosure({ visible, collapsed: false });
+  const collapsed = disclosure.visible === visible && disclosure.collapsed;
   const [message, setMessage] = useState<string | null>(null);
   const [TerminalView, setTerminalView] =
     useState<ComponentType<TerminalDockProps> | null>(null);
@@ -148,7 +176,7 @@ export function TerminalDockShell({
       owner.dismissWhenCreateSettles = false;
       setEntries(next);
       setActiveId(session.sessionId);
-      setCollapsed(false);
+      setDisclosure({ visible: true, collapsed: false });
     } catch (error) {
       if (!owner.disposed && owner.lifecycle === lifecycle)
         setMessage(terminalErrorLabel(error));
@@ -168,10 +196,6 @@ export function TerminalDockShell({
     const owner = ownerRef.current;
     owner.disposed = false;
     owner.lifecycle += 1;
-    const lifecycle = owner.lifecycle;
-    void Promise.resolve().then(() => {
-      if (!owner.disposed && owner.lifecycle === lifecycle) void create();
-    });
     return () => {
       owner.disposed = true;
       owner.lifecycle += 1;
@@ -180,7 +204,21 @@ export function TerminalDockShell({
         void closeUserTerminal(scope, entry.session).catch(() => undefined);
       owner.entries = [];
     };
-  }, [create, scope]);
+  }, [scope]);
+
+  useEffect(() => {
+    const owner = ownerRef.current;
+    const lifecycle = owner.lifecycle;
+    if (!visible || entries.length !== 0) return;
+    void Promise.resolve().then(() => {
+      if (
+        !owner.disposed &&
+        owner.lifecycle === lifecycle &&
+        owner.entries.length === 0
+      )
+        void create();
+    });
+  }, [create, visible, entries.length]);
 
   useEffect(() => {
     if (collapsed || entries.length === 0 || TerminalView) return;
@@ -242,6 +280,7 @@ export function TerminalDockShell({
     <section
       className={`terminal-dock${collapsed ? " terminal-dock--collapsed" : ""}`}
       aria-label="Terminal"
+      hidden={!visible}
       inert={inert}
       aria-hidden={inert || undefined}
     >
@@ -289,7 +328,7 @@ export function TerminalDockShell({
             type="button"
             aria-label={collapsed ? "Expand terminal" : "Collapse terminal"}
             title={collapsed ? "Expand terminal" : "Collapse terminal"}
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => setDisclosure({ visible, collapsed: !collapsed })}
           >
             {collapsed ? "⌃" : "⌄"}
           </button>
@@ -300,17 +339,22 @@ export function TerminalDockShell({
           {message ?? active?.message}
         </p>
       ) : null}
-      {!collapsed && active && TerminalView ? (
-        <TerminalView
-          key={active.session.sessionId}
-          scope={scope}
-          session={active.session}
-          ended={active.ended}
-          onStatus={(status, ended) =>
-            updateStatus(active.session.sessionId, status, ended)
-          }
-        />
-      ) : null}
+      {TerminalView
+        ? entries.map((entry) => (
+            <TerminalView
+              key={entry.session.sessionId}
+              scope={scope}
+              session={entry.session}
+              ended={entry.ended}
+              visible={
+                visible && !collapsed && entry.session.sessionId === activeId
+              }
+              onStatus={(status, ended) =>
+                updateStatus(entry.session.sessionId, status, ended)
+              }
+            />
+          ))
+        : null}
     </section>
   );
 }

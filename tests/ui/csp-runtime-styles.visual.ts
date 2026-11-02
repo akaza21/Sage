@@ -160,7 +160,7 @@ test("the real terminal keeps its monospace cell grid under the packaged CSP", a
     }));
   });
   await page
-    .getByRole("button", { name: "Open terminal", exact: true })
+    .getByRole("button", { name: "Toggle terminal", exact: true })
     .click();
   const terminal = page.getByRole("region", { name: "Terminal", exact: true });
   const rows = terminal.locator(".xterm-rows > div");

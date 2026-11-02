@@ -227,8 +227,14 @@ function writeBrowserEditorSettings(settings: EditorSettings) {
 let editorSettings: EditorSettings = readBrowserEditorSettings();
 let sessionAccessModes: SessionAccessModes = {};
 let uiAppearance: UiAppearance = DEFAULT_UI_APPEARANCE;
+let terminalDockVisible = false;
 
 const settings: SettingsPort = {
+  getTerminalDockVisible: () => Promise.resolve(terminalDockVisible),
+  setTerminalDockVisible: (visible) => {
+    terminalDockVisible = visible;
+    return Promise.resolve(visible);
+  },
   getEditorSettings: () => Promise.resolve(editorSettings),
   setEditorSettings: (changes) => {
     // Match the desktop store: a value of the wrong type refuses the change.

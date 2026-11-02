@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 
 const native = vi.hoisted(() => ({
   create: vi.fn(),
@@ -24,19 +24,24 @@ vi.mock("./TerminalDock", () => ({
     session,
     ended,
     onStatus,
+    visible = true,
   }: {
     session: { sessionId: string };
     ended: boolean;
     onStatus: (status: string, ended?: boolean) => void;
-  }) => (
-    <div>
-      Active session {session.sessionId}
-      <span data-testid="terminal-ended-state">{ended ? "ended" : "live"}</span>
-      <button type="button" onClick={() => onStatus("Session ended", false)}>
-        Report status text only
-      </button>
-    </div>
-  ),
+    visible?: boolean;
+  }) =>
+    visible ? (
+      <div>
+        Active session {session.sessionId}
+        <span data-testid="terminal-ended-state">
+          {ended ? "ended" : "live"}
+        </span>
+        <button type="button" onClick={() => onStatus("Session ended", false)}>
+          Report status text only
+        </button>
+      </div>
+    ) : null,
 }));
 
 import { TerminalDockShell } from "./TerminalDockShell";
@@ -62,6 +67,59 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+it("opens a usable replacement after the last terminal tab was explicitly ended", async () => {
+  function Host() {
+    const [visible, setVisible] = useState(true);
+    return (
+      <>
+        <button onClick={() => setVisible(true)}>Show dock</button>
+        <TerminalDockShell
+          scope={scope}
+          visible={visible}
+          onClose={() => setVisible(false)}
+        />
+      </>
+    );
+  }
+  render(<Host />);
+  await screen.findByText(`Active session ${session(1).sessionId}`);
+  fireEvent.click(screen.getByRole("button", { name: "Close terminal tab" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("region", { name: "Terminal" }),
+    ).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show dock" }));
+  expect(
+    await screen.findByText(`Active session ${session(2).sessionId}`),
+  ).toBeVisible();
+});
+
+it("hides and reopens the dock with its selected sessions intact", async () => {
+  const onClose = () => undefined;
+  const { rerender } = render(
+    <TerminalDockShell scope={scope} onClose={onClose} visible />,
+  );
+  await screen.findByText(`Active session ${session(1).sessionId}`);
+  fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+  await screen.findByText(`Active session ${session(2).sessionId}`);
+  rerender(
+    <TerminalDockShell scope={scope} onClose={onClose} visible={false} />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "Terminal" }),
+  ).not.toBeInTheDocument();
+  rerender(<TerminalDockShell scope={scope} onClose={onClose} visible />);
+  expect(
+    await screen.findByText(`Active session ${session(2).sessionId}`),
+  ).toBeVisible();
+  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  fireEvent.click(screen.getAllByRole("tab")[0]);
+  expect(
+    await screen.findByText(`Active session ${session(1).sessionId}`),
+  ).toBeVisible();
+});
 
 it("creates a second tab, switches sessions, and closes only the selected tab", async () => {
   const onClose = vi.fn();

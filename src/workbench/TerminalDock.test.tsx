@@ -35,6 +35,7 @@ vi.mock("../services/userTerminalDesktop", () => ({
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
+    options = { cursorBlink: true };
     cols = 1;
     rows = 1;
     open() {}

@@ -95,6 +95,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::set_session_access_modes,
         settings_commands::get_ui_appearance,
         settings_commands::set_ui_appearance,
+        settings_commands::get_terminal_dock_visible,
+        settings_commands::set_terminal_dock_visible,
         commands::acp::get_acp_chat_page,
         commands::acp::chat_status::get_acp_chat_status,
         commands::acp::file_snapshot::get_acp_file_snapshot,

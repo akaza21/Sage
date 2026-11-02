@@ -5,6 +5,9 @@ import { invokeNative } from "./nativeInvoke";
 import { type SettingsPort } from "./workbenchPorts";
 
 export const nativeSettingsPort: SettingsPort = {
+  getTerminalDockVisible: () => invokeNative("get_terminal_dock_visible"),
+  setTerminalDockVisible: (visible) =>
+    invokeNative("set_terminal_dock_visible", { visible }),
   getEditorSettings(): Promise<Record<string, unknown>> {
     return invokeNative("get_editor_settings");
   },

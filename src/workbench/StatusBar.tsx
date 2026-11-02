@@ -6,6 +6,8 @@ import { useWorkbenchStore } from "../app/store";
 import type { ProjectRepositoryStatus } from "../domain/workbench";
 import { caretStatusLabel } from "../features/files/editorCaret";
 import { editorLanguageStatusLabel } from "../features/files/editorLanguage";
+import { formatKeymapChords, keymapBinding } from "../domain/keymapRegistry";
+import { usesMetaModifier } from "../ui/shortcutLabel";
 
 function repositoryStatusLabel(repositories: ProjectRepositoryStatus) {
   if (repositories.roots.length === 0) return "No project";
@@ -30,13 +32,17 @@ export function StatusBar({
   railLeading = false,
   showSidebarToggle = true,
   showEditorSettings = true,
-  onOpenTerminal,
+  onToggleTerminal,
+  terminalOpen = false,
+  terminalError = null,
 }: {
   inert?: boolean;
   railLeading?: boolean;
   showSidebarToggle?: boolean;
   showEditorSettings?: boolean;
-  onOpenTerminal?: () => void;
+  onToggleTerminal?: () => void;
+  terminalOpen?: boolean;
+  terminalError?: string | null;
 }) {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const toggleSidebar = useWorkbenchStore((state) => state.toggleSidebar);
@@ -85,14 +91,18 @@ export function StatusBar({
         ) : null}
       </div>
       <div className="status-bar__group">
-        {onOpenTerminal ? (
+        {terminalError ? <span role="status">{terminalError}</span> : null}
+        {onToggleTerminal ? (
           <button
-            className="status-bar__button"
+            className="status-bar__button status-bar__terminal"
             type="button"
-            aria-label="Open terminal"
-            onClick={onOpenTerminal}
+            aria-label="Toggle terminal"
+            aria-pressed={terminalOpen}
+            title={`${terminalOpen ? "Hide" : "Show"} terminal (${formatKeymapChords(keymapBinding("agent.terminal"), usesMetaModifier()).join(" / ")})`}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={onToggleTerminal}
           >
-            &gt;_
+            <span aria-hidden="true">&gt;_</span> Terminal
           </button>
         ) : null}
         {showEditorSettings && caretLabel ? (

@@ -288,7 +288,7 @@ for (const width of [480, 720]) {
           page,
         );
         await page
-          .getByRole("button", { name: "Open terminal", exact: true })
+          .getByRole("button", { name: "Toggle terminal", exact: true })
           .click();
         const terminal = page.getByRole("region", {
           name: "Terminal",

@@ -38,6 +38,7 @@ export type TerminalDockProps = {
   scope: UserTerminalScope;
   session: UserTerminalSession;
   ended: boolean;
+  visible?: boolean;
   onStatus: (status: string, ended?: boolean) => void;
 };
 
@@ -46,9 +47,16 @@ export function TerminalDock({
   session,
   ended,
   onStatus,
+  visible = true,
 }: TerminalDockProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
+  const visibleRef = useRef(visible);
+  const displayRef = useRef<(visible: boolean) => void>(() => undefined);
+  useEffect(() => {
+    visibleRef.current = visible;
+    displayRef.current(visible);
+  }, [visible]);
   useEffect(() => {
     onStatusRef.current = onStatus;
   }, [onStatus]);
@@ -72,10 +80,11 @@ export function TerminalDock({
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = window.devicePixelRatio;
+    let resumeRead: (() => void) | null = null;
     const terminal = new Terminal({
       allowProposedApi: false,
       convertEol: false,
-      cursorBlink: true,
+      cursorBlink: visibleRef.current,
       // xterm measures a concrete face; Menlo keeps macOS off Courier.
       fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
@@ -98,6 +107,14 @@ export function TerminalDock({
       let cursor = "0";
       try {
         while (!stopped) {
+          // Keep the reader and xterm screen across visibility changes. A pending
+          // native read owns an exclusive lease and cannot be replaced on hide.
+          if (!visibleRef.current) {
+            await new Promise<void>((resolve) => {
+              resumeRead = resolve;
+            });
+            continue;
+          }
           let page;
           try {
             page = await readUserTerminal(ownerScope, session, cursor);
@@ -204,7 +221,7 @@ export function TerminalDock({
       void drainInput();
     });
     const refreshDimensions = () => {
-      if (stopped) return;
+      if (stopped || !visibleRef.current) return;
       if (window.devicePixelRatio !== observedPixelRatio) {
         observedPixelRatio = window.devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
@@ -218,18 +235,30 @@ export function TerminalDock({
     const observer = new ResizeObserver(refreshDimensions);
     observer.observe(element);
     window.addEventListener("resize", refreshDimensions);
-    void resizeUserTerminal(
-      ownerScope,
-      session,
-      initial.columns,
-      initial.rows,
-    ).catch((error: unknown) => {
-      if (!stopped) onStatusRef.current(terminalErrorLabel(error));
-    });
+    displayRef.current = (show) => {
+      terminal.options.cursorBlink = show;
+      if (!show) return;
+      resumeRead?.();
+      resumeRead = null;
+      refreshDimensions();
+      terminal.refresh(0, terminal.rows - 1);
+      terminal.focus();
+    };
+    if (visibleRef.current)
+      void resizeUserTerminal(
+        ownerScope,
+        session,
+        initial.columns,
+        initial.rows,
+      ).catch((error: unknown) => {
+        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
+      });
     void pollOutput();
-    terminal.focus();
+    if (visibleRef.current) terminal.focus();
     return () => {
       stopped = true;
+      resumeRead?.();
+      displayRef.current = () => undefined;
       observer.disconnect();
       window.removeEventListener("resize", refreshDimensions);
       inputListener.dispose();
@@ -237,5 +266,11 @@ export function TerminalDock({
     };
   }, [ended, ownerScope, session]);
 
-  return <div className="terminal-dock__viewport" ref={viewportRef} />;
+  return (
+    <div
+      className="terminal-dock__viewport"
+      ref={viewportRef}
+      hidden={!visible}
+    />
+  );
 }

@@ -1,3 +1,6 @@
+import { create } from "zustand";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { createSettingWriter } from "../app/settingWriteQueue";
 import {
   EDITOR_TOOL_RAIL_WIDTH,
   clampWorkbenchSidebarWidth,
@@ -7,6 +10,49 @@ import {
   isWorkbenchWindowMode,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
+
+interface TerminalDockStore {
+  visible: boolean;
+  ready: boolean;
+  error: string | null;
+  restore: () => Promise<void>;
+  flush: () => Promise<void>;
+  setVisible: (visible: boolean) => void;
+}
+
+const writes = createSettingWriter(false);
+
+/** Disposable projection of the native dock preference; sessions own their lifecycle. */
+export const useTerminalDockStore = create<TerminalDockStore>((set, get) => ({
+  visible: false,
+  ready: false,
+  error: null,
+  restore: async () => {
+    await writes.idle();
+    try {
+      const visible =
+        (await getWorkbenchPorts().settings.getTerminalDockVisible()) === true;
+      writes.persisted(visible);
+      set({ visible, ready: true, error: null });
+    } catch {
+      set({ ready: false, error: "Terminal visibility could not be loaded." });
+    }
+  },
+  flush: () => writes.idle(),
+  setVisible: (visible) => {
+    if (!get().ready) return;
+    set({ visible, error: null });
+    writes.write(
+      visible,
+      (value) => getWorkbenchPorts().settings.setTerminalDockVisible(value),
+      (persisted) =>
+        set({
+          visible: persisted,
+          error: "Terminal visibility could not be saved.",
+        }),
+    );
+  },
+}));
 
 export const WORKBENCH_LAYOUT_STORAGE_KEY = "sage.workbench.layout.v1";
 
