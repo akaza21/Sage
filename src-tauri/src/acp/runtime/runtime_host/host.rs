@@ -211,9 +211,30 @@ impl RuntimeHost {
     }
 
     pub(crate) fn send(&self, intent: HostPromptIntent) -> Result<HostOutcome, HostError> {
+        let started = Instant::now();
         let owner = intent.owner();
-        let turn_id = self.prepare_prompt(intent)?;
-        self.dispatch_prepared(owner, turn_id)
+        let turn_id = self.prepare_prompt(intent).inspect_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "host.prepare",
+                started,
+                error,
+                self.lifecycle.load(Ordering::Acquire),
+            );
+        })?;
+        let prepared_ms = started.elapsed().as_millis();
+        self.dispatch_prepared(owner, turn_id).inspect_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "host.dispatch",
+                started,
+                error,
+                (
+                    "prepared_ms",
+                    prepared_ms,
+                    "lifecycle",
+                    self.lifecycle.load(Ordering::Acquire),
+                ),
+            );
+        })
     }
 
     pub(crate) fn cancel(&self, intent: HostCancelIntent) -> Result<HostOutcome, HostError> {
