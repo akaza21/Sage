@@ -768,16 +768,79 @@ function Stop-OwnedRuntimeTree(
   [string]$EvidenceRoot
 ) {
   if ($null -eq $Runtime) { return [ordered]@{ role = $Role; identityLost = $false; remainingCount = 0 } }
+  # Use only the teardown's observations: a later process snapshot could hide
+  # the exit/identity race that caused the verdict. Diagnostics grant no kill
+  # authority and must never replace the original cleanup failure.
+  $writeDiagnostic = {
+    param($Teardown, [string]$Stage)
+    try {
+      $tracked = @()
+      $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+      $truncated = $false
+      $identities = @($Runtime.identity) + @($Runtime.store.Values)
+      $keysByPid = @{}
+      foreach ($identity in $identities) {
+        $tuple = Get-CleanupRootTuple $identity
+        $processKey = [string]$tuple.processId
+        if (-not $keysByPid.ContainsKey($processKey)) {
+          $keysByPid[$processKey] = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        }
+        [void]$keysByPid[$processKey].Add("$($tuple.executablePath)`0$($tuple.creationDate)")
+      }
+      foreach ($identity in $identities) {
+        $tuple = Get-CleanupRootTuple $identity
+        $key = "$($tuple.processId)`0$($tuple.executablePath)`0$($tuple.creationDate)"
+        if (-not $seen.Add($key)) { continue }
+        # The store itself is bounded to 128 identities/64 KiB. Limit log rows
+        # further, including paths, and explicitly report any omitted detail.
+        if ($tracked.Count -ge 32) { $truncated = $true; continue }
+        $outcome = "unknown"
+        $ambiguous = $keysByPid[[string]$tuple.processId].Count -gt 1
+        if ($null -ne $Teardown -and -not $ambiguous) {
+          $outcome = if ($tuple.processId -in @($Teardown.reusedProcessIds) -or
+              ($Teardown.identityLost -and $tuple.processId -eq $Runtime.identity.processId)) {
+            "lost"
+          } elseif ($tuple.processId -in @($Teardown.remaining)) { "survived" } else { "exited" }
+        }
+        $tuple.pathTruncated = $null -ne $tuple.executablePath -and $tuple.executablePath.Length -gt 512
+        if ($tuple.pathTruncated) { $tuple.executablePath = $tuple.executablePath.Substring(0, 512) }
+        $tuple.outcome = $outcome
+        # Teardown exposes PID observations, not exact surviving tuples. Never
+        # claim which generation survived when the store remembers PID reuse.
+        if ($ambiguous) { $tuple.reason = "multiple-identities-for-pid" }
+        $tracked += $tuple
+      }
+      $record = [ordered]@{
+        role = $Role
+        stage = $Stage
+        tracked = $tracked
+        trackedCount = $seen.Count
+        truncated = $truncated
+        identityLost = $(if ($null -ne $Teardown) { [bool]$Teardown.identityLost } else { $null })
+        remainingProcessIds = @($(if ($null -ne $Teardown) { $Teardown.remaining }) | Select-Object -First 128)
+        reusedProcessIds = @($(if ($null -ne $Teardown) { $Teardown.reusedProcessIds }) | Select-Object -First 128)
+      }
+      $json = $record | ConvertTo-Json -Depth 5 -Compress
+      if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 256KB) { throw "Teardown diagnostic exceeds its byte limit." }
+      # stderr survives the fixture's temporary evidence directory cleanup and
+      # is included by the Node assertion in the hosted failure log.
+      [Console]::Error.WriteLine("[runtime-teardown] $json")
+    } catch {
+      [Console]::Error.WriteLine("[runtime-teardown] diagnostic-unavailable")
+    }
+  }
   try { Update-OwnedRuntimeTree $Runtime } catch { }
   try {
     $teardown = Stop-FootprintTree $Runtime.identity $Runtime.store 2
   } catch {
+    & $writeDiagnostic $null "stop-tree"
     Write-RuntimeCleanupQuarantine `
       $Role $EvidenceRoot $null $null "stop-tree" (Resolve-CleanupFailureClass $_) $Runtime.identity
     throw "The $Role runtime cleanup could not be proven."
   }
   $remainingCount = @($teardown.remaining).Count
   if ($teardown.identityLost -or $remainingCount -ne 0) {
+    & $writeDiagnostic $teardown "post-teardown"
     Write-RuntimeCleanupQuarantine `
       $Role $EvidenceRoot ([bool]$teardown.identityLost) $remainingCount `
       "post-teardown" "terminal-zero-invalid" $Runtime.identity

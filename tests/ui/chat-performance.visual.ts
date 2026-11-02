@@ -167,15 +167,47 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
 });
 
 for (const mode of ["cap", "stress"] as const) {
-  test(`${mode} chat performance envelope`, async ({ page }) => {
+  test(`${mode} chat performance envelope`, async ({
+    page: initialPage,
+    context,
+  }) => {
+    let page = initialPage;
     test.setTimeout(180_000);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/tests/ui/fixtures/chat-performance.html");
     await page.waitForFunction(() => Boolean(window.chatPerf));
-    const mount = await page.evaluate(
-      (kind) => window.chatPerf.mount(kind),
-      mode,
-    );
+    // CP-24 measures synchronous render/commit, after modules and fixture data
+    // load, excluding teardown, scrolling, post-mount metric probes and startup.
+    // Discard one warm-up, then gate the median of seven fresh Chat mounts:
+    // a shared runner's isolated stall cannot decide the unchanged 150 ms bar.
+    // Report every sample and nearest-rank p90 so tail latency stays visible.
+    const warmup =
+      mode === "cap"
+        ? await page.evaluate(() => window.chatPerf.mount("cap"))
+        : null;
+    const mounts = [];
+    for (let index = 0; index < (mode === "cap" ? 7 : 1); index += 1) {
+      if (mode === "cap") {
+        // Fresh pages preserve the original first-mount workload and scroll
+        // state. Reusing the React tree would measure updates or cached state.
+        const url = page.url();
+        if (page !== initialPage) await page.close();
+        page = await context.newPage();
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(url);
+        await page.waitForFunction(() => Boolean(window.chatPerf));
+      }
+      mounts.push(
+        await page.evaluate((kind) => window.chatPerf.mount(kind), mode),
+      );
+    }
+    const mount = mounts.at(-1)!;
+    const mountSamplesMs = mounts
+      .map((sample) => sample.mountMs)
+      .sort((left, right) => left - right);
+    const mountMedianMs = mountSamplesMs[Math.floor(mountSamplesMs.length / 2)];
+    const mountP90Ms =
+      mountSamplesMs[Math.ceil(mountSamplesMs.length * 0.9) - 1];
     if (mode === "cap")
       await expect(
         page
@@ -186,13 +218,26 @@ for (const mode of ["cap", "stress"] as const) {
     const stream = await page.evaluate(() => window.chatPerf.stream(30));
     const ordered = [...stream.durations].sort((left, right) => left - right);
     const p95 = ordered[Math.ceil(ordered.length * 0.95) - 1];
-    console.log(JSON.stringify({ mode, mount, streamP95Ms: p95, stream }));
-    expect(mount.commitCount).toBeLessThanOrEqual(6);
+    console.log(
+      JSON.stringify({
+        mode,
+        warmupMountMs: warmup?.mountMs,
+        mountSamplesMs,
+        mountMedianMs,
+        mountP90Ms,
+        mount,
+        streamP95Ms: p95,
+        stream,
+      }),
+    );
+    for (const sample of mounts) {
+      expect(sample.commitCount).toBeLessThanOrEqual(6);
+      expect(sample.renderedTurns).toBeLessThanOrEqual(40);
+      expect(sample.domNodes).toBeLessThanOrEqual(mode === "cap" ? 3000 : 4000);
+    }
     expect(stream.commitCount).toBeLessThanOrEqual(32);
     if (mode === "cap") {
-      expect(mount.renderedTurns).toBeLessThanOrEqual(40);
-      expect(mount.domNodes).toBeLessThanOrEqual(3000);
-      expect(mount.mountMs).toBeLessThanOrEqual(150);
+      expect(mountMedianMs).toBeLessThanOrEqual(150);
       expect(p95).toBeLessThanOrEqual(40);
       expect(stream.heapBytes).toBeLessThanOrEqual(40_000_000);
     } else {
