@@ -281,6 +281,8 @@ fn launcher_metadata(path: &Path) -> Result<(u64, std::time::SystemTime), Launch
 mod tests {
     use std::process::Command;
 
+    use uuid::Uuid;
+
     use super::*;
 
     const CHILD_TEST: &str =
@@ -290,10 +292,11 @@ mod tests {
     #[test]
     fn app_preview_system_shell_ignores_comspec() {
         let executable = std::env::current_exe().unwrap();
-        let missing = tempfile::tempdir().unwrap();
+        let missing = std::env::temp_dir().join(format!("sage-preview-shell-{}", Uuid::new_v4()));
+        std::fs::create_dir(&missing).unwrap();
         for comspec in [
             None,
-            Some(missing.path().join(SYSTEM_CMD_EXE)),
+            Some(missing.join(SYSTEM_CMD_EXE)),
             Some(executable.clone()),
         ] {
             let mut child = Command::new(&executable);
@@ -314,6 +317,7 @@ mod tests {
             );
             assert!(String::from_utf8_lossy(&output.stdout).contains(EXPECTED_OUTPUT));
         }
+        std::fs::remove_dir(&missing).unwrap();
     }
 
     #[test]
