@@ -1,0 +1,56 @@
+/* Git decoration tones (EP-13), shared by Explorer rows and tabs. */
+.git-tone--modified {
+  --git-tone: var(--color-warning);
+}
+
+.git-tone--added,
+.git-tone--untracked {
+  --git-tone: var(--color-success);
+}
+
+.git-tone--deleted,
+.git-tone--conflict {
+  --git-tone: var(--color-danger);
+}
+
+.git-tone--unknown {
+  --git-tone: var(--color-text-muted);
+}
+
+.git-badge {
+  flex: none;
+  min-width: 1ch;
+  margin-left: auto;
+  color: var(--git-tone);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+}
+
+.root-tree__heading--git > span:nth-child(2) {
+  color: var(--git-tone);
+}
+
+/* Git status (EP-13): a changed entry's name takes its tone. */
+.tree__row--git > .tree__name {
+  color: var(--git-tone);
+}
+
+/* Ignored and changed (a tracked File an ignore rule matches): dimmed tone. */
+.tree__row--ignored.tree__row--git > .tree__name {
+  color: color-mix(in srgb, var(--git-tone) 55%, var(--color-text-muted));
+}
+
+.tree__row--git.git-tone--deleted:not(.tree__row--folder) > .tree__name {
+  text-decoration: line-through;
+}
+
+/* EP-13: a File tab's title takes its Git tone; the badge sits after it. */
+.tab__title--git {
+  color: var(--git-tone);
+}
+
+.tab__title--git.git-tone--deleted {
+  text-decoration: line-through;
+}
