@@ -91,6 +91,9 @@ export function AgentArtifactPane({
 } = {}) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const userOpenedBrowserTabId = useWorkbenchStore(
+    (state) => state.userOpenedBrowserTabId,
+  );
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
@@ -264,7 +267,12 @@ export function AgentArtifactPane({
     browseOwnerChatId: browseOwner?.chatId ?? null,
     focusedOwner,
   });
-  useSelectOpenedBrowserTab({ artifacts, activeTabId, focusedOwner });
+  useSelectOpenedBrowserTab({
+    artifacts,
+    activeTabId,
+    userOpenedBrowserTabId,
+    focusedOwner,
+  });
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;

@@ -35,6 +35,9 @@ vi.mock("../features/preview/previewDesktop", () => ({
 }));
 
 const nativeBrowser = vi.hoisted(() => ({ open: vi.fn() }));
+const browserEvents = vi.hoisted(() => ({ listen: vi.fn() }));
+
+vi.mock("@tauri-apps/api/event", () => browserEvents);
 
 vi.mock("../ports/nativeBrowserPort", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -57,6 +60,7 @@ import {
   useAgentArtifactFollowStore,
 } from "../app/agentArtifactFollowStore";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
+import { createBrowserSlice } from "../app/browserSlice";
 import { useWorkbenchStore } from "../app/store";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type {
@@ -253,6 +257,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.dispatchEvent(new Event("beforeunload"));
   cleanup();
   clearBrowseSessions();
   useAgentChangesState.getState().close();
@@ -2058,30 +2063,84 @@ describe("Agent artifact file chips", () => {
     expect(openBrowser).not.toHaveBeenCalled();
   });
 
-  it("selects the tab that New browser tab opens over a followed agent Diff", async () => {
+  it("keeps a pinned Diff and pending Preview when an agent opens a browser tab", async () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {});
-    nativeBrowser.open.mockResolvedValueOnce("browser:opened");
+    browserEvents.listen.mockReset().mockResolvedValue(() => undefined);
+    createBrowserSlice(useWorkbenchStore.setState, useWorkbenchStore.getState, {
+      subscribe: () => () => undefined,
+    } as never);
+    let onAgentOpened: (event: {
+      payload: { projectId: string; tabId: string; url: string };
+    }) => void;
+    await waitFor(() => {
+      onAgentOpened = browserEvents.listen.mock.calls.find(
+        ([name]) => name === "browser:agent-opened",
+      )?.[1];
+      if (!onAgentOpened) throw new Error("Agent browser listener not ready");
+    });
     admit("diff:other");
-    useAgentArtifactFollowStore
-      .getState()
-      .observe(focusedOwner, { kind: "tab", tabId: "diff:other" });
-    useWorkbenchStore.setState({ activeTabId: "diff:other" });
     render(<AgentArtifactPane />);
-    expect(
-      screen.getByRole("tab", { name: "Diff src/other.ts" }),
-    ).toHaveAttribute("aria-selected", "true");
+    const diff = screen.getByRole("tab", { name: "Diff src/other.ts" });
+    fireEvent.click(diff);
+    act(openPreviewSession);
 
-    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    act(() => {
+      onAgentOpened({
+        payload: {
+          projectId: "project-a",
+          tabId: "browser:agent",
+          url: "https://example.com/agent",
+        },
+      });
+    });
 
-    const opened = await screen.findByRole("tab", { name: "Browser New tab" });
-    await waitFor(() =>
-      expect(opened).toHaveAttribute("aria-selected", "true"),
-    );
+    expect(diff).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("tab", { name: "Diff src/other.ts" }),
+      screen.getByRole("tab", { name: "Browser example.com" }),
     ).toHaveAttribute("aria-selected", "false");
-    expect(nativeBrowser.open).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("tab", { name: "Preview" }),
+    ).toHaveAccessibleDescription("New resource");
+    expect(
+      screen.getByRole("button", {
+        name: "Pinned resource, new Preview available",
+      }),
+    ).toBeVisible();
   });
+
+  it.each(["follow", "pinned"])(
+    "selects the tab that user + opens over a %s agent Diff",
+    async (mode) => {
+      vi.stubGlobal("__TAURI_INTERNALS__", {});
+      nativeBrowser.open.mockResolvedValueOnce("browser:opened");
+      admit("diff:other");
+      const follow = useAgentArtifactFollowStore.getState();
+      follow[mode === "pinned" ? "pin" : "observe"](focusedOwner, {
+        kind: "tab",
+        tabId: "diff:other",
+      });
+      useWorkbenchStore.setState({ activeTabId: "diff:other" });
+      render(<AgentArtifactPane />);
+      expect(
+        screen.getByRole("tab", { name: "Diff src/other.ts" }),
+      ).toHaveAttribute("aria-selected", "true");
+
+      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+
+      const opened = await screen.findByRole("tab", {
+        name: "Browser New tab",
+      });
+      await waitFor(() =>
+        expect(opened).toHaveAttribute("aria-selected", "true"),
+      );
+      expect(
+        screen.getByRole("tab", { name: "Diff src/other.ts" }),
+      ).toHaveAttribute("aria-selected", "false");
+      expect(
+        screen.getByRole("button", { name: "Pinned resource" }),
+      ).toHaveAttribute("aria-pressed", "false");
+    },
+  );
 
   it("shows browser tabs beside artifacts but keeps them out of Editor", () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {});

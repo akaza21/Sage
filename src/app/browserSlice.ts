@@ -27,6 +27,7 @@ import {
 } from "./tabClosing";
 
 export interface BrowserSlice {
+  userOpenedBrowserTabId: string | null;
   openBrowser: (url?: string) => Promise<void>;
   updateBrowserTabTitle: (
     tabId: string,
@@ -255,6 +256,7 @@ export const createBrowserSlice: StateCreator<
     }
   });
   return {
+    userOpenedBrowserTabId: null,
     updateBrowserTabFavicon: (tabId, dataUrl, revision) => {
       if (!/^(0|[1-9]\d{0,19})$/.test(revision)) return;
       const incoming = BigInt(revision);
@@ -317,6 +319,7 @@ export const createBrowserSlice: StateCreator<
             },
           ],
           activeTabId: id,
+          userOpenedBrowserTabId: id,
           activeEditor: null,
           error: null,
         }));
