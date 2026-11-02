@@ -78,12 +78,49 @@
   opacity: 0.5;
 }
 
-.sidebar__empty {
-  max-width: 210px;
-  margin: 20px auto;
+.sidebar__heading > button {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.55;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar__heading > button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.sidebar__heading > button:disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+/* Messages wrap, so they sit outside the fixed-height row treatment. */
+.sidebar__empty,
+.sidebar__notice,
+.sidebar__error {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.sidebar__empty,
+.sidebar__notice {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.sidebar__error {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .tree__limit {
@@ -94,8 +131,6 @@
 }
 
 @media (forced-colors: active) {
-  .workbench--editor .source-control-selector .searchable-picker__trigger,
-  .workbench--editor .source-control-selector .searchable-picker__input,
   .repository-commit__label textarea {
     border-color: ButtonText;
   }
@@ -108,26 +143,35 @@
 }
 
 .source-control-list {
-  padding: 8px 4px;
+  padding: var(--space-1);
 }
 
+/* The repository picker takes the sidebar's width, with room after the
+   label for the picker's chevron. */
+.source-control-selector {
+  --picker-field-padding: 0 var(--space-6) 0 var(--space-2);
+
+  display: block;
+  margin: 0 2px var(--space-1);
+}
+
+/* Name and actions on the first line, branch and tracking on the second;
+   the start padding lines the name up with the group labels and changes. */
 .source-root__summary {
   display: grid;
   min-width: 0;
-  min-height: 32px;
-  grid-template-columns:
-    minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.4fr)
-    auto;
+  min-height: var(--row-height-default);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  padding: 4px 4px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
 
 .source-root + .source-root {
-  margin-top: 8px;
-  padding-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -142,16 +186,20 @@
 }
 
 .source-root__name {
+  grid-column: 1;
   font-weight: var(--font-weight-semibold);
 }
 
 .source-root__branch {
+  grid-column: 1;
+  grid-row: 2;
   color: var(--color-text-primary);
 }
 
 .source-root__identity {
   display: flex;
-  min-width: 0;
+  grid-column: 2;
+  grid-row: 2;
   align-items: center;
   gap: 4px;
   color: var(--color-text-muted);
@@ -288,10 +336,14 @@
   flex: 1;
 }
 
-.source-branch-create__label input,
-.source-branch-create__label .searchable-picker__trigger {
+.source-branch-create__label .searchable-picker {
+  --picker-field-padding: var(--space-1) var(--space-2);
+  --picker-field-border-color: var(--color-border-subtle);
+}
+
+.source-branch-create__label input {
   width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -300,7 +352,7 @@
   font-size: var(--font-size-xs);
 }
 
-.source-branch-create button {
+.source-branch-create > button {
   flex: 0 0 auto;
   border: 0;
   border-radius: var(--radius-sm);
@@ -313,7 +365,7 @@
   font-weight: 650;
 }
 
-.source-branch-create button:disabled {
+.source-branch-create > button:disabled {
   cursor: default;
   opacity: 0.6;
 }
@@ -323,8 +375,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .source-commits {
@@ -412,8 +462,8 @@
 
 .repository-commit {
   display: grid;
-  gap: 4px;
-  margin: 0 4px 8px;
+  gap: var(--space-1);
+  margin: 0 var(--space-1) var(--space-1);
 }
 
 .repository-commit__label,
@@ -435,7 +485,7 @@
   padding: var(--editor-scm-input-padding-block) var(--space-2);
   overflow-y: auto;
   resize: none;
-  border: var(--editor-scm-input-border) solid var(--color-border-subtle);
+  border: var(--editor-scm-input-border) solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   background: var(--color-surface);
@@ -448,26 +498,29 @@
   border-color: var(--color-accent);
 }
 
-.repository-commit__label textarea:disabled,
-.repository-commit__footer button:disabled {
+.repository-commit__label textarea:disabled {
   opacity: 0.5;
 }
 
+/* Full-width actions above the help line, for the narrow tool sidebar. */
 .repository-commit__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "actions"
+    "help";
+  gap: var(--space-1);
 }
 
 .repository-commit__actions {
   display: flex;
-  gap: 4px;
-  flex: 0 0 auto;
+  width: 100%;
+  gap: var(--space-1);
+  grid-area: actions;
 }
 
-.repository-commit__help,
-.repository-commit__error {
+.repository-commit__help {
+  grid-area: help;
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -475,7 +528,9 @@
 }
 
 .repository-commit__footer button {
-  padding: 4px 8px;
+  min-height: var(--control-height-compact);
+  flex: 1 1 auto;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -491,113 +546,28 @@
   background: var(--color-surface-hover);
 }
 
-.repository-commit__error {
-  color: var(--color-danger);
-}
-
-/* Editor-mode Source Control layout: one-column summaries and a full-width
-   commit footer in the narrow tool sidebar. */
-.workbench--editor .source-control-list {
-  padding: 4px;
-}
-
-.workbench--editor .source-control-selector {
-  display: block;
-  margin: 0 2px 4px;
-}
-
-.workbench--editor .source-control-selector .searchable-picker__trigger,
-.workbench--editor .source-control-selector .searchable-picker__input {
-  width: 100%;
-  height: var(--control-height-compact);
-  padding: 0 var(--space-6) 0 var(--space-2);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font-size: var(--font-size-xs);
-}
-
-.workbench--editor .source-root__summary {
-  min-height: 32px;
-  /* Lines the repository name up with the group labels and changes. */
-  padding: 4px 4px 4px 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.workbench--editor .source-root__name {
-  grid-column: 1;
-}
-
-.workbench--editor .source-root__branch {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.workbench--editor .source-root__identity {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.workbench--editor .source-group-label {
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.workbench--editor .source-root + .source-root {
-  margin-top: 4px;
-  padding-top: 4px;
-}
-
-.workbench--editor .repository-commit {
-  gap: var(--space-1);
-  margin: 0 var(--space-1) var(--space-1);
-}
-
-.workbench--editor .repository-commit__label textarea {
-  border-color: var(--color-border-strong);
-}
-
-.workbench--editor .repository-commit__footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "actions"
-    "help";
-  gap: 4px;
-}
-
-.workbench--editor .repository-commit__help {
-  grid-area: help;
-}
-
-.workbench--editor .repository-commit__actions {
-  display: flex;
-  width: 100%;
-  grid-area: actions;
-}
-
-.workbench--editor .repository-commit__actions button {
-  min-height: var(--control-height-compact);
-  flex: 1 1 auto;
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor
-  .repository-commit__actions
-  button[type="submit"]:not(:disabled) {
+.repository-commit__footer button[type="submit"]:not(:disabled) {
   border-color: var(--color-accent);
   color: var(--color-accent-foreground);
   background: var(--color-accent);
   font-weight: var(--font-weight-semibold);
 }
 
-/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready. */
-.workbench--editor .repository-commit__actions button:disabled {
+/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready.
+   Full opacity instead of the global disabled fade, which is too faint. */
+.repository-commit__footer button:disabled {
   border-color: var(--color-border-subtle);
   color: var(--color-text-muted);
   background: transparent;
   cursor: default;
-  /* Instead of the global disabled fade, which would make it too faint. */
   opacity: 1;
+}
+
+.repository-commit__error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+  font-size: var(--font-size-xs);
 }

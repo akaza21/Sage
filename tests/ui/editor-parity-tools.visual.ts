@@ -225,4 +225,59 @@ test.describe("Editor tool views at VS Code list density", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByTitle("Caret position")).toHaveText("Ln 2, Col 3");
   });
+
+  test("the center is an inset card and the repository summary lines up with its groups", async ({
+    page,
+  }) => {
+    const center = page.locator(".center-region");
+    await expect(center).toHaveCSS("border-top-width", "1px");
+    await expect(center).toHaveCSS("border-top-left-radius", "6px");
+    await expect(center).toHaveCSS("margin-top", "4px");
+
+    const source = await openTool(page, "Source Control");
+    const name = source.locator(".source-root__name");
+    const branches = source.locator(".source-group-label", {
+      hasText: "Branches",
+    });
+    const [nameBox, labelBox] = await Promise.all([
+      name.boundingBox(),
+      branches.boundingBox(),
+    ]);
+    expect(nameBox?.x).toBe(labelBox?.x);
+  });
+
+  test("a disabled Commit stays neutral and fully legible", async ({
+    page,
+  }) => {
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState((state) => ({
+        repositories: {
+          ...state.repositories,
+          roots: state.repositories.roots.map((repository) => ({
+            ...repository,
+            changes: repository.changes.map((change) => ({
+              ...change,
+              indexStatus: "modified" as const,
+            })),
+          })),
+        },
+      }));
+    });
+    const source = await openTool(page, "Source Control");
+    const commit = source.locator(
+      '.repository-commit__footer button[type="submit"]',
+    );
+    await expect(commit).toBeDisabled();
+    await expect(commit).toHaveCSS("opacity", "1");
+    await expect(commit).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  });
+});
+
+test("Agent mode keeps its own center and tabs", async ({ page }) => {
+  await page.setViewportSize({ width: 1380, height: 880 });
+  await openScenario(page, "agent-single", "agent");
+  const center = page.locator(".center-region").first();
+  await expect(center).toHaveCSS("border-top-width", "0px");
+  await expect(center).toHaveCSS("border-top-left-radius", "0px");
 });

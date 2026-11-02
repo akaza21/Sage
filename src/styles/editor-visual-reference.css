@@ -14,6 +14,26 @@
   font-family: var(--font-family-ui);
 }
 
+/* Editor chrome geometry, read by the components that own each part. The
+   center region is an inset card; tabs, the canvas and the tool sidebar sit
+   on the panel colour. */
+.workbench--editor {
+  --center-region-margin: var(--space-1) var(--space-1) var(--space-1) 0;
+  --center-region-overflow: hidden;
+  --center-region-tabs-height: var(--tab-height);
+  --center-region-border: 1px solid var(--color-border-subtle);
+  --radius-center-region: var(--radius-md);
+  --center-region-fill: var(--color-panel);
+  --active-canvas-fill: var(--color-panel);
+  --tab-strip-fill: var(--color-panel);
+  --tab-fill: var(--color-panel);
+  --tab-active-fill: var(--color-panel);
+  --tab-motion-duration: var(--motion-duration-fast);
+  --radius-title-bar-search: var(--radius-sm);
+  --placeholder-title-gap: var(--space-2);
+  --placeholder-body-font-size: var(--font-size-sm);
+}
+
 @media (forced-colors: none) {
   .workbench--editor,
   .new-file-dialog--editor,
@@ -108,141 +128,26 @@
   }
 }
 
-.workbench--editor .center-region {
-  margin: var(--space-1) var(--space-1) var(--space-1) 0;
-  overflow: hidden;
-  grid-template-rows: 36px minmax(0, 1fr);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
-}
-
-.workbench--editor .active-canvas {
-  background: var(--color-panel);
-}
-
-.workbench--editor .workbench__tabs,
-.workbench--editor .tab-strip,
-.workbench--editor .tab {
-  background: var(--color-panel);
-}
-
-.workbench--editor .title-bar__search {
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .sidebar__heading-actions button,
-.workbench--editor .sidebar__heading > button,
-.workbench--editor .tree__row,
-.workbench--editor .root-tree__heading,
-.workbench--editor .source-change,
-.workbench--editor .tab {
-  transition:
-    color var(--motion-duration-fast) ease,
-    background-color var(--motion-duration-fast) ease,
-    border-color var(--motion-duration-fast) ease;
-}
-
-.workbench--editor .sidebar__heading > button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.workbench--editor .sidebar__heading > button:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.workbench--editor .sidebar__heading > button:disabled {
-  color: var(--color-text-disabled);
-  cursor: default;
-}
-
-.menu-popover--editor .searchable-picker__input {
-  height: 28px;
-  padding: 0 8px;
-}
-
-.workbench--editor .sidebar__empty,
-.workbench--editor .sidebar__notice {
-  max-width: none;
-  margin: 0;
-  padding: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-normal);
-}
-
-.workbench--editor .sidebar__error {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px solid var(--color-danger);
-  color: var(--color-danger);
-  background: var(--color-danger-muted);
-  font-size: var(--font-size-xs);
-}
-
-.workbench--editor .status-bar {
-  border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-canvas);
-}
-
-.workbench--editor .placeholder-surface h1 {
-  margin-top: 8px;
-}
-
-.workbench--editor .placeholder-surface p {
-  font-size: var(--font-size-sm);
-}
-
 @media (max-width: 760px) {
-  .workbench--editor .right-region--leading .sidebar {
-    top: var(--space-1);
-    right: auto;
-    bottom: var(--space-1);
-    left: var(--editor-activity-width);
-    width: min(272px, calc(100vw - var(--editor-activity-width) - 12px));
-    height: auto;
-    margin: 0 var(--space-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    box-shadow: var(--elevation-floating);
+  .workbench--editor {
+    --center-region-margin: var(--space-1);
   }
 
-  .workbench--editor .center-region {
-    margin-left: var(--space-1);
-  }
-
+  /* While the floating tool sidebar covers it, the center steps aside. */
   .workbench--editor .center-region[aria-hidden="true"] {
-    margin-left: min(280px, calc(100% - 160px));
+    --center-region-margin: var(--space-1) var(--space-1) var(--space-1)
+      min(280px, calc(100% - 160px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench--editor .sidebar__heading-actions button,
-  .workbench--editor .sidebar__heading > button,
-  .workbench--editor .tree__row,
-  .workbench--editor .root-tree__heading,
-  .workbench--editor .source-change,
-  .workbench--editor .tab {
-    transition-duration: 0ms;
+  .workbench--editor {
+    --tab-motion-duration: 0ms;
   }
 }
 
 @media (forced-colors: active) {
-  .workbench--editor .center-region {
-    border-color: CanvasText;
-  }
-
-  .menu-popover--editor .searchable-picker__input {
-    border-color: ButtonText;
+  .workbench--editor {
+    --center-region-border: 1px solid CanvasText;
   }
 }

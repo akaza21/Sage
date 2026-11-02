@@ -60,12 +60,6 @@ describe("Editor visual-reference seam", () => {
     expect(activityCss).toMatch(
       /\.workbench--editor \.sidebar\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );
-    expect(css).toMatch(
-      /\.workbench--editor \.center-region\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
-    );
-    expect(css).toMatch(
-      /\.center-region\[aria-hidden="true"\]\s*\{[^}]*margin-left:\s*min\(280px,\s*calc\(100% - 160px\)\);/s,
-    );
     expect(resizeSource).toContain("EDITOR_ACTIVITY_BAR_WIDTH = 48");
     expect(workbenchSource).toContain(
       '"--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`',
@@ -89,8 +83,5 @@ describe("Editor visual-reference seam", () => {
     expect(radiusProjection).toBeGreaterThan(-1);
     expect(radiusProjection).toBeLessThan(forcedColorsNone);
     expect(css).toContain("font-family: var(--font-family-ui);");
-    expect(css).toMatch(
-      /\.sidebar__heading > button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/s,
-    );
   });
 });
