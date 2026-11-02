@@ -182,7 +182,12 @@ mod tests {
                     assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
                 } else {
                     let path = published.unwrap().unwrap();
-                    assert_eq!(path, folder.join("report.txt"));
+                    assert_eq!(
+                        path,
+                        crate::browser::downloads::folder::admit_folder(&folder)
+                            .unwrap()
+                            .join("report.txt")
+                    );
                     assert_eq!(std::fs::read(&path).unwrap(), b"downloaded bytes");
                     std::fs::remove_file(path).unwrap();
                 }

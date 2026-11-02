@@ -68,8 +68,11 @@ impl Reservation {
         let folder = self
             .path
             .parent()
-            .ok_or_else(|| std::io::Error::other("download folder missing"))?;
-        let path = staging.publish(folder, &self.name)?;
+            .and_then(super::folder::admit_folder)
+            .ok_or_else(|| std::io::Error::other("download folder unavailable"))?;
+        // Report the same canonical, long folder spelling as Settings, even
+        // when the reservation arrived through an 8.3 alias.
+        let path = staging.publish(&folder, &self.name)?;
         if let Some(staging) = self.staging.take() {
             staging.cleanup();
         }
@@ -116,6 +119,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    #[cfg(windows)]
+    use crate::browser::downloads::folder::admit_folder;
     use crate::browser::downloads::folder::unique_destination;
 
     struct Scratch(PathBuf);
@@ -162,6 +167,7 @@ mod tests {
         use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
 
         let scratch = Scratch::new("silent-writer");
+        let folder = admit_folder(&scratch.0).unwrap();
         for (suggested, name, content) in [
             ("report-a.txt", "report-a.txt", b"alpha\n".as_slice()),
             ("report-b.txt", "report-b.txt", b"bravo\n".as_slice()),
@@ -188,7 +194,7 @@ mod tests {
                 .expect("the download writer must be able to open its destination");
             writer.write_all(content).unwrap();
             drop(writer);
-            assert_eq!(reservation.publish().unwrap(), scratch.0.join(name));
+            assert_eq!(reservation.publish().unwrap(), folder.join(name));
             assert_eq!(std::fs::read(scratch.0.join(name)).unwrap(), content);
         }
         assert_eq!(
@@ -196,6 +202,57 @@ mod tests {
             b"alpha\n"
         );
         assert_eq!(std::fs::read_dir(&scratch.0).unwrap().count(), 3);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn short_folder_paths_publish_long_destinations_without_overwriting() {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+        use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+
+        let scratch = Scratch::new("short-folder");
+        let folder = admit_folder(&scratch.0).unwrap();
+        let wide = folder
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        // SAFETY: the input is NUL-terminated and live through both calls;
+        // the second call has the buffer size requested by the first.
+        let size = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+        assert_ne!(size, 0, "the real temp directory must have a short path");
+        let mut buffer = vec![0; size as usize];
+        let length = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), size) };
+        assert!(length > 0 && length < size);
+        let short = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length as usize]));
+        assert_ne!(short, folder, "the test must exercise an 8.3 alias");
+
+        std::fs::write(folder.join("report.txt"), b"original").unwrap();
+        for (input, name) in [(&short, "report (2).txt"), (&folder, "report (4).txt")] {
+            let mut reservation = Reservation::adopt(
+                unique_destination(input, "report.txt", |_| false).unwrap(),
+                "report.txt",
+            );
+            assert!(reservation.handoff());
+            // Preserve a collision introduced after planning as well.
+            std::fs::write(reservation.path(), b"another application's data").unwrap();
+            std::fs::write(reservation.writer_path(), b"downloaded bytes").unwrap();
+            let published = reservation.publish().unwrap();
+            assert_eq!(published, folder.join(name));
+            assert_eq!(std::fs::read(published).unwrap(), b"downloaded bytes");
+        }
+        assert_eq!(
+            std::fs::read(folder.join("report.txt")).unwrap(),
+            b"original"
+        );
+        for name in ["report (1).txt", "report (3).txt"] {
+            assert_eq!(
+                std::fs::read(folder.join(name)).unwrap(),
+                b"another application's data"
+            );
+        }
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 5);
     }
 
     #[cfg(windows)]
@@ -224,7 +281,10 @@ mod tests {
         assert_eq!(second.path().file_name().unwrap(), "report (1).txt");
         assert!(registry.destination_chosen(id));
         std::fs::write(first.writer_path(), b"first download").unwrap();
-        assert_eq!(first.publish().unwrap(), scratch.0.join("report.txt"));
+        assert_eq!(
+            first.publish().unwrap(),
+            admit_folder(&scratch.0).unwrap().join("report.txt")
+        );
         drop(second);
         worker::flush();
         assert_eq!(
@@ -264,7 +324,10 @@ mod tests {
             std::fs::read(&final_path).unwrap(),
             b"another application's data"
         );
-        assert_eq!(published, scratch.0.join("report (1).txt"));
+        assert_eq!(
+            published,
+            admit_folder(&scratch.0).unwrap().join("report (1).txt")
+        );
         assert_eq!(std::fs::read(&published).unwrap(), b"downloaded bytes");
         assert_eq!(std::fs::read_dir(&scratch.0).unwrap().count(), 2);
     }
@@ -296,7 +359,10 @@ mod tests {
         std::fs::write(reservation.path(), b"third party").unwrap();
         std::fs::write(reservation.writer_path(), b"download").unwrap();
         let published = reservation.publish().unwrap();
-        assert_eq!(published, scratch.0.join("report (2).txt"));
+        assert_eq!(
+            published,
+            admit_folder(&scratch.0).unwrap().join("report (2).txt")
+        );
         assert_eq!(
             std::fs::read(scratch.0.join("report.txt")).unwrap(),
             b"original"
