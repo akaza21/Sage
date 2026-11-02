@@ -314,6 +314,63 @@
   color: var(--color-danger);
 }
 
+/* Browser site permissions: one row per saved site answer. */
+.settings-surface__site-permissions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-surface__site-permissions table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+}
+
+.settings-surface__site-permissions th,
+.settings-surface__site-permissions td {
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.settings-surface__site-permissions thead th {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.settings-surface__site-permissions tbody th {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-surface__site-permissions th:nth-child(2) {
+  width: 120px;
+}
+
+.settings-surface__site-permissions th:nth-child(3) {
+  width: 112px;
+}
+
+.settings-surface__site-permissions th:nth-child(4) {
+  width: 72px;
+}
+
+.settings-surface__site-permissions td:last-child {
+  padding-right: 0;
+  text-align: right;
+}
+
+.settings-surface__site-permissions-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .settings-surface__footer {
   display: flex;
   justify-content: flex-end;

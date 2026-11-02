@@ -199,9 +199,12 @@ pub fn run() {
                 next_browser_tab_number,
             )
             .map_err(std::io::Error::other)?;
-            app.manage(browser_state);
             let settings =
                 settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
+            browser_state
+                .attach_site_settings(settings.clone())
+                .map_err(std::io::Error::other)?;
+            app.manage(browser_state);
             #[cfg(all(windows, feature = "acp-fixture"))]
             let state = match fixture_mode {
                 DesktopFixtureMode::GenericCharacterization(binding) => {
