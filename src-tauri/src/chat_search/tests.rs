@@ -264,7 +264,13 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
                 .unwrap();
         }
     }
-    let response = search_project_chats(&database, &request(&project_id, "needle")).unwrap();
+    // Exercise size limits independently of the production wall-clock deadline.
+    let limits = SearchLimits {
+        deadline: Duration::from_secs(60),
+        ..SearchLimits::default()
+    };
+    let response =
+        super::search_with_limits(&database, &request(&project_id, "needle"), limits).unwrap();
     assert_eq!(response.results.len(), 64);
     assert!(response.has_more);
 
@@ -273,7 +279,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_item_rows: 0,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap_err();
@@ -284,7 +290,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_item_bytes: 0,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap_err();
@@ -295,7 +301,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_response_bytes: 512,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap();
