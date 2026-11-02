@@ -11,6 +11,7 @@
 mod agent_marker;
 mod annotate;
 mod chromium;
+mod device;
 mod isolation;
 mod select;
 mod site;
