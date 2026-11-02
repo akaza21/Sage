@@ -9,9 +9,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { createElement, useMemo, useState } from "react";
+import { createElement } from "react";
+import { EditorView } from "@codemirror/view";
+import { useWorkbenchStore } from "../../app/store";
+import { FileSurface } from "./FileSurface";
 
-import { FileEditorNotices } from "./FileEditorNotices";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -23,6 +25,7 @@ import type { EditorDocument } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import {
+  RESOURCE_LIMIT_ERROR_PREFIX,
   applyEditorExternalWatchNotice,
   bindEditorExternalWatch,
   useEditorExternalWatch,
@@ -74,7 +77,10 @@ function ExternalWatchHarness({
   return null;
 }
 
+const initialState = useWorkbenchStore.getState();
+
 afterEach(() => {
+  useWorkbenchStore.setState(initialState, true);
   cleanup();
   vi.restoreAllMocks();
 });
@@ -157,62 +163,103 @@ describe("IDE-2 editor external watch seam", () => {
     });
   });
 
-  it("shows a capped File as not watched and recovers delivery on focus", async () => {
-    const editor = getWorkbenchPorts().editor;
-    const delivery = createInjectedEditorWatchDelivery();
-    let occupied = true;
-    vi.spyOn(editor, "watchEditorDocument").mockImplementation(async () => {
-      if (occupied) {
-        throw "resource limit exceeded: editor watch capacity reached";
-      }
-      occupied = true;
-      return {
-        resource,
-        delivery: delivery.delivery,
-        cancel: async () => {
-          occupied = false;
-        },
-      };
-    });
-    const controller = bindFileEditorController(editor);
-    let current = controller.ready(document);
-    function CappedFile() {
-      const [active, setActive] = useState(current);
-      const bridge = useMemo<EditorStateBridge>(
-        () => ({
-          getActiveEditor: () => current,
-          setActiveEditor: (next) => {
-            current = next;
-            setActive(next);
+  it.each([undefined, "failed" as const])(
+    "preserves tab status %s and recovers a capped File only on editor focus",
+    async (status) => {
+      const editor = getWorkbenchPorts().editor;
+      const delivery = createInjectedEditorWatchDelivery();
+      let occupied = true;
+      let pending = 0;
+      let finishStart!: () => void;
+      const startGate = new Promise<void>((resolve) => {
+        finishStart = resolve;
+      });
+      vi.spyOn(editor, "watchEditorDocument").mockImplementation(async () => {
+        if (occupied) {
+          throw `${RESOURCE_LIMIT_ERROR_PREFIX} editor watch capacity reached`;
+        }
+        pending += 1;
+        await startGate;
+        pending -= 1;
+        occupied = true;
+        return {
+          resource,
+          delivery: delivery.delivery,
+          cancel: async () => {
+            occupied = false;
           },
-        }),
-        [],
-      );
-      useEditorExternalWatch(resource, bridge);
-      return active.phase === "ready"
-        ? createElement(FileEditorNotices, {
-            conflict: active.document.conflict,
-            message: active.message,
-          })
-        : null;
-    }
-    const { unmount } = render(createElement(CappedFile));
-    await screen.findByText(/File is not watched.*watch limit/);
-    fireEvent.focusIn(window);
-    await screen.findByText(/File is not watched.*watch limit/);
-    occupied = false;
-    fireEvent.focusIn(window);
-    await waitFor(() => {
-      expect(screen.queryByText(/File is not watched/)).toBeNull();
-    });
-    act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
-    await screen.findByText(/This file was deleted outside Sage/);
-    unmount();
-    await waitFor(() => expect(occupied).toBe(false));
-  });
+        };
+      });
+      const tab = {
+        status,
+        id: "file:today",
+        kind: "file" as const,
+        title: "today.md",
+        position: 1,
+        pinned: false,
+        dirty: false,
+        resource,
+      };
+      useWorkbenchStore.setState({
+        tabs: [tab],
+        activeTabId: tab.id,
+        activeEditor: {
+          phase: "ready",
+          resource,
+          document,
+          content: document.buffer.content,
+          revision: 0,
+          persistedRevision: 0,
+          persisting: false,
+          saving: false,
+          message: null,
+        },
+      });
+      const { unmount } = render(createElement(FileSurface, { tab }));
+      await screen.findByText(/File is not watched.*watch limit/);
+      expect(useWorkbenchStore.getState().tabs[0]).toEqual(tab);
+      const input = await screen.findByRole("textbox", {
+        name: /Edit journal/,
+      });
+      occupied = false;
+      await act(async () => {
+        fireEvent.focus(window);
+        fireEvent.focusIn(window);
+        fireEvent.focusIn(globalThis.document.body);
+      });
+      expect(occupied).toBe(false);
+      expect(pending).toBe(0);
+      expect(screen.queryByText(/File is not watched/)).not.toBeNull();
+      await act(async () => {
+        fireEvent.focusIn(input);
+      });
+      expect(pending).toBe(1);
+      await act(async () => {
+        fireEvent.focusIn(input);
+        fireEvent.focusIn(input);
+      });
+      expect(pending).toBe(1);
+      expect(screen.queryByText(/File is not watched/)).not.toBeNull();
+      await act(async () => finishStart());
+      await waitFor(() => {
+        expect(screen.queryByText(/File is not watched/)).toBeNull();
+      });
+      expect(useWorkbenchStore.getState().tabs[0]).toEqual(tab);
+      const view = EditorView.findFromDOM(input)!;
+      act(() => view.dispatch({ changes: { from: 0, insert: "editable " } }));
+      expect(view.state.doc.toString()).toBe("editable base\n");
+      act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
+      await screen.findByText(/This file was deleted outside Sage/);
+      unmount();
+      await waitFor(() => expect(occupied).toBe(false));
+    },
+  );
 
   it("observes a native watch notice without peekEditorDiskVersion", async () => {
     expect(EDITOR_EXTERNAL_WATCH_EVENT).toBe("editor-external-watch-v1");
+    expect(
+      readFileSync(path.resolve("src-tauri/src/error.rs"), "utf8"),
+    ).toContain(`#[error("${RESOURCE_LIMIT_ERROR_PREFIX} {0}")]`);
     const editor = fakeEditorPort();
     const injected = createInjectedEditorWatchDelivery();
     vi.mocked(editor.watchEditorDocument).mockResolvedValue({

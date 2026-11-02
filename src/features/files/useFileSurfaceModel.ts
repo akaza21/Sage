@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { tabsWithEditorUpdate } from "../../app/editorSlice";
 import { useWorkbenchStore } from "../../app/store";
@@ -79,7 +86,11 @@ export function useFileSurfaceModel(
     loadEditor,
     flushActiveEditor,
   });
-  useEditorExternalWatch(watchedResource, watchBridge);
+  const watchFocusBoundary = useCallback(
+    () => editorInputRef.current?.view()?.dom,
+    [editorInputRef],
+  );
+  useEditorExternalWatch(watchedResource, watchBridge, watchFocusBoundary);
   const [findRequest, setFindRequest] = useState<FindOpenRequest | null>(null);
   const findControlRef = useRef<FindControl | null>(null);
   useEffect(() => {
