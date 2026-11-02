@@ -824,6 +824,32 @@ fn save_keeps_the_buffer_when_the_target_is_deleted_after_the_replace() {
     assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
 }
 
+#[cfg(unix)]
+#[test]
+fn save_keeps_the_buffer_when_the_parent_is_renamed_before_verification() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(
+        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-moved"));
+}
+
 /// Documents the accepted Unix semantics: once the saved bytes are verified
 /// at the requested path, renaming the folder before the recovery buffer is
 /// cleared is the user moving a saved file, so the save stands.
