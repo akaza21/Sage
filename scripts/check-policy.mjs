@@ -45,13 +45,63 @@ const rustProcessPattern =
 const testSourcePath =
   /(?:^|\/)tests(?:\/|\.rs$)|_tests\.rs$|\.test\.[cm]?[jt]sx?$/u;
 
+const rustFlatToken =
+  /r(#+)?"[\s\S]*?"\1|"(?:\\[\s\S]|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*/uy;
+const rustBlockCommentOpen = "/*";
+const rustBlockCommentClose = "*/";
+
+function blankRustToken(token) {
+  return token.replace(/[^\n]/gu, " ");
+}
+
+// Returns the end offset of the block comment opening at `start`. Rust block
+// comments nest, so each `/*` needs its own `*/`. An unterminated comment
+// runs to the end of the source.
+function rustBlockCommentEnd(source, start) {
+  let depth = 0;
+  let index = start;
+  while (index < source.length) {
+    if (source.startsWith(rustBlockCommentOpen, index)) {
+      depth += 1;
+      index += rustBlockCommentOpen.length;
+    } else if (source.startsWith(rustBlockCommentClose, index)) {
+      depth -= 1;
+      index += rustBlockCommentClose.length;
+      if (depth === 0) return index;
+    } else {
+      index += 1;
+    }
+  }
+  return source.length;
+}
+
+function maskRustLiteralsAndComments(source) {
+  let masked = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith(rustBlockCommentOpen, index)) {
+      const end = rustBlockCommentEnd(source, index);
+      masked += blankRustToken(source.slice(index, end));
+      index = end;
+      continue;
+    }
+    rustFlatToken.lastIndex = index;
+    const token = rustFlatToken.exec(source)?.[0];
+    if (token) {
+      masked += blankRustToken(token);
+      index += token.length;
+    } else {
+      masked += source[index];
+      index += 1;
+    }
+  }
+  return masked;
+}
+
 function rustProductionSource(source) {
   // Mask literals and comments before balancing test-module braces. Preserve
   // offsets so a test module cannot hide production code that follows it.
-  const masked = source.replace(
-    /r(#+)?"[\s\S]*?"\1|"(?:\\[\s\S]|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*|\/\*[\s\S]*?\*\//gu,
-    (token) => token.replace(/[^\n]/gu, " "),
-  );
+  const masked = maskRustLiteralsAndComments(source);
   const testModule =
     /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/gu;
   let result = "";

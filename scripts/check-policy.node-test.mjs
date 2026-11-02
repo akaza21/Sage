@@ -118,6 +118,27 @@ test("Rust test modules do not hide later production process creation", () => {
   }
 });
 
+test("nested block comments do not hide later production process creation", () => {
+  const tests = "#[cfg(test)]\nmod tests { /* outer /* inner */ { */ }";
+  assert.deepEqual(sourceSecurityErrors("src-tauri/src/example.rs", tests), []);
+  assert.deepEqual(
+    sourceSecurityErrors(
+      "src-tauri/src/example.rs",
+      `${tests}\nfn run() { Command::new("git"); }`,
+    ),
+    [
+      "src-tauri/src/example.rs creates processes outside a reviewed spawn module.",
+    ],
+  );
+  assert.deepEqual(
+    sourceSecurityErrors(
+      "src-tauri/src/example.rs",
+      '/* outer /* inner */ Command::new("git"); */\nfn run() {}',
+    ),
+    [],
+  );
+});
+
 test("source security accepts the current source tree", () => {
   const errors = [];
   for (const directory of ["src", "src-tauri/src"]) {
