@@ -61,10 +61,92 @@ afterEach(() => {
   localStorage.clear();
 });
 
+it("restores Files when split space returns and lets navigation reclaim the space", async () => {
+  render(<Workbench />);
+  await settleLazyModules();
+  fireEvent.click(
+    screen.getByRole("button", { name: /Show files and preview/ }),
+  );
+  await settleLazyModules();
+  const composer = screen.getByRole("textbox", { name: "Message agent" });
+  composer.focus();
+  act(() => {
+    vi.stubGlobal("innerWidth", 700);
+    window.dispatchEvent(new Event("resize"));
+  });
+  expect(screen.queryByRole("dialog", { name: "Agent artifacts" })).toBeNull();
+  expect(
+    screen.queryByRole("complementary", { name: "Agent artifacts" }),
+  ).toBeNull();
+  expect(composer).toHaveFocus();
+  act(() => {
+    vi.stubGlobal("innerWidth", 800);
+    window.dispatchEvent(new Event("resize"));
+  });
+  await settleLazyModules();
+  expect(
+    screen.getByRole("complementary", { name: "Agent artifacts" }),
+  ).toBeVisible();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show projects and chats" }),
+  );
+  await settleLazyModules();
+  expect(
+    screen.getByRole("button", { name: "Hide projects and chats" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("complementary", { name: "Agent artifacts" }),
+  ).toBeNull();
+  expect(composer).toBeVisible();
+});
+
+it("keeps the visible chat title through resource activation and actual Agent Settings", async () => {
+  await useWorkbenchStore.getState().createChat();
+  useWorkbenchStore.setState((state) => ({
+    tabs: state.tabs.map((tab, index) =>
+      tab.kind === "chat"
+        ? { ...tab, title: index === 0 ? "Chat: Earlier" : "Chat: Visible" }
+        : tab,
+    ),
+  }));
+  render(<Workbench />);
+  await settleLazyModules();
+  const heading = document.querySelector(".title-bar__session")!;
+  expect(heading).toHaveTextContent("Visible");
+  act(() =>
+    useWorkbenchStore.setState((state) => ({
+      tabs: [
+        ...state.tabs,
+        {
+          id: "browser-title",
+          title: "Page",
+          kind: "browser",
+          position: state.tabs.length,
+          pinned: false,
+          dirty: false,
+          status: "closed",
+        },
+      ],
+      activeTabId: "browser-title",
+    })),
+  );
+  expect(heading).toHaveTextContent("Visible");
+  act(() => useAgentSettingsState.getState().open());
+  await settleLazyModules();
+  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
+    "Visible",
+  );
+  act(() => useAgentSettingsState.getState().close());
+  await settleLazyModules();
+  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
+    "Visible",
+  );
+});
+
 it.each([false, true])(
   "Home dismisses a nonmodal resource overlay before focusing Chat; collapsed=%s",
   async (collapsed) => {
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 700);
     const before = await ports.project.getBootstrapSnapshot();
     const create = vi.spyOn(ports.chat, "createChat");
     render(<Workbench />);

@@ -28,7 +28,7 @@ import {
 
 export interface BrowserSlice {
   userOpenedBrowserTabId: string | null;
-  openBrowser: (url?: string) => Promise<void>;
+  openBrowser: (url?: string) => Promise<void | string>;
   updateBrowserTabTitle: (
     tabId: string,
     url: string,
@@ -293,10 +293,7 @@ export const createBrowserSlice: StateCreator<
     openBrowser: async (url) => {
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
-      if (!isTauriRuntime())
-        return set({
-          error: "The in-app browser is available in the desktop app.",
-        });
+      if (!isTauriRuntime()) return "Requires the desktop app.";
       const generation = get().projectGeneration;
       try {
         await get().flushActiveEditor();
@@ -321,11 +318,10 @@ export const createBrowserSlice: StateCreator<
           activeTabId: id,
           userOpenedBrowserTabId: id,
           activeEditor: null,
-          error: null,
         }));
       } catch {
         if (matchesProjectIntent(get(), generation, projectId))
-          set({ error: "Could not open the browser tab. Try again." });
+          return "Could not open the browser tab. Try again.";
       }
     },
   };

@@ -11,6 +11,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useNativePageLayer } from "./nativePageLayers";
 import {
   exitPopoverDialogOnTab,
   focusPopoverDialog,
@@ -124,6 +125,7 @@ export function MenuPopover({
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
     () => document.body,
   );
+  useNativePageLayer(popoverRef, open, portalRoot);
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );

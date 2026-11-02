@@ -180,11 +180,11 @@ describe("compact workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("dialog", { name: "Agent artifacts" }),
+      screen.getByRole("complementary", { name: "Agent artifacts" }),
     ).toBeVisible();
     const agentCenter = container.querySelector(".center-region");
-    expect(agentCenter).toHaveAttribute("inert");
-    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
+    expect(agentCenter).not.toHaveAttribute("inert");
+    expect(agentCenter).not.toHaveAttribute("aria-hidden");
 
     fireEvent.click(
       within(
@@ -196,8 +196,8 @@ describe("compact workbench window mode seam", () => {
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(agentCenter).toHaveAttribute("inert");
-    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
+    expect(agentCenter).not.toHaveAttribute("inert");
+    expect(agentCenter).not.toHaveAttribute("aria-hidden");
     expect(
       screen.getByRole("region", { name: "Agent chat", hidden: true }),
     ).toBeInTheDocument();

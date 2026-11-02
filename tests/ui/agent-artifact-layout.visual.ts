@@ -1,5 +1,60 @@
 import { expect, test } from "@playwright/test";
 
+test("selected overflow tab stays fully visible on selection, keyboard navigation and resize", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/artifact-tabs.html");
+  await page.getByRole("button", { name: "Select last resource" }).click();
+  const selected = page.getByRole("tab", { selected: true });
+  const visibleTab = async () => {
+    const geometry = await selected.evaluate((tab) => {
+      const row = tab.closest(".tab")!.getBoundingClientRect();
+      const strip = tab.closest(".tab-strip__scroll")!.getBoundingClientRect();
+      return {
+        left: row.left,
+        right: row.right,
+        stripLeft: strip.left,
+        stripRight: strip.right,
+      };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.stripLeft - 1);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.stripRight + 1);
+  };
+  await expect(selected).toHaveAccessibleName("Browser Browser page 8");
+  await visibleTab();
+  await selected.focus();
+  await selected.press("Home");
+  await expect(selected).toHaveAccessibleName("Browser Browser page 1");
+  await visibleTab();
+  await selected.press("ArrowLeft");
+  await expect(selected).toHaveAccessibleName("Browser Browser page 8");
+  await page.setViewportSize({ width: 400, height: 700 });
+  await expect
+    .poll(async () =>
+      selected.evaluate((tab) => tab.closest(".tab-strip__scroll")!.scrollLeft),
+    )
+    .toBeGreaterThan(0);
+  await visibleTab();
+  await expect(
+    page.getByRole("button", { name: "New browser tab" }),
+  ).toBeDisabled();
+});
+
+test("Escape reverts the browser address without collapsing the artifact pane", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/browser-address.html?artifact-focus");
+  const address = page.getByRole("textbox", { name: "Address or search" });
+  await address.click();
+  await address.fill("draft.example");
+  await address.press("Escape");
+  await expect(page.getByLabel("Agent artifacts")).toBeVisible();
+  await address.focus();
+  await expect(address).toHaveValue(
+    "https://en.wikipedia.org/wiki/Web_browser",
+  );
+});
+
 test("mixed resource and browser tabs share a 560 px pane without clipping controls", async ({
   page,
 }) => {

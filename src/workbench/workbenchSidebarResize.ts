@@ -20,7 +20,8 @@ export const EDITOR_ACTIVITY_BAR_WIDTH = 48;
 
 export const AGENT_CHAT_MIN_WIDTH = 360;
 
-const AGENT_SPLITTER_WIDTH = 8;
+export const AGENT_SPLITTER_WIDTH = 8;
+export const AGENT_COLLAPSED_RAIL_WIDTH = 54;
 const AGENT_ARTIFACT_FLOOR_WIDTH = 160;
 
 export const AGENT_ARTIFACT_WIDTH: WorkbenchSidebarWidth = {

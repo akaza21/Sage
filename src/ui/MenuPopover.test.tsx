@@ -851,9 +851,13 @@ describe("MenuPopover", () => {
     expect(popup).not.toBeNull();
     if (!popup) throw new Error("dialog popup missing");
     expect(popup.closest("dialog")).not.toBeNull();
-    expect(observed).toHaveLength(2);
+    expect(observed).toHaveLength(4);
     expect(disconnected[0]).toBe(true);
-    expect(observed[1]).toEqual([
+    expect(disconnected[1]).toBe(true);
+    expect(disconnected[2]).toBe(false);
+    expect(disconnected[3]).toBe(false);
+    expect(observed[2]).toEqual([popup]);
+    expect(observed[3]).toEqual([
       popup,
       screen.getByRole("button", { name: "Target" }),
       popup.closest("dialog"),

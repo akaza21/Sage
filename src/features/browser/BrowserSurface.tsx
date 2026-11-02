@@ -82,7 +82,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [findText, setFindText] = useState("");
@@ -176,8 +175,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       unlisten?.();
     };
   }, [tab.id]);
-  const covered = downloadsOpen || menuOpen;
-  useBrowserPlacement(tab.id, frame, surface, setError, covered);
+  useBrowserPlacement(tab.id, frame, surface, setError);
   async function navigate() {
     try {
       setError(null);
@@ -271,6 +269,10 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       .catch((cause) => setError(String(cause).slice(0, 512)));
   }
 
+  const openNewTab = () =>
+    void openBrowser().then((message) => {
+      if (message) setError(message);
+    });
   useBrowserShortcuts(surface, tab.id, Boolean(navigation?.loading), (action) =>
     performBrowserShortcut(action, {
       address: addressField.current,
@@ -279,7 +281,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       findOpen: () => setFindOpen(true),
       zoom: changeZoom,
       zoomPercent: navigation?.zoomPercent ?? 100,
-      newTab: () => void openBrowser(),
+      newTab: openNewTab,
       closeTab: () => closeTab(tab.id),
     }),
   );
@@ -317,7 +319,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           }
           onExternal={() => void pageAction(() => browserOpenExternal(tab.id))}
           clearDataControl={<BrowserClearData menuItem />}
-          onMenuOpenChange={setMenuOpen}
           downloadsControl={
             <BrowserDownloadsControl
               tabId={tab.id}
@@ -383,7 +384,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
             onNavigate={(url) =>
               void pageAction(() => browserNavigate(tab.id, url))
             }
-            onNewTab={() => void openBrowser()}
+            onNewTab={openNewTab}
             onTool={tools.launch}
             chatAvailable={tools.chatAvailable}
             terminalAvailable={tools.terminalAvailable}

@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 describe("Agent navigation allocation", () => {
+  it.each([800, 936, 1024])(
+    "preserves a usable chat and an inline Files pane at %i",
+    (viewportWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: true,
+        requestedWidths: { leftRailWidth: 385, artifactWidth: 1200 },
+      });
+      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.chatWidth).toBeGreaterThanOrEqual(360);
+      expect(layout.artifactWidth).toBeGreaterThanOrEqual(280);
+      expect(
+        layout.leftRailWidth + layout.chatWidth + layout.artifactWidth,
+      ).toBeLessThan(viewportWidth);
+    },
+  );
   it.each([480, 760, 1000, 1280, 1888])(
     "keeps only the 54px icon rail when navigation is collapsed at %i",
     (viewportWidth) => {
@@ -30,8 +46,8 @@ describe("Agent navigation allocation", () => {
     [480, true, 60, 420],
     [623, true, 203, 420],
     [624, false, 304, 320],
-    [720, false, 332, 388],
-    [761, false, 352, 409],
+    [700, false, 326, 374],
+    [709, false, 329, 380],
   ])(
     "bounds overlays without overlapping interactive navigation at %i",
     (viewportWidth, modal, left, width) => {
@@ -68,23 +84,23 @@ describe("Agent navigation allocation", () => {
   );
 
   it.each([
-    [479, 262, 217],
-    [480, 262, 218],
-    [719, 332, 387],
-    [720, 332, 388],
-    [760, 344, 416],
-    [761, 344, 409],
-    [1040, 385, 647],
+    [479, 262, 217, true],
+    [480, 262, 218, true],
+    [719, 54, 377, false],
+    [720, 54, 378, false],
+    [760, 54, 418, false],
+    [761, 54, 419, false],
+    [1040, 384, 360, false],
   ])(
-    "opens resources over the same chat allocation at %i",
-    (viewportWidth, navigation, chat) => {
+    "fits resources beside the chat before using an overlay at %i",
+    (viewportWidth, navigation, chat, overlay) => {
       const layout = agentWorkbenchLayout({
         viewportWidth,
         artifactExpanded: true,
       });
       expect(layout.leftRailWidth).toBe(navigation);
       expect(layout.chatWidth).toBe(chat);
-      expect(layout.artifactOverlay).toBe(true);
+      expect(layout.artifactOverlay).toBe(overlay);
     },
   );
 

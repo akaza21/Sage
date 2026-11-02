@@ -119,6 +119,30 @@ it("shows a closed placeholder for a restored browser without contacting native 
   expect(browserStatus).not.toHaveBeenCalled();
 });
 
+it("shows a New page creation failure in the browser without changing composer feedback", async () => {
+  const previous = useWorkbenchStore.getState();
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "",
+    revision: "1",
+    loading: false,
+  });
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Browser tab limit reached.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New page" }));
+    expect(await screen.findByText("Browser tab limit reached.")).toBeVisible();
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   rustAgentControl = null;
@@ -750,6 +774,44 @@ it("covers the native page while a toolbar popover is open, even across a resize
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
   // A real hide ends Annotate; a popover opening or closing must not.
   expect(hideBrowser).not.toHaveBeenCalled();
+});
+
+it("keeps the native page visible under a non-overlapping menu, and covers it only if the menu moves over the page", async () => {
+  let overlaps = false;
+  let nativePage = "hidden";
+  positionBrowser.mockImplementation(async () => {
+    nativePage = "visible";
+  });
+  coverBrowser.mockImplementation(async () => {
+    nativePage = "covered";
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return DOMRect.fromRect(
+        this.matches('[role="menu"]')
+          ? { x: overlaps ? 520 : 0, y: 120, width: 200, height: 200 }
+          : { x: 500, y: 100, width: 400, height: 300 },
+      );
+    },
+  );
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await waitFor(() => expect(nativePage).toBe("visible"));
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(screen.getByRole("menu")).toBeVisible();
+    expect(nativePage).toBe("visible");
+    overlaps = true;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(nativePage).toBe("covered"));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(nativePage).toBe("visible"));
+  } finally {
+    positionBrowser.mockResolvedValue(undefined);
+    coverBrowser.mockResolvedValue(undefined);
+  }
 });
 
 it("keeps the native page covered until the clear-data confirmation is dismissed", async () => {

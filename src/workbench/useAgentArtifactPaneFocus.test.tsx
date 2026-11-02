@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -17,15 +17,19 @@ function BrowserResourceFixture({
   const paneRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const addressField = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(true);
   const onKeyDown = useAgentArtifactPaneFocus({
-    expanded: true,
+    expanded,
     overlay,
     paneRef,
     triggerRef,
-    onExpandedChange,
+    onExpandedChange: (next) => {
+      setExpanded(next);
+      onExpandedChange(next);
+    },
   });
   const noop = () => undefined;
-  return (
+  return expanded ? (
     <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
       <BrowserNavigationControls
         navigation={null}
@@ -49,7 +53,7 @@ function BrowserResourceFixture({
         clearDataControl={null}
       />
     </aside>
-  );
+  ) : null;
 }
 
 it.each([false, true])(
@@ -129,6 +133,42 @@ it("does not steal composer focus when inline resources become an overlay", () =
   view.rerender(<ResourceFocusFixture overlay />);
   expect(composer).toHaveFocus();
 });
+
+it("restores an automatically collapsed pane when inline space returns", () => {
+  function ResizablePane({ overlay }: { overlay: boolean }) {
+    const [expanded, setExpanded] = useState(true);
+    return (
+      <ResourceFocusFixture
+        expanded={expanded}
+        overlay={overlay}
+        onExpandedChange={setExpanded}
+      />
+    );
+  }
+  const view = render(<ResizablePane overlay={false} />);
+  const composer = screen.getByRole("textbox", { name: "Composer" });
+  composer.focus();
+  view.rerender(<ResizablePane overlay />);
+  expect(screen.queryByRole("complementary")).toBeNull();
+  view.rerender(<ResizablePane overlay={false} />);
+  expect(screen.getByRole("complementary")).toBeVisible();
+  expect(composer).toHaveFocus();
+});
+
+it.each([false, true])(
+  "Escape in the browser address stays in the address control (overlay=%s)",
+  (overlay) => {
+    render(
+      <BrowserResourceFixture overlay={overlay} onExpandedChange={() => {}} />,
+    );
+    const address = screen.getByRole("textbox", { name: "Address or search" });
+    address.focus();
+    fireEvent.change(address, { target: { value: "draft" } });
+    fireEvent.keyDown(address, { key: "Escape" });
+    expect(screen.getByRole("complementary")).toBeVisible();
+    expect(address).not.toHaveFocus();
+  },
+);
 
 it("moves pane focus on resize only when a resource control was focused", () => {
   const view = render(<ResourceFocusFixture overlay={false} />);

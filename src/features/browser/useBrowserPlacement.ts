@@ -1,5 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
-import { useModalDialogOpen } from "../../ui/modalDialogState";
+import { useEffect, type RefObject } from "react";
+import {
+  nativePageOverlapped,
+  subscribeNativePageLayers,
+} from "../../ui/nativePageLayers";
 import {
   coverBrowser,
   hideBrowser,
@@ -11,17 +14,7 @@ export function useBrowserPlacement(
   frame: RefObject<HTMLDivElement | null>,
   surface: RefObject<HTMLElement | null>,
   onError: (message: string) => void,
-  covered = false,
 ) {
-  const modalOpen = useModalDialogOpen();
-  // A popover or shared modal places the page again without the cleanup
-  // below, whose hide would end Annotate.
-  const coveredRef = useRef(covered || modalOpen);
-  const placeRef = useRef<() => void>(() => undefined);
-  useEffect(() => {
-    coveredRef.current = covered || modalOpen;
-    placeRef.current();
-  }, [covered, modalOpen]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -38,11 +31,6 @@ export function useBrowserPlacement(
       // centre pane is hidden, and a resize must not show it again.
       if (center?.getAttribute("aria-hidden") === "true") {
         void hideBrowser(tabId).catch(reportError);
-        return;
-      }
-      // Popovers and shared dialogs cover the native window, keeping Annotate on.
-      if (coveredRef.current) {
-        void coverBrowser(tabId).catch(reportError);
         return;
       }
       frameId = requestAnimationFrame(() => {
@@ -71,6 +59,14 @@ export function useBrowserPlacement(
           if (agentCanvas) void hideBrowser(tabId).catch(reportError);
           return;
         }
+        if (
+          nativePageOverlapped(
+            new DOMRect(left, top, right - left, bottom - top),
+          )
+        ) {
+          void coverBrowser(tabId).catch(reportError);
+          return;
+        }
         void positionBrowser(tabId, {
           x: left,
           y: top,
@@ -79,25 +75,26 @@ export function useBrowserPlacement(
         }).catch(reportError);
       });
     };
-    placeRef.current = place;
     const observer = new ResizeObserver(place);
     observer.observe(element);
     const visibilityObserver = new MutationObserver(place);
-    if (center) {
+    if (center)
       visibilityObserver.observe(center, {
         attributes: true,
         attributeFilter: ["aria-hidden"],
       });
-    }
+    const unsubscribe = subscribeNativePageLayers(place);
     window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
     place();
     return () => {
       active = false;
-      placeRef.current = () => undefined;
       cancelAnimationFrame(frameId);
       observer.disconnect();
+      unsubscribe();
       visibilityObserver.disconnect();
       window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
       void hideBrowser(tabId).catch(() => undefined);
     };
   }, [tabId, frame, surface, onError]);

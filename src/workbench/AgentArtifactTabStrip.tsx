@@ -1,6 +1,12 @@
 import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
 
-import { useRef, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 import {
@@ -53,6 +59,7 @@ export function AgentArtifactTabStrip({
   changesTab,
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const onTabKeyDown = useResourceTabStrip(scrollRef);
   const pendingTargets = agentArtifactPendingTargets(record);
   const latestPendingTarget = pendingTargets.at(-1) ?? null;
   const following = record?.mode !== "pinned";
@@ -74,7 +81,13 @@ export function AgentArtifactTabStrip({
   return (
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
-        <div ref={scrollRef} className="tab-strip__scroll">
+        <div
+          ref={scrollRef}
+          className="tab-strip__scroll"
+          role="tablist"
+          aria-label="Resources"
+          onKeyDown={onTabKeyDown}
+        >
           {changesTab}
           {artifacts.map((tab, index) => {
             const selected =
@@ -315,4 +328,64 @@ export function AgentArtifactTabStrip({
       ) : null}
     </>
   );
+}
+
+/** Automatic activation, one Tab stop, and visibility for a resource tab list. */
+function useResourceTabStrip(ref: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const strip = ref.current;
+    if (!strip) return;
+    const reveal = () => {
+      const tabs = Array.from(
+        strip.querySelectorAll<HTMLElement>('[role="tab"]'),
+      );
+      const selected =
+        tabs.find((tab) => tab.getAttribute("aria-selected") === "true") ??
+        tabs[0];
+      for (const tab of tabs) tab.tabIndex = tab === selected ? 0 : -1;
+      selected
+        ?.closest(".tab")
+        ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    };
+    reveal();
+    const mutation = new MutationObserver(reveal);
+    mutation.observe(strip, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-selected"],
+    });
+    const resize =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    resize?.observe(strip);
+    return () => {
+      resize?.disconnect();
+      mutation.disconnect();
+    };
+  });
+
+  return (event: KeyboardEvent<HTMLElement>) => {
+    if (
+      !(event.target instanceof HTMLElement) ||
+      event.target.getAttribute("role") !== "tab"
+    )
+      return;
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = Array.from(
+      ref.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [],
+    );
+    const index = tabs.indexOf(event.target);
+    if (index < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+            tabs.length;
+    tabs[next]?.focus();
+    tabs[next]?.click();
+  };
 }

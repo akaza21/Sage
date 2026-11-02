@@ -52,6 +52,11 @@ export async function openAgentArtifact(
 
   if (intent.target === "file") {
     await useWorkbenchStore.getState().openFile(intent.resource);
+  } else if (intent.target === "workingTreeDiff") {
+    // Summary-only edits use the ordinary Git Diff resource. Never downgrade
+    // an invalid or stale saved snapshot reference to a working-tree diff.
+    if (intent.diffRef) return false;
+    await useWorkbenchStore.getState().openDiff(intent.resource);
   } else {
     const { selectedSnapshotIsCurrent, snapshotProjectionRevision } =
       await import("./agentDiffAdmission");
@@ -82,13 +87,17 @@ export async function openAgentArtifact(
   if (!agentArtifactOwnerIsCurrent(intent.owner, projectGeneration)) {
     return false;
   }
+  const target = intent.target === "workingTreeDiff" ? "diff" : intent.target;
   const tab = useWorkbenchStore
     .getState()
     .tabs.find(
       (candidate) =>
-        candidate.kind === intent.target &&
+        candidate.kind === target &&
         sameResource(candidate.resource, intent.resource) &&
         (intent.target === "file" ||
+          (!intent.diffRef &&
+            !candidate.diffRef &&
+            sameRepository(candidate.repository, undefined)) ||
           (sameRepository(candidate.repository, undefined) &&
             candidate.diffRef &&
             intent.diffRef &&
