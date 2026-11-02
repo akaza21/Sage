@@ -136,11 +136,6 @@ pub(super) fn cleanup_recorded_temp(
 }
 
 impl HeldParent {
-    /// Reads the document `name` inside this directory.
-    pub(super) fn read_document(&self, name: &str) -> AppResult<DiskDocument> {
-        disk_document_from(&self.open_file(name)?)
-    }
-
     /// Reads the document `name` and returns the identity of the file read.
     pub(super) fn read_document_with_identity(
         &self,
@@ -176,22 +171,40 @@ impl HeldParent {
     }
 
     /// Creates the temporary file `temp_name` inside this directory with the
-    /// given permissions and makes its content durable. `before_sync` runs
-    /// once the content is written and can abandon the write.
+    /// given permissions, makes its content durable and returns its identity.
+    /// `before_sync` runs once the content is written and can abandon the
+    /// write.
     pub(super) fn write_temporary_file(
         &self,
         temp_name: &str,
         permissions: fs::Permissions,
         content: &[u8],
         before_sync: impl FnOnce() -> std::io::Result<()>,
-    ) -> AppResult<()> {
+    ) -> AppResult<RootIdentity> {
         let mut file = self.create_new(temp_name)?;
+        let identity = leaf_identity(&file, &file.metadata()?)?;
         file.write_all(content)?;
         before_sync()?;
         file.set_permissions(permissions)?;
         file.sync_all()?;
-        Ok(())
+        Ok(identity)
     }
+}
+
+/// Fails unless the canonical `path`, walked from the verified root, opens
+/// the file with identity `expected`.
+pub(super) fn ensure_path_names(
+    workspace: &Workspace,
+    path: &str,
+    expected: RootIdentity,
+) -> AppResult<()> {
+    open_workspace_text_file(
+        workspace.root(),
+        workspace.root_identity(),
+        path,
+        Some(expected),
+    )?;
+    Ok(())
 }
 
 pub(super) fn cleanup_failed_save(

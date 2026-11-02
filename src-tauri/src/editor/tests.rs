@@ -779,6 +779,108 @@ fn save_reports_a_parent_swapped_after_the_replace_and_keeps_the_buffer() {
     fs::remove_dir_all(outside).unwrap();
 }
 
+#[test]
+fn save_keeps_the_buffer_when_the_target_is_replaced_after_the_replace() {
+    let path = "replaced.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::remove_file(fixture.root.join(path))?;
+                fs::write(fixture.root.join(path), b"other\n")?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"other\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[test]
+fn save_keeps_the_buffer_when_the_target_is_deleted_after_the_replace() {
+    let path = "deleted.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::remove_file(fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert!(!fixture.root.join(path).exists());
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[cfg(unix)]
+#[test]
+fn save_keeps_the_buffer_when_the_parent_is_renamed_before_verification() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(
+        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-moved"));
+}
+
+/// Once the saved file is verified by path, a later move is the user moving
+/// a saved file, so the save stands and its recovery buffer is cleared.
+#[cfg(unix)]
+#[test]
+fn save_stands_when_the_parent_is_renamed_after_verification() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "saved");
+    assert!(!result.document.dirty);
+    assert_eq!(result.document.buffer.content, "dirty\n");
+    assert_eq!(
+        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert!(fixture.buffer(path).is_none());
+}
+
 #[cfg(windows)]
 #[test]
 fn held_parent_cannot_be_renamed_while_a_save_holds_it() {

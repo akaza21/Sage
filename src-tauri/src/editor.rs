@@ -1,8 +1,8 @@
 mod filesystem;
 
 use self::filesystem::{
-    DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,
-    split_contract_path, temporary_contract_path,
+    DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, ensure_path_names,
+    read_disk_document, split_contract_path, temporary_contract_path,
 };
 use crate::{
     domain::{
@@ -95,8 +95,11 @@ enum SaveStage {
     TempWritten,
     /// The conflict read has passed and the replace is next.
     BeforeReplace,
-    /// The temporary file has replaced the target.
+    /// The temporary file has replaced the target; nothing is verified yet.
     AfterReplace,
+    /// The saved file is verified through the held directory and by its
+    /// path; only the recovery buffer delete is left.
+    BeforeRecoveryClear,
 }
 
 /// Saves through the document's held parent directory. An error from
@@ -155,14 +158,16 @@ fn save_document_with(
         )
     };
 
-    if let Err(error) =
-        parent.write_temporary_file(temp_name, permissions, materialized.as_bytes(), || {
+    let installed =
+        match parent.write_temporary_file(temp_name, permissions, materialized.as_bytes(), || {
             observe(SaveStage::TempWritten)
-        })
-    {
-        abandon();
-        return Err(error);
-    }
+        }) {
+            Ok(identity) => identity,
+            Err(error) => {
+                abandon();
+                return Err(error);
+            }
+        };
 
     let (latest_disk, target_identity) = match parent.read_document_with_identity(file_name) {
         Ok(read) => read,
@@ -189,23 +194,38 @@ fn save_document_with(
     database.clear_editor_pending_temp(workspace.project_id(), &resource)?;
     parent.sync()?;
 
-    // If the path stopped naming the held folder, the bytes landed in that
-    // folder rather than at the requested path, so the buffer stays dirty.
-    let still_named = observe(SaveStage::AfterReplace)
+    // The recovery buffer is cleared only once the installed file is proven:
+    // first through the held directory (its identity and bytes), then by
+    // path from the verified root (the parent and the target). Until then a
+    // replaced or deleted target, or a moved parent, keeps the buffer.
+    let verified = observe(SaveStage::AfterReplace)
         .map_err(AppError::from)
-        .and_then(|()| parent.ensure_named_by(workspace, parent_path));
-    if still_named.is_err() {
+        .and_then(|()| parent.read_document_with_identity(file_name))
+        .and_then(|(saved, identity)| {
+            if identity != installed || saved.version.fingerprint != buffer.buffer_fingerprint {
+                return Err(AppError::InvalidRequest(
+                    "the saved file was replaced".into(),
+                ));
+            }
+            parent.ensure_named_by(workspace, parent_path)?;
+            ensure_path_names(workspace, &path, installed)?;
+            Ok(saved)
+        });
+    let Ok(saved) = verified else {
         return Err(AppError::InvalidRequest(
-            "the content was written to the folder this file was in when the save began, \
-             but that folder was moved or replaced during the save; the unsaved buffer is kept"
+            "the content was written, but the file's location changed during the save or \
+             could not be verified; the unsaved buffer is kept"
                 .into(),
         ));
-    }
+    };
+    // A move from here on is the same as the user moving the file after a
+    // successful save, so it does not undo the save.
+    observe(SaveStage::BeforeRecoveryClear)?;
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
 
     Ok(EditorSaveResult {
         outcome: "saved".into(),
-        document: clean_document(resource, parent.read_document(file_name)?),
+        document: clean_document(resource, saved),
     })
 }
 
