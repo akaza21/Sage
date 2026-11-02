@@ -53,6 +53,7 @@ export function admitAgentRailChat(
     ...(typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
       ? { updatedAt: value.updatedAt }
       : {}),
+    ...(typeof value.viewed === "boolean" ? { viewed: value.viewed } : {}),
   };
 }
 

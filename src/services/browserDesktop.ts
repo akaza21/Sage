@@ -3,6 +3,7 @@ import type {
   ChatLifecycleRequest,
   ChatMessage,
   MoveChatRequest,
+  MarkChatViewedRequest,
   PinChatRequest,
   CreateProjectFileRequest,
   CreateProjectFolderRequest,
@@ -34,6 +35,7 @@ import {
 import {
   ensureBrowserLocalProject,
   moveBrowserChat,
+  markBrowserChatViewed,
   pinBrowserChat,
   switchBrowserProject,
 } from "./browserLocalChat";
@@ -315,6 +317,9 @@ export const browserDesktop = {
       messagesByChat,
       activeMessages,
     });
+  },
+  async markChatViewed(request: MarkChatViewedRequest) {
+    markBrowserChatViewed(snapshot, request);
   },
   async pinChat(request: PinChatRequest, expectedTransitionEpoch: number) {
     return pinBrowserChat({

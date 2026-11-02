@@ -17,6 +17,7 @@ mod chat_queue;
 mod chat_queue_commands;
 mod chat_search;
 mod chat_search_commands;
+mod chat_viewed;
 #[cfg(feature = "codex-provisioning-helper")]
 #[doc(hidden)]
 pub mod codex_helper_boundary;

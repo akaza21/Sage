@@ -5,6 +5,7 @@ use rusqlite::{OptionalExtension, params};
 mod tab_repository;
 
 use crate::{
+    chat_viewed::CHAT_VIEWED_SQL,
     domain::{RepositoryRef, ResourceRef, WorkbenchTab},
     error::{AppError, AppResult},
     project_registry::RootRecord,
@@ -167,18 +168,19 @@ fn load_tabs(
             "persisted tabs exceed restore count or byte limits".into(),
         ));
     }
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare(&format!(
         "SELECT w.id, w.kind, w.title, w.position, w.pinned, w.dirty, w.status, w.metadata_json,
                 CASE
                   WHEN w.kind = 'chat' THEN COALESCE(c.updated_at, w.updated_at)
                   ELSE w.updated_at
-                END
+                END,
+                {CHAT_VIEWED_SQL}
          FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
          WHERE w.project_id = ?1
-         ORDER BY w.position LIMIT ?2",
-    )?;
+         ORDER BY w.position LIMIT ?2"
+    ))?;
     let rows = statement
         .query_map(params![project_id, MAX_RESTORED_TABS as i64 + 1], |row| {
             Ok((
@@ -191,6 +193,7 @@ fn load_tabs(
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<bool>>(9)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -204,7 +207,7 @@ fn load_tabs(
     let tabs = rows
         .into_iter()
         .map(
-            |(id, kind, title, position, pinned, dirty, status, metadata, updated_at)| {
+            |(id, kind, title, position, pinned, dirty, status, metadata, updated_at, viewed)| {
                 if !ids.insert(id.clone()) || !positions.insert(position) {
                     return Err(AppError::InvalidRequest(
                         "persisted layout contains duplicate tab identity or position".into(),
@@ -284,6 +287,7 @@ fn load_tabs(
                     status
                 };
                 Ok(WorkbenchTab {
+                    viewed,
                     id,
                     kind,
                     title,
@@ -535,6 +539,7 @@ mod tests {
             relative_path: "MAIN.RS".into(),
         };
         snapshot.tabs.push(WorkbenchTab {
+            viewed: None,
             id: "case-alias".into(),
             kind: "file".into(),
             title: "MAIN.RS".into(),
@@ -566,6 +571,7 @@ mod tests {
         let fixture = Fixture::new();
         let mut snapshot = fixture.database.bootstrap_snapshot().unwrap();
         snapshot.tabs.push(WorkbenchTab {
+            viewed: None,
             id: "diff:nested".into(),
             kind: "diff".into(),
             title: "main.rs".into(),
@@ -635,6 +641,7 @@ mod tests {
         kind: &str,
     ) -> WorkbenchTab {
         WorkbenchTab {
+            viewed: None,
             id: id.into(),
             kind: kind.into(),
             title: "main.rs".into(),

@@ -41,6 +41,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     );
     let mut tabs = initial.tabs;
     tabs.push(crate::domain::WorkbenchTab {
+        viewed: None,
         id: "browser-1".into(),
         kind: "browser".into(),
         title: "Browser".into(),

@@ -3,6 +3,7 @@ import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,
   MoveChatRequest,
+  MarkChatViewedRequest,
   PinChatRequest,
   EditorWatchSubscription,
   ProjectLayoutRequest,
@@ -188,6 +189,8 @@ const chat: ChatPort = {
     browserDesktop.moveChat(request, expectedTransitionEpoch),
   pinChat: (request: PinChatRequest, expectedTransitionEpoch: number) =>
     browserDesktop.pinChat(request, expectedTransitionEpoch),
+  markChatViewed: (request: MarkChatViewedRequest) =>
+    browserDesktop.markChatViewed(request),
 };
 
 const agent: AgentPort = {

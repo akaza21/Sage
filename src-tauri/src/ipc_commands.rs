@@ -75,6 +75,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         crate::chat_fork::fork_chat,
         chat_commands::move_chat,
         chat_commands::pin_chat,
+        chat_commands::mark_chat_viewed,
         chat_commands::activate_chat,
         chat_archive_commands::archive_chat,
         chat_commands::rename_chat,

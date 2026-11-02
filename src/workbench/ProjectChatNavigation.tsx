@@ -35,6 +35,7 @@ import {
   agentRailTrailingState,
 } from "./agentRailStatusView";
 import { agentRailClockMs } from "./agentRailViewPrefs";
+import { useMarkViewedChat } from "./useAgentRailProjection";
 import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
 import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
 import type * as RenameChunk from "./ProjectChatRename";
@@ -115,6 +116,16 @@ export function ProjectChatNavigation({
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
   const awaitingApprovalIds = useChatsAwaitingApproval();
+  const viewedChat = selected
+    ? chatTabs.find((chat) => chat.id === viewedChatId)
+    : undefined;
+  useMarkViewedChat(
+    projectId,
+    viewedChat && {
+      ...viewedChat,
+      status: parentChatStatus(viewedChat.id, viewedChat.status),
+    },
+  );
 
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
@@ -184,6 +195,7 @@ export function ProjectChatNavigation({
             focused: viewed,
             status: tab.status,
             updatedAt: tab.updatedAt,
+            viewed: tab.viewed,
             seenFingerprint: seenSessionRailFingerprint(tab.id),
           });
         const branchLabel = showBranch ? gitLabel : "";

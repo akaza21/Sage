@@ -33,6 +33,11 @@ export interface WorkbenchTab {
   openerTabId?: string;
   status?: SessionStatus;
   updatedAt?: number;
+  /**
+   * Native-owned, for a chat: whether the user had seen its newest finished
+   * turn when the tab was loaded. Live activity since then clears it.
+   */
+  viewed?: boolean;
   resource?: ResourceRef;
   repository?: RepositoryRef;
   diffRef?: AgentDiffRef;
@@ -49,6 +54,11 @@ export interface ChatLifecycleRequest {
   projectId: string;
   chatId: string;
   currentLayout: ProjectLayoutRequest;
+}
+
+export interface MarkChatViewedRequest {
+  projectId: string;
+  chatId: string;
 }
 
 export interface PinChatRequest {

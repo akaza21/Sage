@@ -133,6 +133,7 @@ impl Database {
                 .ok_or_else(|| AppError::ResourceLimit("tab position is exhausted".into()))?;
             let mut next_layout = request.current_layout.clone();
             next_layout.tabs.push(WorkbenchTab {
+                viewed: None,
                 id: request.chat_id.clone(),
                 kind: "chat".into(),
                 title,

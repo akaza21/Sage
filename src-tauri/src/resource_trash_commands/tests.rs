@@ -92,6 +92,7 @@ impl Fixture {
 
     fn descendant_tab(&self) -> WorkbenchTab {
         WorkbenchTab {
+            viewed: None,
             id: "descendant".into(),
             kind: "diff".into(),
             title: "ghost.rs".into(),

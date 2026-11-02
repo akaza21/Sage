@@ -5,6 +5,7 @@ import type {
   BufferSnapshotRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
+  MarkChatViewedRequest,
   PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
@@ -239,6 +240,7 @@ export interface ChatPort {
     request: PinChatRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  markChatViewed(request: MarkChatViewedRequest): Promise<void>;
   /** Rust's native fork; browser fixtures may provide an adapter. */
   forkChat?(request: ForkChatRequest): Promise<ProjectTransitionResult>;
 }
@@ -328,6 +330,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "markChatViewed",
     "moveChat",
     "pinChat",
     "renameChat",

@@ -585,6 +585,68 @@ fn project_list_keeps_the_added_order_when_projects_are_opened() {
 }
 
 #[test]
+fn a_viewed_chat_stays_read_until_another_turn_finishes() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database
+        .create_project_from_root(&folders.root("sage"))
+        .unwrap();
+    let chat = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    // What a fresh WebView reads for the chat, from both native sources.
+    let viewed = |database: &Database| {
+        let tab = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .tabs
+            .into_iter()
+            .find(|tab| tab.id == chat)
+            .unwrap()
+            .viewed;
+        let rail = database.project_list().unwrap()[0]
+            .rail_chats
+            .iter()
+            .find(|row| row.id == chat)
+            .unwrap()
+            .viewed;
+        assert_eq!(tab, rail);
+        tab
+    };
+    let mark = |database: &Database, chat_id: &str| {
+        database.mark_chat_viewed(&crate::domain::MarkChatViewedRequest {
+            project_id: project.id.clone(),
+            chat_id: chat_id.into(),
+        })
+    };
+    assert_eq!(viewed(&database), Some(true));
+    database
+        .append_simulator_turn(&chat, "first", "first answer")
+        .unwrap();
+    assert_eq!(viewed(&database), Some(false));
+    mark(&database, &chat).unwrap();
+    assert_eq!(viewed(&database), Some(true));
+    // Writes that are not new output, such as a late projection or a title,
+    // move the chat's updated_at but leave it read.
+    database
+        .connection()
+        .execute(
+            "UPDATE chats SET updated_at = updated_at + 10000 WHERE project_id = ?1",
+            [&project.id],
+        )
+        .unwrap();
+    assert_eq!(viewed(&database), Some(true));
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    database
+        .append_simulator_turn(&chat, "second", "second answer")
+        .unwrap();
+    assert_eq!(viewed(&database), Some(false));
+    assert!(mark(&database, "chat:missing").is_err());
+}
+
+#[test]
 fn project_list_includes_bounded_chats_for_every_project() {
     let base = std::env::temp_dir().join(format!("sage-rail-{}", Uuid::new_v4()));
     let first_root = base.join("cross");

@@ -1,5 +1,6 @@
 use rusqlite::{Connection, params};
 
+use crate::chat_viewed::CHAT_VIEWED_SQL;
 use crate::domain::{AgentRailChat, ProjectListItem};
 use crate::error::AppResult;
 
@@ -40,16 +41,16 @@ pub(super) fn attach_rail_chats(
     connection: &Connection,
     projects: &mut [ProjectListItem],
 ) -> AppResult<()> {
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare(&format!(
         "SELECT w.id, w.title, w.pinned, w.position, w.status,
-                COALESCE(c.updated_at, w.updated_at)
+                COALESCE(c.updated_at, w.updated_at), {CHAT_VIEWED_SQL}
          FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
          WHERE w.project_id = ?1 AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0
          ORDER BY w.pinned DESC, COALESCE(c.updated_at, w.updated_at, 0) DESC, w.position, w.id
-         LIMIT ?2",
-    )?;
+         LIMIT ?2"
+    ))?;
     for project in projects.iter_mut() {
         if project.id.is_empty() || project.id.len() > 512 {
             continue;
@@ -65,6 +66,7 @@ pub(super) fn attach_rail_chats(
                         row.get::<_, i64>(3)?,
                         row.get::<_, Option<String>>(4)?,
                         row.get::<_, Option<i64>>(5)?,
+                        row.get::<_, Option<bool>>(6)?,
                     ))
                 },
             )?
@@ -75,13 +77,14 @@ pub(super) fn attach_rail_chats(
             .take(MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize)
             .filter(|(id, title, ..)| !id.is_empty() && id.len() <= 512 && !title.contains('\0'))
             .map(
-                |(id, title, pinned, position, status, updated_at)| AgentRailChat {
+                |(id, title, pinned, position, status, updated_at, viewed)| AgentRailChat {
                     id,
                     title,
                     pinned,
                     position,
                     status,
                     updated_at,
+                    viewed,
                 },
             )
             .collect();

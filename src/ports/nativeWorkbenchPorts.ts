@@ -280,6 +280,9 @@ const chat: ChatPort = {
   pinChat(request, expectedTransitionEpoch) {
     return invokeNative("pin_chat", { request, expectedTransitionEpoch });
   },
+  markChatViewed(request) {
+    return invokeNative("mark_chat_viewed", { request });
+  },
 };
 
 export function createNativeWorkbenchPorts(): WorkbenchPorts {

@@ -146,6 +146,7 @@ mod tests {
 
     fn snapshot_tab(project_id: &str, root_id: &str) -> WorkbenchTab {
         WorkbenchTab {
+            viewed: None,
             id: "diff:snapshot:one".into(),
             kind: "diff".into(),
             title: "a.ts".into(),

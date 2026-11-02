@@ -16,6 +16,9 @@ pub struct AgentRailChat {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
+    /// Whether the user has seen the chat's newest finished turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

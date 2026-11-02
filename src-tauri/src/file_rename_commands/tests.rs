@@ -71,6 +71,7 @@ impl Fixture {
 
     fn resource_tab(&self, id: &str, kind: &str, relative_path: &str) -> WorkbenchTab {
         WorkbenchTab {
+            viewed: None,
             id: id.into(),
             kind: kind.into(),
             title: relative_path.into(),

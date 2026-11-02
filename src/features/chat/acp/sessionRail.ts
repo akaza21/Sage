@@ -90,8 +90,11 @@ export function sessionRailUnreadVisible(input: {
   focused: boolean;
   status: SessionStatus | undefined;
   updatedAt?: number;
+  /** The native viewed mark; it survives a reload, unlike seen fingerprints. */
+  viewed?: boolean;
   seenFingerprint: string | undefined;
 }): boolean {
+  if (input.viewed === true && !sessionRailLive(input.status)) return false;
   return unreadDotVisible({
     focused: input.focused,
     live: sessionRailLive(input.status),

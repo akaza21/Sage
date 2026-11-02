@@ -302,6 +302,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
     .current_layout;
     for position in 1..MAX_RESTORED_TABS {
         full_layout.tabs.push(WorkbenchTab {
+            viewed: None,
             id: format!("terminal-{position}"),
             kind: "terminal".into(),
             title: format!("Terminal {position}"),

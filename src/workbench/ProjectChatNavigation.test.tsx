@@ -8,10 +8,13 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
+import { mirrorAgentRailStatus } from "./useAgentRailProjection";
+import type { SageChatId, SageProjectId } from "../domain/acp";
 import {
   resetAgentRailViewPrefs,
   syncAgentRailClock,
@@ -571,4 +574,68 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
+});
+
+it("saves a viewed Done chat as read and trusts that mark after a reload", () => {
+  seedChats();
+  const saved = vi
+    .spyOn(getWorkbenchPorts().chat, "markChatViewed")
+    .mockResolvedValue();
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  fireEvent.click(screen.getByTitle("Open chat Beta"));
+  expect(saved).toHaveBeenCalledWith({
+    projectId: "project-a",
+    chatId: "chat:b",
+  });
+
+  // A reload starts with no seen fingerprints; the tabs come from native
+  // with the viewed mark, and another chat has focus.
+  cleanup();
+  clearSessionRailAcks();
+  seedChats();
+  useWorkbenchStore.setState((state) => ({
+    tabs: state.tabs.map((tab) =>
+      tab.id === "chat:b" ? { ...tab, viewed: true } : tab,
+    ),
+  }));
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  const betaRow = () =>
+    screen.getByTitle("Open chat Beta").closest(".project-chat-row");
+  expect(betaRow()).not.toHaveTextContent("Unread");
+
+  // A turn that finishes later makes the loaded mark stale.
+  act(() => {
+    mirrorAgentRailStatus({
+      projectId: "project-a" as SageProjectId,
+      chatId: "chat:b" as SageChatId,
+      title: "Beta",
+      latestTurn: {
+        state: "completed",
+        createdAt: Date.UTC(2026, 7, 27, 12, 0, 0),
+        terminalAt: Date.UTC(2026, 7, 27, 12, 1, 0),
+        updatedAt: Date.UTC(2026, 7, 27, 12, 1, 0),
+      },
+    });
+  });
+  cleanup();
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  expect(betaRow()).toHaveTextContent("Unread");
 });

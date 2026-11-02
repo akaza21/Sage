@@ -2,8 +2,8 @@ use tauri::State;
 
 use crate::{
     domain::{
-        MoveChatRequest, PinChatRequest, ProjectLayoutRequest, ProjectTransitionResult,
-        RenameChatRequest,
+        MarkChatViewedRequest, MoveChatRequest, PinChatRequest, ProjectLayoutRequest,
+        ProjectTransitionResult, RenameChatRequest,
     },
     error::{AppError, AppResult},
     persistence::Database,
@@ -61,6 +61,20 @@ pub async fn pin_chat(
         move |database| database.pin_chat(&request),
     )
     .await)
+}
+
+/// Saves the user's viewed mark for a chat. It is not a project transition:
+/// the mark changes no layout and the rail already shows it as read.
+#[tauri::command]
+pub async fn mark_chat_viewed(
+    state: State<'_, AppState>,
+    request: MarkChatViewedRequest,
+) -> Result<(), String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || database.mark_chat_viewed(&request))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -268,6 +282,7 @@ mod tests {
                 relative_path: "notes.txt".into(),
             };
             let file_tab = WorkbenchTab {
+                viewed: None,
                 id: "file:notes".into(),
                 kind: "file".into(),
                 title: "notes.txt".into(),

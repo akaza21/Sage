@@ -41,6 +41,7 @@ import {
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import { useRailChatId } from "./sideChatState";
+import { saveChatViewed } from "./useAgentRailProjection";
 const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
   () => import("./AgentRailArchiveNotice"),
 );
@@ -129,6 +130,7 @@ export function LeftSidebar({
           focused: group.id === project?.id && chat.id === activeTabId,
           status: chat.status,
           updatedAt: chat.updatedAt,
+          viewed: chat.viewed,
           seenFingerprint: seenSessionRailFingerprint(chat.id),
         });
     }
@@ -186,10 +188,12 @@ export function LeftSidebar({
             focused: group.id === project?.id && chat.id === activeTabId,
             status: chat.status,
             updatedAt: chat.updatedAt,
+            viewed: chat.viewed,
             seenFingerprint: seenSessionRailFingerprint(chat.id),
           })
         ) {
           ackSessionRailUnread(chat.id, fingerprint);
+          saveChatViewed(group.id, chat.id);
         }
       }
     }

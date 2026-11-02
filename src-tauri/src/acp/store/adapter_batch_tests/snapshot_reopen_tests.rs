@@ -316,6 +316,7 @@ fn populated_pair_and_durable_diff_ref_reopen_without_git_or_disk_fallback() {
             tabs: [
                 tabs.into_iter().next().unwrap(),
                 WorkbenchTab {
+                    viewed: None,
                     id: "snapshot-reopen-diff".into(),
                     kind: "diff".into(),
                     title: "lib.rs saved change".into(),

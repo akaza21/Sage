@@ -17,6 +17,8 @@ export interface AgentRailChat {
   position: number;
   status?: SessionStatus;
   updatedAt?: number;
+  /** Native-owned: whether the user has seen the newest finished turn. */
+  viewed?: boolean;
 }
 
 /**

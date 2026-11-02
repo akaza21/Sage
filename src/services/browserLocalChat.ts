@@ -1,6 +1,7 @@
 import type {
   BootstrapSnapshot,
   ChatMessage,
+  MarkChatViewedRequest,
   MoveChatRequest,
   PinChatRequest,
   ProjectSwitchRequest,
@@ -47,6 +48,25 @@ export function ensureBrowserLocalProject(input: {
   input.messagesByChat.set(chat.id, []);
   snapshot.transitionEpoch += 1;
   return committed(snapshot, input.activeMessages);
+}
+
+/** Marks a chat read, as the native store does for its newest turn. */
+export function markBrowserChatViewed(
+  snapshot: BootstrapSnapshot,
+  request: MarkChatViewedRequest,
+) {
+  const mark = <T extends { id: string; viewed?: boolean }>(chat: T): T =>
+    chat.id === request.chatId ? { ...chat, viewed: true } : chat;
+  if (snapshot.project?.id === request.projectId) {
+    snapshot.tabs = snapshot.tabs.map((tab) =>
+      tab.kind === "chat" ? mark(tab) : tab,
+    );
+  }
+  snapshot.projects = snapshot.projects.map((project) =>
+    project.id === request.projectId
+      ? { ...project, railChats: project.railChats?.map(mark) }
+      : project,
+  );
 }
 
 export function pinBrowserChat(input: {

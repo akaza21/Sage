@@ -160,6 +160,7 @@ fn merge_recovered_file_tabs(snapshot: &mut BootstrapSnapshot) {
             suffix += 1;
         }
         let tab = WorkbenchTab {
+            viewed: None,
             id,
             kind: "file".into(),
             title,
@@ -436,6 +437,7 @@ mod tests {
         let (root, mut snapshot, root_id) = snapshot();
         for index in 0..MAX_RESOURCE_TABS {
             snapshot.tabs.push(WorkbenchTab {
+                viewed: None,
                 id: format!("file-{index}"),
                 kind: "file".into(),
                 title: format!("{index}.txt"),
@@ -483,6 +485,7 @@ mod tests {
         let (root, mut snapshot, root_id) = snapshot();
         for index in 1..MAX_RESTORED_TABS {
             snapshot.tabs.push(WorkbenchTab {
+                viewed: None,
                 id: format!("utility-{index}"),
                 kind: "output".into(),
                 title: format!("Output {index}"),
@@ -520,6 +523,7 @@ mod tests {
         let mut tabs = initial.tabs;
         for index in 0..MAX_RESOURCE_TABS {
             tabs.push(WorkbenchTab {
+                viewed: None,
                 id: format!("persisted-file-{index}"),
                 kind: "file".into(),
                 title: format!("{index}.txt"),

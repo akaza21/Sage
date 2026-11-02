@@ -15,6 +15,10 @@ pub struct WorkbenchTab {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
+    /// For a chat: whether the user has seen its newest finished turn.
+    /// Native-owned: layout writes from the WebView never store it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewed: Option<bool>,
     pub resource: Option<ResourceRef>,
     #[serde(default)]
     pub repository: Option<RepositoryRef>,
@@ -47,6 +51,13 @@ pub struct ChatLifecycleRequest {
     pub project_id: String,
     pub chat_id: String,
     pub current_layout: ProjectLayoutRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkChatViewedRequest {
+    pub project_id: String,
+    pub chat_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
