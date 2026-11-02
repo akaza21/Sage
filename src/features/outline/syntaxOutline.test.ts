@@ -236,6 +236,8 @@ describe("syntaxOutline", () => {
     const source = `namespace N {\n${"call();\n".repeat(5_000)}}\n`;
     // Parse once so the runs below measure only the symbol walk.
     await syntaxOutline("namespace.ts", source);
+    // Hundreds of forced yields must not depend on the host timer resolution.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // A clock that advances 1ms per read makes every slice a few nodes long.
     let now = 0;
     const clock = vi
@@ -245,23 +247,28 @@ describe("syntaxOutline", () => {
     const yields = () =>
       timeout.mock.calls.filter(([, delay]) => delay === 0).length;
     try {
-      const outline = await syntaxOutline("namespace.ts", source);
+      const pending = syntaxOutline("namespace.ts", source);
+      await vi.runAllTimersAsync();
+      const outline = await pending;
       expect(entries(outline?.symbols)).toEqual(["1 module N"]);
       expect(yields()).toBeGreaterThan(100);
 
       timeout.mockClear();
       let checks = 0;
       // Current through the language load, stale at the walk's first yield.
-      const stopped = await syntaxOutline(
+      const stopping = syntaxOutline(
         "namespace.ts",
         source,
         () => (checks += 1) === 1,
       );
+      await vi.runAllTimersAsync();
+      const stopped = await stopping;
       expect(stopped).toBeNull();
       expect(yields()).toBe(1);
     } finally {
       clock.mockRestore();
       timeout.mockRestore();
+      vi.useRealTimers();
     }
   });
 });
