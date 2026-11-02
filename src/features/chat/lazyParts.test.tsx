@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("./TranscriptInteractions", () => ({
@@ -23,21 +23,35 @@ it("preloads without rendering, then opens a part without a fallback commit", as
 });
 
 it("shares an in-flight prewarm across intent and idle requests", async () => {
-  let finish!: (chunk: { Card: () => ReactNode }) => void;
-  const load = vi.fn(
+  // Every import gets its own promise, and only the first one ever resolves:
+  // a consumer or prewarm that started a second import would never settle.
+  const imports: Array<(chunk: { Card: () => ReactNode }) => void> = [];
+  const Part = lazyParts(
     () =>
       new Promise<{ Card: () => ReactNode }>((resolve) => {
-        finish = resolve;
+        imports.push(resolve);
       }),
   );
-  const Part = lazyParts(load);
-  const first = Part.preload();
-  const second = Part.preload();
-  expect(load).toHaveBeenCalledOnce();
-  finish({ Card: () => <p>shared card</p> });
-  await Promise.all([first, second]);
-  await Part.preload();
-  expect(load).toHaveBeenCalledOnce();
+  const intent = Part.preload();
+  const idle = Part.preload();
+  render(
+    <>
+      <Part part="Card" fallback={<p>loading card</p>} />
+      <Part part="Card" fallback={<p>loading card</p>} />
+    </>,
+  );
+  expect(screen.getAllByText("loading card")).toHaveLength(2);
+
+  await act(async () => {
+    imports[0]({ Card: () => <p>shared card</p> });
+    await Promise.all([intent, idle]);
+  });
+
+  expect(screen.getAllByText("shared card")).toHaveLength(2);
+  expect(screen.queryByText("loading card")).toBeNull();
+  render(<Part part="Card" fallback={<p>loading card</p>} />);
+  expect(screen.getAllByText("shared card")).toHaveLength(3);
+  expect(screen.queryByText("loading card")).toBeNull();
 });
 
 it("shows the fallback until the chunk first loads", () => {
