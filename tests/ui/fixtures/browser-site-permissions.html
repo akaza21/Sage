@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser site permissions layout regression</title>
+  </head>
+  <body>
+    <div id="root" class="settings-surface"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { SettingsBrowserPage } from "/src/workbench/settings/SettingsBrowserPage.tsx";
+      import { matchingSettingsEntryIds } from "/src/domain/settingsNavigation.ts";
+      import "/src/styles/global.css";
+      import "/src/styles/settings-surface.css";
+
+      // A saved Allow ended, but its tab has not reloaded yet.
+      window.__TAURI_INTERNALS__ = {
+        transformCallback: () => 1,
+        invoke: async (command) => {
+          if (command === "plugin:event|listen") return 1;
+          if (command === "browser_preferences") return { showFullUrl: false };
+          if (command === "browser_site_settings")
+            return { settings: [], staleSites: ["https://example.com"] };
+          throw new Error(`Unexpected command: ${command}`);
+        },
+      };
+      createRoot(document.getElementById("root")).render(
+        React.createElement(SettingsBrowserPage, {
+          visible: matchingSettingsEntryIds("", "browser"),
+        }),
+      );
+    </script>
+  </body>
+</html>

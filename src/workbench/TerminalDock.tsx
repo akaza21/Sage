@@ -15,6 +15,7 @@ import {
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
 import { utf8ByteLength } from "../domain/text";
+import { withStyleNonce } from "../ports/styleNonce";
 
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
@@ -124,7 +125,9 @@ export function TerminalDock({
         selectionBackground: "#444444",
       },
     });
-    terminal.open(element);
+    // xterm has no nonce option; its renderer and viewport create their
+    // <style> elements inside open().
+    withStyleNonce(element.ownerDocument, () => terminal.open(element));
     const initial = dimensionsFor(element, terminal);
     terminal.resize(initial.columns, initial.rows);
 
@@ -258,14 +261,8 @@ export function TerminalDock({
     const observer = new ResizeObserver(refreshDimensions);
     observer.observe(element);
     window.addEventListener("resize", refreshDimensions);
-    void resizeUserTerminal(
-      ownerScope,
-      session,
-      initial.columns,
-      initial.rows,
-    ).catch((error: unknown) => {
-      if (!stopped) onStatusRef.current(terminalErrorLabel(error));
-    });
+    latestResize = initial;
+    void drainResizes();
     void pollOutput();
     terminal.focus();
     return () => {

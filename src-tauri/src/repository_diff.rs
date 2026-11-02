@@ -25,7 +25,13 @@ pub async fn file_diff(workspace: &Workspace, resource: &ResourceRef) -> AppResu
         relative_path: relative_path.clone(),
     };
     let base = repository_diff_base(workspace.root()).await?;
-    let mut args = vec!["diff", "--no-ext-diff", "--no-color", "--unified=3"];
+    let mut args = vec![
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--unified=3",
+    ];
     args.push(&base);
     args.extend(["--", relative_path.as_str()]);
     let output = run_git(workspace.root(), &args, MAX_DIFF_BYTES).await?;

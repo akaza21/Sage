@@ -8,17 +8,18 @@ import { utf8ByteLength } from "../domain/text";
 export const TERMINAL_MAX_COLUMNS = 500;
 export const TERMINAL_MAX_ROWS = 300;
 export const TERMINAL_INPUT_BYTES = 4_096;
-export const TERMINAL_MAX_PER_CHAT = 4;
 
-function validDimensions(columns: number, rows: number): boolean {
-  return (
-    Number.isInteger(columns) &&
-    columns >= 1 &&
-    columns <= TERMINAL_MAX_COLUMNS &&
-    Number.isInteger(rows) &&
-    rows >= 1 &&
-    rows <= TERMINAL_MAX_ROWS
-  );
+function validateDimensions(columns: number, rows: number): void {
+  if (
+    !Number.isInteger(columns) ||
+    columns < 1 ||
+    columns > TERMINAL_MAX_COLUMNS ||
+    !Number.isInteger(rows) ||
+    rows < 1 ||
+    rows > TERMINAL_MAX_ROWS
+  ) {
+    throw new Error("Invalid terminal dimensions");
+  }
 }
 
 export interface UserTerminalScope {
@@ -63,11 +64,10 @@ export function terminalErrorLabel(error: unknown): string {
   return "Terminal operation failed. The native session may need cleanup.";
 }
 
-const handlePattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-const decimalPattern = /^(0|[1-9][0-9]{0,19})$/u;
+const handlePattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/u;
+const decimalPattern = /^(0|[1-9]\d{0,19})$/u;
 const base64Pattern =
-  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
+  /^(?:[A-Za-z\d+/]{4})*(?:[A-Za-z\d+/]{2}==|[A-Za-z\d+/]{3}=)?$/u;
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -102,9 +102,7 @@ export async function createUserTerminal(
   columns: number,
   rows: number,
 ): Promise<UserTerminalSession> {
-  if (!validDimensions(columns, rows)) {
-    throw new Error("Invalid terminal dimensions");
-  }
+  validateDimensions(columns, rows);
   const response = record(
     await invokeNative<unknown>("terminal_create", {
       request: { scope, columns, rows },
@@ -128,9 +126,8 @@ export async function writeUserTerminal(
   text: string,
 ): Promise<void> {
   const exactHandle = wireHandle(handle);
-  const byteLength = utf8ByteLength(text);
-  if (byteLength < 1 || byteLength > TERMINAL_INPUT_BYTES) {
-    throw new Error("Terminal input is empty or over the native limit");
+  if (!text || utf8ByteLength(text) > TERMINAL_INPUT_BYTES) {
+    throw new Error("Terminal input must be 1–4096 UTF-8 bytes");
   }
   await invokeNative<void>("terminal_write", {
     request: { scope, handle: exactHandle, text },
@@ -144,9 +141,7 @@ export async function resizeUserTerminal(
   rows: number,
 ): Promise<void> {
   const exactHandle = wireHandle(handle);
-  if (!validDimensions(columns, rows)) {
-    throw new Error("Invalid terminal dimensions");
-  }
+  validateDimensions(columns, rows);
   await invokeNative<void>("terminal_resize", {
     request: { scope, handle: exactHandle, columns, rows },
   });
@@ -173,12 +168,11 @@ export async function readUserTerminal(
   ) {
     throw new Error("Invalid terminal output page");
   }
-  const raw = atob(encoded);
-  if (raw.length > 48_000)
-    throw new Error("Terminal output page exceeded limit");
-  const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
+  // The validated base64 is at most 64,000 characters: at most 48,000 bytes.
   return {
-    bytes,
+    bytes: Uint8Array.from(atob(encoded), (character) =>
+      character.charCodeAt(0),
+    ),
     nextCursor: decimal(response.nextCursor),
     truncated: response.truncated,
   };

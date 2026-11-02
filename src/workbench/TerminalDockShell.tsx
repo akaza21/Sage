@@ -10,7 +10,6 @@ import { useWorkbenchStore } from "../app/store";
 import {
   closeUserTerminal,
   createUserTerminal,
-  TERMINAL_MAX_PER_CHAT,
   terminalErrorLabel,
   type UserTerminalScope,
   type UserTerminalSession,
@@ -22,6 +21,7 @@ import "./terminal-dock.css";
 /** The VT100 grid a shell starts with until the dock measures its screen. */
 const INITIAL_COLUMNS = 80;
 const INITIAL_ROWS = 24;
+const TERMINAL_MAX_PER_CHAT = 4;
 
 type SessionEntry = {
   session: UserTerminalSession;
@@ -29,27 +29,16 @@ type SessionEntry = {
   message: string | null;
 };
 
-const loadTerminalView = () =>
-  import("./TerminalDock").then(({ TerminalDock }) => ({
-    default: TerminalDock,
-  }));
-
 function selectedScope(
   pinnedChatId: string | null,
   preferredChatId?: string,
 ): UserTerminalScope | null {
   const state = useWorkbenchStore.getState();
   if (!state.project || state.projectTransitioning) return null;
-  const activeChat = state.tabs.find(
-    (tab) => tab.id === state.activeTabId && tab.kind === "chat",
-  )?.id;
   const chatId =
-    activeChat ??
-    (state.tabs.some((tab) => tab.kind === "chat" && tab.id === preferredChatId)
-      ? preferredChatId
-      : state.tabs.some((tab) => tab.kind === "chat" && tab.id === pinnedChatId)
-        ? pinnedChatId
-        : firstChatTabId(state.tabs));
+    [state.activeTabId, preferredChatId, pinnedChatId].find((id) =>
+      state.tabs.some((tab) => tab.kind === "chat" && tab.id === id),
+    ) ?? firstChatTabId(state.tabs);
   if (!chatId) return null;
   return {
     projectId: state.project.id,
@@ -199,8 +188,8 @@ export function TerminalDockShell({
   useEffect(() => {
     if (collapsed || entries.length === 0 || TerminalView) return;
     let cancelled = false;
-    void loadTerminalView().then(({ default: View }) => {
-      if (!cancelled) setTerminalView(() => View);
+    void import("./TerminalDock").then(({ TerminalDock }) => {
+      if (!cancelled) setTerminalView(() => TerminalDock);
     });
     return () => {
       cancelled = true;

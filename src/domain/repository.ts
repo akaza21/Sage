@@ -96,6 +96,8 @@ export interface RootRepositoryStatus {
   revertInProgress?: boolean;
   changes: FileChange[];
   truncated: boolean;
+  /** More changes exist than `changes` lists; absent for old snapshots. */
+  changesOverflowed?: boolean;
   elapsedMs: number;
   message: string | null;
 }

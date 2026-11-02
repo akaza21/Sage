@@ -305,6 +305,17 @@ if (
   );
 }
 
+for (const [label, policy] of [
+  ["Production", csp],
+  ["Development", devCsp],
+]) {
+  for (const directive of ["object-src", "base-uri", "form-action"]) {
+    if (policy?.[directive] !== "'none'") {
+      fail(`${label} CSP must set ${directive} to 'none'.`);
+    }
+  }
+}
+
 if (
   devCsp?.["connect-src"] !==
   "'self' ipc: http://ipc.localhost http://tauri.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420"

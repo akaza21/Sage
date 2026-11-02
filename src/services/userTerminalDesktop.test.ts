@@ -23,7 +23,9 @@ const handle = {
   revision: "1",
 };
 
-beforeEach(() => invokeNative.mockReset());
+beforeEach(() => {
+  invokeNative.mockReset();
+});
 
 it("sends only typed scope and dimensions for creation", async () => {
   invokeNative.mockResolvedValue({
@@ -53,14 +55,38 @@ it("decodes a bounded binary output page and preserves cursor strings", async ()
   });
 });
 
+it("decodes exactly 48,000 output bytes and refuses a larger page", async () => {
+  invokeNative.mockResolvedValue({
+    bytesBase64: btoa("\0".repeat(48_000)),
+    nextCursor: "48000",
+    truncated: false,
+  });
+  await expect(readUserTerminal(scope, handle, "0")).resolves.toEqual({
+    bytes: new Uint8Array(48_000),
+    nextCursor: "48000",
+    truncated: false,
+  });
+  invokeNative.mockResolvedValue({
+    bytesBase64: btoa("\0".repeat(48_001)),
+    nextCursor: "48001",
+    truncated: false,
+  });
+  await expect(readUserTerminal(scope, handle, "0")).rejects.toThrow(
+    "Invalid terminal output page",
+  );
+});
+
 it("sends input up to 4,096 UTF-8 bytes and rejects empty or larger input", async () => {
-  invokeNative.mockResolvedValue(undefined);
-  await writeUserTerminal(scope, handle, "x".repeat(4_096));
-  await writeUserTerminal(scope, handle, "é".repeat(2_048));
-  expect(invokeNative).toHaveBeenCalledTimes(2);
+  const received: string[] = [];
+  invokeNative.mockImplementation(async (_command, { request }) => {
+    received.push(request.text);
+  });
+  const accepted = ["x".repeat(4_096), "é".repeat(2_048)];
+  for (const text of accepted) await writeUserTerminal(scope, handle, text);
+  expect(received).toEqual(accepted);
   for (const text of ["", "x".repeat(4_097), "é".repeat(2_048) + "x"])
     await expect(writeUserTerminal(scope, handle, text)).rejects.toThrow();
-  expect(invokeNative).toHaveBeenCalledTimes(2);
+  expect(received).toEqual(accepted);
 });
 
 const acceptedGrids = [
@@ -77,27 +103,37 @@ const rejectedGrids = [
 ] as const;
 
 it("creates terminals only within the native 500 by 300 grid", async () => {
-  invokeNative.mockResolvedValue({ ...handle, shellPath: "/bin/sh" });
+  const grids: number[][] = [];
+  const session = { ...handle, shellPath: "/bin/sh" };
+  invokeNative.mockImplementation(async (_command, { request }) => {
+    grids.push([request.columns, request.rows]);
+    return session;
+  });
   for (const [columns, rows] of acceptedGrids)
-    await createUserTerminal(scope, columns, rows);
-  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+    await expect(createUserTerminal(scope, columns, rows)).resolves.toEqual(
+      session,
+    );
+  expect(grids).toEqual(acceptedGrids);
   for (const [columns, rows] of rejectedGrids)
     await expect(createUserTerminal(scope, columns, rows)).rejects.toThrow(
       "Invalid terminal dimensions",
     );
-  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+  expect(grids).toEqual(acceptedGrids);
 });
 
 it("resizes terminals only within the native 500 by 300 grid", async () => {
-  invokeNative.mockResolvedValue(undefined);
+  const grids: number[][] = [];
+  invokeNative.mockImplementation(async (_command, { request }) => {
+    grids.push([request.columns, request.rows]);
+  });
   for (const [columns, rows] of acceptedGrids)
     await resizeUserTerminal(scope, handle, columns, rows);
-  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+  expect(grids).toEqual(acceptedGrids);
   for (const [columns, rows] of rejectedGrids)
     await expect(
       resizeUserTerminal(scope, handle, columns, rows),
     ).rejects.toThrow("Invalid terminal dimensions");
-  expect(invokeNative).toHaveBeenCalledTimes(acceptedGrids.length);
+  expect(grids).toEqual(acceptedGrids);
 });
 
 it("sends only opaque handle fields when a session also carries shell metadata", async () => {

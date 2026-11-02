@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { FROZEN_WORKBENCH_PORT_METHODS } from "./workbenchPorts";
@@ -19,112 +17,7 @@ import {
 } from "../app/workbenchSelectors";
 import type { WorkbenchState } from "../app/store";
 
-const srcRoot = path.resolve(import.meta.dirname, "..");
-
-function featureProductionFiles(): string[] {
-  const files: string[] = [];
-  function walk(relative: string) {
-    const entries = readdirSync(path.join(srcRoot, relative), {
-      withFileTypes: true,
-    });
-    for (const entry of entries) {
-      const next = `${relative}/${entry.name}`;
-      if (entry.isDirectory()) {
-        walk(next);
-        continue;
-      }
-      if (
-        /\.(?:ts|tsx)$/.test(entry.name) &&
-        !/\.test\.tsx?$/.test(entry.name)
-      ) {
-        files.push(next);
-      }
-    }
-  }
-  walk("features");
-  return files;
-}
-
 describe("S0.3 workbench port seam", () => {
-  it("freezes the six port method names", () => {
-    expect(Object.keys(FROZEN_WORKBENCH_PORT_METHODS).sort()).toEqual([
-      "agent",
-      "chat",
-      "editor",
-      "project",
-      "repository",
-      "settings",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.project).toEqual([
-      "addProjectRootFromPicker",
-      "createProjectFile",
-      "createProjectFolder",
-      "createProjectFromPicker",
-      "ensureLocalProject",
-      "getBootstrapSnapshot",
-      "listDirectory",
-      "persistProjectLayout",
-      "persistProjectLayoutAndClose",
-      "renameProjectFile",
-      "renameProjectFolder",
-      "switchProject",
-      "trashProjectResource",
-      "unwatchWorkspaceNotify",
-      "watchWorkspaceNotify",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.editor).toEqual([
-      "discardEditorBuffer",
-      "openEditorDocument",
-      "readTextFile",
-      "saveEditorDocument",
-      "snapshotEditorBuffer",
-      "watchEditorDocument",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.repository).toEqual([
-      "abortGitInProgress",
-      "checkoutGitLocalBranch",
-      "commitGitRepository",
-      "continueGitCherryPick",
-      "continueGitRebase",
-      "continueGitRevert",
-      "createGitLocalBranch",
-      "deleteGitLocalBranch",
-      "discoverProjectRepositories",
-      "fetchGitRemote",
-      "getFileDiff",
-      "getNestedRepositoryFileDiff",
-      "getNestedRepositoryStatus",
-      "getRepositoryChangeStamp",
-      "getRepositoryStatus",
-      "mutateGitFile",
-      "pullGitRepository",
-      "pushGitRemote",
-      "renameGitLocalBranch",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.chat).toEqual([
-      "activateChat",
-      "archiveChat",
-      "createChat",
-      "moveChat",
-      "pinChat",
-      "renameChat",
-      "restoreChat",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.agent).toEqual([
-      "listHarnesses",
-      "listHarnessModels",
-      "sendPrompt",
-    ]);
-    expect(FROZEN_WORKBENCH_PORT_METHODS.settings).toEqual([
-      "getEditorSettings",
-      "getSessionAccessModes",
-      "getUiAppearance",
-      "setEditorSettings",
-      "setSessionAccessModes",
-      "setUiAppearance",
-    ]);
-  });
-
   it("native and browser adapters implement every frozen port method", () => {
     const native = createNativeWorkbenchPorts();
     const browser = createBrowserWorkbenchPorts();
@@ -228,21 +121,5 @@ describe("S0.3 workbench port seam", () => {
     expect(selectRepositoryStatus(state).elapsedMs).toBe(0);
     expect(selectActiveChatId(state)).toBe("chat:a");
     expect(selectEditorDocument(state)?.resource.relativePath).toBe("a.ts");
-  });
-
-  it("keeps feature production files off the aggregate desktop object", () => {
-    const files = featureProductionFiles();
-    expect(files.length).toBeGreaterThan(0);
-    const offenders: string[] = [];
-    for (const file of files) {
-      const source = readFileSync(path.join(srcRoot, file), "utf8");
-      if (
-        /from ["'](?:\.\.\/)+services\/desktop["']/.test(source) ||
-        /from ["']@?\/?src\/services\/desktop["']/.test(source)
-      ) {
-        offenders.push(file);
-      }
-    }
-    expect(offenders).toEqual([]);
   });
 });

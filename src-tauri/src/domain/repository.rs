@@ -61,6 +61,10 @@ pub struct RootRepositoryStatus {
     pub revert_in_progress: bool,
     pub changes: Vec<FileChange>,
     pub truncated: bool,
+    /// More changes exist than `changes` lists (the cap was passed). A
+    /// truncated status without it may be complete or not.
+    #[serde(default)]
+    pub changes_overflowed: bool,
     pub elapsed_ms: u64,
     pub message: Option<String>,
 }
@@ -86,6 +90,7 @@ impl RootRepositoryStatus {
             revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
+            changes_overflowed: false,
             elapsed_ms: 0,
             message: Some(message.into()),
         }
@@ -111,6 +116,7 @@ impl RootRepositoryStatus {
             revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
+            changes_overflowed: false,
             elapsed_ms,
             message: None,
         }
@@ -136,6 +142,7 @@ impl RootRepositoryStatus {
             revert_in_progress: false,
             changes: Vec::new(),
             truncated: false,
+            changes_overflowed: false,
             elapsed_ms,
             message: Some(
                 "This folder is inside a parent Git repository; select the repository top level for Source Control."

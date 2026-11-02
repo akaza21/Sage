@@ -151,8 +151,11 @@ fn boot(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error::Err
     let database = Database::open(Path::new(":memory:"))?;
     let browser = BrowserState::new(&profile, app.path().app_local_data_dir()?, &[], 1)
         .map_err(std::io::Error::other)?;
-    app.manage(browser);
     let settings = SettingsStore::open(Path::new(":memory:"))?;
+    browser
+        .attach_site_settings(settings.clone())
+        .map_err(std::io::Error::other)?;
+    app.manage(browser);
     app.manage(AppState::try_new_desktop(
         database,
         settings,
