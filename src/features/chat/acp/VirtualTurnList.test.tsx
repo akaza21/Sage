@@ -229,16 +229,6 @@ function scrollTo(top: number) {
   act(() => vi.advanceTimersByTime(50));
 }
 
-it("preserves the measured visible short Turn when earlier Turns arrive", () => {
-  const current = turns();
-  const view = render(<History turns={current} />);
-  scrollTo(scrollHeight() / 2);
-  const before = visibleAnchor();
-  view.rerender(<History turns={[...turns(-9, 10), ...current]} />);
-  expect(visibleAnchor()).toEqual(before);
-  expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
-});
-
 it("Jump to latest lands at the true end after short Turn estimates are measured", () => {
   render(<History turns={turns()} />);
   scrollTo(0);
@@ -259,6 +249,7 @@ it("retains the settled anchor after a correction scroll event and another histo
   const older = [...turns(-9, 10), ...current];
   view.rerender(<History turns={older} />);
   expect(visibleAnchor()).toEqual(before);
+  expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
   act(() => fireEvent.scroll(document.querySelector(".message-list")!));
   act(() => vi.advanceTimersByTime(50));
   view.rerender(<History turns={[...turns(-19, 10), ...older]} />);

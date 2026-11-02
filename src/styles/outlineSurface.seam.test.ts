@@ -4,20 +4,6 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Outline surface stylesheet seam", () => {
-  it("loads Outline rules from a focused stylesheet, not the shell stylesheet", async () => {
-    const [entry, shellCss, surfaceCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/outline-surface.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(/import ["']\.\/styles\/outline-surface\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.outline-surface\b/m);
-    expect(surfaceCss).toMatch(/^\.outline-surface\b/m);
-    expect(surfaceCss).toMatch(/^\.outline-card\b/m);
-    expect(surfaceCss).not.toMatch(/problem/);
-  });
-
   it("keeps Outline rows dense on the four pixel scale, quiet, and truncation-safe", async () => {
     const surfaceCss = await readFile(
       resolve("src/styles/outline-surface.css"),

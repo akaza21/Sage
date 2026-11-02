@@ -117,4 +117,10 @@ export const EDITOR_SETTING_COPY: Readonly<
     description:
       "Updates Source Control when files or Git state change outside Sage, such as a commit from a terminal.",
   },
+  "git.decorations": {
+    group: "Git",
+    label: "Decorations",
+    description:
+      "Shows Git status in Explorer and on tabs: a colored name and a letter for each changed file, and a dot on folders that contain changes.",
+  },
 };
