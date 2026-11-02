@@ -1,0 +1,54 @@
+name: Agent task
+description: A self-contained coding task that an agent (Codex or Claude) can pick up and deliver as one PR.
+title: "[Task]: "
+labels:
+  - status:ready
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The observable outcome, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What is wrong or missing today, with file and line references.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to touch
+      description: The files the change is expected to stay within. List files that must not be touched if another PR owns them.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checks
+      description: Observable, testable statements. Each one maps to a test or a manual check.
+    validations:
+      required: true
+  - type: textarea
+    id: gates
+    attributes:
+      label: Gates
+      description: The exact commands that must pass before the PR leaves draft.
+      value: |
+        - Frontend changes: `npm ci && npm run check`
+        - Rust changes: `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "acp-fixture,acp-schema,cdp-lane,codex-provisioning-helper,custom-protocol,diagnostics" -- -D warnings`, and `cargo test --manifest-path src-tauri/Cargo.toml --features "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics"`
+        - No performance or bundle regression (`npm run test:budgets` where it applies)
+    validations:
+      required: true
+  - type: dropdown
+    id: real-app
+    attributes:
+      label: Needs a real-app check
+      options:
+        - "No"
+        - "Yes: describe it under Acceptance checks"
+    validations:
+      required: true
