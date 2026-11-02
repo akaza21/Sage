@@ -13,7 +13,8 @@ test.describe("Explorer context menu", () => {
     await expect(page.locator(".cm-content")).toBeVisible();
     const row = page.getByRole("treeitem", { name: /^Open file / }).first();
     await expect(row).toBeVisible();
-    const name = (await row.getAttribute("title"))!;
+    // The row's title also carries its Git status, so read the shown name.
+    const name = await row.locator(".tree__name").innerText();
     const tabsBefore = await page.getByRole("tab").count();
 
     await row.click({ button: "right" });
@@ -51,9 +52,7 @@ test.describe("Explorer context menu", () => {
     await expect(menu).toBeVisible();
     await menu.getByRole("menuitem", { name: "Rename File" }).click();
     const dialog = page.getByRole("dialog", { name: "Rename File" });
-    await expect(dialog.getByLabel("File name")).toHaveValue(
-      name.slice(name.lastIndexOf("/") + 1),
-    );
+    await expect(dialog.getByLabel("File name")).toHaveValue(name);
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(row).toBeFocused();
   });
