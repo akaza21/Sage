@@ -34,16 +34,16 @@ describe("Editor chrome alignment seam", () => {
   });
 
   it("lines the repository summary up with the group labels (ED-11)", async () => {
-    const reference = await read("src/styles/editor-visual-reference.css");
+    const controls = await read("src/styles/repository-sidebar-controls.css");
     expect(
-      ruleBody(reference, ".workbench--editor .source-root__summary"),
+      ruleBody(controls, ".workbench--editor .source-root__summary"),
     ).toMatch(/padding:\s*4px 4px 4px 8px;/);
   });
 
   it("draws a disabled Commit without the accent (ED-12)", async () => {
-    const reference = await read("src/styles/editor-visual-reference.css");
+    const controls = await read("src/styles/repository-sidebar-controls.css");
     const disabled = ruleBody(
-      reference,
+      controls,
       ".workbench--editor .repository-commit__actions button:disabled",
     );
     expect(disabled).toBeDefined();

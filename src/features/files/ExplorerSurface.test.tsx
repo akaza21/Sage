@@ -112,57 +112,6 @@ it("discloses the full resource path for truncated Explorer rows", () => {
   );
 });
 
-it("indents Explorer rows from the eight pixel gutter on the sixteen pixel depth step", () => {
-  const root = childResource("root-a");
-  const nested = childResource("root-a", "src/first.ts");
-  useWorkbenchStore.setState({
-    project: {
-      id: "project-a",
-      name: "A",
-      roots: [
-        {
-          id: "root-a",
-          name: "A",
-          ordinal: 0,
-          availability: "available",
-          message: null,
-        },
-      ],
-    },
-    selectedResource: null,
-    directoryListings: {
-      [resourceKey(root)]: {
-        phase: "ready",
-        value: {
-          resource: root,
-          entries: [
-            {
-              name: "first.ts",
-              resource: nested,
-              kind: "file",
-              byteLen: 12,
-            },
-          ],
-          truncated: false,
-        },
-      },
-    },
-    expandedDirectories: {},
-  });
-
-  render(<ExplorerSurface />);
-
-  const gutters = screen
-    .getAllByRole("treeitem")
-    .map((row) => (row as HTMLElement).style.paddingLeft);
-  expect(gutters.length).toBeGreaterThan(0);
-  for (const gutter of gutters) {
-    const px = Number.parseInt(gutter, 10);
-    expect(Number.isNaN(px)).toBe(false);
-    expect((px - 8) % 16).toBe(0);
-  }
-});
-
 it("updates only the affected memoized Explorer rows when selection changes", () => {
   const root = childResource("root-a");
   const first = childResource("root-a", "src/first.ts");

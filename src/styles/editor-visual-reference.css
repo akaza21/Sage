@@ -131,24 +131,6 @@
   border-radius: var(--radius-sm);
 }
 
-.workbench--editor .outline-surface__header {
-  min-height: 36px;
-}
-
-.workbench--editor .outline-surface__header {
-  padding: 0 var(--space-3);
-}
-
-.workbench--editor .workspace-search__input {
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .workspace-search__input button,
-.workbench--editor .workspace-search__details-toggle {
-  min-height: 28px;
-  border-radius: var(--radius-sm);
-}
-
 .workbench--editor .sidebar__heading-actions button,
 .workbench--editor .sidebar__heading > button,
 .workbench--editor .tree__row,
@@ -184,139 +166,13 @@
   cursor: default;
 }
 
-.workbench--editor .source-control-list {
-  padding: 4px;
-}
-
-.workbench--editor .source-control-selector {
-  display: block;
-  margin: 0 2px 4px;
-}
-
-.workbench--editor .source-control-selector .searchable-picker__trigger,
-.workbench--editor .source-control-selector .searchable-picker__input {
-  width: 100%;
-  height: 28px;
-  padding: 0 24px 0 8px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font-size: var(--font-size-xs);
-}
-
 .menu-popover--editor .searchable-picker__input {
   height: 28px;
   padding: 0 8px;
 }
 
-.workbench--editor .source-root__summary {
-  min-height: 32px;
-  /* Lines the repository name up with the group labels and changes. */
-  padding: 4px 4px 4px 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.workbench--editor .source-root__name {
-  grid-column: 1;
-}
-
-.workbench--editor .source-root__branch {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.workbench--editor .source-root__identity {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.workbench--editor .source-group-label {
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.workbench--editor .source-root + .source-root {
-  margin-top: 4px;
-  padding-top: 4px;
-}
-
-.workbench--editor .source-change {
-  height: var(--row-height-compact);
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .repository-commit {
-  gap: 4px;
-  margin: 0 4px 4px;
-}
-
-.workbench--editor .repository-commit__label textarea {
-  height: var(--row-height-emphasis);
-  min-height: var(--row-height-emphasis);
-  padding: 8px;
-  resize: none;
-  border-color: var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  line-height: 18px;
-}
-
-.workbench--editor .repository-commit__footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "actions"
-    "help";
-  gap: 4px;
-}
-
-.workbench--editor .repository-commit__help {
-  grid-area: help;
-}
-
-.workbench--editor .repository-commit__actions {
-  display: flex;
-  width: 100%;
-  grid-area: actions;
-}
-
-.workbench--editor .repository-commit__actions button {
-  min-height: 28px;
-  flex: 1 1 auto;
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor
-  .repository-commit__actions
-  button[type="submit"]:not(:disabled) {
-  border-color: var(--color-accent);
-  color: var(--color-accent-foreground);
-  background: var(--color-accent);
-  font-weight: var(--font-weight-semibold);
-}
-
-/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready. */
-.workbench--editor .repository-commit__actions button:disabled {
-  border-color: var(--color-border-subtle);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: default;
-  /* Instead of the global disabled fade, which would make it too faint. */
-  opacity: 1;
-}
-
-.workbench--editor .workspace-search__result,
-.workbench--editor .outline-card {
-  min-height: var(--row-height-compact);
-  font-size: var(--font-size-sm);
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .workspace-search__empty,
-.workbench--editor .workspace-search__notice,
 .workbench--editor .sidebar__empty,
-.workbench--editor .sidebar__notice,
-.workbench--editor .outline-surface__empty {
+.workbench--editor .sidebar__notice {
   max-width: none;
   margin: 0;
   padding: var(--space-3);
@@ -325,13 +181,7 @@
   line-height: var(--line-height-normal);
 }
 
-.workbench--editor .workspace-search__progress {
-  min-height: 28px;
-}
-
-.workbench--editor .workspace-search__error,
-.workbench--editor .sidebar__error,
-.workbench--editor .repository-commit__error {
+.workbench--editor .sidebar__error {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-left: 2px solid var(--color-danger);
@@ -392,10 +242,7 @@
     border-color: CanvasText;
   }
 
-  .workbench--editor .source-control-selector .searchable-picker__trigger,
-  .workbench--editor .source-control-selector .searchable-picker__input,
-  .menu-popover--editor .searchable-picker__input,
-  .workbench--editor .repository-commit__label textarea {
+  .menu-popover--editor .searchable-picker__input {
     border-color: ButtonText;
   }
 }
