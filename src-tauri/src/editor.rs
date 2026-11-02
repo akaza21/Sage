@@ -83,16 +83,29 @@ pub fn save_document(
     workspace: &Workspace,
     resource: &ResourceRef,
 ) -> AppResult<EditorSaveResult> {
-    save_document_with(database, workspace, resource, || {})
+    save_document_with(database, workspace, resource, |_| Ok(()))
 }
 
-/// Saves through the document's held parent directory. `after_resolve` runs
-/// once the parent is held and before anything is written.
+/// The points in a save at which `save_document_with` calls its observer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SaveStage {
+    /// The parent directory is held and nothing is written yet.
+    ParentHeld,
+    /// The temporary file holds the content but is not yet durable.
+    TempWritten,
+    /// The conflict read has passed and the replace is next.
+    BeforeReplace,
+    /// The temporary file has replaced the target.
+    AfterReplace,
+}
+
+/// Saves through the document's held parent directory. An error from
+/// `observe` fails the save at that stage, as the step there would.
 fn save_document_with(
     database: &Database,
     workspace: &Workspace,
     resource: &ResourceRef,
-    after_resolve: impl FnOnce(),
+    mut observe: impl FnMut(SaveStage) -> std::io::Result<()>,
 ) -> AppResult<EditorSaveResult> {
     let resource = normalized_resource(workspace, resource)?;
     let path = resource.relative_path.clone();
@@ -126,7 +139,7 @@ fn save_document_with(
 
     let (parent_path, file_name) = split_contract_path(&path);
     let parent = HeldParent::open(workspace, parent_path)?;
-    after_resolve();
+    observe(SaveStage::ParentHeld)?;
     // The target handle closes here, so none is open across the replace.
     let permissions = parent.open_file(file_name)?.metadata()?.permissions();
     let temp_path = temporary_contract_path(&path)?;
@@ -142,14 +155,17 @@ fn save_document_with(
         )
     };
 
-    if let Err(error) = parent.write_temporary_file(temp_name, permissions, materialized.as_bytes())
+    if let Err(error) =
+        parent.write_temporary_file(temp_name, permissions, materialized.as_bytes(), || {
+            observe(SaveStage::TempWritten)
+        })
     {
         abandon();
         return Err(error);
     }
 
-    let latest_disk = match parent.read_document(file_name) {
-        Ok(document) => document,
+    let (latest_disk, target_identity) = match parent.read_document_with_identity(file_name) {
+        Ok(read) => read,
         Err(error) => {
             abandon();
             return Err(error);
@@ -160,11 +176,31 @@ fn save_document_with(
         return Ok(conflict_result(resource, latest_disk, buffer));
     }
 
-    if let Err(error) = parent.replace(temp_name, file_name) {
+    let replaced = observe(SaveStage::BeforeReplace)
+        .map_err(AppError::from)
+        .and_then(|()| parent.ensure_entry_is(file_name, target_identity))
+        .and_then(|()| parent.ensure_named_by(workspace, parent_path))
+        .and_then(|()| parent.replace(temp_name, file_name));
+    if let Err(error) = replaced {
         abandon();
         return Err(error);
     }
+    // The temporary file is now the target, so nothing is left to remove.
+    database.clear_editor_pending_temp(workspace.project_id(), &resource)?;
     parent.sync()?;
+
+    // If the path stopped naming the held folder, the bytes landed in that
+    // folder rather than at the requested path, so the buffer stays dirty.
+    let still_named = observe(SaveStage::AfterReplace)
+        .map_err(AppError::from)
+        .and_then(|()| parent.ensure_named_by(workspace, parent_path));
+    if still_named.is_err() {
+        return Err(AppError::InvalidRequest(
+            "the content was written to the folder this file was in when the save began, \
+             but that folder was moved or replaced during the save; the unsaved buffer is kept"
+                .into(),
+        ));
+    }
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
 
     Ok(EditorSaveResult {

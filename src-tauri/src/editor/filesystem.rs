@@ -12,7 +12,7 @@ use crate::{
     editor_persistence::PersistedEditorBuffer,
     error::{AppError, AppResult},
     persistence::Database,
-    workspace::{Workspace, open_workspace_text_file},
+    workspace::{RootIdentity, Workspace, leaf_identity, open_workspace_text_file},
 };
 
 pub(super) use self::platform::HeldParent;
@@ -141,16 +141,53 @@ impl HeldParent {
         disk_document_from(&self.open_file(name)?)
     }
 
+    /// Reads the document `name` and returns the identity of the file read.
+    pub(super) fn read_document_with_identity(
+        &self,
+        name: &str,
+    ) -> AppResult<(DiskDocument, RootIdentity)> {
+        let file = self.open_file(name)?;
+        let identity = leaf_identity(&file, &file.metadata()?)?;
+        Ok((disk_document_from(&file)?, identity))
+    }
+
+    /// Fails unless `name` is still the regular file with identity `expected`.
+    pub(super) fn ensure_entry_is(&self, name: &str, expected: RootIdentity) -> AppResult<()> {
+        let file = self.open_file(name)?;
+        if leaf_identity(&file, &file.metadata()?)? != expected {
+            return Err(AppError::InvalidRequest(
+                "the file was replaced while it was being saved".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Fails unless `parent`, walked again from the verified root, still
+    /// names this held directory.
+    pub(super) fn ensure_named_by(&self, workspace: &Workspace, parent: &str) -> AppResult<()> {
+        let still_named = HeldParent::open(workspace, parent)
+            .and_then(|fresh| Ok(fresh.identity()? == self.identity()?));
+        if !matches!(still_named, Ok(true)) {
+            return Err(AppError::InvalidRequest(
+                "the file's folder was moved or replaced while it was being saved".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Creates the temporary file `temp_name` inside this directory with the
-    /// given permissions and makes its content durable.
+    /// given permissions and makes its content durable. `before_sync` runs
+    /// once the content is written and can abandon the write.
     pub(super) fn write_temporary_file(
         &self,
         temp_name: &str,
         permissions: fs::Permissions,
         content: &[u8],
+        before_sync: impl FnOnce() -> std::io::Result<()>,
     ) -> AppResult<()> {
         let mut file = self.create_new(temp_name)?;
         file.write_all(content)?;
+        before_sync()?;
         file.set_permissions(permissions)?;
         file.sync_all()?;
         Ok(())
@@ -225,7 +262,7 @@ mod platform {
 
     use crate::{
         error::{AppError, AppResult},
-        workspace::{Workspace, open_held_parent},
+        workspace::{RootIdentity, Workspace, open_held_parent, root_identity_metadata},
     };
 
     /// Owner read and write only until the target's permissions are copied.
@@ -262,6 +299,10 @@ mod platform {
         pub(in crate::editor) fn open(workspace: &Workspace, parent: &str) -> AppResult<Self> {
             let directory = open_held_parent(workspace.root(), workspace.root_identity(), parent)?;
             Ok(Self { directory })
+        }
+
+        pub(in crate::editor) fn identity(&self) -> AppResult<RootIdentity> {
+            root_identity_metadata(&self.directory.metadata()?)
         }
 
         /// Opens `name` for reading without following a final link.
@@ -331,11 +372,13 @@ mod platform {
 
     use crate::{
         error::{AppError, AppResult},
-        workspace::{RootIdentity, Workspace, open_held_parent, open_workspace_text_file},
+        workspace::{
+            RootIdentity, Workspace, open_held_parent, open_workspace_text_file, root_identity_file,
+        },
     };
 
     pub(in crate::editor) struct HeldParent {
-        _guards: Vec<File>,
+        guards: Vec<File>,
         directory: PathBuf,
         root: PathBuf,
         root_identity: RootIdentity,
@@ -354,12 +397,20 @@ mod platform {
             let (guards, directory) =
                 open_held_parent(workspace.root(), workspace.root_identity(), parent)?;
             Ok(Self {
-                _guards: guards,
+                guards,
                 directory,
                 root: workspace.root().to_path_buf(),
                 root_identity: workspace.root_identity(),
                 relative: parent.to_owned(),
             })
+        }
+
+        pub(in crate::editor) fn identity(&self) -> AppResult<RootIdentity> {
+            root_identity_file(
+                self.guards
+                    .last()
+                    .expect("the held walk always retains the root and parent"),
+            )
         }
 
         fn entry(&self, name: &str) -> AppResult<PathBuf> {
@@ -424,7 +475,7 @@ mod platform {
 
     use crate::{
         error::{AppError, AppResult},
-        workspace::Workspace,
+        workspace::{RootIdentity, Workspace},
     };
 
     pub(in crate::editor) struct HeldParent;
@@ -435,6 +486,10 @@ mod platform {
 
     impl HeldParent {
         pub(in crate::editor) fn open(_workspace: &Workspace, _parent: &str) -> AppResult<Self> {
+            Err(unavailable())
+        }
+
+        pub(in crate::editor) fn identity(&self) -> AppResult<RootIdentity> {
             Err(unavailable())
         }
 
