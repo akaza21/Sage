@@ -111,6 +111,36 @@ const CODEX_OPTIONS = `(harness=>{const controls=harness.getAttribute('aria-cont
 const AGENT_SURFACES =
   "[...panes[0].querySelectorAll('section.chat-surface[aria-label=\"Agent chat\"]')]";
 
+// Names the first unmet precondition of openCodexPicker, so a picker that
+// never becomes openable fails with the reason rather than a bare code.
+export const ACP04_CODEX_PICKER_STATES = Object.freeze([
+  "ready",
+  "pane-count",
+  "surface-count",
+  "trigger-count",
+  "trigger-disabled",
+  "trigger-expanded",
+]);
+const CODEX_PICKER_STATE_EXPRESSION = `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return 'pane-count';const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return 'surface-count';const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1)return 'trigger-count';if(harness[0].disabled)return 'trigger-disabled';if(harness[0].getAttribute('aria-expanded')!=='false')return 'trigger-expanded';return 'ready'})()`;
+
+// Waits, within the journey deadline, for a fresh chat's Harness trigger to
+// become openable. On timeout the failure code carries the last observed
+// state; an observation outside the known states fails immediately.
+export async function awaitCodexPickerOpenable(read, deadline) {
+  let last = "unobserved";
+  while (Date.now() < deadline) {
+    const state = await read();
+    if (!ACP04_CODEX_PICKER_STATES.includes(state))
+      fail("codex-picker-state-invalid");
+    if (state === "ready") return;
+    last = state;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
+    );
+  }
+  fail(`codex-picker-${last}-timeout`);
+}
+
 export function createAcp04Ui(codexVersion) {
   if (!codexSemanticVersion(codexVersion)) fail("codex-version-invalid");
   const codexId = JSON.stringify(ACP04_CODEX_HARNESS_ID);
@@ -124,6 +154,7 @@ export function createAcp04Ui(codexVersion) {
     seededChatId: `(()=>{const panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(panes.length!==1||rails.length!==1)return null;return rails[0].dataset.chatId||null})()`,
     createFreshChat:
       "(()=>{const sidebars=[...document.querySelectorAll('aside[aria-label=\"Projects and chats\"]')];if(sidebars.length!==1)return false;const buttons=[...sidebars[0].querySelectorAll('button[aria-label=\"New task\"]')].filter(x=>!x.disabled);if(buttons.length!==1)return false;buttons[0].click();return true})()",
+    codexPickerState: CODEX_PICKER_STATE_EXPRESSION,
     openCodexPicker: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='false')return false;harness[0].click();return true})()`,
     codexSelectable: `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(!${AGENT_MODE}||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS};if(harness.length!==1||models.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);return options!==null&&options.length===1})()`,
     selectCodex: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);if(options===null||options.length!==1)return false;options[0].click();return true})()`,
@@ -338,6 +369,10 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
         "acp04-fresh-chat-timeout",
       ),
     waitForCodexSelectable: async () => {
+      await awaitCodexPickerOpenable(
+        () => readiness(ui.codexPickerState),
+        deadline,
+      );
       await exactAction(ui.openCodexPicker, "codex-picker-open-invalid");
       return waitUntil(
         () => readiness(ui.codexSelectable),

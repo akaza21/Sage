@@ -21,6 +21,7 @@ import {
   ACP04_SNAPSHOT_EXPRESSION,
   acceptModeBSnapshot,
   acceptModeASnapshot,
+  awaitCodexPickerOpenable,
   createAcp04Ui,
   createAcp04Receipt,
   createModeBState,
@@ -791,6 +792,50 @@ test("snapshot DOM keys model identity on the selected id, not its label", () =>
   assert.equal(observe("", "1").model, null);
 });
 
+test("Codex picker wait names the unmet precondition", () => {
+  const ui = createAcp04Ui(CODEX_VERSION);
+  const state = (markup) => withDom(markup, () => eval(ui.codexPickerState));
+  assert.equal(state(agentWorkbenchMarkup()), "ready");
+  assert.equal(
+    state(agentWorkbenchMarkup() + agentWorkbenchMarkup()),
+    "pane-count",
+  );
+  assert.equal(
+    state(
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup().replace('aria-label="Harness"', ""),
+      }),
+    ),
+    "trigger-count",
+  );
+  assert.equal(
+    state(
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup() + composerControlsMarkup(),
+      }),
+    ),
+    "trigger-count",
+  );
+});
+
+test("Codex picker wait retries until openable and fails with the last state", async () => {
+  const sequence = ["trigger-disabled", "trigger-expanded", "ready"];
+  let reads = 0;
+  await awaitCodexPickerOpenable(
+    async () => sequence[reads++],
+    Date.now() + 5_000,
+  );
+  assert.equal(reads, 3);
+  await assert.rejects(
+    awaitCodexPickerOpenable(async () => "trigger-disabled", Date.now() + 250),
+    /^Error: acp04-codex-picker-trigger-disabled-timeout$/,
+  );
+  await assert.rejects(
+    awaitCodexPickerOpenable(async () => false, Date.now() + 5_000),
+    /^Error: acp04-codex-picker-state-invalid$/,
+  );
+});
+
 test("Mode A retries only a post-send projection-unavailable observation without resending", async () => {
   let sent = 0;
   let postSendObservations = 0;
@@ -1050,7 +1095,13 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       document.querySelector("main").className = "workbench workbench--agent";
       assert.equal(eval(ui.seededAgentReady), true);
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexPickerState), "ready");
+      harness.disabled = true;
+      assert.equal(eval(ui.codexPickerState), "trigger-disabled");
+      assert.equal(eval(ui.openCodexPicker), false);
+      harness.disabled = false;
       assert.equal(eval(ui.openCodexPicker), true);
+      assert.equal(eval(ui.codexPickerState), "trigger-expanded");
       assert.equal(eval(ui.openCodexPicker), false);
       assert.equal(eval(ui.codexSelectable), false);
       const decoy = mountHarnessPicker("decoy-listbox");
