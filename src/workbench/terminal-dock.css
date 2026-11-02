@@ -12,16 +12,6 @@
   display: none;
 }
 
-.status-bar__terminal {
-  gap: 5px;
-  padding: 0 6px;
-}
-
-.status-bar__terminal[aria-pressed="true"] {
-  color: var(--color-text-primary);
-  background: var(--color-border-subtle);
-}
-
 .terminal-dock {
   display: grid;
   min-width: 0;

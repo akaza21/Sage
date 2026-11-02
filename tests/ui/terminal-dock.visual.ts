@@ -114,6 +114,38 @@ test("defaults closed; the labelled toggle persists open and closed across reloa
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(toggle).toHaveAttribute("title", "Show terminal (Ctrl+`)");
   await expect(dock).toHaveCount(0);
+  const layout = await toggle.evaluate((button) => {
+    const icon = button.querySelector("span")!.getBoundingClientRect();
+    const label = [...button.childNodes].find(
+      (node) =>
+        node.nodeType === Node.TEXT_NODE &&
+        node.textContent?.includes("Terminal"),
+    )!;
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    const text = range.getBoundingClientRect();
+    const footer = button.closest("footer")!.getBoundingClientRect();
+    return {
+      icon: { x: icon.x, y: icon.y, width: icon.width, height: icon.height },
+      text: { x: text.x, y: text.y, height: text.height },
+      footer: { top: footer.top, bottom: footer.bottom },
+    };
+  });
+  expect(layout.text.x).toBeGreaterThanOrEqual(
+    layout.icon.x + layout.icon.width,
+  );
+  expect(
+    Math.abs(
+      layout.icon.y +
+        layout.icon.height / 2 -
+        layout.text.y -
+        layout.text.height / 2,
+    ),
+  ).toBeLessThan(2);
+  expect(layout.text.y).toBeGreaterThanOrEqual(layout.footer.top);
+  expect(layout.text.y + layout.text.height).toBeLessThanOrEqual(
+    layout.footer.bottom,
+  );
   for (const visible of [true, false]) {
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
