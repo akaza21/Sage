@@ -109,6 +109,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
   "src/features/files/editorEditing.ts",
+  // Git marks (EP-13) load only while on and a repository is open.
+  "src/features/git/gitDecorationsUi.ts",
+  // The Editor tab strip loads with the Editor.
+  "src/workbench/TabStrip.tsx",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",
@@ -393,6 +397,30 @@ describe("desktop-native runtime resolver", () => {
         "/src/features/chat/composerChrome.ts",
         "/src/workbench/agentChatRail.ts",
         "/src/workbench/agentRailStatusView.ts",
+      ]) {
+        expect(
+          closureForModule(graph, facade).some((id) => id.endsWith(module)),
+          `${facade}: ${module}`,
+        ).toBe(false);
+      }
+    }
+  }, 90_000);
+
+  it("keeps the Editor tab strip and its Git decorations (EP-13) out of the Agent first-Chat closure", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    for (const facade of [
+      "src/workbench/Workbench.tsx",
+      "src/workbench/AgentWorkbenchBody.tsx",
+      "src/features/chat/ChatSurface.tsx",
+      "src/features/chat/acp/AcpChatPresentation.tsx",
+    ]) {
+      for (const module of [
+        "/src/features/git/gitDecorations.ts",
+        "/src/features/git/GitDecorationBadge.tsx",
+        "/src/features/git/GitTabTitle.tsx",
+        "/src/workbench/TabStrip.tsx",
+        "/src/features/git/useRootGitDecorations.ts",
+        "/src/features/git/git-decorations.css",
       ]) {
         expect(
           closureForModule(graph, facade).some((id) => id.endsWith(module)),

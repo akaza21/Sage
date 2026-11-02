@@ -149,6 +149,12 @@ export const EDITOR_SETTINGS = [
     default: true,
     ticket: "EP-12",
   },
+  {
+    key: "git.decorations",
+    kind: "boolean",
+    default: true,
+    ticket: "EP-13",
+  },
 ] as const satisfies readonly EditorSettingSpec[];
 
 type Entry = (typeof EDITOR_SETTINGS)[number];
