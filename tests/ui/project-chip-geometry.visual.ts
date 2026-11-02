@@ -47,7 +47,9 @@ async function expectResponsiveToolbar(composer: Locator) {
   await composer.evaluate(
     () =>
       new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
       ),
   );
   const project = composer.getByRole("button", { name: /^Project: / });

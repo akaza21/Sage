@@ -151,7 +151,9 @@ for (const width of [1888, 720, 480]) {
       await composer.evaluate(
         () =>
           new Promise((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
           ),
       );
       const compactProject =
@@ -375,9 +377,7 @@ for (const [state, install] of Object.entries(toolbarStates)) {
     ).toBeVisible();
     const sweep = await composer.evaluate(async (element, priority) => {
       const frame = () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        );
+        new Promise((resolve) => requestAnimationFrame(resolve));
       const controls = element.querySelector<HTMLElement>(
         ".composer__controls",
       )!;
@@ -393,7 +393,16 @@ for (const [state, install] of Object.entries(toolbarStates)) {
       const results = [];
       for (let width = 560; width >= 200; width -= 2) {
         element.style.width = `${width}px`;
-        await frame();
+        // A resize refits the row on a later frame; wait until it settles.
+        let layout = "";
+        for (let settled = 0; settled < 3;) {
+          await frame();
+          const next = [...controls.querySelectorAll("*")]
+            .map((node) => node.getBoundingClientRect().right)
+            .join();
+          settled = next === layout ? settled + 1 : 0;
+          layout = next;
+        }
         const labels = priority.map((selector) => {
           const label = element.querySelector<HTMLElement>(selector);
           const box = label?.getBoundingClientRect();
