@@ -1,6 +1,11 @@
 import { language as languageFacet } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
-import { TreeFragment, type Parser, type Tree } from "@lezer/common";
+import {
+  TreeFragment,
+  type Parser,
+  type SyntaxNode,
+  type Tree,
+} from "@lezer/common";
 
 import {
   editorLanguageForPath,
@@ -142,6 +147,13 @@ function yieldToMainThread(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+interface OutlineFrame {
+  /** The next sibling to collect at this level. */
+  node: SyntaxNode | null;
+  depth: number;
+  collect: Collect;
+}
+
 async function outlineFromTree(
   tree: Tree,
   source: string,
@@ -171,29 +183,36 @@ async function outlineFromTree(
       // Six heading levels nest at most five deep, inside MAX_OUTLINE_DEPTH.
       depth = headingLevels.length;
       if (push(name, "heading", at)) headingLevels.push(level);
-      depth = 0;
     },
-    members(container, collect) {
+    members(container, collectMembers) {
       if (!container || depth + 1 >= MAX_OUTLINE_DEPTH) return;
-      depth += 1;
-      for (
-        let child = container.firstChild;
-        child && !truncated;
-        child = child.nextSibling
-      ) {
-        collect(child, sink);
-      }
-      depth -= 1;
+      queued.push({
+        node: container.firstChild,
+        depth: depth + 1,
+        collect: collectMembers,
+      });
     },
     full: () => truncated,
   };
+  // One explicit stack walks top-level and nested declarations alike, so
+  // every node counts against the same slice budget. Members queued while a
+  // node is collected run next, in order, which keeps document order.
+  const frames: OutlineFrame[] = [
+    { node: tree.topNode.firstChild, depth: 0, collect },
+  ];
+  const queued: OutlineFrame[] = [];
   let sliceEnd = performance.now() + OUTLINE_PARSE_SLICE_MS;
-  for (
-    let node = tree.topNode.firstChild;
-    node && !truncated;
-    node = node.nextSibling
-  ) {
-    collect(node, sink);
+  while (frames.length && !truncated) {
+    const frame = frames[frames.length - 1]!;
+    const node = frame.node;
+    if (!node) {
+      frames.pop();
+      continue;
+    }
+    frame.node = node.nextSibling;
+    depth = frame.depth;
+    frame.collect(node, sink);
+    while (queued.length) frames.push(queued.pop()!);
     if (performance.now() >= sliceEnd) {
       await yieldToMainThread();
       if (!current()) return null;

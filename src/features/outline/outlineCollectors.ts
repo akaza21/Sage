@@ -14,7 +14,10 @@ export interface OutlineSink {
    * higher level (a smaller number).
    */
   emitHeading(name: string, level: number, at: number): void;
-  /** Collects each child of `container` one level below the current depth. */
+  /**
+   * Queues each child of `container` to be collected one level below the
+   * current depth, right after the current node's own symbols.
+   */
   members(container: SyntaxNode | null, collect: Collect): void;
   /** True once the cap is reached and further symbols only mark truncation. */
   full(): boolean;

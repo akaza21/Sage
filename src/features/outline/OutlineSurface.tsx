@@ -97,14 +97,18 @@ interface OutlineTreeProps {
  */
 function OutlineTree({ symbols, location, onOpen }: OutlineTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const keys = useMemo(() => outlineRowKeys(symbols), [symbols]);
   const rows = useMemo(
-    () => visibleOutlineRows(symbols, collapsed),
-    [symbols, collapsed],
+    () => visibleOutlineRows(symbols, keys, collapsed),
+    [symbols, keys, collapsed],
   );
   const setRowCollapsed = ({ key, parent }: OutlineRow, next: boolean) => {
     if (!parent) return;
     setCollapsed((current) => {
-      const updated = new Set(current);
+      // Keep only rows the File still declares, so the set never outgrows
+      // the current Outline however many edits came before.
+      const live = new Set(keys);
+      const updated = new Set([...current].filter((entry) => live.has(entry)));
       updated[next ? "add" : "delete"](key);
       return updated;
     });
@@ -167,7 +171,7 @@ function OutlineTree({ symbols, location, onOpen }: OutlineTreeProps) {
 }
 
 interface OutlineRow {
-  /** Stable while the symbol keeps its name and position. */
+  /** Stable across edits elsewhere in the File; see outlineRowKeys. */
   key: string;
   symbol: OutlineSymbol;
   /** True when deeper symbols directly follow, so the row can collapse. */
@@ -175,8 +179,23 @@ interface OutlineRow {
   collapsed: boolean;
 }
 
-function outlineRowKey(symbol: OutlineSymbol): string {
-  return `${symbol.offset}:${symbol.name}`;
+/**
+ * A row's identity is its path of kinds and names from the top level, with an
+ * ordinal for same-named siblings. Unlike an offset, it survives edits above
+ * the symbol, so a collapsed row stays collapsed while it is typed around.
+ */
+function outlineRowKeys(symbols: readonly OutlineSymbol[]): string[] {
+  const ancestors: string[] = [];
+  const counts = new Map<string, number>();
+  return symbols.map(({ depth, kind, name }) => {
+    ancestors.length = depth;
+    const base = `${ancestors[depth - 1] ?? ""}\n${kind}:${name}`;
+    const ordinal = counts.get(base) ?? 0;
+    counts.set(base, ordinal + 1);
+    const key = `${base}#${ordinal}`;
+    ancestors[depth] = key;
+    return key;
+  });
 }
 
 /**
@@ -186,6 +205,7 @@ function outlineRowKey(symbol: OutlineSymbol): string {
  */
 function visibleOutlineRows(
   symbols: readonly OutlineSymbol[],
+  keys: readonly string[],
   collapsed: ReadonlySet<string>,
 ): OutlineRow[] {
   const rows: OutlineRow[] = [];
@@ -193,7 +213,7 @@ function visibleOutlineRows(
   symbols.forEach((symbol, index) => {
     if (symbol.depth > hiddenBelow) return;
     hiddenBelow = Number.POSITIVE_INFINITY;
-    const key = outlineRowKey(symbol);
+    const key = keys[index] ?? "";
     const parent = (symbols[index + 1]?.depth ?? -1) > symbol.depth;
     const isCollapsed = parent && collapsed.has(key);
     if (isCollapsed) hiddenBelow = symbol.depth;

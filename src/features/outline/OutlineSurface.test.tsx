@@ -183,6 +183,42 @@ describe("OutlineSurface", () => {
     expect(names()).toHaveLength(2);
   });
 
+  it("keeps a collapsed row collapsed through edits and forgets rows the File no longer declares", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    activateResource();
+    const body = " {\n  area() {}\n}\nclass Box {\n  side() {}\n}\n";
+    setContent(`class Shape${body}`);
+    render(<OutlineSurface />);
+    const row = (name: string) =>
+      screen.findByRole("treeitem", { name: new RegExp(`^Class: ${name}`) });
+    const edit = async (content: string) => {
+      act(() => setContent(content));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(OUTLINE_SETTLE_MS);
+      });
+    };
+
+    fireEvent.keyDown(await row("Shape"), { key: "ArrowLeft" });
+    expect(await row("Shape")).toHaveAttribute("aria-expanded", "false");
+
+    // Lines typed above move every offset; the row is still the same row.
+    await edit(`// one\n// two\nclass Shape${body}`);
+    await waitFor(async () =>
+      expect(await row("Shape")).toHaveAttribute("aria-expanded", "false"),
+    );
+
+    // Renamed away, the collapsed entry is stale; the next toggle drops it,
+    // so the old name comes back expanded.
+    await edit(`// one\n// two\nclass Renamed${body}`);
+    await row("Renamed");
+    fireEvent.keyDown(await row("Box"), { key: "ArrowLeft" });
+    await edit(`// one\n// two\nclass Shape${body}`);
+    await waitFor(async () =>
+      expect(await row("Shape")).toHaveAttribute("aria-expanded", "true"),
+    );
+    expect(await row("Box")).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("keeps the last Outline while typing and rebuilds once edits settle", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     activateResource();
