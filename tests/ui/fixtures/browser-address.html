@@ -76,7 +76,15 @@
                   projectId: "project-visual",
                   tabId: "browser-visual",
                   ready: true,
-                  chats: [{ id: "chat-visual", title: chatTitle }],
+                  chats: [
+                    { id: "chat-visual", title: chatTitle },
+                    ...params
+                      .getAll("also")
+                      .map((title, index) => ({
+                        id: `chat-also-${index}`,
+                        title,
+                      })),
+                  ],
                 }),
               )
             : React.createElement(

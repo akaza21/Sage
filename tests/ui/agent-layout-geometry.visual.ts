@@ -460,3 +460,26 @@ async function expectHitTestable(page: Page, control: Locator) {
   );
   expect(hit).toBe(true);
 }
+
+test("the chat picker in the More menu changes chat by keyboard", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await page.goto(
+    "/tests/ui/fixtures/browser-address.html?chat=Chat%3A%201&also=Chat%3A%202&width=339",
+  );
+  await page.getByRole("button", { name: "More options" }).click();
+  const menu = page.getByRole("menu", { name: "Browser menu" });
+  const select = menu.getByRole("combobox", { name: "Chat for browser tab" });
+  await select.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(select).toBeFocused();
+  await expect(select.locator("option:checked")).toHaveText("Chat: 2");
+  await page.keyboard.press("Home");
+  await expect(select).toBeFocused();
+  await expect(select.locator("option:checked")).toHaveText("Chat: 1");
+  // Arrow keys elsewhere in the menu still move between its items.
+  await menu.getByRole("menuitem", { name: "Find in page" }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "Print" })).toBeFocused();
+});

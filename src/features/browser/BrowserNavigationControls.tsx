@@ -117,6 +117,8 @@ export function BrowserNavigationControls({
       return;
     }
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    // Form controls moved into the menu keep their own arrow keys.
+    if ((event.target as Element).closest("select, input, textarea")) return;
     event.preventDefault();
     const items = Array.from(
       menu.current?.querySelectorAll<HTMLButtonElement>(
