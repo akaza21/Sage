@@ -586,3 +586,60 @@ test("an attach error shows above the native page, never behind it", async ({
   const toolbar = await bounds(surface.locator(".browser-surface__toolbar"));
   expect(shown.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - SUBPIXEL);
 });
+
+test("an attached Agent's controls stack whole inside the More menu", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  for (const width of [339, 560]) {
+    await page.goto(
+      `/tests/ui/fixtures/browser-address.html?chat=${encodeURIComponent(
+        "Chat: Walking skeleton for the agent workbench",
+      )}&agent&width=${width}`,
+    );
+    await page.getByRole("button", { name: "More options" }).click();
+    const menu = page.getByRole("menu", { name: "Browser menu" });
+    const group = menu.getByRole("group", { name: "Page actions" });
+    const edge = await bounds(menu);
+    const controls = [
+      group.getByRole("button", { name: "Ask about this page" }),
+      group.getByRole("combobox", { name: "Chat for browser tab" }),
+      group.getByRole("button", { name: "Attach tab to chat" }),
+      group.getByRole("status"),
+      group.getByRole("button", { name: "Take over" }),
+      group.getByRole("button", { name: "Stop agent" }),
+    ];
+    const boxes = [];
+    for (const control of controls) {
+      const box = await bounds(control);
+      expectInside(box, edge);
+      boxes.push(box);
+    }
+    for (const control of controls.filter((_, index) => index !== 3))
+      await expectHitTestable(page, control);
+    for (const [i, a] of boxes.entries())
+      for (const b of boxes.slice(i + 1))
+        expect(
+          a.x + a.width <= b.x + SUBPIXEL ||
+            b.x + b.width <= a.x + SUBPIXEL ||
+            a.y + a.height <= b.y + SUBPIXEL ||
+            b.y + b.height <= a.y + SUBPIXEL,
+        ).toBe(true);
+    // The two groups stack: the Agent's presence sits below the attachment.
+    expect(boxes[3].y).toBeGreaterThanOrEqual(
+      boxes[1].y + boxes[1].height - SUBPIXEL,
+    );
+    // Neither row is clipped by the menu.
+    for (const row of [
+      group.locator(".browser-surface__attachment"),
+      group.locator(".browser-surface__agent-presence"),
+    ])
+      expect(
+        await row.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      ).toBe(true);
+    await expect(group.getByRole("status")).toHaveAttribute(
+      "title",
+      /Walking skeleton for the agent workbench/,
+    );
+  }
+});

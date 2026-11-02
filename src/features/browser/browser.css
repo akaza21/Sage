@@ -221,10 +221,21 @@
     display: block;
   }
 }
-/* In the More menu the page actions have room for the chat's title. */
-.browser-surface__menu-page-actions .browser-surface__page-actions,
+/* In the More menu the page actions stack: the attachment row, which has
+   room for the chat's title, above the Agent's presence row. */
+.browser-surface__menu-page-actions {
+  min-width: 0;
+}
+.browser-surface__menu-page-actions .browser-surface__page-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
 .browser-surface__menu-page-actions .browser-surface__attachment {
   flex: 1 1 auto;
+}
+.browser-surface__menu-page-actions .browser-surface__agent-presence-label {
+  flex: 1 1 auto;
+  max-width: none;
 }
 .browser-surface__menu-page-actions .browser-surface__chat-picker {
   flex: 1 1 0;

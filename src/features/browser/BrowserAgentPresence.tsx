@@ -32,7 +32,12 @@ export function BrowserAgentPresence({
       className="browser-surface__agent-presence"
       data-control={userControl ? "user" : "agent"}
     >
-      <span className="browser-surface__agent-presence-label" role="status">
+      {/* The label truncates; its title keeps the whole text reachable. */}
+      <span
+        className="browser-surface__agent-presence-label"
+        role="status"
+        title={`${label} · ${chatTitle}`}
+      >
         {`${label} · ${chatTitle}`}
       </span>
       <button

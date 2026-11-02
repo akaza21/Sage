@@ -38,6 +38,10 @@ const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
 const browserHistory = vi.fn(async (_tabId: string) => [
   "https://example.com/",
 ]);
+const attachBrowserTab = vi.fn(
+  async (_projectId: string, _chatId: string, _tabId: string) =>
+    ({}) as unknown,
+);
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -73,7 +77,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
   browserSuggestedSites: () => browserSuggestedSites(),
   browserHistory: (tabId: string) => browserHistory(tabId),
-  attachBrowserTab: vi.fn(),
+  attachBrowserTab: (projectId: string, chatId: string, tabId: string) =>
+    attachBrowserTab(projectId, chatId, tabId),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
   stopBrowserTab: (tabId: string) => stopBrowserTab(tabId),
@@ -736,4 +741,39 @@ it("still hides the native page for real when the centre pane is hidden", async 
   act(() => center.setAttribute("aria-hidden", "true"));
   await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   center.remove();
+});
+
+it("shows a failed attach in the surface's error row and clears it on a successful retry", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    project: { id: "project-1" } as typeof previous.project,
+    tabs: [{ ...tab, id: "chat-attach", kind: "chat", title: "Research chat" }],
+  });
+  attachBrowserTab.mockRejectedValueOnce(new Error("native"));
+  const view = render(<BrowserSurface tab={tab} />);
+  const attach = await screen.findByRole("button", {
+    name: "Attach tab to chat",
+  });
+  await waitFor(() => expect(attach).toBeEnabled());
+  fireEvent.click(attach);
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent(
+    "Could not attach this tab to the selected chat.",
+  );
+  // The row sits in the surface's layout between the toolbar and the page,
+  // not inside the toolbar, so it pushes the native page down.
+  expect(error.closest(".browser-surface__toolbar")).toBeNull();
+  const toolbar = view.container.querySelector(".browser-surface__toolbar")!;
+  expect(
+    toolbar.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  fireEvent.click(attach);
+  await screen.findByRole("button", { name: "Detach tab from chat" });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(attachBrowserTab).toHaveBeenCalledTimes(2);
+  useWorkbenchStore.setState({
+    project: previous.project,
+    tabs: previous.tabs,
+  });
 });

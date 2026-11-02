@@ -19,6 +19,7 @@
       import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
       import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
       import { BrowserDownloadsControl } from "/src/features/browser/BrowserDownloadsControl.tsx";
+      import { BrowserAgentPresence } from "/src/features/browser/BrowserAgentPresence.tsx";
       import "/src/styles/global.css";
       import "/src/features/browser/browser.css";
 
@@ -90,6 +91,16 @@
                     })),
                   ],
                 }),
+                params.has("agent")
+                  ? React.createElement(BrowserAgentPresence, {
+                      pending: false,
+                      userControl: false,
+                      chatTitle,
+                      onStop: () => {},
+                      onTakeOver: () => {},
+                      onHandBack: () => {},
+                    })
+                  : null,
               )
             : React.createElement(
                 "button",

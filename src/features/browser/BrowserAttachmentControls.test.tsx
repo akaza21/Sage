@@ -81,28 +81,3 @@ it("only attaches a settled tab to the chat the user chose and can detach it", a
     expect(detach).toHaveBeenCalledWith("project-1", "chat-2"),
   );
 });
-
-it("reports a failed attach to the surface and clears it on the next try", async () => {
-  const onError = vi.fn();
-  attach.mockRejectedValueOnce(new Error("native"));
-  render(
-    <BrowserAttachmentControls
-      projectId="project-1"
-      tabId="browser-7"
-      ready
-      onError={onError}
-      chats={[{ id: "chat-1", title: "First" }]}
-    />,
-  );
-  const button = screen.getByRole("button", { name: "Attach tab to chat" });
-  fireEvent.click(button);
-  await waitFor(() =>
-    expect(onError).toHaveBeenLastCalledWith(
-      "Could not attach this tab to the selected chat.",
-    ),
-  );
-  // The surface owns the message; nothing is drawn inside the toolbar.
-  expect(screen.queryByRole("alert")).toBeNull();
-  fireEvent.click(button);
-  await waitFor(() => expect(onError).toHaveBeenLastCalledWith(null));
-});
