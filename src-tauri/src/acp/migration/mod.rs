@@ -1,5 +1,6 @@
 mod backup;
 mod build_intent;
+mod chat_viewed_marks;
 mod file_artifact;
 mod fingerprint;
 mod identity;
@@ -130,6 +131,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         .transpose()?;
     workspace_changes::apply(&mut opened.connection)?;
     title_provenance::apply(&mut opened.connection)?;
+    chat_viewed_marks::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -180,7 +182,10 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20 => {
+        SchemaClass::CurrentV18
+        | SchemaClass::CurrentV19
+        | SchemaClass::CurrentV20
+        | SchemaClass::CurrentV21 => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
             if probe::classify_live(&paths)? != source_schema {
@@ -338,7 +343,10 @@ fn checkpoint_source(
 fn verify_current(connection: &Connection) -> AppResult<()> {
     if !matches!(
         fingerprint::classify_connection(connection)?,
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20
+        SchemaClass::CurrentV18
+            | SchemaClass::CurrentV19
+            | SchemaClass::CurrentV20
+            | SchemaClass::CurrentV21
     ) {
         return invalid("database did not reach an exact current schema");
     }
