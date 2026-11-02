@@ -131,6 +131,11 @@
   opacity: 0.4;
 }
 
+/* Only the Agent rail shows the hover card (agent-rail-surface.css). */
+.project-chat__hover-card {
+  display: none;
+}
+
 .project-chat__title {
   display: flex;
   min-width: 0;

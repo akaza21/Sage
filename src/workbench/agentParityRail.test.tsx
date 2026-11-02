@@ -279,13 +279,15 @@ it("keeps the open chat in view In one list, even far down a manual order", () =
   const recents = within(screen.getByRole("region", { name: "Recents" }));
   const open = recents.getByRole("button", { name: "Open chat Task 39" });
   expect(open).toHaveAttribute("aria-current", "page");
-  // Its page opens in order, rather than the chat jumping the queue.
-  expect(
-    recents.getByRole("button", { name: "Open chat Task 38" }),
-  ).toBeVisible();
-  expect(
-    recents.getByRole("button", { name: "Open chat Task 0" }),
-  ).toBeVisible();
+  // One list fills the rail with every chat it holds, in order, rather than
+  // paging; the open chat keeps its place instead of jumping the queue.
+  const listed = recents
+    .getAllByRole("button", { name: /^Open chat Task / })
+    .map((button) => button.getAttribute("aria-label"));
+  expect(listed).toHaveLength(40);
+  expect(listed[0]).toBe("Open chat Task 0");
+  expect(listed[39]).toMatch(/^Open chat Task 39/);
+  expect(recents.queryByRole("button", { name: "Show more" })).toBeNull();
 });
 
 it("keeps the open chat In one list when it is past the list's cap", () => {

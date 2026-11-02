@@ -8,8 +8,12 @@
 }
 
 .workbench--agent .project-chat__trailing {
+  position: relative;
   grid-row: 1;
   padding-bottom: 0;
+  /* Clicks pass through to the title button; only the cell's visible
+     controls take the pointer (agent-rail-surface.css). */
+  pointer-events: none;
 }
 
 /* The trailing time/state shares the title's line here, so a row that shows

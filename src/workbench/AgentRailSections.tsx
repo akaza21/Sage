@@ -34,10 +34,8 @@ import {
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import type * as RecentChatsChunk from "./AgentRecentChats";
-import {
-  ProjectChatNavigation,
-  ProjectChatRailGlyph,
-} from "./ProjectChatNavigation";
+import { ProjectChatRailGlyph } from "./ProjectChatActionMenu";
+import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useParentChatStatus, useRailChatId } from "./sideChatState";
 
 const RecentChatsPart = lazyParts<typeof RecentChatsChunk>(
@@ -303,7 +301,7 @@ export function AgentRailSections({
             part="AgentRecentChats"
             items={all}
             currentProjectId={currentProjectId}
-            activeChatId={currentChatId}
+            paged={false}
             onSearchMore={
               allOverflowProjectId === null
                 ? undefined

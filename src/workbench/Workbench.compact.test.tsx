@@ -474,7 +474,9 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    fireEvent.click(screen.getByTitle("Open chat B"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Open chat B(?:,|$)/ }),
+    );
 
     expect(activateTab).toHaveBeenCalledWith("chat:b");
   });

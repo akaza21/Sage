@@ -135,7 +135,6 @@
 .create-project-dialog__folder-name {
   overflow: hidden;
   color: var(--color-status-foreground);
-  font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -156,7 +155,6 @@
   color: var(--color-status-foreground);
   background: transparent;
   font: inherit;
-  font-weight: var(--font-weight-semibold);
   text-align: left;
   cursor: pointer;
 }
@@ -186,9 +184,43 @@
   color: var(--color-text-muted);
 }
 
-.create-project-dialog__source-empty strong {
+.create-project-dialog__location-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
   color: var(--color-status-foreground);
+  background: transparent;
+  font: inherit;
   font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.create-project-dialog__location-menu.menu-popover {
+  width: 200px;
+  padding: var(--space-1);
+  border-color: var(--color-panel-raised-hover);
+  border-radius: var(--radius-lg);
+  background: var(--color-panel-raised);
+}
+
+.create-project-dialog__location-menu .menu-item {
+  gap: var(--space-2);
+  color: var(--color-status-foreground);
+  font-size: var(--font-size-sm);
+}
+
+.create-project-dialog__location-menu .menu-item[aria-checked="true"] {
+  background: transparent;
+}
+
+.create-project-dialog__location-menu .menu-item:is(:hover, :focus-visible) {
+  background: var(--color-panel-raised-hover);
+}
+
+.create-project-dialog__location-check {
+  margin-left: auto;
 }
 
 .create-project-dialog__add {
@@ -263,7 +295,8 @@
   cursor: default;
 }
 
-.create-project-dialog :is(button, input):focus-visible {
+.create-project-dialog :is(button, input):focus-visible,
+.create-project-dialog__location-menu .menu-item:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }

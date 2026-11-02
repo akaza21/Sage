@@ -99,15 +99,17 @@ it("shows a green Awaiting approval pill only for a chat whose surface awaits ap
   act(() => setChatAwaitingApproval("chat:b", true));
   const pill = screen.getByText("Awaiting approval");
   expect(pill).toHaveClass("rail-pill", "rail-pill--approval");
-  expect(screen.getByTitle("Open chat Beta")).toContainElement(pill);
-  expect(screen.getByTitle("Open chat Beta")).toHaveAccessibleName(
-    "Open chat Beta, Awaiting approval",
-  );
+  expect(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  ).toContainElement(pill);
+  expect(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  ).toHaveAccessibleName("Open chat Beta, Awaiting approval");
   expect(screen.getAllByText("Awaiting approval")).toHaveLength(1);
   // The Turn still runs behind the pill, so its spinner follows (s6/f0526).
   expect(
     screen
-      .getByTitle("Open chat Beta")
+      .getByRole("button", { name: /^Open chat Beta(?:,|$)/ })
       .parentElement?.querySelector(".project-chat__approval-spinner .spinner"),
   ).not.toBeNull();
   act(() => setChatAwaitingApproval("chat:b", false));
@@ -128,13 +130,12 @@ it("keeps the parent row selected while its side chat has focus (Codex s2/f0244)
       selected
     />,
   );
-  expect(screen.getByTitle("Open chat Beta")).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  expect(screen.getByTitle("Open chat Alpha")).not.toHaveAttribute(
-    "aria-current",
-  );
+  expect(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  ).toHaveAttribute("aria-current", "page");
+  expect(
+    screen.getByRole("button", { name: /^Open chat Alpha(?:,|$)/ }),
+  ).not.toHaveAttribute("aria-current");
 });
 
 async function openChatActions(title: string) {
@@ -154,9 +155,13 @@ it("shows one glyph per chat: spinner while running, dot when unread, nothing wh
     />,
   );
   const row = (title: string) =>
-    screen.getByTitle(`Open chat ${title}`).closest(".project-chat-row");
+    screen
+      .getByRole("button", { name: new RegExp(`^Open chat ${title}(?:,|$)`) })
+      .closest(".project-chat-row");
 
-  const focused = screen.getByTitle("Open chat Alpha");
+  const focused = screen.getByRole("button", {
+    name: /^Open chat Alpha(?:,|$)/,
+  });
   expect(focused).toHaveAttribute("aria-current", "page");
   expect(row("Alpha")).toHaveClass("project-chat-row--active");
   expect(row("Alpha")?.querySelectorAll(".project-chat__state")).toHaveLength(
@@ -210,7 +215,7 @@ it("marks a waiting chat as needing attention and names a failed one", () => {
   );
   const state = (title: string) =>
     screen
-      .getByTitle(`Open chat ${title}`)
+      .getByRole("button", { name: new RegExp(`^Open chat ${title}(?:,|$)`) })
       .closest(".project-chat-row")
       ?.querySelector(".project-chat__state");
   expect(state("Need a decision")).toHaveAccessibleName("Needs attention");
@@ -298,7 +303,9 @@ it("dismisses chat actions on an outside pointer without stealing focus", async 
   );
 
   await openChatActions("Alpha");
-  const outside = screen.getByTitle("Open chat Beta");
+  const outside = screen.getByRole("button", {
+    name: /^Open chat Beta(?:,|$)/,
+  });
   outside.focus();
   fireEvent.pointerDown(outside);
 
@@ -459,23 +466,25 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
     />,
   );
 
-  fireEvent.click(screen.getByTitle("Open chat Beta"));
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  );
   expect(activateTab).toHaveBeenCalledWith("chat:b");
   expect(
     screen
-      .getByTitle("Open chat Beta")
+      .getByRole("button", { name: /^Open chat Beta(?:,|$)/ })
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
   expect(
     screen
-      .getByTitle("Open chat Alpha")
+      .getByRole("button", { name: /^Open chat Alpha(?:,|$)/ })
       .closest(".project-chat-row")
       ?.querySelector(".project-chat__state--working"),
   ).toBeInTheDocument();
   expect(
     screen
-      .getByTitle("Open chat Alpha")
+      .getByRole("button", { name: /^Open chat Alpha(?:,|$)/ })
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();

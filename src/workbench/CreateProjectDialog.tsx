@@ -9,7 +9,15 @@ import {
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { ModalDialog } from "../ui/ModalDialog";
-import { Folder, FolderPlus, Laptop, X } from "../ui/leanIcons";
+import { MenuPopover } from "../ui/MenuPopover";
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  FolderPlus,
+  Laptop,
+  X,
+} from "../ui/leanIcons";
 import "./create-project-dialog.css";
 
 const fullMessage = `A project holds at most ${MAX_PROJECT_SOURCE_FOLDERS} folders`;
@@ -22,6 +30,9 @@ export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const locationRef = useRef<HTMLButtonElement>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const locationMenuId = useId();
   const titleId = useId();
   const errorId = useId();
   const createProject = useWorkbenchStore((state) => state.createProject);
@@ -162,8 +173,54 @@ export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="create-project-dialog__source-empty">
               <p>
-                Add a folder on <strong>this computer</strong>
+                Add a folder on{" "}
+                {/* Sage reaches only this machine, so the menu lists just it. */}
+                <button
+                  ref={locationRef}
+                  type="button"
+                  className="create-project-dialog__location-trigger"
+                  aria-haspopup="menu"
+                  aria-expanded={locationOpen}
+                  aria-controls={locationOpen ? locationMenuId : undefined}
+                  onClick={() => setLocationOpen((open) => !open)}
+                >
+                  this computer
+                  <ChevronDown size={12} aria-hidden="true" />
+                </button>
               </p>
+              <MenuPopover
+                id={locationMenuId}
+                open={locationOpen}
+                ariaLabel="Folder location"
+                className="create-project-dialog__location-menu"
+                initialFocus="selected"
+                portalTarget="closest-dialog"
+                triggerRef={locationRef}
+                onDismiss={(reason) => {
+                  setLocationOpen(false);
+                  if (reason === "escape") locationRef.current?.focus();
+                }}
+              >
+                <button
+                  type="button"
+                  className="menu-item"
+                  role="menuitemradio"
+                  aria-checked="true"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setLocationOpen(false);
+                    locationRef.current?.focus();
+                  }}
+                >
+                  <Laptop size={14} aria-hidden="true" />
+                  <span>This computer</span>
+                  <Check
+                    className="create-project-dialog__location-check"
+                    size={14}
+                    aria-hidden="true"
+                  />
+                </button>
+              </MenuPopover>
               <button
                 type="button"
                 className="create-project-dialog__add"

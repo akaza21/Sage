@@ -271,12 +271,20 @@ it("lists chats under every project folder and opens a foreign chat", () => {
   });
   render(<LeftSidebar />);
   expect(
-    screen.getByTitle("Open chat Continue prior chat goal"),
+    screen.getByRole("button", {
+      name: /^Open chat Continue prior chat goal(?:,|$)/,
+    }),
   ).toBeInTheDocument();
   expect(
-    screen.getByTitle("Open chat Research agent memory"),
+    screen.getByRole("button", {
+      name: /^Open chat Research agent memory(?:,|$)/,
+    }),
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByTitle("Open chat Research agent memory"));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: /^Open chat Research agent memory(?:,|$)/,
+    }),
+  );
   expect(openRailChat).toHaveBeenCalledWith("cross", "chat:cross");
   expect(switchProject).not.toHaveBeenCalled();
 });
@@ -805,7 +813,7 @@ it("shows a labelled running spinner and local project identity without fake acc
   render(<LeftSidebar />);
 
   const row = screen
-    .getByTitle("Open chat Implement rail")
+    .getByRole("button", { name: /^Open chat Implement rail(?:,|$)/ })
     .closest(".project-chat-row");
   expect(
     within(row as HTMLElement).getByRole("img", { name: "Working" }),

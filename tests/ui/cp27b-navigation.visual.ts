@@ -353,7 +353,10 @@ for (const forcedColors of ["none", "active"] as const) {
     const ownerName = "Chat pane Agent navigation polish";
     const ownerId = "visual-chat-primary";
     await page
-      .getByTitle("Open chat Agent navigation polish", { exact: true })
+      .getByRole("button", {
+        name: "Open chat Agent navigation polish",
+        exact: false,
+      })
       .click();
     const pane = await openResource(page, "file", ownerId);
     for (const viewport of [

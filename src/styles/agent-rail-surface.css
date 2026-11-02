@@ -183,8 +183,18 @@
   opacity: 1;
 }
 
+/* Rows stack on a 28px pitch, as in the reference: no extra gap above or
+   below an expanded project. */
+.workbench--agent .project-entry {
+  gap: 0;
+}
+
 .workbench--agent .project-chats {
-  padding: 0 0 4px 20px;
+  padding: 0 0 0 20px;
+}
+
+.workbench--agent :is(.project-chat, .project-row) {
+  font-size: var(--font-size-sm);
 }
 
 .agent-rail-section {
@@ -376,6 +386,19 @@
   background: var(--color-warning);
 }
 
+/* The trailing cell is positioned after the title button, so it paints and
+   hit-tests above the button's full-width box (project-navigation-surface.css);
+   the row is its own stacking context. */
+.workbench--agent .project-chat-row {
+  isolation: isolate;
+}
+
+.workbench--agent
+  .project-chat-row
+  .project-chat__actions:is(:focus-visible, [aria-expanded="true"]) {
+  pointer-events: auto;
+}
+
 /* Hovering a chat row lays Pin and Archive over the end of the row on the
    row's own fill, so the title never moves or resizes. The "…" menu stays
    reachable from the keyboard and by right-click. */
@@ -441,4 +464,50 @@
   )
   .project-chat__quick-actions {
   opacity: 0;
+}
+
+/* Resting on a chat row shows a card below it with the full title and its
+   project, in place of the native tooltip. The hovered row is raised so the
+   card paints over the rows after it; the card never takes the pointer. */
+.workbench--agent .project-chat__hover-card {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: var(--space-2);
+  display: grid;
+  max-width: calc(100% - 2 * var(--space-2));
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--agent-shell-resource-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-plane-raised);
+  box-shadow: var(--agent-shell-resource-shadow);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* The text comes from attributes so the card adds no second copy of the
+   title to the document for queries or assistive technology. */
+.workbench--agent .project-chat__hover-card::before {
+  overflow-wrap: anywhere;
+  content: attr(data-title);
+}
+
+.workbench--agent .project-chat__hover-card[data-project]::after {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+  content: attr(data-project);
+}
+
+.workbench--agent .project-chat-row:hover {
+  z-index: var(--z-raised);
+}
+
+.workbench--agent .project-chat-row:hover .project-chat__hover-card {
+  opacity: 1;
+  visibility: visible;
+  transition: visibility 0s var(--motion-delay-hover-card);
 }

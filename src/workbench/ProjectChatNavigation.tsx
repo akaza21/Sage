@@ -29,11 +29,11 @@ import {
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
+import { agentRailTrailingState } from "./agentRailStatusView";
 import {
-  agentRailTrailingState,
-  type AgentRailTrailingState,
-} from "./agentRailStatusView";
-import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
+  ProjectChatActionMenu,
+  ProjectChatTrailingState,
+} from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
 import {
   isSideChatId,
@@ -91,6 +91,11 @@ export function ProjectChatNavigation({
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
+  const projectName = useWorkbenchStore(
+    (state) =>
+      state.projects.find((project) => project.id === projectId)?.name ??
+      (state.project?.id === projectId ? state.project.name : undefined),
+  );
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -205,7 +210,6 @@ export function ProjectChatNavigation({
                 focused ? "project-chat--active" : ""
               }`}
               type="button"
-              title={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}`}
               aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
@@ -239,6 +243,12 @@ export function ProjectChatNavigation({
                 </span>
               </span>
             </button>
+            <span
+              className="project-chat__hover-card"
+              aria-hidden="true"
+              data-title={displayTitle}
+              data-project={projectName}
+            />
             <div className="project-chat__trailing">
               <ProjectChatTrailingState
                 awaitingApproval={Boolean(approvalLabel)}
@@ -352,70 +362,5 @@ export function ProjectChatNavigation({
         </div>
       ) : null}
     </div>
-  );
-}
-
-/**
- * A rail row's trailing state. Running and unread rows show only a glyph
- * (spinner, dot); a failed or waiting row that is open keeps its label.
- */
-function ProjectChatTrailingState({
-  awaitingApproval,
-  focused,
-  state,
-}: {
-  awaitingApproval: boolean;
-  focused: boolean;
-  state: AgentRailTrailingState | null;
-}) {
-  if (awaitingApproval)
-    return (
-      <span
-        className="project-chat__state project-chat__approval-spinner"
-        aria-hidden="true"
-      >
-        <span className="spinner agent-chat-chip__spinner" />
-      </span>
-    );
-  if (focused && (state?.kind === "failed" || state?.kind === "waiting"))
-    return (
-      <span
-        className={`project-chat__state project-chat__status-chip project-chat__status-chip--${state.kind}`}
-      >
-        {state.label}
-      </span>
-    );
-  return <ProjectChatRailGlyph state={state} />;
-}
-
-const GLYPH_LABELS = {
-  unread: "Unread updates",
-  working: "Working",
-  recovering: "Recovering",
-  waiting: "Needs attention",
-} as const;
-
-export function ProjectChatRailGlyph({
-  state,
-}: {
-  state: AgentRailTrailingState | null;
-}) {
-  if (!state) return null;
-  if (state.kind === "failed")
-    return (
-      <span className="project-chat__state project-chat__state--failed">
-        {state.label}
-      </span>
-    );
-  return (
-    <span
-      className={`project-chat__state project-chat__state--${state.kind}`}
-      role="img"
-      aria-label={GLYPH_LABELS[state.kind]}
-    >
-      {state.kind === "working" || state.kind === "recovering" ? (
-        <span className="project-chat__working" aria-hidden="true" />
-      ) : null}
-    </span>
   );
 }
