@@ -133,7 +133,7 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
       {confirmResetAll ? (
         <ConfirmDialog
           title="Reset all site permissions?"
-          description="This removes every saved Allow and Block decision. Sites will ask again, and pages that were allowed access will reload."
+          description="This removes every saved Allow and Block decision. Sites will ask again, and Sage will try to reload pages that were allowed access."
           confirmLabel="Reset all site permissions"
           onConfirm={resetAll}
           onCancel={() => setConfirmResetAll(false)}

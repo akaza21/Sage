@@ -142,7 +142,7 @@ it.each(["Cancel", "Escape", "Confirm"])(
       name: "Reset all site permissions?",
     });
     expect(dialog).toHaveAccessibleDescription(
-      "This removes every saved Allow and Block decision. Sites will ask again, and pages that were allowed access will reload.",
+      "This removes every saved Allow and Block decision. Sites will ask again, and Sage will try to reload pages that were allowed access.",
     );
     expect(
       within(dialog).getByRole("button", { name: "Cancel" }),
