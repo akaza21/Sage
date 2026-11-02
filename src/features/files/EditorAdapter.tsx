@@ -41,6 +41,11 @@ interface EditorAdapterProps {
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
   onLimitExceeded?: () => void;
+  /**
+   * The live view once the editor loads, then null when it goes. `text` is
+   * the string its first document was built from, when it was one.
+   */
+  onView?: (view: EditorView | null, text: string | null) => void;
 }
 
 export const EditorAdapter = forwardRef<
@@ -97,6 +102,8 @@ export const EditorAdapter = forwardRef<
             : editorEditingFrom(settings),
         });
         runtimeRef.current = runtime;
+        const { content, onView } = latestPropsRef.current;
+        onView?.(runtime.view, typeof content === "string" ? content : null);
         const selection = pendingSelectionRef.current;
         if (selection) {
           runtime.setSelection(selection.start, selection.end);
@@ -113,6 +120,7 @@ export const EditorAdapter = forwardRef<
       });
     return () => {
       active = false;
+      if (runtimeRef.current) latestPropsRef.current.onView?.(null, null);
       runtimeRef.current?.destroy();
       runtimeRef.current = null;
     };
