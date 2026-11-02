@@ -8,17 +8,28 @@ use crate::{
 const MAX_CHANGES: usize = 300;
 pub const MAX_DIFF_LINES: usize = 1_200;
 
+/// Git status as parsed, capped at `MAX_CHANGES` entries.
+pub struct ParsedStatus {
+    pub branch: Option<String>,
+    pub changes: Vec<FileChange>,
+    /// Anything was left out: the cap, or Git output cut short.
+    pub truncated: bool,
+    /// Another change followed the full list, so more than `MAX_CHANGES` exist.
+    pub overflowed: bool,
+}
+
 pub fn parse_status(
     root_id: &str,
     bytes: &[u8],
     output_truncated: bool,
-) -> AppResult<(Option<String>, Vec<FileChange>, bool)> {
+) -> AppResult<ParsedStatus> {
     let bytes = complete_nul_records(bytes, output_truncated);
     let fields = bytes.split(|byte| *byte == 0).collect::<Vec<_>>();
     let mut branch_head = None;
     let mut branch_oid = None;
     let mut changes = Vec::new();
     let mut truncated = output_truncated;
+    let mut overflowed = false;
     let mut index = 0;
 
     while index < fields.len() {
@@ -43,6 +54,7 @@ pub fn parse_status(
         }
         if changes.len() == MAX_CHANGES {
             truncated = true;
+            overflowed = true;
             break;
         }
 
@@ -94,7 +106,12 @@ pub fn parse_status(
         Some(head) => Some(head.into()),
         None => None,
     };
-    Ok((branch, changes, truncated))
+    Ok(ParsedStatus {
+        branch,
+        changes,
+        truncated,
+        overflowed,
+    })
 }
 
 fn parse_ordinary_change(root_id: &str, record: &str) -> AppResult<Option<FileChange>> {
@@ -360,7 +377,12 @@ mod tests {
     fn parses_porcelain_v2_without_losing_spaces_in_paths() {
         let input = b"# branch.head main\0? notes/hello world.md\0\
               1 .M N... 100644 100644 100644 abcdef abcdef src/main.rs\0";
-        let (branch, changes, truncated) = parse_status("root-test", input, false).unwrap();
+        let ParsedStatus {
+            branch,
+            changes,
+            truncated,
+            overflowed,
+        } = parse_status("root-test", input, false).unwrap();
 
         assert_eq!(branch.as_deref(), Some("main"));
         assert_eq!(changes.len(), 2);
@@ -369,17 +391,45 @@ mod tests {
         assert_eq!(changes[1].resource.relative_path, "src/main.rs");
         assert_eq!(changes[1].worktree_status, "modified");
         assert!(!truncated);
+        assert!(!overflowed);
     }
 
     #[test]
     fn truncated_status_drops_the_partial_final_record() {
         let input = b"# branch.head main\0? complete.txt\0? partial";
-        let (branch, changes, truncated) = parse_status("root-test", input, true).unwrap();
+        let ParsedStatus {
+            branch,
+            changes,
+            truncated,
+            overflowed,
+        } = parse_status("root-test", input, true).unwrap();
 
         assert_eq!(branch.as_deref(), Some("main"));
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].resource.relative_path, "complete.txt");
         assert!(truncated);
+        // Cut-short output proves nothing about how many changes exist.
+        assert!(!overflowed);
+    }
+
+    #[test]
+    fn overflow_is_reported_only_when_a_change_follows_the_full_list() {
+        let records = |count: usize| {
+            let mut input = b"# branch.head main\0".to_vec();
+            for index in 0..count {
+                input.extend_from_slice(format!("? file-{index}.txt\0").as_bytes());
+            }
+            input
+        };
+        let exact = parse_status("root-test", &records(MAX_CHANGES), false).unwrap();
+        assert_eq!(exact.changes.len(), MAX_CHANGES);
+        assert!(!exact.truncated);
+        assert!(!exact.overflowed);
+
+        let over = parse_status("root-test", &records(MAX_CHANGES + 1), false).unwrap();
+        assert_eq!(over.changes.len(), MAX_CHANGES);
+        assert!(over.truncated);
+        assert!(over.overflowed);
     }
 
     #[test]
@@ -398,11 +448,17 @@ mod tests {
     #[test]
     fn detached_head_uses_the_short_object_id() {
         let input = b"# branch.oid 0123456789abcdef\0# branch.head (detached)\0";
-        let (branch, changes, truncated) = parse_status("root-test", input, false).unwrap();
+        let ParsedStatus {
+            branch,
+            changes,
+            truncated,
+            overflowed,
+        } = parse_status("root-test", input, false).unwrap();
 
         assert_eq!(branch.as_deref(), Some("01234567 (detached)"));
         assert!(changes.is_empty());
         assert!(!truncated);
+        assert!(!overflowed);
     }
 
     #[test]

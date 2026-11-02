@@ -253,7 +253,7 @@
 }
 
 .workspace-search__progress svg {
-  animation: workspace-search-spin 900ms linear infinite;
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 .workspace-search__results {
@@ -305,12 +305,6 @@
   white-space: nowrap;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-}
-
-@keyframes workspace-search-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

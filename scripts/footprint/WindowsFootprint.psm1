@@ -215,9 +215,13 @@ function Get-FootprintProcessRole {
 }
 
 function Get-FootprintTreeSample {
-  param([Parameter(Mandatory)][int]$RootProcessId)
+  param(
+    [Parameter(Mandatory)][int]$RootProcessId,
+    # The launched root's creation time; it rejects a reused root PID.
+    [AllowNull()]$RootCreationDate
+  )
   $processRows = @(Get-FootprintProcessSnapshot)
-  $members = @(Get-FootprintDescendants $RootProcessId $processRows)
+  $members = @(Get-FootprintDescendants $RootProcessId $processRows -RootCreationDate $RootCreationDate)
   $records = @()
   $identityBytes = [long]0
   $limits = Get-FootprintProcessLimits

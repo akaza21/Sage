@@ -315,7 +315,6 @@
 .workbench--editor .workspace-search__empty,
 .workbench--editor .workspace-search__notice,
 .workbench--editor .sidebar__empty,
-.workbench--editor .sidebar__loading,
 .workbench--editor .sidebar__notice,
 .workbench--editor .outline-surface__empty {
   max-width: none;

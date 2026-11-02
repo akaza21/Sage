@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { useWorkbenchStore } from "../../app/store";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { useClearProgress } from "./browserClearProgress";
 import { reconcileNativeClosedBrowserTabs } from "../../app/tabClosing";
 import {
@@ -21,16 +24,11 @@ export function BrowserClearData({
   describedBy?: string;
 }) {
   const { busy, error, success } = useClearProgress();
+  const [confirming, setConfirming] = useState(false);
 
   async function clear() {
     if (useClearProgress.getState().busy) return;
-    if (
-      !window.confirm(
-        "Clear browser history, cookies, and site storage? All browser tabs will close and agent access will be revoked. Sage and preview data stay intact.",
-      )
-    ) {
-      return;
-    }
+    setConfirming(false);
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -107,12 +105,21 @@ export function BrowserClearData({
         role={menuItem ? "menuitem" : undefined}
         disabled={busy}
         aria-describedby={describedBy}
-        onClick={() => void clear()}
+        onClick={() => setConfirming(true)}
       >
         {busy ? "Clearing browser data…" : "Clear browsing data"}
       </button>
       {error ? <span role="alert">{error}</span> : null}
       {success ? <span role="status">{success}</span> : null}
+      {confirming ? (
+        <ConfirmDialog
+          title="Clear browsing data?"
+          description="Clear browser history, cookies, and site storage? All browser tabs will close and agent access will be revoked. Sage and preview data stay intact."
+          confirmLabel="Clear browsing data"
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void clear()}
+        />
+      ) : null}
     </div>
   );
 }
