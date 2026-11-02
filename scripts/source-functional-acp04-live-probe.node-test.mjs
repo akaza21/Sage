@@ -98,7 +98,7 @@ function snapshot({
     currentSessionId,
     projectionRevision,
     harness: { id: "codex", text: "Codex" },
-    model: { id: "gpt-5.6 High", text: "gpt-5.6" },
+    model: { id: "gpt-5.6", text: "gpt-5.6" },
     harnessStatus: "Live",
     composerEnabled: true,
     failures,
@@ -645,9 +645,10 @@ function composerControlsMarkup({
   harnessId = "codex",
   harnessName = "Codex",
   modelDescription = "gpt-5.6 High",
+  modelId = "gpt-5.6",
   modelLabel = "gpt-5.6",
 } = {}) {
-  return `<div class="composer__controls"><button class="composer__plus" type="button" aria-label="Composer options" aria-haspopup="menu" aria-expanded="false"></button><label class="composer__control-trigger composer__harness"><div class="searchable-picker"><button type="button" class="searchable-picker__trigger composer__control-trigger composer__picker-trigger" aria-label="Harness" aria-haspopup="listbox" aria-controls="r1-listbox" aria-expanded="false" data-selected-id="${harnessId}"><img alt="" aria-hidden="true"><span class="searchable-picker__trigger-label">${harnessName}</span><svg aria-hidden="true"></svg></button></div></label><div class="composer__model-group"><button class="composer__control-trigger composer__picker-trigger composer__model-trigger" type="button" aria-label="Model"${modelDescription ? ` aria-description="${modelDescription}"` : ""} aria-controls="model-panel" aria-haspopup="listbox" aria-expanded="false"><svg aria-hidden="true"></svg><span class="composer__model-label">${modelLabel}</span><svg aria-hidden="true"></svg></button><button type="button" aria-label="Thinking level: High"></button></div></div>`;
+  return `<div class="composer__controls"><button class="composer__plus" type="button" aria-label="Composer options" aria-haspopup="menu" aria-expanded="false"></button><label class="composer__control-trigger composer__harness"><div class="searchable-picker"><button type="button" class="searchable-picker__trigger composer__control-trigger composer__picker-trigger" aria-label="Harness" aria-haspopup="listbox" aria-controls="r1-listbox" aria-expanded="false" data-selected-id="${harnessId}"><img alt="" aria-hidden="true"><span class="searchable-picker__trigger-label">${harnessName}</span><svg aria-hidden="true"></svg></button></div></label><div class="composer__model-group"><button class="composer__control-trigger composer__picker-trigger composer__model-trigger" type="button" aria-label="Model"${modelDescription ? ` aria-description="${modelDescription}"` : ""}${modelId ? ` data-selected-id="${modelId}"` : ""} aria-controls="model-panel" aria-haspopup="listbox" aria-expanded="false"><svg aria-hidden="true"></svg><span class="composer__model-label">${modelLabel}</span><svg aria-hidden="true"></svg></button><button type="button" aria-label="Thinking level: High"></button></div></div>`;
 }
 
 function agentHeaderMarkup(harnessStatus = "Ready") {
@@ -768,6 +769,27 @@ function modeADriver(snapshotFor, onSend = () => {}) {
     runtimeObservation: async () => runtimeObservation(),
   };
 }
+
+test("snapshot DOM keys model identity on the selected id, not its label", () => {
+  const observe = (modelId, revision) =>
+    withDom(
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup({ modelId }),
+        projection: `<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="${revision}" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id=""></section>`,
+      }),
+      () => eval(ACP04_SNAPSHOT_EXPRESSION),
+    );
+  const first = observe("gpt-5.6", "1");
+  const second = observe("gpt-5.6-preview", "2");
+  assert.deepEqual(first.model, { id: "gpt-5.6", text: "gpt-5.6" });
+  assert.deepEqual(second.model, { id: "gpt-5.6-preview", text: "gpt-5.6" });
+  const initial = createModeAState(ECHOES, first, CODEX_VERSION);
+  assert.throws(
+    () => acceptModeASnapshot(initial, second),
+    /acp04-identity-churn/,
+  );
+  assert.equal(observe("", "1").model, null);
+});
 
 test("Mode A retries only a post-send projection-unavailable observation without resending", async () => {
   let sent = 0;
@@ -1053,7 +1075,7 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
 
       const actual = eval(ACP04_SNAPSHOT_EXPRESSION);
       assert.deepEqual(actual.harness, { id: "codex", text: "Codex" });
-      assert.deepEqual(actual.model, { id: "gpt-5.6 High", text: "gpt-5.6" });
+      assert.deepEqual(actual.model, { id: "gpt-5.6", text: "gpt-5.6" });
       assert.equal(actual.harnessStatus, "Ready");
       assert.equal(actual.composerEnabled, true);
       assert.equal(actual.projectionRevision, "3");
@@ -1098,10 +1120,10 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       assert.equal(eval(ui.codexReady), false);
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harness, null);
       harness.dataset.selectedId = "codex";
-      model.removeAttribute("aria-description");
+      delete model.dataset.selectedId;
       assert.equal(eval(ui.codexReady), false);
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).model, null);
-      model.setAttribute("aria-description", "gpt-5.6 High");
+      model.dataset.selectedId = "gpt-5.6";
       harness.disabled = true;
       assert.equal(eval(ui.codexReady), false);
       harness.disabled = false;

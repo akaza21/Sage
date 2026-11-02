@@ -80,6 +80,7 @@ export function ComposerModelControls({
           type="button"
           aria-label="Model"
           aria-description={modelDescription}
+          data-selected-id={selectedId ?? undefined}
           title={modelDescription}
           data-readonly-label={(readOnlyLabel && !pending) || undefined}
           aria-controls={panelId}
