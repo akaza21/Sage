@@ -136,7 +136,7 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "634344e11a46328536cd53d629b1544ae14dead07fc854c8f559fb9f5c065e3d" ||
+    "9c04318159a01606821611b25b5a768e8d65665a61591a2ea15d2e7aafc8646b" ||
   betaAcceptance.schemaVersion !== 1 ||
   betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
   betaAcceptance.workItem !== "BETA-0001"
@@ -154,7 +154,7 @@ const betaCandidateSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaCandidateSha256 !==
-    "fdea662a05dbef4eb8b025c04cdd99f59f387892b4dbb50c9eda12d156fc27d6" ||
+    "8267376521550caaf0bbd62b875cc4ec4c151e785a506967d7c3b5dbb472407e" ||
   betaCandidate.schemaVersion !== 1 ||
   betaCandidate.status !== "frozen-verdict-matrix" ||
   betaCandidate.workItem !== "BETA-0001" ||

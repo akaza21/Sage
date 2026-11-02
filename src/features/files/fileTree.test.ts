@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { DirectoryListing, ResourceRef } from "../../domain/workbench";
-import { flattenFileTree } from "./fileTree";
+import { EXPLORER_ROW_LIMIT, flattenFileTree } from "./fileTree";
 
 const root: ResourceRef = { rootId: "root-a", relativePath: "" };
 const srcRef: ResourceRef = { rootId: "root-a", relativePath: "src" };
@@ -71,9 +71,13 @@ describe("file tree projection", () => {
     };
     const expanded = { [resourceKey(srcRef)]: true };
     expect(
-      flattenFileTree(root, listings, expanded, 600, true).entries.map(
-        (entry) => entry.resource.relativePath,
-      ),
+      flattenFileTree(
+        root,
+        listings,
+        expanded,
+        EXPLORER_ROW_LIMIT,
+        true,
+      ).entries.map((entry) => entry.resource.relativePath),
     ).toEqual(["README.md"]);
     expect(
       flattenFileTree(root, listings, expanded).entries.map(
@@ -93,7 +97,7 @@ describe("file tree projection", () => {
         root,
         listings,
         expanded,
-        600,
+        EXPLORER_ROW_LIMIT,
         false,
         pathGlobMatcher(patterns),
       ).entries.map((entry) => entry.resource.relativePath);
@@ -120,4 +124,34 @@ describe("file tree projection", () => {
     expect(result.entries).toHaveLength(1);
     expect(result.truncated).toBe(true);
   });
+});
+
+it("uses the Explorer cap by default and distinguishes exact capacity from overflow", () => {
+  const entries = Array.from({ length: 501 }, (_, index) => ({
+    name: `file-${index}.ts`,
+    resource: { ...root, relativePath: `file-${index}.ts` },
+    kind: "file" as const,
+    byteLen: 1,
+  }));
+  const project = (count: number, limit?: number) =>
+    flattenFileTree(
+      root,
+      {
+        [resourceKey(root)]: {
+          phase: "ready",
+          value: {
+            resource: root,
+            entries: entries.slice(0, count),
+            truncated: false,
+          },
+        },
+      },
+      {},
+      limit,
+    );
+  expect(project(501).entries).toHaveLength(500);
+  expect(project(501).truncated).toBe(true);
+  expect(project(500).truncated).toBe(false);
+  expect(project(1, 0)).toEqual({ entries: [], truncated: true });
+  expect(project(0, 0)).toEqual({ entries: [], truncated: false });
 });
