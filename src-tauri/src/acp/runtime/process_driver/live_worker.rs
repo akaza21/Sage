@@ -383,7 +383,22 @@ where
             Self::Reusable(parts) => Some(parts.terminal_cursor().state()),
             Self::ReusableDraining(closing) => Some(closing.terminal_cursor().state()),
             Self::ReusableZero(zero) => Some(zero.terminal_cursor().state()),
-            Self::Active(active) => Some(active.durable_turn_state()),
+            Self::Active(active) => Some(
+                active
+                    .turn
+                    .driver
+                    .latest_durable_turn_cursor()
+                    .filter(|cursor| {
+                        cursor.turn_id() == active.turn.dispatch.turn_id()
+                            && matches!(
+                                cursor.state(),
+                                TurnState::Cancelled | TurnState::Interrupted
+                            )
+                    })
+                    // SQLite can commit cancellation before the host's callback
+                    // advances dispatch. Shutdown must honor that durable fact.
+                    .map_or_else(|| active.durable_turn_state(), |cursor| cursor.state()),
+            ),
             Self::Recovery(recovery) => match recovery.as_ref() {
                 FirstTurnWorkerRecovery::Terminal { cursor, .. } => Some(cursor.state()),
                 FirstTurnWorkerRecovery::ReusableBegin(failure) => {
