@@ -336,6 +336,32 @@ fn output_ring_rejects_oversized_chunks_and_discloses_byte_and_line_truncation()
 }
 
 #[test]
+fn create_rejects_a_chat_without_a_tab_in_the_project_before_spawn() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let unknown = TerminalScope {
+            chat: SageChatId::new(),
+            ..fixture.scope.clone()
+        };
+        assert_eq!(
+            fixture
+                .port
+                .create(&fixture.authority(), &unknown, 80, 24)
+                .await,
+            Err(TerminalError::InvalidScope)
+        );
+        assert!(fixture.record.lock().unwrap().roots.is_empty());
+        assert!(
+            fixture
+                .port
+                .create(&fixture.authority(), &fixture.scope, 80, 24)
+                .await
+                .is_ok()
+        );
+    });
+}
+
+#[test]
 fn chat_close_kills_only_owned_sessions_and_releases_capacity() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();

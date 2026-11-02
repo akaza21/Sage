@@ -111,18 +111,22 @@ export function TerminalDock({
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = devicePixelRatio;
+    const tokens = getComputedStyle(document.documentElement);
+    // An unset token leaves xterm on its own default.
+    const token = (name: string) =>
+      tokens.getPropertyValue(name).trim() || undefined;
+    const text = token("--color-text-primary");
     const terminal = new Terminal({
       cursorBlink: true,
       scrollback: SCROLLBACK_LINES,
-      // xterm measures a concrete face; Menlo keeps macOS off Courier.
-      fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
+      fontFamily: token("--font-family-mono"),
       fontSize: 12,
       lineHeight: 1.3,
       theme: {
-        background: "#141414",
-        foreground: "#dedede",
-        cursor: "#dedede",
-        selectionBackground: "#444444",
+        background: token("--color-canvas"),
+        foreground: text,
+        cursor: text,
+        selectionBackground: token("--color-selection"),
       },
     });
     // xterm has no nonce option; its renderer and viewport create their

@@ -36,11 +36,11 @@ describe("Monospace font stacks", () => {
     }
   });
 
-  it("names a macOS face for the terminal", async () => {
+  it("gives the terminal the mono token, which names a macOS face", async () => {
     const dock = await readFile(
       resolve("src/workbench/TerminalDock.tsx"),
       "utf8",
     );
-    expect(dock).toMatch(/fontFamily: '[^']*Menlo[^']*monospace'/u);
+    expect(dock).toContain('fontFamily: token("--font-family-mono")');
   });
 });

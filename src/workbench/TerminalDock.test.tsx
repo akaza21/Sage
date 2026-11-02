@@ -165,6 +165,7 @@ beforeEach(() => {
   native.write.mockResolvedValue(undefined);
   xterm.refresh.mockReset();
   xterm.data = null;
+  xterm.options = null;
   resizeCallback = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -182,6 +183,59 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialWorkbenchState, true);
   vi.unstubAllGlobals();
+});
+
+it("draws with the theme's canvas, text, selection and mono font tokens", async () => {
+  const theme = {
+    "--color-canvas": "#141414",
+    "--color-text-primary": "#c5c5c5",
+    "--color-selection": "#264f78",
+    "--font-family-mono": '"Cascadia Code", Menlo, monospace',
+  };
+  const root = document.documentElement;
+  for (const [name, value] of Object.entries(theme))
+    root.style.setProperty(name, value);
+  try {
+    render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(xterm.options).not.toBeNull());
+    expect(xterm.options).toMatchObject({
+      fontFamily: theme["--font-family-mono"],
+      theme: {
+        background: theme["--color-canvas"],
+        foreground: theme["--color-text-primary"],
+        cursor: theme["--color-text-primary"],
+        selectionBackground: theme["--color-selection"],
+      },
+    });
+  } finally {
+    for (const name of Object.keys(theme)) root.style.removeProperty(name);
+  }
+});
+
+it("leaves xterm's defaults in place of theme tokens that are not set", async () => {
+  render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={vi.fn()}
+    />,
+  );
+  await waitFor(() => expect(xterm.options).not.toBeNull());
+  expect(xterm.options?.fontFamily).toBeUndefined();
+  expect(xterm.options?.theme).toEqual({
+    background: undefined,
+    foreground: undefined,
+    cursor: undefined,
+    selectionBackground: undefined,
+  });
 });
 
 it("delivers a zero-delay typing burst without losing characters", async () => {
