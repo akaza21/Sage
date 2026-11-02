@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 import {
-  browserPermissionRevoke,
   browserPermissionResolve,
   browserPermissionStatus,
+  browserSiteSettingReset,
   type BrowserPermissionKind,
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
@@ -89,17 +89,8 @@ export function BrowserSitePermissions({
     setRevokeBusy(`${origin}:${kind}`);
     setError(null);
     try {
-      await browserPermissionRevoke(tabId, origin, kind);
-      setSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              decisions: current.decisions.filter(
-                (item) => item.origin !== origin || item.kind !== kind,
-              ),
-            }
-          : current,
-      );
+      // Rust sends every tab's fresh snapshot once the reset is saved.
+      await browserSiteSettingReset(origin, kind);
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     } finally {
@@ -109,6 +100,7 @@ export function BrowserSitePermissions({
 
   if (
     !showEmpty &&
+    !snapshot?.staleAccess &&
     !snapshot?.pending.length &&
     !snapshot?.decisions.length &&
     !error
@@ -148,9 +140,7 @@ export function BrowserSitePermissions({
           </button>
           {expanded || showEmpty ? (
             <>
-              <p>
-                Revoking a permission reloads the page to stop active access.
-              </p>
+              <p>Saved for this site. Revoking an Allow reloads the site.</p>
               <ul>
                 {snapshot.decisions.map((decision) => (
                   <li key={`${decision.origin}:${decision.kind}`}>
@@ -176,6 +166,9 @@ export function BrowserSitePermissions({
         </>
       ) : showEmpty ? (
         <p>No site permissions saved for this tab.</p>
+      ) : null}
+      {snapshot?.staleAccess ? (
+        <p role="alert">Reload this page to end revoked access.</p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </aside>

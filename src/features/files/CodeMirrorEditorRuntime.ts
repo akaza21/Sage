@@ -36,6 +36,7 @@ import {
 import { highlightTree } from "@lezer/highlight";
 import { StyleModule } from "style-mod";
 import { MAX_MARKDOWN_PREVIEW_BLOCK_CHARS } from "./markdownLimits";
+import { styleNonce } from "../../ports/styleNonce";
 
 interface RuntimeProps {
   ariaLabel: string;
@@ -154,7 +155,9 @@ export async function highlightCodeSource(
     },
   );
   if (documentSyntaxHighlightStyle.module)
-    StyleModule.mount(document, documentSyntaxHighlightStyle.module);
+    StyleModule.mount(document, documentSyntaxHighlightStyle.module, {
+      nonce: styleNonce(),
+    });
   return spans;
 }
 
@@ -276,6 +279,8 @@ export function createCodeMirrorEditorRuntime(
     state: EditorState.create({
       doc: options.content,
       extensions: [
+        // The base theme and every theme mount as a <style> under the page CSP.
+        EditorView.cspNonce.of(styleNonce()),
         highlightActiveLine(),
         history(),
         // Ahead of the base keymap, so the editing chords take precedence.

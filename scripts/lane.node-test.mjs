@@ -1097,3 +1097,80 @@ test("importing the lane module has no CLI side effects", async () => {
   await import(`./lane.mjs?guard=${Date.now()}`);
   assert.equal(process.exitCode, before);
 });
+
+for (const platform of ["win32", "linux", "darwin"]) {
+  test(`new lane uses home defaults and honors environment overrides (${platform})`, () => {
+    const root = mkdtempSync(path.join(tmpdir(), "sage-lane-home-"));
+    try {
+      for (const overridden of [false, true]) {
+        const fixture = path.join(root, overridden ? "overridden" : "default");
+        const home = path.join(fixture, "home");
+        const repo = path.join(fixture, "repo");
+        const environment = overridden
+          ? {
+              SAGE_WORK_DIR: path.join(fixture, "custom-work"),
+              SAGE_CARGO_DIR: path.join(fixture, "custom-cargo"),
+            }
+          : {};
+        const workRoot =
+          environment.SAGE_WORK_DIR ?? path.join(home, "SageWork");
+        const cargoRoot =
+          environment.SAGE_CARGO_DIR ??
+          path.join(home, ".cache", "sage-target");
+        const worktree = path.join(workRoot, "HOME-TEST");
+        const cargoTarget = path.join(cargoRoot, "HOME-TEST");
+        mkdirSync(repo, { recursive: true });
+        const output = execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `
+              import { lstatSync, mkdirSync } from "node:fs";
+              import path from "node:path";
+              import { runLane } from "./scripts/lane.mjs";
+              const [root, repo, platform, environment] = process.argv.slice(1);
+              process.exitCode = runLane(["new", "HOME-TEST"], {
+                repo, platform, env: JSON.parse(environment),
+                ops: {
+                  lstat: lstatSync,
+                  checkRefFormat() {},
+                  currentBranch: () => "main",
+                  status: () => "",
+                  fetchMain() {},
+                  addWorktree(_branch, target) {
+                    const relative = path.relative(root, target);
+                    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+                      throw new Error("test worktree escaped fixture root");
+                    }
+                    mkdirSync(target, { recursive: true });
+                  },
+                  run() {},
+                },
+              });
+            `,
+            fixture,
+            repo,
+            platform,
+            JSON.stringify(environment),
+          ],
+          {
+            encoding: "utf8",
+            env: { ...process.env, HOME: home, USERPROFILE: home },
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+        assert.equal(
+          output,
+          `worktree ${worktree} on lane/HOME-TEST from origin/main\nlane ready; Cargo target ${cargoTarget}\n`,
+        );
+        assert.equal(
+          readFileSync(path.join(worktree, ".cargo", "config.toml"), "utf8"),
+          `[build]\ntarget-dir = '${cargoTarget}'\n`,
+        );
+      }
+    } finally {
+      removeDirectory(root);
+    }
+  });
+}

@@ -85,38 +85,6 @@ export function browserSuggestedSites(): Promise<string[]> {
   return invokeNative("browser_suggested_sites");
 }
 
-/** One visit in the global browsing history (BF-7c). */
-export interface BrowserVisit {
-  id: number;
-  url: string;
-  title: string | null;
-  /** Milliseconds since the Unix epoch. */
-  visitedAt: number;
-}
-
-/** Where the next page starts: strictly older than this visit. */
-export interface BrowserHistoryCursor {
-  visitedAt: number;
-  id: number;
-}
-
-export interface BrowserHistoryPage {
-  visits: BrowserVisit[];
-  next: BrowserHistoryCursor | null;
-}
-
-export function browserHistoryPage(query: {
-  search: string;
-  before: BrowserHistoryCursor | null;
-  limit: number;
-}): Promise<BrowserHistoryPage> {
-  return invokeNative("browser_history_page", { query });
-}
-
-export function browserHistoryRemove(ids: readonly number[]): Promise<number> {
-  return invokeNative("browser_history_remove", { ids });
-}
-
 export function closeBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_close", { tabId });
 }
@@ -297,6 +265,8 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
+  /** The page held an Allow that ended and has not reloaded since. */
+  staleAccess: boolean;
 }
 
 export function browserPermissionStatus(
@@ -313,10 +283,10 @@ export function browserPermissionResolve(
   return invokeNative("browser_permission_resolve", { tabId, id, allow });
 }
 
-export function browserPermissionRevoke(
-  tabId: string,
+/** Forgets one site's saved answer so it asks again (also Settings > Browser). */
+export function browserSiteSettingReset(
   origin: string,
   kind: BrowserPermissionKind,
-): Promise<void> {
-  return invokeNative("browser_permission_revoke", { tabId, origin, kind });
+): Promise<unknown> {
+  return invokeNative("browser_permission_reset", { origin, kind });
 }

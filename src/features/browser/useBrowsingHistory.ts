@@ -4,7 +4,7 @@ import {
   browserHistoryRemove,
   type BrowserHistoryCursor,
   type BrowserVisit,
-} from "../../ports/nativeBrowserPort";
+} from "../../ports/nativeBrowserHistoryPort";
 
 /** Visits fetched per page. */
 export const HISTORY_PAGE_SIZE = 50;

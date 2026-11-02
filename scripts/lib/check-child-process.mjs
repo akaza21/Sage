@@ -39,13 +39,12 @@ function assertCommandLimits(command) {
   }
 }
 
-function runBoundedTaskkill(pid, force, availableMs = TASKKILL_TIMEOUT_MS) {
+function runBoundedTaskkill(pid, availableMs = TASKKILL_TIMEOUT_MS) {
   if (availableMs < 1) {
     return Promise.resolve({ success: false, timedOut: true });
   }
   return new Promise((resolve) => {
-    const arguments_ = ["/PID", String(pid), "/T"];
-    if (force) arguments_.push("/F");
+    const arguments_ = ["/PID", String(pid), "/T", "/F"];
     const killer = spawn("taskkill.exe", arguments_, {
       shell: false,
       stdio: "ignore",
@@ -58,17 +57,14 @@ function runBoundedTaskkill(pid, force, availableMs = TASKKILL_TIMEOUT_MS) {
       clearTimeout(timer);
       resolve(result);
     };
-    const timer = setTimeout(
-      () => {
-        killer.kill("SIGKILL");
-        finish({ success: false, timedOut: true });
-      },
-      Math.min(TASKKILL_TIMEOUT_MS, availableMs),
-    );
+    const timer = setTimeout(() => {
+      killer.kill("SIGKILL");
+      finish({ success: false, timedOut: true });
+    }, availableMs);
     timer.unref();
     killer.once("error", () => finish({ success: false, timedOut: false }));
     killer.once("close", (code) =>
-      finish({ success: code === 0, timedOut: false }),
+      finish({ success: code === 0, timedOut: false, exitCode: code }),
     );
   });
 }
@@ -89,13 +85,6 @@ async function waitUntil(predicate, deadline) {
     await new Promise((resolve) => setTimeout(resolve, SETTLEMENT_POLL_MS));
   }
   return predicate();
-}
-
-async function delayUntil(deadline) {
-  const remaining = deadline - Date.now();
-  if (remaining > 0) {
-    await new Promise((resolve) => setTimeout(resolve, remaining));
-  }
 }
 
 function attachBoundedOutput({
@@ -172,19 +161,16 @@ function attachBoundedOutput({
 
 async function settleWindowsTree(pid, leader, startedAt, command) {
   const deadline = startedAt + command.settlementTimeoutMs;
-  const graceDeadline = Math.min(
-    deadline,
-    startedAt + command.terminationGraceMs,
-  );
-  const graceful = await runBoundedTaskkill(pid, false, deadline - Date.now());
-  let treeProven = graceful.success;
-  if (!treeProven) {
-    await delayUntil(graceDeadline);
-    const forced = await runBoundedTaskkill(pid, true, deadline - Date.now());
-    treeProven = forced.success;
-  }
+  // A non-forced taskkill may exit the leader before finishing its children.
+  // A later /T cannot address that tree once the root PID has disappeared.
+  const forced = await runBoundedTaskkill(pid, deadline - Date.now());
   const leaderProven = await waitUntil(() => leader.closed, deadline);
-  return treeProven && leaderProven;
+  return {
+    settled: forced.success && leaderProven,
+    pid,
+    forced,
+    leader: { ...leader },
+  };
 }
 
 async function settlePosixTree(processGroupId, leader, startedAt, command) {
@@ -214,6 +200,7 @@ export function executeCommand(
     platform = process.platform,
     stdout = process.stdout,
     stderr = process.stderr,
+    timeoutSignal,
   } = {},
 ) {
   assertCommandLimits(command);
@@ -245,6 +232,7 @@ export function executeCommand(
       finished = true;
       clearTimeout(commandTimer);
       signal.removeEventListener("abort", abort);
+      timeoutSignal?.removeEventListener("abort", timeout);
       if (error) reject(error);
       else resolve();
     };
@@ -252,10 +240,26 @@ export function executeCommand(
       const startedAt = Date.now();
       let settled = false;
       try {
-        settled =
-          platform === "win32"
-            ? await settleWindowsTree(child.pid, leader, startedAt, command)
-            : await settlePosixTree(child.pid, leader, startedAt, command);
+        if (platform === "win32") {
+          const receipt = await settleWindowsTree(
+            child.pid,
+            leader,
+            startedAt,
+            command,
+          );
+          settled = receipt.settled;
+          if (!settled)
+            error.cause ??= new Error(
+              `Windows tree settlement: ${JSON.stringify(receipt)}`,
+            );
+        } else {
+          settled = await settlePosixTree(
+            child.pid,
+            leader,
+            startedAt,
+            command,
+          );
+        }
       } catch (settlementError) {
         error.cause ??= settlementError;
       }
@@ -303,15 +307,19 @@ export function executeCommand(
         }),
       );
     signal.addEventListener("abort", abort, { once: true });
-    commandTimer = setTimeout(
-      () =>
-        stop(
-          new CheckProcessError(`${command.label} exceeded its deadline`, {
-            code: "command-timeout",
-          }),
-        ),
-      command.timeoutMs,
-    );
+    const timeout = () =>
+      stop(
+        new CheckProcessError(`${command.label} exceeded its deadline`, {
+          code: "command-timeout",
+        }),
+      );
+    commandTimer = setTimeout(timeout, command.timeoutMs);
+    // A caller may expire the command from its own clock, while the wall
+    // clock still guards a hung fixture or a missing readiness receipt.
+    if (timeoutSignal) {
+      timeoutSignal.addEventListener("abort", timeout, { once: true });
+      if (timeoutSignal.aborted) timeout();
+    }
     child.once("error", (error) => {
       stdoutState.detach();
       stderrState.detach();

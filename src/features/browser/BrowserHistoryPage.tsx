@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { BrowserVisit } from "../../ports/nativeBrowserPort";
+import type { BrowserVisit } from "../../ports/nativeBrowserHistoryPort";
 import { Globe, Search, X } from "../../ui/leanIcons";
 import { HISTORY_MAX_LOADED, useBrowsingHistory } from "./useBrowsingHistory";
 import { dayKey, historyDayLabel } from "./historyDays";

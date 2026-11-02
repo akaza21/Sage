@@ -206,6 +206,12 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
         default: SettingValue::Bool(true),
         ticket: "EP-12",
     },
+    SettingSpec {
+        key: "git.decorations",
+        kind: SettingKind::Bool,
+        default: SettingValue::Bool(true),
+        ticket: "EP-13",
+    },
 ];
 
 /// Every registry key with its current value; keys never go missing.
@@ -730,6 +736,7 @@ mod tests {
                     "**/Thumbs.db",
                 ],
                 "git.autoRefresh": true,
+                "git.decorations": true,
             })
         );
     }

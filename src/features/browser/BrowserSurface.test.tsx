@@ -84,8 +84,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     browserFind(tabId, action, query),
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
   browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
-  browserHistoryRemove: vi.fn(async () => 1),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
@@ -106,6 +104,10 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   coverBrowser: (tabId: string) => coverBrowser(tabId),
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
+}));
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => undefined),
@@ -709,6 +711,46 @@ it("covers the native page while a toolbar popover is open, even across a resize
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
   // A real hide ends Annotate; a popover opening or closing must not.
   expect(hideBrowser).not.toHaveBeenCalled();
+});
+
+it("keeps the native page covered until the clear-data confirmation is dismissed", async () => {
+  let nativePage: "hidden" | "visible" | "covered" = "hidden";
+  positionBrowser.mockImplementation(async () => {
+    nativePage = "visible";
+  });
+  coverBrowser.mockImplementation(async () => {
+    nativePage = "covered";
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  const paint = () =>
+    act(async () => {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await waitFor(() => expect(nativePage).toBe("visible"));
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Clear browsing data" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Clear browsing data?" }),
+    ).toBeVisible();
+    await paint();
+    expect(nativePage).toBe("covered");
+    fireEvent(window, new Event("resize"));
+    await paint();
+    expect(nativePage).toBe("covered");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(nativePage).toBe("visible"));
+  } finally {
+    positionBrowser.mockResolvedValue(undefined);
+    coverBrowser.mockResolvedValue(undefined);
+  }
 });
 
 it("still hides the native page for real on unmount or a tab switch while a popover covers it", async () => {

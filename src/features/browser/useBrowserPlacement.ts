@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { useModalDialogOpen } from "../../ui/modalDialogState";
 import {
   coverBrowser,
   hideBrowser,
@@ -13,18 +14,19 @@ export function useBrowserPlacement(
   covered = false,
   hidden = false,
 ) {
-  // A popover opening or closing places the page again without the cleanup
+  const modalOpen = useModalDialogOpen();
+  // A popover or shared modal places the page again without the cleanup
   // below, whose hide would end Annotate.
-  const coveredRef = useRef(covered);
+  const coveredRef = useRef(covered || modalOpen);
   // A page that replaces the browser for a while (History) hides it for
   // real, ending Annotate, as a tab switch does.
   const hiddenRef = useRef(hidden);
   const placeRef = useRef<() => void>(() => undefined);
   useEffect(() => {
-    coveredRef.current = covered;
+    coveredRef.current = covered || modalOpen;
     hiddenRef.current = hidden;
     placeRef.current();
-  }, [covered, hidden]);
+  }, [covered, hidden, modalOpen]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -43,11 +45,11 @@ export function useBrowserPlacement(
         void hideBrowser(tabId).catch(reportError);
         return;
       }
-      // A toolbar popover covers it only for a moment, so Annotate stays on.
       if (hiddenRef.current) {
         void hideBrowser(tabId).catch(reportError);
         return;
       }
+      // Popovers and shared dialogs cover the native window, keeping Annotate on.
       if (coveredRef.current) {
         void coverBrowser(tabId).catch(reportError);
         return;
@@ -87,6 +89,21 @@ export function useBrowserPlacement(
       });
     };
     placeRef.current = place;
+    // Another display scale moves the native pixel grid even when the CSS
+    // rectangle is unchanged, so the page is placed again on every change.
+    let resolution: MediaQueryList | null = null;
+    const watchResolution = () => {
+      resolution?.removeEventListener("change", onResolution);
+      resolution =
+        window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`) ??
+        null;
+      resolution?.addEventListener("change", onResolution);
+    };
+    const onResolution = () => {
+      watchResolution();
+      place();
+    };
+    watchResolution();
     const observer = new ResizeObserver(place);
     observer.observe(element);
     const visibilityObserver = new MutationObserver(place);
@@ -104,6 +121,7 @@ export function useBrowserPlacement(
       cancelAnimationFrame(frameId);
       observer.disconnect();
       visibilityObserver.disconnect();
+      resolution?.removeEventListener("change", onResolution);
       window.removeEventListener("resize", place);
       void hideBrowser(tabId).catch(() => undefined);
     };

@@ -2,7 +2,7 @@
 
 .quick-open-backdrop {
   position: fixed;
-  z-index: 40;
+  z-index: var(--z-modal);
   inset: 0;
   display: flex;
   justify-content: center;

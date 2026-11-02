@@ -13,7 +13,7 @@ import type {
   BrowserHistoryCursor,
   BrowserHistoryPage as Page,
   BrowserVisit,
-} from "../../ports/nativeBrowserPort";
+} from "../../ports/nativeBrowserHistoryPort";
 import { BrowserHistoryPage } from "./BrowserHistoryPage";
 import { historyDayLabel } from "./historyDays";
 import {
@@ -35,7 +35,7 @@ const browserHistoryPage = vi.fn(async (_query: Query): Promise<Page> => ({
 const browserHistoryRemove = vi.fn(
   async (_ids: readonly number[]): Promise<number> => 1,
 );
-vi.mock("../../ports/nativeBrowserPort", () => ({
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
   browserHistoryPage: (query: Query) => browserHistoryPage(query),
   browserHistoryRemove: (ids: readonly number[]) => browserHistoryRemove(ids),
 }));
