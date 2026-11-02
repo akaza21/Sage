@@ -322,7 +322,9 @@ async function expectArtifactConstrainedComposer(
   const harnessLabel = form
     .getByRole("button", { name: "Harness", exact: true })
     .locator(".searchable-picker__trigger-label");
-  await expectPickerLabelUnclipped(harnessLabel);
+  // The harness name yields to the model name: it shows whole or not at all.
+  if (await harnessLabel.isVisible())
+    await expectPickerLabelUnclipped(harnessLabel);
   await expect(
     form.getByRole("button", { name: "Model", exact: true }),
   ).toHaveText(expectedLabels[1]!);

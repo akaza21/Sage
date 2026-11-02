@@ -19,6 +19,7 @@ import {
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
+import { useOverflowSteps } from "../../ui/useOverflowSteps";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
@@ -33,9 +34,29 @@ import {
   harnessPickerCandidates,
   useComposerPopovers,
 } from "./useChatHarnessSelection";
-import { useComposerCompaction } from "./useComposerCompaction";
 import { useComposerModelChoices } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
+/**
+ * The toolbar's compaction steps, lowest priority first, as data-fit tokens
+ * that chat-container-controls.css keys on. A disabled placeholder goes first
+ * and the model name last: it truncates to a readable prefix before it gives
+ * way to its icon.
+ */
+const TOOLBAR_STEPS = [
+  "placeholder",
+  "capacity",
+  "access",
+  "harness",
+  "project",
+  "effort",
+  "effort-menu",
+  "project-menu",
+  "model-shrink",
+  "model",
+  "dense",
+  "wrap",
+] as const;
+
 interface Props {
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
@@ -107,8 +128,6 @@ export function ChatHarnessControls({
     dismiss,
     setHarnessOpen,
   } = useComposerPopovers(turnBusy || projectTransitioning);
-  const { effort: compactEffort, project: compactProject } =
-    useComposerCompaction(modelTrigger);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -214,11 +233,28 @@ export function ChatHarnessControls({
     flattenChoices(effortOption).some(
       (choice) => choice.value === effortOption.currentValue,
     );
+  // Effort and the project chip move into the options menu only when there is
+  // a menu item to take their place.
+  const steps = TOOLBAR_STEPS.filter(
+    (step) =>
+      (step !== "effort-menu" || canSelectEffort) &&
+      (step !== "project-menu" || Boolean(projectName)),
+  );
+  const controls = useRef<HTMLDivElement>(null);
+  const taken = steps.slice(
+    0,
+    useOverflowSteps(controls, steps, active !== null),
+  );
+  const effortInMenu = taken.includes("effort-menu");
+  const projectInMenu = taken.includes("project-menu");
+  // The options trigger appears once a control moves into its menu; that
+  // refits the row with the trigger in place, so the controls only return to
+  // the toolbar once they fit beside it.
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
-    (compactProject && projectName) ||
-    (canSelectEffort && compactEffort) ||
+    effortInMenu ||
+    projectInMenu ||
     modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -229,8 +265,8 @@ export function ChatHarnessControls({
     Boolean(imageAction),
     Boolean(onOpenGoal),
     canSelectEffort,
-    compactEffort,
-    compactProject,
+    effortInMenu,
+    projectInMenu,
     modeCandidates.map((mode) => mode.id),
     otherOptions.map((option) => [
       option.id,
@@ -257,7 +293,7 @@ export function ChatHarnessControls({
     optionsTriggerRef.current?.focus();
   };
   return (
-    <div className="composer__controls">
+    <div ref={controls} className="composer__controls">
       {hasActions ? (
         <button
           ref={optionsTriggerRef}
@@ -341,7 +377,7 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {projectName && !compactProject ? (
+      {projectName ? (
         <ProjectScopeChip
           projectName={projectName}
           disabled={projectTransitioning || turnBusy}
@@ -358,7 +394,7 @@ export function ChatHarnessControls({
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}
           projectAction={
-            compactProject && projectName ? (
+            projectInMenu && projectName ? (
               <ProjectScopeChip projectName={projectName} menuItem />
             ) : undefined
           }
@@ -368,7 +404,7 @@ export function ChatHarnessControls({
           imageAction={imageAction}
           onOpenGoal={onOpenGoal}
           onOpenEffort={
-            canSelectEffort && compactEffort
+            canSelectEffort && effortInMenu
               ? () => {
                   setEffortFromAdd(true);
                   toggle("effort");
@@ -386,7 +422,7 @@ export function ChatHarnessControls({
         </span>
       ) : null}
       {modeError ? (
-        <span className="select-control__reason" role="alert">
+        <span className="select-control__reason" role="alert" title={modeError}>
           {modeError}
         </span>
       ) : null}

@@ -162,8 +162,15 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
   expect(triggerBox).not.toBeNull();
-  expect(triggerBox!.width).toBeGreaterThanOrEqual(124);
   expect(triggerBox!.width).toBeLessThanOrEqual(132);
+  // The trigger takes its name's width, so the chevron follows the name.
+  const [nameBox, chevronBox] = await Promise.all([
+    harness.locator(".searchable-picker__trigger-label").boundingBox(),
+    harness.locator(".searchable-picker__chevron").boundingBox(),
+  ]);
+  expect(chevronBox!.x - (nameBox!.x + nameBox!.width)).toBeLessThanOrEqual(
+    4.5,
+  );
 
   await harness.click();
   const listbox = page.getByRole("listbox", { name: "Harness" });

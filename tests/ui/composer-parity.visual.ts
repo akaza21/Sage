@@ -50,6 +50,25 @@ async function render(page: Page, name: string, state: ParityState) {
   );
   await expect(page.locator("form.composer")).toBeVisible();
 }
+/** Opens Thinking level from the toolbar, or from the options menu when the
+ * toolbar has moved it there to keep the model name readable. */
+async function openEffort(page: Page, level: string) {
+  const composer = page.locator("form.composer");
+  const effort = composer.getByRole("button", {
+    name: `Thinking level: ${level}`,
+  });
+  if ((await effort.count()) > 0) {
+    await expect(effort.locator(".lucide-brain")).toHaveCount(1);
+    return effort.click();
+  }
+  await composer
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Composer options menu" })
+    .getByRole("menuitem", { name: "Thinking level", exact: true })
+    .click();
+}
 async function noClip(page: Page, selector: string) {
   for (const element of await page.locator(selector).all()) {
     const geometry = await element.evaluate((element) => ({
@@ -81,14 +100,10 @@ for (const width of [1888, 720, 480]) {
           name: "Model",
           exact: true,
         });
-        const effort = composer.getByRole("button", {
-          name: "Thinking level: High",
-        });
         await expect(model).toHaveText("Confirmed session model");
         await expect(model.locator(".lucide-sparkles")).toHaveCount(1);
-        await expect(effort.locator(".lucide-brain")).toHaveCount(1);
         await expectCompactComposerTargets(composer);
-        await effort.click();
+        await openEffort(page, "High");
         const reset = page.getByRole("button", { name: "Reset effort" });
         await expect(reset).toBeVisible();
         await reset.click();
@@ -393,7 +408,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await render(page, "Pi", "no-default");
-      await page.getByRole("button", { name: "Thinking level: High" }).click();
+      await openEffort(page, "High");
       await expect(
         page.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(0);

@@ -2,7 +2,7 @@
   height: var(--control-height-compact);
   min-width: 28px;
   max-width: 128px;
-  flex: 0 1 128px;
+  flex: none;
 }
 
 .composer__harness .searchable-picker {
@@ -47,8 +47,10 @@
   line-height: 1.2;
 }
 
+/* The name keeps its own width so the chevron follows it, as in Codex. */
 .composer__harness .searchable-picker__trigger-label {
   display: block;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

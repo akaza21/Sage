@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -24,6 +25,8 @@ import {
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
 const noop = () => Promise.resolve();
+// The toolbar's compaction stylesheet decides which controls are laid out.
+const toolbarStyle = document.createElement("style");
 const initialWorkbenchState = useWorkbenchStore.getState();
 const nativeAccessModes = [
   {
@@ -75,6 +78,11 @@ function renderControls(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   vi.restoreAllMocks();
+  toolbarStyle.textContent ||= await readFile(
+    "src/styles/chat-container-controls.css",
+    "utf8",
+  );
+  document.head.append(toolbarStyle);
   resetWorkbenchPortsForTests();
   useWorkbenchStore.setState({
     harnesses: [
@@ -103,6 +111,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  toolbarStyle.remove();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialWorkbenchState, true);
 });
@@ -421,22 +430,17 @@ describe("last confirmed model label", () => {
     ).toHaveTextContent("High");
   });
 
-  it("keeps effort reachable through Add when its compact toolbar control yields", async () => {
+  it("keeps effort and the project reachable through Add when the toolbar cannot fit them", async () => {
     useWorkbenchStore.setState({
       project: { id: "a", name: "A", roots: [] },
       projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
     });
-    const observer = vi.fn();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: (entries: unknown[]) => void) {
-          observer.mockImplementation(callback);
-        }
-        observe() {
-          observer([{ contentRect: { width: 280 } }]);
-        }
-        disconnect() {}
+    // A row too narrow for any of its controls takes every compaction step.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        return DOMRect.fromRect({
+          width: this.classList.contains("composer__controls") ? 0 : 28,
+        });
       },
     );
     const host = document.createElement("form");
@@ -468,9 +472,7 @@ describe("last confirmed model label", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     const project = screen.getByRole("menuitem", { name: "Project: A" });
-    expect(
-      host.querySelector(".composer__controls > .project-scope"),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
     fireEvent.click(project);
     const projects = screen.getByRole("combobox", { name: "Project: A" });
     const candidate = screen.getByRole("option", { name: /^A$/ });
@@ -495,7 +497,6 @@ describe("last confirmed model label", () => {
     ).toHaveFocus();
     view.unmount();
     host.remove();
-    vi.unstubAllGlobals();
   });
 
   it("does not subtitle a draft catalog selection as a confirmed model", async () => {
