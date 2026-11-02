@@ -824,37 +824,12 @@ fn save_keeps_the_buffer_when_the_target_is_deleted_after_the_replace() {
     assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
 }
 
+/// Documents the accepted Unix semantics: once the saved bytes are verified
+/// at the requested path, renaming the folder before the recovery buffer is
+/// cleared is the user moving a saved file, so the save stands.
 #[cfg(unix)]
 #[test]
-fn save_keeps_the_buffer_when_the_parent_is_renamed_before_verification() {
-    let path = "dir/doc.txt";
-    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
-
-    let result = save_document_with(
-        fixture.database(),
-        &fixture.workspace,
-        &fixture.resource(path),
-        |stage| {
-            if stage == SaveStage::AfterReplace {
-                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
-            }
-            Ok(())
-        },
-    );
-
-    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
-    assert_eq!(
-        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
-        b"dirty\n"
-    );
-    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-moved"));
-}
-
-/// Once the saved file is verified by path, a later move is the user moving
-/// a saved file, so the save stands and its recovery buffer is cleared.
-#[cfg(unix)]
-#[test]
-fn save_stands_when_the_parent_is_renamed_after_verification() {
+fn post_verification_parent_rename_on_unix_is_accepted_as_a_user_move() {
     let path = "dir/doc.txt";
     let fixture = dirty_fixture(path, b"base\n", "dirty\n");
 
@@ -878,6 +853,71 @@ fn save_stands_when_the_parent_is_renamed_after_verification() {
         fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
         b"dirty\n"
     );
+    assert!(fixture.buffer(path).is_none());
+}
+
+/// Documents the accepted Unix semantics: once the saved bytes are verified
+/// at the requested path, deleting the file before the recovery buffer is
+/// cleared is the user removing a saved file, so the save stands.
+#[cfg(unix)]
+#[test]
+fn post_verification_target_delete_on_unix_is_accepted_as_a_user_move() {
+    let path = "deleted-after.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                fs::remove_file(fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(result.document.buffer.content, "dirty\n");
+    assert!(!fixture.root.join(path).exists());
+    assert!(fixture.buffer(path).is_none());
+}
+
+/// On Windows the verified target handle and the parent guards stay open
+/// until the recovery buffer is cleared, so the saved file cannot be
+/// deleted, replaced or moved in that window.
+#[cfg(windows)]
+#[test]
+fn held_handles_block_changes_to_the_saved_file_until_recovery_is_cleared() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let target = fixture.root.join(path);
+    let replacement = fixture.root.join("dir/replacement.txt");
+    fs::write(&replacement, b"other\n").unwrap();
+    let mut refused = (false, false, false);
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                refused = (
+                    fs::remove_file(&target).is_err(),
+                    fs::rename(&replacement, &target).is_err(),
+                    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved")).is_err(),
+                );
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(refused, (true, true, true));
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(fs::read(&target).unwrap(), b"dirty\n");
+    assert_eq!(fs::read(&replacement).unwrap(), b"other\n");
     assert!(fixture.buffer(path).is_none());
 }
 

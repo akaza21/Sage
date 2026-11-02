@@ -136,14 +136,17 @@ pub(super) fn cleanup_recorded_temp(
 }
 
 impl HeldParent {
-    /// Reads the document `name` and returns the identity of the file read.
+    /// Reads the document `name` and returns it with the identity of the file
+    /// read and the still open handle it was read through. On Windows that
+    /// handle denies delete sharing, so while it is open the file cannot be
+    /// deleted, replaced or renamed.
     pub(super) fn read_document_with_identity(
         &self,
         name: &str,
-    ) -> AppResult<(DiskDocument, RootIdentity)> {
+    ) -> AppResult<(DiskDocument, RootIdentity, File)> {
         let file = self.open_file(name)?;
         let identity = leaf_identity(&file, &file.metadata()?)?;
-        Ok((disk_document_from(&file)?, identity))
+        Ok((disk_document_from(&file)?, identity, file))
     }
 
     /// Fails unless `name` is still the regular file with identity `expected`.

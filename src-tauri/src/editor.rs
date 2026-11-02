@@ -169,13 +169,16 @@ fn save_document_with(
             }
         };
 
-    let (latest_disk, target_identity) = match parent.read_document_with_identity(file_name) {
+    let (latest_disk, target_identity, target) = match parent.read_document_with_identity(file_name)
+    {
         Ok(read) => read,
         Err(error) => {
             abandon();
             return Err(error);
         }
     };
+    // Windows cannot replace a file while this handle is open.
+    drop(target);
     if latest_disk.version.fingerprint != buffer.base_fingerprint {
         abandon();
         return Ok(conflict_result(resource, latest_disk, buffer));
@@ -201,7 +204,7 @@ fn save_document_with(
     let verified = observe(SaveStage::AfterReplace)
         .map_err(AppError::from)
         .and_then(|()| parent.read_document_with_identity(file_name))
-        .and_then(|(saved, identity)| {
+        .and_then(|(saved, identity, handle)| {
             if identity != installed || saved.version.fingerprint != buffer.buffer_fingerprint {
                 return Err(AppError::InvalidRequest(
                     "the saved file was replaced".into(),
@@ -209,17 +212,21 @@ fn save_document_with(
             }
             parent.ensure_named_by(workspace, parent_path)?;
             ensure_path_names(workspace, &path, installed)?;
-            Ok(saved)
+            Ok((saved, handle))
         });
-    let Ok(saved) = verified else {
+    let Ok((saved, _verified_target)) = verified else {
         return Err(AppError::InvalidRequest(
             "the content was written, but the file's location changed during the save or \
              could not be verified; the unsaved buffer is kept"
                 .into(),
         ));
     };
-    // A move from here on is the same as the user moving the file after a
-    // successful save, so it does not undo the save.
+    // The verified target handle and, on Windows, the parent guards stay open
+    // until the recovery delete commits, so on Windows nothing can delete,
+    // replace or rename the saved file or its folders in between. Unix
+    // descriptors cannot prevent that; the bytes were verified at this path,
+    // so a rename or delete from here on is the user moving the file after a
+    // successful save and does not undo the save.
     observe(SaveStage::BeforeRecoveryClear)?;
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
 
