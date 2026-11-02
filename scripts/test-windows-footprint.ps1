@@ -127,17 +127,38 @@ foreach ($case in $roles) {
   Assert-Equal $case[0] (Get-FootprintProcessRole $case[1] $case[2] $case[3]) "Process role classification failed."
 }
 
+$treeStart = [DateTime]::Parse("2026-07-30T00:00:00Z").ToUniversalTime()
 $rows = @(
-  [pscustomobject]@{ ProcessId = 10; ParentProcessId = 1 },
-  [pscustomobject]@{ ProcessId = 11; ParentProcessId = 10 },
-  [pscustomobject]@{ ProcessId = 12; ParentProcessId = 11 },
-  [pscustomobject]@{ ProcessId = 20; ParentProcessId = 1 }
+  [pscustomobject]@{ ProcessId = 10; ParentProcessId = 1; CreationDate = $treeStart },
+  [pscustomobject]@{ ProcessId = 11; ParentProcessId = 10; CreationDate = $treeStart.AddSeconds(1) },
+  [pscustomobject]@{ ProcessId = 12; ParentProcessId = 11; CreationDate = $treeStart.AddSeconds(2) },
+  [pscustomobject]@{ ProcessId = 20; ParentProcessId = 1; CreationDate = $treeStart.AddSeconds(3) }
 )
 $descendants = @(Get-FootprintDescendants 10 $rows)
 Assert-Equal 3 $descendants.Count "Descendant count failed."
 Assert-Equal "10,11,12" (($descendants | ForEach-Object ProcessId) -join ",") "Descendant membership failed."
 Assert-Throws { Get-FootprintDescendants 10 $rows 2 128 } "An over-limit system process snapshot was collected."
 Assert-Throws { Get-FootprintDescendants 10 $rows 4096 2 } "An over-limit candidate descendant set was retained."
+
+$staleRows = @(
+  [pscustomobject]@{ ProcessId = 10; ParentProcessId = 1; CreationDate = $treeStart },
+  [pscustomobject]@{ ProcessId = 11; ParentProcessId = 10; CreationDate = $treeStart.AddSeconds(-1) },
+  [pscustomobject]@{ ProcessId = 12; ParentProcessId = 10; CreationDate = $null },
+  [pscustomobject]@{ ProcessId = 13; ParentProcessId = 12; CreationDate = $treeStart.AddSeconds(1) }
+)
+Assert-Equal "10,12" ((@(Get-FootprintDescendants 10 $staleRows) | ForEach-Object ProcessId) -join ",") "An older or unprovable process was adopted into the tree."
+$unknownRootRows = @(
+  [pscustomobject]@{ ProcessId = 10; ParentProcessId = 1; CreationDate = $null },
+  [pscustomobject]@{ ProcessId = 11; ParentProcessId = 10; CreationDate = $treeStart }
+)
+Assert-Equal "10" ((@(Get-FootprintDescendants 10 $unknownRootRows) | ForEach-Object ProcessId) -join ",") "A root without a proven creation time vouched for its children."
+$exitedRootRows = @(
+  [pscustomobject]@{ ProcessId = 11; ParentProcessId = 10; CreationDate = $treeStart.AddSeconds(-1) },
+  [pscustomobject]@{ ProcessId = 12; ParentProcessId = 10; CreationDate = $treeStart.AddSeconds(1) }
+)
+Assert-Equal "" ((@(Get-FootprintDescendants 10 $exitedRootRows) | ForEach-Object ProcessId) -join ",") "An exited root without a launch time vouched for processes naming its PID."
+Assert-Equal "12" ((@(Get-FootprintDescendants 10 $exitedRootRows -RootCreationDate $treeStart) | ForEach-Object ProcessId) -join ",") "An exited root's launch time did not prove its own children."
+Assert-Equal 0 @(Get-FootprintDescendants 10 $rows -RootCreationDate $treeStart.AddSeconds(30)).Count "A reused root PID vouched for its tree."
 
 $rootIdentity = [ordered]@{
   processId = 10
