@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
@@ -17,7 +17,7 @@ import { withStyleNonce } from "../ports/styleNonce";
 const INPUT_RETRY_MS = 10_000;
 
 function errorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
+  return error && typeof error === "object"
     ? (error as { code?: unknown }).code
     : undefined;
 }
@@ -52,22 +52,14 @@ export function TerminalDock({
   const viewportRef = useRef<HTMLDivElement>(null);
   const onStatusRef = useRef(onStatus);
   const visibleRef = useRef(visible);
-  const displayRef = useRef<(visible: boolean) => void>(() => undefined);
+  const displayRef = useRef<((visible: boolean) => void) | null>(null);
   useEffect(() => {
     visibleRef.current = visible;
-    displayRef.current(visible);
+    displayRef.current?.(visible);
   }, [visible]);
   useEffect(() => {
     onStatusRef.current = onStatus;
   }, [onStatus]);
-  const ownerScope = useMemo(
-    () => ({
-      projectId: scope.projectId,
-      projectGeneration: scope.projectGeneration,
-      chatId: scope.chatId,
-    }),
-    [scope.projectId, scope.projectGeneration, scope.chatId],
-  );
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -100,8 +92,6 @@ export function TerminalDock({
     // xterm has no nonce option; its renderer and viewport create their
     // <style> elements inside open().
     withStyleNonce(element.ownerDocument, () => terminal.open(element));
-    const initial = dimensionsFor(element);
-    terminal.resize(initial.columns, initial.rows);
 
     async function pollOutput(): Promise<void> {
       let cursor = "0";
@@ -117,7 +107,7 @@ export function TerminalDock({
           }
           let page;
           try {
-            page = await readUserTerminal(ownerScope, session, cursor);
+            page = await readUserTerminal(scope, session, cursor);
           } catch (error) {
             if (errorCode(error) === "busy") {
               await new Promise((resolve) => setTimeout(resolve, 100));
@@ -147,12 +137,7 @@ export function TerminalDock({
         while (latestResize && !stopped) {
           const next = latestResize;
           latestResize = null;
-          await resizeUserTerminal(
-            ownerScope,
-            session,
-            next.columns,
-            next.rows,
-          );
+          await resizeUserTerminal(scope, session, next.columns, next.rows);
         }
       } catch (error) {
         if (!stopped) onStatusRef.current(terminalErrorLabel(error));
@@ -168,7 +153,7 @@ export function TerminalDock({
       const started = Date.now();
       for (let delay = 50; ; delay = Math.min(delay * 2, 500)) {
         try {
-          await writeUserTerminal(ownerScope, session, chunk);
+          await writeUserTerminal(scope, session, chunk);
           return;
         } catch (error) {
           if (
@@ -244,27 +229,18 @@ export function TerminalDock({
       terminal.refresh(0, terminal.rows - 1);
       terminal.focus();
     };
-    if (visibleRef.current)
-      void resizeUserTerminal(
-        ownerScope,
-        session,
-        initial.columns,
-        initial.rows,
-      ).catch((error: unknown) => {
-        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
-      });
+    displayRef.current(visibleRef.current);
     void pollOutput();
-    if (visibleRef.current) terminal.focus();
     return () => {
       stopped = true;
       resumeRead?.();
-      displayRef.current = () => undefined;
+      displayRef.current = null;
       observer.disconnect();
       window.removeEventListener("resize", refreshDimensions);
       inputListener.dispose();
       terminal.dispose();
     };
-  }, [ended, ownerScope, session]);
+  }, [ended, scope, session]);
 
   return (
     <div

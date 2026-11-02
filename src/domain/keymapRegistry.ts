@@ -71,7 +71,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required",
     shift: "forbidden",
     alt: "forbidden",
-    appleControl: true,
   },
   {
     id: "newTask",
