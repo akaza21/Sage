@@ -282,20 +282,43 @@ test("VCTIP retained-handle revalidation refuses a disappearing Job member", asy
 
 // origin: check-lanes.node-test.mjs:314 "Windows Cargo Job preserves Cargo proxy command semantics" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
-  await executeWindowsCargoJobCommand(
-    {
-      label: "cargo-locate-project",
-      command: "cargo.exe",
-      args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
-      cwd: path.resolve("."),
-      timeoutMs: 10_000,
-      terminationGraceMs: 500,
-      settlementTimeoutMs: 2_000,
-      maximumLineBytes: 1_024,
-      maximumOutputBytes: 4_096,
-    },
-    new AbortController().signal,
-    { stdout: discardStream(), stderr: discardStream() },
+  const captured = { stdout: "", stderr: "" };
+  const capture = (stream) =>
+    new Writable({
+      write(chunk, _encoding, callback) {
+        captured[stream] = (captured[stream] + chunk.toString("utf8")).slice(
+          0,
+          4_096,
+        );
+        callback();
+      },
+    });
+  const started = performance.now();
+  try {
+    await executeWindowsCargoJobCommand(
+      {
+        label: "cargo-locate-project",
+        command: "cargo.exe",
+        args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
+        cwd: path.resolve("."),
+        timeoutMs: 10_000,
+        terminationGraceMs: 500,
+        settlementTimeoutMs: 2_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      new AbortController().signal,
+      { stdout: capture("stdout"), stderr: capture("stderr") },
+    );
+  } catch (error) {
+    error.cargoStdout = captured.stdout;
+    error.cargoStderr = captured.stderr;
+    error.elapsedMs = Math.round(performance.now() - started);
+    throw error;
+  }
+  assert.deepEqual(
+    JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
+    { root: path.resolve("src-tauri/Cargo.toml") },
   );
 });
 
