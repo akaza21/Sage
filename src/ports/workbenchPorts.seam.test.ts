@@ -1,13 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import type { InvokeArgs } from "@tauri-apps/api/core";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { FROZEN_WORKBENCH_PORT_METHODS } from "./workbenchPorts";
 import { createBrowserWorkbenchPorts } from "./browserWorkbenchPorts";
-import { createNativeWorkbenchPorts } from "./nativeWorkbenchPorts";
 import {
   getWorkbenchPorts as getDesktopWorkbenchPorts,
   resetWorkbenchPortsForTests as resetDesktopWorkbenchPortsForTests,
 } from "./workbenchRuntime.desktop";
-import { getWorkbenchPorts } from "./workbenchRuntime";
+import {
+  getWorkbenchPorts,
+  resetWorkbenchPortsForTests,
+} from "./workbenchRuntime";
+import type { WorkbenchPorts } from "./workbenchPorts";
 import {
   selectAgentSession,
   selectEditorDocument,
@@ -16,30 +20,141 @@ import {
   selectActiveChatId,
 } from "../app/workbenchSelectors";
 import type { WorkbenchState } from "../app/store";
+import type { ResourceRef } from "../domain/workbench";
+import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+
+const resource: ResourceRef = { rootId: "root-a", relativePath: "src/a.ts" };
+
+// A stand-in for the desktop process at the Tauri IPC boundary: each command
+// answers from what it was sent, so an adapter that drops or rewrites its
+// arguments, or never reaches the backend, yields a different value.
+function installDesktopBackend() {
+  mockIPC((command: string, payload?: InvokeArgs) => {
+    const args = (payload ?? {}) as Record<string, unknown>;
+    switch (command) {
+      case "get_bootstrap_snapshot":
+        return { project: { id: "desktop-project" }, transitionEpoch: 9 };
+      case "open_editor_document": {
+        const opened = args.resource as ResourceRef;
+        return {
+          resource: opened,
+          buffer: { content: `desktop bytes of ${opened.relativePath}` },
+        };
+      }
+      case "create_chat":
+        return {
+          committed: true,
+          transitionEpoch: (args.expectedTransitionEpoch as number) + 1,
+          projectId: args.projectId,
+        };
+      case "get_editor_settings":
+        return { "editor.fontSize": 21 };
+      default:
+        throw new Error(`unexpected desktop command ${command}`);
+    }
+  });
+}
+
+afterEach(() => {
+  delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  resetWorkbenchPortsForTests();
+  resetDesktopWorkbenchPortsForTests();
+  resetBrowserDesktopForTests();
+});
+
+async function chatLayout(ports: WorkbenchPorts) {
+  const snapshot = await ports.project.getBootstrapSnapshot();
+  return {
+    snapshot,
+    layout: {
+      projectId: snapshot.project!.id,
+      tabs: snapshot.tabs,
+      activeTabId: snapshot.activeTabId,
+      selectedRootId: snapshot.selectedRootId,
+      selectedResource: snapshot.selectedResource,
+    },
+  };
+}
 
 describe("S0.3 workbench port seam", () => {
-  it("native and browser adapters implement every frozen port method", () => {
-    const native = createNativeWorkbenchPorts();
-    const browser = createBrowserWorkbenchPorts();
-    for (const portName of Object.keys(FROZEN_WORKBENCH_PORT_METHODS) as Array<
-      keyof typeof FROZEN_WORKBENCH_PORT_METHODS
-    >) {
-      const methods = FROZEN_WORKBENCH_PORT_METHODS[portName];
-      const nativePort = native[portName] as unknown as Record<string, unknown>;
-      const browserPort = browser[portName] as unknown as Record<
-        string,
-        unknown
-      >;
-      for (const method of methods) {
-        expect(typeof nativePort[method], `native.${portName}.${method}`).toBe(
-          "function",
-        );
-        expect(
-          typeof browserPort[method],
-          `browser.${portName}.${method}`,
-        ).toBe("function");
-      }
-    }
+  it("serves a plain browser page from the in-page workbench fixture", async () => {
+    const ports = getWorkbenchPorts();
+
+    const { snapshot, layout } = await chatLayout(ports);
+    expect(snapshot.project?.id).toBe("browser-project");
+
+    const document = await ports.editor.openEditorDocument(resource);
+    expect(document.buffer.content).toBe(
+      "// Browser projection for src/a.ts\n",
+    );
+
+    const created = await ports.chat.createChat(
+      layout,
+      snapshot.transitionEpoch,
+    );
+    expect(created.committed).toBe(true);
+    expect(created.transitionEpoch).toBe(snapshot.transitionEpoch + 1);
+    const newChatId = created.snapshot!.activeTabId;
+    expect(newChatId).not.toBe(snapshot.activeTabId);
+    expect(
+      (await ports.project.getBootstrapSnapshot()).tabs.map((tab) => tab.id),
+    ).toContain(newChatId);
+
+    const before = await ports.settings.getEditorSettings();
+    await ports.settings.setEditorSettings({ "editor.fontSize": 16 });
+    expect(
+      (await getWorkbenchPorts().settings.getEditorSettings())[
+        "editor.fontSize"
+      ],
+    ).toBe(16);
+    await ports.settings.setEditorSettings(before);
+  });
+
+  it("routes the same operations to the desktop backend inside the desktop app", async () => {
+    installDesktopBackend();
+    const ports = getWorkbenchPorts();
+
+    const snapshot = await ports.project.getBootstrapSnapshot();
+    expect(snapshot.project?.id).toBe("desktop-project");
+    expect(
+      (await ports.editor.openEditorDocument(resource)).buffer.content,
+    ).toBe("desktop bytes of src/a.ts");
+    expect(
+      await ports.chat.createChat(
+        {
+          projectId: "desktop-project",
+          tabs: [],
+          activeTabId: null,
+          selectedRootId: null,
+          selectedResource: null,
+        },
+        9,
+        "desktop-project",
+      ),
+    ).toMatchObject({
+      committed: true,
+      transitionEpoch: 10,
+      projectId: "desktop-project",
+    });
+    expect(await ports.settings.getEditorSettings()).toEqual({
+      "editor.fontSize": 21,
+    });
+  });
+
+  it("keeps the desktop-only facade on the desktop backend, never the browser fixture", async () => {
+    await expect(
+      getDesktopWorkbenchPorts().project.getBootstrapSnapshot(),
+    ).rejects.toBeInstanceOf(Error);
+
+    installDesktopBackend();
+    resetDesktopWorkbenchPortsForTests();
+    const ports = getDesktopWorkbenchPorts();
+    expect((await ports.project.getBootstrapSnapshot()).project?.id).toBe(
+      "desktop-project",
+    );
+    expect(
+      (await ports.editor.openEditorDocument(resource)).buffer.content,
+    ).toBe("desktop bytes of src/a.ts");
   });
 
   it("browser Editor settings refuse a wrong type like the desktop store", async () => {
@@ -57,25 +172,6 @@ describe("S0.3 workbench port seam", () => {
         "editor.fontSize": 15,
       } as unknown as Parameters<typeof settings.setEditorSettings>[0]),
     ).resolves.toMatchObject({ "editor.fontSize": 14 });
-  });
-
-  it("exposes getWorkbenchPorts as the runtime acquisition seam", () => {
-    const ports = getWorkbenchPorts();
-    expect(typeof ports.project.getBootstrapSnapshot).toBe("function");
-    expect(typeof ports.editor.openEditorDocument).toBe("function");
-    expect(typeof ports.chat.createChat).toBe("function");
-    expect(typeof ports.settings.getEditorSettings).toBe("function");
-  });
-
-  it("keeps the desktop-only facade synchronous and native-only", () => {
-    resetDesktopWorkbenchPortsForTests();
-    const first = getDesktopWorkbenchPorts();
-    expect(first).toBe(getDesktopWorkbenchPorts());
-    expect(typeof first.project.getBootstrapSnapshot).toBe("function");
-    expect(typeof first.editor.openEditorDocument).toBe("function");
-    expect(typeof first.chat.createChat).toBe("function");
-    resetDesktopWorkbenchPortsForTests();
-    expect(getDesktopWorkbenchPorts()).not.toBe(first);
   });
 
   it("exposes named store selectors so features do not expand aggregate store", () => {
