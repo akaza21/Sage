@@ -206,7 +206,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn short_folder_paths_publish_long_destinations_without_overwriting() {
+    fn alternate_folder_paths_publish_long_destinations_without_overwriting() {
         use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
         use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
@@ -221,15 +221,25 @@ mod tests {
         // SAFETY: the input is NUL-terminated and live through both calls;
         // the second call has the buffer size requested by the first.
         let size = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
-        assert_ne!(size, 0, "the real temp directory must have a short path");
+        assert_ne!(size, 0, "the real temp directory must resolve");
         let mut buffer = vec![0; size as usize];
         let length = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), size) };
         assert!(length > 0 && length < size);
         let short = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..length as usize]));
-        assert_ne!(short, folder, "the test must exercise an 8.3 alias");
+        // Volumes without 8.3 names return the long path unchanged. Exercise
+        // the OS result either way, plus a spelling that always needs repair.
+        let dotted = folder
+            .parent()
+            .unwrap()
+            .join(".")
+            .join(folder.file_name().unwrap());
 
         std::fs::write(folder.join("report.txt"), b"original").unwrap();
-        for (input, name) in [(&short, "report (2).txt"), (&folder, "report (4).txt")] {
+        for (input, name) in [
+            (&dotted, "report (2).txt"),
+            (&short, "report (4).txt"),
+            (&folder, "report (6).txt"),
+        ] {
             let mut reservation = Reservation::adopt(
                 unique_destination(input, "report.txt", |_| false).unwrap(),
                 "report.txt",
@@ -239,20 +249,21 @@ mod tests {
             std::fs::write(reservation.path(), b"another application's data").unwrap();
             std::fs::write(reservation.writer_path(), b"downloaded bytes").unwrap();
             let published = reservation.publish().unwrap();
-            assert_eq!(published, folder.join(name));
+            // Path equality ignores `.` segments; require the exact spelling.
+            assert_eq!(published.as_os_str(), folder.join(name).as_os_str());
             assert_eq!(std::fs::read(published).unwrap(), b"downloaded bytes");
         }
         assert_eq!(
             std::fs::read(folder.join("report.txt")).unwrap(),
             b"original"
         );
-        for name in ["report (1).txt", "report (3).txt"] {
+        for name in ["report (1).txt", "report (3).txt", "report (5).txt"] {
             assert_eq!(
                 std::fs::read(folder.join(name)).unwrap(),
                 b"another application's data"
             );
         }
-        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 5);
+        assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 7);
     }
 
     #[cfg(windows)]
