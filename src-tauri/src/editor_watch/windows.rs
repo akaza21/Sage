@@ -87,7 +87,19 @@ fn run_directory_watch(
     cancelled: &AtomicBool,
     directory: &Path,
     watched_file_name: &str,
+    deliver: impl FnMut(EditorExternalWatchKind),
+) -> std::io::Result<()> {
+    watch_directory(cancelled, directory, watched_file_name, deliver, || {})
+}
+
+/// `on_armed` runs on the watch thread each time a read is pending, so tests
+/// can act on a watch that is known to be listening.
+fn watch_directory(
+    cancelled: &AtomicBool,
+    directory: &Path,
+    watched_file_name: &str,
     mut deliver: impl FnMut(EditorExternalWatchKind),
+    mut on_armed: impl FnMut(),
 ) -> std::io::Result<()> {
     let directory_handle = OpenOptions::new()
         .access_mode(FILE_LIST_DIRECTORY)
@@ -114,6 +126,7 @@ fn run_directory_watch(
         if requested == 0 && std::io::Error::last_os_error().raw_os_error() != Some(997) {
             return Err(std::io::Error::last_os_error());
         }
+        on_armed();
         loop {
             let result = unsafe { WaitForSingleObject(event.raw(), 100) };
             if cancelled.load(Ordering::Acquire) {
@@ -551,65 +564,62 @@ mod tests {
         assert_eq!(delivered, Vec::new());
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    enum WatchEvent {
+        Armed,
+        Notice(EditorExternalWatchKind),
+    }
+
     #[test]
     fn a_burst_that_overflows_the_watch_buffer_reports_changed_and_keeps_watching() {
         let directory = unique_directory("overflow");
         fs::create_dir(&directory).expect("create test directory");
-        let watched_path = directory.join("notes.md");
-        fs::write(&watched_path, "initial").expect("create watched file");
+        fs::write(directory.join("notes.md"), "initial").expect("create watched file");
 
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let worker_directory = directory.clone();
-        let (notices, receive_notice) = mpsc::sync_channel(8);
+        let (events, receive_event) = mpsc::channel();
         let (resume, resume_watch) = mpsc::channel::<()>();
         let (completed, receive_completion) = mpsc::sync_channel(1);
         let worker = std::thread::spawn(move || {
-            // The first deletion holds the watch thread, as a slow consumer
-            // would, so the burst below lands while no read is pending.
+            // The first armed read holds the watch thread, as a slow consumer
+            // would. That read completes on the first change of the burst, and
+            // the rest piles up in the 8 KiB buffer with no read to take it.
             let mut hold = Some(resume_watch);
-            let result =
-                run_directory_watch(&worker_cancelled, &worker_directory, "notes.md", |kind| {
-                    notices.send(kind).expect("test receives watch notice");
-                    if kind == EditorExternalWatchKind::Deleted
-                        && let Some(hold) = hold.take()
-                    {
+            let result = watch_directory(
+                &worker_cancelled,
+                &worker_directory,
+                "notes.md",
+                |kind| {
+                    events
+                        .send(WatchEvent::Notice(kind))
+                        .expect("test receives watch notice");
+                },
+                || {
+                    events
+                        .send(WatchEvent::Armed)
+                        .expect("test receives armed signal");
+                    if let Some(hold) = hold.take() {
                         hold.recv().expect("test resumes the watch");
                     }
-                });
+                },
+            );
             completed
                 .send(result)
                 .expect("test receives worker completion");
         });
+        let next_event = || {
+            receive_event
+                .recv_timeout(Duration::from_secs(5))
+                .expect("watch should report its next step")
+        };
 
-        let mut saw_change = false;
-        for index in 0..20 {
-            fs::write(&watched_path, format!("changed-{index}")).expect("modify watched file");
-            if receive_notice
-                .recv_timeout(Duration::from_millis(100))
-                .is_ok_and(|kind| kind == EditorExternalWatchKind::Changed)
-            {
-                saw_change = true;
-                break;
-            }
-        }
-        assert!(saw_change, "watch should be running before the burst");
-        let quiet_deadline = std::time::Instant::now() + Duration::from_millis(300);
-        while std::time::Instant::now() < quiet_deadline {
-            let _ = receive_notice.recv_timeout(Duration::from_millis(50));
-        }
-
-        fs::remove_file(&watched_path).expect("delete watched file");
-        assert_eq!(
-            receive_notice
-                .recv_timeout(Duration::from_secs(2))
-                .expect("watched file deletion should be reported"),
-            EditorExternalWatchKind::Deleted
-        );
+        assert_eq!(next_event(), WatchEvent::Armed, "watch should be listening");
 
         // Each record is over 200 bytes, so 1,000 of them hold far more than
-        // the 8 KiB buffer. None names the watched file, which no longer
-        // exists, so only the overflow can report `Changed`.
+        // the 8 KiB buffer. None names the watched file, so only the overflow
+        // can report `Changed`.
         let padding = "x".repeat(96);
         for index in 0..1_000 {
             fs::File::create(directory.join(format!("burst-{index:04}-{padding}.md")))
@@ -617,26 +627,17 @@ mod tests {
         }
         resume.send(()).expect("watch waits to be resumed");
 
-        assert_eq!(
-            receive_notice
-                .recv_timeout(Duration::from_secs(2))
-                .expect("an overflowed watch should report a change"),
-            EditorExternalWatchKind::Changed
-        );
-        assert!(
-            receive_notice
-                .recv_timeout(Duration::from_millis(500))
-                .is_err(),
-            "one overflow should report one change"
-        );
-
-        fs::write(&watched_path, "recreated").expect("recreate watched file");
-        assert_eq!(
-            receive_notice
-                .recv_timeout(Duration::from_secs(2))
-                .expect("the watch should keep running after an overflow"),
-            EditorExternalWatchKind::Changed
-        );
+        // Read until the watch re-arms after its first notice: the overflow
+        // reports one `Changed`, and the watch keeps listening after it.
+        let mut notices = Vec::new();
+        loop {
+            match next_event() {
+                WatchEvent::Notice(kind) => notices.push(kind),
+                WatchEvent::Armed if !notices.is_empty() => break,
+                WatchEvent::Armed => {}
+            }
+        }
+        assert_eq!(notices, vec![EditorExternalWatchKind::Changed]);
 
         cancelled.store(true, Ordering::Release);
         receive_completion
