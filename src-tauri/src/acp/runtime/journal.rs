@@ -17,6 +17,8 @@ use super::journal_support::{
 const CONTROL_MESSAGE_BYTES: usize = 32 * 1024;
 
 mod ack;
+mod execution;
+mod workspace_capture;
 use ack::Acknowledgement;
 pub(crate) use ack::JournalTicket;
 
@@ -45,6 +47,7 @@ pub(crate) enum JournalError {
 #[derive(Debug, Clone)]
 pub(crate) struct JournalHandle {
     queue: Arc<Queue>,
+    workspace_database: Option<crate::persistence::Database>,
 }
 
 pub(crate) struct JournalRunner<S> {
@@ -54,6 +57,7 @@ pub(crate) struct JournalRunner<S> {
 
 pub(crate) struct JournalBatchBuilder {
     queue: Arc<Queue>,
+    workspace_database: Option<crate::persistence::Database>,
     lane: JournalLane,
     mutations: Vec<StoreMutation>,
     reservation: Option<Reservation>,
@@ -68,6 +72,8 @@ struct Queue {
 #[derive(Debug, Default)]
 struct QueueState {
     closed: bool,
+    aborted: bool,
+    workspace_inflight: Vec<workspace_capture::InFlight>,
     next_sequence: u64,
     data_count: usize,
     data_bytes: usize,
@@ -80,10 +86,12 @@ struct QueueState {
 
 #[derive(Debug)]
 struct Envelope {
+    workspace_database: Option<crate::persistence::Database>,
+    workspace_result: Option<Result<(), StoreError>>,
     sequence: u64,
     deadline_millis: u64,
     priority_deadline_millis: u64,
-    mutations: Vec<StoreMutation>,
+    mutations: Arc<Vec<StoreMutation>>,
     reservation: Option<Reservation>,
     acknowledgement: Arc<Acknowledgement>,
 }
@@ -108,9 +116,18 @@ impl JournalHandle {
         (
             Self {
                 queue: Arc::clone(&queue),
+                workspace_database: None,
             },
             JournalRunner { queue, store },
         )
+    }
+
+    pub(crate) fn with_workspace_tracking(
+        mut self,
+        database: crate::persistence::Database,
+    ) -> Self {
+        self.workspace_database = Some(database);
+        self
     }
 
     /// Reserves the batch-count slot before the mutation vector receives its
@@ -119,6 +136,7 @@ impl JournalHandle {
         let reservation = Reservation::acquire(Arc::clone(&self.queue), lane)?;
         Ok(JournalBatchBuilder {
             queue: Arc::clone(&self.queue),
+            workspace_database: self.workspace_database.clone(),
             lane,
             mutations: Vec::new(),
             reservation: Some(reservation),
@@ -140,14 +158,23 @@ impl JournalHandle {
         let (data, control) = {
             let mut state = lock(&self.queue);
             state.closed = true;
+            state.aborted = true;
+            for capture in &state.workspace_inflight {
+                capture.acknowledgement.close();
+            }
             (
                 std::mem::take(&mut state.data),
                 std::mem::take(&mut state.control),
             )
         };
         self.queue.ready.notify_all();
+        for envelope in data.iter().chain(&control) {
+            workspace_capture::discard(envelope);
+            workspace_capture::resume(&mut lock(&self.queue), envelope);
+        }
         drop(data);
         drop(control);
+        self.queue.ready.notify_all();
     }
 
     pub(crate) fn close_when_drained(&self) {
@@ -230,10 +257,12 @@ impl JournalBatchBuilder {
             .filter(|next| *next <= i64::MAX as u64)
             .ok_or(JournalError::SequenceExhausted)?;
         let envelope = Envelope {
+            workspace_database: self.workspace_database.clone(),
+            workspace_result: None,
             sequence,
             deadline_millis,
             priority_deadline_millis,
-            mutations,
+            mutations: Arc::new(mutations),
             reservation: Some(reservation),
             acknowledgement: Arc::clone(&acknowledgement),
         };
@@ -253,35 +282,17 @@ impl<S: AcpStore + 'static> JournalRunner<S> {
         tokio::task::spawn_blocking(move || self.run_blocking())
     }
 
-    pub(crate) fn run_blocking(mut self) {
+    pub(crate) fn run_blocking(self) {
+        self.run_with_workspace_capture(Arc::new(crate::turn_workspace::prepare_terminal));
+    }
+
+    fn run_with_workspace_capture(mut self, prepare: Arc<workspace_capture::Prepare>) {
         loop {
             let Some(envelope) = next_envelope(&self.queue) else {
                 break;
             };
-            execute_envelope(&self.queue, &mut self.store, envelope);
+            execution::execute_envelope(&self.queue, &mut self.store, envelope, &prepare);
         }
-    }
-}
-
-fn execute_envelope<S: AcpStore>(queue: &Arc<Queue>, store: &mut S, mut envelope: Envelope) {
-    if now_millis() >= envelope.deadline_millis {
-        envelope
-            .acknowledgement
-            .complete(Err(JournalError::Deadline));
-        return;
-    }
-    if !envelope.acknowledgement.begin_execution() {
-        return;
-    }
-    let result = store.commit(&envelope.mutations);
-    let store_commit_unknown = matches!(&result, Err(StoreError::CommitUnknown));
-    let caller_commit_unknown = envelope
-        .acknowledgement
-        .complete(result.map_err(JournalError::Store));
-    if (store_commit_unknown || caller_commit_unknown)
-        && let Some(reservation) = envelope.reservation.take()
-    {
-        lock(queue).unknown_reservations.push(reservation);
     }
 }
 
@@ -378,20 +389,28 @@ impl Drop for Reservation {
 fn next_envelope(queue: &Queue) -> Option<Envelope> {
     let mut state = lock(queue);
     loop {
-        if !state.control.is_empty() {
-            let index = state
-                .control
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, envelope)| (envelope.priority_deadline_millis, envelope.sequence))
-                .map(|(index, _)| index)
-                .expect("nonempty control queue has an earliest entry");
-            return Some(state.control.swap_remove(index));
-        }
-        if let Some(envelope) = state.data.pop_front() {
+        if let Some(index) = state
+            .control
+            .iter()
+            .enumerate()
+            .filter(|(_, envelope)| !workspace_capture::blocked(&state, envelope))
+            .min_by_key(|(_, envelope)| (envelope.priority_deadline_millis, envelope.sequence))
+            .map(|(index, _)| index)
+        {
+            let envelope = state.control.swap_remove(index);
+            workspace_capture::resume(&mut state, &envelope);
             return Some(envelope);
         }
-        if state.closed {
+        if let Some(index) = state
+            .data
+            .iter()
+            .position(|envelope| !workspace_capture::blocked(&state, envelope))
+        {
+            let envelope = state.data.remove(index).expect("selected data envelope");
+            workspace_capture::resume(&mut state, &envelope);
+            return Some(envelope);
+        }
+        if state.aborted || (state.closed && state.workspace_inflight.is_empty()) {
             return None;
         }
         state = queue

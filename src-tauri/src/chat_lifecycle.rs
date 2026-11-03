@@ -1,5 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 use uuid::Uuid;
+mod auto_title;
+pub(crate) use auto_title::auto_title_first_prompt_in;
 
 use crate::{
     acp::limits::LIMITS,
@@ -176,7 +178,7 @@ impl Database {
     }
 
     pub(crate) fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()> {
-        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
+        crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let title = canonical_chat_title(&request.title)?;
@@ -259,13 +261,13 @@ pub(crate) fn insert_new_chat(
     let title = if parent.is_some() {
         "Chat: Side chat".to_owned()
     } else {
-        format!("Chat: New chat {}", ordinal + 1)
+        "Chat: Chat".to_owned()
     };
     let now = now_millis();
     transaction.execute(
         "INSERT INTO chats(
-           id,project_id,ordinal,title,projection_revision,created_at,updated_at
-         ) VALUES (?1,?2,?3,?4,0,?5,?5)",
+           id,project_id,ordinal,title,projection_revision,created_at,updated_at,title_is_default
+         ) VALUES (?1,?2,?3,?4,0,?5,?5,1)",
         params![chat_id, project_id, ordinal, title, now],
     )?;
     transaction.execute(
@@ -346,9 +348,9 @@ fn apply_chat_title(
     let now = now_millis();
     require_one(
         transaction.execute(
-            "UPDATE chats SET title=?3,updated_at=?4
+            "UPDATE chats SET title=?3,title_is_default=0
              WHERE project_id=?1 AND id=?2",
-            params![request.project_id, request.chat_id, title, now],
+            params![request.project_id, request.chat_id, title],
         )?,
         "Chat disappeared during rename",
     )?;

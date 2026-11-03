@@ -263,7 +263,7 @@ mod tests {
             .execute_batch(
                 "INSERT INTO projects VALUES('project-preview','Preview',1,1,1);
                  UPDATE app_state SET active_project_id='project-preview',updated_at=1 WHERE singleton=1;
-                 INSERT INTO chats VALUES('chat-preview','project-preview',0,'Preview',0,1,1);
+                 INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-preview','project-preview',0,'Preview',0,1,1);
                  INSERT INTO agent_sessions(
                    id,project_id,chat_id,ordinal,binding_id,binding_digest,
                    capabilities_json,state,residency,legacy,revision,

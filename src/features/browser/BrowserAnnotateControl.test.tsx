@@ -175,6 +175,32 @@ it("on Escape at the control drops a waiting element first, then leaves", async 
   expect(onControl).toHaveBeenLastCalledWith("annotateOff");
 });
 
+it("consumes active annotation Escape before an enclosing resource pane", async () => {
+  const closePane = vi.fn();
+  render(
+    <div onKeyDown={closePane}>
+      <BrowserAnnotateControl
+        navigation={navigation}
+        onControl={onControl}
+        onError={onError}
+      />
+    </div>,
+  );
+  await act(async () => undefined);
+  const button = screen.getByRole("button", { name: "Annotate" });
+  rustSays("browser-1", true, { selection });
+  expect(fireEvent.keyDown(button, { key: "Escape" })).toBe(false);
+  expect(onControl).toHaveBeenLastCalledWith("annotateCancel");
+  expect(closePane).not.toHaveBeenCalled();
+  rustSays("browser-1", true);
+  expect(fireEvent.keyDown(button, { key: "Escape" })).toBe(false);
+  expect(onControl).toHaveBeenLastCalledWith("annotateOff");
+  expect(closePane).not.toHaveBeenCalled();
+  rustSays("browser-1", false);
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(closePane).toHaveBeenCalledOnce();
+});
+
 it("renders disabled with the reason Rust gives", async () => {
   const reason =
     "Annotate needs the WebView2 inspect overlay and is not available on this platform yet";

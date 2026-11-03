@@ -5,6 +5,20 @@ export interface OutlineNavigationSelection {
   end: number;
 }
 
+/** Loads syntax support only when same-file navigation is requested. */
+export async function findLocalSymbol(
+  path: string,
+  content: string,
+  selection: OutlineNavigationSelection,
+) {
+  const { syntaxOutline } = await import("./syntaxOutline");
+  return localSymbolNavigation(
+    content,
+    selection,
+    await syntaxOutline(path, content),
+  );
+}
+
 /**
  * Resolves a same-file declaration only from the document's syntax Outline.
  * This is deliberately not a text-search fallback: a name the Outline does not

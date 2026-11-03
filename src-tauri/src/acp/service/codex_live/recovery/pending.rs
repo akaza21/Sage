@@ -99,3 +99,27 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
         proof: crate::acp::runtime::ZeroProcessProof,
     },
 }
+
+impl PendingCodexRecovery {
+    /// The exact runtime owner whose authority this recovery retains.
+    pub(in crate::acp::service) fn owner(&self) -> Option<RuntimeOwner> {
+        match self {
+            Self::Activation { recovery } => Some(recovery.owner().clone()),
+            Self::Launch { abort, .. }
+            | Self::PreRunner { abort, .. }
+            | Self::ZeroToken { abort, .. }
+            | Self::Abort { abort, .. }
+            | Self::Journal { abort, .. }
+            | Self::Driver { abort, .. } => Some(abort.owner.clone()),
+            Self::LiveHost(recovery) => Some(recovery.owner.clone()),
+            Self::ActivationCommitted { owner }
+            | Self::StartupHost { owner, .. }
+            | Self::LiveHostInFlight { owner, .. }
+            | Self::Projection { owner, .. }
+            | Self::ProjectionToken { owner, .. }
+            | Self::Runner { owner, .. }
+            | Self::RuntimeZeroToken { owner, .. }
+            | Self::RuntimeProjection { owner, .. } => Some(owner.clone()),
+        }
+    }
+}

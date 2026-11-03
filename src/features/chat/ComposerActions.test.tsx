@@ -62,8 +62,8 @@ function renderActions(
     />
   );
   const view = render(controls);
-  const trigger = screen.getByRole("button", { name: "Composer options" });
-  fireEvent.click(trigger);
+  const trigger = screen.queryByRole("button", { name: "Composer options" })!;
+  if (trigger) fireEvent.click(trigger);
   return {
     ...view,
     trigger,
@@ -222,9 +222,7 @@ it("does not enable Add for effort alone while its trigger is visible", () => {
       ],
     }),
   });
-  expect(
-    screen.getByRole("button", { name: "Composer options" }),
-  ).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
   expect(screen.queryByRole("menuitem", { name: "Thinking level" })).toBeNull();
 });
 
@@ -372,9 +370,9 @@ it("keeps Add and Harness mutually exclusive and restores plus focus on Escape",
   expect(trigger).toHaveFocus();
 });
 
-it("disables Add instead of opening an empty capability menu", () => {
+it("hides Add instead of opening an empty capability menu", () => {
   const { trigger } = renderActions(false);
-  expect(trigger).toBeDisabled();
+  expect(trigger).toBeNull();
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
@@ -443,7 +441,7 @@ it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
       ],
     });
     const { trigger } = renderActions(false);
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeNull();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();
     for (const action of ["Files", "Goal", "Plan", "Add images", "Plugins"]) {

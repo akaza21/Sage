@@ -140,10 +140,11 @@ it("keeps the parent row selected while its side chat has focus (Codex s2/f0244)
   );
 });
 
-function openChatActions(title: string) {
+async function openChatActions(title: string) {
   fireEvent.click(
     screen.getByRole("button", { name: `Chat actions for ${title}` }),
   );
+  await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
 it("shows one prioritized trailing state per chat and keeps actions separate", () => {
@@ -235,7 +236,6 @@ it("suffixes only numeric recent ages", () => {
       selected
       relativeTimeSuffix
       suppressActive
-      showActions={false}
     />,
   );
 
@@ -309,7 +309,7 @@ it("animates only a live working turn and marks waiting as attention", () => {
   ).toBeNull();
 });
 
-it("keeps pin state visible and restores focus from one chat actions menu", () => {
+it("keeps pin state visible and restores focus from one chat actions menu", async () => {
   seedChats();
   useWorkbenchStore.setState({
     tabs: currentChats().map((tab) =>
@@ -333,7 +333,7 @@ it("keeps pin state visible and restores focus from one chat actions menu", () =
   });
   fireEvent.click(actionTrigger);
   expect(
-    screen.getByRole("menu", { name: "Actions for Alpha" }),
+    await screen.findByRole("menu", { name: "Actions for Alpha" }),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("menuitem", { name: "Unpin chat" }),
@@ -346,7 +346,7 @@ it("keeps pin state visible and restores focus from one chat actions menu", () =
   expect(actionTrigger).toHaveFocus();
 });
 
-it("roves through chat actions and dismisses the menu on Tab", () => {
+it("roves through chat actions and dismisses the menu on Tab", async () => {
   seedChats();
   render(
     <ProjectChatNavigation
@@ -357,7 +357,7 @@ it("roves through chat actions and dismisses the menu on Tab", () => {
   );
 
   expect(document.querySelector('[role="menu"]')).toBeNull();
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   const menu = screen.getByRole("menu", { name: "Actions for Alpha" });
   const pin = screen.getByRole("menuitem", { name: "Pin chat" });
   const move = screen.getByRole("menuitem", { name: "Move to project" });
@@ -379,7 +379,7 @@ it("roves through chat actions and dismisses the menu on Tab", () => {
   expect(document.querySelector('[role="menu"]')).toBeNull();
 });
 
-it("dismisses chat actions on an outside pointer without stealing focus", () => {
+it("dismisses chat actions on an outside pointer without stealing focus", async () => {
   seedChats();
   render(
     <ProjectChatNavigation
@@ -389,7 +389,7 @@ it("dismisses chat actions on an outside pointer without stealing focus", () => 
     />,
   );
 
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   const outside = screen.getByTitle("Open chat Beta");
   outside.focus();
   fireEvent.pointerDown(outside);
@@ -398,7 +398,7 @@ it("dismisses chat actions on an outside pointer without stealing focus", () => 
   expect(outside).toHaveFocus();
 });
 
-it("pins a chat and offers a move popover without Add folder root", () => {
+it("pins a chat and offers a move popover without Add folder root", async () => {
   seedChats();
   const pinChat = vi.fn(async () => undefined);
   const moveChat = vi.fn(async () => undefined);
@@ -420,16 +420,16 @@ it("pins a chat and offers a move popover without Add folder root", () => {
   );
 
   expect(screen.queryByTitle("Add folder root")).toBeNull();
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith("chat:a", "project-b", "project-a");
 });
 
-it("pins and moves a chat that belongs to another project folder", () => {
+it("pins and moves a chat that belongs to another project folder", async () => {
   seedChats();
   const pinChat = vi.fn(async () => undefined);
   const moveChat = vi.fn(async () => undefined);
@@ -468,16 +468,16 @@ it("pins and moves a chat that belongs to another project folder", () => {
     />,
   );
 
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:a", "project-a");
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Move to project" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Move chat to Work" }));
   expect(moveChat).toHaveBeenCalledWith("chat:a", "project-b", "project-a");
-  openChatActions("Alpha");
+  await openChatActions("Alpha");
   fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-  const renameInput = screen.getByLabelText("New name for Alpha");
+  const renameInput = await screen.findByLabelText("New name for Alpha");
   expect(renameInput).toHaveFocus();
   fireEvent.change(renameInput, {
     target: { value: "Research" },
@@ -486,7 +486,7 @@ it("pins and moves a chat that belongs to another project folder", () => {
     screen.getByLabelText("New name for Alpha").closest("form")!,
   );
   expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
-  openChatActions("Extra");
+  await openChatActions("Extra");
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
 });

@@ -102,7 +102,6 @@ impl std::fmt::Debug for ActivationFailure {
 }
 
 impl ActivationRecovery {
-    #[cfg(test)]
     pub(crate) fn owner(&self) -> &RuntimeOwner {
         &self.owner
     }

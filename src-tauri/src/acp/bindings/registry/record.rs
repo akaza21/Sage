@@ -45,6 +45,7 @@ pub(super) enum Admission {
     Codex(CodexBindingRegistration),
     Claude(Arc<ClaudeBindingRegistration>),
     OpenCode(Arc<OpenCodeBindingRegistration>),
+    PiNative(Arc<crate::acp::bindings::pi::native_admission::PiBindingRegistration>),
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     Pi(Arc<crate::acp::bindings::pi::fixture_admission::PiFixtureBinding>),
 }
@@ -60,6 +61,7 @@ pub(super) enum AdmittedBinding {
     Claude(Arc<AdmittedClaudeBinding>),
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     Pi(Arc<crate::acp::bindings::pi::fixture_admission::PiFixtureBinding>),
+    PiNative(Arc<crate::acp::bindings::pi::native_admission::AdmittedPiBinding>),
     OpenCode {
         registration: Arc<OpenCodeBindingRegistration>,
         binding: Arc<AdmittedStandardAcpBinding>,
@@ -96,6 +98,7 @@ impl BindingRecord {
             Admission::Codex(_) => crate::acp::bindings::codex::CODEX_BINDING_ID,
             Admission::Claude(_) => crate::acp::bindings::claude::CLAUDE_BINDING_ID,
             Admission::OpenCode(_) => crate::acp::bindings::standard_acp::OPENCODE_BINDING_ID,
+            Admission::PiNative(_) => crate::acp::bindings::pi::native_admission::PI_BINDING_ID,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             Admission::Pi(_) => crate::acp::bindings::pi::fixture_admission::PI_FIXTURE_BINDING_ID,
         }
@@ -129,6 +132,10 @@ impl BindingRecord {
                     binding,
                 })
                 .map_err(RegistryAdmissionUnavailable::OpenCode)?,
+            Admission::PiNative(admission) => admission
+                .refresh()
+                .map(AdmittedBinding::PiNative)
+                .map_err(|_| RegistryAdmissionUnavailable::Drift)?,
         };
         if matches!((&binding, self.wire), (AdmittedBinding::Codex(_), None)) {
             return Err(RegistryAdmissionUnavailable::Drift);
@@ -146,6 +153,7 @@ impl BindingRecord {
             Admission::Codex(admission) => admission.is_available(),
             Admission::Claude(admission) => admission.is_available(),
             Admission::OpenCode(admission) => admission.is_available(),
+            Admission::PiNative(admission) => admission.is_available(),
         }
     }
 
@@ -172,6 +180,11 @@ impl BindingRecord {
                 characterisation: crate::acp::bindings::characterisation::opencode_characterisation(
                     binding.harness_version(),
                 ),
+                account_model_discovery: false,
+            }),
+            Admission::PiNative(admission) => admission.admitted().map(|binding| BoundBuild {
+                reported_version: binding.harness_version().to_owned(),
+                characterisation: binding.characterisation(),
                 account_model_discovery: false,
             }),
         }
@@ -211,6 +224,19 @@ impl BindingRecord {
                 OpenCode::Absent => HarnessUnavailableReason::CandidateInvalid,
                 OpenCode::CandidateInvalid => HarnessUnavailableReason::CandidateInvalid,
                 OpenCode::Drift => HarnessUnavailableReason::DriftDetected,
+            }),
+            Admission::PiNative(admission) => admission.unavailable().map(|reason| {
+                use crate::acp::bindings::pi::native_admission::PiAdmissionUnavailable as Pi;
+                match reason {
+                    Pi::DiscoveryPending => HarnessUnavailableReason::AdmissionIncomplete,
+                    Pi::Absent | Pi::PackageUnreadable | Pi::VersionUnsupported => {
+                        HarnessUnavailableReason::CandidateInvalid
+                    }
+                    Pi::NodeAbsent => HarnessUnavailableReason::NodeAbsent,
+                    Pi::NodeVersionUnreadable => HarnessUnavailableReason::NodeVersionUnreadable,
+                    Pi::NodeEngineMismatch => HarnessUnavailableReason::NodeEngineMismatch,
+                    Pi::Drift => HarnessUnavailableReason::DriftDetected,
+                }
             }),
         }
     }
@@ -285,6 +311,12 @@ impl AdmittedBindingRecord<'_> {
                 artifact_digest: binding.artifact_digest(),
                 harness_version: binding.harness_version(),
             },
+            AdmittedBinding::PiNative(binding) => BindingIdentity {
+                binding_digest: binding.binding_digest(),
+                binding_digest_hex: binding.binding_digest_hex(),
+                artifact_digest: binding.artifact_digest(),
+                harness_version: binding.harness_version(),
+            },
             AdmittedBinding::OpenCode { binding, .. } => BindingIdentity {
                 binding_digest: binding.binding_digest(),
                 binding_digest_hex: binding.binding_digest_hex(),
@@ -314,6 +346,7 @@ impl AdmittedBindingRecord<'_> {
                 Ok(false)
             }
             (AdmittedBinding::OpenCode { .. }, super::ModelProvider::NoAccountModels) => Ok(false),
+            (AdmittedBinding::PiNative(_), super::ModelProvider::NoAccountModels) => Ok(false),
             _ => Err(RegistryAdmissionUnavailable::Drift),
         }
     }
@@ -331,7 +364,6 @@ impl AdmittedBindingRecord<'_> {
         context: &crate::state::ActiveProjectContext<'_>,
     ) -> Result<BindingProjectRoot, ()> {
         match self.record.root_policy {
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             RootPolicy::Pi => super::record_root::single_root_authority(database, context)
                 .map(BindingProjectRoot::Pi),
             RootPolicy::Codex => database
