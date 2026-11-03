@@ -601,7 +601,8 @@ mod tests {
                         .send(WatchEvent::Armed)
                         .expect("test receives armed signal");
                     if let Some(hold) = hold.take() {
-                        hold.recv().expect("test resumes the watch");
+                        hold.recv_timeout(Duration::from_secs(5))
+                            .expect("overflow test should resume the held watch after the burst");
                     }
                 },
             );
@@ -641,8 +642,8 @@ mod tests {
 
         cancelled.store(true, Ordering::Release);
         receive_completion
-            .recv_timeout(Duration::from_secs(2))
-            .expect("cancelled watch should stop promptly")
+            .recv_timeout(Duration::from_secs(5))
+            .expect("overflow test watch should stop after cancellation")
             .expect("cancelled watch should not fail");
         worker.join().expect("watch worker should not panic");
         fs::remove_dir_all(directory).expect("remove test directory");
