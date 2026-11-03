@@ -500,3 +500,104 @@ describe("renderMarkdownPreview", () => {
     expect(document.truncated).toBe(true);
   });
 });
+
+describe("CommonMark block syntax", () => {
+  it.each(["---", "***", "___", "* * *", "- - -", "   _ _ _ _", "  ----  "])(
+    "renders %s as a rule",
+    (rule) => {
+      expect(renderMarkdownPreview(`Intro\n\n${rule}\n\nAfter`).blocks).toEqual(
+        [
+          { kind: "paragraph", text: "Intro" },
+          { kind: "rule" },
+          { kind: "paragraph", text: "After" },
+        ],
+      );
+    },
+  );
+  it.each(["--", "**", "__", "-_*", "    ---", "--- text"])(
+    "does not turn %s into a rule",
+    (source) => {
+      expect(
+        renderMarkdownPreview(source).blocks.some(
+          (block) => block.kind === "rule",
+        ),
+      ).toBe(false);
+    },
+  );
+  it.each(["- - -", "* * *", "___"])("ends a list before %s", (rule) => {
+    expect(
+      renderMarkdownPreview(`- item\n${rule}\nAfter`).blocks.map(
+        (block) => block.kind,
+      ),
+    ).toEqual(["list", "rule", "paragraph"]);
+  });
+  it("keeps table delimiter rows as tables", () => {
+    expect(
+      renderMarkdownPreview("| Name |\n| --- |\n| value |").blocks,
+    ).toEqual([
+      { kind: "table", align: [undefined], rows: [["Name"], ["value"]] },
+    ]);
+  });
+  it.each([
+    ["===", 1],
+    ["---", 2],
+    ["  ==  ", 1],
+    ["-", 2],
+  ])("uses %s as a setext underline", (underline, level) => {
+    expect(
+      renderMarkdownPreview(`A **title**\ncontinued\n${underline}\nAfter`)
+        .blocks,
+    ).toEqual([
+      { kind: "heading", level, text: "A title continued" },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it("lets spaced rules interrupt paragraphs without becoming headings", () => {
+    expect(
+      renderMarkdownPreview("Intro\n- - -\nAfter").blocks.map(
+        (block) => block.kind,
+      ),
+    ).toEqual(["paragraph", "rule", "paragraph"]);
+  });
+  it("keeps tilde code literal until a matching fence of sufficient length", () => {
+    expect(
+      renderMarkdownPreview(
+        "Before\n~~~~js\nconst a = *b*;\n```\n~~~\n~~~~ trailing\n~~~~~\nAfter",
+      ).blocks,
+    ).toEqual([
+      { kind: "paragraph", text: "Before" },
+      {
+        kind: "code",
+        language: "js",
+        text: "const a = *b*;\n```\n~~~\n~~~~ trailing",
+        fenceClosed: true,
+      },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it.each(["~~~", "```"])("reports an unclosed %s fence", (fence) => {
+    expect(renderMarkdownPreview(`${fence}js\n*a*`).blocks).toEqual([
+      { kind: "code", language: "js", text: "*a*", fenceClosed: false },
+    ]);
+  });
+  it("joins blank and unspaced quote lines into one quote", () => {
+    expect(renderMarkdownPreview("> one\n>\n> two\n>text").blocks).toEqual([
+      { kind: "quote", text: "one two text" },
+    ]);
+  });
+  it("counts rules toward the block cap", () => {
+    const document = renderMarkdownPreview(
+      "***\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCKS) + "After",
+    );
+    expect(document.blocks).toEqual(
+      Array.from({ length: MAX_MARKDOWN_PREVIEW_BLOCKS }, () => ({
+        kind: "rule",
+      })),
+    );
+    expect(document.truncated).toBe(true);
+    expect(
+      renderMarkdownPreview("***\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCKS))
+        .truncated,
+    ).toBe(false);
+  });
+});

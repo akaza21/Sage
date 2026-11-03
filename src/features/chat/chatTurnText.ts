@@ -55,6 +55,7 @@ function segments(source: string) {
     return spans?.length ? flatten(spans) : text;
   };
   const values = document.blocks.flatMap<ChatTextSegment>((block, index) => {
+    if (block.kind === "rule") return [];
     if (block.kind === "code")
       return block.language.toLowerCase() === "mermaid"
         ? []

@@ -97,6 +97,7 @@ export function MarkdownBlocks({
     return spans.length ? render(spans) : text;
   };
   return document.blocks.map((block, index) => {
+    if (block.kind === "rule") return <hr key={index} />;
     if (block.kind === "code")
       return (
         <div key={index}>

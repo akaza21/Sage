@@ -24,7 +24,15 @@ interface ListItem {
   text: string;
 }
 
+/** A thematic break takes precedence over a list marker. */
+export function isMarkdownRule(line: string): boolean {
+  return /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(
+    line,
+  );
+}
+
 export function listItem(line: string): ListItem | null {
+  if (isMarkdownRule(line)) return null;
   const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)]) (.+)$/u.exec(line);
   if (!match) return null;
   const indent = match[1].replace(/\t/gu, "    ").length;

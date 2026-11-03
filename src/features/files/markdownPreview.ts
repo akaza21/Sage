@@ -1,6 +1,10 @@
 import { editorLanguageForPath } from "./editorLanguage";
 import { utf8Bytes } from "../../domain/text";
-import { readMarkdownList, type MarkdownListBlock } from "./markdownList";
+import {
+  isMarkdownRule,
+  readMarkdownList,
+  type MarkdownListBlock,
+} from "./markdownList";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
@@ -26,6 +30,7 @@ export {
 } from "./markdownLimits";
 
 export type MarkdownPreviewBlock =
+  | { kind: "rule" }
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "quote"; text: string }
@@ -67,6 +72,9 @@ export function canPreviewMarkdown(path: string): boolean {
 export function canPreviewDiagram(path: string): boolean {
   return /\.(?:mmd|mermaid)$/iu.test(path);
 }
+
+const setextUnderline = /^ {0,3}(=+|-+)[ \t]*$/u;
+const quoteMarker = /^ {0,3}>[ \t]?/u;
 
 const inlinePattern =
   /`([^`]+)`|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
@@ -230,10 +238,13 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
     formatCount = 0;
     scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
-    const fence = /^( *)(`{3,})(.*)$/u.exec(line);
+    const fence = /^( *)(`{3,}|~{3,})(.*)$/u.exec(line);
     if (fence) {
       const language = fence[3].trim().split(/\s/u)[0];
-      const closing = new RegExp(`^ *\`{${fence[2].length},}[ \\t]*$`, "u");
+      const closing = new RegExp(
+        `^ *${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
+        "u",
+      );
       const start = ++cursor;
       while (cursor < lines.length && !closing.test(lines[cursor])) cursor++;
       const fenceClosed = cursor < lines.length;
@@ -250,6 +261,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         fenceClosed,
       });
       if (fenceClosed) cursor++;
+      continue;
+    }
+    if (isMarkdownRule(line)) {
+      blocks.push({ kind: "rule" });
+      cursor++;
       continue;
     }
     const heading = /^(#{1,6}) (.+)$/u.exec(line);
@@ -310,23 +326,36 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       cursor = list.cursor;
       continue;
     }
-    const quoted = line.startsWith("> ");
-    const parts = [quoted ? line.slice(2) : line];
+    const quoted = quoteMarker.test(line);
+    const parts = [quoted ? line.replace(quoteMarker, "") : line];
     cursor++;
     while (
       cursor < lines.length &&
       lines[cursor].trim() &&
       (quoted
-        ? lines[cursor].startsWith("> ")
-        : !/^(?: *```|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) |> |\|)/u.test(
+        ? quoteMarker.test(lines[cursor])
+        : !setextUnderline.test(lines[cursor]) &&
+          !isMarkdownRule(lines[cursor]) &&
+          !/^(?: *(?:`{3,}|~{3,})|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
             lines[cursor],
           ))
     ) {
-      parts.push(quoted ? lines[cursor].slice(2) : lines[cursor]);
+      parts.push(
+        quoted ? lines[cursor].replace(quoteMarker, "") : lines[cursor],
+      );
       cursor++;
     }
     const text = inline(parts.join(" "));
-    if (text) blocks.push({ kind: quoted ? "quote" : "paragraph", text });
+    const underline = !quoted && setextUnderline.exec(lines[cursor] ?? "");
+    if (underline) {
+      blocks.push({
+        kind: "heading",
+        level: underline[1][0] === "=" ? 1 : 2,
+        text,
+      });
+      cursor++;
+    } else if (text)
+      blocks.push({ kind: quoted ? "quote" : "paragraph", text });
   }
   return document;
 }

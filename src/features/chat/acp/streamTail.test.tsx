@@ -261,3 +261,14 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     );
   });
 });
+
+it("does not track a textless rule while streaming its marker", () => {
+  const previous = doc("Intro\n\n---");
+  const next = doc("Intro\n\n----");
+  expect(next.blocks.at(-1)).toEqual({ kind: "rule" });
+  expect(newestRuns(previous, next)).toBeNull();
+  const { container } = render(
+    <ChatMarkdown text={"Intro\n\n---"} streaming />,
+  );
+  expect(container.querySelector("hr")).not.toBeNull();
+});

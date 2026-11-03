@@ -23,7 +23,8 @@ export default function nextStreamRuns(
     !before ||
     previous.blocks.length !== blockIndex + 1 ||
     before.kind !== block.kind ||
-    block.kind === "code"
+    block.kind === "code" ||
+    block.kind === "rule"
   )
     return null;
   let itemIndex: number | undefined;

@@ -1,3 +1,6 @@
+import { MarkdownBlocks } from "./MarkdownBlocks";
+import { renderMarkdownPreview } from "./markdownPreview";
+import { ChatMarkdown } from "../chat/acp/ChatMarkdown";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -67,4 +70,38 @@ describe("MarkdownBlocks lists", () => {
     );
     expect(screen.queryByRole("link")).toBeNull();
   });
+});
+
+it("renders the parsed rule, headings, literal code and quote as DOM blocks", () => {
+  const document = renderMarkdownPreview(
+    "Title\n===\n\n---\n\nSubtitle\n---\n\n~~~js\n*a*\n~~~\n\n> one\n>\n> two",
+  );
+  const { container } = render(<MarkdownBlocks document={document} />);
+  expect([...container.children].map((node) => node.tagName)).toEqual([
+    "H1",
+    "HR",
+    "H2",
+    "DIV",
+    "BLOCKQUOTE",
+  ]);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Title");
+  expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
+    "Subtitle",
+  );
+  expect(container.querySelector("pre")).toHaveTextContent("*a*");
+  expect(container.querySelector("blockquote")).toHaveTextContent("one two");
+});
+
+it.each(["preview", "chat"])("renders rules in the %s surface", (surface) => {
+  const source = "Intro\n\n* * *\n\nAfter";
+  const { container } = render(
+    surface === "preview" ? (
+      <FileMarkdownPreview source={source} />
+    ) : (
+      <ChatMarkdown text={source} />
+    ),
+  );
+  expect(screen.getByRole("separator").tagName).toBe("HR");
+  expect(container.querySelectorAll("li")).toHaveLength(0);
+  expect(container.textContent).toBe("IntroAfter");
 });
