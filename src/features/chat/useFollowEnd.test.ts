@@ -200,6 +200,54 @@ describe("useFollowEnd", () => {
     expect(observers[0]?.targets).toEqual([transcript, content]);
   });
 
+  it.each([2, 50, 64, 65])(
+    "keeps the bottom anchored after a late part adds %i px without a revision",
+    (growth) => {
+      const { scrollTo, transcript, view } = mountFollowEnd();
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400,
+        scrollTop: 2000,
+      });
+      act(() => view.result.current.updateFollowEnd());
+      scrollTo.mockClear();
+
+      measure(transcript, {
+        clientHeight: 400,
+        scrollHeight: 2400 + growth,
+        scrollTop: 2000,
+      });
+      act(() => growTranscript());
+
+      expect(view.result.current.followingEnd).toBe(true);
+      expect(scrollTo).toHaveBeenCalledWith({
+        behavior: "auto",
+        top: 2000 + growth,
+      });
+    },
+  );
+
+  it("keeps the bottom anchored when pane reflow shrinks the viewport by 50 px", () => {
+    const { scrollTo, transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 400,
+      scrollHeight: 2400,
+      scrollTop: 2000,
+    });
+    act(() => view.result.current.updateFollowEnd());
+    scrollTo.mockClear();
+
+    measure(transcript, {
+      clientHeight: 350,
+      scrollHeight: 2400,
+      scrollTop: 2000,
+    });
+    act(() => growTranscript());
+
+    expect(view.result.current.followingEnd).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 2050 });
+  });
+
   it("keeps the same observer across revisions and follow-state changes", () => {
     const { transcript, view } = mountFollowEnd();
     const created = observers[0];

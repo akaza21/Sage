@@ -25,15 +25,6 @@ export const COMPOSER_PROMPT_PLACEHOLDER_DISABLED =
   "Choose an available harness before starting a session";
 export const COMPOSER_WORKSPACE_NAME_CAP = 48;
 
-export function harnessIconKind(
-  name: string | null | undefined,
-): "claude" | "codex" | "opencode" | undefined {
-  if (/claude/i.test(name ?? "")) return "claude";
-  if (/codex/i.test(name ?? "")) return "codex";
-  if (/opencode/i.test(name ?? "")) return "opencode";
-  return undefined;
-}
-
 interface VoiceEvent {
   id: string;
   kind: "partial" | "final" | "ended" | "error";

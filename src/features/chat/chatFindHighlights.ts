@@ -1,9 +1,10 @@
-import type { ChatMatch } from "./chatFindModel";
+import { type ChatMatch } from "./chatFindModel";
 
 type Ranges = { other: Range[]; current: Range[] };
 
 /** At most two chat panes are visible, so at most two owners paint. */
 const MAX_HIGHLIGHT_OWNERS = 2;
+
 const owners = new Map<symbol, Ranges>();
 
 /** The rendered blocks, in the order chatTurnText produces segments. */

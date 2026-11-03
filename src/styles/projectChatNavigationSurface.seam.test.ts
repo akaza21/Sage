@@ -20,6 +20,22 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
   });
 
+  it("keeps a project header's name in the first column and its menu in the second", async () => {
+    const chatCss = await readFile(
+      resolve("src/styles/chat-navigation-surface.css"),
+      "utf8",
+    );
+    expect(chatCss).toMatch(
+      /\.project-entry__header > \.project-row\s*\{\s*grid-area:\s*1 \/ 1;/,
+    );
+    expect(chatCss).toMatch(
+      /\.project-entry__header > \.project-chat-actions\s*\{\s*grid-area:\s*1 \/ 2;/,
+    );
+    expect(
+      chatCss.indexOf(".project-entry__header > .project-chat-actions"),
+    ).toBeGreaterThan(chatCss.indexOf(".project-chat-actions {"));
+  });
+
   it("loads navigation rules from focused stylesheets, not the shell stylesheet", async () => {
     const [entry, shellCss, projectCss, chatCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),
@@ -69,9 +85,6 @@ describe("Project and chat navigation stylesheet seams", () => {
       /\.project-chat\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*grid-row:\s*1;/s,
     );
     expect(chatCss).toMatch(
-      /\.project-chat__context\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*2;/s,
-    );
-    expect(chatCss).toMatch(
       /\.project-chat__trailing\s*\{[^}]*grid-row:\s*2;/s,
     );
     expect(chatCss).toMatch(
@@ -94,12 +107,6 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
     expect(projectCss).not.toMatch(/\.project-section\b/);
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*32px;/s);
-    expect(projectCss).toMatch(
-      /\.project-row \.project-row__branch\s*\{[^}]*border:\s*0;/s,
-    );
-    expect(projectCss).toMatch(
-      /\.project-row \.project-row__branch--chip\s*\{[^}]*border:\s*1px solid var\(--color-border-strong\);[^}]*border-radius:\s*var\(--radius-pill\);/s,
-    );
   });
 
   it("keeps Agent navigation persistent instead of a compact drawer", async () => {

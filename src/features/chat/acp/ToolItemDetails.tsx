@@ -122,8 +122,6 @@ export function ToolItemDetails({
         </>
       );
     case "webSearch":
-      // Codex s5/f0405: one plaintext block, the result or else the query.
-      // A failed search never shows its query as an error alert.
       return (
         <ToolResult
           item={item}

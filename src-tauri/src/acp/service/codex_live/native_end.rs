@@ -1,7 +1,7 @@
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
-impl AcpService {
+impl Lane<'_> {
     pub(super) fn native_end_recovery_owner(
         &self,
     ) -> Result<Option<RuntimeOwner>, crate::acp::runtime::HostError> {

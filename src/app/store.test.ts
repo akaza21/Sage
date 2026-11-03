@@ -491,6 +491,38 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it.each([false, true])(
+    "keeps a failed New chat local when projection recovery is unavailable (committed: %s)",
+    async (committed) => {
+      const creation = vi.spyOn(getWorkbenchPorts().chat, "createChat");
+      if (committed)
+        creation.mockResolvedValueOnce({
+          committed: true,
+          transitionEpoch: 1,
+          snapshot: null,
+          recoveryError: null,
+        });
+      else
+        creation.mockRejectedValueOnce(
+          new TypeError("Cannot read properties of undefined (reading invoke)"),
+        );
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
+        new TypeError("Cannot read properties of undefined (reading invoke)"),
+      );
+      await useWorkbenchStore.getState().createChat();
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        phase: "ready",
+        projectTransitioning: false,
+        activeTabId: chatTab.id,
+        error: expect.stringContaining("Chat creation"),
+      });
+      expect(useWorkbenchStore.getState().tabs).toEqual([chatTab]);
+      expect(useWorkbenchStore.getState().error).not.toMatch(
+        /invoke|undefined|properties/,
+      );
+    },
+  );
+
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
     const newChat: WorkbenchTab = {
       id: "chat:new",
@@ -1034,6 +1066,66 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       projectTransitioning: false,
     });
+  });
+
+  it("renames a Chat with a newly opened Diff after native nullable status round-trips", async () => {
+    useWorkbenchStore.setState({ tabs: [{ ...chatTab, status: "idle" }] });
+    const target = resource("src/example.ts");
+    vi.spyOn(repositoryPort, "getFileDiff").mockResolvedValue({
+      resource: target,
+      hunks: [],
+      binary: false,
+      truncated: false,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource(""),
+      entries: [],
+      truncated: false,
+    });
+    await useWorkbenchStore.getState().openDiff(target);
+    const opened = useWorkbenchStore.getState().activeTabId!;
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === opened),
+    ).toMatchObject({ kind: "diff", resource: target });
+    vi.spyOn(getWorkbenchPorts().chat, "renameChat").mockImplementation(
+      async (request, epoch) => ({
+        committed: true,
+        transitionEpoch: epoch + 1,
+        snapshot: chatProjection(
+          // Serde serializes WorkbenchTab.status: None as JSON null.
+          JSON.parse(
+            JSON.stringify(
+              request.currentLayout.tabs.map((tab) => ({
+                ...tab,
+                title: tab.id === request.chatId ? "Chat: Focus" : tab.title,
+                status: tab.status ?? null,
+              })),
+            ),
+          ),
+          opened,
+          epoch + 1,
+          null,
+          [],
+          "root-a",
+          target,
+        ),
+        recoveryError: null,
+      }),
+    );
+
+    expect(
+      await useWorkbenchStore.getState().renameChat(chatTab.id, "Focus"),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "ready",
+      error: null,
+      activeTabId: opened,
+      selectedResource: target,
+    });
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === chatTab.id)
+        ?.title,
+    ).toBe("Chat: Focus");
   });
 
   it("blocks Chat rename when the newest editor snapshot fails", async () => {
@@ -3828,7 +3920,7 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {
-    vi.spyOn(projectPort, "createProjectFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "createProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
@@ -3838,7 +3930,9 @@ describe("workbench resource and project navigation", () => {
       .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
-    await useWorkbenchStore.getState().createProject();
+    await useWorkbenchStore
+      .getState()
+      .createProject({ name: "Project", sourceTokens: [] });
 
     const state = useWorkbenchStore.getState();
     expect(bootstrap).toHaveBeenCalledTimes(2);
@@ -3899,14 +3993,12 @@ describe("workbench resource and project navigation", () => {
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
-      const create = vi
-        .spyOn(projectPort, "createProjectFromPicker")
-        .mockResolvedValue({
-          committed: false,
-          transitionEpoch: 0,
-          snapshot: null,
-          recoveryError: null,
-        });
+      const create = vi.spyOn(projectPort, "createProject").mockResolvedValue({
+        committed: false,
+        transitionEpoch: 0,
+        snapshot: null,
+        recoveryError: null,
+      });
       const addRoot = vi
         .spyOn(projectPort, "addProjectRootFromPicker")
         .mockResolvedValue({
@@ -3917,7 +4009,9 @@ describe("workbench resource and project navigation", () => {
         });
 
       if (operation === "create") {
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         await useWorkbenchStore.getState().addProjectRoot();
       }
@@ -4156,10 +4250,12 @@ describe("workbench resource and project navigation", () => {
         );
         await useWorkbenchStore.getState().switchProject("project-b");
       } else if (operation === "create") {
-        vi.spyOn(projectPort, "createProjectFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "createProject").mockRejectedValue(
           new Error("response lost"),
         );
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         vi.spyOn(projectPort, "addProjectRootFromPicker").mockRejectedValue(
           new Error("response lost"),

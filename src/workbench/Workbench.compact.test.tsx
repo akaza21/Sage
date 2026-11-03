@@ -7,11 +7,24 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { useUiAppearanceStore } from "../app/uiAppearanceStore";
+import * as nativeBrowser from "../ports/nativeBrowserPort";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
+import { useSideChatState } from "./sideChatState";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -49,10 +62,11 @@ function seedResourceChat() {
   });
 }
 
-function openChatActions(title: string) {
+async function openChatActions(title: string) {
   fireEvent.click(
     screen.getByRole("button", { name: `Chat actions for ${title}` }),
   );
+  await screen.findByRole("menu", { name: `Actions for ${title}` });
 }
 
 const initialState = useWorkbenchStore.getState();
@@ -100,12 +114,17 @@ beforeEach(() => {
   });
 });
 
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
+
 afterEach(() => {
   cleanup();
+  useSideChatState.setState({ sides: [], pairedId: null });
+  useAgentSettingsState.getState().close();
   localStorage.clear();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   useWorkbenchStore.setState(initialState, true);
+  vi.restoreAllMocks();
 });
 
 describe("compact Workbench project tools", () => {
@@ -177,7 +196,7 @@ describe("compact Workbench project tools", () => {
     expect(trigger.closest(".agent-chat-center__header")).not.toBeNull();
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
     const body = container.querySelector(".workbench__body") as HTMLElement;
-    expect(body.style.gridTemplateColumns).toBe("332px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",
@@ -189,7 +208,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".project-sidebar")).not.toHaveAttribute(
       "inert",
     );
-    expect(body.style.gridTemplateColumns).toBe("332px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
     fireEvent.keyDown(resources, { key: "Escape" });
@@ -262,7 +281,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
   it("keeps navigation focused when resizing capped resources into full modality", async () => {
@@ -287,7 +306,7 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
   it("does not leave a focusless modal open when navigation narrows", async () => {
@@ -302,7 +321,7 @@ describe("compact Workbench project tools", () => {
     expect(document.body).toHaveFocus();
     vi.stubGlobal("innerWidth", 480);
     fireEvent(window, new Event("resize"));
-    expect(screen.queryByLabelText("Agent artifacts")).toBeNull();
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
     expect(document.body).toHaveFocus();
   });
 
@@ -367,7 +386,7 @@ describe("compact Workbench project tools", () => {
     ).toBeNull();
   });
 
-  it("traps reverse overlay Tab until Escape returns focus and unmounts the canvas", async () => {
+  it("traps reverse overlay Tab until Escape returns focus and sleeps the canvas", async () => {
     seedResourceChat();
     vi.stubGlobal("innerWidth", 720);
     const { container } = render(<Workbench />);
@@ -390,7 +409,9 @@ describe("compact Workbench project tools", () => {
     expect(
       screen.getByRole("button", { name: "Show files and preview · Waiting" }),
     ).toHaveFocus();
-    expect(container.querySelector(".agent-artifact-pane__canvas")).toBeNull();
+    expect(
+      container.querySelector(".agent-artifact-pane__canvas"),
+    ).not.toBeVisible();
   });
 
   it("keeps narrow Agent navigation visible and Chat interactive", async () => {
@@ -461,7 +482,9 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    fireEvent.click(screen.getByTitle("Open chat B"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Open chat B(?:,|$)/ }),
+    );
 
     expect(activateTab).toHaveBeenCalledWith("chat:b");
   });
@@ -489,9 +512,11 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     fireEvent.change(input, { target: { value: "Release notes" } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
 
@@ -541,9 +566,11 @@ describe("compact Workbench project tools", () => {
     expect(sidebarScroll).not.toBeNull();
     sidebarScroll!.scrollTop = 72;
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     fireEvent.change(input, {
       target: { value: "Release notes" },
     });
@@ -599,20 +626,25 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel chat rename" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cancel chat rename" }),
+    );
     let trigger: HTMLElement;
     await vi.waitFor(() => {
       trigger = screen.getByRole("button", { name: "Chat actions for B" });
       expect(trigger).toHaveFocus();
     });
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "New name for B" }), {
-      key: "Escape",
-    });
+    fireEvent.keyDown(
+      await screen.findByRole("textbox", { name: "New name for B" }),
+      {
+        key: "Escape",
+      },
+    );
     await vi.waitFor(() => {
       expect(
         screen.getByRole("button", { name: "Chat actions for B" }),
@@ -652,7 +684,7 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
     expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
     const disclosure = screen.getByRole("button", {
@@ -672,7 +704,7 @@ describe("compact Workbench project tools", () => {
         tabs: [{ ...useWorkbenchStore.getState().tabs[0], pinned: false }],
       });
     });
-    openChatActions("A");
+    await openChatActions("A");
     expect(
       screen.getByRole("menuitem", { name: "Archive chat" }),
     ).toBeDisabled();
@@ -713,9 +745,11 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    openChatActions("B");
+    await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    const input = screen.getByRole("textbox", { name: "New name for B" });
+    const input = await screen.findByRole("textbox", {
+      name: "New name for B",
+    });
     expect(input).toHaveAttribute("maxlength", "128");
     fireEvent.change(input, { target: { value: " \t " } });
     fireEvent.click(screen.getByRole("button", { name: "Save chat name" }));
@@ -739,7 +773,7 @@ describe("compact Workbench project tools", () => {
     expect(useWorkbenchStore.getState().activeTabId).toBe("file:a");
   });
 
-  it("routes the Agent New task control through one creation action", async () => {
+  it("routes the Agent New chat control through one creation action", async () => {
     const createChat = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       createChat,
@@ -749,7 +783,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
 
     const newChatControls = screen.getAllByRole("button", {
-      name: "New task",
+      name: "New chat",
     });
     expect(newChatControls).toHaveLength(1);
     const beforeClick = createChat.mock.calls.length;
@@ -782,18 +816,18 @@ describe("compact Workbench project tools", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(openSettings).toHaveBeenCalled();
-    await vi.waitFor(() => {
-      expect(
-        screen.queryByRole("button", {
-          name: "Show files and preview · Waiting",
-        }),
-      ).toBeNull();
-    });
+    expect(openSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
+    expect(
+      await screen.findByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
   });
 
-  it("guides an empty Editor workbench only through implemented entry points", () => {
+  it("guides an empty Editor workbench only through implemented entry points", async () => {
     render(<Workbench />);
+    await settleLazyModules();
 
     const welcome = screen.getByRole("region", { name: "Editor welcome" });
     expect(
@@ -808,6 +842,144 @@ describe("compact Workbench project tools", () => {
     expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
     expect(screen.queryByText("Username")).toBeNull();
   });
+
+  it("keeps the settings shortcut in its window and preserves the focused chat", async () => {
+    const openSettings = vi.fn(async () => undefined);
+    seedResourceChat();
+    useWorkbenchStore.setState({ openSettings });
+    render(<Workbench />);
+    await selectWindowMode("Agent");
+    const activeChat = useWorkbenchStore.getState().activeTabId;
+    const tabs = useWorkbenchStore.getState().tabs;
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    expect(
+      await screen.findByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeChecked();
+    expect(useWorkbenchStore.getState().activeTabId).toBe(activeChat);
+    expect(useWorkbenchStore.getState().tabs).toEqual(tabs);
+    expect(openSettings).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close settings" }), {
+      key: "Escape",
+    });
+    expect(screen.queryByRole("dialog", { name: "Agent settings" })).toBeNull();
+    await selectWindowMode("Editor");
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    expect(openSettings).toHaveBeenCalledOnce();
+  });
+
+  it("projects persisted interface appearance without changing editor settings", async () => {
+    render(<Workbench />);
+    await settleLazyModules();
+    const initialAppearance = useUiAppearanceStore.getState().appearance;
+    act(() =>
+      useUiAppearanceStore.setState({
+        appearance: { fontSize: 16, density: "compact" },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--font-size-md"),
+      ).toBe("16px"),
+    );
+    expect(
+      document.documentElement.style.getPropertyValue("--row-height-default"),
+    ).toBe("28px");
+    act(() => useUiAppearanceStore.setState({ appearance: initialAppearance }));
+    await vi.waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--font-size-md"),
+      ).toBe(`${initialAppearance.fontSize}px`),
+    );
+  });
+
+  it.each([null, "file", "browser"] as const)(
+    "restores the same chat pair and focus after settings with %s active",
+    async (resourceKind) => {
+      compactViewport = false;
+      vi.spyOn(nativeBrowser, "closeBrowser").mockResolvedValue(undefined);
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "A", roots: [] },
+        tabs: ["a", "b", "c", "d"].map((id, position) => ({
+          id: id === "d" ? "side-d" : `chat:${id}`,
+          kind: "chat",
+          title: `Chat ${id}`,
+          position,
+          pinned: false,
+          dirty: false,
+        })),
+        activeTabId: "chat:a",
+        activateTab: vi.fn(async (activeTabId: string) => {
+          useWorkbenchStore.setState({ activeTabId });
+        }),
+      });
+      render(<Workbench />);
+      await selectWindowMode("Agent");
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat:c" }));
+      act(() => {
+        useSideChatState.setState({
+          sides: [
+            {
+              id: "side-d",
+              projectId: "project-a",
+              parentChatId: "chat:c",
+            },
+          ],
+          pairedId: "side-d",
+        });
+        useWorkbenchStore.setState({ activeTabId: "side-d" });
+      });
+      const pair = () =>
+        Array.from(
+          document.querySelectorAll<HTMLElement>(".agent-chat-pane"),
+        ).map((pane) => pane.dataset.chatId);
+      expect(pair()).toEqual(["chat:c", "side-d"]);
+      const focusedPane = screen.getByRole("region", {
+        name: "Chat pane Chat d",
+      });
+      if (resourceKind) {
+        act(() =>
+          useWorkbenchStore.setState((state) => ({
+            tabs: [
+              ...state.tabs,
+              {
+                id: "resource:settings-return",
+                kind: resourceKind,
+                title: "Settings return resource",
+                position: state.tabs.length,
+                pinned: false,
+                dirty: false,
+                resource:
+                  resourceKind === "file"
+                    ? { rootId: "root-a", relativePath: "return.ts" }
+                    : undefined,
+              },
+            ],
+            activeTabId: "resource:settings-return",
+          })),
+        );
+      }
+      expect(focusedPane).toHaveClass("agent-chat-pane--focused");
+      fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+      await screen.findByRole("dialog", { name: "Agent settings" });
+      expect(screen.queryByRole("region", { name: /^Chat pane / })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+      await settleLazyModules();
+      expect(pair()).toEqual(["chat:c", "side-d"]);
+      expect(
+        document.querySelector('.agent-chat-pane[data-chat-id="side-d"]'),
+      ).toBe(focusedPane);
+      expect(focusedPane).toHaveClass("agent-chat-pane--focused");
+    },
+  );
 
   it("exposes only truthful focusable controls in the Project sidebar", async () => {
     useWorkbenchStore.setState({
@@ -835,14 +1007,14 @@ describe("compact Workbench project tools", () => {
     const searchChats = within(
       screen.getByRole("complementary", { name: "Projects and chats" }),
     );
-    fireEvent.click(searchChats.getByRole("button", { name: "Filter tasks" }));
     const globalSearch = searchChats.getByRole("button", {
-      name: "Search all chats",
+      name: "Search chats",
     });
     expect(globalSearch).toBeEnabled();
     globalSearch.focus();
     expect(globalSearch).toHaveFocus();
     fireEvent.click(globalSearch);
+    await settleLazyModules();
     expect(
       await screen.findByRole("dialog", { name: "Search Chats" }),
     ).toBeInTheDocument();
@@ -910,7 +1082,7 @@ describe("compact Workbench project tools", () => {
     );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
-    ).toHaveAttribute("aria-valuenow", "519");
+    ).toHaveAttribute("aria-valuenow", "576");
   });
 
   it("resizes untouched Agent proportions while retaining a manually sized rail", async () => {
@@ -935,16 +1107,16 @@ describe("compact Workbench project tools", () => {
     const artifact = screen.getByRole("separator", {
       name: "Resize files and preview",
     });
-    expect(rail).toHaveAttribute("aria-valuenow", "385");
-    expect(artifact).toHaveAttribute("aria-valuenow", "519");
+    expect(rail).toHaveAttribute("aria-valuenow", "326");
+    expect(artifact).toHaveAttribute("aria-valuenow", "576");
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1380,
     });
     fireEvent(window, new Event("resize"));
-    expect(rail).toHaveAttribute("aria-valuenow", "385");
-    expect(artifact).toHaveAttribute("aria-valuenow", "619");
+    expect(rail).toHaveAttribute("aria-valuenow", "326");
+    expect(artifact).toHaveAttribute("aria-valuenow", "621");
 
     fireEvent.keyDown(rail, { key: "ArrowRight" });
     Object.defineProperty(window, "innerWidth", {
@@ -952,7 +1124,7 @@ describe("compact Workbench project tools", () => {
       value: 1672,
     });
     fireEvent(window, new Event("resize"));
-    expect(rail).toHaveAttribute("aria-valuenow", "393");
+    expect(rail).toHaveAttribute("aria-valuenow", "334");
     expect(artifact).toHaveAttribute("aria-valuenow", "752");
 
     Object.defineProperty(window, "innerWidth", {
@@ -1037,11 +1209,24 @@ describe("compact Workbench project tools", () => {
   it("restores only persisted single-splitter widths on load", async () => {
     seedResourceChat();
     compactViewport = false;
+    // Narrow enough that resources open over Chat, without a splitter.
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 960,
+    });
+    onTestFinished(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth,
+      });
+    });
     localStorage.setItem(
       "sage.workbench.layout.v1",
       JSON.stringify({
         editorToolRailWidth: 320,
         agentChatSplitPercent: 55,
+        windowMode: "editor",
       }),
     );
 
@@ -1053,7 +1238,7 @@ describe("compact Workbench project tools", () => {
     await selectWindowMode("Agent");
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
-    ).toHaveAttribute("aria-valuenow", "385");
+    ).toHaveAttribute("aria-valuenow", "326");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",

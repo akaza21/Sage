@@ -18,6 +18,7 @@ mod lifecycle_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;
 mod snapshot_tests;
+mod workspace_tests;
 
 struct Fixture {
     connection: rusqlite::Connection,

@@ -1,15 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RotateCcw, ChevronRight } from "../../ui/leanIcons";
+import { ChevronRight, RotateCcw } from "../../ui/leanIcons";
 
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
-import { terminalTurnStates } from "./acp/statusSemantics";
-import { AnswerActions } from "./AnswerActions";
 import { TurnDaySeparator } from "./acp/AcpTurnDates";
+import { terminalTurnStates } from "./acp/statusSemantics";
 import {
   WorkedActivityVisibility,
   WorkedTurnTerminal,
 } from "./acp/WorkedActivityVisibility";
+import { AnswerActions } from "./AnswerActions";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
@@ -43,7 +43,7 @@ export function ChatTranscriptTurnSummary({
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
-  /** Side chats show Codex's shimmering Thinking, not a header, before any work. */
+
   thinkingPlaceholder?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
@@ -66,7 +66,7 @@ export function ChatTranscriptTurnSummary({
       </div>
     );
   }
-  // Collapsed Worked shows no rows at all (Codex s2/f0011).
+  // Collapsed Worked shows no rows at all.
   const groups =
     children && (!terminal || expanded) ? (
       <WorkedTurnTerminal value={terminal}>

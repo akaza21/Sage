@@ -16,6 +16,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { runAuthenticatedInstalledSmoke } from "./beta0001-installed-smoke-handoff.mjs";
+import { runBounded } from "./ade0006a-package-build.mjs";
 import { settleInstalledSmokeWatchdog } from "./beta0001-installed-smoke-settlement.mjs";
 import {
   acquireInstalledSmokeOutputAuthority,
@@ -185,6 +186,7 @@ function cleanupAuthority(campaignId, uninstaller, key = testCleanupKey) {
 }
 
 test("forced watchdog performs exact Job-contained fallback cleanup", async () => {
+  let fallbackFailure = "Fallback cleanup failed without a child-process error";
   const root = mkdtempSync(path.join(tmpdir(), "sage-watchdog-cleanup-"));
   try {
     const output = path.join(root, "output");
@@ -220,14 +222,26 @@ test("forced watchdog performs exact Job-contained fallback cleanup", async () =
       powershell: identity(powershellPath),
       cleanupKey: testCleanupKey,
       outerJobConverged: true,
+      runProcess: async (...args) => {
+        try {
+          return await runBounded(...args);
+        } catch (error) {
+          fallbackFailure = `Fallback PowerShell failed: ${error.message}`;
+          throw error;
+        }
+      },
     });
-    assert.deepEqual(result, {
-      status: "uninstalled",
-      authoritySha256: result.authoritySha256,
-      residueRelativePath: null,
-      outerJobConverged: true,
-      fallbackJobConverged: true,
-    });
+    assert.deepEqual(
+      result,
+      {
+        status: "uninstalled",
+        authoritySha256: result.authoritySha256,
+        residueRelativePath: null,
+        outerJobConverged: true,
+        fallbackJobConverged: true,
+      },
+      fallbackFailure,
+    );
     assert.match(result.authoritySha256, /^[0-9a-f]{64}$/u);
     assert.equal(existsSync(installed), false);
     assert.equal(

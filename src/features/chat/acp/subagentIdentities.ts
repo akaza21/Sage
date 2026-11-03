@@ -1,4 +1,4 @@
-import type { AcpItem } from "../../../domain/acp";
+import { type AcpItem } from "../../../domain/acp";
 import { collaborationRows } from "./subagentActivity";
 
 function identity(item: AcpItem, key: string) {

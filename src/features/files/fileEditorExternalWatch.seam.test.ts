@@ -1,23 +1,36 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { useWorkbenchStore } from "../../app/store";
 
 import {
   EDITOR_EXTERNAL_WATCH_EVENT,
   createInjectedEditorWatchDelivery,
   type EditorExternalWatchNotice,
 } from "../../domain/editorWatch";
-import type { EditorDocument } from "../../domain/workbench";
+import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import {
+  EDITOR_WATCH_LIMIT_ERROR,
+  WATCH_LIMIT_MESSAGE,
   applyEditorExternalWatchNotice,
   bindEditorExternalWatch,
+  isEditorWatchLimitError,
   useEditorExternalWatch,
 } from "./editorExternalWatch";
+import { FileSurface } from "./FileSurface";
 import {
   bindFileEditorController,
   type EditorStateBridge,
@@ -61,12 +74,15 @@ function ExternalWatchHarness({
 }: {
   watchedResource: typeof resource;
 }) {
-  useEditorExternalWatch(watchedResource, inactiveBridge);
+  useEditorExternalWatch(watchedResource, inactiveBridge, () => null);
   return null;
 }
 
+const initialWorkbench = useWorkbenchStore.getState();
+
 afterEach(() => {
   cleanup();
+  useWorkbenchStore.setState(initialWorkbench, true);
   vi.restoreAllMocks();
 });
 
@@ -146,6 +162,135 @@ describe("IDE-2 editor external watch seam", () => {
     await waitFor(() => {
       expect(secondCancel).toHaveBeenCalledOnce();
     });
+  });
+
+  it("keeps a capped File editable and retries only when its editor takes focus", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const delivery = createInjectedEditorWatchDelivery();
+    let slotFree = false;
+    const watch = vi
+      .spyOn(editor, "watchEditorDocument")
+      .mockImplementation(async () => {
+        if (!slotFree) {
+          throw EDITOR_WATCH_LIMIT_ERROR;
+        }
+        slotFree = false;
+        return {
+          resource,
+          delivery: delivery.delivery,
+          cancel: async () => {
+            slotFree = true;
+          },
+        };
+      });
+    const fileTab: WorkbenchTab = {
+      id: `file:${resource.relativePath}`,
+      kind: "file",
+      title: resource.relativePath,
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource,
+    };
+    useWorkbenchStore.setState({
+      tabs: [fileTab],
+      activeTabId: fileTab.id,
+      activeEditor: bindFileEditorController(editor).ready(document),
+    });
+
+    const { unmount } = render(
+      createElement(
+        "div",
+        null,
+        createElement("button", { type: "button" }, "Elsewhere"),
+        createElement(FileSurface, { tab: fileTab }),
+      ),
+    );
+    await screen.findByText(WATCH_LIMIT_MESSAGE);
+    expect(watch).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();
+    const fileEditor = await screen.findByRole("textbox", {
+      name: `Edit ${resource.relativePath}`,
+    });
+    expect(fileEditor).not.toHaveAttribute("contenteditable", "false");
+
+    // Still at the cap: focusing the editor retries and fails, and editing
+    // and snapshotting the File do not clear the warning while it is unwatched.
+    const snapshot = vi
+      .spyOn(editor, "snapshotEditorBuffer")
+      .mockImplementation(async (request) => ({
+        revision: request.revision,
+        persistedAt: 1,
+        dirty: true,
+      }));
+    fireEvent.focusIn(fileEditor);
+    await waitFor(() => {
+      expect(watch).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => undefined);
+    act(() => {
+      useWorkbenchStore.getState().updateEditorContent("base\nedited\n");
+    });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      message: null,
+    });
+    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+    await act(async () => {
+      await useWorkbenchStore.getState().flushActiveEditor();
+    });
+    expect(snapshot).toHaveBeenCalled();
+    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+
+    // A slot is free, but focus elsewhere in the app does not ask for it.
+    slotFree = true;
+    fireEvent.focusIn(screen.getByRole("button", { name: "Elsewhere" }));
+    await act(async () => undefined);
+    expect(watch).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
+
+    // Focus moving within the editor has not entered it, so it does not ask.
+    fireEvent.focusIn(fileEditor, { relatedTarget: fileEditor });
+    await act(async () => undefined);
+    expect(watch).toHaveBeenCalledTimes(2);
+
+    fireEvent.focusIn(fileEditor, {
+      relatedTarget: screen.getByRole("button", { name: "Elsewhere" }),
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(WATCH_LIMIT_MESSAGE)).toBeNull();
+    });
+    expect(watch).toHaveBeenCalledTimes(3);
+    expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();
+
+    // Once watched, further focus changes in the editor send no more requests.
+    fireEvent.focusIn(fileEditor);
+    await act(async () => undefined);
+    expect(watch).toHaveBeenCalledTimes(3);
+
+    act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
+    await screen.findByText(/This file was deleted outside Sage/);
+    unmount();
+    await waitFor(() => expect(slotFree).toBe(true));
+  });
+
+  it("recognises the native watch-limit code by name, not by display text", () => {
+    const nativeSource = readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../../src-tauri/src/editor_watch.rs",
+      ),
+      "utf8",
+    );
+    expect(nativeSource).toContain(
+      `pub const EDITOR_WATCH_LIMIT_ERROR: &str = "${EDITOR_WATCH_LIMIT_ERROR}";`,
+    );
+    expect(isEditorWatchLimitError(EDITOR_WATCH_LIMIT_ERROR)).toBe(true);
+    expect(
+      isEditorWatchLimitError(
+        "resource limit exceeded: too many active editor file watches",
+      ),
+    ).toBe(false);
   });
 
   it("observes a native watch notice without peekEditorDiskVersion", async () => {

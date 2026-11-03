@@ -18,7 +18,7 @@ test("CP-17(c) refs 15/17: Jump to latest floats over a 560 px pane column", asy
   await openJourney(page);
   await page.addStyleTag({
     content:
-      ".agent-chat-panes--split { grid-template-columns: 560px 8px 560px !important; justify-content: center; }",
+      ".agent-chat-panes { grid-template-columns: 560px !important; justify-content: center; }",
   });
   await runEvent(page, { type: "seedHistory", chat: "alpha", turns: 12 });
   await settleTranscriptAtEnd(page);

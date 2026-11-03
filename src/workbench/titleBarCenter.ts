@@ -1,6 +1,6 @@
 import { chatDisplayTitle } from "../domain/chatTitle";
 
-export const TITLE_BAR_LABEL_CAP = 48;
+const TITLE_BAR_LABEL_CAP = 48;
 
 function hasControlCharacter(value: string): boolean {
   return value.split("").some((character) => {

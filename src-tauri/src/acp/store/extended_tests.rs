@@ -33,7 +33,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE acp_project_usage(project_id TEXT PRIMARY KEY,chat_count INTEGER,session_count INTEGER,turn_count INTEGER,item_count INTEGER,fact_count INTEGER,payload_bytes INTEGER,revision INTEGER);
          CREATE TABLE acp_store_usage(singleton INTEGER PRIMARY KEY,chat_count INTEGER,session_count INTEGER,turn_count INTEGER,item_count INTEGER,item_bytes INTEGER,fact_count INTEGER,fact_bytes INTEGER,shared_payload_bytes INTEGER,revision INTEGER);
          INSERT INTO project_roots VALUES('root-one','project-one','C:/project','c:/project',0);
-         INSERT INTO chats VALUES('chat-one','project-one',0,'Chat',0,0,0);
+         INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-one','project-one',0,'Chat',0,0,0);
          INSERT INTO acp_project_usage VALUES('project-one',1,0,0,0,0,0,0);
          INSERT INTO acp_store_usage VALUES(1,1,0,0,0,0,0,0,0,0);",
     ).unwrap();
@@ -57,6 +57,16 @@ pub(super) fn setup() -> Connection {
         .execute_batch(
             "CREATE TABLE acp_turn_terminal_reasons(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,kind TEXT,message TEXT,remediation TEXT,created_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
         )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/019_turn_workspace_changes.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/020_chat_title_provenance.sql"
+        ))
         .unwrap();
     connection
 }
