@@ -119,6 +119,34 @@ it("shows a closed placeholder for a restored browser without contacting native 
   expect(browserStatus).not.toHaveBeenCalled();
 });
 
+it("shows a restored page creation failure locally and clears it on the next attempt", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Could not open the browser tab. Try again.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
+    const open = await screen.findByRole("button", {
+      name: "Open new browser",
+    });
+    fireEvent.click(open);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not open the browser tab. Try again.",
+    );
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+    act(() =>
+      useWorkbenchStore.setState({ openBrowser: async () => undefined }),
+    );
+    fireEvent.click(open);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
+});
+
 it("shows a New page creation failure in the browser without changing composer feedback", async () => {
   const previous = useWorkbenchStore.getState();
   browserStatus.mockResolvedValueOnce({
