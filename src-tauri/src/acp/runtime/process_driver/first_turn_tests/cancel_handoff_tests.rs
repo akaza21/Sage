@@ -46,6 +46,15 @@ struct Handoff {
 /// AcceptTerminal callback before the worker dequeues it. Control outranks
 /// queued stdout, which is the interleaving that load produced.
 async fn accept_terminal_behind(queued: fn(&str, &str) -> Vec<Vec<u8>>) -> Handoff {
+    accept_native_terminal_behind(interrupted, queued).await
+}
+
+/// As `accept_terminal_behind`, with `terminal` as the native terminal frame
+/// that answers the interrupt.
+async fn accept_native_terminal_behind(
+    terminal: fn(&str, &str) -> Vec<u8>,
+    queued: fn(&str, &str) -> Vec<Vec<u8>>,
+) -> Handoff {
     {
         let fixture = prepare_first_turn_fixture().await;
         let adapter = ready_adapter(
@@ -208,7 +217,7 @@ async fn accept_terminal_behind(queued: fn(&str, &str) -> Vec<Vec<u8>>) -> Hando
             .try_push_chunk(line(json!({"id":interrupt["id"],"result":{}})))
             .unwrap();
         mailbox
-            .try_push_chunk(interrupted(thread, external_turn))
+            .try_push_chunk(terminal(thread, external_turn))
             .unwrap();
         let terminal = run_driver_until!(|cursor: Option<
             &crate::acp::store::AdapterTurnCursor,
@@ -217,7 +226,7 @@ async fn accept_terminal_behind(queued: fn(&str, &str) -> Vec<Vec<u8>>) -> Hando
         assert_eq!(terminal.turn_id(), &turn_id);
         assert!(matches!(
             terminal.state(),
-            TurnState::Cancelled | TurnState::Interrupted
+            TurnState::Cancelled | TurnState::Interrupted | TurnState::Failed
         ));
         assert_eq!(mailbox.retained_usage(), ((0, 0), (0, 0)));
 
@@ -278,7 +287,7 @@ async fn accept_terminal_behind(queued: fn(&str, &str) -> Vec<Vec<u8>>) -> Hando
             .unwrap();
         assert!(matches!(
             durable_state.as_str(),
-            "cancelled" | "interrupted"
+            "cancelled" | "interrupted" | "failed"
         ));
         let epoch_state: String = fixture
             .database
@@ -410,6 +419,45 @@ fn terminal_with_a_result_member_keeps_the_handoff_closed() {
                     json!({"method":"turn/completed","result":{},"params":{
                         "threadId":thread,"turn":{"id":turn,"status":"interrupted"}
                     }}),
+                )]
+            })
+            .await,
+        );
+    });
+}
+
+fn failed(thread: &str, turn: &str) -> Vec<u8> {
+    line(
+        json!({"method":"turn/completed","params":{"threadId":thread,"turn":{
+            "id":turn,"status":"failed","error":{"message":"native failure"}
+        }}}),
+    )
+}
+
+/// The failed counterpart of the positive case: a valid repeat of a failed
+/// terminal is the duplicate idle ingestion ignores.
+#[test]
+fn failed_turn_hands_off_while_its_duplicate_terminal_is_queued() {
+    crate::test_wait::guarded("duplicate failed terminal behind the callback", async {
+        let handoff =
+            accept_native_terminal_behind(failed, |thread, turn| vec![failed(thread, turn)]).await;
+        assert_eq!(handoff.reply, Ok(()));
+        assert!(handoff.reusable);
+    });
+}
+
+/// Same thread, turn and failed status, but an `error` that is not an
+/// object: idle ingestion rejects its payload before it reads the terminal
+/// as a duplicate, so the proof must too.
+#[test]
+fn failed_terminal_with_a_malformed_error_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("malformed failed terminal behind the callback", async {
+        assert_not_reusable(
+            accept_native_terminal_behind(failed, |thread, turn| {
+                vec![line(
+                    json!({"method":"turn/completed","params":{"threadId":thread,"turn":{
+                        "id":turn,"status":"failed","error":42
+                    }}}),
                 )]
             })
             .await,

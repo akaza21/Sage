@@ -117,7 +117,7 @@ pub(crate) trait HarnessAdapter {
     /// True only for a frame that repeats the terminal of the Turn this
     /// adapter last finished (same Turn and terminal kind), so ingesting it
     /// would change nothing. Harnesses that cannot prove that answer false.
-    fn is_duplicate_terminal(&self, _frame: &Frame) -> bool {
+    fn is_duplicate_terminal(&self, _frame: &Frame, _resources: &dyn ResourceMapper) -> bool {
         false
     }
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {

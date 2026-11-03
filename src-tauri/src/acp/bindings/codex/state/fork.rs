@@ -35,7 +35,7 @@ enum ForkState {
     Released,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ForkEntry {
     thread: ExternalId,
     state: ForkState,
@@ -52,7 +52,7 @@ struct PendingRelease {
     delete: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct ForkLedger {
     /// Recent fork threads, oldest first, each with its release state.
     threads: Vec<ForkEntry>,
