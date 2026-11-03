@@ -1,6 +1,9 @@
 use std::fs;
 
-use super::super::{discovery::discover, origin::loopback_origin};
+use super::super::{
+    discovery::{discover, discover_uninstalled},
+    origin::loopback_origin,
+};
 use super::discovery_request;
 use crate::{acp::limits::PREVIEW_LIMITS, project_registry::RootRecord};
 
@@ -202,5 +205,102 @@ fn root_record(
         project_id: request.project_id.as_str().into(),
         absolute_path: root.to_owned(),
         ordinal: 0,
+    }
+}
+
+#[test]
+fn discovery_skips_malformed_nested_manifest_and_keeps_root_scripts() {
+    let root = std::env::temp_dir().join(format!("sage-preview-bad-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(root.join("fixtures/bad")).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{"scripts":{"dev":"vite","start":"vite preview"}}"#,
+    )
+    .unwrap();
+    fs::write(root.join("fixtures/bad/package.json"), "{broken").unwrap();
+    let request = discovery_request("project-preview", 4, 4);
+    let (response, mappings) =
+        discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
+    assert!(response.truncated);
+    assert_eq!(
+        response
+            .targets
+            .iter()
+            .map(|t| t.script_name.as_str())
+            .collect::<Vec<_>>(),
+        ["dev", "start"]
+    );
+    assert!(mappings.iter().all(|(_, path)| path == &root));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_skips_malformed_root_manifest() {
+    let root = std::env::temp_dir().join(format!("sage-preview-bad-root-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("package.json"), "{broken").unwrap();
+    let request = discovery_request("project-preview", 4, 4);
+    let (response, mappings) =
+        discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
+    assert!(response.truncated);
+    assert!(response.targets.is_empty());
+    assert!(mappings.is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn discovery_skips_unreadable_nested_manifest() {
+    use std::os::unix::fs::PermissionsExt;
+    // Root can read mode-000 files, so it cannot exercise this failure.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let root =
+        std::env::temp_dir().join(format!("sage-preview-unreadable-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(root.join("nested")).unwrap();
+    fs::write(root.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
+    let manifest = root.join("nested/package.json");
+    fs::write(&manifest, r#"{"scripts":{"start":"vite preview"}}"#).unwrap();
+    let permissions = fs::metadata(&manifest).unwrap().permissions();
+    fs::set_permissions(&manifest, fs::Permissions::from_mode(0o000)).unwrap();
+    let request = discovery_request("project-preview", 4, 4);
+    let result = discover_uninstalled(&request, vec![root_record(&request, &root)]);
+    fs::set_permissions(&manifest, permissions).unwrap();
+    let (response, mappings) = result.unwrap();
+    assert!(response.truncated);
+    assert_eq!(response.targets.len(), 1);
+    assert_eq!(response.targets[0].script_name.as_str(), "dev");
+    assert_eq!(mappings[0].1, root);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_visits_siblings_in_byte_order_and_prefers_the_root() {
+    for names in [["b", "a"], ["a", "b"], ["a", "B"]] {
+        let root =
+            std::env::temp_dir().join(format!("sage-preview-order-{}", uuid::Uuid::new_v4()));
+        for name in names {
+            fs::create_dir_all(root.join(name)).unwrap();
+            fs::write(
+                root.join(name).join("package.json"),
+                r#"{"scripts":{"dev":"vite"}}"#,
+            )
+            .unwrap();
+        }
+        let request = discovery_request("project-preview", 4, 4);
+        let (response, mappings) =
+            discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
+        assert!(!response.truncated);
+        assert_eq!(response.targets.len(), 1);
+        assert_eq!(response.targets[0].script_name.as_str(), "dev");
+        assert_eq!(mappings[0].1, root.join(names.into_iter().min().unwrap()));
+        fs::write(root.join("package.json"), r#"{"scripts":{"dev":"root"}}"#).unwrap();
+        let (response, mappings) =
+            discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
+        assert!(!response.truncated);
+        assert_eq!(response.targets.len(), 1);
+        assert_eq!(mappings[0].1, root);
+        fs::remove_dir_all(root).unwrap();
     }
 }

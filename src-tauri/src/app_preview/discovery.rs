@@ -132,7 +132,14 @@ pub(crate) fn discover_uninstalled(
                 truncated = true;
                 break 'roots;
             }
-            for script_name in package_scripts(&package)? {
+            let package_scripts = match package_scripts(&package) {
+                Ok(scripts) => scripts,
+                Err(_) => {
+                    truncated = true;
+                    continue;
+                }
+            };
+            for script_name in package_scripts {
                 if !scripts.insert(script_name) {
                     continue;
                 }
@@ -194,12 +201,9 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
                 continue;
             }
         };
+        let mut ordered_entries = Vec::new();
         for (entry_count, entry) in entries.take(MAX_DIRECTORY_ENTRIES + 1).enumerate() {
             if entry_count == MAX_DIRECTORY_ENTRIES {
-                truncated = true;
-                break;
-            }
-            if packages.len() == MAX_PACKAGES_PER_ROOT {
                 truncated = true;
                 break;
             }
@@ -211,6 +215,16 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             let Some(name) = name.to_str() else {
                 continue;
             };
+            ordered_entries.push((name.to_owned(), entry));
+        }
+        // UTF-8 byte order is platform independent for the admitted names.
+        ordered_entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+        let pending_start = pending.len();
+        for (name, entry) in ordered_entries {
+            if packages.len() == MAX_PACKAGES_PER_ROOT {
+                truncated = true;
+                break;
+            }
             let file_type = match entry.file_type() {
                 Ok(value) => value,
                 Err(_) => continue,
@@ -220,7 +234,7 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             }
             if file_type.is_file() && name == "package.json" {
                 packages.push(entry.path());
-            } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(name) {
+            } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(&name) {
                 if admitted_directories == MAX_DIRECTORIES_PER_ROOT {
                     truncated = true;
                 } else {
@@ -229,6 +243,8 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
                 }
             }
         }
+        // The stack pops the smallest sibling first, after this directory's package.
+        pending[pending_start..].reverse();
     }
     Ok((packages, truncated))
 }
