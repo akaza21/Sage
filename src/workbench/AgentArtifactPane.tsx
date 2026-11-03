@@ -308,7 +308,7 @@ export function AgentArtifactPane({
           ref={paneRef}
           role={focusOnExpand ? "dialog" : undefined}
           aria-modal={modal || undefined}
-          className={`agent-artifact-pane${
+          className={`agent-artifact-pane surface surface--card${
             hasResources ? "" : " agent-artifact-pane--empty"
           }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
           aria-label="Agent artifacts"

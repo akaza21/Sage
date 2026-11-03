@@ -124,6 +124,9 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   expect(screen.getByRole("menuitem", { name: "Find in page" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Zoom out" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Downloads" })).toBeEnabled();
   await waitFor(() =>
     expect(screen.getByRole("menuitem", { name: "Downloads" })).toHaveFocus(),
@@ -417,15 +420,17 @@ it("groups supported page controls in an overflow menu without dead features", a
     screen.getByRole("menuitem", { name: "Browser settings" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
-  expect(screen.queryByText("Show device toolbar")).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeEnabled();
   expect(
     screen.getByRole("menuitem", { name: "Take a screenshot" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
   expect(
-    screen.getByRole("textbox", { name: "Find text" }),
-  ).toBeInTheDocument();
+    await screen.findByRole("textbox", { name: "Find text" }),
+  ).toHaveFocus();
 });
 it("opens native print for the loaded tab from the menu", async () => {
   browserPrint.mockClear();
@@ -657,7 +662,7 @@ it("clips native webview bounds to the Agent canvas below browser chrome", async
         return rect(630, 100, 740, 760);
       if (this.classList.contains("browser-surface__toolbar"))
         return rect(630, 100, 740, 40);
-      if (this.classList.contains("browser-surface__frame"))
+      if (this.classList.contains("browser-surface__viewport"))
         return rect(600, 110, 800, 800);
       return rect(0, 0, 0, 0);
     },
@@ -750,7 +755,7 @@ it("offers committed origin, copy, external open, zoom and find on the active ta
   fireEvent.click(screen.getByRole("menuitem", { name: "Zoom in" }));
   await waitFor(() => expect(browserZoom).toHaveBeenCalledWith(tab.id, 125));
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+  fireEvent.change(await screen.findByRole("textbox", { name: "Find text" }), {
     target: { value: "example" },
   });
   fireEvent.click(screen.getByRole("button", { name: /^Find$/ }));

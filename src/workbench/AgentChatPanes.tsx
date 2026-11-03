@@ -203,7 +203,7 @@ export function AgentChatPanes({
   const split = displayedIds.length > 1;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
-      <div className="agent-chat-center">
+      <div className="agent-chat-center surface surface--card">
         <AgentChatCenterHeader
           tabs={tabs}
           paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}

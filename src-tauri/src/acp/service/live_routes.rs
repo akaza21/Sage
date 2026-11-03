@@ -184,7 +184,30 @@ impl AcpService {
         &self,
         intent: HostCancelIntent,
     ) -> Result<HostOutcome, CodexSessionError> {
-        self.cancel_session_turn(intent)
+        #[cfg(windows)]
+        let started = std::time::Instant::now();
+        #[cfg(windows)]
+        let owner = intent.owner.clone();
+        let result = self.cancel_session_turn(intent);
+        #[cfg(windows)]
+        if let Err(error) = &result {
+            let host = self.host_for(&owner).ok().map(|host| {
+                (
+                    host.lifecycle.load(std::sync::atomic::Ordering::Acquire),
+                    host.last_shutdown_phase(),
+                )
+            });
+            eprintln!(
+                "ACP cancellation failed: stage={} elapsed_ms={} error={error:?} slot={:?} host={host:?} scheduler={:?}",
+                self.last_cancel_stage(),
+                started.elapsed().as_millis(),
+                self.host_for(&owner).err(),
+                self.lane_for(&owner)
+                    .and_then(|lane| lane.scheduler.active())
+                    .map(|allocation| (allocation.turn_reserved, allocation.turn_id)),
+            );
+        }
+        result
     }
 
     #[cfg(test)]

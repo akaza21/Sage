@@ -1,0 +1,215 @@
+/* Device toolbar (BF-7a), measured on Codex ref 41: a 35 px bar and a
+   divider under the address bar, 60 × 21 px size fields 22 px apart (20 px tall here, on the 4 px scale). */
+/* The toolbar's own tokens: only this lazy sheet uses them, so they stay
+   off the initial CSS (FEATURE_TOKEN_OWNERS in css-hygiene-policy.mjs). */
+.browser-surface:has(> .browser-surface__device-slot) {
+  --browser-device-gutter: #414141;
+  --browser-device-grip: #afafaf;
+  --browser-device-input-fill: #242424;
+}
+/* A centred device in a gutter that holds its resize grips. */
+.browser-surface__frame[data-device] {
+  background: var(--browser-device-gutter);
+}
+.browser-surface__frame[data-device] .browser-surface__viewport {
+  inset: auto;
+  top: 0;
+  left: calc((100% - var(--browser-device-width)) / 2);
+  width: var(--browser-device-width);
+  height: var(--browser-device-height);
+}
+.browser-device-toolbar {
+  display: grid;
+  /* The size fields start 231 px into the pane, as in the reference. */
+  grid-template-columns: minmax(0, 223px) auto minmax(0, 1fr);
+  align-items: center;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--browser-chrome-divider);
+  color: var(--browser-muted-text);
+  background: var(--browser-start-fill);
+  font-size: var(--font-size-xs);
+}
+.browser-device-toolbar__preset {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.browser-device-toolbar__preset span {
+  flex: none;
+}
+.browser-device-toolbar select {
+  min-width: 0;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-overflow: ellipsis;
+  /* Codex shows the preset as plain text, without a chevron. */
+  appearance: none;
+  cursor: pointer;
+}
+.browser-device-toolbar select:hover {
+  background: var(--browser-control-hover);
+}
+.browser-device-toolbar select option {
+  color: var(--browser-chrome-text);
+  background: var(--browser-chrome-fill);
+}
+.browser-device-toolbar__size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.browser-device-toolbar input {
+  width: 60px;
+  height: 20px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--browser-bright-text);
+  background: var(--browser-device-input-fill);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  appearance: textfield;
+}
+.browser-device-toolbar input::-webkit-inner-spin-button,
+.browser-device-toolbar input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+.browser-device-toolbar input:read-only {
+  color: var(--browser-muted-text);
+}
+.browser-device-toolbar button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--browser-muted-text);
+  background: transparent;
+}
+.browser-device-toolbar button:hover {
+  color: var(--browser-chrome-text);
+  background: var(--browser-control-hover);
+}
+.browser-device-toolbar :is(select, input, button):focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.browser-device-toolbar__scale {
+  min-width: 36px;
+  font-variant-numeric: tabular-nums;
+}
+.browser-device-toolbar__close {
+  justify-self: end;
+}
+
+/* Grips in the 18 px gutter beside, below and at the lower corners of a
+   Responsive device: two light strokes each, as in Codex ref 41. */
+.browser-device-handle {
+  position: absolute;
+  touch-action: none;
+}
+.browser-device-handle::after {
+  content: "";
+  position: absolute;
+}
+.browser-device-handle--left,
+.browser-device-handle--right {
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  cursor: ew-resize;
+}
+.browser-device-handle--left {
+  left: -18px;
+}
+.browser-device-handle--right {
+  right: -18px;
+}
+.browser-device-handle--left::after,
+.browser-device-handle--right::after {
+  top: calc(50% - 12px);
+  left: 6px;
+  width: 6px;
+  height: 24px;
+  background: linear-gradient(
+    to right,
+    var(--browser-device-grip) 0 2px,
+    transparent 2px 4px,
+    var(--browser-device-grip) 4px 6px
+  );
+}
+.browser-device-handle--bottom {
+  top: 100%;
+  left: 0;
+  right: 0;
+  bottom: -18px;
+  cursor: ns-resize;
+}
+.browser-device-handle--bottom::after {
+  left: calc(50% - 12px);
+  top: 6px;
+  width: 24px;
+  height: 8px;
+  background: linear-gradient(
+    to bottom,
+    var(--browser-device-grip) 0 2px,
+    transparent 2px 4px,
+    var(--browser-device-grip) 4px 6px,
+    transparent 6px
+  );
+}
+.browser-device-handle--bottom-left,
+.browser-device-handle--bottom-right {
+  top: 100%;
+  bottom: -18px;
+  width: 18px;
+}
+.browser-device-handle--bottom-left {
+  left: -18px;
+  cursor: nesw-resize;
+}
+.browser-device-handle--bottom-right {
+  right: -18px;
+  cursor: nwse-resize;
+}
+.browser-device-handle--bottom-left::after,
+.browser-device-handle--bottom-right::after {
+  top: 3px;
+  width: 12px;
+  height: 12px;
+}
+.browser-device-handle--bottom-left::after {
+  left: 4px;
+  background: linear-gradient(
+    45deg,
+    transparent 0 30%,
+    var(--browser-device-grip) 30% 40%,
+    transparent 40% 60%,
+    var(--browser-device-grip) 60% 70%,
+    transparent 70%
+  );
+}
+.browser-device-handle--bottom-right::after {
+  left: 4px;
+  background: linear-gradient(
+    -45deg,
+    transparent 0 30%,
+    var(--browser-device-grip) 30% 40%,
+    transparent 40% 60%,
+    var(--browser-device-grip) 60% 70%,
+    transparent 70%
+  );
+}

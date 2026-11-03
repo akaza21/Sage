@@ -42,8 +42,8 @@ export function decodeTurnWorkspaceChanges(
   record: unknown,
   turnId: string,
 ): TurnWorkspaceResult | null {
-  if (!isRecord(record)) return null;
   if (
+    !isRecord(record) ||
     !isShortId(record.rootId) ||
     typeof record.tracked !== "boolean" ||
     !Array.isArray(record.changes) ||
