@@ -102,11 +102,20 @@ pub(crate) fn prepare_editor_watch(path: &std::path::Path) -> std::io::Result<li
 #[cfg(target_os = "linux")]
 mod linux {
     use super::{AtomicBool, Ordering, unix_events};
+    use crate::workspace::{
+        directory_skip::skip_workspace_directory_name, file_walk::walk_over_cap,
+    };
     use std::{
-        ffi::CString,
+        collections::VecDeque,
+        ffi::{CStr, CString, OsStr},
+        fs::{File, OpenOptions},
         os::{
+            fd::{AsRawFd, FromRawFd, IntoRawFd},
             raw::{c_char, c_int},
-            unix::ffi::OsStrExt,
+            unix::{
+                ffi::OsStrExt,
+                fs::{MetadataExt, OpenOptionsExt},
+            },
         },
         path::PathBuf,
     };
@@ -123,6 +132,7 @@ mod linux {
     const IN_TREE_MASK: u32 =
         IN_WATCH_MASK | unix_events::IN_DELETE_SELF | unix_events::IN_MOVE_SELF;
     const POLLIN: i16 = 0x001;
+    const FOLDER_FLAGS: c_int = libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_NONBLOCK;
 
     #[repr(C)]
     struct PollFd {
@@ -140,10 +150,17 @@ mod linux {
         fn poll(fds: *mut PollFd, nfds: u64, timeout: c_int) -> c_int;
     }
 
+    /// A folder's device and inode.
+    type FolderId = (u64, u64);
+
     pub(crate) struct Prepared {
         fd: c_int,
         root: PathBuf,
+        /// The root folder the tree watch started on. A rewatch that finds
+        /// anything else at the root's path stops the watch.
+        root_id: Option<FolderId>,
         folders: unix_events::InotifyFolders,
+        max_entries: u64,
     }
 
     impl Drop for Prepared {
@@ -152,10 +169,18 @@ mod linux {
         }
     }
 
-    /// Watches `directories`, the first of which is the root. With
-    /// `subfolders`, they are the root's bounded folder tree, which `run`
-    /// watches again whenever its shape changes.
     pub(super) fn prepare(directories: &[PathBuf], subfolders: bool) -> std::io::Result<Prepared> {
+        prepare_within(directories, subfolders, unix_events::MAX_UNIX_WATCH_ENTRIES)
+    }
+
+    /// Watches the first of `directories`. With `subfolders`, it is the
+    /// root of a bounded folder tree that `run` watches again whenever its
+    /// shape changes, examining at most `max_entries` entries each time.
+    pub(super) fn prepare_within(
+        directories: &[PathBuf],
+        subfolders: bool,
+        max_entries: u64,
+    ) -> std::io::Result<Prepared> {
         let fd = unsafe { inotify_init1(IN_CLOEXEC | IN_NONBLOCK) };
         if fd < 0 {
             return Err(std::io::Error::last_os_error());
@@ -164,53 +189,150 @@ mod linux {
         let mut prepared = Prepared {
             fd,
             root: directories.first().cloned().unwrap_or_default(),
+            root_id: None,
             folders: unix_events::InotifyFolders::new(subfolders),
+            max_entries,
         };
-        prepared.folders = add_watches(fd, directories, subfolders, true)?;
+        if subfolders {
+            let (folders, root_id) = watch_tree(&prepared, true)?;
+            prepared.folders = folders;
+            prepared.root_id = Some(root_id);
+            return Ok(prepared);
+        }
+        let path = CString::new(prepared.root.as_os_str().as_bytes())
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path"))?;
+        let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), IN_WATCH_MASK) };
+        if watch < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        prepared.folders.record(watch, Some(String::new()));
         Ok(prepared)
     }
 
-    /// Adds a watch for each directory. Re-adding a folder that is already
-    /// watched returns its existing descriptor. Only the root must succeed
-    /// unless `strict`: a folder that vanished during the walk shows up as
-    /// another tree change.
-    fn add_watches(
-        fd: c_int,
-        directories: &[PathBuf],
-        subfolders: bool,
+    /// Watches the root's bounded folder tree as it is now. The root must
+    /// still be the folder the watch started on. Each subfolder is opened
+    /// from its open parent without following symlinks and watched through
+    /// that descriptor, so nothing reached through a symlink, and nothing
+    /// swapped in after the folder was listed, is watched in its place.
+    /// Past the folder cap or the entry limit the walk stops and the rest
+    /// stays unwatched, as the resync after a tree change covers it. Only
+    /// with `strict` does a folder that cannot be watched fail the walk.
+    fn watch_tree(
+        prepared: &Prepared,
         strict: bool,
-    ) -> std::io::Result<unix_events::InotifyFolders> {
-        let mask = if subfolders {
-            IN_TREE_MASK
-        } else {
-            IN_WATCH_MASK
-        };
-        let mut folders = unix_events::InotifyFolders::new(subfolders);
-        let first = directories.first();
-        for (index, directory) in directories.iter().enumerate() {
-            let path = CString::new(directory.as_os_str().as_bytes()).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path")
-            })?;
-            let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), mask) };
-            if watch < 0 {
-                if strict || index == 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                continue;
-            }
-            let relative =
-                first.and_then(|first| unix_events::inotify_folder_relative(first, directory));
-            folders.record(watch, relative);
+    ) -> std::io::Result<(unix_events::InotifyFolders, FolderId)> {
+        let root = OpenOptions::new()
+            .read(true)
+            .custom_flags(FOLDER_FLAGS)
+            .open(&prepared.root)?;
+        let metadata = root.metadata()?;
+        let root_id = (metadata.dev(), metadata.ino());
+        if prepared.root_id.is_some_and(|known| known != root_id) {
+            return Err(std::io::Error::other("notify-substituted"));
         }
-        Ok(folders)
+        let mut folders = unix_events::InotifyFolders::new(true);
+        folders.record(add_watch_on(prepared.fd, &root)?, Some(String::new()));
+        let mut queue = VecDeque::from([(root, Some(String::new()))]);
+        let mut found = 1_usize;
+        let mut examined = 0_u64;
+        while let Some((folder, relative)) = queue.pop_front() {
+            let Some(mut listing) = Listing::open(folder) else {
+                continue;
+            };
+            while let Some((name, kind)) = listing.next_entry() {
+                examined += 1;
+                if walk_over_cap(examined, prepared.max_entries) {
+                    return Ok((folders, root_id));
+                }
+                if !matches!(kind, libc::DT_DIR | libc::DT_UNKNOWN)
+                    || skip_workspace_directory_name(OsStr::from_bytes(name.to_bytes()))
+                {
+                    continue;
+                }
+                let Some(child) = listing.open_folder(&name) else {
+                    continue;
+                };
+                if found >= unix_events::MAX_UNIX_WATCH_DIRECTORIES {
+                    return Ok((folders, root_id));
+                }
+                let watch = match add_watch_on(prepared.fd, &child) {
+                    Ok(watch) => watch,
+                    Err(error) if strict => return Err(error),
+                    Err(_) => continue,
+                };
+                found += 1;
+                let child_relative =
+                    unix_events::inotify_child_relative(relative.as_deref(), name.to_bytes());
+                folders.record(watch, child_relative.clone());
+                queue.push_back((child, child_relative));
+            }
+        }
+        Ok((folders, root_id))
     }
 
-    /// Watches the root's bounded folder tree as it is now and removes the
-    /// watches of folders that left it. The walk keeps the 64-folder cap.
+    /// Watches the folder `folder` holds open, wherever its path now leads.
+    fn add_watch_on(fd: c_int, folder: &File) -> std::io::Result<c_int> {
+        let path = CString::new(format!("/proc/self/fd/{}", folder.as_raw_fd()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path"))?;
+        let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), IN_TREE_MASK) };
+        if watch < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(watch)
+    }
+
+    /// The entries of one open folder.
+    struct Listing(*mut libc::DIR);
+
+    impl Listing {
+        fn open(folder: File) -> Option<Self> {
+            let fd = folder.into_raw_fd();
+            let stream = unsafe { libc::fdopendir(fd) };
+            if stream.is_null() {
+                unsafe { close(fd) };
+                return None;
+            }
+            Some(Self(stream))
+        }
+
+        /// The next entry's name and type, skipping `.` and `..`.
+        fn next_entry(&mut self) -> Option<(CString, u8)> {
+            loop {
+                let entry = unsafe { libc::readdir(self.0) };
+                if entry.is_null() {
+                    return None;
+                }
+                let (name, kind) =
+                    unsafe { (CStr::from_ptr((*entry).d_name.as_ptr()), (*entry).d_type) };
+                if name != c"." && name != c".." {
+                    return Some((name.to_owned(), kind));
+                }
+            }
+        }
+
+        /// Opens the entry `name` if it is a folder and not a symlink.
+        fn open_folder(&self, name: &CStr) -> Option<File> {
+            let fd = unsafe {
+                libc::openat(
+                    libc::dirfd(self.0),
+                    name.as_ptr(),
+                    libc::O_RDONLY | libc::O_CLOEXEC | FOLDER_FLAGS,
+                )
+            };
+            (fd >= 0).then(|| unsafe { File::from_raw_fd(fd) })
+        }
+    }
+
+    impl Drop for Listing {
+        fn drop(&mut self) {
+            unsafe { libc::closedir(self.0) };
+        }
+    }
+
+    /// Watches the tree as it is now and removes the watches of folders
+    /// that left it. A substituted root fails, which stops the watch.
     fn rewatch(prepared: &mut Prepared) -> std::io::Result<()> {
-        let (directories, _truncated) = unix_events::bounded_watch_directories(&prepared.root)
-            .map_err(|error| std::io::Error::other(error.code()))?;
-        let next = add_watches(prepared.fd, &directories, true, false)?;
+        let (next, _) = watch_tree(prepared, false)?;
         for watch in prepared.folders.dropped_from(&next) {
             unsafe { inotify_rm_watch(prepared.fd, watch) };
         }
@@ -269,7 +391,7 @@ mod linux {
 #[path = "unix/linux_tests.rs"]
 mod linux_tests;
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::{

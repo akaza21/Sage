@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 #[cfg(any(target_os = "linux", test))]
-use std::{collections::HashMap, path::Component};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use super::{
     OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyError, reject,
@@ -155,16 +155,15 @@ impl InotifyFolders {
 #[cfg(any(target_os = "linux", test))]
 const IN_WATCH_GONE: u32 = IN_DELETE_SELF | IN_MOVE_SELF | IN_UNMOUNT | IN_IGNORED;
 
+/// The path of the folder `name` inside the folder at `parent`, relative to
+/// the root with `/` separators. `None` when either is not UTF-8.
 #[cfg(any(target_os = "linux", test))]
-pub(super) fn inotify_folder_relative(first: &Path, directory: &Path) -> Option<String> {
-    let mut parts = Vec::new();
-    for component in directory.strip_prefix(first).ok()?.components() {
-        let Component::Normal(part) = component else {
-            return None;
-        };
-        parts.push(part.to_str()?);
-    }
-    Some(parts.join("/"))
+pub(super) fn inotify_child_relative(parent: Option<&str>, name: &[u8]) -> Option<String> {
+    let name = std::str::from_utf8(name).ok()?;
+    Some(match parent? {
+        "" => name.to_string(),
+        parent => format!("{parent}/{name}"),
+    })
 }
 
 /// What one read of inotify records delivers. When `rewatch` is set, the
@@ -254,8 +253,20 @@ pub(super) fn unix_workspace_notify_supported() -> bool {
     cfg!(any(target_os = "macos", target_os = "linux"))
 }
 
+/// The most folder entries one walk of a watched tree examines, the same
+/// bound as a workspace file walk. Past it the walk stops as it does at the
+/// folder cap.
+pub(super) const MAX_UNIX_WATCH_ENTRIES: u64 = crate::workspace::file_walk::MAX_WORKSPACE_FILES;
+
 pub(super) fn bounded_watch_directories(
     root: &Path,
+) -> Result<(Vec<PathBuf>, bool), WorkspaceNotifyError> {
+    bounded_watch_directories_within(root, MAX_UNIX_WATCH_ENTRIES)
+}
+
+fn bounded_watch_directories_within(
+    root: &Path,
+    max_entries: u64,
 ) -> Result<(Vec<PathBuf>, bool), WorkspaceNotifyError> {
     let root = root
         .canonicalize()
@@ -265,6 +276,7 @@ pub(super) fn bounded_watch_directories(
     }
     let mut found = vec![root];
     let mut index = 0_usize;
+    let mut examined = 0_u64;
     let mut truncated = false;
     while index < found.len() {
         let current = found[index].clone();
@@ -273,6 +285,11 @@ pub(super) fn bounded_watch_directories(
             continue;
         };
         for entry in entries.flatten() {
+            examined += 1;
+            if crate::workspace::file_walk::walk_over_cap(examined, max_entries) {
+                truncated = true;
+                break;
+            }
             let Ok(file_type) = entry.file_type() else {
                 continue;
             };
@@ -530,29 +547,17 @@ mod tests {
     }
 
     #[test]
-    fn inotify_watch_dropped_from_next_tree_is_listed() {
-        let folders = root_and_src_folders();
-        let mut next = InotifyFolders::new(true);
-        next.record(1, Some(String::new()));
-        next.record(5, Some("lib".to_string()));
-        assert_eq!(folders.dropped_from(&next), vec![2]);
-    }
-
-    #[test]
-    fn inotify_folder_relative_uses_slashes_and_rejects_non_utf8() {
-        let root = Path::new("/project");
-        assert_eq!(inotify_folder_relative(root, root), Some(String::new()));
+    fn inotify_child_relative_uses_slashes_and_rejects_non_utf8() {
         assert_eq!(
-            inotify_folder_relative(root, &root.join("src").join("lib")),
+            inotify_child_relative(Some(""), b"src"),
+            Some("src".to_string())
+        );
+        assert_eq!(
+            inotify_child_relative(Some("src"), b"lib"),
             Some("src/lib".to_string())
         );
-        assert_eq!(inotify_folder_relative(root, Path::new("/elsewhere")), None);
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStrExt;
-            let invalid = std::ffi::OsStr::from_bytes(b"bad\xff");
-            assert_eq!(inotify_folder_relative(root, &root.join(invalid)), None);
-        }
+        assert_eq!(inotify_child_relative(Some("src"), b"bad\xff"), None);
+        assert_eq!(inotify_child_relative(None, b"lib"), None);
     }
 
     #[test]
@@ -599,6 +604,32 @@ mod tests {
             assert!(directories.iter().all(|path| path != &link));
         }
         std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn bounded_watch_directories_stop_after_the_entry_limit() {
+        let root = std::env::temp_dir().join(format!(
+            "sage-unix-watch-entries-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time is after the Unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("a").join("b").join("c")).expect("nested folders");
+        let walk = |max_entries| bounded_watch_directories_within(&root, max_entries);
+        let (within, within_truncated) = walk(3).expect("walk within the limit");
+        let (past, past_truncated) = walk(2).expect("walk past the limit");
+        std::fs::remove_dir_all(&root).expect("cleanup");
+        assert!(!within_truncated);
+        assert_eq!(within.len(), 4);
+        assert!(past_truncated);
+        assert_eq!(past.len(), 3);
+        assert!(
+            past.iter()
+                .all(|path| path.file_name() != Some("c".as_ref()))
+        );
+        assert_eq!(MAX_UNIX_WATCH_ENTRIES, 200_000);
     }
 
     #[test]
