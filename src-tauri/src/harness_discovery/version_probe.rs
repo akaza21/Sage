@@ -135,7 +135,9 @@ fn handoff_version_reaper(
 mod tests {
     use std::{
         path::{Path, PathBuf},
-        process::{Command, Stdio},
+        process::{Child, Command, ExitStatus, Stdio},
+        thread,
+        time::{Duration, Instant},
     };
 
     use super::run_version_command;
@@ -156,24 +158,103 @@ mod tests {
         }
     "#;
 
-    fn fixture_directory() -> PathBuf {
-        let directory =
-            std::env::temp_dir().join(format!("sage-version-probe-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir(&directory).unwrap();
-        directory
+    const COMPILE_DEADLINE: Duration = Duration::from_secs(180);
+    const FIXTURE_DEADLINE: Duration = Duration::from_secs(15);
+    const DETACHED_RUN_DEADLINE: Duration = Duration::from_secs(60);
+    const SUBPROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    /// Names the fixture for the re-run of the console test that stands in for
+    /// a release build: a process with no console of its own.
+    const DETACHED_FIXTURE_ENV: &str = "SAGE_VERSION_PROBE_DETACHED_FIXTURE";
+
+    struct Finished {
+        status: ExitStatus,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
     }
 
-    fn compile_console_fixture(directory: &Path) -> PathBuf {
-        let source = directory.join("fixture.rs");
-        let executable = directory.join("codex.exe");
+    /// Owns a fresh temp directory and the subprocess running for it, if any.
+    /// Dropping it, including while a failed assertion unwinds, kills and reaps
+    /// a live subprocess first and then removes the directory.
+    struct Fixture {
+        directory: PathBuf,
+        child: Option<Child>,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let directory =
+                std::env::temp_dir().join(format!("sage-version-probe-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&directory).unwrap();
+            Self {
+                directory,
+                child: None,
+            }
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.directory.join(name)
+        }
+
+        /// Runs `command` to exit within `deadline`, capturing its output in
+        /// files so no pipe can stall it. Past the deadline the subprocess is
+        /// killed and reaped, and the test fails naming `stage`.
+        fn run(&mut self, stage: &str, command: &mut Command, deadline: Duration) -> Finished {
+            let stdout_path = self.path("stdout.txt");
+            let stderr_path = self.path("stderr.txt");
+            let child = command
+                .stdin(Stdio::null())
+                .stdout(std::fs::File::create(&stdout_path).unwrap())
+                .stderr(std::fs::File::create(&stderr_path).unwrap())
+                .spawn()
+                .unwrap_or_else(|error| panic!("{stage} could not start: {error}"));
+            let child = self.child.insert(child);
+            let started = Instant::now();
+            let status = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status,
+                    Ok(None) if started.elapsed() < deadline => {
+                        thread::sleep(SUBPROCESS_POLL_INTERVAL)
+                    }
+                    Ok(None) => panic!("{stage} did not finish within {deadline:?}"),
+                    Err(error) => panic!("{stage} could not be waited on: {error}"),
+                }
+            };
+            self.child = None;
+            Finished {
+                status,
+                stdout: std::fs::read(&stdout_path).unwrap(),
+                stderr: std::fs::read(&stderr_path).unwrap(),
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            if let Some(mut child) = self.child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    fn compile_console_fixture(fixture: &mut Fixture) -> PathBuf {
+        let source = fixture.path("fixture.rs");
+        let executable = fixture.path("codex.exe");
         std::fs::write(&source, CONSOLE_FIXTURE).unwrap();
-        let status = Command::new("rustc")
-            .arg(&source)
-            .arg("-o")
-            .arg(&executable)
-            .status()
-            .unwrap();
-        assert!(status.success(), "rustc failed to build the fixture");
+        let mut rustc = Command::new("rustc");
+        rustc.arg(&source).arg("-o").arg(&executable);
+        let compiled = fixture.run(
+            "compiling the console fixture",
+            &mut rustc,
+            COMPILE_DEADLINE,
+        );
+        assert!(
+            compiled.status.success(),
+            "rustc failed to build the console fixture: {}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
         executable
     }
 
@@ -187,10 +268,6 @@ mod tests {
         console.parse().unwrap()
     }
 
-    /// Names the fixture for the re-run of the console test that stands in for
-    /// a release build: a process with no console of its own.
-    const DETACHED_FIXTURE_ENV: &str = "SAGE_VERSION_PROBE_DETACHED_FIXTURE";
-
     /// The detached re-run writes its findings here, next to the fixture, so
     /// they do not depend on how a console-less process's stdout is wired.
     fn report_path(fixture: &Path) -> PathBuf {
@@ -200,14 +277,21 @@ mod tests {
     /// Runs inside the detached re-run. Like a GUI-subsystem release build it
     /// has no console, so a console child started without CREATE_NO_WINDOW
     /// gets a new console window of its own.
-    fn report_from_detached_process(fixture: &Path) {
+    fn report_from_detached_process(executable: &Path) {
         assert_eq!(
             unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize,
             0
         );
-        let unflagged = Command::new(fixture).arg("--version").output().unwrap();
+        let mut control = Fixture::new();
+        let mut plain = Command::new(executable);
+        plain.arg("--version");
+        let unflagged = control.run(
+            "the unflagged control fixture",
+            &mut plain,
+            FIXTURE_DEADLINE,
+        );
         assert!(unflagged.status.success());
-        let probed = run_version_command(fixture, ProbeLimits::PRODUCTION)
+        let probed = run_version_command(executable, ProbeLimits::PRODUCTION)
             .expect("the console fixture's version output is captured");
         assert!(!probed.stdout.truncated);
         assert!(probed.stderr.bytes.is_empty());
@@ -216,31 +300,34 @@ mod tests {
             console_window_seen_by(&unflagged.stdout),
             console_window_seen_by(&probed.stdout.bytes)
         );
-        std::fs::write(report_path(fixture), report).unwrap();
+        std::fs::write(report_path(executable), report).unwrap();
     }
 
     #[test]
     fn version_probe_starts_harness_without_a_console_window() {
-        if let Some(fixture) = std::env::var_os(DETACHED_FIXTURE_ENV) {
-            report_from_detached_process(Path::new(&fixture));
+        if let Some(executable) = std::env::var_os(DETACHED_FIXTURE_ENV) {
+            report_from_detached_process(Path::new(&executable));
             return;
         }
         use std::os::windows::process::CommandExt;
-        let directory = fixture_directory();
-        let executable = compile_console_fixture(&directory);
+        let mut fixture = Fixture::new();
+        let executable = compile_console_fixture(&mut fixture);
         let test_path = module_path!().split_once("::").unwrap().1;
         let test_name =
             format!("{test_path}::version_probe_starts_harness_without_a_console_window");
-        let status = Command::new(std::env::current_exe().unwrap())
+        let mut rerun = Command::new(std::env::current_exe().unwrap());
+        rerun
             .args([test_name.as_str(), "--exact", "--test-threads=1"])
             .env(DETACHED_FIXTURE_ENV, &executable)
-            .creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
-        assert!(status.success(), "the detached re-run failed: {status}");
+            .creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS);
+        let detached = fixture.run("the detached re-run", &mut rerun, DETACHED_RUN_DEADLINE);
+        assert!(
+            detached.status.success(),
+            "the detached re-run failed ({}): {}{}",
+            detached.status,
+            String::from_utf8_lossy(&detached.stdout),
+            String::from_utf8_lossy(&detached.stderr)
+        );
         let report = std::fs::read_to_string(report_path(&executable)).unwrap();
         // Control: started without the flag, the same fixture reports the new
         // console window it was given, so a 0 below is not a blind fixture.
@@ -253,13 +340,12 @@ mod tests {
         );
         let probed = report.lines().find_map(|line| line.strip_prefix("probed="));
         assert_eq!(probed, Some("0"), "{report}");
-        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]
     fn version_probe_still_reads_cmd_shim_output() {
-        let directory = fixture_directory();
-        let shim = directory.join("claude.cmd");
+        let fixture = Fixture::new();
+        let shim = fixture.path("claude.cmd");
         std::fs::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n").unwrap();
 
         let output = run_version_command(&shim, ProbeLimits::PRODUCTION)
@@ -270,6 +356,5 @@ mod tests {
         );
         assert!(!output.stdout.truncated);
         assert!(output.stderr.bytes.is_empty());
-        std::fs::remove_dir_all(&directory).unwrap();
     }
 }
