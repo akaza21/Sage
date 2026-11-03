@@ -7,9 +7,27 @@ import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { page, textItem } from "./acpProjection.fixture";
 import { parityTool } from "./activityParity.fixture";
-import { CompactToolItem } from "./CompactToolItem";
+
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
-import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { ToolItem } from "./ToolItem";
+import { PrimaryActivities } from "./PrimaryActivities";
+import type { ComponentProps } from "react";
+import type { ToolRollup } from "./toolActivityRollup";
+function ToolActivityRollup({
+  rollup,
+  ...props
+}: Pick<
+  ComponentProps<typeof PrimaryActivities>,
+  "interactive" | "onOpenResource"
+> & { rollup: ToolRollup }) {
+  return (
+    <PrimaryActivities
+      {...props}
+      items={rollup.items}
+      renderItem={() => null}
+    />
+  );
+}
 
 afterEach(cleanup);
 
@@ -438,7 +456,7 @@ it.each(["completed", "failed"] as const)(
   "puts the %s tool outcome after output in the card footer",
   (state) => {
     const { container } = render(
-      <CompactToolItem item={parityTool("execute", 1, state)} />,
+      <ToolItem compact item={parityTool("execute", 1, state)} />,
     );
     const frame = container.querySelector(".acp-tool-command-frame")!;
     expect(frame.lastElementChild).toHaveAttribute("role", "status");

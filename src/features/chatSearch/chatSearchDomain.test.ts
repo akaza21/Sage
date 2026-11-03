@@ -37,6 +37,36 @@ const valid: ProjectChatSearchResponse = {
 };
 
 describe("Project Chat search domain", () => {
+  it("admits empty-query browsing without relaxing response identity or match validation", () => {
+    expect(() =>
+      validateProjectChatSearchRequest({
+        projectId: "project-a",
+        projectGeneration: 4,
+        expectedTransitionEpoch: 3,
+        query: "",
+      }),
+    ).not.toThrow();
+    const browse = {
+      ...valid,
+      query: "",
+      results: [{ ...valid.results[0], matchedTitle: true }],
+    };
+    expect(parseProjectChatSearchResponse(browse)).toEqual(browse);
+    expect(() =>
+      parseProjectChatSearchResponse({
+        ...browse,
+        results: [{ ...browse.results[0], matchedTitle: false }],
+      }),
+    ).toThrow("invalid Project Chat search response");
+    expect(() =>
+      validateProjectChatSearchRequest({
+        projectId: "",
+        projectGeneration: 4,
+        expectedTransitionEpoch: 3,
+        query: "",
+      }),
+    ).toThrow("valid Project ID");
+  });
   it("accepts a bounded literal response with attached and archived results", () => {
     expect(parseProjectChatSearchResponse(valid)).toEqual(valid);
   });
@@ -87,7 +117,7 @@ describe("Project Chat search domain", () => {
         expectedTransitionEpoch: 3,
         query: `${"é".repeat(128)}a`,
       }),
-    ).toThrow("1-256 UTF-8 bytes");
+    ).toThrow("at most 256 UTF-8 bytes");
   });
 });
 

@@ -9,6 +9,9 @@
 .menu-popover--editor {
   --radius-sm: 4px;
   --radius-md: 6px;
+  --workbench-card-radius: var(--radius-md);
+  --workbench-card-fill: var(--color-panel);
+  --workbench-card-border: var(--color-border-subtle);
   --radius-lg: 8px;
 
   font-family: var(--font-family-ui);
@@ -18,12 +21,8 @@
    center region is an inset card; tabs, the canvas and the tool sidebar sit
    on the panel colour. */
 .workbench--editor {
-  --center-region-margin: var(--space-1) var(--space-1) var(--space-1) 0;
-  --center-region-overflow: hidden;
+  --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
   --center-region-tabs-height: var(--tab-height);
-  --center-region-border: 1px solid var(--color-border-subtle);
-  --radius-center-region: var(--radius-md);
-  --center-region-fill: var(--color-panel);
   --active-canvas-fill: var(--color-panel);
   --tab-strip-fill: var(--color-panel);
   --tab-fill: var(--color-panel);
@@ -130,12 +129,12 @@
 
 @media (max-width: 760px) {
   .workbench--editor {
-    --center-region-margin: var(--space-1);
+    --workbench-card-margin: var(--space-1);
   }
 
   /* While the floating tool sidebar covers it, the center steps aside. */
   .workbench--editor .center-region[aria-hidden="true"] {
-    --center-region-margin: var(--space-1) var(--space-1) var(--space-1)
+    --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1)
       min(280px, calc(100% - 160px));
   }
 }
@@ -148,6 +147,6 @@
 
 @media (forced-colors: active) {
   .workbench--editor {
-    --center-region-border: 1px solid CanvasText;
+    --workbench-card-border: CanvasText;
   }
 }

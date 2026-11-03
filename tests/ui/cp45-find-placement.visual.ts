@@ -27,9 +27,11 @@ for (const width of [1872, 720, 480]) {
       // back to its parent Chat, whose header still carries the side tab.
       if (split && width < 1872) {
         await expect(answer).toBeHidden();
+        if (width <= 600) await page.keyboard.press("Control+b");
         await page
           .getByRole("button", { name: /^Open chat Rich answers/ })
           .click();
+        if (width <= 600) await page.keyboard.press("Control+b");
       }
       await answer.click();
       await page.keyboard.press("Control+f");

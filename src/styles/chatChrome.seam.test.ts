@@ -43,15 +43,12 @@ it("keeps a failed rename readable without adding a compact header row", async (
 });
 
 it("keeps wrapped user bubbles rectangular with a bounded corner radius", async () => {
-  const css = await readFile(
-    "src/features/chat/chat-transcript-polish.css",
-    "utf8",
-  );
+  const css = await readFile("src/features/chat/acp/acp-chat.css", "utf8");
   expect(css).toMatch(
-    /\.message-list__content \.acp-message--user\s*\{[^}]*border-radius:\s*var\(--radius-xl\)/s,
+    /\.acp-message--user\s*\{[^}]*border-radius:\s*var\(--radius-xl\)/s,
   );
   expect(css).not.toMatch(
-    /\.message-list__content \.acp-message--user\s*\{[^}]*border-radius:\s*var\(--radius-pill\)/s,
+    /\.acp-message--user\s*\{[^}]*border-radius:\s*var\(--radius-pill\)/s,
   );
 });
 

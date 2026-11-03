@@ -3,7 +3,7 @@ use super::*;
 mod pending;
 pub(in crate::acp::service) use pending::PendingCodexRecovery;
 
-impl AcpService {
+impl Lane<'_> {
     pub(super) fn retain_codex_recovery(&self, recovery: PendingCodexRecovery) {
         let mut retained = self
             .codex_recovery

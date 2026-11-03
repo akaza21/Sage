@@ -4,6 +4,68 @@ use crate::acp::{
     runtime::permissions::PermissionDecision,
 };
 
+#[test]
+fn pi_0742_idless_optional_discovery_error_does_not_break_first_prompt() {
+    let mut runtime = fixture_runtime(74);
+    ready_until_levels(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({
+                "type":"response", "command":"get_available_thinking_levels",
+                "success":false, "error":"Unknown command: get_available_thinking_levels"
+            })),
+            &Mapper,
+        )
+        .expect("optional discovery failure");
+    assert!(batch.egress().is_empty());
+    assert!(runtime.thinking_request_command.is_none());
+    runtime
+        .ingest(&frame(json!({"type":"agent_end","messages":[]})), &Mapper)
+        .expect("first prompt still completes");
+    let batch = runtime
+        .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+        .unwrap();
+    assert!(batch.events().iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn {
+            state: TurnState::Completed,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn pi_idless_optional_error_rejects_ambiguous_requests_for_the_method() {
+    let mut runtime = fixture_runtime(76);
+    ready_until_levels(&mut runtime);
+    runtime
+        .translator
+        .begin(Operation::GetThinkingLevels)
+        .unwrap();
+    assert!(runtime.ingest(&frame(json!({"type":"response","command":"get_available_thinking_levels","success":false})), &Mapper).is_err());
+}
+
+#[test]
+fn pi_idless_errors_outside_pending_optional_discovery_remain_fatal() {
+    for (command, success) in [
+        ("get_available_thinking_levels", false),
+        ("get_state", false),
+        ("get_available_thinking_levels", true),
+    ] {
+        let mut runtime = fixture_runtime(75);
+        ready(&mut runtime);
+        assert!(
+            runtime
+                .ingest(
+                    &frame(json!({"type":"response","command":command,"success":success})),
+                    &Mapper
+                )
+                .is_err()
+        );
+    }
+}
+
 fn thought_update(kind: &str, delta: Option<&str>) -> Value {
     let mut event = json!({"type":kind,"contentIndex":0});
     let partial = json!({"role":"assistant","content":[]});

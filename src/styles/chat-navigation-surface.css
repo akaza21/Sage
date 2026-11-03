@@ -76,15 +76,6 @@
   background: transparent;
 }
 
-.project-chat__identity {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-}
-
-.project-chat--active .project-chat__identity {
-  color: var(--color-text-secondary);
-}
-
 .project-chat__actions,
 .project-chat-edit button {
   display: grid;
@@ -108,6 +99,8 @@
 
 .project-chat-row:hover .project-chat__actions,
 .project-chat-row:focus-within .project-chat__actions,
+.project-entry__header:hover .project-chat__actions,
+.project-entry__header:focus-within .project-chat__actions,
 .project-chat__actions[aria-expanded="true"] {
   opacity: 1;
 }
@@ -151,7 +144,6 @@
   color: var(--color-accent);
 }
 
-/* Codex live parity s6/f0526: the title truncates before the pill. */
 .rail-pill {
   flex: none;
   height: 20px;
@@ -179,6 +171,17 @@
   display: grid;
   grid-area: 1 / 1;
   justify-self: end;
+}
+
+/* A project header keeps its row in the first column and the "…" menu in
+   the reserved second column; the chat-row overlay placement above would
+   push the project row into the 24 px column and hide its name. */
+.project-entry__header > .project-row {
+  grid-area: 1 / 1;
+}
+
+.project-entry__header > .project-chat-actions {
+  grid-area: 1 / 2;
 }
 
 .project-chat-actions__menu {
@@ -231,26 +234,6 @@
 .project-chat__title {
   overflow: hidden;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-chat__context {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  grid-column: 1;
-  grid-row: 2;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  padding: 0 var(--space-1) var(--space-1)
-    calc(var(--space-2) + 14px + var(--space-2));
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -355,44 +338,12 @@
   color: var(--color-text-muted);
 }
 
-/* The title truncates before the "Awaiting approval" pill, which keeps a gap
-   before the trailing spinner at any rail width (Codex s6/f0526). */
 .project-chat-row:has(.project-chat__approval-spinner) .project-chat {
   padding-inline-end: 28px;
 }
 
 .project-chat__working--status {
   background: var(--color-warning);
-}
-
-.project-chat__workspace {
-  flex: 0 0 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-chat__git {
-  display: inline-flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-chat__git svg {
-  flex: 0 0 auto;
-}
-
-.project-chat__git--chip {
-  min-height: 16px;
-  padding: 0 4px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
 }
 
 .project-chat--active {
@@ -488,7 +439,6 @@
   }
 
   .project-chat__state,
-  .project-chat__identity,
   .project-chat__status-chip {
     color: CanvasText;
   }
@@ -502,4 +452,54 @@
   .project-chat__state--unread::before {
     background: Highlight;
   }
+}
+
+/* A rested-on Agent rail row's card, portalled beside the rail. */
+.agent-rail-hover-card {
+  position: fixed;
+  margin-left: var(--agent-rail-hover-card-gap);
+  z-index: var(--z-floating);
+  display: grid;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--agent-shell-resource-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+  background: var(--color-plane-raised);
+  box-shadow: var(--agent-shell-resource-shadow);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.agent-rail-hover-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.agent-rail-hover-card__head > strong {
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.agent-rail-hover-card__head > span,
+.agent-rail-hover-card__project {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.agent-rail-hover-card__project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-rail-hover-card__project > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

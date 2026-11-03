@@ -13,7 +13,7 @@ import type { EditorDocument } from "../../domain/editor";
 import { OutlineSurface } from "./OutlineSurface";
 import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
 import { MAX_OUTLINE_SYMBOLS } from "./syntaxOutline";
-import { OUTLINE_SETTLE_MS } from "./useSyntaxOutline";
+const OUTLINE_SETTLE_MS = 200;
 
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
 const initialState = useWorkbenchStore.getState();

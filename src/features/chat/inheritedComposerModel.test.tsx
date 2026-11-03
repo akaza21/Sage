@@ -189,6 +189,19 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     },
   );
 
+  it("keeps a fork's confirmed parent model and effort ahead of catalog labels", () => {
+    inheritComposerModel("fork-catalog", parentConfig());
+    useWorkbenchStore.setState({
+      models: [{ id: "fixture-model", name: "Catalog alias" }],
+    });
+    renderControls({ inheritScope: "fork-catalog" });
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toHaveTextContent("Synthetic replay");
+    expect(model).toHaveTextContent("medium");
+    expect(model).not.toHaveTextContent("Catalog alias");
+    expect(model).toHaveAttribute("data-readonly-label", "true");
+  });
+
   it("labels a side chat with the parent's model only, never its effort", () => {
     inheritComposerModel("side-1", parentConfig(), {
       startsOnModelId: "fixture-model",

@@ -1,9 +1,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 
 const runtimeProbe = vi.hoisted(() => ({
@@ -90,6 +91,8 @@ const tabs: WorkbenchTab[] = [
   },
 ];
 
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
+
 afterEach(() => {
   cleanup();
   runtimeProbe.moduleLoaded.mockClear();
@@ -117,7 +120,7 @@ it("loads editor runtime only for an active File and destroys it on return to Ch
   });
   render(<Workbench />);
 
-  await act(async () => Promise.resolve());
+  await settleLazyModules();
   expect(screen.getByRole("region", { name: "Editor welcome" })).toBeVisible();
   expect(runtimeProbe.moduleLoaded).not.toHaveBeenCalled();
   expect(runtimeProbe.create).not.toHaveBeenCalled();

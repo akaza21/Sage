@@ -18,7 +18,7 @@ import {
 const BrowserDownloadsPanel = lazy(() => import("./BrowserDownloadsPanel"));
 
 /**
- * The toolbar's ⬇ button and its popover (Codex browser toolbar). A ring on
+ * The toolbar's ⬇ button and its popover. A ring on
  * the button shows the active downloads' progress while the popover is shut.
  */
 export function BrowserDownloadsControl({

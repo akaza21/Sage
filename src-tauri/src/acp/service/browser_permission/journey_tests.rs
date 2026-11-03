@@ -170,7 +170,11 @@ fn joined_tab_snapshot_and_click_permissions_are_visible_and_resolve() {
             &runtime_owner.session_id,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let _turn = tree
         .reserve_turn()
         .unwrap()
@@ -226,7 +230,11 @@ fn fresh_first_chat_turn_two_renews_browser_owner_after_queue_dispatch() {
             1,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let turn = tree
         .reserve_turn()
         .unwrap()
@@ -285,7 +293,11 @@ fn refused_join_leaves_the_user_tab_plain_and_pending_approval_resolvable() {
             &runtime_owner.session_id,
         )
         .unwrap();
-    let tree = service.scheduler.reserve_tree(runtime_owner).unwrap();
+    let tree = service
+        .lane_at(0)
+        .scheduler
+        .reserve_tree(runtime_owner)
+        .unwrap();
     let _turn = tree
         .reserve_turn()
         .unwrap()

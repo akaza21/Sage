@@ -40,9 +40,12 @@ export async function openJourney(page: Page) {
   await expect(
     page.getByRole("region", { name: "Chat pane Alpha" }),
   ).toBeVisible();
+  // AP-A1: the centre shows one Chat; another Chat is reached by selecting
+  // it, never by an automatic second pane.
+  await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
   await expect(
     page.getByRole("region", { name: "Chat pane Beta" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 }
 
 export async function settleRender(page: Page, projectionEvent = false) {
@@ -59,7 +62,8 @@ export async function runEvent(page: Page, event: JourneyEvent) {
   const result = await page.evaluate(async (nextEvent) => {
     const fixture =
       await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
-    return fixture.runJourneyEvent(nextEvent);
+    const result = await fixture.runJourneyEvent(nextEvent);
+    return result;
   }, event);
   await settleRender(page, true);
   return result;
