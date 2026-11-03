@@ -268,12 +268,12 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       cursor++;
       continue;
     }
-    const heading = /^(#{1,6}) (.+)$/u.exec(line);
+    const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/u.exec(line);
     if (heading) {
       blocks.push({
         kind: "heading",
         level: heading[1].length as 1,
-        text: inline(heading[2]),
+        text: inline(heading[2] ?? ""),
       });
       cursor++;
       continue;
@@ -338,7 +338,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         ? quoteMarker.test(lines[cursor])
         : !setextUnderline.test(lines[cursor]) &&
           !isMarkdownRule(lines[cursor]) &&
-          !/^(?: {0,3}(?:`{3,}|~{3,})|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
+          !/^(?: {0,3}(?:`{3,}|~{3,})| {0,3}#{1,6}(?:[ \t]|$)| {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
             lines[cursor],
           ))
     ) {

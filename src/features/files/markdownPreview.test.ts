@@ -681,3 +681,34 @@ describe("fence indentation and empty list precedence", () => {
     expect(document.truncated).toBe(true);
   });
 });
+
+describe("ATX classification before setext", () => {
+  it.each([
+    ["#", 1, ""],
+    [" #", 1, ""],
+    ["  ##  ", 2, ""],
+    ["   ######\t", 6, ""],
+    [" # Title", 1, "Title"],
+    ["  ## Title", 2, "Title"],
+    ["   # Title", 1, "Title"],
+    ["###\tTitle", 3, "Title"],
+  ])("classifies %s before a following rule", (source, level, text) => {
+    expect(renderMarkdownPreview(`${source}\n---`).blocks).toEqual([
+      { kind: "heading", level, text },
+      { kind: "rule" },
+    ]);
+    expect(renderMarkdownPreview(`Intro\n${source}\n---`).blocks).toEqual([
+      { kind: "paragraph", text: "Intro" },
+      { kind: "heading", level, text },
+      { kind: "rule" },
+    ]);
+  });
+  it.each(["####### Title", "#Title", "    # Title"])(
+    "keeps non-ATX %s as paragraph text eligible for setext",
+    (source) => {
+      expect(renderMarkdownPreview(`${source}\n---`).blocks).toEqual([
+        { kind: "heading", level: 2, text: source.trim() },
+      ]);
+    },
+  );
+});

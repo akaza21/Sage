@@ -121,3 +121,15 @@ it("renders an over-indented closer as literal code through the end of the previ
     "<div><pre>code\n    ~~~\nAfter</pre></div>",
   );
 });
+
+it.each([
+  ["#\n---", "<h1></h1><hr>"],
+  ["   # Title\n---", "<h1>Title</h1><hr>"],
+])("renders ATX before a rule in the preview: %s", (source, expected) => {
+  const { container, rerender } = render(
+    <MarkdownBlocks document={renderMarkdownPreview(source)} />,
+  );
+  expect(container.innerHTML).toBe(expected);
+  rerender(<FileMarkdownPreview source={source} />);
+  expect(container.querySelector("article")!.innerHTML).toBe(expected);
+});

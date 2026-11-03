@@ -341,3 +341,25 @@ it("reclassifies streaming setext text while keeping an empty list separate from
     expect(tails(container)).toEqual([]);
   }
 });
+
+it.each([
+  ["#", "<h1></h1>"],
+  ["   # Title", "<h1>Title</h1>"],
+])(
+  "keeps streamed ATX %s separate from a growing rule",
+  (heading, expected) => {
+    const { container, rerender } = render(
+      <ChatMarkdown text={heading} streaming />,
+    );
+    const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+    expect(surface()).toBe(expected);
+    rerender(<ChatMarkdown text={`${heading}\n--`} streaming />);
+    expect(surface()).toBe(`${expected}<p>--</p>`);
+    rerender(<ChatMarkdown text={`${heading}\n---`} streaming />);
+    expect(surface()).toBe(`${expected}<hr>`);
+    expect(tails(container)).toEqual([]);
+    rerender(<ChatMarkdown text={`Intro\n${heading}\n---`} streaming />);
+    expect(surface()).toBe(`<p>Intro</p>${expected}<hr>`);
+    expect(tails(container)).toEqual([]);
+  },
+);
