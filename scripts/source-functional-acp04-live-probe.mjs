@@ -126,19 +126,50 @@ const CODEX_PICKER_STATE_EXPRESSION = `(()=>{const panes=${FOCUSED_PANES};if(pan
 // Waits, within the journey deadline, for a fresh chat's Harness trigger to
 // become openable. On timeout the failure code carries the last observed
 // state; an observation outside the known states fails immediately.
-export async function awaitCodexPickerOpenable(read, deadline) {
+export function awaitCodexPickerOpenable(read, deadline) {
+  return awaitUiState(
+    read,
+    deadline,
+    ACP04_CODEX_PICKER_STATES,
+    "codex-picker",
+  );
+}
+
+// Names the first unmet condition of Codex readiness after selection, so a
+// harness that never becomes ready says which part of the surface held it.
+export const ACP04_CODEX_READY_STATES = Object.freeze([
+  "ready",
+  "pane-count",
+  "surface-count",
+  "projection-count",
+  "control-count",
+  "harness-disabled",
+  "model-disabled",
+  "harness-not-codex",
+  "model-unidentified",
+  "harness-not-ready",
+  "composer",
+]);
+function codexReadyStateExpression(codexId, codexName) {
+  return `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return 'pane-count';const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return 'surface-count';const s=surfaces[0],p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]'),harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS},composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')],bounded=x=>x.length>0&&x.length<=512,status=${HARNESS_STATUS};if(p.length!==1)return 'projection-count';if(harness.length!==1||models.length!==1)return 'control-count';if(harness[0].disabled)return 'harness-disabled';if(models[0].disabled)return 'model-disabled';if(harness[0].dataset.selectedId!==${codexId}||harness[0].textContent.trim()!==${codexName})return 'harness-not-codex';if(!bounded(models[0].dataset.selectedId||'')||!bounded(models[0].textContent.trim()))return 'model-unidentified';if(status!=='Ready'&&status!=='Live')return 'harness-not-ready';if(composers.length!==1||composers[0].disabled!==false)return 'composer';return 'ready'})()`;
+}
+
+export function awaitCodexReady(read, deadline) {
+  return awaitUiState(read, deadline, ACP04_CODEX_READY_STATES, "codex-ready");
+}
+
+async function awaitUiState(read, deadline, states, name) {
   let last = "unobserved";
   while (Date.now() < deadline) {
     const state = await read();
-    if (!ACP04_CODEX_PICKER_STATES.includes(state))
-      fail("codex-picker-state-invalid");
+    if (!states.includes(state)) fail(`${name}-state-invalid`);
     if (state === "ready") return;
     last = state;
     await new Promise((resolve) =>
       setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
     );
   }
-  fail(`codex-picker-${last}-timeout`);
+  fail(`${name}-${last}-timeout`);
 }
 
 export function createAcp04Ui(codexVersion) {
@@ -158,7 +189,8 @@ export function createAcp04Ui(codexVersion) {
     openCodexPicker: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='false')return false;harness[0].click();return true})()`,
     codexSelectable: `(()=>{const allPanes=[...document.querySelectorAll('section.agent-chat-pane')],panes=${FOCUSED_PANES},rails=${CURRENT_RAIL_CHATS};if(!${AGENT_MODE}||allPanes.length<1||allPanes.length>2||panes.length!==1||rails.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS};if(harness.length!==1||models.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);return options!==null&&options.length===1})()`,
     selectCodex: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],harness=${HARNESS_TRIGGERS};if(harness.length!==1||harness[0].disabled||harness[0].getAttribute('aria-expanded')!=='true')return false;const options=${CODEX_OPTIONS}(harness[0]);if(options===null||options.length!==1)return false;options[0].click();return true})()`,
-    codexReady: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const surfaces=${AGENT_SURFACES};if(surfaces.length!==1)return false;const s=surfaces[0],p=s.querySelectorAll('section.acp-chat-projection[aria-label^="Agent chat "]'),harness=${HARNESS_TRIGGERS},models=${MODEL_TRIGGERS},composers=[...s.querySelectorAll('textarea[aria-label="Message agent"]')],bounded=x=>x.length>0&&x.length<=512,status=${HARNESS_STATUS};return p.length===1&&harness.length===1&&models.length===1&&!harness[0].disabled&&!models[0].disabled&&harness[0].dataset.selectedId===${codexId}&&harness[0].textContent.trim()===${codexName}&&bounded(models[0].dataset.selectedId||'')&&bounded(models[0].textContent.trim())&&(status==='Ready'||status==='Live')&&composers.length===1&&composers[0].disabled===false})()`,
+    codexReadyState: codexReadyStateExpression(codexId, codexName),
+    codexReady: `(${codexReadyStateExpression(codexId, codexName)}==='ready')`,
     sendEnabled: `(()=>{const panes=${FOCUSED_PANES};return panes.length===1&&panes[0].querySelectorAll('button[aria-label="Send message"]:not(:disabled)').length===1})()`,
     send: `(()=>{const panes=${FOCUSED_PANES};if(panes.length!==1)return false;const x=[...panes[0].querySelectorAll('button[aria-label="Send message"]:not(:disabled)')];if(x.length!==1)return false;x[0].click();return true})()`,
     ...createModeBCancelUi(),
@@ -382,11 +414,7 @@ function defaultDriver(cdp, deadline, codexVersion, guard = () => {}) {
     },
     selectCodex: () => exactAction(ui.selectCodex, "codex-selector-invalid"),
     waitForCodexReady: () =>
-      waitUntil(
-        () => readiness(ui.codexReady),
-        deadline,
-        "acp04-codex-ready-timeout",
-      ),
+      awaitCodexReady(() => readiness(ui.codexReadyState), deadline),
     snapshot: () => {
       guard();
       return probeAcp04Snapshot(cdp, deadline);

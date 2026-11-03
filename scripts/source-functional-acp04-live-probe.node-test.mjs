@@ -22,6 +22,7 @@ import {
   acceptModeBSnapshot,
   acceptModeASnapshot,
   awaitCodexPickerOpenable,
+  awaitCodexReady,
   createAcp04Ui,
   createAcp04Receipt,
   createModeBState,
@@ -848,6 +849,89 @@ test("Codex picker wait times out naming the first unmet precondition", async ()
   }
 });
 
+test("Codex readiness wait times out naming the first unmet condition", async () => {
+  const ui = createAcp04Ui(CODEX_VERSION);
+  const projection =
+    '<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="1" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id=""></section>';
+  const ready = (overrides = {}) =>
+    agentWorkbenchMarkup({ projection, ...overrides });
+  const cases = [
+    ["pane-count", ready() + ready()],
+    ["projection-count", agentWorkbenchMarkup()],
+    // No projection and no Model trigger: the projection is checked first.
+    [
+      "projection-count",
+      agentWorkbenchMarkup({
+        controls: composerControlsMarkup().replace('aria-label="Model"', ""),
+      }),
+    ],
+    [
+      "control-count",
+      ready({
+        controls: composerControlsMarkup().replace('aria-label="Model"', ""),
+      }),
+    ],
+    [
+      "harness-not-codex",
+      ready({
+        controls: composerControlsMarkup({
+          harnessId: "simulator",
+          harnessName: "Simulator",
+        }),
+      }),
+    ],
+    // A Simulator harness with no model id: the harness is checked first.
+    [
+      "harness-not-codex",
+      ready({
+        controls: composerControlsMarkup({
+          harnessId: "simulator",
+          harnessName: "Simulator",
+          modelId: "",
+        }),
+      }),
+    ],
+    [
+      "model-unidentified",
+      ready({ controls: composerControlsMarkup({ modelId: "" }) }),
+    ],
+    ["harness-not-ready", ready({ header: agentHeaderMarkup("Starting") })],
+    [
+      "model-unidentified",
+      ready({
+        controls: composerControlsMarkup({ modelId: "" }),
+        header: agentHeaderMarkup("Starting"),
+      }),
+    ],
+  ];
+  const poll = (markup, ms) =>
+    awaitCodexReady(
+      async () => withDom(markup, () => eval(ui.codexReadyState)),
+      Date.now() + ms,
+    );
+  assert.equal(
+    withDom(ready(), () => eval(ui.codexReady)),
+    true,
+  );
+  await poll(ready(), 5_000);
+  for (const [state, markup] of cases) {
+    assert.equal(
+      withDom(markup, () => eval(ui.codexReady)),
+      false,
+      state,
+    );
+    await assert.rejects(
+      poll(markup, 150),
+      new RegExp(`^Error: acp04-codex-ready-${state}-timeout$`),
+      state,
+    );
+  }
+  await assert.rejects(
+    awaitCodexReady(async () => "unknown", Date.now() + 5_000),
+    /^Error: acp04-codex-ready-state-invalid$/,
+  );
+});
+
 test("Codex picker wait retries until openable and fails with the last state", async () => {
   const sequence = ["trigger-disabled", "trigger-expanded", "ready"];
   let reads = 0;
@@ -1185,37 +1269,45 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       const status = document.querySelector('[aria-label^="Harness status: "]');
       status.setAttribute("aria-label", "Harness status: Starting");
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-ready");
       status.setAttribute("aria-label", "Harness status: Live");
       assert.equal(eval(ui.codexReady), true);
       status.after(status.cloneNode(true));
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-ready");
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harnessStatus, "");
       status.nextElementSibling.remove();
 
       harness.querySelector(".searchable-picker__trigger-label").textContent =
         "Codex — codex 0.146.0";
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-codex");
       harness.querySelector(".searchable-picker__trigger-label").textContent =
         "Codex";
       delete harness.dataset.selectedId;
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-not-codex");
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).harness, null);
       harness.dataset.selectedId = "codex";
       delete model.dataset.selectedId;
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "model-unidentified");
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).model, null);
       model.dataset.selectedId = "gpt-5.6";
       harness.disabled = true;
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "harness-disabled");
       harness.disabled = false;
       model.disabled = true;
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "model-disabled");
       model.disabled = false;
       const composer = document.querySelector(
         'textarea[aria-label="Message agent"]',
       );
       composer.disabled = true;
       assert.equal(eval(ui.codexReady), false);
+      assert.equal(eval(ui.codexReadyState), "composer");
       assert.equal(eval(ACP04_SNAPSHOT_EXPRESSION).composerEnabled, false);
       composer.disabled = false;
       composer.after(composer.cloneNode());
