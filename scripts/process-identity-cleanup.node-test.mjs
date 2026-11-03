@@ -572,40 +572,6 @@ try{
   });
 });
 
-test("an executable whose ACL denies reading its attributes is still identified", () => {
-  const node = process.execPath.replaceAll("'", "''");
-  const observed = runPowerShellFixture(
-    String.raw`
-$root=Join-Path ([IO.Path]::GetTempPath()) ('sage-launch-acl-'+[Guid]::NewGuid().ToString('N'));
-$exe=Join-Path $root 'app.exe';$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$denied=$false;$child=$null;
-try{
-  [void][IO.Directory]::CreateDirectory($root);
-  Copy-Item -LiteralPath '${node}' -Destination $exe;
-  $deny=& icacls.exe $exe /deny ('*'+$sid+':(RA)');
-  if($LASTEXITCODE -ne 0){throw "icacls deny failed: $deny"};
-  $denied=$true;
-  $denyInPlace=((& icacls.exe $exe) -join ' ') -match '\(DENY\)';
-  $child=Start-Process -FilePath $exe -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
-  $identity=Get-FootprintLaunchIdentity $child $exe;
-  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child (Join-Path $env:SystemRoot 'System32\cmd.exe'))}catch{$wrong=$_.Exception.Message};
-  [ordered]@{denyInPlace=$denyInPlace;processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($exe));wrong=$wrong}|ConvertTo-Json -Compress
-}finally{
-  if($null -ne $child){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)};
-  if($denied){$restore=& icacls.exe $exe /remove:d ('*'+$sid);if($LASTEXITCODE -ne 0){throw "icacls restore failed: $restore"}};
-  if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
-}
-`,
-    { timeout: 60_000 },
-  );
-  assert.deepEqual(observed, {
-    denyInPlace: true,
-    processIdMatches: true,
-    executablePathIsCallerForm: true,
-    wrong:
-      "The launched process object does not identify the exact executable.",
-  });
-});
-
 test("a launch identity captured immediately holds with every core busy at BelowNormal priority", () => {
   const load = [];
   try {

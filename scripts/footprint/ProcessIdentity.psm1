@@ -40,8 +40,7 @@ namespace SageFootprint {
 
     // Resolves junctions, symbolic links, 8.3 names and \\?\ prefixes to the
     // file's final path. Returns null when the file cannot be opened. It asks
-    // for no access rights, so a file whose ACL denies reading its attributes
-    // still resolves.
+    // for no access rights: GetFinalPathNameByHandleW needs none.
     public static string FinalPath(string path) {
       if (String.IsNullOrEmpty(path)) { return null; }
       using (SafeFileHandle file = CreateFileW(path, NO_DATA_ACCESS, FILE_SHARE_ALL, IntPtr.Zero,
