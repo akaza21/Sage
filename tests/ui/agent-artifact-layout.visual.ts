@@ -24,7 +24,7 @@ for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
     await resourceControl.focus();
     await expect(resourceControl).toBeFocused();
 
-    if (command === "Ctrl+B") await page.keyboard.press("Control+b");
+    if (command === "Ctrl+B") await page.keyboard.press("ControlOrMeta+b");
     else
       await page
         .getByRole("button", { name: "Show projects and chats" })
