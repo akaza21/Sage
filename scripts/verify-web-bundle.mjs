@@ -68,12 +68,14 @@ function gzipBytes(file) {
 // The desktop build emits every chunk as `assets/[hash].js`: an 8-character
 // base64url content hash, plus a numeric suffix when names collide. Chunks
 // import siblings by `./<name>.js`, so a change to any shared chunk rewrites
-// these names without touching the importing chunk's code. Each one becomes a
-// fixed token of the same length before a per-chunk lazy budget gzips it.
+// these names without touching the importing chunk's code. Each specifier of
+// a static `from`, side-effect `import` or dynamic `import()` becomes a fixed
+// token of the same length before a per-chunk lazy budget gzips it. Any other
+// string that looks like a chunk name is measured as written.
 // The core total still subtracts the chunks' emitted sizes.
 // Entry, initial-closure and core-total measurements stay as emitted.
 const HASHED_RELATIVE_IMPORT =
-  /(?<=["'`])\.\/([A-Za-z0-9_-]{8}\d*)\.js(?=["'`])/gu;
+  /(?<=(?:\bfrom|\bimport\s*\(|\bimport)\s*["'`])\.\/([A-Za-z0-9_-]{8}\d*)\.js(?=["'`])/gu;
 
 export function normalizeHashedImports(source) {
   return source.replace(

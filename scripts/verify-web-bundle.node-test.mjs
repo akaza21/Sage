@@ -13,7 +13,10 @@ import { gzipSync } from "node:zlib";
 import test from "node:test";
 
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
-import { verifyWebBundle } from "./verify-web-bundle.mjs";
+import {
+  normalizeHashedImports,
+  verifyWebBundle,
+} from "./verify-web-bundle.mjs";
 import { parseLazyFeatureBudgets } from "./web-bundle-lazy-features.mjs";
 import {
   WEB_BUNDLE_PATH_ROOTS,
@@ -915,6 +918,33 @@ test("a lazy feature budget ignores imported content hashes but counts code grow
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("only import specifiers lose their content hashes", () => {
+  const masked = "./xxxxxxxx.js";
+  for (const [source, expected] of [
+    ['import{a as e}from"./DLlys00o.js";', `import{a as e}from"${masked}";`],
+    ["import './DLlys00o.js';", `import '${masked}';`],
+    ["await import(`./DLlys00o.js`)", `await import(\`${masked}\`)`],
+    ['import ( "./DLlys00o.js" )', `import ( "${masked}" )`],
+    ['import"./fObb2P8k2.js";', 'import"./xxxxxxxxx.js";'],
+  ]) {
+    assert.equal(normalizeHashedImports(source), expected);
+  }
+  for (const source of [
+    'export const file="./aaaaaaaa.js";',
+    "const file='./aaaaaaaa.js';",
+    "const file=`./aaaaaaaa.js`;",
+    'load("./aaaaaaaa.js");',
+    'const reimport="./aaaaaaaa.js";',
+  ]) {
+    assert.equal(normalizeHashedImports(source), source);
+  }
+  // A longer chunk-like string is real growth and still measures larger.
+  const grown = (name) =>
+    gzipSync(normalizeHashedImports(`export const file="./${name}.js";`))
+      .length;
+  assert.ok(grown("aaaaaaaa1") > grown("aaaaaaaa"));
 });
 
 test("a lazy feature must be a reachable dynamic entry", async () => {
