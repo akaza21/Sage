@@ -86,7 +86,8 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/browserClipboard.ts",
   "src/features/browser/BrowserFindControls.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
-  "src/features/outline/outlineNavigation.ts",
+  "src/features/files/fileSymbolNavigation.ts",
+  "src/features/files/FileGoToLineBar.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,

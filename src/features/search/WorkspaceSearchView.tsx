@@ -369,9 +369,6 @@ export function WorkspaceSearchView({
                                   handleMatchKeyDown(event, match)
                                 }
                               >
-                                <span className="workspace-search__position">
-                                  {match.lineNumber}:{match.columnNumber}
-                                </span>
                                 <span className="workspace-search__preview">
                                   {highlightPreview(
                                     match.preview,
@@ -386,6 +383,9 @@ export function WorkspaceSearchView({
                                           match.lineNumber,
                                       ).length,
                                   )}
+                                </span>
+                                <span className="workspace-search__position">
+                                  {match.lineNumber}:{match.columnNumber}
                                 </span>
                               </button>
                             </div>

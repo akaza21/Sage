@@ -338,6 +338,9 @@
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
+  /* Part radii that window modes re-project. */
+  --radius-center-region: var(--radius-none);
+  --radius-title-bar-search: var(--radius-pill);
   --radius-circle: 50%;
   --composer-fill: #363636;
   --composer-border: #383838;
@@ -637,13 +640,14 @@ textarea:disabled,
     calc(var(--sidebar-width) + 46px);
 }
 
+/* Window modes set center rows; the shared surface primitive owns its frame. */
 .center-region {
   display: grid;
   min-width: 0;
   min-height: 0;
   grid-template-rows: var(
     --center-region-rows,
-    var(--tab-height) minmax(0, 1fr)
+    var(--center-region-tabs-height, var(--tab-height)) minmax(0, 1fr)
   );
 }
 
@@ -652,9 +656,11 @@ textarea:disabled,
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background:
+  background: var(
+    --active-canvas-fill,
     linear-gradient(180deg, rgb(255 255 255 / 0.012), transparent 140px),
-    var(--bg);
+    var(--bg)
+  );
 }
 
 /* A 1920px window at 200% zoom exposes roughly a 960 CSS-pixel viewport. */

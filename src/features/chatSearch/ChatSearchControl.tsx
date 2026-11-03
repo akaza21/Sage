@@ -18,8 +18,6 @@ import {
   admitChatSearchFolder,
   chatSearchAttachment,
   chatSearchFolderOptions,
-  chatSearchResultFolderName,
-  isChatSearchFanout,
   matchesChatSearchScope,
   runScopedChatSearch,
   type ChatSearchFanoutPick,
@@ -33,6 +31,8 @@ import {
   takeChatSearchFolderRequest,
   type ChatSearchScope,
 } from "./chatSearchScope";
+
+import { ChatSearchResults } from "./ChatSearchResults";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
@@ -320,92 +320,21 @@ export function ChatSearchControl({
               />
             </label>
             <div className="chat-search-dialog__actions">
-              <button className="button" type="button" onClick={() => close()}>
-                Cancel
-              </button>
               <span role="status">
                 {phase === "searching" ? "Searching…" : "Type to search chats"}
               </span>
+              <button className="button" type="button" onClick={() => close()}>
+                Cancel
+              </button>
             </div>
-            {error ? (
-              <div className="composer__error" role="alert">
-                {error}
-              </div>
-            ) : null}
-            {phase === "results" && response ? (
-              <div className="chat-search-dialog__results">
-                {response.results.length === 0 ? (
-                  <p className="chat-search-dialog__empty">
-                    No Chats matched “{response.query}”.
-                  </p>
-                ) : (
-                  <div
-                    role="listbox"
-                    aria-label="Chat search results"
-                    onKeyDown={(event) => {
-                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp")
-                        return;
-                      event.preventDefault();
-                      const options = [
-                        ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                          '[role="option"]',
-                        ),
-                      ];
-                      const index = options.indexOf(
-                        document.activeElement as HTMLButtonElement,
-                      );
-                      if (event.key === "ArrowUp" && index <= 0)
-                        queryRef.current?.focus();
-                      else
-                        options[
-                          Math.min(
-                            options.length - 1,
-                            index + (event.key === "ArrowDown" ? 1 : -1),
-                          )
-                        ]?.focus();
-                    }}
-                  >
-                    {response.results.map((result) => {
-                      const folderName = chatSearchResultFolderName(
-                        folders,
-                        result.projectId,
-                      );
-                      const showFolder =
-                        Boolean(folderName) &&
-                        (isChatSearchFanout(scope.searchProjectId) ||
-                          result.projectId !== scope.activeProjectId);
-                      return (
-                        <button
-                          className="chat-search-result"
-                          key={`${result.projectId}:${result.chatId}`}
-                          type="button"
-                          role="option"
-                          aria-selected="false"
-                          aria-label={`${result.title} — ${result.attached ? "Attached" : "Archived"}`}
-                          onClick={() => void selectResult(result)}
-                        >
-                          <span className="chat-search-result__heading">
-                            <strong>{result.title}</strong>
-                            <span>
-                              {result.attached ? "Attached" : "Archived"}
-                              {showFolder ? ` · ${folderName}` : ""}
-                            </span>
-                          </span>
-                          {result.snippet ? (
-                            <span>{result.snippet}</span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {response.hasMore ? (
-                  <p className="chat-search-dialog__more">
-                    More matches exist. Refine the query to narrow the results.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            <ChatSearchResults
+              response={phase === "results" ? response : null}
+              error={error}
+              scope={scope}
+              folders={folders}
+              onFocusQuery={() => queryRef.current?.focus()}
+              onSelect={selectResult}
+            />
           </form>
         </ModalDialog>
       ) : null}
