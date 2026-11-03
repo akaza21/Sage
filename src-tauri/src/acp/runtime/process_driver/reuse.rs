@@ -37,7 +37,9 @@ where
         if !matches!(self.state, DriverState::Running)
             || self.first_delivery_unknown.is_some()
             || self.pending_exit.is_some()
-            || !mailbox.admits_completed_turn_handoff()
+            || !mailbox
+                .queued_handoff_stdout()
+                .is_some_and(|stdout| self.pump.queued_stdout_repeats_terminal(&stdout))
             || !self.pump.completed_turn_ready()
         {
             return Err(Box::new(RebindFailure {

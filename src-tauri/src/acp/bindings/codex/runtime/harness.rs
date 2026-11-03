@@ -13,6 +13,9 @@ use crate::acp::{
 use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
+    fn is_duplicate_terminal(&self, frame: &Frame) -> bool {
+        self.inner.is_duplicate_terminal(frame.as_bytes())
+    }
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,
@@ -406,18 +409,5 @@ impl HarnessAdapter for CodexRuntime {
 }
 
 mod browser_failure;
-
-fn command_method(command: &AdapterCommand) -> &'static str {
-    match command {
-        AdapterCommand::Initialize => "initialize",
-        AdapterCommand::ModelPage { .. } => "model/list",
-        AdapterCommand::NewSession { .. } => "thread/start",
-        AdapterCommand::ResumeSession { .. } => "thread/resume",
-        AdapterCommand::LoadSession { .. } => "thread/read",
-        AdapterCommand::CloseSession => "thread/archive",
-        AdapterCommand::Prompt { .. } => "turn/start",
-        AdapterCommand::Steer { .. } => "turn/steer",
-        AdapterCommand::Cancel => "turn/interrupt",
-        AdapterCommand::ResolvePermission { .. } => "requestPermission",
-    }
-}
+mod command_method;
+use command_method::command_method;

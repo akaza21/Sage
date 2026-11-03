@@ -329,20 +329,6 @@ impl DriverMailbox {
         message
     }
 
-    /// Allows a completed Turn to hand its session to the reusable worker.
-    /// Native stdout queued here follows the durable terminal in stream
-    /// order, and the reusable session's idle ingress reads it next, exactly
-    /// as if the terminal callback had been dequeued after it. Queued control,
-    /// a reader terminal or a closed mailbox still block the handoff.
-    pub(super) fn admits_completed_turn_handoff(&self) -> bool {
-        let state = self.lock();
-        !state.terminal_queued
-            && !state.closed
-            && state
-                .queue
-                .all_items_match(|message| matches!(message, ControlMessage::StdoutChunk(_)))
-    }
-
     pub(super) fn reader_terminal_queued(&self) -> bool {
         self.lock().terminal_queued
     }

@@ -8,6 +8,7 @@ pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
 mod construction;
+mod duplicate_terminal;
 mod errors;
 mod goal;
 mod permission_resolution;

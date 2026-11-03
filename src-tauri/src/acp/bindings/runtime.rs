@@ -70,6 +70,9 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn is_duplicate_terminal(&self, frame: &Frame) -> bool {
+        self.0.is_duplicate_terminal(frame)
+    }
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,

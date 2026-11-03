@@ -226,6 +226,36 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
 }
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
+    /// Stdout still queued behind a durable terminal may cross the reusable
+    /// handoff only when the adapter proves every frame in it repeats that
+    /// terminal. Unknown frames, a frame error, or bytes left mid-frame keep
+    /// the Turn active so it reads them itself.
+    pub(crate) fn queued_stdout_repeats_terminal(&self, chunks: &[Vec<u8>]) -> bool {
+        let mut decoder = IncrementalFrameDecoder::new();
+        for chunk in chunks {
+            let mut frame = match decoder.push_chunk(chunk) {
+                Ok(frame) => frame,
+                Err(_) => return false,
+            };
+            loop {
+                if frame
+                    .as_ref()
+                    .is_some_and(|frame| !self.adapter.is_duplicate_terminal(frame))
+                {
+                    return false;
+                }
+                if !decoder.has_pending_input() {
+                    break;
+                }
+                frame = match decoder.drain_pending() {
+                    Ok(frame) => frame,
+                    Err(_) => return false,
+                };
+            }
+        }
+        decoder.is_frame_aligned()
+    }
+
     pub(crate) fn completed_turn_ready(&self) -> bool {
         let data_empty = self.egress.data_usage().0 == 0;
         let control_empty = self.egress.control_usage().0 == 0;

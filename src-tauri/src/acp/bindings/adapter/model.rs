@@ -114,6 +114,12 @@ pub(crate) trait HarnessAdapter {
     fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
         Ok(None)
     }
+    /// True only for a frame that repeats the terminal of the Turn this
+    /// adapter last finished (same Turn and terminal kind), so ingesting it
+    /// would change nothing. Harnesses that cannot prove that answer false.
+    fn is_duplicate_terminal(&self, _frame: &Frame) -> bool {
+        false
+    }
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }

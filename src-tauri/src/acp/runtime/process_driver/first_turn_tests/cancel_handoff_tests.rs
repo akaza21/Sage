@@ -26,17 +26,27 @@ fn line(value: Value) -> Vec<u8> {
     bytes
 }
 
-/// Codex answers `turn/interrupt` with its ack and the interrupted
-/// `turn/completed`, and can emit more stdout after that terminal (the journey
-/// fixture repeats the interrupted terminal). When the host's terminal
-/// callback is dequeued while such stdout is still queued, the worker must
-/// still hand the session to its reusable state; the idle ingress then reads
-/// the queued stdout in order. Before the fix the handoff demanded an empty
-/// mailbox, answered RecoveryRequired, and the runner failed the runtime, so a
-/// later cancel park found the epoch no longer running.
-#[test]
-fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
-    crate::test_wait::guarded("cancelled turn handoff with queued stdout", async {
+fn completed(thread: &str, turn: &str, status: &str) -> Vec<u8> {
+    line(json!({"method":"turn/completed","params":{
+        "threadId":thread,"turn":{"id":turn,"status":status}
+    }}))
+}
+
+fn interrupted(thread: &str, turn: &str) -> Vec<u8> {
+    completed(thread, turn, "interrupted")
+}
+
+struct Handoff {
+    reply: Result<(), HostError>,
+    reusable: bool,
+}
+
+/// Drives a real Codex turn through cancel, the interrupt ack and the
+/// interrupted terminal, then queues `queued` stdout behind the host's
+/// AcceptTerminal callback before the worker dequeues it. Control outranks
+/// queued stdout, which is the interleaving that load produced.
+async fn accept_terminal_behind(queued: fn(&str, &str) -> Vec<Vec<u8>>) -> Handoff {
+    {
         let fixture = prepare_first_turn_fixture().await;
         let adapter = ready_adapter(
             crate::acp::bindings::runtime::NativeRuntime::new(CodexRuntime::fixture_with_identity(
@@ -194,13 +204,12 @@ fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
         let interrupt = writes.lock().unwrap().last().unwrap().clone();
         assert_eq!(interrupt["method"], "turn/interrupt");
 
-        let interrupted = line(json!({"method":"turn/completed","params":{
-            "threadId":thread,"turn":{"id":external_turn,"status":"interrupted"}
-        }}));
         mailbox
             .try_push_chunk(line(json!({"id":interrupt["id"],"result":{}})))
             .unwrap();
-        mailbox.try_push_chunk(interrupted.clone()).unwrap();
+        mailbox
+            .try_push_chunk(interrupted(thread, external_turn))
+            .unwrap();
         let terminal = run_driver_until!(|cursor: Option<
             &crate::acp::store::AdapterTurnCursor,
         >| cursor
@@ -212,46 +221,52 @@ fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
         ));
         assert_eq!(mailbox.retained_usage(), ((0, 0), (0, 0)));
 
-        // The native stream continues after the durable terminal, and the
-        // host's terminal callback is dequeued first because control outranks
-        // queued stdout. This is the interleaving that load produced.
-        mailbox.try_push_chunk(interrupted.clone()).unwrap();
+        let queued = queued(thread, external_turn);
+        for chunk in &queued {
+            mailbox.try_push_chunk(chunk.clone()).unwrap();
+        }
         let written = writes.lock().unwrap().len();
-        assert_eq!(
-            step!(WorkerCommand::AcceptTerminal {
-                owner: fixture.owner.clone(),
-                cursor: terminal.clone(),
-            })
-            .map(|_| ()),
-            Ok(())
-        );
-        let FirstTurnWorkerState::Reusable(mut reusable) = state else {
-            panic!("the cancelled turn must hand off to the reusable session")
-        };
-        assert_eq!(reusable.terminal_cursor(), &terminal);
+        let reply = step!(WorkerCommand::AcceptTerminal {
+            owner: fixture.owner.clone(),
+            cursor: terminal.clone(),
+        })
+        .map(|_| ());
+        let queued_bytes = queued.iter().map(Vec::len).sum::<usize>();
         assert_eq!(
             mailbox.retained_usage(),
-            ((1, interrupted.len()), (0, 0)),
-            "the queued stdout stays in stream order for the reusable session"
+            ((queued.len(), queued_bytes), (0, 0)),
+            "the handoff decision never consumes queued stdout"
         );
-
-        // The reusable session reads the queued duplicate terminal as late
-        // stdout without any native write.
-        let ControlMessage::StdoutChunk(chunk) = mailbox
-            .wait_next_until(None, context.clock.as_ref())
-            .unwrap()
-            .expect("queued stdout")
-        else {
-            panic!("stdout chunk")
+        let reusable = match state {
+            FirstTurnWorkerState::Reusable(mut reusable) => {
+                assert_eq!(reusable.terminal_cursor(), &terminal);
+                // The reusable session reads the queued stdout as late frames,
+                // in order and without any native write.
+                for _ in 0..queued.len() {
+                    let ControlMessage::StdoutChunk(chunk) = mailbox
+                        .wait_next_until(None, context.clock.as_ref())
+                        .unwrap()
+                        .expect("queued stdout")
+                    else {
+                        panic!("stdout chunk")
+                    };
+                    reusable
+                        .completed
+                        .accept_idle_stdout_chunk(
+                            &chunk,
+                            fixture.now_millis + 5,
+                            &mut reusable.transport,
+                        )
+                        .await
+                        .unwrap();
+                }
+                assert!(reusable.completed.idle_frame_aligned());
+                assert_eq!(writes.lock().unwrap().len(), written);
+                true
+            }
+            FirstTurnWorkerState::Recovery(_) => false,
+            _ => panic!("the terminal callback left an unexpected worker state"),
         };
-        reusable
-            .completed
-            .accept_idle_stdout_chunk(&chunk, fixture.now_millis + 5, &mut reusable.transport)
-            .await
-            .unwrap();
-        assert!(reusable.completed.idle_frame_aligned());
-        assert_eq!(writes.lock().unwrap().len(), written);
-        assert_eq!(mailbox.retained_usage(), ((0, 0), (0, 0)));
         let durable_state: String = fixture
             .database
             .connection()
@@ -279,11 +294,85 @@ fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
             .unwrap();
         assert_eq!(epoch_state, "running");
 
-        drop(reusable);
         drop(context);
         drop(fixture.sessions);
         drop(fixture.scheduler);
         drop(fixture.journal);
         fixture.journal_task.finish();
+        Handoff { reply, reusable }
+    }
+}
+
+fn assert_not_reusable(handoff: Handoff) {
+    assert_eq!(handoff.reply, Err(HostError::RecoveryRequired));
+    assert!(!handoff.reusable);
+}
+
+/// Codex answers `turn/interrupt` with its ack and the interrupted
+/// `turn/completed`, and the journey fixture then repeats that interrupted
+/// terminal. When the host's terminal callback is dequeued while the repeat is
+/// still queued, the worker must hand the session to its reusable state, which
+/// reads the repeat as a duplicate. Before the fix the handoff demanded an
+/// empty mailbox, answered RecoveryRequired, and the runner failed the
+/// runtime, so a later cancel park found the epoch no longer running.
+#[test]
+fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
+    crate::test_wait::guarded("duplicate terminal behind the callback", async {
+        let handoff = accept_terminal_behind(|thread, turn| {
+            vec![interrupted(thread, turn), interrupted(thread, turn)]
+        })
+        .await;
+        assert_eq!(handoff.reply, Ok(()));
+        assert!(handoff.reusable);
+    });
+}
+
+#[test]
+fn queued_terminal_for_another_turn_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("foreign terminal behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, _| vec![interrupted(thread, "fixture-turn-other")])
+                .await,
+        );
+    });
+}
+
+#[test]
+fn queued_terminal_of_another_kind_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("other terminal kind behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, turn| vec![completed(thread, turn, "completed")]).await,
+        );
+    });
+}
+
+#[test]
+fn unrelated_queued_stdout_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("unrelated stdout behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, turn| {
+                vec![
+                    interrupted(thread, turn),
+                    line(json!({"method":"thread/tokenUsage/updated","params":{
+                        "threadId":thread,"turnId":turn,"tokenUsage":{}
+                    }})),
+                ]
+            })
+            .await,
+        );
+    });
+}
+
+#[test]
+fn split_duplicate_terminal_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("split terminal behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, turn| {
+                let mut duplicate = interrupted(thread, turn);
+                duplicate.truncate(duplicate.len() / 2);
+                vec![duplicate]
+            })
+            .await,
+        );
     });
 }
