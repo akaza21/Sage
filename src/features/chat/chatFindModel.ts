@@ -103,7 +103,6 @@ export function findChatMatches(
 
 export const MAX_CHAT_FIND_QUERY = 1024;
 
-/** Codex status wording; "0 results" also covers the pending search. */
 export function chatFindStatus({
   pending,
   index,

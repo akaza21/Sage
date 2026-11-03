@@ -7,7 +7,6 @@ export const DASH_PITCH = 9;
 export const PROMPT_PREVIEW_CHARS = 120;
 export const ANSWER_PREVIEW_CHARS = 240;
 
-/** Codex fisheye: hovered 24 px, then 18 / 13 / 9, others 6. */
 export function dashWidth(distance: number) {
   return [24, 18, 13, 9][Math.abs(distance)] ?? 6;
 }

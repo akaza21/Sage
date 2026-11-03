@@ -9,7 +9,7 @@ use crate::{
 
 impl Database {
     pub(crate) fn pin_chat(&self, request: &PinChatRequest) -> AppResult<()> {
-        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
+        crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;

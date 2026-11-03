@@ -323,7 +323,7 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps pin lane-base measurements with only a 0.5 percent margin", async () => {
+test("committed path caps tighten startup and Agent within the original 0.5 percent ceilings", async () => {
   const baseline = {
     initial: 103957,
     agentOneChat: 210654,
@@ -338,17 +338,23 @@ test("committed path caps pin lane-base measurements with only a 0.5 percent mar
       "utf8",
     ),
   );
-  assert.deepEqual(
-    budgets.bundle.webPathJsGzipBytes,
-    Object.fromEntries(
+  assert.deepEqual(budgets.bundle.webPathJsGzipBytes, {
+    ...Object.fromEntries(
       Object.entries(baseline).map(([name, bytes]) => [
         name,
         Math.floor(bytes * 1.005),
       ]),
     ),
+    initial: 104423,
+    agentOneChat: 208434,
+  });
+  assert.equal(
+    budgets.measurement.webBundlePaths.integrationAdjustment,
+    undefined,
   );
   assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
   // Codex §7 Subagents (w8sub): measured 5,101 B + 10%.
   assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5612);
-  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89500);
+  // The terminal follows forced-colors palette changes (89,579 B measured).
+  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89579);
 });

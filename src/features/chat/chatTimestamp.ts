@@ -4,23 +4,18 @@ export function chatTimestamp(createdAt: number) {
   if (Number.isNaN(timestamp.getTime())) return null;
   return {
     dateTime: timestamp.toISOString(),
-    label: timestamp.toISOString().slice(11, 16),
+    label: timeOfDayLabel(createdAt),
   };
 }
 
 export function dayTimeLabel(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
-  const sameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
+  const localDay = date.toDateString();
+  const sameDay = localDay === now.toDateString();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const priorDay =
-    date.getFullYear() === yesterday.getFullYear() &&
-    date.getMonth() === yesterday.getMonth() &&
-    date.getDate() === yesterday.getDate();
+  const priorDay = localDay === yesterday.toDateString();
   const day = sameDay
     ? "Today"
     : priorDay

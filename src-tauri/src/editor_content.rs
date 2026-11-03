@@ -38,9 +38,7 @@ pub(crate) fn detect_line_ending(content: &str) -> AppResult<&'static str> {
         }
     }
     if crlf > 0 && bare_lf > 0 {
-        return Err(AppError::InvalidRequest(
-            "mixed LF and CRLF files are not editable in this slice".into(),
-        ));
+        return Err(AppError::MixedLineEndings);
     }
     Ok(if crlf > 0 {
         "crlf"

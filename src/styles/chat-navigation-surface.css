@@ -108,6 +108,8 @@
 
 .project-chat-row:hover .project-chat__actions,
 .project-chat-row:focus-within .project-chat__actions,
+.project-entry__header:hover .project-chat__actions,
+.project-entry__header:focus-within .project-chat__actions,
 .project-chat__actions[aria-expanded="true"] {
   opacity: 1;
 }
@@ -151,7 +153,6 @@
   color: var(--color-accent);
 }
 
-/* Codex live parity s6/f0526: the title truncates before the pill. */
 .rail-pill {
   flex: none;
   height: 20px;
@@ -179,6 +180,17 @@
   display: grid;
   grid-area: 1 / 1;
   justify-self: end;
+}
+
+/* A project header keeps its row in the first column and the "…" menu in
+   the reserved second column; the chat-row overlay placement above would
+   push the project row into the 24 px column and hide its name. */
+.project-entry__header > .project-row {
+  grid-area: 1 / 1;
+}
+
+.project-entry__header > .project-chat-actions {
+  grid-area: 1 / 2;
 }
 
 .project-chat-actions__menu {
@@ -355,8 +367,6 @@
   color: var(--color-text-muted);
 }
 
-/* The title truncates before the "Awaiting approval" pill, which keeps a gap
-   before the trailing spinner at any rail width (Codex s6/f0526). */
 .project-chat-row:has(.project-chat__approval-spinner) .project-chat {
   padding-inline-end: 28px;
 }

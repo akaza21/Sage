@@ -165,7 +165,7 @@ pub(crate) enum IngressDisposition {
     Events(Vec<IncomingEvent>),
     IgnoredLate,
     /// Raw reasoning text: validated for identity and deliberately never
-    /// projected (Codex shows the reasoning summary only).
+    /// projected.
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,

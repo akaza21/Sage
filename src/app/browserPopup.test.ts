@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const events = vi.hoisted(() => ({ listen: vi.fn() }));
 const native = vi.hoisted(() => ({
+  browserAgentControl: vi.fn(),
   browserPopupPending: vi.fn(),
   browserOpenPopup: vi.fn(),
   browserPopupAck: vi.fn(),
@@ -26,6 +27,7 @@ beforeEach(() => {
   clearAcpProjectionRegistry();
   events.listen.mockReset();
   for (const method of Object.values(native)) method.mockReset();
+  native.browserAgentControl.mockResolvedValue(null);
 });
 
 it("replays one native popup after listener registration and places it beside its opener once", async () => {
@@ -126,7 +128,7 @@ it("abandons the exact native popup when its Project changes before placement", 
   );
   expect(native.browserPopupAck).not.toHaveBeenCalled();
   expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1"]);
-  expect(state.error).toContain("Project changed");
+  expect(state.error).toBe("Could not open the browser popup. Try again.");
 });
 
 it("replays a popup received before Project bootstrap once the Project is ready", async () => {
@@ -342,7 +344,7 @@ it("removes a just-inserted popup tab when its late ack fails", async () => {
   });
   await vi.waitFor(() =>
     expect(state).toMatchObject({
-      error: "Couldn't open popup: popup tab unavailable",
+      error: "Could not open the browser popup. Try again.",
     }),
   );
   expect(native.browserPopupAck).toHaveBeenCalledWith(
@@ -487,7 +489,7 @@ it("retains a plain popup tab as cleanup owner when native close is unresolved",
   });
   await vi.waitFor(() =>
     expect(state).toMatchObject({
-      error: "Couldn't open popup: popup native close is unresolved",
+      error: "Could not open the browser popup. Try again.",
     }),
   );
   expect(state.tabs.map((tab) => tab.id)).toEqual(["browser-1", "browser-4"]);

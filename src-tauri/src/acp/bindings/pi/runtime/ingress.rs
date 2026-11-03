@@ -9,19 +9,17 @@ impl PiRuntime {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
         }
-        let thinking_reply = self.thinking_request_command.as_ref().is_some_and(|id| {
-            serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
-                .ok()
-                .is_some_and(|value| {
-                    value.get("type").and_then(serde_json::Value::as_str) == Some("response")
-                        && value.get("id").and_then(serde_json::Value::as_str) == Some(id)
-                        && value.get("command").and_then(serde_json::Value::as_str)
-                            == Some("get_available_thinking_levels")
-                })
-        });
-        let outputs = match crate::acp::bindings::pi::decode::decode_record(frame.as_bytes())
-            .and_then(|record| self.ingest_record(record))
-        {
+        let optional_id = self
+            .thinking_request_command
+            .as_deref()
+            .filter(|id| self.translator.sole_thinking_levels_request_id() == Some(*id));
+        let record = crate::acp::bindings::pi::decode::decode_record_with_thinking_request(
+            frame.as_bytes(),
+            optional_id,
+        );
+        let thinking_reply = matches!(&record, Ok(crate::acp::bindings::pi::decode::Record::Response(response))
+            if Some(&response.id) == self.thinking_request_command.as_ref() && response.command == "get_available_thinking_levels");
+        let outputs = match record.and_then(|record| self.ingest_record(record)) {
             Ok(outputs) => outputs,
             Err(error) => {
                 if matches!(error, AdapterError::ConfigMutationRejected) {
