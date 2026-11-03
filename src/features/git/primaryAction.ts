@@ -19,9 +19,10 @@ function upstreamRemote(upstream: string, remotes: readonly string[]) {
   for (const remote of remotes) {
     if (
       upstream.startsWith(`${remote}/`) &&
-      upstream.length > remote.length + 1 &&
-      (match === null || remote.length > match.length)
+      upstream.length > remote.length + 1
     ) {
+      // A display upstream cannot disambiguate remote and branch slashes.
+      if (match !== null) return null;
       match = remote;
     }
   }
@@ -82,7 +83,9 @@ export function repositoryPrimaryAction(
       repository.upstream,
       repository.remotes ?? [],
     );
-    return remote && canPushRemote(repository, remote)
+    return remote &&
+      repository.upstream.slice(remote.length + 1) === repository.branch &&
+      canPushRemote(repository, remote)
       ? { kind: "push", label: "Push", remote, reason: null }
       : null;
   }
