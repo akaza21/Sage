@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import ts from "typescript";
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import {
   measureWebBundlePaths,
@@ -68,20 +69,68 @@ function gzipBytes(file) {
 // The desktop build emits every chunk as `assets/[hash].js`: an 8-character
 // base64url content hash, plus a numeric suffix when names collide. Chunks
 // import siblings by `./<name>.js`, so a change to any shared chunk rewrites
-// these names without touching the importing chunk's code. Each specifier of
-// a static `from`, side-effect `import` or dynamic `import()` becomes a fixed
-// token of the same length before a per-chunk lazy budget gzips it. Any other
-// string that looks like a chunk name is measured as written.
+// these names without touching the importing chunk's code. The specifier of
+// each static import, `export … from` and dynamic `import()` that names such a
+// chunk becomes a fixed token of the same length before a per-chunk lazy
+// budget gzips it. The chunk is parsed, so the same text inside a string,
+// template or comment is measured as written.
 // The core total still subtracts the chunks' emitted sizes.
 // Entry, initial-closure and core-total measurements stay as emitted.
-const HASHED_RELATIVE_IMPORT =
-  /(?<=(?:\bfrom|\bimport\s*\(|\bimport)\s*["'`])\.\/([A-Za-z0-9_-]{8}\d*)\.js(?=["'`])/gu;
+const HASHED_CHUNK_SPECIFIER = /^\.\/([A-Za-z0-9_-]{8}\d*)\.js$/u;
+
+function importSpecifier(node) {
+  if (
+    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+    node.moduleSpecifier
+  ) {
+    return node.moduleSpecifier;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+    node.arguments.length > 0
+  ) {
+    return node.arguments[0];
+  }
+  return null;
+}
 
 export function normalizeHashedImports(source) {
-  return source.replace(
-    HASHED_RELATIVE_IMPORT,
-    (_, name) => `./${"x".repeat(name.length)}.js`,
+  const file = ts.createSourceFile(
+    "chunk.js",
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.JS,
   );
+  const ranges = [];
+  const visit = (node) => {
+    const specifier = importSpecifier(node);
+    if (
+      specifier &&
+      (ts.isStringLiteral(specifier) ||
+        ts.isNoSubstitutionTemplateLiteral(specifier))
+    ) {
+      const match = HASHED_CHUNK_SPECIFIER.exec(specifier.text);
+      const start = specifier.getStart(file) + 1;
+      if (
+        match &&
+        source.slice(start, start + specifier.text.length) === specifier.text
+      ) {
+        ranges.push([start + 2, match[1].length]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  let normalized = source;
+  for (const [start, length] of ranges.reverse()) {
+    normalized =
+      normalized.slice(0, start) +
+      "x".repeat(length) +
+      normalized.slice(start + length);
+  }
+  return normalized;
 }
 
 function lazyChunkGzipBytes(file) {

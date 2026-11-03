@@ -928,6 +928,8 @@ test("only import specifiers lose their content hashes", () => {
     ["await import(`./DLlys00o.js`)", `await import(\`${masked}\`)`],
     ['import ( "./DLlys00o.js" )', `import ( "${masked}" )`],
     ['import"./fObb2P8k2.js";', 'import"./xxxxxxxxx.js";'],
+    ['export{a}from"./DLlys00o.js";', `export{a}from"${masked}";`],
+    ['export*from"./DLlys00o.js";', `export*from"${masked}";`],
   ]) {
     assert.equal(normalizeHashedImports(source), expected);
   }
@@ -937,6 +939,12 @@ test("only import specifiers lose their content hashes", () => {
     "const file=`./aaaaaaaa.js`;",
     'load("./aaaaaaaa.js");',
     'const reimport="./aaaaaaaa.js";',
+    `const text='import("./DLlys00o.js")';`,
+    `const text='import{a}from"./DLlys00o.js"';`,
+    'const text=`import("./DLlys00o.js")`;',
+    '/* import("./DLlys00o.js") */const a=1;',
+    '// import"./DLlys00o.js"\nconst a=1;',
+    'import(name+"./DLlys00o.js");',
   ]) {
     assert.equal(normalizeHashedImports(source), source);
   }
@@ -945,6 +953,10 @@ test("only import specifiers lose their content hashes", () => {
     gzipSync(normalizeHashedImports(`export const file="./${name}.js";`))
       .length;
   assert.ok(grown("aaaaaaaa1") > grown("aaaaaaaa"));
+  const quoted = (name) =>
+    gzipSync(normalizeHashedImports(`const text='import("./${name}.js")';`))
+      .length;
+  assert.notEqual(quoted("DLlys00o"), quoted("aaaaaaaa"));
 });
 
 test("a lazy feature must be a reachable dynamic entry", async () => {
