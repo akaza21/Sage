@@ -76,7 +76,7 @@
   position: absolute;
   z-index: var(--z-overlay);
   inset: 0;
-  width: 100%;
+  width: auto;
 }
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
@@ -181,36 +181,6 @@
   border-radius: var(--radius-sm);
 }
 
-@container chat (max-width: 520px) {
-  /* The approval card holds the composer slot at the composer's width. */
-  .workbench--agent .acp-permission-prompt,
-  .workbench--agent .chat-follow-end,
-  .workbench--agent .message-list,
-  .workbench--agent .composer {
-    --chat-column-trailing: 0px;
-  }
-
-  .workbench--agent .message-list {
-    padding-inline-end: calc(
-      var(--chat-column-gutter) + var(--chat-column-trailing) -
-        var(--scrollbar-size)
-    );
-  }
-
-  .workbench--agent .acp-turn {
-    column-gap: 0;
-  }
-
-  .workbench--agent
-    .message-list__content:has(> .acp-chat-projection)
-    > .chat-transcript-actions,
-  .workbench--agent .message-list__content > .chat-fork-divider,
-  .workbench--agent .chat-fork-inherited > .chat-transcript-actions {
-    width: min(100%, var(--reading-measure));
-    margin-inline-start: max(0px, calc((100% - var(--reading-measure)) / 2));
-  }
-}
-
 .workbench-sidebar-splitter {
   position: relative;
   z-index: var(--z-sticky);
@@ -285,7 +255,6 @@
   container-name: agent-artifact-pane;
   container-type: inline-size;
   grid-template-rows: 44px minmax(0, 1fr);
-  background: var(--color-panel);
 }
 
 .agent-artifact-pane--empty {

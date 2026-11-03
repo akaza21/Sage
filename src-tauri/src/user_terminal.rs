@@ -24,6 +24,17 @@ pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
 pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
 pub const OUTPUT_PAGE_BYTES: usize = 48_000;
+/// Largest grid a terminal may be created or resized to.
+pub const MAX_COLUMNS: u16 = 500;
+pub const MAX_ROWS: u16 = 300;
+
+fn validate_dimensions(columns: u16, rows: u16) -> Result<(), TerminalError> {
+    if (1..=MAX_COLUMNS).contains(&columns) && (1..=MAX_ROWS).contains(&rows) {
+        Ok(())
+    } else {
+        Err(TerminalError::InvalidDimensions)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TerminalSessionId(uuid::Uuid);
@@ -179,9 +190,7 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<TerminalHandle, TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let context = state
             .lock_active_project(&scope.project, scope.generation)
             .await
@@ -279,9 +288,7 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<(), TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let _context = state
             .lock_active_project(&scope.project, scope.generation)
             .await

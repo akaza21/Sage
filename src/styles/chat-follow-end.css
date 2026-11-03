@@ -17,12 +17,7 @@
     display var(--motion-duration-fade) allow-discrete;
 }
 
-/*
- * Centred on the reading column, not the scrollport (s2/f0046): the column
- * is the Turn's first grid track, so the scrollbar gutter plus the Turn's
- * column gap (--chat-column-trailing) sit right of it. Compact panes zero
- * both (workbench-window-mode.css).
- */
+/* Centred on the reading column, accounting for its reserved scrollbar. */
 .chat-surface--agent > .chat-follow-end {
   grid-area: transcript;
   align-self: end;

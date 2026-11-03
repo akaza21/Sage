@@ -157,4 +157,105 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
       header.getByRole("textbox", { name: "New chat name" }),
     ).toBeFocused();
   });
+
+  test("More popover truncates a long project name without scrolling sideways", async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    const header = page.locator(".agent-task-header").first();
+    const more = header.getByRole("button", {
+      name: /Chat actions for .* task$/,
+    });
+    const menu = page.getByRole("menu", { name: "Chat tools", exact: true });
+    const row = menu.locator(".agent-header-more__project");
+    const name = row.locator("> span");
+    const projectActions = menu.getByRole("menuitem", {
+      name: /^More chat actions in /,
+    });
+    const changes = menu.getByRole("menuitem", {
+      name: "Changes",
+      exact: true,
+    });
+    const measure = () =>
+      row.evaluate((rowNode) => {
+        const menuNode = rowNode.closest<HTMLElement>('[role="menu"]')!;
+        const nameNode = rowNode.querySelector<HTMLElement>(":scope > span")!;
+        const actionNode =
+          rowNode.querySelector<HTMLElement>('[role="menuitem"]')!;
+        const menuBox = menuNode.getBoundingClientRect();
+        const rowBox = rowNode.getBoundingClientRect();
+        const nameBox = nameNode.getBoundingClientRect();
+        const actionBox = actionNode.getBoundingClientRect();
+        return {
+          menuScrollWidth: menuNode.scrollWidth,
+          menuClientWidth: menuNode.clientWidth,
+          menuWidth: menuBox.width,
+          rowScrollWidth: rowNode.scrollWidth,
+          rowClientWidth: rowNode.clientWidth,
+          nameScrollWidth: nameNode.scrollWidth,
+          nameClientWidth: nameNode.clientWidth,
+          nameRight: nameBox.right,
+          actionLeft: actionBox.left,
+          actionRight: actionBox.right,
+          actionWidth: actionBox.width,
+          rowRight: rowBox.right,
+          menuRight: menuBox.right,
+        };
+      });
+
+    // Short names render as before: whole, with the action pinned at 24 px.
+    const shortName = await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      return useWorkbenchStore.getState().project!.name;
+    });
+    await more.click();
+    await expect(menu).toBeVisible();
+    await expect(name).toHaveText(shortName);
+    const short = await measure();
+    expect(short.nameScrollWidth).toBe(short.nameClientWidth);
+    expect(Math.round(short.actionWidth)).toBe(24);
+    expect(short.menuScrollWidth).toBe(short.menuClientWidth);
+    await page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
+
+    const longName = `Long project ${"name ".repeat(40)}`.slice(0, 200);
+    expect(longName).toHaveLength(200);
+    await page.evaluate(async (projectName) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState((state) => ({
+        project: { ...state.project!, name: projectName },
+      }));
+    }, longName);
+    await more.click();
+    await expect(menu).toBeVisible();
+
+    // The full name stays available to pointer and assistive technology.
+    await expect(name).toHaveAttribute("title", longName);
+    await expect(name).toHaveText(longName);
+    await expect(projectActions).toHaveAccessibleName(
+      `More chat actions in ${longName}`,
+    );
+
+    const long = await measure();
+    expect(Math.round(long.menuWidth)).toBe(272);
+    expect(long.menuScrollWidth).toBe(long.menuClientWidth);
+    expect(long.rowScrollWidth).toBe(long.rowClientWidth);
+    // The name is clipped with an ellipsis rather than widening the row.
+    expect(long.nameScrollWidth).toBeGreaterThan(long.nameClientWidth);
+    await expect(name).toHaveCSS("text-overflow", "ellipsis");
+    // The row's action and the Changes item stay whole inside the menu.
+    expect(Math.round(long.actionWidth)).toBe(24);
+    expect(long.nameRight).toBeLessThanOrEqual(long.actionLeft);
+    expect(long.actionRight).toBeLessThanOrEqual(long.rowRight);
+    expect(long.rowRight).toBeLessThanOrEqual(long.menuRight);
+    await expect(projectActions).toBeInViewport({ ratio: 1 });
+    await expect(changes).toBeInViewport({ ratio: 1 });
+    const [changesBox, menuBox] = await Promise.all([
+      changes.boundingBox(),
+      menu.boundingBox(),
+    ]);
+    expect(changesBox!.x + changesBox!.width).toBeLessThanOrEqual(
+      menuBox!.x + menuBox!.width,
+    );
+  });
 });

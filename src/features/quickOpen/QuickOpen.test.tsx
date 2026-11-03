@@ -27,6 +27,7 @@ function fakeNative(
   options: {
     refreshingFor?: number;
     delayMs?: number;
+    beforeResponse?: (query: string) => Promise<void>;
     supersededFor?: number;
     files?: () => string[];
   } = {},
@@ -38,6 +39,7 @@ function fakeNative(
     expect(command).toBe("quick_open_query");
     const request = args.request as Sent;
     sent.push(request);
+    await options.beforeResponse?.(request.query);
     if (options.delayMs) {
       await new Promise((resolve) => setTimeout(resolve, options.delayMs));
     }
@@ -252,6 +254,61 @@ describe("Quick Open", () => {
       { timeout: 2000 },
     );
     expect(openFile).toHaveBeenCalledOnce();
+  });
+
+  it.each(["click", "Enter"])(
+    "waits for fresh results when %s confirms a stale row",
+    async (confirmation) => {
+      let releaseResponse!: () => void;
+      const responseReady = new Promise<void>((resolve) => {
+        releaseResponse = resolve;
+      });
+      fakeNative({
+        beforeResponse: async (query) => {
+          if (query === "readme") await responseReady;
+        },
+      });
+      const openedFiles: string[] = [];
+      useWorkbenchStore.setState({
+        openFile: async (resource) => {
+          openedFiles.push(resource.relativePath);
+        },
+      });
+      render(<QuickOpen onClose={() => {}} />);
+      fireEvent.change(input(), { target: { value: "app" } });
+      await waitFor(() =>
+        expect(options()).toEqual(["app.tssrc", "core.tssrc/apple"]),
+      );
+      fireEvent.change(input(), { target: { value: "readme" } });
+      if (confirmation === "click") {
+        fireEvent.click(screen.getByRole("option", { name: /core.ts/ }));
+      } else {
+        fireEvent.keyDown(input(), { key: "Enter" });
+      }
+      expect(openedFiles).toEqual([]);
+      await act(async () => {
+        releaseResponse();
+        await responseReady;
+      });
+      await waitFor(() => expect(openedFiles).toEqual(["README.md"]));
+    },
+  );
+
+  it("opens the clicked File when the results match the current query", async () => {
+    fakeNative();
+    const openedFiles: string[] = [];
+    useWorkbenchStore.setState({
+      openFile: async (resource) => {
+        openedFiles.push(resource.relativePath);
+      },
+    });
+    render(<QuickOpen onClose={() => {}} />);
+    fireEvent.change(input(), { target: { value: "app" } });
+    await waitFor(() =>
+      expect(options()).toEqual(["app.tssrc", "core.tssrc/apple"]),
+    );
+    fireEvent.click(screen.getByRole("option", { name: /core.ts/ }));
+    expect(openedFiles).toEqual(["src/apple/core.ts"]);
   });
 
   it("asks once more after an interruption, then says so", async () => {

@@ -147,6 +147,12 @@
         "reason": "live-tab browser settings, history and reused native controls; loaded only by Settings > Browser. No browser commands run on the initial chat path."
       },
       {
+        "entry": "src/features/browser/BrowserDeviceController.tsx",
+        "maxGzipBytes": 3310,
+        "maxCssGzipBytes": 1200,
+        "reason": "Device toolbar (BF-7a): state, update queue, IPC, bar, grips, tokens and styles, off BrowserSurface; loads on Show device toolbar or a restore. Measured JS 3006 B, CSS 1087 B plus 10%."
+      },
+      {
         "entry": "src/features/browser/BrowserNewTab.tsx",
         "maxGzipBytes": 3750,
         "maxCssGzipBytes": 966,
@@ -235,6 +241,11 @@
         "entry": "src/features/files/FileFindBar.tsx",
         "maxGzipBytes": 4000,
         "reason": "Editor pack: Find and Replace bar of a File (EP-04 options, replace one and all, match marks, regex worker client); preloaded while the File surface is idle."
+      },
+      {
+        "entry": "src/features/files/gitGutter/index.ts",
+        "maxGzipBytes": 4368,
+        "reason": "Editor pack: change markers of a File in a repository (EP-14 gutter, change peek with Revert, staged-text cache, worker client). Measured 3971 B plus 10%."
       },
       {
         "entry": "src/features/files/editorLanguageJavaScript.ts",

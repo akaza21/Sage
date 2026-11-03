@@ -168,10 +168,6 @@
   background: var(--color-text-muted);
 }
 
-.workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-  min-width: 112px;
-}
-
 .agent-artifact-pane .tab[data-resource-kind="subagent"] .tab__activate {
   text-align: left;
 }
@@ -384,10 +380,6 @@
 
   .agent-artifact-header__title-row {
     gap: var(--space-1);
-  }
-
-  .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-    min-width: 104px;
   }
 
   .harness-browser__connection-label {

@@ -1,7 +1,3 @@
-.chat-surface--agent > .acp-permission-prompt {
-  grid-area: composer;
-}
-
 .acp-permission-prompt {
   min-height: 0;
   max-height: 100%;
@@ -9,7 +5,6 @@
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--approval-card-fill);
   color: var(--color-text-primary);
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;

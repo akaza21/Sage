@@ -2,41 +2,6 @@ use super::live_recovery::{ClosedShutdownAuthority, LiveHostRecovery, LiveHostRe
 use super::*;
 
 impl Lane<'_> {
-    pub(crate) fn send_session_turn(
-        &self,
-        intent: crate::acp::runtime::HostPromptIntent,
-    ) -> Result<
-        crate::acp::runtime::HostOutcome,
-        crate::acp::service::PromptSendError<CodexSessionError>,
-    > {
-        let owner = RuntimeOwner {
-            project_id: intent.command.project_id.clone(),
-            chat_id: intent.command.chat_id.clone(),
-            session_id: intent.command.session_id.clone(),
-            runtime_epoch: intent.command.runtime_epoch,
-        };
-        let host = self
-            .runtime
-            .for_owner(&owner)
-            .map_err(map_slot_error)
-            .map_err(crate::acp::service::PromptSendError::not_started)?;
-        match host.send(intent) {
-            Ok(outcome) => Ok(outcome),
-            Err(crate::acp::runtime::HostError::SignInRequired) => {
-                // The harness refused the prompt before any byte was written
-                // and its host failed closed. Settle the turn and free the
-                // lane now instead of leaving an uncancellable turn .
-                self.settle_refused_prompt(owner, host);
-                Err(crate::acp::service::PromptSendError::unknown(
-                    CodexSessionError::SignInRequired,
-                ))
-            }
-            Err(error) => Err(crate::acp::service::PromptSendError::unknown(
-                self.retain_live_host_error(owner, host, LiveHostRecoveryPhase::SendEffect, error),
-            )),
-        }
-    }
-
     pub(crate) fn cancel_session_turn(
         &self,
         intent: crate::acp::runtime::HostCancelIntent,

@@ -130,6 +130,15 @@ for (const geometry of geometries) {
         } = geometry;
         await page.setViewportSize({ width, height });
         await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
+        // A known inherited reading measure keeps this geometry independent of fonts.
+        await page
+          .locator(".workbench")
+          .evaluate((element) =>
+            (element as HTMLElement).style.setProperty(
+              "--reading-measure",
+              "660px",
+            ),
+          );
         await settleChatProjections(page);
         // agent-dual's secondary chat has an active turn, so its composer is
         // disabled by the fixture; the draft and resource owner use the
@@ -189,32 +198,47 @@ for (const geometry of geometries) {
           const bounds = await box(composer);
           expect(bounds.width).toBeLessThanOrEqual(660);
           if (width === 1888 && resource === "closed")
-            expect(bounds.width).toBe(660);
+            expect(bounds.width).toBe(658);
           expect(bounds.x).toBeGreaterThanOrEqual(chat.x);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(
             chat.x + chat.width,
           );
-          if (width === 720) expect(bounds.width).toBe(356);
-          if (width === 480) expect(bounds.width).toBe(394);
+          if (width === 720) expect(bounds.width).toBe(352);
+          if (width === 480) expect(bounds.width).toBe(390);
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {
           const pane = page.getByLabel("Agent artifacts", { exact: true });
           const bounds = await box(pane);
-          expect(bounds.x + bounds.width).toBe(width);
-          if (inline) expect(bounds.x).toBe(chat.x + chat.width + 8);
+          expect(bounds.x + bounds.width).toBe(width - 8);
+          if (inline) expect(bounds.x).toBe(chat.x + chat.width + 16);
           else {
             expect(bounds.width).toBe(width === 480 ? 420 : chat.width);
             if (chat.width >= 320) {
-              expect(bounds.x).toBeGreaterThanOrEqual(nav.x + nav.width);
+              // The overlay can use the rail's empty gutter, while every
+              // visible navigation control must remain directly reachable.
+              for (const control of await navigation.locator("button").all()) {
+                if (!(await control.isVisible())) continue;
+                expect(
+                  await control.evaluate((element) => {
+                    const rect = element.getBoundingClientRect();
+                    return element.contains(
+                      document.elementFromPoint(
+                        rect.x + rect.width / 2,
+                        rect.y + rect.height / 2,
+                      ),
+                    );
+                  }),
+                ).toBe(true);
+              }
               await expect(navigation).not.toHaveAttribute("inert");
               await expect(pane).not.toHaveAttribute("aria-modal");
             } else {
               await expect(navigation).toHaveAttribute("inert", "");
               await expect(pane).toHaveAttribute("aria-modal", "true");
             }
-            expect(bounds.y).toBe(nav.y);
-            expect(bounds.y + bounds.height).toBe(nav.y + nav.height);
+            expect(bounds.y).toBe(nav.y + 8);
+            expect(bounds.y + bounds.height).toBe(nav.y + nav.height - 8);
             await expect(center).toHaveAttribute("inert", "");
           }
           const close = pane.getByRole("button", {

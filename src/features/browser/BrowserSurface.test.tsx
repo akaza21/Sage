@@ -108,10 +108,10 @@ const tab: WorkbenchTab = {
   dirty: false,
 };
 
-it("shows a closed placeholder for a restored browser without contacting native state", () => {
+it("shows a closed placeholder for a restored browser without contacting native state", async () => {
   render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
   expect(
-    screen.getByText(/browser session closed when Sage restarted/i),
+    await screen.findByText(/browser session closed when Sage restarted/i),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Open new browser" }),

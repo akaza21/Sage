@@ -30,6 +30,7 @@ where
     C: crate::acp::runtime::ProcessTreeControl,
     C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
 {
+    let started = std::time::Instant::now();
     if active.stdout_allowed() {
         return match active
             .turn
@@ -131,18 +132,25 @@ where
             }
         };
     }
-    match context.mailbox.wait_next_until(
-        wait_deadline(
-            pending_config,
-            [
-                *eof_deadline_millis,
-                active.turn.driver.pending_exit_deadline_millis(),
-                active.pending_steer_deadline_millis(context.clock.as_ref()),
-            ],
-            context.clock.as_ref(),
-        ),
+    let deadline = wait_deadline(
+        pending_config,
+        [
+            *eof_deadline_millis,
+            active.turn.driver.pending_exit_deadline_millis(),
+            active.pending_steer_deadline_millis(context.clock.as_ref()),
+        ],
         context.clock.as_ref(),
-    ) {
+    );
+    let next = if active.awaiting_write_observation() {
+        context
+            .mailbox
+            .wait_write_observation_until(deadline, context.clock.as_ref())
+    } else {
+        context
+            .mailbox
+            .wait_next_until(deadline, context.clock.as_ref())
+    };
+    match next {
         Ok(Some(ControlMessage::Worker(envelope))) => Ok(handle_worker(
             FirstTurnWorkerState::Active(active),
             context,
@@ -233,6 +241,25 @@ where
         result => {
             fail_pending_config(pending_config, HostError::RecoveryRequired);
             log_unexpected_mailbox("live_runner.drive.active_control", &result);
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "runner.awaiting_write_observation",
+                started,
+                &HostError::RecoveryRequired,
+                (
+                    "message",
+                    result
+                        .as_ref()
+                        .ok()
+                        .and_then(|message| message.as_ref())
+                        .map(super::super::classification::control_kind),
+                    "stdout_allowed",
+                    active.stdout_allowed(),
+                    "ready_for_write",
+                    active.ready_for_write(),
+                    "terminal",
+                    active.turn.driver.terminal_outcome(),
+                ),
+            );
             Err(failed(FirstTurnWorkerState::Active(active)))
         }
     }

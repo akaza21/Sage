@@ -104,5 +104,7 @@
 }
 
 .chat-fork-turn {
+  display: grid;
+  gap: var(--transcript-answer-gap);
   min-width: 0;
 }
