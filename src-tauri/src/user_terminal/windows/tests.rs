@@ -232,3 +232,22 @@ fn cmd_launch_path_must_recanonicalize_to_same_authority() {
         Err(TerminalError::Backend)
     );
 }
+
+#[test]
+fn shell_environment_disables_current_directory_command_search() {
+    let block = environment_block().unwrap();
+    assert!(block.ends_with(&[0, 0]));
+    let text = String::from_utf16(&block).unwrap();
+    let entries: Vec<&str> = text.split('\0').filter(|entry| !entry.is_empty()).collect();
+    let searches: Vec<&str> = entries
+        .iter()
+        .copied()
+        .filter(|entry| {
+            entry
+                .to_ascii_lowercase()
+                .starts_with("nodefaultcurrentdirectoryinexepath=")
+        })
+        .collect();
+    assert_eq!(searches, ["NoDefaultCurrentDirectoryInExePath=1"]);
+    assert!(entries.iter().any(|entry| entry.starts_with("ComSpec=")));
+}

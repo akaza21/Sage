@@ -44,6 +44,35 @@ for (const width of [480, 1280]) {
     await summary
       .getByRole("button", { name: /Open file .*disclosure-15.tsx/ })
       .click({ trial: true });
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState((state) => ({
+        chatUiById: {
+          ...state.chatUiById,
+          [state.activeTabId!]: {
+            ...state.chatUiById[state.activeTabId!],
+            queuedPrompts: Array.from({ length: 8 }, (_, index) => ({
+              id: `queue-${index}`,
+              text: `Follow-up ${index}`,
+              attachedContext: [],
+              bindingId: "fixture",
+              modelId: null,
+              status: "blocked" as const,
+            })),
+          },
+        },
+      }));
+    });
+    await page
+      .getByLabel("Queued messages", { exact: true })
+      .getByRole("button", {
+        name: "More options for queued message: Follow-up 0",
+        exact: true,
+      })
+      .click({ trial: true });
+    await input.click({ trial: true });
+    const queuedBounds = (await dock.boundingBox())!;
+    expect(queuedBounds.height).toBeLessThanOrEqual(surface.height * 0.6 + 1);
   });
 }
 

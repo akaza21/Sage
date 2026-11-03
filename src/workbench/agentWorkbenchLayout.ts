@@ -1,9 +1,8 @@
 import {
+  AGENT_ICON_RAIL_WIDTH,
   AGENT_ARTIFACT_WIDTH,
   AGENT_CHAT_MIN_WIDTH,
   AGENT_LEFT_RAIL_WIDTH,
-  AGENT_COLLAPSED_RAIL_WIDTH,
-  AGENT_SPLITTER_WIDTH,
   agentDesktopArtifactWidth,
   agentDesktopLeftRailWidth,
   clampWorkbenchSidebarWidth,
@@ -33,27 +32,13 @@ export function agentWorkbenchLayout({
   requestedWidths?: AgentDesktopSidebarWidths;
   prioritize?: AgentDesktopSidebarPriority;
 }) {
-  // Shrink the split to its declared floors before resorting to an overlay.
-  // If even the rail's floor will not fit, temporarily show its icon strip.
-  const inlineMinimum =
-    AGENT_CHAT_MIN_WIDTH +
-    AGENT_ARTIFACT_WIDTH.minWidth +
-    AGENT_SPLITTER_WIDTH * 2;
-  const resourceNavigationCollapsed =
-    navigationCollapsed ||
-    (viewportWidth >= AGENT_COLLAPSED_RAIL_WIDTH + inlineMinimum &&
-      viewportWidth < AGENT_LEFT_RAIL_WIDTH.minWidth + inlineMinimum);
-  const navigationFits =
-    viewportWidth >= AGENT_LEFT_RAIL_WIDTH.minWidth + inlineMinimum;
-  const collapsed =
-    navigationCollapsed || (artifactExpanded && resourceNavigationCollapsed);
   const desktopWidth = Math.max(INLINE_RESOURCE_MIN, viewportWidth);
   const navigationCap = Math.min(
     AGENT_LEFT_RAIL_WIDTH.defaultWidth,
     Math.round(262 + ((Math.max(480, viewportWidth) - 480) * 70) / 240),
   );
   const desktop = viewportWidth >= NAVIGATION_RESIZE_MIN;
-  const navigationResizable = desktop && !collapsed;
+  const navigationResizable = desktop && !navigationCollapsed;
   const defaults = initialAgentDesktopSidebarWidths(desktopWidth);
   const requested = requestedWidths ?? {
     ...defaults,
@@ -72,34 +57,32 @@ export function agentWorkbenchLayout({
         )
       : navigationCap,
   };
+  const navigationWidth = navigationCollapsed
+    ? AGENT_ICON_RAIL_WIDTH
+    : clampWorkbenchSidebarWidth(navigationBounds, requested.leftRailWidth);
   const artifactInlineAvailable =
-    viewportWidth >=
-    (resourceNavigationCollapsed
-      ? AGENT_COLLAPSED_RAIL_WIDTH
-      : AGENT_LEFT_RAIL_WIDTH.minWidth) +
-      inlineMinimum;
+    desktop &&
+    viewportWidth - navigationWidth >=
+      AGENT_CHAT_MIN_WIDTH + 16 + AGENT_ARTIFACT_WIDTH.minWidth;
   const artifactInline = artifactExpanded && artifactInlineAvailable;
   const leftRailBounds = artifactInline
     ? agentDesktopLeftRailWidth(viewportWidth)
     : navigationBounds;
   const artifactBounds =
-    collapsed && artifactInline
+    navigationCollapsed && artifactInline
       ? {
           ...AGENT_ARTIFACT_WIDTH,
           maxWidth: Math.min(
             AGENT_ARTIFACT_WIDTH.maxWidth,
-            viewportWidth -
-              AGENT_COLLAPSED_RAIL_WIDTH -
-              AGENT_CHAT_MIN_WIDTH -
-              AGENT_SPLITTER_WIDTH,
+            viewportWidth - AGENT_ICON_RAIL_WIDTH - AGENT_CHAT_MIN_WIDTH - 8,
           ),
         }
       : agentDesktopArtifactWidth(
           artifactInline ? viewportWidth : desktopWidth,
         );
-  const widths = collapsed
+  const widths = navigationCollapsed
     ? {
-        leftRailWidth: AGENT_COLLAPSED_RAIL_WIDTH,
+        leftRailWidth: AGENT_ICON_RAIL_WIDTH,
         artifactWidth: clampWorkbenchSidebarWidth(
           artifactBounds,
           requested.artifactWidth,
@@ -135,8 +118,13 @@ export function agentWorkbenchLayout({
   );
   return {
     ...widths,
-    navigationCollapsed: collapsed,
-    navigationFits,
+    navigationCollapsed,
+    navigationFits:
+      viewportWidth >=
+      AGENT_LEFT_RAIL_WIDTH.minWidth +
+        AGENT_CHAT_MIN_WIDTH +
+        16 +
+        AGENT_ARTIFACT_WIDTH.minWidth,
     leftRailBounds,
     artifactBounds,
     navigationResizable,

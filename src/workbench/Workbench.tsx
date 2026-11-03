@@ -200,7 +200,6 @@ export function Workbench() {
       agentLayout,
       changeAgentArtifact,
       changeAgentSidebarWidth,
-      narrowAgent,
       openArtifactInEditor,
       onPreviewTargetChange,
       toggleAgentNavigation,

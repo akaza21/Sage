@@ -9,7 +9,12 @@ import { invokeNative } from "./nativeInvoke";
 import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
 import { nativeSettingsPort } from "./nativeSettingsPort";
 import type { EditorWatchSubscription } from "../domain/editorWatch";
-import type { ProjectTransitionResult, ResourceRef } from "../domain/workbench";
+import type {
+  CreateProjectRequest,
+  ProjectSourceFolder,
+  ProjectTransitionResult,
+  ResourceRef,
+} from "../domain/workbench";
 
 /** A command taking one resource, as `{ resource }`. */
 const resourceCommand =
@@ -43,11 +48,16 @@ const project: ProjectPort = {
       prompts,
     });
   },
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null> {
+    return invokeNative("pick_project_source_folder");
+  },
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    return invokeNative("create_project_from_picker", {
+    return invokeNative("create_project", {
+      request,
       expectedActiveProjectId,
       expectedTransitionEpoch,
     });

@@ -4,8 +4,10 @@ export type WorkbenchSidebarWidth = {
   maxWidth: number;
 };
 
+// The owner's Codex desktop capture (1872 px wide, 100% scale): the icon rail
+// plus the chat list end at x = 326, and the icon rail is 46 px of that.
 export const AGENT_LEFT_RAIL_WIDTH: WorkbenchSidebarWidth = {
-  defaultWidth: 385,
+  defaultWidth: 326,
   minWidth: 180,
   maxWidth: 460,
 };
@@ -18,10 +20,12 @@ export const EDITOR_TOOL_RAIL_WIDTH: WorkbenchSidebarWidth = {
 
 export const EDITOR_ACTIVITY_BAR_WIDTH = 48;
 
+/** The Agent icon rail; matches --agent-icon-rail-width in global.css. */
+export const AGENT_ICON_RAIL_WIDTH = 46;
+
 export const AGENT_CHAT_MIN_WIDTH = 360;
 
-export const AGENT_SPLITTER_WIDTH = 8;
-export const AGENT_COLLAPSED_RAIL_WIDTH = 54;
+const AGENT_SPLITTER_WIDTH = 8;
 const AGENT_ARTIFACT_FLOOR_WIDTH = 160;
 
 export const AGENT_ARTIFACT_WIDTH: WorkbenchSidebarWidth = {

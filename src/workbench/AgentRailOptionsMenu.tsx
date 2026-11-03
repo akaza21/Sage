@@ -2,7 +2,7 @@ import {
   FolderOpen,
   History,
   Home,
-  ListFilter,
+  MoreHorizontal,
   Search,
   Settings,
 } from "../ui/leanIcons";
@@ -87,18 +87,14 @@ export function AgentPrimaryNavigation({
 }
 
 import { lazyParts } from "../features/chat/lazyParts";
-import type * as FilterOptionsChunk from "./AgentRailFilterOptions";
+import type * as OptionsPopoverChunk from "./AgentRailOptionsPopover";
 
-/** The open options menu (AgentRailFilterOptions.tsx), loaded on first open. */
-const FilterOptionsPart = lazyParts<typeof FilterOptionsChunk>(
-  () => import("./AgentRailFilterOptions"),
+/** The open options menu (AgentRailOptionsPopover.tsx), loaded on first open. */
+const OptionsPopoverPart = lazyParts<typeof OptionsPopoverChunk>(
+  () => import("./AgentRailOptionsPopover"),
 );
 
-export function AgentRailFilterMenu({
-  onMarkAllRead,
-}: {
-  onMarkAllRead: () => void;
-}) {
+export function AgentRailOptionsMenu() {
   const [open, setOpen] = useState(false);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -107,19 +103,29 @@ export function AgentRailFilterMenu({
   const closeAndRestoreFocus = useCallback(() => {
     setOpen(false);
     queueMicrotask(() => triggerRef.current?.focus());
+    // Reorganizing the sidebar remounts this trigger under another section,
+    // so focus follows the new one.
+    requestAnimationFrame(() => {
+      if (triggerRef.current?.isConnected) return;
+      document
+        .querySelector<HTMLElement>(
+          ".project-sidebar .agent-rail-options__trigger",
+        )
+        ?.focus();
+    });
   }, []);
 
   return (
-    <div className="agent-rail-filter">
+    <div className="agent-rail-options">
       <button
         ref={triggerRef}
-        className="agent-rail-filter__trigger"
+        className="agent-rail-options__trigger"
         type="button"
-        aria-label="Chat list options"
+        aria-label="Sidebar options"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={menuId}
-        title="Chat list options"
+        aria-controls={open ? menuId : undefined}
+        title="Sidebar options"
         onClick={() => {
           setOpeningFocus("first");
           setOpen((value) => !value);
@@ -131,17 +137,16 @@ export function AgentRailFilterMenu({
           setOpen(true);
         }}
       >
-        <ListFilter size={14} aria-hidden="true" />
+        <MoreHorizontal size={14} aria-hidden="true" />
       </button>
       {open ? (
-        <FilterOptionsPart
-          part="AgentRailFilterPopover"
+        <OptionsPopoverPart
+          part="AgentRailOptionsPopover"
           menuId={menuId}
           openingFocus={openingFocus}
           triggerRef={triggerRef}
           onDismiss={() => setOpen(false)}
           onCloseAndRestoreFocus={closeAndRestoreFocus}
-          onMarkAllRead={onMarkAllRead}
         />
       ) : null}
     </div>

@@ -6,7 +6,15 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import {
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
@@ -132,6 +140,18 @@ describe("compact workbench window mode seam", () => {
 
   it("opens new Agent resources on the right while tabs change", async () => {
     compactViewport = true;
+    // Narrow enough that resources open over Chat rather than beside it.
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 960,
+    });
+    onTestFinished(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth,
+      });
+    });
     seedArtifactOwner();
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });
@@ -180,11 +200,11 @@ describe("compact workbench window mode seam", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("complementary", { name: "Agent artifacts" }),
+      screen.getByRole("dialog", { name: "Agent artifacts" }),
     ).toBeVisible();
     const agentCenter = container.querySelector(".center-region");
-    expect(agentCenter).not.toHaveAttribute("inert");
-    expect(agentCenter).not.toHaveAttribute("aria-hidden");
+    expect(agentCenter).toHaveAttribute("inert");
+    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
 
     fireEvent.click(
       within(
@@ -196,8 +216,8 @@ describe("compact workbench window mode seam", () => {
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenLastCalledWith("file:a");
     });
-    expect(agentCenter).not.toHaveAttribute("inert");
-    expect(agentCenter).not.toHaveAttribute("aria-hidden");
+    expect(agentCenter).toHaveAttribute("inert");
+    expect(agentCenter).toHaveAttribute("aria-hidden", "true");
     expect(
       screen.getByRole("region", { name: "Agent chat", hidden: true }),
     ).toBeInTheDocument();

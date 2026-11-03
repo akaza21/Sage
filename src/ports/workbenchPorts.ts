@@ -46,6 +46,8 @@ import type {
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
   ProjectSwitchRequest,
+  CreateProjectRequest,
+  ProjectSourceFolder,
   ProjectTransitionResult,
   RenameChatRequest,
   RenameProjectFileRequest,
@@ -80,7 +82,9 @@ export interface ProjectPort {
     chatId: string,
     prompts: readonly QueuedChatPrompt[],
   ): Promise<void>;
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null>;
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
@@ -292,13 +296,14 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
   project: [
     "addProjectRootFromPicker",
     "createProjectFile",
+    "createProject",
     "createProjectFolder",
-    "createProjectFromPicker",
     "ensureLocalProject",
     "getBootstrapSnapshot",
     "listDirectory",
     "persistProjectLayout",
     "persistProjectLayoutAndClose",
+    "pickProjectSourceFolder",
     "renameProjectFile",
     "renameProjectFolder",
     "switchProject",

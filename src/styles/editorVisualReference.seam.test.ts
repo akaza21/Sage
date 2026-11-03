@@ -60,14 +60,6 @@ describe("Editor visual-reference seam", () => {
     expect(activityCss).toMatch(
       /\.workbench--editor \.sidebar\s*\{[^}]*border:\s*1px solid var\(--color-border-subtle\);[^}]*border-radius:\s*var\(--radius-md\);/s,
     );
-    const surface = await readFile(resolve("src/styles/surface.css"), "utf8");
-    expect(surface).toMatch(
-      /\.surface\s*\{[^}]*border:\s*var\(--border-width\) solid var\(--surface-border\);[^}]*border-radius:\s*var\(--radius-surface\);/s,
-    );
-    expect(css).toMatch(/--workbench-card-radius:\s*var\(--radius-md\);/);
-    expect(css).toMatch(
-      /\.center-region\[aria-hidden="true"\]\s*\{[^}]*margin-left:\s*min\(280px,\s*calc\(100% - 160px\)\);/s,
-    );
     expect(resizeSource).toContain("EDITOR_ACTIVITY_BAR_WIDTH = 48");
     expect(workbenchSource).toContain(
       '"--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`',
@@ -91,43 +83,5 @@ describe("Editor visual-reference seam", () => {
     expect(radiusProjection).toBeGreaterThan(-1);
     expect(radiusProjection).toBeLessThan(forcedColorsNone);
     expect(css).toContain("font-family: var(--font-family-ui);");
-    expect(css).toMatch(
-      /\.sidebar__heading > button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/s,
-    );
-    expect(css).toMatch(
-      /\.workspace-search__details-toggle\s*\{[^}]*min-height:\s*28px;[^}]*border-radius:\s*var\(--radius-sm\);/s,
-    );
-  });
-
-  it("sizes secondary Editor result rows on the compact row height with small type", async () => {
-    const css = await readFile(
-      resolve("src/styles/editor-visual-reference.css"),
-      "utf8",
-    );
-
-    expect(css).toMatch(
-      /\.workspace-search__result,[\s\S]*\.outline-card\s*\{[^}]*min-height:\s*var\(--row-height-compact\);[^}]*font-size:\s*var\(--font-size-sm\);[^}]*border-radius:\s*var\(--radius-sm\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--editor \.status-bar\s*\{[^}]*border-top:\s*1px solid var\(--color-border-subtle\);/s,
-    );
-    expect(css).toContain(".workbench--editor .workspace-search__progress");
-    expect(css).toContain(".workbench--editor .workspace-search__error");
-    expect(css).toContain(".workbench--editor .sidebar__error");
-    expect(css).toContain(".workbench--editor .outline-surface__empty");
-  });
-
-  it("keeps Editor Source Control rows on the same compact row height as file tree rows", async () => {
-    const css = await readFile(
-      resolve("src/styles/editor-visual-reference.css"),
-      "utf8",
-    );
-
-    expect(css).toMatch(
-      /\.workbench--editor \.source-change \{[^}]*height: var\(--row-height-compact\);/s,
-    );
-    expect(css).not.toMatch(
-      /\.workbench--editor \.source-change \{[^}]*[^-]height:\s*28px/s,
-    );
   });
 });

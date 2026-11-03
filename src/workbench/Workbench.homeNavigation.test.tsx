@@ -61,9 +61,12 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("restores Files when split space returns and lets navigation reclaim the space", async () => {
+it("restores Files with collapsed navigation when split space returns and lets navigation reclaim the space", async () => {
   render(<Workbench />);
   await settleLazyModules();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide projects and chats" }),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: /Show files and preview/ }),
   );
