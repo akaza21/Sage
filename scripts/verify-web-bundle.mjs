@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import ts from "typescript";
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import {
   measureWebBundlePaths,
@@ -63,6 +64,82 @@ function gzipBytes(file) {
   const contents = readFileSync(file);
   if (contents.byteLength === 0) fail(`asset is empty: ${file}`);
   return gzipSync(contents).byteLength;
+}
+
+// The desktop build emits every chunk as `assets/[hash].js`: an 8-character
+// base64url content hash, plus a numeric suffix when names collide. Chunks
+// import siblings by `./<name>.js`, so a change to any shared chunk rewrites
+// these names without touching the importing chunk's code. The specifier of
+// each static import, `export … from` and dynamic `import()` that names such a
+// chunk becomes a fixed token of the same length before a per-chunk lazy
+// budget gzips it. The chunk is parsed, so the same text inside a string,
+// template or comment is measured as written.
+// The core total still subtracts the chunks' emitted sizes.
+// Entry, initial-closure and core-total measurements stay as emitted.
+const HASHED_CHUNK_SPECIFIER = /^\.\/([A-Za-z0-9_-]{8}\d*)\.js$/u;
+
+function importSpecifier(node) {
+  if (
+    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+    node.moduleSpecifier
+  ) {
+    return node.moduleSpecifier;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+    node.arguments.length > 0
+  ) {
+    return node.arguments[0];
+  }
+  return null;
+}
+
+export function normalizeHashedImports(source) {
+  const file = ts.createSourceFile(
+    "chunk.js",
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.JS,
+  );
+  // A chunk that does not parse cleanly is measured exactly as written.
+  if (file.parseDiagnostics.length > 0) return source;
+  const ranges = [];
+  const visit = (node) => {
+    const specifier = importSpecifier(node);
+    if (
+      specifier &&
+      (ts.isStringLiteral(specifier) ||
+        ts.isNoSubstitutionTemplateLiteral(specifier))
+    ) {
+      const match = HASHED_CHUNK_SPECIFIER.exec(specifier.text);
+      const start = specifier.getStart(file) + 1;
+      if (
+        match &&
+        source.slice(start, start + specifier.text.length) === specifier.text
+      ) {
+        ranges.push([start + 2, match[1].length]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const parts = [];
+  let end = 0;
+  for (const [start, length] of ranges.sort((a, b) => a[0] - b[0])) {
+    parts.push(source.slice(end, start), "x".repeat(length));
+    end = start + length;
+  }
+  parts.push(source.slice(end));
+  return parts.join("");
+}
+
+function lazyChunkGzipBytes(file) {
+  if (!file.endsWith(".js")) return gzipBytes(file);
+  const contents = readFileSync(file, "utf8");
+  if (contents.length === 0) fail(`asset is empty: ${file}`);
+  return gzipSync(normalizeHashedImports(contents)).byteLength;
 }
 
 export function verifyWebBundle(root) {
@@ -155,6 +232,7 @@ export function verifyWebBundle(root) {
     0,
   );
   let terminalLazyGzipBytes = 0;
+  let terminalLazyEmittedGzipBytes = 0;
   let subagentLazyGzipBytes = 0;
   let coreTotalGzipBytes = totalGzipBytes;
   const reachable = new Set();
@@ -304,10 +382,14 @@ export function verifyWebBundle(root) {
       fail("Terminal lazy port must be imported only by terminal chunks");
     }
     terminalLazyGzipBytes = terminalFiles.reduce(
+      (sum, file) => sum + lazyChunkGzipBytes(assetPath(root, file)),
+      0,
+    );
+    terminalLazyEmittedGzipBytes = terminalFiles.reduce(
       (sum, file) => sum + gzipBytes(assetPath(root, file)),
       0,
     );
-    coreTotalGzipBytes -= terminalLazyGzipBytes;
+    coreTotalGzipBytes -= terminalLazyEmittedGzipBytes;
   }
   if (subagentLimit !== undefined) {
     const subagentKey = "src/workbench/SubagentSurface.tsx";
@@ -324,8 +406,8 @@ export function verifyWebBundle(root) {
     ) {
       fail("SubagentSurface must own a reachable, noninitial lazy chunk");
     }
-    subagentLazyGzipBytes = gzipBytes(assetPath(root, subagent.file));
-    coreTotalGzipBytes -= subagentLazyGzipBytes;
+    subagentLazyGzipBytes = lazyChunkGzipBytes(assetPath(root, subagent.file));
+    coreTotalGzipBytes -= gzipBytes(assetPath(root, subagent.file));
   }
   for (const file of jsFiles) {
     if (
@@ -343,10 +425,11 @@ export function verifyWebBundle(root) {
     initial,
     isInitialCss: (css) => initialCss.has(assetPath(root, css)),
     features: lazyFeatures,
-    gzipFile: (file) => gzipBytes(assetPath(root, file)),
+    gzipFile: (file) => lazyChunkGzipBytes(assetPath(root, file)),
   });
   for (const feature of Object.values(lazyFeatureChunks))
-    coreTotalGzipBytes -= feature.gzipBytes;
+    for (const file of feature.files)
+      coreTotalGzipBytes -= gzipBytes(assetPath(root, file));
   const exceeded = [];
   if (entryGzipBytes > entryLimit)
     exceeded.push(`entry gzip ${entryGzipBytes} exceeds ${entryLimit}`);
@@ -376,6 +459,7 @@ export function verifyWebBundle(root) {
     initialStaticClosureGzipBytes,
     totalGzipBytes,
     terminalLazyGzipBytes,
+    terminalLazyEmittedGzipBytes,
     subagentLazyGzipBytes,
     lazyFeatureChunks,
     coreTotalGzipBytes,
