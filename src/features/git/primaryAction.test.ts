@@ -20,6 +20,47 @@ function repository(
 }
 
 describe("repositoryPrimaryAction", () => {
+  it.each([
+    { upstream: "team/fork/main", remotes: ["team/fork"], remote: "team/fork" },
+    {
+      upstream: "team/fork/main",
+      remotes: ["team", "team/fork"],
+      remote: "team/fork",
+    },
+    {
+      upstream: "team/fork/main",
+      remotes: ["team/fork", "team"],
+      remote: "team/fork",
+    },
+    { upstream: "origin/main", remotes: ["origin"], remote: "origin" },
+    { upstream: "origin/feature/x", remotes: ["origin"], remote: "origin" },
+    { upstream: "team/fork/", remotes: ["team", "team/fork"], remote: "team" },
+  ])(
+    "offers Push to $remote for $upstream with $remotes",
+    ({ upstream, remotes, remote }) => {
+      expect(
+        repositoryPrimaryAction(repository({ upstream, remotes, ahead: 1 })),
+      ).toEqual({ kind: "push", label: "Push", remote, reason: null });
+    },
+  );
+
+  it.each([
+    { upstream: "unlisted/main", remotes: ["origin"] },
+    { upstream: "team/fork/main", remotes: ["origin"] },
+    { upstream: "team/forked/main", remotes: ["team/fork"] },
+    { upstream: "main", remotes: ["main"] },
+    { upstream: "origin/", remotes: ["origin"] },
+    { upstream: "team/fork/", remotes: ["team/fork"] },
+    { upstream: "origin/main", remotes: [] },
+  ])(
+    "hides Push without a listed remote and non-empty branch: $upstream with $remotes",
+    ({ upstream, remotes }) => {
+      expect(
+        repositoryPrimaryAction(repository({ upstream, remotes, ahead: 1 })),
+      ).toBeNull();
+    },
+  );
+
   it("uses only native-proven state and never guesses from a branch name", () => {
     expect(repositoryPrimaryAction(repository())).toEqual({
       kind: "publish",
