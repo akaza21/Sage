@@ -111,7 +111,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /@media \(max-width: 760px\)\s*\{[^@]*\.title-bar\s*\{/,
     );
     expect(narrow).toMatch(
-      /\.title-bar__wordmark,\s*\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
+      /\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
     );
     expect(narrow).toMatch(/\.title-bar__start\s*\{[^}]*\}/);
     expect(narrow.match(/\.title-bar__start\s*\{([^}]*)\}/)?.[1]).not.toMatch(

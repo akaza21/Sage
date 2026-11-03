@@ -5,10 +5,17 @@ const styles = readFileSync(
   "src/features/chat/acp/acp-chat-activities.css",
   "utf8",
 );
-const rule = (selector: string) => {
-  const start = styles.indexOf(`${selector} {`);
-  return styles.slice(start, styles.indexOf("}", start));
+const promptStyles = readFileSync(
+  "src/features/chat/acp/permission-prompt.css",
+  "utf8",
+);
+const ruleIn = (source: string, selector: string) => {
+  const start = source.indexOf(`${selector} {`);
+  expect(start, selector).toBeGreaterThanOrEqual(0);
+  return source.slice(start, source.indexOf("}", start));
 };
+const rule = (selector: string) => ruleIn(styles, selector);
+const promptRule = (selector: string) => ruleIn(promptStyles, selector);
 
 describe("Chat rich content layout", () => {
   it("keeps body-sized Mermaid labels in a neutral figure with filled subtly bordered nodes", () => {
@@ -39,8 +46,14 @@ describe("Chat rich content layout", () => {
     );
   });
   it("wraps whole approval buttons instead of breaking the words inside them", () => {
-    expect(rule(".acp-permission__actions")).toContain("flex-wrap: wrap");
-    expect(rule(".acp-permission__action")).toContain("flex: none");
-    expect(rule(".acp-permission__action")).toContain("white-space: nowrap");
+    expect(promptRule(".acp-permission-prompt__actions")).toContain(
+      "flex-wrap: wrap",
+    );
+    expect(promptRule(".acp-permission-prompt__actions button")).toContain(
+      "flex: none",
+    );
+    expect(promptRule(".acp-permission-prompt__actions button")).toContain(
+      "white-space: nowrap",
+    );
   });
 });
