@@ -99,8 +99,7 @@
 
 .edit-summary__totals,
 .edit-file__counts,
-.acp-file-changes__totals,
-.acp-file-changes__counts {
+.acp-file-changes__totals {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -112,15 +111,13 @@
 
 .edit-summary__totals span:first-child,
 .edit-file__counts span:first-child,
-.acp-file-changes__additions,
-.acp-file-changes__counts span:first-child {
+.acp-file-changes__additions {
   color: var(--color-diff-add);
 }
 
 .edit-summary__totals span:last-child,
 .edit-file__counts span:last-child,
-.acp-file-changes__deletions,
-.acp-file-changes__counts span:last-child {
+.acp-file-changes__deletions {
   color: var(--color-diff-delete);
 }
 
