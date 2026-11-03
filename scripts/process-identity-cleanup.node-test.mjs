@@ -528,30 +528,77 @@ try{
   });
 });
 
-test("an 8.3 short-name expected path identifies the same executable", (t) => {
-  const observed = runPowerShellFixture(String.raw`
-$powershell=(Get-Process -Id $PID).Path;
-$files=New-Object -ComObject Scripting.FileSystemObject;
-$short=$files.GetFile($powershell).ShortPath;
-$shortCmd=$files.GetFile((Join-Path $env:SystemRoot 'System32\cmd.exe')).ShortPath;
-if([string]::Equals($short,$powershell,[StringComparison]::OrdinalIgnoreCase)){[ordered]@{shortNameAvailable=$false;shortPath=$short}|ConvertTo-Json -Compress;return};
-$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+test("long and 8.3 short-name expected paths identify the same executable", (t) => {
+  const node = process.execPath.replaceAll("'", "''");
+  const observed = runPowerShellFixture(
+    String.raw`
+$root=Join-Path ([IO.Path]::GetTempPath()) ('sage pr long directory name '+[Guid]::NewGuid().ToString('N'));
+$long=Join-Path $root 'sage long executable name.exe';$otherLong=Join-Path $root 'sage other long executable.exe';$child=$null;
 try{
-  $identity=Get-FootprintLaunchIdentity $child $short;
-  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child $shortCmd)}catch{$wrong=$_.Exception.Message};
-  [ordered]@{shortNameAvailable=$true;processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($short));wrong=$wrong}|ConvertTo-Json -Compress
+  [void][IO.Directory]::CreateDirectory($root);
+  Copy-Item -LiteralPath '${node}' -Destination $long;
+  Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination $otherLong;
+  $files=New-Object -ComObject Scripting.FileSystemObject;
+  $short=$files.GetFile($long).ShortPath;$otherShort=$files.GetFile($otherLong).ShortPath;
+  if([IO.Path]::GetFileName($short) -eq [IO.Path]::GetFileName($long) -or [IO.Path]::GetFileName($otherShort) -eq [IO.Path]::GetFileName($otherLong)){
+    [ordered]@{shortNameAvailable=$false;shortPath=$short}|ConvertTo-Json -Compress
+  }else{
+    $child=Start-Process -FilePath $long -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+    $longIdentity=Get-FootprintLaunchIdentity $child $long;
+    $shortIdentity=Get-FootprintLaunchIdentity $child $short;
+    $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child $otherShort)}catch{$wrong=$_.Exception.Message};
+    [ordered]@{shortNameAvailable=$true;longAccepted=($longIdentity.processId -eq $child.Id);shortAccepted=($shortIdentity.processId -eq $child.Id);shortIsCallerForm=($shortIdentity.executablePath -ceq [IO.Path]::GetFullPath($short));wrong=$wrong}|ConvertTo-Json -Compress
+  }
 }finally{
-  Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)
+  if($null -ne $child){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)};
+  if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
 }
-`);
+`,
+    { timeout: 60_000 },
+  );
   if (!observed.shortNameAvailable) {
     t.skip(
-      `8.3 short names are disabled on the volume holding ${observed.shortPath}; the short-name case was not exercised`,
+      `the fixture executable got no 8.3 short name (${observed.shortPath}); 8.3 names are disabled on the temp volume, so the short-name case was not exercised`,
     );
     return;
   }
   assert.deepEqual(observed, {
     shortNameAvailable: true,
+    longAccepted: true,
+    shortAccepted: true,
+    shortIsCallerForm: true,
+    wrong:
+      "The launched process object does not identify the exact executable.",
+  });
+});
+
+test("an executable whose ACL denies reading its attributes is still identified", () => {
+  const node = process.execPath.replaceAll("'", "''");
+  const observed = runPowerShellFixture(
+    String.raw`
+$root=Join-Path ([IO.Path]::GetTempPath()) ('sage-launch-acl-'+[Guid]::NewGuid().ToString('N'));
+$exe=Join-Path $root 'app.exe';$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$denied=$false;$child=$null;
+try{
+  [void][IO.Directory]::CreateDirectory($root);
+  Copy-Item -LiteralPath '${node}' -Destination $exe;
+  $deny=& icacls.exe $exe /deny ('*'+$sid+':(RA)');
+  if($LASTEXITCODE -ne 0){throw "icacls deny failed: $deny"};
+  $denied=$true;
+  $denyInPlace=((& icacls.exe $exe) -join ' ') -match '\(DENY\)';
+  $child=Start-Process -FilePath $exe -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+  $identity=Get-FootprintLaunchIdentity $child $exe;
+  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child (Join-Path $env:SystemRoot 'System32\cmd.exe'))}catch{$wrong=$_.Exception.Message};
+  [ordered]@{denyInPlace=$denyInPlace;processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($exe));wrong=$wrong}|ConvertTo-Json -Compress
+}finally{
+  if($null -ne $child){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)};
+  if($denied){$restore=& icacls.exe $exe /remove:d ('*'+$sid);if($LASTEXITCODE -ne 0){throw "icacls restore failed: $restore"}};
+  if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
+}
+`,
+    { timeout: 60_000 },
+  );
+  assert.deepEqual(observed, {
+    denyInPlace: true,
     processIdMatches: true,
     executablePathIsCallerForm: true,
     wrong:

@@ -10,7 +10,7 @@ using Microsoft.Win32.SafeHandles;
 namespace SageFootprint {
   public static class ProcessImageIdentity {
     const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000;
-    const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    const uint NO_DATA_ACCESS = 0;
     const uint FILE_SHARE_ALL = 0x00000007;
     const uint OPEN_EXISTING = 3;
     const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
@@ -39,10 +39,12 @@ namespace SageFootprint {
     }
 
     // Resolves junctions, symbolic links, 8.3 names and \\?\ prefixes to the
-    // file's final path. Returns null when the file cannot be opened.
+    // file's final path. Returns null when the file cannot be opened. It asks
+    // for no access rights, so a file whose ACL denies reading its attributes
+    // still resolves.
     public static string FinalPath(string path) {
       if (String.IsNullOrEmpty(path)) { return null; }
-      using (SafeFileHandle file = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, IntPtr.Zero,
+      using (SafeFileHandle file = CreateFileW(path, NO_DATA_ACCESS, FILE_SHARE_ALL, IntPtr.Zero,
           OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero)) {
         if (file.IsInvalid) { return null; }
         StringBuilder name = new StringBuilder(MaxPathChars);
