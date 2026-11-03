@@ -45,7 +45,7 @@ test.describe("Wave 2 canonical visual states", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
-  test("reveals Chat actions in the trailing state cell without moving the title", async ({
+  test("swaps a row's state for Pin and Archive on hover without moving or resizing the title", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
@@ -58,23 +58,27 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     const row = chatButton.locator("..");
     const title = chatButton.locator(".project-chat__title-label");
     const state = row.locator(".project-chat__state");
-    const actions = row.getByRole("button", { name: /Chat actions for/ });
-    const before = await title.evaluate((node) => {
-      const bounds = node.getBoundingClientRect();
-      return [bounds.x, bounds.y, bounds.width, bounds.height];
-    });
-
-    await expect(state).toHaveCSS("opacity", "1");
-    await expect(actions).toHaveCSS("opacity", "0");
-    await row.hover();
-    await expect(state).toHaveCSS("opacity", "0");
-    await expect(actions).toHaveCSS("opacity", "1");
-    expect(
-      await title.evaluate((node) => {
+    const quickActions = row.locator(".project-chat__quick-actions");
+    const origin = () =>
+      title.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
         return [bounds.x, bounds.y, bounds.width, bounds.height];
-      }),
-    ).toEqual(before);
+      });
+    const before = await origin();
+
+    await expect(state).toHaveCSS("opacity", "1");
+    await expect(quickActions).toHaveCSS("opacity", "0");
+    await row.hover();
+    await expect(state).toHaveCSS("opacity", "0");
+    await expect(quickActions).toHaveCSS("opacity", "1");
+    await expect(
+      quickActions.getByRole("button", { name: /^(Pin|Unpin) / }),
+    ).toBeVisible();
+    await expect(
+      quickActions.getByRole("button", { name: /^Archive / }),
+    ).toBeVisible();
+    // The actions sit over the row's end; the title neither moves nor resizes.
+    expect(await origin()).toEqual(before);
     await expectNoViewportOverflow(page);
   });
 

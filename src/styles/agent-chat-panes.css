@@ -2,7 +2,7 @@
 @import "./agent-task-header.css";
 
 .workbench--agent.workbench--navigation-collapsed .project-sidebar {
-  grid-template-columns: 54px;
+  grid-template-columns: var(--agent-icon-rail-width);
 }
 
 .agent-chat-center {
