@@ -124,11 +124,13 @@ impl InotifyFolders {
             .or_insert(relative);
     }
 
+    #[cfg(target_os = "linux")]
     pub(super) fn subfolders(&self) -> bool {
         self.subfolders
     }
 
     /// The watch descriptors this map holds that `next` does not.
+    #[cfg(target_os = "linux")]
     pub(super) fn dropped_from(&self, next: &Self) -> Vec<i32> {
         self.by_watch
             .keys()
