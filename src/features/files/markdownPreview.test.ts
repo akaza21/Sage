@@ -712,3 +712,65 @@ describe("ATX classification before setext", () => {
     },
   );
 });
+
+describe("shared list interruption classification", () => {
+  it.each(["-", "+", "*", "1.", "2)"])(
+    "interrupts a paragraph at a tab-separated %s item",
+    (marker) => {
+      const ordered = /^\d/u.test(marker);
+      expect(
+        renderMarkdownPreview(`Intro\n${marker}\titem\n---`).blocks,
+      ).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        {
+          kind: "list",
+          items: ["item"],
+          ...(ordered ? { ordered: true, start: Number(marker[0]) } : {}),
+        },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each(["- item", "   -\titem", "2. item"])(
+    "preserves admitted indentation and ordered starts for %s",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        {
+          kind: "list",
+          items: ["item"],
+          ...(line.startsWith("2") ? { ordered: true, start: 2 } : {}),
+        },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each(["+", "2.", "    -\titem", "\t- item", "1234567890. item", "-item"])(
+    "keeps %s inside the paragraph",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+        {
+          kind: "heading",
+          level: 2,
+          text: `Intro ${line.trim().replace(/\s+/gu, " ")}`,
+        },
+      ]);
+    },
+  );
+  it.each(["+ ", "+\t"])(
+    "preserves separator-bearing empty item interruption: %s",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        { kind: "list", items: [""] },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it("keeps setext precedence over a marker with trailing whitespace", () => {
+    expect(renderMarkdownPreview("Intro\n-\t\n---").blocks).toEqual([
+      { kind: "heading", level: 2, text: "Intro" },
+      { kind: "rule" },
+    ]);
+  });
+});

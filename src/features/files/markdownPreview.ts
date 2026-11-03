@@ -1,10 +1,6 @@
 import { editorLanguageForPath } from "./editorLanguage";
 import { utf8Bytes } from "../../domain/text";
-import {
-  isMarkdownRule,
-  readMarkdownList,
-  type MarkdownListBlock,
-} from "./markdownList";
+import * as lists from "./markdownList";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
@@ -34,7 +30,7 @@ export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "quote"; text: string }
-  | MarkdownListBlock
+  | lists.MarkdownListBlock
   | { kind: "code"; text: string; language: string; fenceClosed: boolean }
   | {
       kind: "table";
@@ -263,7 +259,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       if (fenceClosed) cursor++;
       continue;
     }
-    if (isMarkdownRule(line)) {
+    if (lists.isMarkdownRule(line)) {
       blocks.push({ kind: "rule" });
       cursor++;
       continue;
@@ -316,7 +312,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       blocks.push({ kind: "table", align, rows });
       continue;
     }
-    const list = readMarkdownList(lines, cursor, (text, itemIndex) => {
+    const list = lists.readMarkdownList(lines, cursor, (text, itemIndex) => {
       // Empty items still consume a rendered list slot.
       if (remaining > 0 && itemIndex < MAX_MARKDOWN_PREVIEW_BLOCK_CHARS)
         return inline(text, itemIndex);
@@ -337,8 +333,9 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       (quoted
         ? quoteMarker.test(lines[cursor])
         : !setextUnderline.test(lines[cursor]) &&
-          !isMarkdownRule(lines[cursor]) &&
-          !/^(?: {0,3}(?:`{3,}|~{3,})| {0,3}#{1,6}(?:[ \t]|$)| {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
+          !lists.isMarkdownRule(lines[cursor]) &&
+          !lists.interruptsParagraph(lines[cursor]) &&
+          !/^(?: {0,3}(?:`{3,}|~{3,})| {0,3}#{1,6}(?:[ \t]|$)| {0,3}>|\|)/u.test(
             lines[cursor],
           ))
     ) {

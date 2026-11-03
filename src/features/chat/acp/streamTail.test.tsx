@@ -363,3 +363,23 @@ it.each([
     expect(tails(container)).toEqual([]);
   },
 );
+
+it.each(["-", "+", "*", "1.", "2)"])(
+  "classifies a streaming tab-separated %s list before a rule",
+  (marker) => {
+    const source = `Intro\n${marker}\titem`;
+    const list = /^\d/u.test(marker)
+      ? `<ol start="${marker[0]}"><li>item</li></ol>`
+      : "<ul><li>item</li></ul>";
+    const { container, rerender } = render(
+      <ChatMarkdown text="Intro" streaming />,
+    );
+    const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+    expect(surface()).toBe("<p>Intro</p>");
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(surface()).toBe(`<p>Intro</p>${list}`);
+    rerender(<ChatMarkdown text={`${source}\n---`} streaming />);
+    expect(surface()).toBe(`<p>Intro</p>${list}<hr>`);
+    expect(tails(container)).toEqual([]);
+  },
+);

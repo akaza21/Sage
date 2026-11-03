@@ -133,3 +133,20 @@ it.each([
   rerender(<FileMarkdownPreview source={source} />);
   expect(container.querySelector("article")!.innerHTML).toBe(expected);
 });
+
+it.each(["-", "+", "*", "1.", "2)"])(
+  "renders a tab-separated %s item between a paragraph and rule",
+  (marker) => {
+    const source = `Intro\n${marker}\titem\n---`;
+    const list = /^\d/u.test(marker)
+      ? `<ol start="${marker[0]}"><li>item</li></ol>`
+      : "<ul><li>item</li></ul>";
+    const expected = `<p>Intro</p>${list}<hr>`;
+    const { container, rerender } = render(
+      <MarkdownBlocks document={renderMarkdownPreview(source)} />,
+    );
+    expect(container.innerHTML).toBe(expected);
+    rerender(<FileMarkdownPreview source={source} />);
+    expect(container.querySelector("article")!.innerHTML).toBe(expected);
+  },
+);

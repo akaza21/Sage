@@ -50,6 +50,12 @@ export function listItem(line: string): ListItem | null {
   };
 }
 
+/** Keep paragraph interruption limited to unindented, separator-bearing markers. */
+export function interruptsParagraph(line: string): boolean {
+  const item = listItem(line);
+  return !!item && item.indent < 4 && line.length >= item.content;
+}
+
 /**
  * Reads the list that starts at `lines[cursor]`. An item indented to the
  * content column of the item above it at its level nests one level deeper,
