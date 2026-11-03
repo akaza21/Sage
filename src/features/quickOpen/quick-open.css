@@ -92,7 +92,6 @@
   text-overflow: ellipsis;
 }
 
-.quick-open__shortcut,
 .quick-open__shortcut {
   flex: none;
   margin-left: auto;
