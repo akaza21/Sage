@@ -2,13 +2,20 @@
 
 import path from "node:path";
 import { ESLint } from "eslint";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const root = path.resolve(import.meta.dirname, "..");
 const linter = new ESLint({
   cwd: root,
   overrideConfigFile: path.join(root, "eslint.config.js"),
 });
+
+// Load the real ESLint configuration once, outside the rule assertions' clock.
+beforeAll(async () => {
+  await linter.calculateConfigForFile(
+    path.join(root, "src/react-import-policy-fixture.ts"),
+  );
+}, 30_000);
 
 describe("React import policy", () => {
   it.each(["react", "react/jsx-runtime"])(

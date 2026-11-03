@@ -1,7 +1,6 @@
-import { Files, ChevronRight } from "../../ui/leanIcons";
-
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey } from "../../domain/resourceIdentity";
+import { ChevronRight, Files } from "../../ui/leanIcons";
 
 export function EditSummary() {
   const changes = useWorkbenchStore((state) => state.turnChanges);

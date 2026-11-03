@@ -9,6 +9,10 @@ export const MAX_VISIBLE_ACP_PROJECTION_SLOTS = 2;
 const slots = new Map<string, AcpProjectionStore>();
 const pinnedIds = new Set<string>();
 
+export function pinnedAcpProjectionIds(): string[] {
+  return [...pinnedIds];
+}
+
 export function isAcpProjectionPinned(chatId: string): boolean {
   return pinnedIds.has(chatId);
 }
@@ -21,9 +25,9 @@ export function pinAcpProjectionIds(ids: readonly string[]): void {
   }
 }
 
-function evictUnpinnedSlot(requestedId: string): boolean {
+function evictUnpinnedSlot(): boolean {
   for (const id of slots.keys()) {
-    if (id !== requestedId && !pinnedIds.has(id)) {
+    if (!pinnedIds.has(id)) {
       slots.delete(id);
       return true;
     }
@@ -38,7 +42,7 @@ export function acpProjectionStoreFor(
   const existing = slots.get(chatId);
   if (existing) return existing;
   if (slots.size >= MAX_VISIBLE_ACP_PROJECTION_SLOTS) {
-    if (!evictUnpinnedSlot(chatId)) {
+    if (!evictUnpinnedSlot()) {
       return useAcpProjectionStore;
     }
   }

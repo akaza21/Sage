@@ -2,7 +2,16 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
 import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
-import { BrowserOperationItem } from "./BrowserOperationItem";
+import { BrowserOperations } from "./BrowserOperations";
+import type { BrowserOperationProjection } from "../../../domain/browserOperation";
+
+function BrowserOperationItem({
+  operation,
+}: {
+  operation: BrowserOperationProjection;
+}) {
+  return <BrowserOperations operations={[operation]} collapsed={0} />;
+}
 
 afterEach(cleanup);
 

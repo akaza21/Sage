@@ -98,7 +98,7 @@ export function matchesRenameProjection(
       projected.position === tab.position &&
       projected.pinned === tab.pinned &&
       projected.dirty === tab.dirty &&
-      projected.status === tab.status &&
+      (projected.status ?? null) === (tab.status ?? null) &&
       projected.resource?.rootId === tab.resource?.rootId &&
       projected.resource?.relativePath === tab.resource?.relativePath
     );
@@ -267,6 +267,7 @@ export async function commitIdentityChatResult(input: {
   ) => Promise<ProjectionOutcome>;
   invoke: () => Promise<ProjectTransitionResult>;
   failedMessage: string;
+  failureMessage?: string;
 }): Promise<boolean> {
   const expectedTransitionEpoch = input.get().nativeTransitionEpoch;
   try {
@@ -275,7 +276,8 @@ export async function commitIdentityChatResult(input: {
     if (!result.committed) {
       input.set({
         projectTransitioning: false,
-        error: result.recoveryError ?? input.failedMessage,
+        error:
+          input.failureMessage ?? result.recoveryError ?? input.failedMessage,
       });
       return false;
     }
@@ -290,7 +292,7 @@ export async function commitIdentityChatResult(input: {
   } catch (error) {
     input.set({
       projectTransitioning: false,
-      error: errorMessage(error),
+      error: input.failureMessage ?? errorMessage(error),
     });
     return false;
   }

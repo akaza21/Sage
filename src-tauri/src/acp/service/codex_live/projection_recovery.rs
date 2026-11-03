@@ -1,6 +1,6 @@
 use super::*;
 
-impl AcpService {
+impl Lane<'_> {
     pub(super) fn recover_projection_authorities(
         &self,
         abort: &ActivationAbortIntent,

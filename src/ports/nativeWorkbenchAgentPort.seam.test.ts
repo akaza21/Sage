@@ -17,8 +17,9 @@ describe("native agent port", () => {
   });
 
   it("forwards the harness catalog and prompt envelopes", async () => {
-    const { nativeWorkbenchAgentPort } =
-      await import("./nativeWorkbenchAgentPort");
+    const { createNativeWorkbenchPorts } =
+      await import("./nativeWorkbenchPorts");
+    const nativeWorkbenchAgentPort = createNativeWorkbenchPorts().agent;
     const request = {
       chatId: "chat-a",
       harnessId: "codex",

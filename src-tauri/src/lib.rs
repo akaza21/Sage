@@ -96,6 +96,7 @@ mod state;
 mod test_paths;
 #[cfg(test)]
 mod test_wait;
+mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
 mod window_memory;

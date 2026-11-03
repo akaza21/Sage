@@ -1,17 +1,15 @@
-import { useEffect, type RefObject } from "react";
-import { ChevronDown, Sparkles } from "../../ui/leanIcons";
-import { ComposerEffortControl } from "./ComposerEffortControl";
-import { MenuPopover } from "../../ui/MenuPopover";
-import type {
-  AcpConfigOption,
-  AcpConfigValue,
+import { lazy, Suspense, useEffect, type RefObject } from "react";
+import { Brain, ChevronDown, Sparkles } from "../../ui/leanIcons";
+import {
+  type AcpConfigOption,
+  type AcpConfigValue,
 } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
-import {
-  ChatModelPicker,
-  MAX_VISIBLE_MODELS,
-  type ComposerModelChoice,
-} from "./ChatModelPicker";
+import { type ComposerModelChoice } from "./ChatModelPicker";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import { ComposerEffortControl } from "./ComposerEffortControl";
+
+const ModelMenu = lazy(() => import("./ComposerModelMenu"));
 
 export function ComposerModelControls({
   triggerRef,
@@ -28,6 +26,7 @@ export function ComposerModelControls({
   effortLabel,
   contextWindow,
   effortOption,
+  awaitingSession = false,
   disabled,
   pending,
   readOnlyLabel,
@@ -48,6 +47,7 @@ export function ComposerModelControls({
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
+  awaitingSession?: boolean;
   disabled: boolean;
   pending: boolean;
   readOnlyLabel?: boolean;
@@ -115,34 +115,47 @@ export function ComposerModelControls({
             pending={pending}
             onSetOption={onSetOption}
           />
+        ) : awaitingSession ? (
+          <button
+            type="button"
+            className="composer__control-trigger composer__effort-picker"
+            aria-label="Thinking level"
+            aria-description="Available when the harness advertises effort controls for this session."
+            title="Available when the harness advertises effort controls for this session."
+            disabled
+          >
+            <Brain
+              className="composer__effort-icon"
+              size={16}
+              aria-hidden="true"
+            />
+            <span className="composer__effort-label">Thinking level</span>
+          </button>
         ) : null}
         {contextWindow ? (
           <span className="composer__capacity">{contextWindow} context</span>
         ) : null}
       </div>
-      <MenuPopover
-        open={open && available}
-        onDismiss={onDismiss}
-        restoreFocusOnTab
-        triggerRef={triggerRef}
-        initialFocus="selected"
-        focusKey={choices
-          .slice(0, MAX_VISIBLE_MODELS)
-          .map((model) => model.id)
-          .join("\0")}
-        id={`${panelId}-popover`}
-        role="none"
-        className="composer__popover composer__model-menu composer-model-picker"
-        ariaLabel="Select model"
-      >
-        <ChatModelPicker
-          listboxId={panelId}
-          models={choices}
-          selectedId={selectedId}
-          disabled={disabled || pending}
-          onSelect={onSelectModel}
-        />
-      </MenuPopover>
+      {open && available ? (
+        <Suspense
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={triggerRef}
+              onDismiss={onDismiss}
+            />
+          }
+        >
+          <ModelMenu
+            triggerRef={triggerRef}
+            panelId={panelId}
+            choices={choices}
+            selectedId={selectedId}
+            disabled={disabled || pending}
+            onDismiss={onDismiss}
+            onSelect={onSelectModel}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

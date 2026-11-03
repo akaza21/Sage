@@ -9,11 +9,15 @@ fn contract_path(name: &str) -> PathBuf {
         .to_path_buf();
     let relative =
         PathBuf::from("docs/work-items/ADE-0006A-acp-session-foundation/contracts").join(name);
-    checkout
-        .ancestors()
-        .take(4)
-        .map(|ancestor| ancestor.join("Sage").join(&relative))
-        .chain(std::iter::once(checkout.join(&relative)))
+    // The checkout's own contract is authoritative; a sibling `Sage` tree is
+    // only a fallback for packaged sources that omit docs.
+    std::iter::once(checkout.join(&relative))
+        .chain(
+            checkout
+                .ancestors()
+                .take(4)
+                .map(|ancestor| ancestor.join("Sage").join(&relative)),
+        )
         .find(|candidate| candidate.is_file())
         .unwrap_or_else(|| panic!("authoritative contract artifact {name} was not found"))
 }

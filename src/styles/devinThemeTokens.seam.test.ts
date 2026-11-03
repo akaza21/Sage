@@ -102,10 +102,6 @@ describe("Devin-dark theme tokens", () => {
     expect(activeSurfaceConsumers).toEqual([
       {
         path: "features/chat/acp/acp-chat.css",
-        selector: ".acp-message--user",
-      },
-      {
-        path: "features/chat/acp/acp-chat.css",
         selector:
           '.acp-code-block__header button:is([aria-pressed="true"], [data-copy-status])',
       },
