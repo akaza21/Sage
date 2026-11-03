@@ -341,6 +341,44 @@ fn discovery_skips_the_entire_overflowing_directory() {
     }
 }
 
+#[test]
+fn discovery_keeps_root_manifest_when_root_listing_overflows() {
+    let root = std::env::temp_dir().join(format!(
+        "sage-preview-root-overflow-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
+    for index in 0..PREVIEW_LIMITS.directory_entries {
+        fs::write(root.join(format!("file-{index:03}")), "").unwrap();
+    }
+    let request = discovery_request("project-preview", 4, 4);
+    let expected = PreviewTargetRef {
+        project_id: request.project_id.clone(),
+        project_generation: request.project_generation,
+        expected_transition_epoch: request.expected_transition_epoch,
+        chat_id: request.chat_id.clone(),
+        session_id: request.session_id.clone(),
+        runtime_epoch: request.runtime_epoch,
+        root_id: crate::acp::contract::SageRootId::parse("root-preview").unwrap(),
+        script_name: PreviewScriptName::Dev,
+    };
+    let expected_response = PreviewDiscoveryResponse {
+        project_id: request.project_id.clone(),
+        transition_epoch: request.expected_transition_epoch,
+        targets: vec![expected.clone()],
+        truncated: true,
+    };
+    let expected_mappings = vec![(expected, root.clone())];
+    for _ in 0..3 {
+        let (response, mappings) =
+            discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
+        assert_eq!(response, expected_response);
+        assert_eq!(mappings, expected_mappings);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn assert_repeated_discovery(
     request: &PreviewDiscoveryRequest,
     root: &std::path::Path,

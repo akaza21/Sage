@@ -180,10 +180,19 @@ pub(crate) fn discover_uninstalled(
 
 fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
     let mut packages = Vec::new();
+    let mut truncated = false;
+    // The root package has priority independently of bounded enumeration.
+    // Only regular files enter the existing bounded, reparse-aware reader.
+    let root_package = root.join("package.json");
+    match fs::symlink_metadata(&root_package) {
+        Ok(metadata) if metadata.is_file() => packages.push(root_package),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => truncated = true,
+    }
     let mut pending = vec![(root.to_owned(), 0_usize)];
     let mut admitted_directories = 1_usize;
     let mut visited = 0_usize;
-    let mut truncated = false;
     'directories: while let Some((directory, depth)) = pending.pop() {
         if packages.len() == MAX_PACKAGES_PER_ROOT {
             truncated = true;
@@ -234,7 +243,7 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
             if is_reparse_point(&entry, &file_type) {
                 continue;
             }
-            if file_type.is_file() && name == "package.json" {
+            if depth > 0 && file_type.is_file() && name == "package.json" {
                 packages.push(entry.path());
             } else if file_type.is_dir() && depth < MAX_DEPTH && !skipped_directory(&name) {
                 if admitted_directories == MAX_DIRECTORIES_PER_ROOT {
