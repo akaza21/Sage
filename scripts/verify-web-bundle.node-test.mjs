@@ -948,6 +948,8 @@ test("only import specifiers lose their content hashes", () => {
   ]) {
     assert.equal(normalizeHashedImports(source), source);
   }
+  const malformed = 'import("./DLlys00o.js");const x=;';
+  assert.equal(normalizeHashedImports(malformed), malformed);
   // A longer chunk-like string is real growth and still measures larger.
   const grown = (name) =>
     gzipSync(normalizeHashedImports(`export const file="./${name}.js";`))

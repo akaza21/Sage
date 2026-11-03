@@ -103,6 +103,8 @@ export function normalizeHashedImports(source) {
     false,
     ts.ScriptKind.JS,
   );
+  // A chunk that does not parse cleanly is measured exactly as written.
+  if (file.parseDiagnostics.length > 0) return source;
   const ranges = [];
   const visit = (node) => {
     const specifier = importSpecifier(node);
@@ -123,14 +125,14 @@ export function normalizeHashedImports(source) {
     ts.forEachChild(node, visit);
   };
   visit(file);
-  let normalized = source;
-  for (const [start, length] of ranges.reverse()) {
-    normalized =
-      normalized.slice(0, start) +
-      "x".repeat(length) +
-      normalized.slice(start + length);
+  const parts = [];
+  let end = 0;
+  for (const [start, length] of ranges.sort((a, b) => a[0] - b[0])) {
+    parts.push(source.slice(end, start), "x".repeat(length));
+    end = start + length;
   }
-  return normalized;
+  parts.push(source.slice(end));
+  return parts.join("");
 }
 
 function lazyChunkGzipBytes(file) {
