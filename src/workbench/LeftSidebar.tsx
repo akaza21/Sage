@@ -3,46 +3,39 @@ import { Search, Settings, SquarePen } from "../ui/leanIcons";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import {
-  ackSessionRailUnread,
-  pinSessionRailIds,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
-  sessionRailGitLabel,
-  sessionRailUnreadVisible,
-} from "../features/chat/acp/sessionRail";
+import { pinSessionRailIds } from "../features/chat/acp/sessionRail";
 import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
 import {
-  CHAT_SEARCH_ALL_FOLDERS_ID,
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
   subscribeChatSearchFolderRequest,
 } from "../features/chatSearch/chatSearchScope";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
-import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
+import { usesMetaModifier } from "../ui/shortcutLabel";
 import {
   collectAgentRailPinIds,
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
 import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
-import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
+import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
 import {
-  clearAgentRailUnread,
   pruneAgentRailInteractions,
   useAgentRailInteractions,
 } from "./agentRailInteractions";
 import { AgentRailSections } from "./AgentRailSections";
-import { classifyAgentRailSection } from "./agentRailStatusView";
 import {
   agentRailSectionCollapsed,
   expandAgentRailSection,
-  syncAgentRailClock,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
+import type * as CreateProjectChunk from "./CreateProjectDialog";
 import { useRailChatId } from "./sideChatState";
 const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
   () => import("./AgentRailArchiveNotice"),
+);
+const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
+  () => import("./CreateProjectDialog"),
 );
 
 /**
@@ -80,7 +73,6 @@ export function LeftSidebar({
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
-  const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
   const interactions = useAgentRailInteractions();
   const openSettings = useAgentSettingsState((state) => state.open);
@@ -100,14 +92,7 @@ export function LeftSidebar({
   const railChatId = useRailChatId(activeTabId);
   const sidebarRef = useRef<HTMLElement>(null);
   const previousChatId = useRef(railChatId);
-  const gitLabel = sessionRailGitLabel(
-    useWorkbenchStore(
-      (state) =>
-        state.repositories.roots.find((root) => root.branch)?.branch ??
-        state.selectedRepositoryStatus?.branch,
-    ),
-  );
-  const [railTick, setRailTick] = useState(0);
+  const [creatingProject, setCreatingProject] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const groups = useMemo(
     () =>
@@ -120,19 +105,6 @@ export function LeftSidebar({
   );
   const prefs = useAgentRailViewPrefs();
   pinSessionRailIds(collectAgentRailPinIds(groups, project?.id ?? null));
-  const unreadByChatId: Record<string, boolean> = {};
-  for (const group of groups) {
-    for (const chat of group.chats) {
-      unreadByChatId[chat.id] =
-        interactions.unread.has(chat.id) ||
-        sessionRailUnreadVisible({
-          focused: group.id === project?.id && chat.id === activeTabId,
-          status: chat.status,
-          updatedAt: chat.updatedAt,
-          seenFingerprint: seenSessionRailFingerprint(chat.id),
-        });
-    }
-  }
   useEffect(() => {
     if (projectTransitioning) return;
     const scroll = () =>
@@ -146,17 +118,7 @@ export function LeftSidebar({
         .tabs.find((tab) => tab.id === railChatId);
       const sections = [
         "projects",
-        ...(active?.pinned
-          ? ["pinned"]
-          : prefs.grouping === "folder"
-            ? [`project:${project?.id}`]
-            : [
-                classifyAgentRailSection({
-                  status: active?.status,
-                  unread: unreadByChatId[railChatId ?? ""] === true,
-                }),
-                `project:${project?.id}`,
-              ]),
+        active?.pinned ? "pinned" : `project:${project?.id}`,
       ];
       const hidden = sections.some(agentRailSectionCollapsed);
       sections.forEach(expandAgentRailSection);
@@ -166,52 +128,17 @@ export function LeftSidebar({
       }
     }
     scroll();
-    // Only explicit navigation reveals a section; badge updates do not expand it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [railChatId, project?.id, projectTransitioning, prefs.grouping]);
+  }, [railChatId, project?.id, projectTransitioning]);
   useEffect(() => {
     pruneAgentRailInteractions(
       new Set(groups.flatMap((group) => group.chats.map((chat) => chat.id))),
     );
   }, [groups]);
-  const sections = useMemo(() => deriveAgentRailSections(groups), [groups]);
-
-  const markAllRead = () => {
-    clearAgentRailUnread();
-    for (const group of groups) {
-      for (const chat of group.chats) {
-        const fingerprint = sessionRailFingerprint(chat.status, chat.updatedAt);
-        if (
-          sessionRailUnreadVisible({
-            focused: group.id === project?.id && chat.id === activeTabId,
-            status: chat.status,
-            updatedAt: chat.updatedAt,
-            seenFingerprint: seenSessionRailFingerprint(chat.id),
-          })
-        ) {
-          ackSessionRailUnread(chat.id, fingerprint);
-        }
-      }
-    }
-    setRailTick((tick) => tick + 1);
-  };
-
-  useEffect(() => {
-    syncAgentRailClock(Date.now());
-  }, [
-    groups,
-    railTick,
-    prefs.grouping,
-    prefs.ordering,
-    prefs.statusFilter,
-    nativeTransitionEpoch,
-    projectGeneration,
-  ]);
-
-  useEffect(() => {
-    const timer = setInterval(() => syncAgentRailClock(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
+  const sections = useMemo(
+    () =>
+      deriveAgentRailSections(groups, undefined, prefs.ordering, railChatId),
+    [groups, prefs.ordering, railChatId],
+  );
 
   useEffect(() => {
     void loadRepositoryInventory();
@@ -252,31 +179,23 @@ export function LeftSidebar({
         >
           <SquarePen size={16} aria-hidden="true" />
           <span>New chat</span>
-          <kbd className="project-action__chord">
-            {shortcutLabel("n", usesMetaModifier())}
-          </kbd>
         </button>
       </div>
 
-      <div className="project-sidebar__scroll" data-rail-tick={railTick}>
+      <div className="project-sidebar__scroll">
         <AgentRailSections
           pinned={sections.pinned}
           projects={sections.projects}
           recent={sections.recent}
+          all={sections.all}
+          allOverflowProjectId={sections.allOverflowProjectId}
           currentProjectId={project?.id ?? null}
           currentChatId={railChatId}
-          unreadByChatId={unreadByChatId}
           prefs={prefs}
-          currentBranchLabel={gitLabel}
-          emptyProjects={projects.length === 0}
           createChat={createChat}
-          createProject={createProject}
+          onCreateProject={() => setCreatingProject(true)}
           switchProject={switchProject}
           onShowMore={requestChatSearchInFolder}
-          onShowAll={() =>
-            requestChatSearchInFolder(CHAT_SEARCH_ALL_FOLDERS_ID)
-          }
-          onMarkAllRead={markAllRead}
         />
         {interactions.undo ? (
           <ArchiveNoticePart part="AgentRailArchiveNotice" />
@@ -313,6 +232,12 @@ export function LeftSidebar({
       aria-hidden={inert || undefined}
     >
       <ChatSearchGate triggerRef={searchTriggerRef} />
+      {creatingProject ? (
+        <CreateProjectPart
+          part="CreateProjectDialog"
+          onClose={() => setCreatingProject(false)}
+        />
+      ) : null}
       <AgentPrimaryNavigation />
       {navigation}
     </aside>

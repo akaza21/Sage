@@ -6,7 +6,15 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import {
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
@@ -132,6 +140,18 @@ describe("compact workbench window mode seam", () => {
 
   it("opens new Agent resources on the right while tabs change", async () => {
     compactViewport = true;
+    // Narrow enough that resources open over Chat rather than beside it.
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 960,
+    });
+    onTestFinished(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth,
+      });
+    });
     seedArtifactOwner();
     const activateTab = vi.fn(async (tabId: string) => {
       useWorkbenchStore.setState({ activeTabId: tabId });

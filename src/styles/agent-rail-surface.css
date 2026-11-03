@@ -1,7 +1,7 @@
 @import "./agent-right-pane.css";
 
 .workbench--agent .project-sidebar {
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: var(--agent-icon-rail-width) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--agent-shell-sidebar);
   border-right-color: var(--agent-shell-divider);
@@ -47,8 +47,11 @@
   grid-column: 2;
 }
 
+/* The gutter is always reserved, so rows keep one box (and the "…" trigger
+   stays put) whether or not the list is long enough to scroll. */
 .workbench--agent .project-sidebar__scroll {
   scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 
@@ -130,65 +133,77 @@
 }
 
 .workbench--agent .project-entry__header {
-  grid-template-columns: minmax(0, 1fr) 24px;
-}
-
-.workbench--agent .project-chat__identity,
-.workbench--agent .project-chat__context,
-.workbench--agent .project-row__branch,
-.workbench--agent .project-row__count {
-  display: none;
-}
-
-.workbench--agent .project-chats {
-  padding: 0 0 4px 20px;
-}
-
-.agent-rail-status {
-  padding: 4px 0 8px;
-}
-
-.agent-rail-status__header {
-  display: flex;
-  width: 100%;
-  min-height: var(--control-height-compact);
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px;
-  border: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  font-size: var(--font-size-xs);
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.agent-rail-filter {
-  position: relative;
-}
-
-.agent-rail-filter__trigger {
-  display: grid;
-  width: var(--control-height-compact);
-  height: var(--control-height-compact);
-  padding: 0;
-  place-items: center;
-  border: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
   border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
+}
+
+.workbench--agent .project-entry__header > .project-row {
+  grid-area: 1 / 1 / 2 / 3;
+  padding-inline-end: calc(2 * var(--control-height-compact));
+}
+
+.workbench--agent .project-entry__header:is(:hover, :has(:focus-visible)) {
+  background: var(--agent-shell-selected);
+}
+
+.workbench--agent .project-entry__header .project-row:hover {
   background: transparent;
-  cursor: pointer;
 }
 
-.agent-rail-filter__trigger:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
+.workbench--agent .project-entry__trailing {
+  display: grid;
+  grid-area: 1 / 2;
+  align-items: center;
+  justify-items: end;
+  padding-inline-end: var(--space-2);
 }
 
-.agent-rail-filter__menu {
-  width: min(208px, calc(100vw - 16px));
+.workbench--agent .project-entry__trailing > * {
+  grid-area: 1 / 1;
+}
+
+.workbench--agent .project-entry__actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) ease;
+}
+
+.workbench--agent
+  .project-entry__header:is(:hover, :has(:focus-visible))
+  .project-entry__actions,
+.workbench--agent .project-entry__actions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+.workbench--agent
+  .project-entry__header:is(:hover, :has(:focus-visible))
+  .project-chat__state {
+  opacity: 0;
+}
+
+.workbench--agent .project-entry__actions .project-chat__actions {
+  opacity: 1;
+}
+
+/* Rows stack on a 28px pitch, as in the reference: no extra gap above or
+   below an expanded project. */
+.workbench--agent .project-entry {
+  gap: 0;
+}
+
+/* A project's chats span the full list, so their hover and selected fill
+   does too; only the title is indented under the project name. */
+.workbench--agent .project-chats {
+  padding: 0;
+}
+
+.workbench--agent .project-entry .project-chat {
+  padding-inline-start: calc(var(--space-2) + 20px);
+}
+
+.workbench--agent :is(.project-chat, .project-row) {
+  font-size: var(--font-size-sm);
 }
 
 .agent-rail-section {
@@ -213,7 +228,7 @@
   height: var(--row-height-compact);
   align-items: center;
   gap: var(--space-1);
-  padding: 0 var(--space-1);
+  padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
@@ -223,15 +238,36 @@
   cursor: pointer;
 }
 
-.agent-rail-section__disclosure > svg {
-  position: absolute;
-  inset-inline-end: var(--space-1);
+.agent-rail-section__chevron {
+  flex: 0 0 auto;
   opacity: 0;
+  transition:
+    opacity var(--motion-duration-fast) ease,
+    transform var(--motion-duration-fast) ease;
 }
 
-.agent-rail-section__disclosure:hover > svg,
-.agent-rail-section__disclosure:focus-visible > svg {
+.agent-rail-section__disclosure[aria-expanded="false"]
+  .agent-rail-section__chevron {
+  transform: rotate(-90deg);
+}
+
+.agent-rail-section__header:hover .agent-rail-section__chevron,
+.agent-rail-section__disclosure:hover .agent-rail-section__chevron,
+.agent-rail-section__disclosure:focus-visible .agent-rail-section__chevron,
+.agent-rail-section__disclosure[aria-expanded="false"]
+  .agent-rail-section__chevron {
   opacity: 1;
+}
+
+.agent-rail-section__label {
+  display: flex;
+  height: var(--row-height-compact);
+  align-items: center;
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
 }
 
 .agent-rail-section__disclosure:hover {
@@ -244,7 +280,8 @@
   align-items: center;
 }
 
-.agent-rail-section__actions > button {
+.agent-rail-section__actions > button,
+.agent-rail-options__trigger {
   display: grid;
   width: var(--control-height-compact);
   height: var(--control-height-compact);
@@ -257,15 +294,59 @@
   cursor: pointer;
 }
 
-.agent-rail-section__actions > button:hover {
+.agent-rail-section__actions > button:hover,
+.agent-rail-options__trigger:hover,
+.agent-rail-options__trigger[aria-expanded="true"] {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
 }
 
-.agent-rail-section__empty {
-  margin: var(--space-1) var(--space-2) var(--space-2) 24px;
-  color: var(--color-text-disabled);
+.agent-rail-options {
+  position: relative;
+}
+
+.agent-rail-options__menu.menu-popover {
+  width: 200px;
+  padding: var(--space-1);
+  gap: 0;
+  border-color: var(--color-panel-raised-hover);
+  border-radius: var(--radius-lg);
+  background: var(--color-panel-raised);
+}
+
+.agent-rail-options__submenu.menu-popover {
+  width: 164px;
+}
+
+.agent-rail-options__choices {
+  display: grid;
+}
+
+.agent-rail-options__menu .menu-item {
+  min-height: var(--control-height-compact);
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--color-status-foreground);
   font-size: var(--font-size-sm);
+}
+
+.agent-rail-options__menu .menu-item > svg {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+}
+
+.agent-rail-options__menu .menu-item[aria-checked="true"] {
+  background: transparent;
+}
+
+.agent-rail-options__menu
+  .menu-item:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) {
+  color: var(--color-status-foreground);
+  background: var(--color-panel-raised-hover);
+}
+
+.agent-rail-options__menu .menu-item > .agent-rail-options__trailing {
+  margin-left: auto;
 }
 
 .agent-rail-flat-list {
@@ -299,4 +380,110 @@
 .agent-rail-identity span {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.workbench--agent .project-chat__state--unread::before,
+.workbench--agent .project-chat__state--waiting::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-circle);
+  background: var(--chat-annotation-accent);
+  content: "";
+}
+
+.workbench--agent .project-chat__state--waiting::before {
+  background: var(--color-warning);
+}
+
+/* The trailing cell is positioned after the title button, so it paints and
+   hit-tests above the button's full-width box (project-navigation-surface.css);
+   the row is its own stacking context. */
+.workbench--agent .project-chat-row {
+  isolation: isolate;
+}
+
+.workbench--agent
+  .project-chat-row
+  .project-chat__actions:is(:focus-visible, [aria-expanded="true"]) {
+  pointer-events: auto;
+}
+
+/* Hovering a chat row lays Pin and Archive over the end of the row on the
+   row's own fill, so the title never moves or resizes. The "…" menu stays
+   reachable from the keyboard and by right-click. */
+.workbench--agent .project-chat__quick-actions {
+  display: flex;
+  grid-area: 1 / 1;
+  justify-self: end;
+  align-self: center;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--agent-shell-selected);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-duration-fast) ease;
+}
+
+.workbench--agent .project-chat__quick-actions > button {
+  display: grid;
+  width: var(--agent-rail-trailing-control);
+  height: var(--agent-rail-trailing-control);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.workbench--agent .project-chat__quick-actions > button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--agent-shell-hover);
+}
+
+.workbench--agent .project-chat__quick-actions > button:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+
+.workbench--agent
+  .project-chat-row:is(:hover, :has(:focus-visible))
+  .project-chat__quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workbench--agent .project-chat-row:hover {
+  background: var(--agent-shell-selected);
+}
+
+.workbench--agent
+  .project-chat-row
+  .project-chat__actions:not(:focus-visible, [aria-expanded="true"]) {
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workbench--agent
+  .project-chat-row:has(
+    .project-chat__actions:is(:focus-visible, [aria-expanded="true"])
+  )
+  .project-chat__quick-actions {
+  opacity: 0;
+}
+
+/* Codex leaves about 35 px from an expanded project's last chat to the next
+   project header: one 28 px row pitch plus this gap. */
+.workbench--agent .project-entry > .project-chats:not(:empty) {
+  padding-bottom: 7px;
+}
+
+/* The dot or spinner is centered where Archive appears on hover. */
+.workbench--agent .project-chat__trailing > .project-chat__state {
+  min-width: var(--agent-rail-trailing-control);
+  justify-content: center;
 }
