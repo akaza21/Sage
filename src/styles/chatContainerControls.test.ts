@@ -2,22 +2,16 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("Chat container control breakpoints", () => {
-  it("keeps the wide queue floating with its 320px cap and moves compact reflow below 520px", async () => {
-    const queue = await readFile("src/styles/queued-messages.css", "utf8");
+  it("keeps the bounded queue in normal flow at every composer width", async () => {
+    const base = await readFile("src/styles/queued-messages.css", "utf8");
     const compact = await readFile(
       "src/styles/chat-container-controls.css",
       "utf8",
     );
-    expect(queue).toMatch(
-      /\.composer__queued\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*calc\(100% \+ var\(--space-1\)\);[^}]*max-height:\s*min\(320px, 40vh\);/,
+    expect(base).toMatch(
+      /\.composer__queued\s*\{[^}]*position:\s*static;[^}]*min-height:\s*0;[^}]*max-height:\s*min\(320px, 40vh\);[^}]*overflow-y:\s*auto;/s,
     );
-    expect(queue).not.toMatch(/flex-wrap:\s*wrap;/);
-    expect(compact).toMatch(
-      /@container composer \(max-width: 520px\)[\s\S]*\.composer__queued\s*\{[^}]*position:\s*static;[^}]*max-height:\s*min\(160px, 24vh\);/,
-    );
-    expect(compact).toMatch(
-      /@container composer \(max-width: 520px\)[\s\S]*\.composer__queued-row\s*\{[^}]*flex-wrap:\s*wrap;/,
-    );
+    expect(compact).not.toMatch(/\.composer \.composer__queued\s*\{/);
   });
 
   it("truncates rather than removes the project name in the header menu", async () => {

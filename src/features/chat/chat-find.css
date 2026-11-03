@@ -2,8 +2,7 @@
   grid-template:
     "find" auto
     "notice" auto
-    "transcript" minmax(120px, 1fr)
-    "edits" minmax(0, auto)
+    "transcript" minmax(0, 1fr)
     "composer" fit-content(60%)
     / minmax(0, 1fr);
 }

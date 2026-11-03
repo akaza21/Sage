@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
@@ -21,7 +21,7 @@ import {
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
-import { isNewProjectChat } from "./newProjectChat";
+import { isNewProjectChat, newProjectScopeName } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
@@ -77,6 +77,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const transcriptContentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useState<HTMLDivElement | null>(null);
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
@@ -227,6 +229,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
   ]);
 
+  const newProjectChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
   return (
     <section
       ref={surfaceRef}
@@ -296,6 +306,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       />
 
       <ChatTranscript
+        editSummaryContainer={editSummaryContainer}
         transcriptRef={messageListRef}
         contentRef={transcriptContentRef}
         endRef={endRef}
@@ -320,8 +331,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {approval.slot}
       <ChatComposerRegion
+        approvalSlot={approval.slot}
+        onEditSummaryMount={setEditSummaryContainer}
         hidden={approval.awaiting}
         composerRef={composerRef}
         fieldId={composerFieldId}
@@ -369,18 +381,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={
-          isNewProjectChat({
-            useNativeAcp,
-            page: acpPage,
-            project,
-            projectTransitioning,
-            ...acpHistory,
-            retentionIncomplete: acpRetentionIncomplete,
-          })
-            ? null
-            : project
-        }
+        project={newProjectChat ? null : project}
+        projectScopeName={newProjectScopeName(newProjectChat, acpPage, project)}
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}

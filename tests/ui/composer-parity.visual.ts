@@ -113,7 +113,7 @@ for (const width of [1888, 720, 480]) {
         );
       });
     }
-    test("new-chat caption reflows and project scope sits above, not inside, the composer", async ({
+    test("new-chat caption reflows and project scope attaches above the composer input", async ({
       page,
     }) => {
       await render(page, "Pi", "home");
@@ -128,8 +128,11 @@ for (const width of [1888, 720, 480]) {
         .getByRole("group", { name: "Project scope" })
         .boundingBox();
       const composer = page.locator("form.composer");
-      const box = await composer.boundingBox();
-      expect(row!.y + row!.height).toBeLessThanOrEqual(box!.y + 1);
+      const box = await composer.locator(".composer__body").boundingBox();
+      expect(row!.y + row!.height).toBe(box!.y);
+      await expect(
+        composer.getByRole("group", { name: "Project scope" }),
+      ).toHaveCount(1);
       await expect(composer.locator(".project-scope")).toHaveCount(0);
       await expectCompactComposerTargets(composer);
     });
@@ -244,11 +247,17 @@ for (const width of [1888, 720, 480]) {
       await render(page, "Codex", "files");
       const pill = page.locator(".acp-file-changes__header");
       await expect(pill).toBeVisible();
-      const label = await pill.locator("strong").boundingBox();
-      const counts = await pill.getByLabel("Line changes").boundingBox();
-      expect(
-        Math.abs(label!.y + label!.height / 2 - counts!.y - counts!.height / 2),
-      ).toBeLessThanOrEqual(1);
+      // Read both children in one frame while their shared pill animates in.
+      const alignment = await pill.evaluate((element) => {
+        const label = element.querySelector("strong")!.getBoundingClientRect();
+        const counts = element
+          .querySelector('[aria-label="Line changes"]')!
+          .getBoundingClientRect();
+        return Math.abs(
+          label.y + label.height / 2 - counts.y - counts.height / 2,
+        );
+      });
+      expect(alignment).toBeLessThanOrEqual(1);
       await noClip(page, ".acp-file-changes__totals");
       await render(page, "Claude Code", "answer");
       await expect(

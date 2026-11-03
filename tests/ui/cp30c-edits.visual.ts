@@ -227,7 +227,10 @@ for (const width of [720, 480]) {
         expect(transcript.y + transcript.height).toBeLessThanOrEqual(
           bounds.y + 1,
         );
-        expect(bounds.y + bounds.height).toBeLessThanOrEqual(composer.y + 1);
+        const summarySlot = await box(pane.locator(".chat-edit-summary-zone"));
+        expect(summarySlot.y + summarySlot.height).toBeLessThanOrEqual(
+          composer.y + 1,
+        );
         expect(composer.y + composer.height).toBeLessThanOrEqual(
           surface.y + surface.height + 1,
         );
@@ -359,27 +362,16 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
       await queue.evaluate((element, height) => {
         (element as HTMLElement).style.height = height + "px";
       }, height);
-      await expect(queue).toHaveCSS("position", "absolute");
       await expect.poll(async () => (await box(queue)).height).toBe(height);
-      // The reservation is the measured distance from the tray top to the
-      // composer top (tray height plus its offset above the border box).
-      await expect
-        .poll(() =>
-          composer.evaluate((form) => {
-            const tray = form.querySelector<HTMLElement>(".composer__queued")!;
-            const expected =
-              form.getBoundingClientRect().top -
-              tray.getBoundingClientRect().top;
-            return (
-              form.style.getPropertyValue("--queued-tray-space") ===
-                expected + "px" && expected >= tray.offsetHeight
-            );
-          }),
-        )
-        .toBe(true);
       const tray = await box(queue);
-      for (const zone of [await box(pill), await box(summary)])
+      for (const zone of [
+        await box(pill),
+        await box(pane.locator(".chat-edit-summary-zone")),
+      ])
         expect(zone.y + zone.height).toBeLessThanOrEqual(tray.y);
+      const input = composer.getByRole("textbox", { name: "Message agent" });
+      expect(tray.y + tray.height).toBeLessThanOrEqual((await box(input)).y);
+      await input.click({ trial: true });
     }
     await page.evaluate(
       () =>

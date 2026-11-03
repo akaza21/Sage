@@ -12,7 +12,6 @@
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  background: var(--color-canvas);
 }
 
 .agent-chat-panes {

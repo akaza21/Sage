@@ -164,12 +164,6 @@
     scrollbar-gutter: stable;
   }
 
-  .composer .composer__queued {
-    position: static;
-    max-height: min(160px, 24vh);
-    padding: var(--space-1);
-  }
-
   .composer .composer__queued-row {
     flex-wrap: wrap;
   }

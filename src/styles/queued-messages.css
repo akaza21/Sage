@@ -1,8 +1,8 @@
 .composer__queued {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--space-1));
-  left: 0;
+  position: static;
+  min-height: 0;
+  /* Start at one row; spare composer space expands the queue. */
+  flex: 1 1 40px;
   display: grid;
   max-height: min(320px, 40vh);
   gap: var(--space-1);
@@ -17,15 +17,9 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--composer-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  background: var(--color-plane-raised);
-  font-size: var(--font-size-sm);
-}
 
-.chat-surface--agent:has(> .chat-edit-summary-zone:not(:empty)) > .composer {
-  margin-block-start: var(--queued-tray-space, 0px);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
 }
 
 .composer__queued-thumbnail {

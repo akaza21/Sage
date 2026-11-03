@@ -9,6 +9,9 @@
 }
 .workbench--agent {
   --title-bar-fill: #111111;
+  --workbench-card-radius: var(--radius-xl);
+  --workbench-card-fill: var(--agent-shell-center);
+  --workbench-card-margin: var(--space-2);
 }
 .title-bar {
   display: grid;
@@ -130,10 +133,6 @@
 
 .title-bar__chat-search--pill:hover:not(:disabled) {
   background: var(--title-bar-control-hover);
-}
-.workbench--agent .agent-chat-center,
-.workbench--agent .agent-artifact-pane {
-  background: var(--agent-shell-center);
 }
 .workbench--agent .agent-task-header {
   min-height: 44px;
