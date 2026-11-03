@@ -1,14 +1,20 @@
 Set-StrictMode -Version Latest
 
-if (-not ("SageFootprint.ProcessImagePath" -as [type])) {
+if (-not ("SageFootprint.ProcessImageIdentity" -as [type])) {
   Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace SageFootprint {
-  public static class ProcessImagePath {
+  public static class ProcessImageIdentity {
     const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000;
+    const uint FILE_READ_ATTRIBUTES = 0x00000080;
+    const uint FILE_SHARE_ALL = 0x00000007;
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    const int MaxPathChars = 32768;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
@@ -18,6 +24,33 @@ namespace SageFootprint {
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder name, ref uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern SafeFileHandle CreateFileW(string fileName, uint desiredAccess, uint shareMode,
+      IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint size, uint flags);
+
+    static string StripVerbatimPrefix(string path) {
+      if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) { return @"\\" + path.Substring(8); }
+      if (path.StartsWith(@"\\?\", StringComparison.Ordinal)) { return path.Substring(4); }
+      return path;
+    }
+
+    // Resolves junctions, symbolic links, 8.3 names and \\?\ prefixes to the
+    // file's final path. Returns null when the file cannot be opened.
+    public static string FinalPath(string path) {
+      if (String.IsNullOrEmpty(path)) { return null; }
+      using (SafeFileHandle file = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, IntPtr.Zero,
+          OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero)) {
+        if (file.IsInvalid) { return null; }
+        StringBuilder name = new StringBuilder(MaxPathChars);
+        uint length = GetFinalPathNameByHandleW(file, name, (uint)MaxPathChars, 0);
+        if (length == 0 || length >= MaxPathChars) { return null; }
+        return StripVerbatimPrefix(name.ToString(0, (int)length));
+      }
+    }
 
     // The kernel records the image path when it creates the process, so this
     // read is valid before the loader has initialised the main module.
@@ -246,9 +279,13 @@ function Get-FootprintRootIdentity {
 function Get-FootprintLaunchIdentity {
   param([Parameter(Mandatory)]$Process, [Parameter(Mandatory)][string]$ExpectedExecutablePath)
   # $Process.Path reads the main module, which is unavailable while the process
-  # is still initialising; the kernel's image path is valid from creation.
-  $path = [SageFootprint.ProcessImagePath]::Query([int]$Process.Id)
-  if (-not $path -or -not [string]::Equals([IO.Path]::GetFullPath($path), [IO.Path]::GetFullPath($ExpectedExecutablePath), [StringComparison]::OrdinalIgnoreCase)) {
+  # is still initialising; the kernel's image path is valid from creation. Both
+  # sides are compared as final paths, so a junction, 8.3 name or \\?\ prefix in
+  # the expected path still names the same file.
+  $imagePath = [SageFootprint.ProcessImageIdentity]::Query([int]$Process.Id)
+  $actual = [SageFootprint.ProcessImageIdentity]::FinalPath($imagePath)
+  $expected = [SageFootprint.ProcessImageIdentity]::FinalPath($ExpectedExecutablePath)
+  if (-not $actual -or -not $expected -or -not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
     throw "The launched process object does not identify the exact executable."
   }
   return ConvertTo-FootprintProcessIdentity ([pscustomobject]@{

@@ -467,7 +467,10 @@ try{
   $exact=Open-FootprintExactProcess $identity;$creationMatches=$null -ne $exact;if($creationMatches){$exact.Dispose()};
   $suspendedWrong=$null;try{[void](Get-FootprintLaunchIdentity $suspended $cmd)}catch{$suspendedWrong=$_.Exception.Message};
   $runningWrong=$null;try{[void](Get-FootprintLaunchIdentity $running $cmd)}catch{$runningWrong=$_.Exception.Message};
-  [ordered]@{mainModuleReadable=$mainModuleReadable;processIdMatches=($identity.processId -eq $suspended.Id);executablePathMatches=($identity.executablePath -eq [IO.Path]::GetFullPath($powershell));creationMatches=$creationMatches;suspendedWrong=$suspendedWrong;runningWrong=$runningWrong}|ConvertTo-Json -Compress
+  $prefixed=Get-FootprintLaunchIdentity $suspended ('\\?\'+$powershell);
+  $upperCase=Get-FootprintLaunchIdentity $running $powershell.ToUpperInvariant();
+  $prefixedWrong=$null;try{[void](Get-FootprintLaunchIdentity $suspended ('\\?\'+$cmd))}catch{$prefixedWrong=$_.Exception.Message};
+  [ordered]@{mainModuleReadable=$mainModuleReadable;processIdMatches=($identity.processId -eq $suspended.Id);executablePathMatches=($identity.executablePath -eq [IO.Path]::GetFullPath($powershell));creationMatches=$creationMatches;suspendedWrong=$suspendedWrong;runningWrong=$runningWrong;prefixedAccepted=($prefixed.processId -eq $suspended.Id);upperCaseAccepted=($upperCase.processId -eq $running.Id);prefixedWrong=$prefixedWrong}|ConvertTo-Json -Compress
 }finally{
   foreach($child in @($suspended,$running)){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)}
 }
@@ -481,19 +484,92 @@ try{
       "The launched process object does not identify the exact executable.",
     runningWrong:
       "The launched process object does not identify the exact executable.",
+    prefixedAccepted: true,
+    upperCaseAccepted: true,
+    prefixedWrong:
+      "The launched process object does not identify the exact executable.",
+  });
+});
+
+test("a launch through a junction is identified by the caller's path and still rejects a different executable", () => {
+  const node = process.execPath.replaceAll("'", "''");
+  const observed = runPowerShellFixture(
+    String.raw`
+$root=Join-Path ([IO.Path]::GetTempPath()) ('sage-launch-junction-'+[Guid]::NewGuid().ToString('N'));
+$real=Join-Path $root 'real-1.0';$latest=Join-Path $root 'latest';$child=$null;
+try{
+  [void][IO.Directory]::CreateDirectory($real);
+  Copy-Item -LiteralPath '${node}' -Destination (Join-Path $real 'app.exe');
+  Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination (Join-Path $real 'other.exe');
+  $mklink=& cmd.exe /d /c mklink /J $latest $real;
+  if($LASTEXITCODE -ne 0){throw "mklink failed: $mklink"};
+  $expected=(Resolve-Path -LiteralPath (Join-Path $latest 'app.exe')).Path;
+  $child=Start-Process -FilePath $expected -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+  $kernelPath=[SageFootprint.ProcessImageIdentity]::Query([int]$child.Id);
+  $identity=Get-FootprintLaunchIdentity $child $expected;
+  $upperCase=Get-FootprintLaunchIdentity $child $expected.ToUpperInvariant();
+  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child (Join-Path $latest 'other.exe'))}catch{$wrong=$_.Exception.Message};
+  [ordered]@{kernelPathResolvesJunction=($kernelPath -like '*\real-1.0\app.exe');processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($expected));upperCaseAccepted=($upperCase.processId -eq $child.Id);wrong=$wrong}|ConvertTo-Json -Compress
+}finally{
+  if($null -ne $child){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)};
+  if(Test-Path -LiteralPath $latest){[IO.Directory]::Delete($latest)};
+  if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
+}
+`,
+    { timeout: 60_000 },
+  );
+  assert.deepEqual(observed, {
+    kernelPathResolvesJunction: true,
+    processIdMatches: true,
+    executablePathIsCallerForm: true,
+    upperCaseAccepted: true,
+    wrong:
+      "The launched process object does not identify the exact executable.",
+  });
+});
+
+test("an 8.3 short-name expected path identifies the same executable", (t) => {
+  const observed = runPowerShellFixture(String.raw`
+$powershell=(Get-Process -Id $PID).Path;
+$files=New-Object -ComObject Scripting.FileSystemObject;
+$short=$files.GetFile($powershell).ShortPath;
+$shortCmd=$files.GetFile((Join-Path $env:SystemRoot 'System32\cmd.exe')).ShortPath;
+if([string]::Equals($short,$powershell,[StringComparison]::OrdinalIgnoreCase)){[ordered]@{shortNameAvailable=$false;shortPath=$short}|ConvertTo-Json -Compress;return};
+$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+try{
+  $identity=Get-FootprintLaunchIdentity $child $short;
+  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child $shortCmd)}catch{$wrong=$_.Exception.Message};
+  [ordered]@{shortNameAvailable=$true;processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($short));wrong=$wrong}|ConvertTo-Json -Compress
+}finally{
+  Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)
+}
+`);
+  if (!observed.shortNameAvailable) {
+    t.skip(
+      `8.3 short names are disabled on the volume holding ${observed.shortPath}; the short-name case was not exercised`,
+    );
+    return;
+  }
+  assert.deepEqual(observed, {
+    shortNameAvailable: true,
+    processIdMatches: true,
+    executablePathIsCallerForm: true,
+    wrong:
+      "The launched process object does not identify the exact executable.",
   });
 });
 
 test("a launch identity captured immediately holds with every core busy at BelowNormal priority", () => {
-  const load = Array.from({ length: os.availableParallelism() }, () => {
-    const busy = spawn(process.execPath, ["-e", "for(;;){}"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    os.setPriority(busy.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
-    return busy;
-  });
+  const load = [];
   try {
+    for (let core = 0; core < os.availableParallelism(); core++) {
+      const busy = spawn(process.execPath, ["-e", "for(;;){}"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      load.push(busy);
+      os.setPriority(busy.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+    }
     const observed = runPowerShellFixture(
       String.raw`
 $powershell=(Get-Process -Id $PID).Path;$launches=20;$captured=0;$failures=@();
