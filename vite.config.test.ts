@@ -157,6 +157,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/PreviewSurface.tsx",
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
+  "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
@@ -186,6 +187,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
   "src/workbench/TerminalDockShell.tsx",
+  // Terminal controls load outside the shared workbench.
+  "src/workbench/terminalDockCommands.tsx",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [

@@ -12,15 +12,14 @@ import { useWorkbenchStore } from "../app/store";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
 import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
-import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
-import { DirtyTabDialog } from "./DirtyTabDialog";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
+import { DirtyTabDialog } from "./DirtyTabDialog";
 import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
@@ -65,6 +64,11 @@ const loadRailStatus = () =>
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
 
+const loadQuickOpenHost = () =>
+  import("../features/quickOpen/QuickOpenHost").then(({ QuickOpenHost }) => ({
+    default: QuickOpenHost,
+  }));
+
 // The Editor's tab strip stays off the Agent startup path.
 const loadTabStrip = () =>
   import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
@@ -87,6 +91,7 @@ export function Workbench() {
     (state) => state.page !== null,
   );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
+  const pendingClose = useWorkbenchStore((state) => state.pendingCloseTabId);
   const compact = useCompactWorkbenchLayout();
   const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
@@ -298,7 +303,12 @@ export function Workbench() {
               )}
             />
           </div>
-          <QuickOpenHost />
+          <LazyModuleBoundary
+            label="Quick Open controller"
+            load={loadQuickOpenHost}
+            fallback={null}
+            render={(QuickOpenHost) => <QuickOpenHost />}
+          />
         </div>
       ) : null}
       {terminalVisited ? (
@@ -320,11 +330,9 @@ export function Workbench() {
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
         showEditorSettings={windowMode === "editor"}
-        terminalOpen={terminal.visible}
-        terminalError={terminal.error}
-        onToggleTerminal={terminal.available ? terminal.toggle : undefined}
+        terminalControls={terminal.controls}
       />
-      <DirtyTabDialog />
+      {pendingClose ? <DirtyTabDialog /> : null}
     </main>
   );
 }

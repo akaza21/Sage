@@ -276,7 +276,9 @@ export function TerminalDockShell({
     setEntries(next);
   };
 
-  const active = entries.find((entry) => entry.session.sessionId === activeId);
+  const status =
+    message ??
+    entries.find((entry) => entry.session.sessionId === activeId)?.message;
   return (
     <section
       className={`terminal-dock${collapsed ? " terminal-dock--collapsed" : ""}`}
@@ -335,9 +337,9 @@ export function TerminalDockShell({
           </button>
         </div>
       </div>
-      {!collapsed && (message || active?.message) ? (
+      {!collapsed && status ? (
         <p className="terminal-dock__message" role="status">
-          {message ?? active?.message}
+          {status}
         </p>
       ) : null}
       {TerminalView

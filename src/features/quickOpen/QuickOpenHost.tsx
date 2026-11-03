@@ -34,8 +34,6 @@ export function QuickOpenHost() {
   const opening = useQuickOpenStore((state) => state.opening);
   const seed = useQuickOpenStore((state) => state.seed);
   useEffect(preloadWhenIdle, []);
-  // Leaving the editor closes it, so it doesn't reopen on the way back.
-  useEffect(() => closeQuickOpen, []);
   useEffect(() => {
     const note = (state: ReturnType<typeof useWorkbenchStore.getState>) => {
       const tab = state.tabs.find((item) => item.id === state.activeTabId);

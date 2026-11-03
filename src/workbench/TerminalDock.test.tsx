@@ -36,10 +36,6 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
   closeUserTerminal: native.close,
   resizeUserTerminal: native.resize,
   writeUserTerminal: native.write,
-  terminalErrorLabel: (error: unknown) =>
-    (error as { code?: string }).code === "ended"
-      ? "Session ended"
-      : "Terminal operation failed.",
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -279,7 +275,7 @@ it("drops input refused as busy for too long and says why", async () => {
     });
     await waitFor(() =>
       expect(onStatus).toHaveBeenCalledWith(
-        "Terminal operation failed.",
+        "Input was not sent: the program in the terminal is not reading it.",
         false,
       ),
     );
@@ -399,6 +395,28 @@ it("resizes the active terminal after a pane or DPI change", async () => {
     configurable: true,
     value: before,
   });
+});
+
+it("applies the latest viewport size after an in-flight resize is refused", async () => {
+  let refuse: ((error: unknown) => void) | undefined;
+  native.resize.mockImplementationOnce(
+    () => new Promise<void>((_resolve, reject) => (refuse = reject)),
+  );
+  const { container } = render(
+    <TerminalDock
+      scope={scope}
+      session={handle}
+      ended={false}
+      onStatus={() => undefined}
+    />,
+  );
+  setScreenSize(800, 160);
+  resizeCallback?.();
+  await waitFor(() => expect(refuse).toBeDefined());
+  setScreenSize(640, 320);
+  resizeCallback?.();
+  await act(async () => refuse?.({ code: "busy" }));
+  await waitFor(() => expectGrid(container, 640, 320, 80, 20));
 });
 
 it.each([1, 80])(

@@ -1,17 +1,19 @@
 import {
-  useCallback,
+  createElement,
   useEffect,
-  useRef,
+  useEffectEvent,
+  useState,
   type Dispatch,
   type SetStateAction,
 } from "react";
 
-import { useTerminalDockStore } from "./workbenchLayoutStorage";
+import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
+  closeQuickOpen,
   openCommandPalette,
   openQuickOpen,
 } from "../features/quickOpen/quickOpenState";
@@ -34,6 +36,10 @@ export function useWorkbenchKeys({
   >;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
+  // Own the Editor lifetime even while its deferred UI is still loading.
+  useEffect(() => {
+    if (windowMode === "editor") return closeQuickOpen;
+  }, [windowMode]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (resourceModal) return;
@@ -82,83 +88,36 @@ export function useWorkbenchKeys({
   }, [narrowAgent, resourceModal, setNavigation, setWindowMode, windowMode]);
 }
 
-/** One command for the status button, launchers and keyboard; native settings own visibility. */
+/** The terminal controller loads when a native workbench is available. */
 export function useTerminalDock(blocked: boolean) {
-  const visible = useTerminalDockStore((state) => state.visible);
-  const ready = useTerminalDockStore((state) => state.ready);
-  const error = useTerminalDockStore((state) => state.error);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const available = isTauriRuntime() && ready;
-  const setOpen = useCallback((open: boolean) => {
-    const state = useTerminalDockStore.getState();
-    if (!state.ready || state.visible === open) return;
-    if (open) {
-      returnFocus.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-    }
-    state.setVisible(open);
-    if (!open) {
-      const target = returnFocus.current;
-      const valid =
-        target?.isConnected &&
-        target !== document.body &&
-        !target.closest(".terminal-dock");
-      if (valid) target.focus();
-      if (!valid || document.activeElement !== target)
-        document
-          .querySelector<HTMLButtonElement>(".status-bar__terminal")
-          ?.focus();
-    }
-  }, []);
-  const open = useCallback(() => setOpen(true), [setOpen]);
-  const toggle = useCallback(() => {
-    setOpen(!useTerminalDockStore.getState().visible);
-  }, [setOpen]);
+  const [terminal, setTerminal] = useState(DISCONNECTED_TERMINAL);
+  const isBlocked = useEffectEvent(() => blocked);
+  const native = isTauriRuntime();
   useEffect(() => {
-    void useTerminalDockStore.getState().restore();
-  }, []);
-  useEffect(() => {
-    const keyDown = (event: KeyboardEvent) => {
-      if (
-        !available ||
-        blocked ||
-        event.defaultPrevented ||
-        event.isComposing ||
-        document.querySelector("dialog[open]")
-      )
-        return;
-      const chord = matchesPlatformChord(
-        keymapBinding("agent.terminal"),
-        event,
-        usesMetaModifier(),
-      );
-      const escape =
-        event.key === "Escape" &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.target instanceof Element &&
-        event.target.closest(".terminal-dock");
-      if (!chord && !escape) return;
-      if (event.repeat) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (chord) toggle();
-      else setOpen(false);
+    if (!native) return;
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void import("./terminalDockCommands").then(
+      ({ connectTerminalDock }) => {
+        if (!cancelled)
+          dispose = connectTerminalDock(() => isBlocked(), setTerminal);
+      },
+      () => {
+        if (!cancelled)
+          setTerminal({
+            ...DISCONNECTED_TERMINAL,
+            controls: createElement(
+              "span",
+              { role: "status" },
+              "Terminal failed to load.",
+            ),
+          });
+      },
+    );
+    return () => {
+      cancelled = true;
+      dispose?.();
     };
-    // Capture before xterm translates the shortcut or Escape into PTY input.
-    window.addEventListener("keydown", keyDown, true);
-    return () => window.removeEventListener("keydown", keyDown, true);
-  }, [available, blocked, toggle, setOpen]);
-  return {
-    visible: isTauriRuntime() && visible,
-    available,
-    error,
-    open,
-    toggle,
-    setOpen,
-  };
+  }, [native]);
+  return terminal;
 }

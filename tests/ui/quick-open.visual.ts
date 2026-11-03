@@ -216,3 +216,61 @@ test.describe("Quick Open", () => {
     await expect(page.locator(".cm-content")).toBeFocused();
   });
 });
+
+test("leaving Editor cancels Quick Open while its controller is still loading", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const loading = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/src/features/quickOpen/QuickOpenHost.tsx*",
+    async (route) => {
+      await loading;
+      await route.continue();
+    },
+  );
+  try {
+    await openScenario(page, "editor", "editor");
+    await expect(page.locator(".cm-content")).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+p");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
+          return useQuickOpenStore.getState().open;
+        }),
+      )
+      .toBe(true);
+    await page
+      .getByRole("radio", { name: "Agent", exact: true })
+      .press("Space");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
+          return useQuickOpenStore.getState().open;
+        }),
+      )
+      .toBe(false);
+    release();
+    await page.evaluate(async () => {
+      await import("/src/features/quickOpen/QuickOpenHost.tsx");
+    });
+    await page
+      .getByRole("radio", { name: "Editor", exact: true })
+      .press("Space");
+    await expect(page.locator(".cm-content")).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Quick Open" });
+    await expect(dialog).toBeHidden();
+    await page.keyboard.press("ControlOrMeta+p");
+    await expect(
+      dialog.getByRole("combobox", { name: "Search Files by name" }),
+    ).toBeFocused();
+  } finally {
+    release();
+  }
+});

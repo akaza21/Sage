@@ -267,8 +267,6 @@ export interface SettingsPort {
   getEditorSettings(): Promise<Record<string, unknown>>;
   getSessionAccessModes(): Promise<SessionAccessModes>;
   getUiAppearance(): Promise<UiAppearance>;
-  getTerminalDockVisible(): Promise<boolean>;
-  setTerminalDockVisible(visible: boolean): Promise<boolean>;
   setEditorSettings(
     changes: Partial<EditorSettings>,
   ): Promise<Record<string, unknown>>;
@@ -347,8 +345,6 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "getEditorSettings",
     "getSessionAccessModes",
     "getUiAppearance",
-    "getTerminalDockVisible",
-    "setTerminalDockVisible",
     "setEditorSettings",
     "setSessionAccessModes",
     "setUiAppearance",
