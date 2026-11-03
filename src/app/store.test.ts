@@ -3920,7 +3920,7 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {
-    vi.spyOn(projectPort, "createProjectFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "createProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
@@ -3930,7 +3930,9 @@ describe("workbench resource and project navigation", () => {
       .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
-    await useWorkbenchStore.getState().createProject();
+    await useWorkbenchStore
+      .getState()
+      .createProject({ name: "Project", sourceTokens: [] });
 
     const state = useWorkbenchStore.getState();
     expect(bootstrap).toHaveBeenCalledTimes(2);
@@ -3991,14 +3993,12 @@ describe("workbench resource and project navigation", () => {
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
-      const create = vi
-        .spyOn(projectPort, "createProjectFromPicker")
-        .mockResolvedValue({
-          committed: false,
-          transitionEpoch: 0,
-          snapshot: null,
-          recoveryError: null,
-        });
+      const create = vi.spyOn(projectPort, "createProject").mockResolvedValue({
+        committed: false,
+        transitionEpoch: 0,
+        snapshot: null,
+        recoveryError: null,
+      });
       const addRoot = vi
         .spyOn(projectPort, "addProjectRootFromPicker")
         .mockResolvedValue({
@@ -4009,7 +4009,9 @@ describe("workbench resource and project navigation", () => {
         });
 
       if (operation === "create") {
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         await useWorkbenchStore.getState().addProjectRoot();
       }
@@ -4248,10 +4250,12 @@ describe("workbench resource and project navigation", () => {
         );
         await useWorkbenchStore.getState().switchProject("project-b");
       } else if (operation === "create") {
-        vi.spyOn(projectPort, "createProjectFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "createProject").mockRejectedValue(
           new Error("response lost"),
         );
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         vi.spyOn(projectPort, "addProjectRootFromPicker").mockRejectedValue(
           new Error("response lost"),

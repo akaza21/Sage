@@ -16,6 +16,10 @@
   --chat-annotation-badge-rim: rgb(255 255 255 / 75%);
   --chat-annotation-sent-edge: #3e3e3e;
   --chat-dialog-cancel-fill: #353535;
+  --dialog-primary-fill: var(--color-text-emphasis);
+  --dialog-primary-hover: var(--composer-send-hover);
+  --dialog-primary-text: var(--composer-send-text);
+  --dialog-primary-disabled-text: var(--composer-send-disabled-text);
   --chat-dialog-option-hover: #353535;
   --chat-dialog-checkbox-edge: #858585;
   --chat-annotation-shadow: 0 4px 18px #0004;
@@ -117,6 +121,13 @@
   --title-bar-search-width: 182px;
   --title-bar-search-height: 32px;
   --agent-shell-rail: #202020;
+  --agent-icon-rail-width: 46px; /* AGENT_ICON_RAIL_WIDTH; owner Codex capture */
+  /* Owner Codex capture, measured from a rail row's right edge. */
+  --agent-rail-title-end: 33px; /* title clip, idle row */
+  --agent-rail-title-end-hover: 58px; /* title clip beside Pin and Archive */
+  --agent-rail-title-fade: 20px; /* titles fade out instead of an ellipsis */
+  --agent-rail-trailing-control: 24px; /* dot, Pin and Archive share this slot */
+  --agent-rail-hover-card-gap: 1px; /* hover card starts where the row ends */
   --agent-shell-sidebar: #1b1b1b;
   --agent-shell-divider: #2b2b2b;
   --agent-shell-rail-divider: #252525;
