@@ -275,9 +275,12 @@ function accessibilityMedia(prelude) {
       if (words.length === 0 || words[0] === "not" || words.includes("or")) {
         return false;
       }
+      // A `not` negates the condition right after it, so that condition
+      // cannot be the preference the query requires.
       return tokens.some(
-        (token) =>
+        (token, index) =>
           token.startsWith("(") &&
+          words[index - 1] !== "not" &&
           ACCESSIBILITY_FEATURES.has(mediaFeature(token)),
       );
     })

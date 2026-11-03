@@ -364,12 +364,18 @@ test("allows !important only when every media alternative requires the preferenc
       @media (forced-colors: active) or (min-width: 1px) {
         .e { color: inherit !important; }
       }
+      @media screen and not (forced-colors: active) {
+        .f { color: inherit !important; }
+      }
+      @media screen and not (prefers-reduced-motion: reduce) {
+        .g { animation: none !important; }
+      }
     `,
   });
 
   assert.deepEqual(
     inventory.importants.map(({ line }) => line),
-    [3, 12, 15],
+    [3, 12, 15, 18, 21],
   );
 });
 
