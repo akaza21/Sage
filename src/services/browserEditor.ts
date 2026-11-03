@@ -3,6 +3,7 @@ import type {
   BufferSnapshotRequest,
   EditorDocument,
   EditorSaveResult,
+  FileGitBase,
   ResourceRef,
   TextFile,
 } from "../domain/workbench";
@@ -37,6 +38,21 @@ function version(content: string) {
     byteLen: utf8ByteLength(content),
     modifiedAt: null,
   };
+}
+
+/**
+ * The fixture has no index: a File's staged text is its text on disk, so
+ * edits in the browser renderer get gutter markers (EP-14).
+ */
+function stagedText(
+  resource: ResourceRef,
+  knownOid: string | null,
+): FileGitBase {
+  const content = diskContent(resource);
+  const oid = fingerprint(content);
+  return oid === knownOid
+    ? { state: "unchanged", oid }
+    : { state: "ready", oid, content };
 }
 
 function readTextFile(resource: ResourceRef): TextFile {
@@ -150,6 +166,7 @@ function resetCreatedFiles() {
 
 export const browserEditor = {
   readTextFile,
+  stagedText,
   open,
   snapshot,
   save,

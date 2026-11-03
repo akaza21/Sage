@@ -62,7 +62,8 @@ export async function runEvent(page: Page, event: JourneyEvent) {
   const result = await page.evaluate(async (nextEvent) => {
     const fixture =
       await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
-    return fixture.runJourneyEvent(nextEvent);
+    const result = await fixture.runJourneyEvent(nextEvent);
+    return result;
   }, event);
   await settleRender(page, true);
   return result;

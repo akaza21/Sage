@@ -80,8 +80,25 @@ export function useBrowserPlacement(
       });
     };
     placeRef.current = place;
+    // Another display scale moves the native pixel grid even when the CSS
+    // rectangle is unchanged, so the page is placed again on every change.
+    let resolution: MediaQueryList | null = null;
+    const watchResolution = () => {
+      resolution?.removeEventListener("change", onResolution);
+      resolution =
+        window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`) ??
+        null;
+      resolution?.addEventListener("change", onResolution);
+    };
+    const onResolution = () => {
+      watchResolution();
+      place();
+    };
+    watchResolution();
     const observer = new ResizeObserver(place);
     observer.observe(element);
+    // A centred device moves without resizing when its frame does.
+    if (element.parentElement) observer.observe(element.parentElement);
     const visibilityObserver = new MutationObserver(place);
     if (center) {
       visibilityObserver.observe(center, {
@@ -97,6 +114,7 @@ export function useBrowserPlacement(
       cancelAnimationFrame(frameId);
       observer.disconnect();
       visibilityObserver.disconnect();
+      resolution?.removeEventListener("change", onResolution);
       window.removeEventListener("resize", place);
       void hideBrowser(tabId).catch(() => undefined);
     };

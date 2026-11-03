@@ -1,0 +1,1 @@
+export const MAX_GOTO_LINE_INPUT_CHARS = 32;

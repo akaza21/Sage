@@ -84,15 +84,17 @@ pub(crate) async fn capture_after(root: &Path, before: &WorkspaceMark) -> Option
                 if Instant::now() >= deadline {
                     return None;
                 }
-                if mark.entries.contains_key(path) || mark.committed.contains_key(path) {
-                    continue;
-                }
+                // Git can still report a baseline path after a symlink substitution.
+                // Validate it before dirty or committed membership skips presence capture.
                 let metadata = anchor.metadata(Path::new(path))?;
                 if metadata
                     .as_ref()
                     .is_some_and(|metadata| !metadata.is_file())
                 {
                     return None;
+                }
+                if mark.entries.contains_key(path) || mark.committed.contains_key(path) {
+                    continue;
                 }
                 mark.terminal_presence
                     .insert(path.clone(), metadata.is_some());

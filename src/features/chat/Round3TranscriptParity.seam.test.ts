@@ -57,7 +57,7 @@ it("shares the raised surface between fork and selection popovers (R3-07)", () =
 it("reserves find space below header actions at every pane width (R3-05)", () => {
   const css = read("src/features/chat/chat-find.css");
   expect(css).toMatch(
-    /\.chat-surface--agent:has\(> \.chat-find\)\s*\{[^}]*grid-template:\s*"find" auto\s*"notice" auto\s*"transcript" minmax\(120px, 1fr\)\s*"edits" minmax\(0, auto\)\s*"composer" fit-content\(60%\)\s*\/ minmax\(0, 1fr\);/s,
+    /\.chat-surface--agent:has\(> \.chat-find\)\s*\{[^}]*grid-template:\s*"find" auto\s*"notice" auto\s*"transcript" minmax\(0, 1fr\)\s*"composer" fit-content\(60%\)\s*\/ minmax\(0, 1fr\);/s,
   );
   // The 314 px find box never widens the column past a narrow pane.
   expect(css).toMatch(
@@ -108,9 +108,9 @@ it.each([false, true])(
   },
 );
 
-it("cancels the earlier answer grid gap and keeps time interaction-only (R3-03)", () => {
-  expect(polish()).toMatch(
-    /\.message-list__content \.acp-turn__items > \.chat-transcript-actions\s*\{[^}]*margin-top:\s*calc\(var\(--space-2\) - var\(--space-3\)\);/s,
+it("owns the earlier answer gap in the turn layout and keeps time interaction-only (R3-03)", () => {
+  expect(read("src/features/chat/acp/acp-chat.css")).toMatch(
+    /\.acp-turn__items\s*\{[^}]*gap:\s*var\(--transcript-item-gap\);/s,
   );
   expect(polish()).toMatch(
     /\.chat-transcript-actions__time\s*\{[^}]*opacity:\s*0;/s,

@@ -159,9 +159,14 @@ for (const width of [1888, 720, 480]) {
       const column = await box(composer);
       expect(Math.abs(expanded.x - column.x)).toBeLessThanOrEqual(1);
       expect(Math.abs(expanded.width - column.width)).toBeLessThanOrEqual(1);
-      expect(expanded.y + expanded.height).toBeLessThanOrEqual(
+      const summarySlot = await box(pane.locator(".chat-edit-summary-zone"));
+      expect(summarySlot.y + summarySlot.height).toBeLessThanOrEqual(
         (await box(queue)).y,
       );
+      await summary
+        .getByRole("button", { name: /^Open file Review / })
+        .last()
+        .click({ trial: true });
       await composer
         .getByRole("button", { name: /^Delete queued message:/ })
         .click({ trial: true });
@@ -227,7 +232,10 @@ for (const width of [720, 480]) {
         expect(transcript.y + transcript.height).toBeLessThanOrEqual(
           bounds.y + 1,
         );
-        expect(bounds.y + bounds.height).toBeLessThanOrEqual(composer.y + 1);
+        const summarySlot = await box(pane.locator(".chat-edit-summary-zone"));
+        expect(summarySlot.y + summarySlot.height).toBeLessThanOrEqual(
+          composer.y + 1,
+        );
         expect(composer.y + composer.height).toBeLessThanOrEqual(
           surface.y + surface.height + 1,
         );
@@ -347,6 +355,13 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
     ).toBeVisible();
   }
   for (let cycle = 0; cycle < 3; cycle += 1) {
+    await page.setViewportSize(
+      [
+        { width: 1888, height: 1096 },
+        { width: 720, height: 800 },
+        { width: 480, height: 560 },
+      ][cycle]!,
+    );
     for (const pane of await panes.all()) {
       const queue = pane.locator(".composer__queued");
       const composer = pane.locator("form.composer");
@@ -355,31 +370,27 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
       });
       const pill = summary.getByRole("button", { name: /files? changed/ });
       await pill.click();
-      const height = cycle % 2 ? 160 : 80;
-      await queue.evaluate((element, height) => {
-        (element as HTMLElement).style.height = height + "px";
-      }, height);
-      await expect(queue).toHaveCSS("position", "absolute");
-      await expect.poll(async () => (await box(queue)).height).toBe(height);
-      // The reservation is the measured distance from the tray top to the
-      // composer top (tray height plus its offset above the border box).
-      await expect
-        .poll(() =>
-          composer.evaluate((form) => {
-            const tray = form.querySelector<HTMLElement>(".composer__queued")!;
-            const expected =
-              form.getBoundingClientRect().top -
-              tray.getBoundingClientRect().top;
-            return (
-              form.style.getPropertyValue("--queued-tray-space") ===
-                expected + "px" && expected >= tray.offsetHeight
-            );
-          }),
-        )
-        .toBe(true);
+      const input = composer.getByRole("textbox", { name: "Message agent" });
+      await input.fill("A retained draft. ".repeat(cycle % 2 ? 80 : 1));
       const tray = await box(queue);
-      for (const zone of [await box(pill), await box(summary)])
+      expect(tray.height).toBeGreaterThan(0);
+      expect(tray.height).toBeLessThanOrEqual(320);
+      for (const zone of [
+        await box(pill),
+        await box(pane.locator(".chat-edit-summary-zone")),
+      ])
         expect(zone.y + zone.height).toBeLessThanOrEqual(tray.y);
+      expect(tray.y + tray.height).toBeLessThanOrEqual((await box(input)).y);
+      await queue
+        .getByRole("button", { name: /^Delete queued message:/ })
+        .last()
+        .click({ trial: true });
+      const toolbar = await box(composer.locator(".composer__toolbar"));
+      const dock = await box(pane.locator(".chat-dock"));
+      expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
+        dock.y + dock.height,
+      );
+      await input.click({ trial: true });
     }
     await page.evaluate(
       () =>

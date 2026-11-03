@@ -1,5 +1,7 @@
 import { type Text } from "@codemirror/state";
 import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
+import type { EditorView } from "@codemirror/view";
+
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
@@ -13,7 +15,7 @@ import { type ActiveEditorState } from "./fileEditorController";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { type FindControl, type FindOpenRequest } from "./FileFindBar";
-import { FileGoToLineBar } from "./FileGoToLineBar";
+import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 
@@ -56,14 +58,7 @@ interface FileSurfaceFindView {
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
-interface FileSurfaceGoToView {
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  status: string;
-  onQueryChange: (query: string) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}
+type FileSurfaceGoToView = Omit<FileGoToLineProps, "content">;
 
 export function FileSurfaceContent({
   activeResourceKey,
@@ -82,6 +77,7 @@ export function FileSurfaceContent({
   agentMarkdown = false,
   onCaretOffset,
   onLimitExceeded,
+  onEditorView,
   onEditorChange,
   onSurfaceKeyDown,
   onTogglePreview,
@@ -103,6 +99,7 @@ export function FileSurfaceContent({
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;
   onLimitExceeded: () => void;
+  onEditorView?: (view: EditorView | null, text: string | null) => void;
   onEditorChange: (
     content: EditorContent,
     base?: EditorContentBase | null,
@@ -146,14 +143,7 @@ export function FileSurfaceContent({
         </p>
       ) : null}
       {goTo && !previewing ? (
-        <FileGoToLineBar
-          inputRef={goTo.inputRef}
-          query={goTo.query}
-          status={goTo.status}
-          onQueryChange={goTo.onQueryChange}
-          onSubmit={goTo.onSubmit}
-          onClose={goTo.onClose}
-        />
+        <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
         <FileMarkdownPreview
@@ -191,6 +181,7 @@ export function FileSurfaceContent({
             onChange={onEditorChange}
             onCaretOffset={onCaretOffset}
             onLimitExceeded={onLimitExceeded}
+            onView={onEditorView}
           />
         </div>
       )}

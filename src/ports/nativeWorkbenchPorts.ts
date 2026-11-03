@@ -1,38 +1,40 @@
-import { type EditorWatchSubscription } from "../domain/editorWatch";
-import {
-  type BufferSnapshotAck,
-  type BufferSnapshotRequest,
-  type CreateProjectFileRequest,
-  type CreateProjectFileResult,
-  type CreateProjectFolderRequest,
-  type CreateProjectFolderResult,
-  type DirectoryListing,
-  type EditorDocument,
-  type EditorSaveResult,
-  type ProjectLayoutRequest,
-  type ProjectSwitchRequest,
-  type CreateProjectRequest,
-  type ProjectSourceFolder,
-  type ProjectTransitionResult,
-  type RenameProjectFileRequest,
-  type RenameProjectFileResult,
-  type RenameProjectFolderRequest,
-  type RenameProjectFolderResult,
-  type ResourceRef,
-  type TextFile,
-  type TrashProjectResourceRequest,
-  type TrashProjectResourceResult,
-} from "../domain/workbench";
-import { invokeNative } from "./nativeInvoke";
-import { nativeSettingsPort } from "./nativeSettingsPort";
-import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
-import {
-  type ChatPort,
-  type EditorPort,
-  type ProjectPort,
-  type RepositoryPort,
-  type WorkbenchPorts,
+import type {
+  ChatPort,
+  EditorPort,
+  ProjectPort,
+  RepositoryPort,
+  WorkbenchPorts,
 } from "./workbenchPorts";
+import { invokeNative } from "./nativeInvoke";
+import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
+import { nativeSettingsPort } from "./nativeSettingsPort";
+import type { EditorWatchSubscription } from "../domain/editorWatch";
+import type {
+  CreateProjectRequest,
+  ProjectLayoutRequest,
+  ProjectSourceFolder,
+  ProjectSwitchRequest,
+  ProjectTransitionResult,
+  ResourceRef,
+} from "../domain/workbench";
+
+/** A command taking one resource, as `{ resource }`. */
+const resourceCommand =
+  <Result>(command: string) =>
+  (resource: ResourceRef): Promise<Result> =>
+    invokeNative(command, { resource });
+
+/** A command taking one request object, as `{ request }`. */
+const requestCommand =
+  <Request, Result>(command: string) =>
+  (request: Request): Promise<Result> =>
+    invokeNative(command, { request });
+
+/** A Git command that runs only in the transition epoch its caller saw. */
+const epochCommand =
+  <Request, Result>(command: string) =>
+  (request: Request, expectedTransitionEpoch: number): Promise<Result> =>
+    invokeNative(command, { request, expectedTransitionEpoch });
 
 const project: ProjectPort = {
   getBootstrapSnapshot() {
@@ -98,34 +100,12 @@ const project: ProjectPort = {
   ensureLocalProject(expectedTransitionEpoch) {
     return invokeNative("ensure_local_project", { expectedTransitionEpoch });
   },
-  listDirectory(resource: ResourceRef): Promise<DirectoryListing> {
-    return invokeNative("list_directory", { resource });
-  },
-  createProjectFile(
-    request: CreateProjectFileRequest,
-  ): Promise<CreateProjectFileResult> {
-    return invokeNative("create_project_file", { request });
-  },
-  createProjectFolder(
-    request: CreateProjectFolderRequest,
-  ): Promise<CreateProjectFolderResult> {
-    return invokeNative("create_project_folder", { request });
-  },
-  renameProjectFile(
-    request: RenameProjectFileRequest,
-  ): Promise<RenameProjectFileResult> {
-    return invokeNative("rename_project_file", { request });
-  },
-  renameProjectFolder(
-    request: RenameProjectFolderRequest,
-  ): Promise<RenameProjectFolderResult> {
-    return invokeNative("rename_project_folder", { request });
-  },
-  trashProjectResource(
-    request: TrashProjectResourceRequest,
-  ): Promise<TrashProjectResourceResult> {
-    return invokeNative("trash_project_resource", { request });
-  },
+  listDirectory: resourceCommand("list_directory"),
+  createProjectFile: requestCommand("create_project_file"),
+  createProjectFolder: requestCommand("create_project_folder"),
+  renameProjectFile: requestCommand("rename_project_file"),
+  renameProjectFolder: requestCommand("rename_project_folder"),
+  trashProjectResource: requestCommand("trash_project_resource"),
   watchWorkspaceNotify(input) {
     return invokeNative("watch_workspace_notify", { value: input });
   },
@@ -135,23 +115,11 @@ const project: ProjectPort = {
 };
 
 const editor: EditorPort = {
-  readTextFile(resource: ResourceRef): Promise<TextFile> {
-    return invokeNative("read_text_file", { resource });
-  },
-  openEditorDocument(resource: ResourceRef): Promise<EditorDocument> {
-    return invokeNative("open_editor_document", { resource });
-  },
-  snapshotEditorBuffer(
-    request: BufferSnapshotRequest,
-  ): Promise<BufferSnapshotAck> {
-    return invokeNative("snapshot_editor_buffer", { request });
-  },
-  saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult> {
-    return invokeNative("save_editor_document", { resource });
-  },
-  discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument> {
-    return invokeNative("discard_editor_buffer", { resource });
-  },
+  readTextFile: resourceCommand("read_text_file"),
+  openEditorDocument: resourceCommand("open_editor_document"),
+  snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
+  saveEditorDocument: resourceCommand("save_editor_document"),
+  discardEditorBuffer: resourceCommand("discard_editor_buffer"),
   async watchEditorDocument(
     resource: ResourceRef,
   ): Promise<EditorWatchSubscription> {
@@ -170,89 +138,25 @@ const repository: RepositoryPort = {
       ...(scope ? { scope } : {}),
     });
   },
-  mutateGitFile(request, expectedTransitionEpoch) {
-    return invokeNative("mutate_git_file", {
-      request,
-      expectedTransitionEpoch,
-    });
+  getFileGitBase(resource, knownOid) {
+    return invokeNative("get_file_git_base", { resource, knownOid });
   },
-  abortGitInProgress(request, expectedTransitionEpoch) {
-    return invokeNative("abort_git_in_progress", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  commitGitRepository(request, expectedTransitionEpoch) {
-    return invokeNative("commit_git_repository", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  checkoutGitLocalBranch(request, expectedTransitionEpoch) {
-    return invokeNative("checkout_git_local_branch", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  continueGitCherryPick(request, expectedTransitionEpoch) {
-    return invokeNative("continue_git_cherry_pick", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  continueGitRebase(request, expectedTransitionEpoch) {
-    return invokeNative("continue_git_rebase", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  continueGitRevert(request, expectedTransitionEpoch) {
-    return invokeNative("continue_git_revert", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  createGitLocalBranch(request, expectedTransitionEpoch) {
-    return invokeNative("create_git_local_branch", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  deleteGitLocalBranch(request, expectedTransitionEpoch) {
-    return invokeNative("delete_git_local_branch", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  fetchGitRemote(request, expectedTransitionEpoch) {
-    return invokeNative("fetch_git_remote", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  pullGitRepository: (request, expectedTransitionEpoch) =>
-    invokeNative("pull_git_repository", { request, expectedTransitionEpoch }),
-  discoverProjectRepositories(request) {
-    return invokeNative("discover_project_repositories", { request });
-  },
-  getNestedRepositoryStatus(request) {
-    return invokeNative("get_repository_ref_status", { request });
-  },
-  getNestedRepositoryFileDiff(request) {
-    return invokeNative("get_repository_ref_file_diff", { request });
-  },
-  pushGitRemote(request, expectedTransitionEpoch) {
-    return invokeNative("push_git_remote", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  renameGitLocalBranch(request, expectedTransitionEpoch) {
-    return invokeNative("rename_git_local_branch", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
+  mutateGitFile: epochCommand("mutate_git_file"),
+  abortGitInProgress: epochCommand("abort_git_in_progress"),
+  commitGitRepository: epochCommand("commit_git_repository"),
+  checkoutGitLocalBranch: epochCommand("checkout_git_local_branch"),
+  continueGitCherryPick: epochCommand("continue_git_cherry_pick"),
+  continueGitRebase: epochCommand("continue_git_rebase"),
+  continueGitRevert: epochCommand("continue_git_revert"),
+  createGitLocalBranch: epochCommand("create_git_local_branch"),
+  deleteGitLocalBranch: epochCommand("delete_git_local_branch"),
+  fetchGitRemote: epochCommand("fetch_git_remote"),
+  pullGitRepository: epochCommand("pull_git_repository"),
+  discoverProjectRepositories: requestCommand("discover_project_repositories"),
+  getNestedRepositoryStatus: requestCommand("get_repository_ref_status"),
+  getNestedRepositoryFileDiff: requestCommand("get_repository_ref_file_diff"),
+  pushGitRemote: epochCommand("push_git_remote"),
+  renameGitLocalBranch: epochCommand("rename_git_local_branch"),
 };
 
 const chat: ChatPort = {

@@ -4,10 +4,10 @@ use crate::{
     image_artifacts, project_commands, project_create_commands, repository_branch_create_commands,
     repository_branch_delete_commands, repository_branch_rename_commands, repository_change_stamp,
     repository_checkout_commands, repository_cherry_pick_commands, repository_commit_commands,
-    repository_mutation_commands, repository_pull_commands, repository_rebase_commands,
-    repository_ref_commands, repository_remote_transport_commands, repository_revert_commands,
-    repository_sequence_abort_commands, resource_commands, resource_trash_commands,
-    settings_commands, user_terminal, voice_input, workspace,
+    repository_git_base, repository_mutation_commands, repository_pull_commands,
+    repository_rebase_commands, repository_ref_commands, repository_remote_transport_commands,
+    repository_revert_commands, repository_sequence_abort_commands, resource_commands,
+    resource_trash_commands, settings_commands, user_terminal, voice_input, workspace,
 };
 
 pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
@@ -33,6 +33,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         resource_commands::get_repository_status,
         repository_change_stamp::get_repository_change_stamp,
         resource_commands::get_file_diff,
+        repository_git_base::get_file_git_base,
         repository_ref_commands::discover_project_repositories,
         repository_ref_commands::get_repository_ref_status,
         repository_ref_commands::get_repository_ref_file_diff,
@@ -166,6 +167,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_navigate,
         browser::navigation::control::browser_control,
         browser::page_controls::browser_zoom,
+        browser::device::browser_set_device,
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
         browser::page_controls::browser_find,

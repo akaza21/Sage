@@ -157,6 +157,11 @@ export function installChatChromeFixture(
             ],
           };
         });
+    // Replacement content must wake revision-driven transcript effects before
+    // a queued scroll event from the previous layout can pause following.
+    page.projectionRevision = String(
+      BigInt(page.projectionRevision) + 1n,
+    ) as typeof page.projectionRevision;
     projection.applyAuthoritativePage(projection.scope, page);
     return page;
   });

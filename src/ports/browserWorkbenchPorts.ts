@@ -123,6 +123,8 @@ const repository: RepositoryPort = {
           new Error("Scoped Git diffs require the native Git backend."),
         )
       : browserDesktop.getFileDiff(resource),
+  getFileGitBase: (resource, knownOid) =>
+    browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>

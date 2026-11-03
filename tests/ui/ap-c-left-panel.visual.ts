@@ -172,6 +172,48 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await expect(query).toHaveValue("");
 });
 
+test("Search Chats keeps Cancel reachable when a pending search fails", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 690, height: 440 });
+  await openScenario(page, "agent-composer-narrow", "agent");
+  const pending = await page.evaluateHandle(async () => {
+    const { projectChatSearchDesktop } =
+      await import("/src/features/chatSearch/chatSearchDesktop.ts");
+    let reject!: (reason: Error) => void;
+    projectChatSearchDesktop.search = () =>
+      new Promise<never>((_, fail) => {
+        reject = fail;
+      });
+    return { fail: () => reject(new Error("Search became unavailable.")) };
+  });
+  const trigger = page
+    .locator("header.title-bar")
+    .getByRole("button", { name: "Search chats" });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Search Chats" });
+  await page.clock.runFor(250);
+  await expect(dialog.getByRole("status")).toHaveText("Searching…");
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  await cancel.click({ trial: true });
+  const before = (await cancel.boundingBox())!;
+  await page.mouse.move(
+    before.x + before.width / 2,
+    before.y + before.height / 2,
+  );
+  await page.mouse.down();
+  await pending.evaluate((request) => request.fail());
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Search became unavailable.",
+  );
+  const after = (await cancel.boundingBox())!;
+  expect({ x: after.x, y: after.y }).toEqual({ x: before.x, y: before.y });
+  await page.mouse.up();
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await pending.dispose();
+});
+
 test("AP-C sidebar options organize chats in one list and sort them", async ({
   page,
 }) => {

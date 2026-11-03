@@ -187,7 +187,6 @@
 
 .annotation-chip--sent {
   justify-self: end;
-  margin-bottom: calc(8px - var(--space-3));
 }
 
 .annotation-chip--sent .annotation-chip__trigger {

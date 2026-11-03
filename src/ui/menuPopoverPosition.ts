@@ -37,10 +37,10 @@ export function menuPopoverPosition(
     maxWidth,
     Math.max(surface.width, matchTriggerWidth ? anchor.width : 0),
   );
-  const composer = origin.closest(".composer")?.getBoundingClientRect();
-  if (composer && composer.width >= width) {
-    leftEdge = Math.max(leftEdge, composer.left);
-    rightEdge = Math.min(rightEdge, composer.right);
+  const dock = origin.closest(".chat-dock")?.getBoundingClientRect();
+  if (dock && dock.width >= width) {
+    leftEdge = Math.max(leftEdge, dock.left);
+    rightEdge = Math.min(rightEdge, dock.right);
   }
   const clampLeft = (left: number) =>
     Math.min(Math.max(leftEdge, left), Math.max(leftEdge, rightEdge - width));
@@ -108,7 +108,7 @@ export function menuPopoverPosition(
     ? anchor.top - surface.height - gap
     : anchor.bottom + gap;
   const edits =
-    composer &&
+    dock &&
     origin
       .closest(".chat-surface")
       ?.querySelector(".chat-edit-summary-zone:not(:empty)")

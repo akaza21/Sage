@@ -8,7 +8,7 @@ use crate::acp::{
 
 use super::{
     capability::DevtoolsPort,
-    screenshot::{admit_jpeg, admit_png, capture_png_with_fallback},
+    screenshot::{admit_jpeg, admit_png, capture_png_with_fallback, fit_factor, png_size},
     snapshot::{DocumentStamp, NativeNode, parse_ax_tree},
     transport::CdpTransport,
 };
@@ -117,14 +117,41 @@ impl<T: CdpTransport> CdpPort<T> {
         } else {
             (0, 0, viewport_width, viewport_height)
         };
+        // The limits bound the picture, so a smaller scale lets a tall page,
+        // such as a phone emulation laid out about 980 px wide, fit.
+        let scaled = |side: u32| (f64::from(side) * scale).ceil() as u64;
         if width == 0
             || height == 0
-            || width > BROWSER_LIMITS.screenshot_width
-            || height > BROWSER_LIMITS.screenshot_height
-            || u64::from(width) * u64::from(height) > BROWSER_LIMITS.screenshot_pixels
+            || scaled(width) > u64::from(BROWSER_LIMITS.screenshot_width)
+            || scaled(height) > u64::from(BROWSER_LIMITS.screenshot_height)
+            || scaled(width) * scaled(height) > BROWSER_LIMITS.screenshot_pixels
         {
             return Err(BrowserFailure::Capacity);
         }
+        let mut data = self.screenshot(format, (x, y, width, height), scale)?;
+        // A PNG comes out in device pixels, which an emulated scale factor
+        // of 2 to 3.5 multiplies; draw it once more at the scale that fits.
+        if format == "png"
+            && let Some(fit) = png_size(&data).and_then(|(w, h)| fit_factor(w, h))
+        {
+            data = self.screenshot(format, (x, y, width, height), scale * fit)?;
+        }
+        let data = data.as_str();
+        if format == "png" {
+            let (actual_width, actual_height) = admit_png(data)?;
+            Ok((actual_width, actual_height, data.to_owned()))
+        } else {
+            admit_jpeg(width, height, data)?;
+            Ok((width, height, data.to_owned()))
+        }
+    }
+
+    fn screenshot(
+        &mut self,
+        format: &'static str,
+        (x, y, width, height): (u32, u32, u32, u32),
+        scale: f64,
+    ) -> Result<String, BrowserFailure> {
         let params = json!({
             "format": format,
             "quality": 70,
@@ -138,17 +165,11 @@ impl<T: CdpTransport> CdpPort<T> {
             BROWSER_LIMITS.screenshot_bytes + 4096,
             Duration::from_secs(5),
         )?;
-        let response: Value =
+        let mut response: Value =
             serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
-        let data = response["data"]
-            .as_str()
-            .ok_or(BrowserFailure::Unavailable)?;
-        if format == "png" {
-            let (actual_width, actual_height) = admit_png(data)?;
-            Ok((actual_width, actual_height, data.to_owned()))
-        } else {
-            admit_jpeg(width, height, data)?;
-            Ok((width, height, data.to_owned()))
+        match response["data"].take() {
+            Value::String(data) => Ok(data),
+            _ => Err(BrowserFailure::Unavailable),
         }
     }
 }

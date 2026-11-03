@@ -238,3 +238,34 @@ test("fails closed at the CSS file and byte caps", async () => {
   assert.equal(tooMany.length, 1);
   assert.match(tooMany[0], /exceeds.*file scan limit/u);
 });
+
+test("allows raw colours in custom properties only in the global authority and listed feature owners", () => {
+  const inventory = analyze({
+    "src/styles/global.css": `:root { --global-fill: #111111; }`,
+    "src/features/browser/browser-device.css": `
+      .owner { --device-fill: #414141; }
+      .owner-rule { color: #414141; }
+    `,
+    "src/features/other/other.css": `.other { --other-fill: #222222; }`,
+  });
+
+  assert.deepEqual(
+    inventory.rawColors.map(({ relativePath, line, literal }) => ({
+      relativePath,
+      line,
+      literal,
+    })),
+    [
+      {
+        relativePath: "src/features/browser/browser-device.css",
+        line: 3,
+        literal: "#414141",
+      },
+      {
+        relativePath: "src/features/other/other.css",
+        line: 1,
+        literal: "#222222",
+      },
+    ],
+  );
+});

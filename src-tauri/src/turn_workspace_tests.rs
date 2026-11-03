@@ -221,6 +221,28 @@ fn baseline_only_paths_with_substituted_symlinks_fail_closed() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn committing_a_substituted_symlink_does_not_bypass_baseline_validation() {
+    let _capture_guard = crate::turn_workspace::capture_test_lock();
+    let root = temp_root();
+    let outside = temp_root();
+    git_in(&root, &["init", "-q"]);
+    std::fs::write(root.join("file.txt"), "baseline").unwrap();
+    std::fs::write(outside.join("file.txt"), "external").unwrap();
+    let root = root.canonicalize().unwrap();
+    tauri::async_runtime::block_on(async {
+        let before = capture(&root).await.unwrap();
+        std::fs::remove_file(root.join("file.txt")).unwrap();
+        std::os::unix::fs::symlink(outside.join("file.txt"), root.join("file.txt")).unwrap();
+        git_in(&root, &["add", "file.txt"]);
+        git_in(&root, &["commit", "-qm", "commit substituted symlink"]);
+        assert!(capture_after(&root, &before).await.is_none());
+    });
+    std::fs::remove_dir_all(root).unwrap();
+    std::fs::remove_dir_all(outside).unwrap();
+}
+
 #[test]
 fn a_shell_edit_committed_before_the_turn_ends_is_a_turn_change() {
     let _capture_guard = crate::turn_workspace::capture_test_lock();

@@ -146,9 +146,12 @@ async function expectColumnAlignment(pane: Locator) {
     .last()
     .boundingBox();
   const composer = await pane.locator(".composer").boundingBox();
-  expect(answer && composer).toBeTruthy();
-  expect(composer!.x).toBeCloseTo(answer!.x, 0);
-  expect(composer!.width).toBeCloseTo(answer!.width, 0);
+  const dock = await pane.locator(".chat-dock").boundingBox();
+  expect(answer && composer && dock).toBeTruthy();
+  expect(dock!.x).toBeCloseTo(answer!.x, 0);
+  expect(dock!.width).toBeCloseTo(answer!.width, 0);
+  expect(composer!.x).toBe(dock!.x + 1);
+  expect(composer!.width).toBe(dock!.width - 2);
   expect(
     await pane.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,

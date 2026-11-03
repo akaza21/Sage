@@ -268,7 +268,7 @@ export function Workbench() {
             />
           ) : null}
           <div
-            className="center-region"
+            className="center-region surface surface--card"
             inert={drawerOpen}
             aria-hidden={drawerOpen || undefined}
           >

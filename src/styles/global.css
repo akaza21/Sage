@@ -1,3 +1,5 @@
+@import "./surface.css";
+
 :root {
   --color-panel-raised: #2d2d2d;
   --color-panel-raised-hover: #3e3e3e;
@@ -318,6 +320,20 @@
   --scrollbar-thumb: #3a3a3a;
   --scrollbar-thumb-hover: #4a4a4a;
   --reading-measure: 72ch;
+  --chat-column-inset-block-end: var(--space-2);
+  --composer-input-min-block-size: calc(
+    2 * var(--font-size-md) * var(--line-height-normal) + var(--space-3) +
+      var(--space-1)
+  );
+  --transcript-item-gap: var(--space-2);
+  --transcript-answer-gap: var(--space-2);
+  --radius-edit-summary: var(--radius-md);
+  --settings-measure: 820px;
+  --settings-content-gap: var(--space-4);
+  --workbench-card-radius: var(--radius-md);
+  --workbench-card-border: var(--color-border-subtle);
+  --workbench-card-fill: var(--color-panel);
+  --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 
@@ -326,11 +342,16 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --border-width: 1px;
+  --card-border: var(--border-width) solid var(--color-border-subtle);
   --radius-composer-menu: 12px;
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
+  /* Part radii that window modes re-project. */
+  --radius-center-region: var(--radius-none);
+  --radius-title-bar-search: var(--radius-pill);
   --radius-circle: 50%;
   --composer-fill: #363636;
   --composer-border: #383838;
@@ -630,11 +651,15 @@ textarea:disabled,
     calc(var(--sidebar-width) + 46px);
 }
 
+/* Window modes set center rows; the shared surface primitive owns its frame. */
 .center-region {
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 42px minmax(0, 1fr);
+  grid-template-rows: var(
+    --center-region-rows,
+    var(--center-region-tabs-height, var(--tab-height)) minmax(0, 1fr)
+  );
 }
 
 .active-canvas {
@@ -642,9 +667,11 @@ textarea:disabled,
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background:
+  background: var(
+    --active-canvas-fill,
     linear-gradient(180deg, rgb(255 255 255 / 0.012), transparent 140px),
-    var(--bg);
+    var(--bg)
+  );
 }
 
 /* A 1920px window at 200% zoom exposes roughly a 960 CSS-pixel viewport. */

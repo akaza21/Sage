@@ -48,7 +48,7 @@ pub(crate) async fn continue_revert_with_policy(
             "Continue revert requires resolved conflicts".into(),
         ));
     }
-    let editor_command = repository_conflict::noop_git_editor();
+    let editor_command = repository_conflict::NOOP_GIT_EDITOR;
     let editor = format!("core.editor={editor_command}");
     let sequence = format!("sequence.editor={editor_command}");
     let output = repository::run_git_with_policy(
