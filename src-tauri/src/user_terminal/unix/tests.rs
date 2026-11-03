@@ -101,18 +101,56 @@ fn assert_ended(pid: libc::pid_t) {
     }
 }
 
+/// Set in the copy of the test binary that the PTY environment test starts.
+const HOST_SET_MARKER: &str = "SAGE_PTY_TEST_HOST_ENVIRONMENT";
+const RUNTIME_DIR: &str = "/run/user/4242";
+
 #[test]
 fn runs_a_login_shell_in_the_project_root_with_an_allowlisted_environment() {
+    if std::env::var_os(HOST_SET_MARKER).is_none() {
+        // Setting variables in this multithreaded process would race other
+        // tests, so the test reruns itself alone in a child process whose
+        // host environment has a session variable and an unlisted secret.
+        let module = module_path!()
+            .split_once("::")
+            .map_or(module_path!(), |(_, path)| path);
+        let name = format!(
+            "{module}::runs_a_login_shell_in_the_project_root_with_an_allowlisted_environment"
+        );
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--test-threads=1", "--nocapture"])
+            .env(HOST_SET_MARKER, "1")
+            .env("XDG_RUNTIME_DIR", RUNTIME_DIR)
+            .env("AWS_SECRET_ACCESS_KEY", "not-for-the-shell")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(
+            child.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+        return;
+    }
     let root = root();
     let (mut process, output) = start(&root);
     // The format string keeps the echoed command from matching the marker.
     process
-        .write(b"printf 'cwd=%s;term=%s;cargo=[%s]\\n' \"$PWD\" \"$TERM\" \"$CARGO\"\n")
+        .write(
+            b"printf 'cwd=%s;term=%s;cargo=[%s];runtime=[%s];secret=[%s];marker=[%s]\\n' \
+              \"$PWD\" \"$TERM\" \"$CARGO\" \"$XDG_RUNTIME_DIR\" \"$AWS_SECRET_ACCESS_KEY\" \
+              \"$SAGE_PTY_TEST_HOST_ENVIRONMENT\"\n",
+        )
         .unwrap();
     let text = wait_for(&output, "cwd=/");
+    let runtime = if cfg!(target_os = "linux") {
+        RUNTIME_DIR
+    } else {
+        ""
+    };
     assert!(
         text.contains(&format!(
-            "cwd={};term=xterm-256color;cargo=[]",
+            "cwd={};term=xterm-256color;cargo=[];runtime=[{runtime}];secret=[];marker=[]",
             root.display()
         )),
         "{text:?}"
@@ -272,4 +310,109 @@ fn environment_is_an_allowlist_with_a_utf8_default() {
 
     let oversized = |name: &str| (name == "PATH").then(|| OsString::from("/".repeat(9_000)));
     assert!(environment_from(Path::new("/bin/zsh"), oversized).is_err());
+}
+
+fn session_value(name: &str) -> Option<OsString> {
+    let value = match name {
+        "DISPLAY" => ":0",
+        "WAYLAND_DISPLAY" => "wayland-0",
+        "XAUTHORITY" => "/run/user/1000/.mutter-Xwaylandauth.ABC123",
+        "XDG_RUNTIME_DIR" => "/run/user/1000",
+        "DBUS_SESSION_BUS_ADDRESS" => "unix:path=/run/user/1000/bus",
+        "XDG_SESSION_TYPE" => "wayland",
+        "XDG_CURRENT_DESKTOP" => "GNOME",
+        _ => return None,
+    };
+    Some(OsString::from(value))
+}
+
+#[test]
+fn environment_passes_the_desktop_session_through_on_linux_only() {
+    let host = |name: &str| match name {
+        "HOME" => Some(OsString::from("/home/sage")),
+        "CARGO" => Some(OsString::from("/opt/cargo")),
+        "AWS_SECRET_ACCESS_KEY" => Some(OsString::from("secret")),
+        "LD_PRELOAD" => Some(OsString::from("/tmp/evil.so")),
+        "XDG_CONFIG_HOME" => Some(OsString::from("/home/sage/.config")),
+        _ => session_value(name),
+    };
+    let entries = environment_from(Path::new("/bin/zsh"), host).unwrap();
+    let names = entries.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+    let session: &[&str] = if cfg!(target_os = "linux") {
+        &[
+            "DISPLAY",
+            "WAYLAND_DISPLAY",
+            "XAUTHORITY",
+            "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
+            "XDG_SESSION_TYPE",
+            "XDG_CURRENT_DESKTOP",
+        ]
+    } else {
+        &[]
+    };
+    let expected = ["TERM", "COLORTERM", "SHELL", "HOME"]
+        .iter()
+        .chain(session)
+        .chain(&["LC_CTYPE"])
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(names, expected);
+    for (name, value) in &entries {
+        if let Some(host_value) = session_value(name) {
+            assert_eq!(*value, host_value, "{name}");
+        }
+    }
+    for unlisted in [
+        "CARGO",
+        "AWS_SECRET_ACCESS_KEY",
+        "LD_PRELOAD",
+        "XDG_CONFIG_HOME",
+    ] {
+        assert!(!names.contains(&unlisted), "{unlisted} was passed through");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn each_session_variable_is_kept_only_when_the_host_has_it() {
+    for &only in &shell::SESSION_VARIABLES {
+        let host = |name: &str| (name == only).then(|| session_value(name)).flatten();
+        let entries = environment_from(Path::new("/bin/zsh"), host).unwrap();
+        let names = entries.iter().map(|(name, _)| *name).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["TERM", "COLORTERM", "SHELL", only, "LC_CTYPE"],
+            "{only}"
+        );
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn session_variables_fail_closed_when_oversized_or_holding_nul() {
+    let oversized = |name: &str| {
+        (name == "DBUS_SESSION_BUS_ADDRESS")
+            .then(|| OsString::from(format!("unix:path={}", "/".repeat(9_000))))
+    };
+    assert!(environment_from(Path::new("/bin/zsh"), oversized).is_err());
+
+    let with_nul = |name: &str| {
+        use std::os::unix::ffi::OsStringExt;
+        (name == "DISPLAY").then(|| OsString::from_vec(b":0\0x".to_vec()))
+    };
+    assert!(environment_from(Path::new("/bin/zsh"), with_nul).is_err());
+
+    // Each fits alone, but together they pass the total budget.
+    let crowded = |name: &str| match name {
+        "XAUTHORITY" | "DBUS_SESSION_BUS_ADDRESS" => Some(OsString::from("/".repeat(8_000))),
+        "PATH" => Some(OsString::from("/".repeat(1_000))),
+        _ => None,
+    };
+    assert!(environment_from(Path::new("/bin/zsh"), crowded).is_err());
+    let within = |name: &str| match name {
+        "XAUTHORITY" | "DBUS_SESSION_BUS_ADDRESS" => Some(OsString::from("/".repeat(8_000))),
+        _ => None,
+    };
+    assert!(environment_from(Path::new("/bin/zsh"), within).is_ok());
 }
