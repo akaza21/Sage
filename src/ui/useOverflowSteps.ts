@@ -11,13 +11,14 @@ const SUBPIXEL = 0.5;
  * control to the highest, so a control only compacts after everything less
  * important already has.
  *
- * Each fit starts from the full row and adds one step at a time until no
- * child ends past the row's edge, writing and measuring every step
- * before paint. Text and children that change inside the row refit it at
- * once; a resize of the row or of any child refits it on the next frame,
- * which also lets the last steps reshape the row itself without a loop. While paused (a popover from
- * the row is open) the row keeps its steps, so nothing the person is using
- * moves under them. Returns the steps taken.
+ * Every step only compacts the row, so each fit bisects for the fewest steps
+ * after which no child ends past the row's edge, measuring before paint. Text
+ * and children that change inside the row refit it at once. A size change of
+ * the row or of any child that the last fit did not itself leave refits it on
+ * the next frame, which catches style-only changes without refitting for the
+ * fit's own steps. While paused (a popover from the row is open) the row keeps
+ * its steps, so nothing the person is using moves under them. Returns the
+ * steps taken.
  */
 export function useOverflowSteps<Step extends string>(
   row: RefObject<HTMLElement | null>,
@@ -30,31 +31,45 @@ export function useOverflowSteps<Step extends string>(
     const element = row.current;
     if (!element || paused) return;
     const names = key.split(" ");
-    const overflows = () => {
+    const take = (count: number) =>
+      element.setAttribute("data-fit", names.slice(0, count).join(" "));
+    const overflows = (count: number) => {
+      take(count);
       const edge = element.getBoundingClientRect().right + SUBPIXEL;
       return [...element.children].some(
         (child) => child.getBoundingClientRect().right > edge,
       );
     };
+    const size = (width: number, height: number) => `${width}x${height}`;
+    const fitted = new Map<Element, string>();
     let frame = 0;
-    // A child that changes size without a content change (a class or
-    // attribute flip, a late stylesheet) refits too. Settled steps leave the
-    // children at the size they were observed at, so this never loops.
     const resize =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(() => {
+        : new ResizeObserver((entries) => {
+            const moved = entries.some(({ target, borderBoxSize: [box] }) => {
+              return fitted.get(target) !== size(box.inlineSize, box.blockSize);
+            });
+            if (!moved) return;
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(fit);
           });
     const fit = () => {
-      let count = 0;
-      element.setAttribute("data-fit", "");
-      while (count < names.length && overflows())
-        element.setAttribute("data-fit", names.slice(0, ++count).join(" "));
-      setTaken(count);
-      for (const child of [element, ...element.children])
-        resize?.observe(child);
+      let low = 0;
+      let high = names.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (overflows(middle)) low = middle + 1;
+        else high = middle;
+      }
+      take(low);
+      setTaken(low);
+      fitted.clear();
+      for (const target of [element, ...element.children]) {
+        const box = target.getBoundingClientRect();
+        fitted.set(target, size(box.width, box.height));
+        resize?.observe(target);
+      }
     };
     fit();
     // Only content changes refit at once: the steps are attribute writes.

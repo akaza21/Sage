@@ -1,5 +1,8 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { settledComposerFit } from "./shared/composerGeometry";
+import {
+  installComposerRowSettle,
+  settledComposerFit,
+} from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
@@ -147,24 +150,17 @@ for (const width of [1888, 720, 480]) {
         name: "Model",
         exact: true,
       });
-      // The toolbar moves Project and then effort into the options menu only
-      // when the row cannot fit them even as icons.
-      await composer.evaluate(
-        () =>
-          new Promise((resolve) =>
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() => requestAnimationFrame(resolve)),
-            ),
-          ),
-      );
-      const compactProject =
-        (await composer.getByRole("button", { name: /^Project:/ }).count()) ===
-        0;
-      const compactEffort =
-        Boolean(profile.effort) &&
-        (await composer.locator(".composer__effort-picker").isHidden());
       const label = model.locator(".composer__model-label");
       await expect(label).toHaveText(profile.model);
+      if (profile.effort)
+        await expect(
+          composer.locator(".composer__effort-picker[aria-controls]"),
+        ).toHaveCount(1);
+      // The toolbar moves Project and then effort into the options menu only
+      // when the row cannot fit them even as icons.
+      const fit = await settledComposerFit(composer);
+      const compactProject = fit.includes("project-menu");
+      const compactEffort = fit.includes("effort-menu");
       await expect(model).not.toHaveText(/Medium/);
       await expect(
         composer.locator(".chat-goal-entry, .chat-goal-strip"),
@@ -383,9 +379,13 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
     await expect(
       composer.locator(".composer__effort-label").first(),
     ).toBeVisible();
+    await page.evaluate(installComposerRowSettle);
     const sweep = await composer.evaluate(async (element, priority) => {
-      const frame = () =>
-        new Promise((resolve) => requestAnimationFrame(resolve));
+      const settle = (
+        window as Window & {
+          settleComposerRow?: (row: Element) => Promise<void>;
+        }
+      ).settleComposerRow!;
       const controls = element.querySelector<HTMLElement>(
         ".composer__controls",
       )!;
@@ -401,16 +401,7 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
       const results = [];
       for (let width = 560; width >= 200; width -= 2) {
         element.style.width = `${width}px`;
-        // A resize refits the row on a later frame; wait until it settles.
-        let layout = "";
-        for (let settled = 0; settled < 3;) {
-          await frame();
-          const next = [...controls.querySelectorAll("*")]
-            .map((node) => node.getBoundingClientRect().right)
-            .join();
-          settled = next === layout ? settled + 1 : 0;
-          layout = next;
-        }
+        await settle(controls);
         const labels = priority.map((selector) => {
           const label = element.querySelector<HTMLElement>(selector);
           const box = label?.getBoundingClientRect();
