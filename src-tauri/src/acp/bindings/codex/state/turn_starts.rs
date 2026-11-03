@@ -112,21 +112,21 @@ impl CodexAdapter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum CorrelationState {
     Pending,
     Active(ExternalId),
     Terminal(ExternalId),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct TurnStartCorrelation {
     request_id: u64,
     client_message_id: RequiredText<512>,
     state: CorrelationState,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(super) struct TurnStartCorrelations {
     entries: Vec<TurnStartCorrelation>,
 }

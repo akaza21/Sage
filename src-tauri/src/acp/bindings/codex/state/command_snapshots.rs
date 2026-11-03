@@ -96,7 +96,7 @@ pub(crate) struct MaterializedCommandItem {
     pub(crate) explore: Option<CommandExplore>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct CommandItemSnapshots {
     values: BTreeMap<String, CommandSnapshot>,
     bytes: usize,
