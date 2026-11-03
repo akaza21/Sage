@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAgentChangesState } from "./agentChangesState";
 
 const previewBridge = vi.hoisted(() => ({
   discover: vi.fn(),
@@ -33,16 +34,46 @@ vi.mock("../features/preview/previewDesktop", () => ({
   stopPreviewTarget: previewBridge.stop,
 }));
 
+const nativeBrowser = vi.hoisted(() => ({
+  open: vi.fn(),
+  control: vi.fn(),
+  popupPending: vi.fn(),
+  popupOpen: vi.fn(),
+  popupAck: vi.fn(),
+}));
+const browserEvents = vi.hoisted(() => ({ listen: vi.fn() }));
+
+vi.mock("@tauri-apps/api/event", () => browserEvents);
+
+vi.mock("../ports/nativeBrowserPort", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  openBrowser: nativeBrowser.open,
+  browserAgentControl: nativeBrowser.control,
+  browserPopupPending: nativeBrowser.popupPending,
+  browserOpenPopup: nativeBrowser.popupOpen,
+  browserPopupAck: nativeBrowser.popupAck,
+  closeBrowser: async () => undefined,
+}));
+
 vi.mock("../services/acpDesktop", () => ({
   acpDesktop: { subscribePreviewProjectionChanges: previewBridge.subscribe },
 }));
 
+import type { ComponentProps } from "react";
 import {
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
   pinAcpProjectionIds,
 } from "../app/acpProjectionRegistry";
+import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../app/agentArtifactFollowStore";
+import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
+import { createBrowserSlice } from "../app/browserSlice";
 import { useWorkbenchStore } from "../app/store";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type {
   AcpChatPage,
   AcpItem,
@@ -50,6 +81,9 @@ import type {
   SageChatId,
   SageProjectId,
 } from "../domain/acp";
+import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { CollaborationItem } from "../features/chat/acp/CollaborationItem";
 import {
   applyBrowseIntent,
   clearBrowseSession,
@@ -57,17 +91,13 @@ import {
   setHarnessBrowseOwner,
   type HarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
-import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
-import { useSubagentPaneStore } from "../app/subagentPaneStore";
-import {
-  agentArtifactFollowRecordFor,
-  useAgentArtifactFollowStore,
-} from "../app/agentArtifactFollowStore";
-import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { settleLazyModules } from "../test/settleLazyModules";
-import { AgentArtifactPane } from "./AgentArtifactPane";
-import type { PreviewProjectionChangedEvent } from "../domain/previewProjection";
+import { AgentArtifactPane as Pane } from "./AgentArtifactPane";
+function AgentArtifactPane(props: ComponentProps<typeof Pane>) {
+  const publish = usePreviewTargetLifetime();
+  return <Pane {...props} onPreviewTargetChange={publish} />;
+}
 
 function mountArtifactHeader() {
   return render(<div />).container.firstElementChild as HTMLElement;
@@ -178,6 +208,11 @@ function seedFocusedPage(): void {
 }
 
 beforeEach(() => {
+  nativeBrowser.open.mockReset();
+  nativeBrowser.control.mockReset().mockResolvedValue(null);
+  nativeBrowser.popupPending.mockReset().mockResolvedValue([]);
+  nativeBrowser.popupOpen.mockReset();
+  nativeBrowser.popupAck.mockReset().mockResolvedValue(undefined);
   childBridge.read.mockReset();
   childBridge.read.mockResolvedValue({
     kind: "current",
@@ -238,8 +273,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.dispatchEvent(new Event("beforeunload"));
   cleanup();
   clearBrowseSessions();
+  useAgentChangesState.getState().close();
   clearAcpProjectionRegistry();
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
@@ -250,6 +287,21 @@ afterEach(() => {
 });
 
 describe("Agent artifact file chips", () => {
+  it("unmounts Changes when selecting a normal file tab", async () => {
+    admit("file:app");
+    render(<AgentArtifactPane expanded onExpandedChange={vi.fn()} />);
+    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    expect(await screen.findByRole("tab", { name: /Changes/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: /app.ts/ }));
+    expect(useAgentChangesState.getState().selected).toBe(false);
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+  });
   it.each([
     "dismissal",
     "Chat focus round-trip",
@@ -587,6 +639,47 @@ describe("Agent artifact file chips", () => {
     expect(tab).toHaveAttribute("aria-selected", "false");
     expect(tab).toBeVisible();
   });
+  it("navigates from Changes to a child selected by its transcript name", async () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "spawn-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+    const store = acpProjectionStoreFor("chat-focused");
+    const scope = store.getState().scope;
+    if (!scope) throw new Error("Missing scope");
+    store.getState().applyAuthoritativePage(scope, {
+      ...base,
+      turns: [{ ...base.turns[0], items: [child] }],
+    });
+    render(
+      <>
+        <CollaborationItem item={child} />
+        <AgentArtifactPane />
+      </>,
+    );
+    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open subagent Reviewer" }),
+    );
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer" }),
+    ).toBeVisible();
+  });
   it("opens a historical-session Subagent row in the focused Chat", async () => {
     const base = pageWithEdit();
     const older = {
@@ -854,14 +947,14 @@ describe("Agent artifact file chips", () => {
     );
   });
 
-  it("opens an Agent file in Editor from the File pane Open menu", () => {
+  it("opens an Agent file in Editor from the File pane Open menu", async () => {
     const onOpenInEditor = vi.fn();
     admit("file:app");
     render(<AgentArtifactPane onOpenInEditor={onOpenInEditor} />);
     fireEvent.click(screen.getByRole("tab", { name: "File src/app.ts" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
-    const menu = screen.getByRole("menu", { name: "Open file" });
+    const menu = await screen.findByRole("menu", { name: "Open file" });
     fireEvent.click(
       within(menu).getByRole("menuitem", { name: "Open in Editor" }),
     );
@@ -878,7 +971,7 @@ describe("Agent artifact file chips", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open choices" }));
     fireEvent.click(
-      within(screen.getByRole("menu", { name: "Open file" })).getByRole(
+      within(await screen.findByRole("menu", { name: "Open file" })).getByRole(
         "menuitem",
         { name: "Copy path" },
       ),
@@ -902,6 +995,27 @@ describe("Agent artifact file chips", () => {
       screen.queryByText("No dev or start scripts were found."),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("keeps the same Preview frame asleep across collapse and expand", async () => {
+    applyBrowseIntent({
+      owner: previewOwner,
+      url: "http://127.0.0.1:5173/",
+    });
+    const view = render(<AgentArtifactPane />);
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await settleLazyModules();
+    const frame = screen.getByTitle("Sage browser");
+
+    view.rerender(<AgentArtifactPane expanded={false} />);
+    await settleLazyModules();
+    expect(frame.isConnected).toBe(true);
+    expect(frame).not.toBeVisible();
+
+    view.rerender(<AgentArtifactPane expanded />);
+    await settleLazyModules();
+    expect(screen.getByTitle("Sage browser")).toBe(frame);
+    expect(frame).toBeVisible();
   });
 
   it("keeps the collapsed header waiting without a Preview session", () => {
@@ -1243,7 +1357,9 @@ describe("Agent artifact file chips", () => {
       } as PreviewProjectionChangedEvent),
     );
     act(() => pinAgentChatOwner(null));
-    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+    await waitFor(() =>
+      expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target),
+    );
   });
 
   it("bridges active native Preview and hides only its matching-origin terminal frame", async () => {
@@ -1406,7 +1522,9 @@ describe("Agent artifact file chips", () => {
         ),
     ).toBe(true);
     view.unmount();
-    expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target);
+    await waitFor(() =>
+      expect(previewBridge.stop).toHaveBeenCalledExactlyOnceWith(target),
+    );
   });
 
   it("suppresses a stopped native frame while preserving a different manual origin", async () => {
@@ -1940,7 +2058,200 @@ describe("Agent artifact file chips", () => {
     expect(screen.queryByRole("button", { name: "Close Preview" })).toBeNull();
   });
 
+  it("disables browser creation without the desktop runtime after collapse and expand", async () => {
+    const openBrowser = vi.fn(async () => undefined);
+    useWorkbenchStore.setState({ openBrowser });
+    const { rerender } = render(<AgentArtifactPane />);
+    expect(
+      screen.getByRole("button", { name: "New browser tab" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(openBrowser).not.toHaveBeenCalled();
+
+    rerender(<AgentArtifactPane expanded={false} />);
+    await settleLazyModules();
+    rerender(<AgentArtifactPane expanded />);
+    await settleLazyModules();
+    expect(
+      screen.getByRole("button", { name: "New browser tab" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+    expect(openBrowser).not.toHaveBeenCalled();
+  });
+
+  it("keeps a pinned Diff and pending Preview when an agent opens a browser tab", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    browserEvents.listen.mockReset().mockResolvedValue(() => undefined);
+    createBrowserSlice(useWorkbenchStore.setState, useWorkbenchStore.getState, {
+      subscribe: () => () => undefined,
+    } as never);
+    let onAgentOpened: (event: {
+      payload: { projectId: string; tabId: string; url: string };
+    }) => void;
+    await waitFor(() => {
+      onAgentOpened = browserEvents.listen.mock.calls.find(
+        ([name]) => name === "browser:agent-opened",
+      )?.[1];
+      if (!onAgentOpened) throw new Error("Agent browser listener not ready");
+    });
+    admit("diff:other");
+    render(<AgentArtifactPane />);
+    const diff = screen.getByRole("tab", { name: "Diff src/other.ts" });
+    fireEvent.click(diff);
+    act(openPreviewSession);
+
+    act(() => {
+      onAgentOpened({
+        payload: {
+          projectId: "project-a",
+          tabId: "browser:agent",
+          url: "https://example.com/agent",
+        },
+      });
+    });
+
+    expect(diff).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("tab", { name: "Browser example.com" }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(
+      screen.getByRole("tab", { name: "Preview" }),
+    ).toHaveAccessibleDescription("New resource");
+    expect(
+      screen.getByRole("button", {
+        name: "Pinned resource, new Preview available",
+      }),
+    ).toBeVisible();
+  });
+
+  it.each(["follow", "pinned"])(
+    "selects the tab that user + opens over a %s agent Diff",
+    async (mode) => {
+      vi.stubGlobal("__TAURI_INTERNALS__", {});
+      nativeBrowser.open.mockResolvedValueOnce("browser:opened");
+      admit("diff:other");
+      const follow = useAgentArtifactFollowStore.getState();
+      follow[mode === "pinned" ? "pin" : "observe"](focusedOwner, {
+        kind: "tab",
+        tabId: "diff:other",
+      });
+      useWorkbenchStore.setState({ activeTabId: "diff:other" });
+      render(<AgentArtifactPane />);
+      expect(
+        screen.getByRole("tab", { name: "Diff src/other.ts" }),
+      ).toHaveAttribute("aria-selected", "true");
+
+      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+
+      const opened = await screen.findByRole("tab", {
+        name: "Browser New tab",
+      });
+      await waitFor(() =>
+        expect(opened).toHaveAttribute("aria-selected", "true"),
+      );
+      expect(
+        screen.getByRole("tab", { name: "Diff src/other.ts" }),
+      ).toHaveAttribute("aria-selected", "false");
+      expect(
+        screen.getByRole("button", { name: "Pinned resource" }),
+      ).toHaveAttribute("aria-pressed", "false");
+    },
+  );
+
+  it.each(["unattached", "user takeover", "agent handback"])(
+    "inherits popup selection intent from the opener: %s",
+    async (control) => {
+      vi.stubGlobal("__TAURI_INTERNALS__", {});
+      nativeBrowser.open.mockResolvedValueOnce("browser:opener");
+      nativeBrowser.control.mockResolvedValue(
+        control === "unattached"
+          ? null
+          : {
+              projectId: "project-a",
+              chatId: "chat-focused",
+              userControl: true,
+            },
+      );
+      nativeBrowser.popupPending.mockResolvedValue([]);
+      nativeBrowser.popupAck.mockResolvedValue(undefined);
+      browserEvents.listen.mockReset().mockResolvedValue(() => undefined);
+      createBrowserSlice(
+        useWorkbenchStore.setState,
+        useWorkbenchStore.getState,
+        {
+          subscribe: () => () => undefined,
+        } as never,
+      );
+      let onPopup: (event: {
+        payload: { id: number; openerTabId: string; url: string };
+      }) => void;
+      await waitFor(() => {
+        onPopup = browserEvents.listen.mock.calls.find(
+          ([name]) => name === "browser:popup-request",
+        )?.[1];
+        if (!onPopup) throw new Error("Popup listener not ready");
+      });
+      admit("diff:other");
+      render(<AgentArtifactPane />);
+      fireEvent.click(screen.getByRole("button", { name: "New browser tab" }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("tab", { name: "Browser New tab" }),
+        ).toHaveAttribute("aria-selected", "true"),
+      );
+      nativeBrowser.popupOpen.mockResolvedValueOnce({
+        tabId: "browser:popup",
+        openerTabId: "browser:opener",
+        url: "https://signin.example.com/",
+      });
+      act(() =>
+        onPopup({
+          payload: {
+            id: 1,
+            openerTabId: "browser:opener",
+            url: "https://signin.example.com/",
+          },
+        }),
+      );
+      const popup = await screen.findByRole("tab", {
+        name: "Browser signin.example.com",
+      });
+      await waitFor(() =>
+        expect(popup).toHaveAttribute("aria-selected", "true"),
+      );
+
+      if (control !== "agent handback") return;
+      const diff = screen.getByRole("tab", { name: "Diff src/other.ts" });
+      fireEvent.click(diff);
+      nativeBrowser.control.mockResolvedValue({
+        projectId: "project-a",
+        chatId: "chat-focused",
+        userControl: false,
+      });
+      nativeBrowser.popupOpen.mockResolvedValueOnce({
+        tabId: "browser:agent-popup",
+        openerTabId: "browser:opener",
+        url: "https://agent.example.com/",
+      });
+      act(() =>
+        onPopup({
+          payload: {
+            id: 2,
+            openerTabId: "browser:opener",
+            url: "https://agent.example.com/",
+          },
+        }),
+      );
+      const agentPopup = await screen.findByRole("tab", {
+        name: "Browser agent.example.com",
+      });
+      expect(agentPopup).toHaveAttribute("aria-selected", "false");
+      expect(diff).toHaveAttribute("aria-selected", "true");
+    },
+  );
+
   it("shows browser tabs beside artifacts but keeps them out of Editor", () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
     const openBrowser = vi.fn(async () => undefined);
     const onOpenInEditor = vi.fn();
     useWorkbenchStore.setState((state) => ({
@@ -2273,7 +2584,11 @@ describe("Agent artifact file chips", () => {
       url: "http://127.0.0.1:5174/second",
     });
     render(<AgentArtifactPane />);
-    setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
+    // The pane shows a Preview only once its Chat owns the harness browse.
+    expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
+    act(() =>
+      setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]),
+    );
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     await settleLazyModules();
     expect(screen.getByTitle("Sage browser")).toHaveAttribute(

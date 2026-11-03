@@ -16,14 +16,13 @@ import {
   isTranscriptQuote,
   type TranscriptQuoteContext,
 } from "../../domain/transcriptQuote";
-import { requestAnnotation, useAnnotationRequest } from "./transcriptSelection";
 import { leanIcon } from "../../ui/leanIconCore";
 import { X } from "../../ui/leanIcons";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { SentBrowserContext } from "../browser/BrowserElementChipsSlot";
 import "./transcript-interactions.css";
+import { requestAnnotation, useAnnotationRequest } from "./transcriptSelection";
 
-// Codex's outlined, muted comment square: centred tail, two lines (s2/f0113).
 const CommentSquare = leanIcon("annotation-comment-square", [
   [
     "path",
@@ -284,8 +283,7 @@ export function SentAnnotations({
   return (
     <>
       <AnnotationChip
-        // A side chat's sent quotes are selections, as in its composer
-        // (Codex s2/f0260: "1 selection" above the sent bubble).
+        // A side chat's sent quotes are selections, as in its composer.
         selection={isSideChatId(chatId)}
         quotes={contexts.filter(isTranscriptQuote)}
       />

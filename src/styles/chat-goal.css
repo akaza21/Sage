@@ -17,6 +17,7 @@
 }
 
 .chat-goal-container {
+  overflow: clip;
   width: calc(100% - 24px);
   margin: 0 auto;
   background: var(--color-plane-raised);

@@ -73,7 +73,7 @@ function effort(
 }
 
 describe("Advertised composer effort", () => {
-  it("distinguishes model and thinking controls when only their icons fit", () => {
+  it("distinguishes model and thinking controls when only their icons fit", async () => {
     controls(effort("effort", ["low", "high"], "high"));
     const model = screen.getByRole("button", { name: "Model" });
     const thinking = screen.getByRole("button", {
@@ -86,7 +86,7 @@ describe("Advertised composer effort", () => {
 
   it.each(["medium", "Balanced thinking"])(
     "uses the %s display label in its heading and retains an advertised reset",
-    (label) => {
+    async (label) => {
       const { onSetOption } = controls({
         ...effort("effort", ["low", "medium"], "medium"),
         defaultValue: "low",
@@ -98,7 +98,9 @@ describe("Advertised composer effort", () => {
       fireEvent.click(
         screen.getByRole("button", { description: "Select effort" }),
       );
-      const dialog = screen.getByRole("dialog", { name: "Thinking level" });
+      const dialog = await screen.findByRole("dialog", {
+        name: "Thinking level",
+      });
       expect(dialog.querySelector(".composer-effort__level")).toHaveTextContent(
         label === "medium" ? "Medium" : label,
       );
@@ -118,12 +120,12 @@ describe("Advertised composer effort", () => {
     ["Pi", "pi.thinking", ["off", "high"], "high"],
   ])(
     "previews a %s drag locally and commits only its final advertised value",
-    (_name, id, values, final) => {
+    async (_name, id, values, final) => {
       const { onSetOption } = controls(effort(id, values));
       fireEvent.click(
         screen.getByRole("button", { description: "Select effort" }),
       );
-      const slider = screen.getByRole("slider");
+      const slider = await screen.findByRole("slider");
       fireEvent.pointerDown(slider, { pointerId: 1 });
       for (let position = 1; position < values.length; position++) {
         fireEvent.change(slider, { target: { value: String(position) } });
@@ -139,13 +141,13 @@ describe("Advertised composer effort", () => {
       expect(slider).toHaveValue("0");
     },
   );
-  it("discards a cancelled or stale drag rather than mutating a replacement option", () => {
+  it("discards a cancelled or stale drag rather than mutating a replacement option", async () => {
     const option = effort("effort", ["low", "medium", "high"]);
     const { rerender, Host, onSetOption } = controls(option);
     fireEvent.click(
       screen.getByRole("button", { description: "Select effort" }),
     );
-    const slider = screen.getByRole("slider");
+    const slider = await screen.findByRole("slider");
     fireEvent.pointerDown(slider);
     fireEvent.change(slider, { target: { value: "2" } });
     fireEvent.pointerCancel(slider);
@@ -157,7 +159,7 @@ describe("Advertised composer effort", () => {
     expect(slider).toHaveAttribute("aria-valuetext", "off");
     expect(onSetOption).not.toHaveBeenCalled();
   });
-  it("places the model link and reset before the slider in DOM focus order", () => {
+  it("places the model link and reset before the slider in DOM focus order", async () => {
     controls({
       ...effort("effort", ["low", "high"], "high"),
       defaultValue: "low",
@@ -165,14 +167,16 @@ describe("Advertised composer effort", () => {
     fireEvent.click(
       screen.getByRole("button", { description: "Select effort" }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Thinking level" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Thinking level",
+    });
     expect(
       Array.from(dialog.querySelectorAll("button, input")).map((control) =>
         control.getAttribute("aria-label"),
       ),
     ).toEqual(["Select model: Actual model", "Reset effort", "Thinking level"]);
   });
-  it("shows the current level on the trigger with Select effort as its description", () => {
+  it("shows the current level on the trigger with Select effort as its description", async () => {
     const { rerender, Host } = controls(effort("effort", ["low", "high"]));
     const trigger = screen.getByRole("button", { name: "Thinking level: low" });
     expect(trigger).toHaveTextContent("low");
@@ -294,7 +298,7 @@ describe("Advertised composer effort", () => {
     });
     fireEvent.click(trigger);
     await act(async () => {});
-    const slider = screen.getByRole("slider");
+    const slider = await screen.findByRole("slider");
     expect(slider).toHaveFocus();
     for (const key of [
       "ArrowLeft",
@@ -317,7 +321,7 @@ describe("Advertised composer effort", () => {
     expect(trigger).toHaveFocus();
     expect(screen.queryByRole("slider")).toBeNull();
   });
-  it("steps from each newly confirmed level rather than an optimistic or stale index", () => {
+  it("steps from each newly confirmed level rather than an optimistic or stale index", async () => {
     const option = effort("pi.thinking", ["off", "medium", "high"]);
     const { rerender, Host, onSetOption } = controls(option);
     fireEvent.click(
@@ -336,7 +340,7 @@ describe("Advertised composer effort", () => {
     ]);
   });
 
-  it("resets only to a confirmed advertised default, never the first or current value", () => {
+  it("resets only to a confirmed advertised default, never the first or current value", async () => {
     const option = {
       ...effort("effort", ["low", "medium", "high"], "high"),
       defaultValue: "medium",
@@ -371,7 +375,7 @@ describe("Advertised composer effort", () => {
       screen.getByRole("button", { description: "Select effort" }),
     );
     await act(async () => {});
-    const slider = screen.getByRole("slider");
+    const slider = await screen.findByRole("slider");
     fireEvent.keyDown(slider, { key: "Home" });
     rerender(<Host pending />);
     expect(slider).toHaveFocus();
@@ -394,10 +398,12 @@ describe("Advertised composer effort", () => {
     );
     await act(async () => {});
     expect(screen.queryByRole("slider")).toBeNull();
-    expect(screen.getByRole("option", { name: "Actual model" })).toHaveFocus();
+    expect(
+      await screen.findByRole("option", { name: "Actual model" }),
+    ).toHaveFocus();
   });
 
-  it("omits an unadvertised effort control and cannot step outside a singleton catalog", () => {
+  it("omits an unadvertised effort control and cannot step outside a singleton catalog", async () => {
     const { rerender, Host, onSetOption } = controls(undefined);
     expect(
       screen.queryByRole("button", { description: "Select effort" }),
@@ -406,7 +412,7 @@ describe("Advertised composer effort", () => {
     fireEvent.click(
       screen.getByRole("button", { description: "Select effort" }),
     );
-    const slider = screen.getByRole("slider");
+    const slider = await screen.findByRole("slider");
     for (const key of ["Home", "End", "ArrowLeft", "ArrowRight"])
       fireEvent.keyDown(slider, { key });
     expect(onSetOption).not.toHaveBeenCalled();

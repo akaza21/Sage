@@ -111,7 +111,7 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
     assert_eq!(
         versions,
         [
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
         ]
     );
     let abort_trigger: String = connection

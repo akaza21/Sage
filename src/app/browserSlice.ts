@@ -1,32 +1,33 @@
 import type { StateCreator } from "zustand";
 
-import { errorMessage } from "../domain/errors";
+import { browserTabTitle } from "../domain/browserTabTitle";
+
+import type { BrowserOperationProjection } from "../domain/browserOperation";
+import { browserFaviconDataUrl } from "../features/browser/browserFavicon";
 import {
+  browserPopupAbandon,
+  browserPopupPending,
   closeBrowser,
   openBrowser,
-  browserPopupPending,
-  browserOpenPopup,
-  type BrowserPopupIntent,
   type BrowserNavigation,
+  type BrowserPopupIntent,
 } from "../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../ports/nativeInvoke";
-import { browserFaviconDataUrl } from "../features/browser/browserFavicon";
 import {
   clearBrowserAgentPresence,
   recordBrowserAgentOperation,
 } from "./browserAgentActivityStore";
-import type { BrowserOperationProjection } from "../domain/browserOperation";
 import { matchesProjectIntent } from "./projectIntent";
+import type { WorkbenchState } from "./store";
 import {
+  BROWSER_CLOSE_ERROR,
   consumeBrowserAlreadyClosed,
   isBrowserCloseInFlight,
   reconcileNativeClosedBrowserTabs,
 } from "./tabClosing";
-import type { WorkbenchState } from "./store";
-import { positionTab } from "./tabState";
-import { popupAdoption, ackPopup } from "./browserPopupNative";
 
 export interface BrowserSlice {
+  userOpenedBrowserTabId: string | null;
   openBrowser: (url?: string) => Promise<void>;
   updateBrowserTabTitle: (
     tabId: string,
@@ -39,41 +40,6 @@ export interface BrowserSlice {
     dataUrl: string | null | undefined,
     revision: string,
   ) => void;
-}
-
-function browserTabTitle(
-  url: string,
-  documentTitle?: string | null,
-): string | null {
-  let host: string;
-  try {
-    host = new URL(url).host.slice(0, 48);
-  } catch {
-    return null;
-  }
-  const title =
-    typeof documentTitle === "string"
-      ? Array.from(
-          Array.from(documentTitle.slice(0, 512), (character) => {
-            const code = character.codePointAt(0) ?? 0;
-            if (
-              code === 0x061c ||
-              code === 0x200e ||
-              code === 0x200f ||
-              (code >= 0x202a && code <= 0x202e) ||
-              (code >= 0x2066 && code <= 0x2069)
-            )
-              return "";
-            return code < 32 || (code >= 127 && code <= 159) ? " " : character;
-          })
-            .join("")
-            .replace(/\s+/g, " ")
-            .trim(),
-        )
-          .slice(0, 80)
-          .join("")
-      : "";
-  return title || host;
 }
 
 export const createBrowserSlice: StateCreator<
@@ -102,70 +68,22 @@ export const createBrowserSlice: StateCreator<
       return;
     }
     processingPopups.add(intent.id);
-    const popup = popupAdoption(set, get, intent);
     try {
-      const projectId = get().project?.id;
-      const generation = get().projectGeneration;
-      if (!projectId || get().projectTransitioning)
-        return await popup.abandon();
-      await get().flushActiveEditor();
-      if (!matchesProjectIntent(get(), generation, projectId)) {
-        throw new Error("Project changed");
-      }
-      const opened = await browserOpenPopup(intent.id, intent.openerTabId);
-      popup.opened = opened;
-      if (
-        opened.openerTabId !== intent.openerTabId ||
-        !opened.tabId ||
-        !opened.url
-      )
-        throw new Error("Popup response invalid");
-      if (!matchesProjectIntent(get(), generation, projectId)) {
-        throw new Error("Project changed");
-      }
-      popup.inserted = !get().tabs.some((tab) => tab.id === opened.tabId);
-      if (popup.inserted) {
-        const openerIndex = get().tabs.findIndex(
-          (tab) => tab.id === opened.openerTabId && tab.kind === "browser",
-        );
-        if (openerIndex < 0) {
-          throw new Error("Popup opener closed");
-        }
-        set((state) => {
-          const tabs = [...state.tabs];
-          tabs.splice(openerIndex + 1, 0, {
-            id: opened.tabId,
-            kind: "browser",
-            title: browserTabTitle(opened.url) ?? "New tab",
-            position: openerIndex + 1,
-            pinned: false,
-            dirty: false,
-            openerTabId: opened.openerTabId,
-          });
-          return {
-            tabs: tabs.map(positionTab),
-            activeTabId: opened.tabId,
-            activeEditor: null,
-          };
-        });
-      }
-      popup.cleanupAttempted = true;
-      await ackPopup(set, get, intent.id, opened, popup.inserted);
+      const { adoptPopup } = await import("./browserPopupNative");
+      if (!(await adoptPopup(set, get, intent))) return;
       finishedPopups.add(intent.id);
       if (finishedPopups.size > 32) {
         const first = finishedPopups.values().next().value;
         if (first !== undefined) finishedPopups.delete(first);
       }
-    } catch (error) {
-      if (!popup.cleanupAttempted) {
-        try {
-          await popup.abandon();
-        } catch (cleanupError) {
-          set({ error: `Couldn't close popup: ${errorMessage(cleanupError)}` });
-          return;
-        }
-      }
-      set({ error: `Couldn't open popup: ${errorMessage(error)}` });
+    } catch {
+      if (typeof intent.nativeTabId === "string")
+        await browserPopupAbandon(
+          intent.id,
+          intent.openerTabId,
+          intent.nativeTabId,
+        ).catch(() => undefined);
+      set({ error: "Could not open the browser popup. Try again." });
     } finally {
       processingPopups.delete(intent.id);
       if (replayAfterProcessing.delete(intent.id)) replayPopups();
@@ -176,8 +94,8 @@ export const createBrowserSlice: StateCreator<
       .then((pending) => {
         for (const intent of pending) void processPopup(intent);
       })
-      .catch((error) =>
-        set({ error: `Couldn't restore popup: ${errorMessage(error)}` }),
+      .catch(() =>
+        set({ error: "Could not restore browser popups. Try again." }),
       );
   }
   if (nativeRuntime) {
@@ -278,7 +196,9 @@ export const createBrowserSlice: StateCreator<
                     )
                       set({ activeEditor: null });
                   })
-                  .catch((error) => set({ error: errorMessage(error) }));
+                  .catch(() =>
+                    set({ error: "Could not save the editor. Try again." }),
+                  );
               },
             ),
           );
@@ -324,18 +244,19 @@ export const createBrowserSlice: StateCreator<
             faviconRevisions.delete(tab.id);
             clearBrowserAgentPresence(tab.id);
           })
-          .catch((error) => {
+          .catch(() => {
             set((current) => ({
               tabs: current.tabs.some((item) => item.id === tab.id)
                 ? current.tabs
                 : [...current.tabs, tab],
-              error: `Couldn't close browser — try again: ${errorMessage(error)}`,
+              error: BROWSER_CLOSE_ERROR,
             }));
           });
       }
     }
   });
   return {
+    userOpenedBrowserTabId: null,
     updateBrowserTabFavicon: (tabId, dataUrl, revision) => {
       if (!/^(0|[1-9]\d{0,19})$/.test(revision)) return;
       const incoming = BigInt(revision);
@@ -372,6 +293,10 @@ export const createBrowserSlice: StateCreator<
     openBrowser: async (url) => {
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
+      if (!isTauriRuntime())
+        return set({
+          error: "The in-app browser is available in the desktop app.",
+        });
       const generation = get().projectGeneration;
       try {
         await get().flushActiveEditor();
@@ -394,11 +319,13 @@ export const createBrowserSlice: StateCreator<
             },
           ],
           activeTabId: id,
+          userOpenedBrowserTabId: id,
           activeEditor: null,
           error: null,
         }));
-      } catch (error) {
-        set({ error: errorMessage(error) });
+      } catch {
+        if (matchesProjectIntent(get(), generation, projectId))
+          set({ error: "Could not open the browser tab. Try again." });
       }
     },
   };

@@ -1,13 +1,10 @@
-/* Pending approval in the composer slot (Codex live parity s6/f0526). */
-.chat-surface--agent > .acp-permission-prompt {
-  grid-area: composer;
-}
-
 .acp-permission-prompt {
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--approval-card-fill);
   color: var(--color-text-primary);
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
@@ -59,8 +56,7 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--approval-control-edge);
   border-radius: var(--radius-pill);
-  /* Deny reads white, like the primary fill (Codex s6/f0526); the split
-     buttons set their own text colour. */
+
   color: var(--approval-primary-fill);
   background: transparent;
   font-size: var(--font-size-sm);
@@ -110,8 +106,6 @@
   outline-offset: 1px;
 }
 
-/* The default decision shows Codex's 2 px ring whenever it holds focus,
-   including the focus the card gives it on arrival (s6/f0526). */
 .acp-permission-prompt__split > button[data-initial-focus],
 .acp-permission-prompt__split > button:first-child:focus-visible {
   outline: var(--focus-ring-width) solid var(--chat-annotation-accent);

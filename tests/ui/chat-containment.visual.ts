@@ -34,14 +34,13 @@ async function prepare(
 ) {
   await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
   await settleChatProjections(page);
-  await page.evaluate(
-    async ({ profile, live }) => {
-      const fixturePath = "/tests/ui/fixtures/chatContainmentFixture.ts";
-      const fixture = await import(fixturePath);
-      fixture.installChatContainmentFixture(profile, live);
-    },
-    { profile, live },
-  );
+  await page.addScriptTag({
+    type: "module",
+    content: `
+      import { installChatContainmentFixture } from "/tests/ui/fixtures/chatContainmentFixture.ts";
+      installChatContainmentFixture(${JSON.stringify(profile)}, ${JSON.stringify(live)});
+    `,
+  });
   await expect(
     page.locator("form.composer").first().getByRole("textbox"),
   ).toHaveValue("Draft survives resizing");
@@ -183,27 +182,19 @@ async function expectComposerControls(
   );
   const queue = composer.locator(".composer__queued");
   if (await queue.count()) {
-    const narrow = await composer.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return (
-        element.clientWidth -
-          Number.parseFloat(style.paddingLeft) -
-          Number.parseFloat(style.paddingRight) <=
-        520
-      );
-    });
-    await expect(queue).toHaveCSS("position", narrow ? "static" : "absolute");
-    if (!narrow) {
-      const box = await queue.boundingBox();
-      const owner = await composer.boundingBox();
-      expect(box!.y + box!.height).toBeLessThanOrEqual(owner!.y);
-    }
-    // Narrow queues live in the scrollable composer body.
+    const box = await queue.boundingBox();
+    const owner = await composer.boundingBox();
+    const toolbar = await composer.locator(".composer__toolbar").boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(owner!.y);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y);
+    expect(box!.x).toBeGreaterThanOrEqual(owner!.x);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(owner!.x + owner!.width);
+    // Every row's controls remain reachable in the bounded queue viewport.
     await expectControls(
       queue,
       queue.locator('button, [tabindex="0"]'),
       viewport,
-      narrow,
+      true,
       true,
     );
   }
@@ -281,18 +272,10 @@ for (const forcedColors of ["none", "active"] as const) {
     const options = page.getByRole("menu", { name: "Composer options menu" });
     const picker = options;
     await expectOverlay(picker, viewports[3]);
-    // At 480 the Project control folds into the composer options menu
-    // (wave 5), so it is reached as a menu item rather than a toolbar chip.
-    await expect(
-      page.locator("form.composer").getByRole("button", {
-        name: "Project: Sage",
-        exact: true,
-      }),
-    ).toHaveCount(0);
-    const project = options.getByRole("menuitem", {
-      name: "Project: Sage",
-      exact: true,
-    });
+    // With the responsive rail collapsed, this composer keeps Project inline.
+    const project = page
+      .locator("form.composer")
+      .getByRole("button", { name: "Project: Sage", exact: true });
     await expect(project).toBeVisible();
     const last = picker.getByRole("menuitemradio").last();
     await last.scrollIntoViewIfNeeded();
@@ -310,7 +293,6 @@ for (const forcedColors of ["none", "active"] as const) {
     await last.click();
     await expect(picker).toHaveCount(0);
     await expect(options).toHaveCount(0);
-    await openComposerOptions(page);
     await project.click();
     const projectPicker = page.locator(".searchable-picker__popover");
     await expectOverlay(projectPicker, viewports[3]);
@@ -319,7 +301,7 @@ for (const forcedColors of ["none", "active"] as const) {
   });
 }
 
-test("single-pane composer options stay inside the wide composer", async ({
+test("single-pane composer options stay inside the wide dock", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -331,7 +313,7 @@ test("single-pane composer options stay inside the wide composer", async ({
     .click();
   const options = page.getByRole("menu", { name: "Composer options menu" });
   await expectOverlay(options, { width: 1280, height: 1000 });
-  const bounds = await composer.boundingBox();
+  const bounds = await page.locator(".chat-dock").boundingBox();
   const panel = await options.boundingBox();
   expect(panel!.x).toBeGreaterThanOrEqual(bounds!.x);
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(
@@ -361,7 +343,12 @@ test("expanded narrow file changes keep names and totals on one row", async ({
       .locator(".chat-file-chip__root, .tab__count")
       .all()) {
       if ((await detail.getAttribute("class")) === "chat-file-chip__root") {
-        await expect(detail).toBeHidden();
+        const chatWidth = (await page
+          .locator(".agent-chat-pane")
+          .first()
+          .boundingBox())!.width;
+        if (chatWidth <= 400) await expect(detail).toBeHidden();
+        else await expect(detail).toBeVisible();
         continue;
       }
       await expect(detail).toBeVisible();
@@ -384,9 +371,7 @@ for (const profile of profiles) {
           await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
           await prepare(page, profile, two, true);
           const panes = page.locator(".agent-chat-pane");
-          await expect(panes).toHaveCount(
-            two && viewport.width === 1888 ? 2 : 1,
-          );
+          await expect(panes).toHaveCount(1);
           const header = page.locator(".agent-task-header");
           await expectControls(header, header.locator("button"), viewport);
           await expectSiblings(header);
@@ -395,14 +380,18 @@ for (const profile of profiles) {
             : [null]) {
             if (split) {
               await page
-                .getByRole("separator", { name: "Resize chat panes" })
+                .getByRole("separator", {
+                  name: "Resize project and chat rail",
+                })
                 .focus();
               await page.keyboard.press(split);
               await expect(
-                page.getByRole("separator", { name: "Resize chat panes" }),
+                page.getByRole("separator", {
+                  name: "Resize project and chat rail",
+                }),
               ).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "30" : "70",
+                split === "Home" ? "180" : "460",
               );
             }
             for (const pane of await panes.all()) {
@@ -418,11 +407,21 @@ for (const profile of profiles) {
               if (viewport.width === 480 && viewport.height === 560) {
                 const body = composer.locator(".composer__body");
                 await expect(body).toHaveCSS("overflow-y", "auto");
-                expect(
+                expect((await body.boundingBox())!.height).toBeLessThanOrEqual(
+                  composerBox!.height,
+                );
+                if (
                   await body.evaluate(
                     (element) => element.scrollHeight > element.clientHeight,
-                  ),
-                ).toBe(true);
+                  )
+                ) {
+                  await body.evaluate((element) => {
+                    element.scrollTop = element.scrollHeight;
+                  });
+                  expect(
+                    await body.evaluate((element) => element.scrollTop),
+                  ).toBeGreaterThan(0);
+                }
               }
               await expectControls(
                 composer,
@@ -443,8 +442,11 @@ for (const profile of profiles) {
                 }),
               ).toBeVisible();
               // Like Codex refs 36/37, the narrowest composer drops the context meter.
+              const contentWidth = await composer.evaluate(
+                (element) => element.clientWidth,
+              );
               await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context && viewport.width > 480 ? 1 : 0,
+                profile.context && contentWidth > 280 ? 1 : 0,
               );
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
@@ -505,21 +507,19 @@ for (const profile of profiles) {
         for (const viewport of viewports) {
           await page.setViewportSize(viewport);
           const panes = page.locator(".agent-chat-pane");
-          await expect(panes).toHaveCount(
-            two && viewport.width === 1888 ? 2 : 1,
-          );
+          await expect(panes).toHaveCount(1);
           for (const split of two && viewport.width === 1888
             ? [null, "Home", "End"]
             : [null]) {
             if (split) {
               const splitter = page.getByRole("separator", {
-                name: "Resize chat panes",
+                name: "Resize project and chat rail",
               });
               await splitter.focus();
               await page.keyboard.press(split);
               await expect(splitter).toHaveAttribute(
                 "aria-valuenow",
-                split === "Home" ? "30" : "70",
+                split === "Home" ? "180" : "460",
               );
             }
             for (const pane of await panes.all()) {
@@ -557,19 +557,21 @@ for (const forcedColors of ["none", "active"] as const) {
     }
   });
 
-  test(`options return boundary Tab focus and follow Home/End splitter movement (${forcedColors})`, async ({
+  test(`options return boundary Tab focus and follow navigation splitter movement (${forcedColors})`, async ({
     page,
   }) => {
     const viewport = viewports[2];
     await page.setViewportSize(viewport);
     await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
     await prepare(page, profiles[0], true, false);
-    await installModeActions(page, 1);
-    const trigger = page.locator("form.composer").nth(1).getByRole("button", {
+    await installModeActions(page, 0);
+    const trigger = page.locator("form.composer").first().getByRole("button", {
       name: "Composer options",
       exact: true,
     });
-    const splitter = page.getByRole("separator", { name: "Resize chat panes" });
+    const splitter = page.getByRole("separator", {
+      name: "Resize project and chat rail",
+    });
     await trigger.click();
     const panel = page.getByRole("menu", { name: "Composer options menu" });
     await expect(panel).toBeVisible();
@@ -590,7 +592,7 @@ for (const forcedColors of ["none", "active"] as const) {
       await page.keyboard.press(key);
       await expect(splitter).toHaveAttribute(
         "aria-valuenow",
-        key === "Home" ? "30" : "70",
+        key === "Home" ? "180" : "460",
       );
       await expect(panel).toBeVisible();
       await expect
@@ -678,7 +680,7 @@ for (const profile of profiles) {
       }
       await expect(
         composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toBeDisabled();
+      ).toHaveCount(0);
       const options = page.getByRole("menu", {
         name: "Composer options menu",
       });
@@ -739,7 +741,7 @@ for (const profile of profiles) {
       await page.keyboard.press("Escape");
       await expect(picker).toHaveCount(0);
       await page.setViewportSize(viewports[2]);
-      await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+      await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
       for (const field of await page.locator("form.composer textarea").all()) {
         await expect(field).toHaveValue("Draft survives resizing");
       }

@@ -114,7 +114,9 @@ export function registerAgentTurnContinuityScenarios() {
     expect((await audit(page)).workbench).toMatchObject({
       activeTabId: JOURNEY_IDS.alpha,
       pinnedAgentChatOwner: JOURNEY_IDS.alpha,
-      betaSeenFingerprint: "Running:Background completion",
+      // AP-A1: pane acknowledgements are kept only for displayed panes;
+      // the rail's own unread state below proves the background completion.
+      betaSeenFingerprint: null,
     });
     const betaRailRow = page.locator(".project-chat-row").filter({
       has: page.getByRole("button", {
@@ -122,12 +124,14 @@ export function registerAgentTurnContinuityScenarios() {
       }),
     });
     await expect(betaRailRow.getByLabel("Unread updates")).toBeVisible();
-    await expect(
-      beta.getByText("Background result is complete.", { exact: true }),
-    ).toBeVisible();
+    // AP-A1: Beta is not shown beside Alpha; its result is read on return.
+    await expect(beta).toHaveCount(0);
     await evidence("background-completion-unread");
     await focusPane(page, "Beta");
     await expect(betaRailRow.getByLabel("Unread updates")).toHaveCount(0);
+    await expect(
+      beta.getByText("Background result is complete.", { exact: true }),
+    ).toBeVisible();
 
     const result = await audit(page);
     expect(result.eventCount).toBeLessThanOrEqual(MAX_SCRIPTED_EVENTS);
@@ -175,7 +179,17 @@ export function registerAgentTurnContinuityScenarios() {
     await expect(pane(page, "Gamma")).toHaveCount(0);
 
     await focusPane(page, "Beta");
-    await expectTurnState(page, alpha, 1, "running");
+    await expect(alpha).toHaveCount(0);
+    await expect(
+      page
+        .locator(".project-chat-row")
+        .filter({
+          has: page.getByRole("button", {
+            name: /^Open chat Alpha(?:, pinned)?$/,
+          }),
+        })
+        .getByLabel("Working"),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: /^Open chat Gamma(?:, pinned)?$/ })
       .click();

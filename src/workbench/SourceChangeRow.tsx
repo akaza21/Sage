@@ -1,15 +1,14 @@
 import { memo, useId, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
-
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import { isRootRepository } from "../domain/repositoryInventory";
-import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
-import type {
-  FileChange,
-  GitFileMutationAction,
-  RepositoryRef,
-  ResourceRef,
+import {
+  type FileChange,
+  type GitFileMutationAction,
+  type RepositoryRef,
+  type ResourceRef,
 } from "../domain/workbench";
+import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
+import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
 
 interface SourceChangeRowProps {
   change: FileChange;
