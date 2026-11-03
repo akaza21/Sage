@@ -1195,6 +1195,8 @@ describe("FileSurface Go-to Line", () => {
 
     fireEvent.change(input, { target: { value: "2:2" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    // JSDOM does not perform the browser's implicit form submission on Enter.
+    fireEvent.submit(input.closest("form")!);
     expect(editorSelection(editor)).toEqual({ start: 5, end: 5 });
     expect(useEditorCaretStore.getState().caret).toEqual({
       line: 2,
@@ -1235,6 +1237,8 @@ describe("FileSurface Go-to Line", () => {
     const input = await screen.findByRole("textbox", { name: "Go to line" });
     fireEvent.change(input, { target: { value: "nope" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    // JSDOM does not perform the browser's implicit form submission on Enter.
+    fireEvent.submit(input.closest("form")!);
     expect(screen.getByRole("status")).toHaveTextContent("Enter a line");
     expect(editorSelection(editor)).toEqual({ start: 0, end: 0 });
     expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();

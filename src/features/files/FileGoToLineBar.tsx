@@ -1,54 +1,51 @@
-import { useState, type RefCallback } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useState,
+  type RefObject,
+} from "react";
 import { X } from "../../ui/leanIcons";
 import { contentText, type EditorContent } from "./editorContent";
 import { goToLineSelection } from "./goToLine";
-import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLineLimits";
 
 export interface FileGoToLineBarProps {
   query: string;
-  onQueryChange: (query: string) => void;
-  inputRef: RefCallback<HTMLInputElement>;
+  pendingSubmitRef: RefObject<boolean>;
+  submitRef: RefObject<(() => void) | null>;
   content: EditorContent;
   onSubmit: (selection: { start: number; end: number }) => void;
   onClose: () => void;
 }
 
-export function FileGoToLineBar({
+export default function FileGoToLineBar({
   query,
-  onQueryChange,
-  inputRef,
+  pendingSubmitRef,
+  submitRef,
   content,
   onSubmit,
   onClose,
 }: FileGoToLineBarProps) {
-  const [invalid, setInvalid] = useState(false);
+  const [invalidQuery, setInvalidQuery] = useState<string>();
+  useImperativeHandle(
+    submitRef,
+    () => () => {
+      pendingSubmitRef.current = false;
+      const selection = goToLineSelection(contentText(content), query);
+      if (selection) onSubmit(selection);
+      else setInvalidQuery(query);
+    },
+    [pendingSubmitRef, content, query, onSubmit],
+  );
+  useEffect(() => {
+    // Both direct and buffered submits consume the pending flag before navigation.
+    if (pendingSubmitRef.current) submitRef.current?.();
+  }, [pendingSubmitRef, submitRef]);
+  if (invalidQuery !== undefined && invalidQuery !== query)
+    setInvalidQuery(undefined);
   return (
-    <div className="editor-find" role="search" aria-label="Go to line">
-      <label className="editor-find__query">
-        <input
-          ref={inputRef}
-          type="text"
-          aria-label="Go to line"
-          maxLength={MAX_GOTO_LINE_INPUT_CHARS}
-          value={query}
-          onChange={(event) => {
-            onQueryChange(
-              event.target.value.slice(0, MAX_GOTO_LINE_INPUT_CHARS),
-            );
-            setInvalid(false);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              const selection = goToLineSelection(contentText(content), query);
-              if (selection) onSubmit(selection);
-              else setInvalid(true);
-            }
-          }}
-        />
-      </label>
+    <>
       <span className="editor-find__status" role="status">
-        {invalid ? "Enter a line" : "Line or line:column"}
+        {invalidQuery === query ? "Enter a line" : "Line or line:column"}
       </span>
       <button
         className="icon-button editor-find__button"
@@ -58,6 +55,6 @@ export function FileGoToLineBar({
       >
         <X size={14} aria-hidden="true" />
       </button>
-    </div>
+    </>
   );
 }

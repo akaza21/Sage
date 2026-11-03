@@ -1,57 +1,68 @@
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import type { FileGoToLineBarProps } from "./FileGoToLineBar";
 import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLineLimits";
 
-const loadGoToLineBar = () =>
-  import("./FileGoToLineBar").then((module) => ({
-    default: module.FileGoToLineBar,
-  }));
+const loadGoToLineBar = () => import("./FileGoToLineBar");
 
-export type FileGoToLineProps = Omit<FileGoToLineBarProps, "inputRef">;
+export type FileGoToLineProps = Omit<
+  FileGoToLineBarProps,
+  "submitRef" | "pendingSubmitRef"
+> & {
+  onQueryChange: (query: string) => void;
+};
 
-/** The input handoff belongs to one open command, including its pending load. */
-export function FileGoToLine(props: FileGoToLineProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const focusInput = useCallback((input: HTMLInputElement | null) => {
-    if (!input) return;
-    // The detached pending input retains the selection for its replacement.
-    const previous = inputRef.current;
-    inputRef.current = input;
-    input.focus({ preventScroll: true });
-    if (previous) {
-      input.setSelectionRange(
-        previous.selectionStart,
-        previous.selectionEnd,
-        previous.selectionDirection ?? "none",
-      );
-    } else input.select();
-  }, []);
+function focusInput(input: HTMLInputElement | null) {
+  if (!input) return;
+  input.focus();
+  input.select();
+}
+
+/** One input and its pending command survive the lazy bar's load. */
+export function FileGoToLine({ onQueryChange, ...props }: FileGoToLineProps) {
+  const pendingSubmitRef = useRef(false);
+  const submitRef = useRef<() => void>(null);
   return (
-    <LazyModuleBoundary
-      load={loadGoToLineBar}
-      label="Go to line"
-      fallback={
-        <div className="editor-find" role="search" aria-label="Go to line">
-          <label className="editor-find__query">
-            <input
-              ref={focusInput}
-              type="text"
-              aria-label="Go to line"
-              maxLength={MAX_GOTO_LINE_INPUT_CHARS}
-              value={props.query}
-              onChange={(event) =>
-                props.onQueryChange(
-                  event.target.value.slice(0, MAX_GOTO_LINE_INPUT_CHARS),
-                )
-              }
-            />
-          </label>
-        </div>
-      }
-      render={(FileGoToLineBar) => (
-        <FileGoToLineBar {...props} inputRef={focusInput} />
-      )}
-    />
+    <div className="editor-find" role="search" aria-label="Go to line">
+      <form
+        className="editor-find__query"
+        action={() => {
+          const submit = submitRef.current;
+          if (submit) submit();
+          else pendingSubmitRef.current = true;
+        }}
+      >
+        <input
+          ref={focusInput}
+          aria-label="Go to line"
+          maxLength={MAX_GOTO_LINE_INPUT_CHARS}
+          value={props.query}
+          onChange={(event) =>
+            onQueryChange(
+              event.target.value.slice(0, MAX_GOTO_LINE_INPUT_CHARS),
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            pendingSubmitRef.current = false;
+            props.onClose();
+          }}
+        />
+      </form>
+      <LazyModuleBoundary
+        load={loadGoToLineBar}
+        label="Go to line"
+        fallback={null}
+        render={(FileGoToLineBar) => (
+          <FileGoToLineBar
+            {...props}
+            pendingSubmitRef={pendingSubmitRef}
+            submitRef={submitRef}
+          />
+        )}
+      />
+    </div>
   );
 }
