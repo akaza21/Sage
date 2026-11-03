@@ -378,18 +378,6 @@
   background: var(--resource-document-active-line);
 }
 
-/* With several cursors CodeMirror draws every selection and hides the
-   native one; these rules style the native selection only when it shows.
-   A class, not :has(), which would recheck styles on every edit. */
-.editor-input .cm-selectionBackground,
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  background: var(--resource-document-selection) !important;
-}
-
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  color: var(--resource-document-selection-foreground) !important;
-}
-
 .editor-input .cm-cursor {
   border-left-color: var(--resource-document-caret);
 }
