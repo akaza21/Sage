@@ -43,6 +43,27 @@ mod snapshot;
 mod transport;
 mod wait;
 
+/// One fixed CDP step built by the user's device toolbar, including layout
+/// reads that settle the viewport, outside any Agent permit.
+#[cfg(windows)]
+pub(crate) fn device_call(
+    webview: &tauri::Webview,
+    method: &'static str,
+    params: &str,
+) -> Result<String, crate::acp::browser::BrowserFailure> {
+    debug_assert!(
+        method.starts_with("Emulation.")
+            || matches!(method, "Browser.getVersion" | "Page.getLayoutMetrics")
+    );
+    cdp::call(
+        webview,
+        method,
+        params,
+        4096,
+        std::time::Duration::from_secs(2),
+    )
+}
+
 /// The native lane's own CDP observation of a tab, outside any Agent permit.
 #[cfg(all(windows, feature = "native-lane"))]
 pub(crate) fn lane_call(

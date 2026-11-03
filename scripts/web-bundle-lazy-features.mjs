@@ -12,7 +12,9 @@
 // `maxCssGzipBytes` cap, must stay out of the initial CSS, and must not be
 // carried by any record outside the feature, like the TerminalDock rule.
 
-const MAX_LAZY_FEATURES = 64;
+// Finite catalog input capacity, independent of the byte budgets below.
+// Agent and Editor features share this catalog, including demand-only tools.
+const MAX_LAZY_FEATURES = 96;
 const MAX_REASON_LENGTH = 200;
 
 // Editor packs (EDIT-0005 D1): on-demand language grammars and editing

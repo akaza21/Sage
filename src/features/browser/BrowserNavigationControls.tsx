@@ -22,7 +22,6 @@ import type {
   BrowserControlAction,
   BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
-import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
@@ -42,6 +41,8 @@ interface Props {
   onScreenshot: () => void;
   onZoom: (delta: number) => void;
   onZoomReset: () => void;
+  deviceOpen: boolean;
+  onDevice: () => void;
   onDownloads: () => void;
   onHistory: () => void;
   onSettings: (target: "browser" | "site") => void;
@@ -67,6 +68,8 @@ export function BrowserNavigationControls({
   onScreenshot,
   onZoom,
   onZoomReset,
+  deviceOpen,
+  onDevice,
   onDownloads,
   onHistory,
   onSettings,
@@ -283,6 +286,22 @@ export function BrowserNavigationControls({
                 ↺
               </button>
             </div>
+            <button
+              role="menuitem"
+              type="button"
+              disabled={
+                !deviceOpen &&
+                (!page || Boolean(navigation?.deviceUnavailableReason))
+              }
+              title={
+                page
+                  ? (navigation?.deviceUnavailableReason ?? undefined)
+                  : "Open a page to emulate a device"
+              }
+              onClick={() => run(onDevice)}
+            >
+              {deviceOpen ? "Hide device toolbar" : "Show device toolbar"}
+            </button>
           </div>
           <div className="browser-surface__menu-group">
             <button
@@ -325,79 +344,5 @@ export function BrowserNavigationControls({
         </div>
       </div>
     </>
-  );
-}
-
-export function BrowserFindControls({
-  findField,
-  findText,
-  onFindTextChange,
-  onFind,
-  onClose,
-}: {
-  findField: RefObject<HTMLInputElement | null>;
-  findText: string;
-  onFindTextChange: (value: string) => void;
-  onFind: (action: "start" | "previous" | "next") => void;
-  onClose: () => void;
-}) {
-  return (
-    <form
-      className="browser-surface__find"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onFind("start");
-      }}
-    >
-      <input
-        ref={findField}
-        aria-label="Find text"
-        value={findText}
-        maxLength={256}
-        onChange={(event) => onFindTextChange(event.target.value)}
-      />
-      <button type="submit" disabled={!findText}>
-        Find
-      </button>
-      <button
-        type="button"
-        aria-label="Previous match"
-        onClick={() => onFind("previous")}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        aria-label="Next match"
-        onClick={() => onFind("next")}
-      >
-        ↓
-      </button>
-      <button type="button" aria-label="Close find" onClick={onClose}>
-        <X size={16} aria-hidden="true" />
-      </button>
-    </form>
-  );
-}
-
-export function ClosedBrowserSurface({ tabId }: { tabId: string }) {
-  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
-  const closeTab = useWorkbenchStore((state) => state.closeTab);
-  return (
-    <section
-      aria-label="Browser page"
-      className="browser-surface browser-surface--closed"
-    >
-      <p>
-        This browser session closed when Sage restarted. Its page was not
-        restored.
-      </p>
-      <button type="button" onClick={() => void openBrowser()}>
-        Open new browser
-      </button>
-      <button type="button" onClick={() => closeTab(tabId)}>
-        Close tab
-      </button>
-    </section>
   );
 }

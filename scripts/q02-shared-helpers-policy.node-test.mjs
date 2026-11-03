@@ -25,10 +25,10 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
-test("default production file cap accepts 700 and rejects 701", async () => {
+test("default production file cap accepts 700 and fails closed at 701", async () => {
   const files = Array.from({ length: 701 }, (_, index) => [
-    `src/f${String(index).padStart(3, "0")}.ts`,
-    "",
+    `src/f${String(index).padStart(3, "0")}.${index % 2 === 0 ? "ts" : "tsx"}`,
+    "export {};",
   ]);
   await withFixture(Object.fromEntries(files.slice(0, 700)), async (root) => {
     assert.deepEqual(await scan(root), []);
@@ -44,18 +44,21 @@ test("default visited-entry cap is 1280", () => {
   assert.equal(Q02_LIMITS.visitedEntries, 1280);
 });
 
-test("default aggregate source cap accepts 2.5 MiB and rejects one byte more", async () => {
+test("default aggregate source cap accepts just under 2.5 MiB and fails closed just over", async () => {
+  const cap = 2_621_440;
   const files = Object.fromEntries(
-    Array.from({ length: 40 }, (_, index) => [
-      `src/f${String(index).padStart(2, "0")}.ts`,
-      "x".repeat(65_536),
+    Array.from({ length: 80 }, (_, index) => [
+      `src/f${String(index).padStart(3, "0")}.ts`,
+      " ".repeat(index === 79 ? 32_767 : 32_768),
     ]),
   );
   await withFixture(files, async (root) => {
     assert.deepEqual(await scan(root), []);
-    await writeFile(path.join(root, "src/z.ts"), "x");
+    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_768));
+    assert.deepEqual(await scan(root), []);
+    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_769));
     assert.deepEqual(await scan(root), [
-      "Q02 aggregate limit 2621440 exceeded at src/z.ts",
+      `Q02 aggregate limit ${cap} exceeded at src/f079.ts`,
     ]);
   });
 });

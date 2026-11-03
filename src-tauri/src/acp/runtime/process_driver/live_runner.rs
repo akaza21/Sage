@@ -26,6 +26,8 @@ mod process_exit;
 mod shutdown;
 mod terminal;
 
+#[cfg(test)]
+pub(super) use drive::active_step_for_test;
 use drive::drive;
 use handle::RunInput;
 pub(crate) use handle::{
