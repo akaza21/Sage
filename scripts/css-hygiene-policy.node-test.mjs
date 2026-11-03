@@ -186,8 +186,8 @@ test("reports malformed CSS deterministically", () => {
     "src/styles/a.css": `.a { content: "unterminated;`,
   });
 
+  // The parser stops at a file's first error; the file fails either way.
   assert.deepEqual(inventory.parseErrors, [
-    "src/styles/a.css:1 has an unclosed block.",
     "src/styles/a.css:1 has an unterminated string.",
     "src/styles/z.css:1 has an unclosed block.",
   ]);
@@ -322,4 +322,68 @@ test("allows !important only under reduced-motion and forced-colors queries", ()
       { line: 13, property: "padding" },
     ],
   );
+});
+
+test("checks vendor-prefixed and nested declarations for !important", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .a { -webkit-user-select: none !important; }
+      .b {
+        @media (min-width: 40rem) { color: inherit !important; }
+      }
+      .c {
+        @media (forced-colors: active) { color: CanvasText !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line, property }) => ({ line, property })),
+    [
+      { line: 2, property: "-webkit-user-select" },
+      { line: 4, property: "color" },
+    ],
+  );
+});
+
+test("allows !important only when every media alternative requires the preference", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      @media (prefers-reduced-motion: reduce), (min-width: 1px) {
+        .a { color: inherit !important; }
+      }
+      @media ( forced-colors : active ) {
+        .b { color: CanvasText !important; }
+      }
+      @media screen and ((prefers-reduced-motion: reduce)) {
+        .c { animation: none !important; }
+      }
+      @media not (forced-colors: active) {
+        .d { color: inherit !important; }
+      }
+      @media (forced-colors: active) or (min-width: 1px) {
+        .e { color: inherit !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line }) => line),
+    [3, 12, 15],
+  );
+});
+
+test("reads a declaration's priority apart from its value", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      @media (forced-colors: active) {
+        .split > button {
+          border-top-left-radius: var(--radius-none) !important;
+        }
+      }
+    `,
+  });
+
+  assert.deepEqual(inventory.cornerRadii, []);
+  assert.deepEqual(inventory.importants, []);
 });

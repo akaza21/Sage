@@ -233,7 +233,14 @@
   transition-timing-function: ease;
 }
 
+/* The tab reveals its close button through one property, which the button's
+   own hover then overrides without competing on selector weight. */
+.tab:hover {
+  --tab-close-color: var(--color-text-muted);
+}
+
 .tab--active {
+  --tab-close-color: var(--color-text-muted);
   color: var(--color-text-primary);
   background: var(--tab-active-fill, var(--color-surface));
   box-shadow: inset 0 2px 0 var(--color-accent);
@@ -293,13 +300,6 @@
   color: var(--tab-close-color, transparent);
   background: transparent;
   cursor: pointer;
-}
-
-/* The tab reveals its close button through one property, which the button's
-   own hover then overrides without competing on selector weight. */
-.tab:hover,
-.tab--active {
-  --tab-close-color: var(--color-text-muted);
 }
 
 .tab__close:hover {
