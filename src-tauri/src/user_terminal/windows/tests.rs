@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+
 use super::*;
 use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
 use windows_sys::Win32::System::JobObjects::IsProcessInJob;
