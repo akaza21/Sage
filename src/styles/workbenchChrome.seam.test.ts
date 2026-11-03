@@ -31,10 +31,11 @@ describe("Workbench chrome stylesheet seam", () => {
       "utf8",
     );
     expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--chrome-row-height:\s*48px;[^}]*--title-bar-fill:\s*#111111;/s,
+      /\.workbench--agent\s*\{[^}]*--title-bar-fill:\s*#111111;/s,
     );
+    expect(css).not.toMatch(/--chrome-row-height:/);
     expect(css).toMatch(
-      /\.workbench--agent \.agent-chat-center,\s*\.workbench--agent \.agent-artifact-pane\s*\{[^}]*background:\s*var\(--agent-shell-center\);/s,
+      /\.workbench--agent\s*\{[^}]*--workbench-card-fill:\s*var\(--agent-shell-center\);/s,
     );
     expect(css).toMatch(
       /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*44px;[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
@@ -52,7 +53,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.workbench--agent \.project-row--active\s*\{[^}]*background:\s*transparent;/s,
     );
     expect(css).toMatch(
-      /\.agent-rail-section__disclosure > svg\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:\s*var\(--space-1\);[^}]*opacity:\s*0;/s,
+      /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
   });
   it("matches every artifact grid header row to the rendered header height", async () => {

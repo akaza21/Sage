@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { browserCaptureScreenshot } from "../../ports/nativeBrowserPort";
-import { copyPngToClipboard } from "./browserClipboard";
 
 const COPIED = "Screenshot copied to clipboard";
 
@@ -23,11 +21,15 @@ export function useBrowserScreenshot(
     onError(null);
     setStatus("Capturing screenshot…");
     try {
-      const screenshot = await browserCaptureScreenshot(tabId, revision);
-      if (started !== epoch.current) return;
-      await copyPngToClipboard(screenshot.pngBase64);
-      if (started !== epoch.current) return;
-      setStatus(COPIED);
+      const { copyPageScreenshot } = await import("./browserClipboard");
+      if (
+        await copyPageScreenshot(
+          tabId,
+          revision,
+          () => started === epoch.current,
+        )
+      )
+        setStatus(COPIED);
     } catch (cause) {
       if (started !== epoch.current) return;
       setStatus(null);

@@ -1,3 +1,4 @@
+import { SageMark } from "../ui/leanIconCore";
 import { useEffect, useState } from "react";
 
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
@@ -119,18 +120,14 @@ export function App() {
   if (phase === "booting") {
     content = (
       <main className="launch-screen" aria-live="polite">
-        <div className="brand-mark" aria-hidden="true">
-          S
-        </div>
+        <SageMark className="brand-mark" />
         <p>Opening Sage...</p>
       </main>
     );
   } else if (phase === "error") {
     content = (
       <main className="launch-screen">
-        <div className="brand-mark brand-mark--error" aria-hidden="true">
-          !
-        </div>
+        <SageMark className="brand-mark" />
         <h1>Sage could not open</h1>
         <p>{error ?? "An unknown startup error occurred."}</p>
         <button

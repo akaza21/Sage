@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { useSessionAccessModeStore } from "../../../src/app/sessionAccessModeStore";
 import { snapshotPage } from "../../../src/app/agentDiff.fixture";
@@ -13,6 +13,7 @@ import { agentWorkbenchLayout } from "../../../src/workbench/agentWorkbenchLayou
 // measures the composer with the cascade the app ships.
 import "../../../src/styles/global.css";
 import "../../../src/styles/shared-controls.css";
+import "../../../src/styles/shared-dialogs.css";
 import "../../../src/styles/searchable-picker-bounded-popover.css";
 import "../../../src/styles/workbench-chrome.css";
 import "../../../src/styles/status-surfaces.css";
@@ -34,7 +35,11 @@ export type ParityState =
   | "stopped"
   | "unknown"
   | "no-effort"
-  | "no-default";
+  | "no-default"
+  | "pre-turn"
+  | "models"
+  | "model-collisions"
+  | "access";
 const noop = async () => {};
 const project = {
   id: "project-a",
@@ -52,11 +57,13 @@ export function Host({ state }: { state: ParityState }) {
     artifactExpanded: false,
   });
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useState<HTMLDivElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const projection = snapshotPage();
-  const home = state === "home";
+  const home = state === "home" || state === "pre-turn";
   if (home) projection.turns = [];
   else if (state !== "files") {
     const item = textItem();
@@ -81,6 +88,7 @@ export function Host({ state }: { state: ParityState }) {
           <div className="agent-chat-pane agent-chat-pane--focused">
             <section className="chat-surface chat-surface--agent">
               <ChatTranscript
+                editSummaryContainer={editSummaryContainer}
                 transcriptRef={transcriptRef}
                 contentRef={contentRef}
                 endRef={endRef}
@@ -103,10 +111,15 @@ export function Host({ state }: { state: ParityState }) {
                 onJumpToLatest={() => {}}
               />
               <ChatComposerRegion
+                onEditSummaryMount={setEditSummaryContainer}
                 composerRef={composerRef}
                 fieldId="message"
                 dictationScope="chat-a"
-                sessionId={state === "unknown" ? null : "session-a"}
+                sessionId={
+                  state === "unknown" || state === "pre-turn"
+                    ? null
+                    : "session-a"
+                }
                 descriptionId="message-description"
                 disabledReasonId="message-disabled"
                 text=""
@@ -120,12 +133,16 @@ export function Host({ state }: { state: ParityState }) {
                 availableBinding
                 canPrompt
                 discoveryPhase="ready"
-                sessionHarnessId="fixture"
+                sessionHarnessId={state === "pre-turn" ? null : "fixture"}
                 sessionModelId={null}
                 selectedHarnessId="fixture"
-                selectedModelId={null}
+                selectedModelId={
+                  state === "pre-turn" ? "claude-sonnet-4-5-20250929" : null
+                }
                 sessionPromptUnavailable={false}
-                sessionConfig={state === "unknown" ? null : config}
+                sessionConfig={
+                  state === "unknown" || state === "pre-turn" ? null : config
+                }
                 modePending={false}
                 modeError={null}
                 focused
@@ -153,6 +170,7 @@ export function Host({ state }: { state: ParityState }) {
                 missingBindingNotice={false}
                 disabledReason={null}
                 project={home ? null : project}
+                projectScopeName={home ? project.name : null}
                 usage={null}
                 goal={{ kind: "unsupported" }}
                 onSubmit={(event) => event.preventDefault()}
@@ -178,7 +196,15 @@ Object.assign(window, {
       project,
       projects: [{ ...project, rootCount: 0, lastOpenedAt: 1 }],
       selectedHarnessId: "fixture",
-      models: [],
+      models:
+        state === "pre-turn"
+          ? [
+              {
+                id: "claude-sonnet-4-5-20250929",
+                name: "Claude Sonnet 4 5 20250929",
+              },
+            ]
+          : [],
       harnesses: harnessNames.map((label) => ({
         id: label === name ? "fixture" : label,
         name: label,
@@ -189,6 +215,16 @@ Object.assign(window, {
         bindingId: "fixture",
         accountModelDiscovery: false,
         accessModes: [
+          ...(state === "access"
+            ? [
+                {
+                  id: "workspaceWrite" as const,
+                  label: "Workspace edits",
+                  description:
+                    "Edits and commands run without asking inside the workspace and temp folders; no network access.",
+                },
+              ]
+            : []),
           {
             id: "readOnly",
             label: "Read-only",
@@ -233,6 +269,52 @@ Object.assign(window, {
               },
             ],
     };
+    if (state === "models" || state === "model-collisions")
+      config.configOptions.push({
+        id: "model",
+        name: "Model",
+        type: "select",
+        currentValue:
+          state === "models"
+            ? "claude-sonnet-4-5-20250929"
+            : "claude-sonnet-4-20250514",
+        options: [
+          {
+            group: "default",
+            name: "Recommended by harness",
+            options: [
+              {
+                value:
+                  state === "models"
+                    ? "claude-sonnet-4-5-20250929"
+                    : "claude-sonnet-4-20250514",
+                name:
+                  state === "models"
+                    ? "Claude Sonnet 4 5 20250929"
+                    : "Claude Sonnet 4 20250514",
+              },
+            ],
+          },
+          {
+            group: "other",
+            name: "Other models",
+            options:
+              state === "models"
+                ? [{ value: "gpt-5.4-mini", name: "gpt-5.4-mini" }]
+                : [
+                    {
+                      value: "claude-sonnet-4-20250601",
+                      name: "claude-sonnet-4-20250601",
+                    },
+                    {
+                      value:
+                        "private/claude-sonnet-4/workspace-specific-model-with-a-long-identifier",
+                      name: "Claude Sonnet 4",
+                    },
+                  ],
+          },
+        ],
+      });
     draw();
   },
 });

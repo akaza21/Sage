@@ -1,8 +1,5 @@
+import { clampMermaidLabel, mermaidLines } from "./mermaidText";
 export const MAX_STATE_NODES = 12;
-import {
-  mermaidLines,
-  clampMermaidLabel as clampStateLabel,
-} from "./mermaidText";
 export const MAX_STATE_EDGES = 24;
 
 export interface MermaidStateNode {
@@ -60,7 +57,7 @@ export function parseMermaidState(source: string): MermaidStateSource {
     ) {
       return { ok: false, reason: "limit" };
     }
-    const label = clampStateLabel(transition[3] ?? "");
+    const label = clampMermaidLabel(transition[3] ?? "");
     if (
       label.includes("<") ||
       label.includes(">") ||

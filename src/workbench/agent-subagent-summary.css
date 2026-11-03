@@ -128,7 +128,6 @@ button.subagent-list__row:focus-visible {
   font-size: var(--font-size-xs);
 }
 
-/* Codex s4/f0244: the row's shape at 20 px (16 px in the child header, f0487). */
 .acp-subagent-row__glyph.subagent-avatar {
   width: 20px;
   height: 20px;

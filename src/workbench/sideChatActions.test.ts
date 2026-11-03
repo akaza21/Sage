@@ -135,7 +135,11 @@ beforeEach(() => {
     activeTabId: "parent",
     tabs: [{ id: "parent", kind: "chat", title: "Parent" }],
   });
-  useSideChatState.setState({ sides: [], pendingClose: null });
+  useSideChatState.setState({
+    sides: [],
+    pendingClose: null,
+    pairedId: null,
+  });
   cancelCloseSideChat();
   fake.start.mockResolvedValue({ projection: fake.sidePage });
   fake.native.mockImplementation(async (command: string) => {
@@ -175,6 +179,7 @@ it("creates a temporary Chat on the parent's harness and model, seeded with the 
   );
   expect(fake.state.projectTransitioning).toBe(false);
   expect(useSideChatState.getState().sides[0].parentChatId).toBe("parent");
+  expect(useSideChatState.getState().pairedId).toBe("side-test");
 });
 
 it("labels the side composer only with the model it actually starts on (Codex s2/f0244)", async () => {

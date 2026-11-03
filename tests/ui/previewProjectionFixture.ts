@@ -10,9 +10,11 @@ type Step = {
 
 export async function installPreviewProjectionTransport(page: Page) {
   await page.evaluate(() => {
-    // This one-visible-Chat fixture mounts two ACP consumers plus this Preview
-    // listener. It is a fixture-local topology, never a production event cap.
-    const MAX_FIXTURE_REGISTRATIONS = 3;
+    // This one-visible-Chat fixture mounts two ACP consumers, the rail's
+    // background status consumer and this Preview listener, and briefly
+    // holds one rejected goal or session-config callback. It is a
+    // fixture-local topology, never a production event cap.
+    const MAX_FIXTURE_REGISTRATIONS = 5;
     const PREVIEW_EVENT = "acp-projection-changed-v1";
     const callbacks = new Map<number, (event: { payload: unknown }) => void>();
     const listeners = new Map<number, (event: { payload: unknown }) => void>();
@@ -107,6 +109,14 @@ export async function installPreviewProjectionTransport(page: Page) {
               origin: "http://127.0.0.1:4173/native",
             };
           if (command === "stop_preview_target") return { ref: args.request };
+          // AP-B B5: the fixture's turns made no shell edits.
+          if (command === "get_acp_turn_workspace_changes")
+            return {
+              rootId: "visual-root",
+              tracked: true,
+              truncated: false,
+              changes: [],
+            };
           throw new Error(`unexpected visual desktop command: ${command}`);
         },
       },
@@ -142,11 +152,10 @@ export async function installPreviewProjectionTransport(page: Page) {
         __sagePreviewTransportAudit?: () => Promise<boolean>;
       }
     ).__sagePreviewTransportAudit = async () => {
-      const allocated = [
-        window.__TAURI_INTERNALS__.transformCallback(() => undefined),
-        window.__TAURI_INTERNALS__.transformCallback(() => undefined),
-        window.__TAURI_INTERNALS__.transformCallback(() => undefined),
-      ];
+      const allocated = Array.from(
+        { length: MAX_FIXTURE_REGISTRATIONS - callbacks.size },
+        () => window.__TAURI_INTERNALS__.transformCallback(() => undefined),
+      );
       let overflow = false;
       try {
         window.__TAURI_INTERNALS__.transformCallback(() => undefined);
@@ -173,7 +182,7 @@ export async function installPreviewProjectionTransport(page: Page) {
         .then(() => false)
         .catch(() => true);
       const rejectedReleased = !callbacks.has(rejected);
-      for (const id of [allocated[2], reused]) release(id);
+      for (const id of [...allocated.slice(2), reused]) release(id);
       return (
         overflow && reused === released && rejectedEvent && rejectedReleased
       );

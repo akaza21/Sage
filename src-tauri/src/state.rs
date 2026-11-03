@@ -330,7 +330,7 @@ mod tests {
 
         let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
         let registry = state.acp.binding_registry();
-        for id in ["unknown", "pi", "oh-my-pi"] {
+        for id in ["unknown", "oh-my-pi"] {
             assert!(registry.for_harness(id).is_none());
             assert!(matches!(
                 registry.resolve(id),
@@ -377,11 +377,19 @@ mod tests {
             .find(|entry| entry.id == "claude-code")
             .unwrap();
         assert_eq!(claude.binding_id.as_deref(), Some("claude-agent-acp"));
-        for id in ["pi", "oh-my-pi"] {
-            let entry = definitions.iter().find(|entry| entry.id == id).unwrap();
-            assert!(entry.binding_id.is_none());
-            assert_ne!(entry.install_state, "available");
-        }
+        // Pi has a curated read-only binding that stays unadmitted until
+        // discovery finds the installed package.
+        assert!(registry.for_harness("pi").is_some());
+        assert!(registry.resolve("pi-rpc").is_err());
+        let pi = definitions.iter().find(|entry| entry.id == "pi").unwrap();
+        assert_eq!(pi.binding_id.as_deref(), Some("pi-rpc"));
+        assert_ne!(pi.install_state, "available");
+        let omp = definitions
+            .iter()
+            .find(|entry| entry.id == "oh-my-pi")
+            .unwrap();
+        assert!(omp.binding_id.is_none());
+        assert_ne!(omp.install_state, "available");
     }
 
     #[test]

@@ -178,7 +178,7 @@ export const createChatArchiveSlice: StateCreator<
       }
       if (foreign) {
         const expectedTransitionEpoch = get().nativeTransitionEpoch;
-        return commitIdentityChatResult({
+        const committed = await commitIdentityChatResult({
           set,
           get,
           applyProjection,
@@ -194,6 +194,7 @@ export const createChatArchiveSlice: StateCreator<
               expectedTransitionEpoch,
             ),
         });
+        return committed;
       }
       let requested: ProjectLayoutRequest;
       try {

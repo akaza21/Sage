@@ -1,14 +1,15 @@
-export const MAX_RECENT_COMMITS = 64;
-export const SHORT_COMMIT_SHA_CHARS = 7;
+const MAX_RECENT_COMMITS = 64;
+
+const SHORT_COMMIT_SHA_CHARS = 7;
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 
-export interface RecentCommit {
+interface RecentCommit {
   sha: string;
   subject: string;
 }
 
-export function admitRecentCommitSha(sha: string): string | null {
+function admitRecentCommitSha(sha: string): string | null {
   const normalized = sha.trim().toLowerCase();
   return FULL_SHA.test(normalized) ? normalized : null;
 }

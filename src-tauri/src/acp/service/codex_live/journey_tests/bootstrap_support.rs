@@ -131,11 +131,14 @@ pub(super) fn install_store(service: &mut AcpService, store: impl AcpStore + 'st
     let (journal, runner) = JournalHandle::new(store);
     let thread =
         BoundedThread::spawn("bootstrap-causal-journal", move || runner.run_blocking()).unwrap();
-    service.sessions = SessionCoordinator::new(
+    service.session_starts = SessionCoordinator::new(
         journal.clone(),
-        service.scheduler.clone(),
+        crate::acp::scheduler::Scheduler::new(),
         service.publisher.clone(),
     );
+    service.lanes = (0..crate::acp::service::LIVE_RUNTIME_LANES)
+        .map(|_| crate::acp::service::live_lanes::LiveLane::new(&journal, &service.publisher))
+        .collect();
     service.journal = journal;
     *service.journal_thread.lock().unwrap() = Some(thread);
 }
