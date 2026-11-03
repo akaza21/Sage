@@ -99,20 +99,20 @@ function hunksFor(lines: DiffLine[]): DiffHunk[] {
     if (last && start <= last.end) last.end = end;
     else ranges.push({ start, end });
   }
-  return ranges.map(({ start, end }) => {
-    const selected = lines.slice(start, end);
-    const old = selected.filter((line) => line.oldLine !== null);
-    const next = selected.filter((line) => line.newLine !== null);
-    // For pure insert/delete, the absent side starts immediately before the change.
-    const oldStart =
-      old[0]?.oldLine ?? Math.max(0, (next[0]?.newLine ?? 1) - 1);
-    const newStart =
-      next[0]?.newLine ?? Math.max(0, (old[0]?.oldLine ?? 1) - 1);
-    return {
-      header: `@@ -${oldStart},${old.length} +${newStart},${next.length} @@`,
-      lines: selected,
-    };
-  });
+  return ranges.map(({ start, end }) => hunkOf(lines.slice(start, end)));
+}
+
+/** The header always describes exactly the lines it carries. */
+function hunkOf(selected: DiffLine[]): DiffHunk {
+  const old = selected.filter((line) => line.oldLine !== null);
+  const next = selected.filter((line) => line.newLine !== null);
+  // For pure insert/delete, the absent side starts immediately before the change.
+  const oldStart = old[0]?.oldLine ?? Math.max(0, (next[0]?.newLine ?? 1) - 1);
+  const newStart = next[0]?.newLine ?? Math.max(0, (old[0]?.oldLine ?? 1) - 1);
+  return {
+    header: `@@ -${oldStart},${old.length} +${newStart},${next.length} @@`,
+    lines: selected,
+  };
 }
 
 /** Never reads Git/disk. Full admitted bytes become only a bounded disposable view. */
@@ -201,7 +201,11 @@ export function snapshotFileDiff(
   for (const hunk of hunksFor(lines)) {
     if (hunk.lines.length > remaining) result.truncated = true;
     const selected = hunk.lines.slice(0, remaining);
-    if (selected.length) result.hunks.push({ ...hunk, lines: selected });
+    // A clipped hunk is re-headed so its counts match what is shown.
+    if (selected.length)
+      result.hunks.push(
+        selected.length === hunk.lines.length ? hunk : hunkOf(selected),
+      );
     remaining -= selected.length;
   }
   return result;
