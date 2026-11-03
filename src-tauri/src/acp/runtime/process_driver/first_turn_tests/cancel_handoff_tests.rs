@@ -55,6 +55,17 @@ async fn accept_native_terminal_behind(
     terminal: fn(&str, &str) -> Vec<u8>,
     queued: fn(&str, &str) -> Vec<Vec<u8>>,
 ) -> Handoff {
+    accept_terminal_behind_late_starts(terminal, 0, queued).await
+}
+
+/// As `accept_native_terminal_behind`, but Codex withholds its `turn/start`
+/// response until after the terminal, and `late_starts` copies of it are
+/// queued ahead of `queued`.
+async fn accept_terminal_behind_late_starts(
+    terminal: fn(&str, &str) -> Vec<u8>,
+    late_starts: usize,
+    queued: fn(&str, &str) -> Vec<Vec<u8>>,
+) -> Handoff {
     {
         let fixture = prepare_first_turn_fixture().await;
         let adapter = ready_adapter(
@@ -187,11 +198,11 @@ async fn accept_native_terminal_behind(
         assert_eq!(prompt["method"], "turn/start");
         let external_turn = "fixture-turn-12345-1";
         let thread = fixture.external_session.as_str();
-        mailbox
-            .try_push_chunk(line(
-                json!({"id":prompt["id"],"result":{"turn":{"id":external_turn}}}),
-            ))
-            .unwrap();
+        let start_response =
+            line(json!({"id":prompt["id"],"result":{"turn":{"id":external_turn}}}));
+        if late_starts == 0 {
+            mailbox.try_push_chunk(start_response.clone()).unwrap();
+        }
         mailbox
             .try_push_chunk(line(json!({"method":"turn/started","params":{
                 "threadId":thread,"turn":{"id":external_turn,"status":"inProgress"}
@@ -230,7 +241,9 @@ async fn accept_native_terminal_behind(
         ));
         assert_eq!(mailbox.retained_usage(), ((0, 0), (0, 0)));
 
-        let queued = queued(thread, external_turn);
+        let queued = std::iter::repeat_n(start_response, late_starts)
+            .chain(queued(thread, external_turn))
+            .collect::<Vec<_>>();
         for chunk in &queued {
             mailbox.try_push_chunk(chunk.clone()).unwrap();
         }
@@ -461,6 +474,20 @@ fn failed_terminal_with_a_malformed_error_keeps_the_handoff_closed() {
                 )]
             })
             .await,
+        );
+    });
+}
+
+/// Codex answers `turn/start` only after the interrupted terminal, and the
+/// late response is queued twice. Each copy reads as a duplicate terminal on
+/// its own, but the first settles the pending `turn/start` RPC, so idle
+/// ingestion would reject the second as uncorrelated. The proof reads them in
+/// order on one copy of the adapter and sees the state change.
+#[test]
+fn queued_late_turn_start_responses_keep_the_handoff_closed() {
+    crate::test_wait::guarded("late turn/start responses behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind_late_starts(interrupted, 2, |_, _| Vec::new()).await,
         );
     });
 }

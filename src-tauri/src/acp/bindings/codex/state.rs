@@ -67,7 +67,7 @@ struct ItemTerminal {
     state: ItemLifecycle,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct TurnTombstone {
     id: ExternalId,
     client_message_id: RequiredText<512>,
@@ -77,13 +77,13 @@ struct TurnTombstone {
     unretried_error_fingerprints: Vec<[u8; 32]>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct NegotiatedMethods {
     snapshot: CapabilitySnapshotV1,
     models: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PermissionRequestEntry {
     id: String,
     fingerprint: u64,
@@ -113,7 +113,7 @@ pub(crate) enum TurnBinding {
     Provisional,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ProvisionalTurn {
     response_id: ExternalId,
     started_id: Option<ExternalId>,
@@ -134,8 +134,9 @@ pub(crate) enum PermissionRegistration {
     DuplicateCommitted(Vec<u8>),
 }
 
-/// Cloned only to probe how ingestion would read a frame, without applying it.
-#[derive(Clone)]
+/// Cloned and compared only to probe how ingestion would read frames without
+/// applying them.
+#[derive(Clone, PartialEq)]
 pub(crate) struct CodexAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,

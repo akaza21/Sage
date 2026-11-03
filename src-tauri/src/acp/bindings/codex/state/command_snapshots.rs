@@ -48,7 +48,7 @@ impl CommandStatus {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct CommandSnapshot {
     stream: CommandOutputStream,
     command: Option<String>,
@@ -96,7 +96,7 @@ pub(crate) struct MaterializedCommandItem {
     pub(crate) explore: Option<CommandExplore>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct CommandItemSnapshots {
     values: BTreeMap<String, CommandSnapshot>,
     bytes: usize,

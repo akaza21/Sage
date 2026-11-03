@@ -35,7 +35,7 @@ enum ForkState {
     Released,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ForkEntry {
     thread: ExternalId,
     state: ForkState,
@@ -44,7 +44,7 @@ struct ForkEntry {
 }
 
 /// A release in flight; a background one is a deferred release nobody waits for.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct PendingRelease {
     id: u64,
     index: usize,
@@ -52,7 +52,7 @@ struct PendingRelease {
     delete: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ForkLedger {
     /// Recent fork threads, oldest first, each with its release state.
     threads: Vec<ForkEntry>,

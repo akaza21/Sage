@@ -13,8 +13,8 @@ use crate::acp::{
 use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
-    fn is_duplicate_terminal(&self, frame: &Frame, resources: &dyn ResourceMapper) -> bool {
-        self.ingests_as_duplicate_terminal(frame, resources)
+    fn frames_repeat_terminal(&self, frames: &[Frame], resources: &dyn ResourceMapper) -> bool {
+        self.ingests_as_duplicate_terminals(frames, resources)
     }
     fn discard_invalid_response(
         &mut self,

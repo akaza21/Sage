@@ -227,11 +227,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     /// Stdout still queued behind a durable terminal may cross the reusable
-    /// handoff only when the adapter proves every frame in it repeats that
-    /// terminal. Unknown frames, a frame error, or bytes left mid-frame keep
-    /// the Turn active so it reads them itself.
+    /// handoff only when the adapter proves every frame in it, read in order
+    /// as idle ingestion would, repeats that terminal and changes nothing.
+    /// Unknown frames, a frame error, or bytes left mid-frame keep the Turn
+    /// active so it reads them itself.
     pub(crate) fn queued_stdout_repeats_terminal(&self, chunks: &[Vec<u8>]) -> bool {
         let mut decoder = IncrementalFrameDecoder::new();
+        let mut frames = Vec::new();
         for chunk in chunks {
             let mut frame = match decoder.push_chunk(chunk) {
                 Ok(frame) => frame,
@@ -240,11 +242,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             loop {
                 // The same structural check idle ingestion applies first: a
                 // frame it would discard is never a proven duplicate.
-                if frame.as_ref().is_some_and(|frame| {
-                    validate_structure(frame).is_err()
-                        || !self.adapter.is_duplicate_terminal(frame, &self.resources)
-                }) {
-                    return false;
+                if let Some(frame) = frame {
+                    if validate_structure(&frame).is_err() {
+                        return false;
+                    }
+                    frames.push(frame);
                 }
                 if !decoder.has_pending_input() {
                     break;
@@ -256,6 +258,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             }
         }
         decoder.is_frame_aligned()
+            && (frames.is_empty()
+                || self
+                    .adapter
+                    .frames_repeat_terminal(&frames, &self.resources))
     }
 
     pub(crate) fn completed_turn_ready(&self) -> bool {

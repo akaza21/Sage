@@ -98,15 +98,17 @@ impl CodexRuntime {
         self.translate(disposition, request_digest)
     }
 
-    /// Runs `frame` through the protocol ingestion `ingest_frame` applies,
-    /// against a copy of the adapter state, and reports whether it would be
-    /// read as a duplicate terminal: the outcome that changes no state, writes
-    /// nothing and only maps to an ignored duplicate. While a native RPC reply
+    /// Runs `frames`, in order, through the protocol ingestion `ingest_frame`
+    /// applies, against one copy of the adapter state, and reports whether
+    /// each would be read as a duplicate terminal that leaves the state as it
+    /// was. A DuplicateTerminal outcome alone is not enough: a late reply can
+    /// read as one while it settles a pending RPC. While a native RPC reply
     /// is pending, `ingest_frame` may consume a frame before that ingestion,
-    /// so the probe answers false.
-    pub(super) fn ingests_as_duplicate_terminal(
+    /// so the probe answers false. Diagnostics stay silent: the trial is not
+    /// the read, and the real read reports them.
+    pub(super) fn ingests_as_duplicate_terminals(
         &self,
-        frame: &Frame,
+        frames: &[Frame],
         resources: &dyn ResourceMapper,
     ) -> bool {
         if self.poisoned
@@ -118,10 +120,15 @@ impl CodexRuntime {
             return false;
         }
         let mut probe = self.inner.clone();
-        matches!(
-            ingest_disposition(&mut probe, frame, resources, &self.declared_test_commands),
-            Ok(IngressDisposition::DuplicateTerminal)
-        ) && request_payload_digest(frame).is_ok()
+        super::super::incoming::trial_read(|| {
+            frames.iter().all(|frame| {
+                matches!(
+                    ingest_disposition(&mut probe, frame, resources, &self.declared_test_commands),
+                    Ok(IngressDisposition::DuplicateTerminal)
+                ) && request_payload_digest(frame).is_ok()
+                    && probe == self.inner
+            })
+        })
     }
 }
 

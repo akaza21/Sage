@@ -296,13 +296,15 @@ fn server_request_resolved(
 
 fn turn_started_rejection(adapter: &CodexAdapter, error: AdapterError) -> IngressError {
     let reason = TurnStartedRejection::from_adapter_error(&error);
-    tracing::warn!(
-        acp_turn_started_rejection = reason.as_str(),
-        active_turn = adapter.has_active_turn(),
-        pending_turn_start = adapter.has_pending_turn_start(),
-        previous_turn = adapter.has_previous_turn(),
-        "Codex turn/started rejected by adapter state"
-    );
+    if super::reports_diagnostics() {
+        tracing::warn!(
+            acp_turn_started_rejection = reason.as_str(),
+            active_turn = adapter.has_active_turn(),
+            pending_turn_start = adapter.has_pending_turn_start(),
+            previous_turn = adapter.has_previous_turn(),
+            "Codex turn/started rejected by adapter state"
+        );
+    }
     identity(error)
 }
 
