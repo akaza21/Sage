@@ -340,11 +340,7 @@ const occurrences: Extension = [
  * the drawn layer joins only while there are several cursors to show.
  */
 const cursorDrawing = new Compartment();
-// The class lets the File editor's CSS leave the hidden native selection be.
-const DRAWN_CURSORS = [
-  drawSelection(),
-  EditorView.editorAttributes.of({ class: "cm-drawnCursors" }),
-];
+const DRAWN_CURSORS = drawSelection();
 const drawCursorsWhenSeveral = EditorState.transactionExtender.of(
   (transaction) => {
     const several = transaction.newSelection.ranges.length > 1;
