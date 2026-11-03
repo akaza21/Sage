@@ -1,7 +1,10 @@
 use std::fs;
 
 use super::super::{
-    discovery::{discover, discover_uninstalled},
+    discovery::{
+        PreviewDiscoveryRequest, PreviewDiscoveryResponse, PreviewScriptName, PreviewTargetRef,
+        discover, discover_uninstalled,
+    },
     origin::loopback_origin,
 };
 use super::discovery_request;
@@ -277,30 +280,106 @@ fn discovery_skips_unreadable_nested_manifest() {
 
 #[test]
 fn discovery_visits_siblings_in_byte_order_and_prefers_the_root() {
-    for names in [["b", "a"], ["a", "b"], ["a", "B"]] {
+    for (names, first) in [(["b", "a"], "a"), (["a", "b"], "a"), (["a", "B"], "B")] {
         let root =
             std::env::temp_dir().join(format!("sage-preview-order-{}", uuid::Uuid::new_v4()));
         for name in names {
             fs::create_dir_all(root.join(name)).unwrap();
             fs::write(
                 root.join(name).join("package.json"),
-                r#"{"scripts":{"dev":"vite"}}"#,
+                r#"{"scripts":{"dev":"vite","start":"vite preview"}}"#,
             )
             .unwrap();
         }
         let request = discovery_request("project-preview", 4, 4);
-        let (response, mappings) =
-            discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
-        assert!(!response.truncated);
-        assert_eq!(response.targets.len(), 1);
-        assert_eq!(response.targets[0].script_name.as_str(), "dev");
-        assert_eq!(mappings[0].1, root.join(names.into_iter().min().unwrap()));
-        fs::write(root.join("package.json"), r#"{"scripts":{"dev":"root"}}"#).unwrap();
-        let (response, mappings) =
-            discover_uninstalled(&request, vec![root_record(&request, &root)]).unwrap();
-        assert!(!response.truncated);
-        assert_eq!(response.targets.len(), 1);
-        assert_eq!(mappings[0].1, root);
+        assert_repeated_discovery(&request, &root, Some(&root.join(first)), false);
+        fs::write(
+            root.join("package.json"),
+            r#"{"scripts":{"dev":"root","start":"root preview"}}"#,
+        )
+        .unwrap();
+        assert_repeated_discovery(&request, &root, Some(&root), false);
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn discovery_skips_the_entire_overflowing_directory() {
+    for nested in [false, true] {
+        for names in [["b", "a"], ["a", "b"]] {
+            let root = std::env::temp_dir()
+                .join(format!("sage-preview-overflow-{}", uuid::Uuid::new_v4()));
+            let directory = if nested {
+                root.join("overflow")
+            } else {
+                root.clone()
+            };
+            for name in names {
+                fs::create_dir_all(directory.join(name)).unwrap();
+                fs::write(
+                    directory.join(name).join("package.json"),
+                    r#"{"scripts":{"dev":"vite","start":"vite preview"}}"#,
+                )
+                .unwrap();
+            }
+            // Two package directories plus 255 files exceed the 256-entry cap.
+            // Even omitting one raw entry would leave at least one package.
+            for index in 0..PREVIEW_LIMITS.directory_entries - 1 {
+                fs::write(directory.join(format!("file-{index:03}")), "").unwrap();
+            }
+            if nested {
+                fs::write(
+                    root.join("package.json"),
+                    r#"{"scripts":{"dev":"root","start":"root preview"}}"#,
+                )
+                .unwrap();
+            }
+            let request = discovery_request("project-preview", 4, 4);
+            assert_repeated_discovery(&request, &root, nested.then_some(root.as_path()), true);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+}
+
+fn assert_repeated_discovery(
+    request: &PreviewDiscoveryRequest,
+    root: &std::path::Path,
+    package: Option<&std::path::Path>,
+    truncated: bool,
+) {
+    let expected_mappings: Vec<_> = package
+        .into_iter()
+        .flat_map(|package| {
+            [PreviewScriptName::Dev, PreviewScriptName::Start].map(|script_name| {
+                (
+                    PreviewTargetRef {
+                        project_id: request.project_id.clone(),
+                        project_generation: request.project_generation,
+                        expected_transition_epoch: request.expected_transition_epoch,
+                        chat_id: request.chat_id.clone(),
+                        session_id: request.session_id.clone(),
+                        runtime_epoch: request.runtime_epoch,
+                        root_id: crate::acp::contract::SageRootId::parse("root-preview").unwrap(),
+                        script_name,
+                    },
+                    package.to_owned(),
+                )
+            })
+        })
+        .collect();
+    let expected_response = PreviewDiscoveryResponse {
+        project_id: request.project_id.clone(),
+        transition_epoch: request.expected_transition_epoch,
+        targets: expected_mappings
+            .iter()
+            .map(|(target, _)| target.clone())
+            .collect(),
+        truncated,
+    };
+    for _ in 0..3 {
+        let (response, mappings) =
+            discover_uninstalled(request, vec![root_record(request, root)]).unwrap();
+        assert_eq!(response, expected_response);
+        assert_eq!(mappings, expected_mappings);
     }
 }

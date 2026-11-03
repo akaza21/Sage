@@ -184,7 +184,7 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
     let mut admitted_directories = 1_usize;
     let mut visited = 0_usize;
     let mut truncated = false;
-    while let Some((directory, depth)) = pending.pop() {
+    'directories: while let Some((directory, depth)) = pending.pop() {
         if packages.len() == MAX_PACKAGES_PER_ROOT {
             truncated = true;
             break;
@@ -204,8 +204,10 @@ fn discover_root(root: &Path) -> Result<(Vec<PathBuf>, bool), PreviewError> {
         let mut ordered_entries = Vec::new();
         for (entry_count, entry) in entries.take(MAX_DIRECTORY_ENTRIES + 1).enumerate() {
             if entry_count == MAX_DIRECTORY_ENTRIES {
+                // A raw read_dir prefix is platform dependent. Discard this
+                // entire listing rather than choosing an arbitrary subset.
                 truncated = true;
-                break;
+                continue 'directories;
             }
             let Ok(entry) = entry else {
                 truncated = true;
