@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, type RefCallback } from "react";
 import { X } from "../../ui/leanIcons";
 import { contentText, type EditorContent } from "./editorContent";
-import { goToLineSelection, MAX_GOTO_LINE_INPUT_CHARS } from "./goToLine";
+import { goToLineSelection } from "./goToLine";
+import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLineLimits";
 
 export interface FileGoToLineBarProps {
   query: string;
   onQueryChange: (query: string) => void;
+  inputRef: RefCallback<HTMLInputElement>;
   content: EditorContent;
   onSubmit: (selection: { start: number; end: number }) => void;
   onClose: () => void;
@@ -14,20 +16,15 @@ export interface FileGoToLineBarProps {
 export function FileGoToLineBar({
   query,
   onQueryChange,
+  inputRef,
   content,
   onSubmit,
   onClose,
 }: FileGoToLineBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [invalid, setInvalid] = useState(false);
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [inputRef]);
   return (
     <div className="editor-find" role="search" aria-label="Go to line">
       <label className="editor-find__query">
-        <span className="sr-only">Go to line</span>
         <input
           ref={inputRef}
           type="text"

@@ -15,7 +15,7 @@ import { type ActiveEditorState } from "./fileEditorController";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { type FindControl, type FindOpenRequest } from "./FileFindBar";
-import type { FileGoToLineBarProps } from "./FileGoToLineBar";
+import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 
@@ -58,12 +58,7 @@ interface FileSurfaceFindView {
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
-const loadGoToLineBar = () =>
-  import("./FileGoToLineBar").then((module) => ({
-    default: module.FileGoToLineBar,
-  }));
-
-type FileSurfaceGoToView = Omit<FileGoToLineBarProps, "content">;
+type FileSurfaceGoToView = Omit<FileGoToLineProps, "content">;
 
 export function FileSurfaceContent({
   activeResourceKey,
@@ -148,14 +143,7 @@ export function FileSurfaceContent({
         </p>
       ) : null}
       {goTo && !previewing ? (
-        <LazyModuleBoundary
-          load={loadGoToLineBar}
-          label="Go to line"
-          fallback={null}
-          render={(FileGoToLineBar) => (
-            <FileGoToLineBar {...goTo} content={editor.content} />
-          )}
-        />
+        <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
         <FileMarkdownPreview
