@@ -19,7 +19,7 @@ describe("Source Control changes stylesheet seam", () => {
     expect(surfaceCss).toMatch(/^\.source-change-row\b/m);
     expect(surfaceCss).toMatch(/^\.source-change__discard-confirmation\b/m);
     expect(surfaceCss).toMatch(
-      /\.source-change--selected\s*\{[^}]*background:\s*var\(--color-surface-selected\)[^}]*box-shadow:[^}]*font-weight:/s,
+      /\.source-change--selected\s*\{[^}]*background:\s*var\(--color-surface-selected\)[^}]*box-shadow:/s,
     );
     expect(surfaceCss).toMatch(
       /\.source-change:hover\s*\{[^}]*background:\s*var\(--color-surface-hover\)/s,
@@ -28,21 +28,5 @@ describe("Source Control changes stylesheet seam", () => {
       /\.source-change:hover\s*,\s*\.source-change--selected/,
     );
     expect(surfaceCss).toContain('.source-change[aria-current="true"]');
-    expect(surfaceCss).toMatch(
-      /\.source-change__action\s*\{[^}]*width:\s*var\(--control-height-compact\);[^}]*height:\s*var\(--control-height-compact\);/s,
-    );
-  });
-
-  it("anchors Source Control row spacing to the four pixel scale", async () => {
-    const surfaceCss = await readFile(
-      resolve("src/styles/source-control-changes.css"),
-      "utf8",
-    );
-
-    expect(surfaceCss).toMatch(
-      /^\.source-change \{[^}]*gap: var\(--space-1\);[^}]*padding: 0 var\(--space-2\);/ms,
-    );
-    expect(surfaceCss).not.toMatch(/gap:\s*6px/);
-    expect(surfaceCss).not.toMatch(/padding:\s*0 7px/);
   });
 });

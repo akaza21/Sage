@@ -5,6 +5,7 @@ import {
   acpProjectionStoreFor,
   clearAcpProjectionRegistry,
   pinAcpProjectionIds,
+  pinnedAcpProjectionIds,
   releaseAcpProjectionStore,
 } from "./acpProjectionRegistry";
 import { useAcpProjectionStore } from "./acpProjectionStore";
@@ -14,6 +15,15 @@ afterEach(() => {
 });
 
 describe("ACP projection registry", () => {
+  it("exposes a bounded copy of pinned owners for sleeping-workspace continuity", () => {
+    pinAcpProjectionIds(["chat-a", "chat-b", "chat-c"]);
+    const snapshot = pinnedAcpProjectionIds();
+    expect(snapshot).toEqual(["chat-a", "chat-b"]);
+    snapshot.pop();
+    expect(pinnedAcpProjectionIds()).toEqual(["chat-a", "chat-b"]);
+    clearAcpProjectionRegistry();
+    expect(pinnedAcpProjectionIds()).toEqual([]);
+  });
   it("retains a pinned projection through a subscription cleanup (R3-13)", () => {
     pinAcpProjectionIds(["chat-a"]);
     const visible = acpProjectionStoreFor("chat-a");

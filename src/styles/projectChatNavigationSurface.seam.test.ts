@@ -20,6 +20,22 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
   });
 
+  it("keeps a project header's name in the first column and its menu in the second", async () => {
+    const chatCss = await readFile(
+      resolve("src/styles/chat-navigation-surface.css"),
+      "utf8",
+    );
+    expect(chatCss).toMatch(
+      /\.project-entry__header > \.project-row\s*\{\s*grid-area:\s*1 \/ 1;/,
+    );
+    expect(chatCss).toMatch(
+      /\.project-entry__header > \.project-chat-actions\s*\{\s*grid-area:\s*1 \/ 2;/,
+    );
+    expect(
+      chatCss.indexOf(".project-entry__header > .project-chat-actions"),
+    ).toBeGreaterThan(chatCss.indexOf(".project-chat-actions {"));
+  });
+
   it("loads navigation rules from focused stylesheets, not the shell stylesheet", async () => {
     const [entry, shellCss, projectCss, chatCss] = await Promise.all([
       readFile(resolve("src/main.tsx"), "utf8"),

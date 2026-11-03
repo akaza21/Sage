@@ -32,6 +32,10 @@ use crate::{acp::process::TerminalJobBoundary, project_registry::ProjectRootAuth
 
 const DESCENDANT_LIMIT: u32 = 32;
 const SETTLE_DEADLINE: Duration = Duration::from_secs(3);
+/// Makes `cmd.exe` resolve typed commands from `PATH` only, so a program or
+/// script planted in the project folder never shadows a real tool.
+const NO_CURRENT_DIRECTORY_COMMAND_SEARCH: (&str, &str) =
+    ("NoDefaultCurrentDirectoryInExePath", "1");
 
 pub(super) struct ConPtyFactory;
 
@@ -402,6 +406,9 @@ fn environment_block() -> Result<Vec<u16>, TerminalError> {
             entries.push(0);
         }
     }
+    let (name, value) = NO_CURRENT_DIRECTORY_COMMAND_SEARCH;
+    entries.extend(format!("{name}={value}").encode_utf16());
+    entries.push(0);
     entries.push(0);
     if entries.len() > 16_384 {
         return Err(TerminalError::Backend);

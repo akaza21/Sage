@@ -5,7 +5,7 @@ import type {
   AgentArtifactOwner,
 } from "../domain/agentArtifact";
 import type { WorkbenchTab } from "../domain/workbench";
-import { agentToolResources } from "./AgentToolPanel";
+import { agentToolResources } from "./agentToolResources";
 
 const owner = {
   projectId: "project-a",

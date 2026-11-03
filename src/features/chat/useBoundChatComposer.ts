@@ -1,17 +1,13 @@
-import { useEffect, useMemo } from "react";
-import { useWorkbenchStore } from "../../app/store";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   changeQueuedChatPrompt,
   persistQueuedChatPrompt,
 } from "../../app/chatAttachedContextState";
+import { useWorkbenchStore } from "../../app/store";
+import type { AcpChatPage, ClientIntentId } from "../../domain/acp";
 import type { AttachedContext } from "../../domain/attachedContext";
 import type {
-  AcpChatPage,
-  ClientIntentId,
-  CuratedBindingId,
-  CuratedModelId,
-} from "../../domain/acp";
-import type {
+  ChatOwnershipEntry,
   ChatTurnOrder,
   QueuedChatPrompt,
 } from "../../domain/chatOwnership";
@@ -19,9 +15,11 @@ import { useChatImageAttachments } from "./useChatImageAttachments";
 
 const EMPTY_ATTACHED_CONTEXT = [] as const;
 const EMPTY_QUEUED_PROMPTS: readonly QueuedChatPrompt[] = [];
-const QUEUED_TURN_START_TIMEOUT_MS = 30_000;
 
-function laterTurnOrder(left: ChatTurnOrder, right: ChatTurnOrder): boolean {
+export function laterTurnOrder(
+  left: ChatTurnOrder,
+  right: ChatTurnOrder,
+): boolean {
   return (
     left.sessionOrdinal > right.sessionOrdinal ||
     (left.sessionOrdinal === right.sessionOrdinal &&
@@ -44,7 +42,10 @@ function latestTurnOrder(page: AcpChatPage | null): ChatTurnOrder | null {
   return latest;
 }
 
-export function useBoundChatComposer(chatId?: string) {
+export function useBoundChatComposer(
+  chatId?: string,
+  page: AcpChatPage | null = null,
+) {
   const composerText = useWorkbenchStore((state) => {
     if (!chatId) return state.composerText;
     return (
@@ -151,56 +152,60 @@ export function useBoundChatComposer(chatId?: string) {
       .catch(() => updateQueuedPrompt(id, "blocked"));
   }
 
+  const changeQueueState = useCallback(
+    (
+      change: Partial<
+        Pick<ChatOwnershipEntry, "queuedTurnBarrier" | "knownTurnOrder">
+      >,
+    ) => {
+      const state = useWorkbenchStore.getState();
+      const ownerId = chatId ?? state.activeTabId;
+      const intent = ownerId ? state.captureChatOwnership(ownerId) : null;
+      if (!intent) return;
+      useWorkbenchStore.setState((current) => {
+        if (
+          current.project?.id !== intent.projectId ||
+          current.chatOwnershipEpoch !== intent.ownershipEpoch
+        )
+          return current;
+        const owned = current.chatUiById[intent.chatId];
+        if (!owned) return current;
+        if (
+          change.knownTurnOrder &&
+          owned.knownTurnOrder &&
+          !laterTurnOrder(change.knownTurnOrder, owned.knownTurnOrder)
+        )
+          return current;
+        return {
+          chatUiById: {
+            ...current.chatUiById,
+            [intent.chatId]: { ...owned, ...change },
+          },
+        };
+      });
+    },
+    [chatId],
+  );
+
   function setQueuedTurnBarrier(
     barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
   ) {
-    const state = useWorkbenchStore.getState();
-    const ownerId = chatId ?? state.activeTabId;
-    const intent = ownerId ? state.captureChatOwnership(ownerId) : null;
-    if (!intent) return;
-    useWorkbenchStore.setState((current) => {
-      if (
-        current.project?.id !== intent.projectId ||
-        current.chatOwnershipEpoch !== intent.ownershipEpoch
-      )
-        return current;
-      const owned = current.chatUiById[intent.chatId];
-      if (!owned) return current;
-      return {
-        chatUiById: {
-          ...current.chatUiById,
-          [intent.chatId]: { ...owned, queuedTurnBarrier: barrier },
-        },
-      };
-    });
+    changeQueueState({ queuedTurnBarrier: barrier });
   }
 
-  function rememberTurnOrder(order: ChatTurnOrder | null) {
-    if (!order) return;
-    const state = useWorkbenchStore.getState();
-    const ownerId = chatId ?? state.activeTabId;
-    const intent = ownerId ? state.captureChatOwnership(ownerId) : null;
-    if (!intent) return;
-    useWorkbenchStore.setState((current) => {
-      if (
-        current.project?.id !== intent.projectId ||
-        current.chatOwnershipEpoch !== intent.ownershipEpoch
-      )
-        return current;
-      const owned = current.chatUiById[intent.chatId];
-      if (!owned) return current;
-      const existing = owned.knownTurnOrder;
-      if (existing && !laterTurnOrder(order, existing)) return current;
-      return {
-        chatUiById: {
-          ...current.chatUiById,
-          [intent.chatId]: { ...owned, knownTurnOrder: order },
-        },
-      };
-    });
-  }
+  const rememberTurnOrder = useCallback(
+    (order: ChatTurnOrder | null) => {
+      if (order) changeQueueState({ knownTurnOrder: order });
+    },
+    [changeQueueState],
+  );
+  const observedOrder = useMemo(() => latestTurnOrder(page), [page]);
+  useEffect(() => {
+    rememberTurnOrder(observedOrder);
+  }, [rememberTurnOrder, observedOrder]);
 
   return {
+    observedOrder,
     composerText,
     attachedContext,
     imagePreviews,
@@ -220,126 +225,4 @@ export function useBoundChatComposer(chatId?: string) {
     setQueuedTurnBarrier,
     rememberTurnOrder,
   };
-}
-
-export function useQueuedPromptDrain({
-  queuedPrompts,
-  queuedTurnBarrier,
-  knownTurnOrder,
-  activeTurn,
-  actionBusy,
-  projectTransitioning,
-  canPrompt,
-  useNativeAcp,
-  page,
-  submit,
-  updateQueuedPrompt,
-  setQueuedTurnBarrier,
-  rememberTurnOrder,
-}: {
-  queuedPrompts: readonly QueuedChatPrompt[];
-  queuedTurnBarrier: {
-    afterOrder: ChatTurnOrder | null;
-    deadlineMs: number;
-  } | null;
-  knownTurnOrder: ChatTurnOrder | null;
-  activeTurn: boolean;
-  actionBusy: boolean;
-  projectTransitioning: boolean;
-  canPrompt: boolean;
-  useNativeAcp: boolean;
-  page: AcpChatPage | null;
-  submit: (
-    text: string,
-    context: readonly AttachedContext[],
-    bindingId: CuratedBindingId,
-    modelId: CuratedModelId | null,
-  ) => Promise<unknown>;
-  updateQueuedPrompt: (
-    id: string,
-    status: QueuedChatPrompt["status"] | "deleted",
-  ) => void;
-  setQueuedTurnBarrier: (
-    barrier: { afterOrder: ChatTurnOrder | null; deadlineMs: number } | null,
-  ) => void;
-  rememberTurnOrder: (order: ChatTurnOrder | null) => void;
-}) {
-  const observedOrder = useMemo(() => latestTurnOrder(page), [page]);
-  useEffect(() => {
-    rememberTurnOrder(observedOrder);
-  }, [rememberTurnOrder, observedOrder]);
-  useEffect(() => {
-    if (queuedTurnBarrier !== null) {
-      if (
-        !observedOrder ||
-        (queuedTurnBarrier.afterOrder &&
-          !laterTurnOrder(observedOrder, queuedTurnBarrier.afterOrder))
-      ) {
-        const remainingMs = queuedTurnBarrier.deadlineMs - Date.now();
-        if (remainingMs <= 0) {
-          const next = queuedPrompts[0];
-          if (next?.status === "queued") updateQueuedPrompt(next.id, "blocked");
-          setQueuedTurnBarrier(null);
-          return;
-        }
-        const timer = setTimeout(() => {
-          const next = queuedPrompts[0];
-          if (next?.status === "queued") updateQueuedPrompt(next.id, "blocked");
-          setQueuedTurnBarrier(null);
-        }, remainingMs);
-        return () => clearTimeout(timer);
-      }
-      setQueuedTurnBarrier(null);
-      return;
-    }
-    const next = queuedPrompts[0];
-    if (
-      !next ||
-      next.status !== "queued" ||
-      activeTurn ||
-      actionBusy ||
-      projectTransitioning ||
-      !canPrompt ||
-      !useNativeAcp
-    )
-      return;
-    updateQueuedPrompt(next.id, "sending");
-    const afterOrder =
-      knownTurnOrder && observedOrder
-        ? laterTurnOrder(observedOrder, knownTurnOrder)
-          ? observedOrder
-          : knownTurnOrder
-        : (knownTurnOrder ?? observedOrder);
-    void submit(
-      next.text,
-      next.attachedContext,
-      next.bindingId as CuratedBindingId,
-      next.modelId as CuratedModelId | null,
-    )
-      .then((result) => {
-        if (result === "applied")
-          setQueuedTurnBarrier({
-            afterOrder,
-            deadlineMs: Date.now() + QUEUED_TURN_START_TIMEOUT_MS,
-          });
-        updateQueuedPrompt(
-          next.id,
-          result === "applied" ? "deleted" : "blocked",
-        );
-      })
-      .catch(() => updateQueuedPrompt(next.id, "blocked"));
-  }, [
-    actionBusy,
-    activeTurn,
-    canPrompt,
-    knownTurnOrder,
-    projectTransitioning,
-    queuedPrompts,
-    queuedTurnBarrier,
-    observedOrder,
-    setQueuedTurnBarrier,
-    submit,
-    updateQueuedPrompt,
-    useNativeAcp,
-  ]);
 }

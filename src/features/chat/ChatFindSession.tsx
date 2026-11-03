@@ -5,20 +5,22 @@ import {
   useState,
   type RefObject,
 } from "react";
-import type { TurnProjection } from "../../domain/acp";
+import { type TurnProjection } from "../../domain/acp";
+import "./chat-find.css";
 import { ChatFindBar } from "./ChatFindBar";
 import {
   findChatMatches,
   stepChatMatch,
   type ChatMatch,
 } from "./chatFindModel";
-import type { TurnListNavigation } from "./chatScroll";
+import { type TurnListNavigation } from "./chatScroll";
 import { useChatFindHighlights } from "./useChatFindHighlights";
 
-export const CHAT_FIND_DEBOUNCE_MS = 200;
+const CHAT_FIND_DEBOUNCE_MS = 200;
+
 const NO_MATCHES: readonly ChatMatch[] = [];
 
-export interface ChatFindSessionProps {
+interface ChatFindSessionProps {
   turns: readonly TurnProjection[];
   scrollport: HTMLElement;
   navigationRef: RefObject<TurnListNavigation | null>;

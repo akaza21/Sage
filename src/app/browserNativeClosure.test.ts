@@ -259,7 +259,9 @@ it("keeps an agent-opened tab visible and closeable when editor flush fails", as
     },
   });
   await vi.waitFor(() =>
-    expect(useWorkbenchStore.getState().error).toContain("flush failed"),
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Could not save the editor. Try again.",
+    ),
   );
   expect(useWorkbenchStore.getState().tabs).toContainEqual(
     expect.objectContaining({ id: "browser-79", kind: "browser" }),

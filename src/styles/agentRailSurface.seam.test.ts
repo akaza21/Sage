@@ -23,18 +23,16 @@ describe("Agent rail stylesheet seam", () => {
     );
   });
 
-  it("keeps the inline field, section controls, and active status tokenized", async () => {
+  it("keeps the palette trigger, section controls, and active status tokenized", async () => {
     const [component, surfaceCss, chatCss] = await Promise.all([
       readFile(resolve("src/workbench/LeftSidebar.tsx"), "utf8"),
       readFile(resolve("src/styles/agent-rail-surface.css"), "utf8"),
       readFile(resolve("src/styles/chat-navigation-surface.css"), "utf8"),
     ]);
 
-    expect(component).toContain('placeholder="Search tasks…"');
-    expect(component).toContain('aria-label="Search tasks"');
-    expect(surfaceCss).toMatch(
-      /\.agent-rail-search\s*\{[^}]*height:\s*var\(--control-height-default\);[^}]*border-radius:\s*var\(--radius-md\);/s,
-    );
+    expect(component).toContain('aria-label="Search chats"');
+    expect(component).not.toContain("<input");
+    expect(surfaceCss).not.toContain(".agent-rail-search");
     expect(chatCss).toMatch(
       /\.project-chat__status-chip\s*\{[^}]*border-radius:\s*var\(--radius-pill\);/s,
     );
@@ -45,9 +43,7 @@ describe("Agent rail stylesheet seam", () => {
       /@media \(forced-colors: active\)[\s\S]*\.project-chat__status-chip\s*\{[^}]*color:\s*CanvasText;[^}]*background:\s*Canvas;/s,
     );
     expect(surfaceCss).not.toMatch(/^\.project-(?:chat|row|sidebar)/m);
-    expect(surfaceCss).toMatch(
-      /@media \(forced-colors: active\)[\s\S]*\.agent-rail-search:focus-within\s*\{[^}]*outline:\s*1px solid Highlight;[^}]*box-shadow:\s*none;/s,
-    );
+
     expect(surfaceCss).not.toMatch(/#[\da-fA-F]{3,8}\b|rgba?\s*\(/);
   });
 

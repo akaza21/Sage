@@ -1,19 +1,7 @@
 use super::live_recovery::LiveHostRecoveryPhase;
 use super::*;
 
-impl AcpService {
-    #[cfg(test)]
-    pub(crate) fn send_codex_turn(
-        &self,
-        command: PrepareTurnCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.send_session_turn(crate::acp::runtime::HostPromptIntent {
-            command,
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
-        })
-        .map_err(|failure| failure.error)
-    }
-
+impl Lane<'_> {
     pub(crate) fn send_session_turn(
         &self,
         intent: crate::acp::runtime::HostPromptIntent,
@@ -43,6 +31,14 @@ impl AcpService {
             .map_err(crate::acp::service::PromptSendError::not_started)?;
         match host.send(intent) {
             Ok(outcome) => Ok(outcome),
+            Err(crate::acp::runtime::HostError::SignInRequired) => {
+                // Refusal happened before the prompt was written. Settle the
+                // turn and release its lane instead of retaining a stuck turn.
+                self.settle_refused_prompt(owner, host);
+                Err(crate::acp::service::PromptSendError::unknown(
+                    CodexSessionError::SignInRequired,
+                ))
+            }
             Err(error) => {
                 crate::acp::runtime::prompt_diagnostics::failed(
                     "service.host_send",

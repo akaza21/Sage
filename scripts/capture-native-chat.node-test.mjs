@@ -69,7 +69,7 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
   let paneCount = 1;
   const selectors = [
     'button[aria-label="Open projects and chats"]',
-    'button[aria-label="New task"]',
+    'button[aria-label="New chat"]',
     'button[aria-label="Close projects and chats"]',
     'button[aria-label="Harness"]',
     '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
@@ -167,7 +167,7 @@ for (const [reason, unhydrated] of Object.entries({
   project: { projectId: null },
   projection: { projectionLoaded: false },
 }))
-  test(`capture waits for the previous ${reason} before creating a new task`, async () => {
+  test(`capture waits for the previous ${reason} before creating a new chat`, async () => {
     const boundary = captureChatBoundary(1888, "pi");
     let observations = 0;
     const cdp = {
@@ -352,6 +352,7 @@ for (const state of ["approval-approved", "approval-declined"])
     const observationExpression = observationFor(HARNESS.claude.binding);
     boundary.observation.accessModes = ["ask"];
     let warmupObservations = 0;
+    let selectedAsk = false;
     const observation = {
       turnId: "none",
       turnCount: 0,
@@ -378,6 +379,7 @@ for (const state of ["approval-approved", "approval-declined"])
         if (
           expression === clickExpression('button[aria-label="Send message"]')
         ) {
+          assert.equal(selectedAsk, true);
           assert.equal(observation.controls.send, true);
           assert.equal(observation.controls.stop, false);
           observation.turnCount++;
@@ -396,6 +398,15 @@ for (const state of ["approval-approved", "approval-declined"])
           assert.equal(observation.turnCount, 0);
           assert.equal(observation.state, "none");
           assert.equal(observation.controls.modelEnabled, true);
+        }
+        if (
+          expression ===
+          clickExpression(
+            '[role="menu"][aria-label="Access mode"] [role="menuitemradio"][data-option-id="ask"]',
+          )
+        ) {
+          assert.equal(observation.turnCount, 0);
+          selectedAsk = true;
         }
         if (
           expression ===

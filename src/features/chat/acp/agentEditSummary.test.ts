@@ -133,7 +133,7 @@ describe("agent edit summary projection", () => {
       resource: { rootId: "root", relativePath: "first-8.ts" },
     });
   });
-  it("keeps resource and unavailable changes for the same display path distinct", () => {
+  it("uses the newest deletion for a resource that becomes unavailable at the same path", () => {
     const edited = fileItem("edited", 1, "root", "gone.ts", "edited");
     const deleted = fileItem("deleted", 2, "root", "gone.ts", "deleted");
     edited.payload.changes = [
@@ -154,10 +154,12 @@ describe("agent edit summary projection", () => {
       },
     ];
     const summary = projectChatEditSummary(page([edited, deleted]));
-    expect(summary.changes).toHaveLength(2);
-    expect(summary.changes[0]).toMatchObject({ additions: 3, deletions: 4 });
-    expect(summary.changes[1].operation).toBe("deleted");
-    expect(summary.changes[1]).toMatchObject({ additions: 0, deletions: 5 });
+    expect(summary.changes).toHaveLength(1);
+    expect(summary.changes[0]).toMatchObject({
+      operation: "deleted",
+      additions: 0,
+      deletions: 5,
+    });
   });
   it("counts unique omitted files only once when a capped file appears in another turn", () => {
     const projection = page(
