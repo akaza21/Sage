@@ -7,24 +7,22 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
-import type { TurnProjection } from "../../domain/acp";
-import { TurnPreviewCard } from "./TurnPreviewCard";
+import { type TurnProjection } from "../../domain/acp";
+import "./turn-navigator.css";
 import {
   DASH_PITCH,
   dashWidth,
   sampleTurnIndices,
   turnPrompt,
 } from "./turnNavigatorModel";
-import "./turn-navigator.css";
+import { TurnPreviewCard } from "./TurnPreviewCard";
 
 export const PREVIEW_DELAY_MS = 120;
+
 const PREVIEW_HALF_HEIGHT = 49.5;
+
 const STEP_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
 
-/**
- * Codex left-edge Turn rail: one dash per user Turn (sampled to at most 60),
- * fisheye widening on hover, a preview card and click / Enter to jump.
- */
 export function TurnNavigator({
   turns,
   visibleIds,

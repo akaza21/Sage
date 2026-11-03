@@ -96,8 +96,13 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
     };
     let host = Arc::new(RuntimeHost::start(ConfigErrorEngine(error)).unwrap());
     host.activate(owner.clone()).unwrap();
-    service.runtime.reserve_start(owner.clone()).unwrap();
     service
+        .lane_at(0)
+        .runtime
+        .reserve_start(owner.clone())
+        .unwrap();
+    service
+        .lane_at(0)
         .runtime
         .config
         .update(
@@ -112,10 +117,15 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
             .unwrap(),
         )
         .unwrap();
-    service.runtime.finish_start(&owner, host).unwrap();
-    service.runtime.publish_start(&owner).unwrap();
+    service
+        .lane_at(0)
+        .runtime
+        .finish_start(&owner, host)
+        .unwrap();
+    service.lane_at(0).runtime.publish_start(&owner).unwrap();
     let intent = ConfigIntent {
         expected_config_revision: service
+            .lane_at(0)
             .runtime
             .config
             .snapshot(&owner)
@@ -190,14 +200,25 @@ fn fatal_config_transport_errors_recover_exact_slot_and_clear_live_overlay() {
         let (service, intent, mut page) = fixture(error.clone());
         assert_eq!(service.configure_session(intent.clone()), Err(error));
         assert_eq!(
-            service.runtime.active().unwrap().state().unwrap(),
+            service
+                .lane_at(0)
+                .runtime
+                .active()
+                .unwrap()
+                .state()
+                .unwrap(),
             HostState::Recovery
         );
         assert!(matches!(
-            service.runtime.for_owner(&intent.owner),
+            service.lane_at(0).runtime.for_owner(&intent.owner),
             Err(RuntimeSlotError::Recovery)
         ));
-        let tombstone = service.runtime.config.snapshot(&intent.owner).unwrap();
+        let tombstone = service
+            .lane_at(0)
+            .runtime
+            .config
+            .snapshot(&intent.owner)
+            .unwrap();
         assert!(tombstone.removed);
         assert_eq!(tombstone.config_revision.get(), 2);
         // Even an otherwise hot durable page must expose the exact-owner
@@ -225,8 +246,11 @@ fn nonfatal_config_errors_keep_claimed_slot_and_live_overlay() {
         let (service, intent, mut page) = fixture(error.clone());
         let overlay = page.session_config.clone();
         assert_eq!(service.configure_session(intent.clone()), Err(error));
-        assert!(service.runtime.for_owner(&intent.owner).is_ok());
-        assert_eq!(service.runtime.config.snapshot(&intent.owner), overlay);
+        assert!(service.lane_at(0).runtime.for_owner(&intent.owner).is_ok());
+        assert_eq!(
+            service.lane_at(0).runtime.config.snapshot(&intent.owner),
+            overlay
+        );
         service.compose_session_config(&mut page).unwrap();
         assert_eq!(page.session_config, overlay);
         assert_eq!(page.sessions.as_slice()[0].capabilities.config_count, 1);
@@ -241,7 +265,7 @@ fn stale_config_owner_does_not_recover_the_current_owner() {
     let overlay = page.session_config.clone();
     intent.owner.runtime_epoch = RuntimeEpoch::new(2).unwrap();
     assert_eq!(service.configure_session(intent), Err(HostError::Intent));
-    assert!(service.runtime.for_owner(&owner).is_ok());
+    assert!(service.lane_at(0).runtime.for_owner(&owner).is_ok());
     service.compose_session_config(&mut page).unwrap();
     assert_eq!(page.session_config, overlay);
     assert_eq!(page.sessions.as_slice()[0].capabilities.config_count, 1);
@@ -260,7 +284,7 @@ fn fatal_config_transport_errors_retain_recovery_that_releases_capacity() {
         let (service, intent, _) = fixture(error.clone());
         assert_eq!(service.configure_session(intent.clone()), Err(error));
         assert!(matches!(
-            service.runtime.for_owner(&intent.owner),
+            service.lane_at(0).runtime.for_owner(&intent.owner),
             Err(RuntimeSlotError::Recovery)
         ));
 
@@ -275,8 +299,12 @@ fn fatal_config_transport_errors_retain_recovery_that_releases_capacity() {
             runtime_epoch: RuntimeEpoch::new(intent.owner.runtime_epoch.get() + 1).unwrap(),
             ..intent.owner
         };
-        service.runtime.reserve_start(next.clone()).unwrap();
-        service.runtime.abandon_start(&next).unwrap();
+        service
+            .lane_at(0)
+            .runtime
+            .reserve_start(next.clone())
+            .unwrap();
+        service.lane_at(0).runtime.abandon_start(&next).unwrap();
         service.shutdown_blocking().unwrap();
     }
 }

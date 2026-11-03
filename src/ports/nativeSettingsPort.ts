@@ -1,8 +1,8 @@
-import type { SettingsPort } from "./workbenchPorts";
-import type { EditorSettings } from "../domain/editorSettingsCatalogue";
-import type { SessionAccessModes } from "../domain/sessionAccessMode";
-import type { UiAppearance } from "../domain/uiAppearance";
+import { type EditorSettings } from "../domain/editorSettingsCatalogue";
+import { type SessionAccessModes } from "../domain/sessionAccessMode";
+import { type UiAppearance } from "../domain/uiAppearance";
 import { invokeNative } from "./nativeInvoke";
+import { type SettingsPort } from "./workbenchPorts";
 
 export const nativeSettingsPort: SettingsPort = {
   getEditorSettings(): Promise<Record<string, unknown>> {

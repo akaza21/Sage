@@ -245,6 +245,10 @@ mod tests {
         assert_eq!(change_stamp(temp.path()), change_stamp(temp.path()));
     }
 
+    // NTFS may coalesce directory timestamps within a clock tick; production
+    // polls a second apart. Keep each fixture write on a distinct metadata tick.
+    const METADATA_TICK: std::time::Duration = std::time::Duration::from_millis(20);
+
     #[test]
     fn stamp_changes_with_head_index_branch_and_remote_branch() {
         let (temp, git) = repository();
@@ -260,6 +264,7 @@ mod tests {
             ("MERGE_HEAD", "c\n"),
             ("HEAD", "ref: refs/heads/topic\n"),
         ] {
+            std::thread::sleep(METADATA_TICK);
             write(&git.join(path), text);
             let next = change_stamp(temp.path());
             assert_ne!(next, last, "{path} did not change the stamp");

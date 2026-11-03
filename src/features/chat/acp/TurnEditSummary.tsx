@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import { Files, ChevronRight } from "../../../ui/leanIcons";
+import { ChevronRight, Files } from "../../../ui/leanIcons";
 
 import type {
   AcpChatPage,
@@ -8,19 +8,25 @@ import type {
   AgentEditDispositionState,
   TurnProjection,
 } from "../../../domain/acp";
+import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { ResourceRef } from "../../../domain/workbench";
-import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
-import { ChatFileChip } from "./FileChip";
-import { chatFileChipBasename } from "./chatFileChip";
+import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { projectChatEditSummary } from "./chatEditSummary";
+import { chatFileChipBasename } from "./chatFileChip";
 import { DeferredInlineSavedDiff as InlineSavedDiff } from "./DeferredChatDetails";
 import { FileChangeTotals } from "./FileChangeTotals";
+import { ChatFileChip } from "./FileChip";
+import { rootDisplayName } from "./rootDisplayName";
+import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
   rootLabels: Readonly<Record<string, string>>;
   countIncomplete: boolean;
+  workspaceChanges?: readonly TurnWorkspaceChange[];
+  workspaceIncomplete?: boolean;
   onOpenFile?: (resource: ResourceRef, turn: TurnProjection) => void;
   onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
   onRecordDisposition?: (
@@ -28,40 +34,34 @@ interface TurnEditSummaryProps {
   ) => Promise<AcpMutationResult>;
 }
 
-function rootDisplayName(
-  rootLabels: Readonly<Record<string, string>>,
-  rootId: string,
-): string {
-  const projected = Object.prototype.hasOwnProperty.call(rootLabels, rootId)
-    ? rootLabels[rootId]
-    : null;
-  return typeof projected === "string" && projected.length > 0
-    ? projected
-    : rootId;
-}
-
 export const TurnEditSummary = memo(function TurnEditSummary({
   page,
   rootLabels,
   countIncomplete,
+  workspaceChanges,
+  workspaceIncomplete = false,
   onOpenFile,
   onOpenDiff,
   onRecordDisposition,
 }: TurnEditSummaryProps) {
-  const summary = useMemo(() => projectChatEditSummary(page), [page]);
+  const fetchedWorkspaceChanges = useTurnWorkspaceChanges(
+    page,
+    workspaceChanges === undefined && isTauriRuntime(),
+  );
+  const workspace = workspaceChanges ?? fetchedWorkspaceChanges.changes;
+  const incomplete =
+    workspaceIncomplete || fetchedWorkspaceChanges.incompleteTurnIds.size > 0;
+  const summary = useMemo(
+    () => projectChatEditSummary(page, workspace, incomplete),
+    [page, workspace, incomplete],
+  );
   const [expanded, setExpanded] = useState(false);
   const [recording, setRecording] = useState<AgentEditDispositionState | null>(
     null,
   );
   const [dispositionError, setDispositionError] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
-  if (
-    summary.changes.length === 0 &&
-    !summary.sourceTruncated &&
-    !summary.rejectedUnsafeOrStale
-  ) {
-    return null;
-  }
+  if (summary.changes.length === 0) return null;
   const summaryIncomplete =
     countIncomplete ||
     summary.omittedCount > 0 ||
@@ -126,7 +126,10 @@ export const TurnEditSummary = memo(function TurnEditSummary({
         {dispositionError ? (
           <span className="acp-file-changes__error">Needs attention</span>
         ) : null}
-        <FileChangeTotals changes={summary.changes} />
+        <FileChangeTotals
+          changes={summary.changes}
+          incomplete={summaryIncomplete}
+        />
       </button>
       {expanded && summary.changes.length > 0 ? (
         <ul>
@@ -149,14 +152,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                       {change.operation}
                     </span>
                   )}
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                   <span className="acp-file-changes__summary">
                     {change.summary}
                   </span>
@@ -205,14 +201,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                 )}
                 <span className="acp-change-operation">{change.operation}</span>
                 {admitted && counted ? null : (
-                  <span className="acp-file-changes__counts">
-                    <span>
-                      {change.additions === null ? "—" : `+${change.additions}`}
-                    </span>
-                    <span>
-                      {change.deletions === null ? "—" : `-${change.deletions}`}
-                    </span>
-                  </span>
+                  <FileChangeTotals changes={[change]} />
                 )}
                 <span className="acp-file-changes__summary">
                   {change.summary}
@@ -291,7 +280,8 @@ export const TurnEditSummary = memo(function TurnEditSummary({
       ) : null}
       {expanded && summary.sourceTruncated ? (
         <p className="acp-file-changes__disclosure">
-          The agent reported further changed files that are not shown.
+          Change tracking is incomplete; additional changed files may not be
+          shown.
         </p>
       ) : null}
       {expanded && summary.rejectedUnsafeOrStale ? (

@@ -1,5 +1,6 @@
+@import "./surface.css";
+
 :root {
-  /* Codex live parity §0: raised popovers, selection, annotations, side chat */
   --color-panel-raised: #2d2d2d;
   --color-panel-raised-hover: #3e3e3e;
   --chat-selection-bg: #626262;
@@ -38,7 +39,7 @@
   --color-border-strong: #2a2a2a;
   --color-text-primary: #c5c5c5;
   --color-text-secondary: #adadad;
-  /* Codex draws its brightest chrome white: shimmer core, "…", jump arrow. */
+
   --color-text-emphasis: #fff;
   --color-text-muted: #858585;
   --color-text-disabled: #656565;
@@ -72,11 +73,11 @@
     var(--color-danger) 12%,
     var(--color-panel)
   );
-  /* Tool failure box (Codex live parity: #280b0a fill, #7c211f edge). */
+
   --color-danger-surface: #280b0a;
   --color-danger-border: #7c211f;
   --color-danger-surface-text: #dbd6d6;
-  /* Approval card in the composer slot (Codex live parity s6/f0526). */
+
   --approval-card-fill: #2d2d2d;
   --approval-kind-text: #b6b6b6;
   --approval-detail-fill: #282828;
@@ -132,11 +133,11 @@
   --agent-subagent-violet: #a879df;
   --agent-subagent-teal: #61bfaa;
   --agent-subagent-coral: #df8f76;
-  /* Codex turn navigator and find-in-chat (live parity spec sections 5-6). */
+
   --agent-nav-dash: #464646;
   --agent-nav-dash-visible: #a3a3a3;
   --agent-nav-preview-muted: #969696;
-  /* Measured Codex geometry: 9 px dash pitch, 290 x 99 card, 10/12 inset. */
+
   --turn-nav-pitch: 9px;
   --turn-nav-preview-height: 99px;
   --turn-nav-preview-padding: 10px 12px;
@@ -308,6 +309,20 @@
   --scrollbar-thumb: #3a3a3a;
   --scrollbar-thumb-hover: #4a4a4a;
   --reading-measure: 72ch;
+  --chat-column-inset-block-end: var(--space-2);
+  --composer-input-min-block-size: calc(
+    2 * var(--font-size-md) * var(--line-height-normal) + var(--space-3) +
+      var(--space-1)
+  );
+  --transcript-item-gap: var(--space-2);
+  --transcript-answer-gap: var(--space-2);
+  --radius-edit-summary: var(--radius-md);
+  --settings-measure: 820px;
+  --settings-content-gap: var(--space-4);
+  --workbench-card-radius: var(--radius-md);
+  --workbench-card-border: var(--color-border-subtle);
+  --workbench-card-fill: var(--color-panel);
+  --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 
@@ -316,6 +331,8 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --border-width: 1px;
+  --card-border: var(--border-width) solid var(--color-border-subtle);
   --radius-composer-menu: 12px;
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
@@ -384,7 +401,7 @@
   --motion-duration-normal: 160ms;
   --motion-duration-pulse: 1.4s;
   --motion-duration-spin: 900ms;
-  /* Codex live recordings, parity spec section 10 (frame cadence 60-157 ms). */
+
   --motion-duration-shimmer: 4s; /* s8/f0124, f0149, f0174 sweep starts */
   --motion-duration-stream: 300ms; /* s5/f0299-f0309 word fade */
   --motion-duration-chevron: 120ms; /* s2/f0039-f0041 */
@@ -609,26 +626,7 @@ textarea:disabled,
 }
 
 .brand-mark {
-  display: grid;
-  width: var(--chrome-row-height);
-  height: var(--chrome-row-height);
-  place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  color: var(--accent-strong);
-  background: var(--accent-muted);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-}
-
-.brand-mark--error {
-  color: var(--danger);
-  border-color: color-mix(
-    in srgb,
-    var(--color-danger) 45%,
-    var(--color-border-subtle)
-  );
-  background: var(--color-danger-muted);
+  color: var(--color-text-muted);
 }
 
 .workbench__body {
@@ -642,17 +640,15 @@ textarea:disabled,
     calc(var(--sidebar-width) + 46px);
 }
 
-/* Window modes frame the center through the --center-region-* tokens. */
+/* Window modes set center rows; the shared surface primitive owns its frame. */
 .center-region {
   display: grid;
   min-width: 0;
   min-height: 0;
-  margin: var(--center-region-margin, 0);
-  overflow: var(--center-region-overflow, visible);
-  grid-template-rows: var(--center-region-tabs-height, 42px) minmax(0, 1fr);
-  border: var(--center-region-border, 0);
-  border-radius: var(--radius-center-region);
-  background: var(--center-region-fill, transparent);
+  grid-template-rows: var(
+    --center-region-rows,
+    var(--center-region-tabs-height, var(--tab-height)) minmax(0, 1fr)
+  );
 }
 
 .active-canvas {

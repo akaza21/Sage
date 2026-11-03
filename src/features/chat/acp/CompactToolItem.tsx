@@ -1,8 +1,8 @@
-import { ToolItemDetails } from "./ToolItemDetails";
-import type { ToolItemProps } from "./ToolItem";
-import { ToolCommandFrame } from "./ToolCommandFrame";
-import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
 import { toolStateLabels } from "./statusSemantics";
+import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
+import { ToolCommandFrame } from "./ToolCommandFrame";
+import type { ToolItemProps } from "./ToolItem";
+import { ToolItemDetails } from "./ToolItemDetails";
 
 export function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
   const presentation = item.payload.presentation;

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workbench performance fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import "/src/main.tsx";
+      window.installPerfScenario = async (name) => {
+        const { installVisualScenario } = await import("./visualScenarios.ts");
+        await installVisualScenario(name);
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const { acpProjectionStoreFor } =
+          await import("/src/app/acpProjectionRegistry.ts");
+        window.perfChatSettled = (chatId) => {
+          const workbench = useWorkbenchStore.getState();
+          const projection = acpProjectionStoreFor(chatId).getState();
+          return (
+            workbench.activeTabId === chatId &&
+            !workbench.projectTransitioning &&
+            projection.requestSequence > 0 &&
+            projection.activeLoad === null
+          );
+        };
+      };
+    </script>
+  </body>
+</html>

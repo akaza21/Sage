@@ -8,7 +8,6 @@ import type {
 import { invokeNative } from "./nativeInvoke";
 import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
 import { nativeSettingsPort } from "./nativeSettingsPort";
-import { startNativeEditorWatchSession } from "./editorWatchSession";
 import type { EditorWatchSubscription } from "../domain/editorWatch";
 import type {
   ProjectLayoutRequest,
@@ -114,7 +113,11 @@ const editor: EditorPort = {
   snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
   saveEditorDocument: resourceCommand("save_editor_document"),
   discardEditorBuffer: resourceCommand("discard_editor_buffer"),
-  watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription> {
+  async watchEditorDocument(
+    resource: ResourceRef,
+  ): Promise<EditorWatchSubscription> {
+    const { startNativeEditorWatchSession } =
+      await import("./editorWatchSession");
     return startNativeEditorWatchSession(resource);
   },
 };
@@ -122,7 +125,12 @@ const editor: EditorPort = {
 const repository: RepositoryPort = {
   getRepositoryStatus: () => invokeNative("get_repository_status"),
   getRepositoryChangeStamp: () => invokeNative("get_repository_change_stamp"),
-  getFileDiff: resourceCommand("get_file_diff"),
+  getFileDiff(resource, scope) {
+    return invokeNative("get_file_diff", {
+      resource,
+      ...(scope ? { scope } : {}),
+    });
+  },
   getFileGitBase(resource, knownOid) {
     return invokeNative("get_file_git_base", { resource, knownOid });
   },
