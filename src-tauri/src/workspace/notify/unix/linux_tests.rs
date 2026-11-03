@@ -1,0 +1,217 @@
+//! Linux root watches against real inotify: each test changes a temporary
+//! Project and checks the exact paths reported, with bounded waits only.
+
+use super::{prepare_watch, run_prepared, unix_events};
+use crate::workspace::notify::{OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH};
+use std::{
+    fs,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread::JoinHandle,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+
+type Notice = (String, u32);
+
+fn test_root(label: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "sage-linux-notify-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after the Unix epoch")
+            .as_nanos(),
+    ));
+    fs::create_dir(&root).expect("create test root");
+    root.canonicalize().expect("canonical test root")
+}
+
+fn overflow() -> Notice {
+    (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION)
+}
+
+fn created(relative: &str) -> Notice {
+    (relative.to_string(), 1)
+}
+
+/// A root watch set up as the Project watch sets it up.
+struct Watch {
+    cancelled: Arc<AtomicBool>,
+    notices: mpsc::Receiver<Notice>,
+    worker: JoinHandle<std::io::Result<()>>,
+}
+
+impl Watch {
+    fn start(root: &Path) -> Self {
+        let (directories, truncated) =
+            unix_events::bounded_watch_directories(root).expect("walk test root");
+        assert!(!truncated, "test roots stay within the watch cap");
+        let prepared = prepare_watch(&directories).expect("watch test root");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = Arc::clone(&cancelled);
+        let (sender, notices) = mpsc::sync_channel(256);
+        let worker = std::thread::spawn(move || {
+            run_prepared(prepared, &worker_cancelled, &mut |relative, action| {
+                let _ = sender.try_send((relative, action));
+            })
+        });
+        Self {
+            cancelled,
+            notices,
+            worker,
+        }
+    }
+
+    /// The notices received until `expected` arrives or two seconds pass.
+    fn until(&self, expected: &Notice) -> Vec<Notice> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut received = Vec::new();
+        while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+            let Ok(notice) = self.notices.recv_timeout(left) else {
+                break;
+            };
+            let done = &notice == expected;
+            received.push(notice);
+            if done {
+                break;
+            }
+        }
+        received
+    }
+
+    fn stop(self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.worker
+            .join()
+            .expect("watch worker should not panic")
+            .expect("cancelled watch should not fail");
+    }
+}
+
+/// Asserts that `received` ends with `expected` and holds nothing else but
+/// resyncs, which a tree change may repeat when its records span two reads.
+fn assert_only(received: &[Notice], expected: &Notice) {
+    assert_eq!(received.last(), Some(expected), "got {received:?}");
+    assert!(
+        received
+            .iter()
+            .all(|notice| notice == expected || notice == &overflow()),
+        "got {received:?}"
+    );
+}
+
+#[test]
+fn subfolder_change_is_reported_at_its_real_path() {
+    let root = test_root("subfolder");
+    fs::create_dir(root.join("src")).expect("create src");
+    let watch = Watch::start(&root);
+    fs::write(root.join("src/main.ts"), "created").expect("write src/main.ts");
+    let received = watch.until(&created("src/main.ts"));
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(received, vec![created("src/main.ts")]);
+}
+
+#[test]
+fn non_utf8_subfolder_is_watched_and_resyncs() {
+    let root = test_root("non-utf8");
+    let folder = root.join(std::ffi::OsStr::from_bytes(b"bad\xff"));
+    fs::create_dir(&folder).expect("create non-UTF-8 folder");
+    let watch = Watch::start(&root);
+    fs::write(folder.join("main.ts"), "created").expect("write in non-UTF-8 folder");
+    let received = watch.until(&overflow());
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(received, vec![overflow()]);
+}
+
+#[test]
+fn renamed_subfolder_reports_its_new_path() {
+    let root = test_root("rename");
+    fs::create_dir(root.join("src")).expect("create src");
+    let watch = Watch::start(&root);
+    fs::rename(root.join("src"), root.join("lib")).expect("rename src to lib");
+    let renamed = watch.until(&overflow());
+    fs::write(root.join("lib/main.ts"), "created").expect("write lib/main.ts");
+    let written = watch.until(&created("lib/main.ts"));
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(renamed, vec![overflow()]);
+    assert_only(&written, &created("lib/main.ts"));
+}
+
+#[test]
+fn subfolder_moved_out_of_the_root_stops_reporting() {
+    let root = test_root("move-out");
+    let outside = test_root("move-out-target");
+    fs::create_dir(root.join("src")).expect("create src");
+    let watch = Watch::start(&root);
+    fs::rename(root.join("src"), outside.join("src")).expect("move src out");
+    let moved = watch.until(&overflow());
+    fs::write(outside.join("src/main.ts"), "outside").expect("write outside");
+    fs::write(root.join("marker.ts"), "created").expect("write marker");
+    let written = watch.until(&created("marker.ts"));
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    fs::remove_dir_all(&outside).expect("remove move target");
+    assert_eq!(moved, vec![overflow()]);
+    assert_only(&written, &created("marker.ts"));
+}
+
+#[test]
+fn folder_created_after_start_is_watched() {
+    let root = test_root("new-folder");
+    let watch = Watch::start(&root);
+    fs::create_dir(root.join("new")).expect("create new");
+    let made = watch.until(&overflow());
+    fs::write(root.join("new/main.ts"), "created").expect("write new/main.ts");
+    let written = watch.until(&created("new/main.ts"));
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(made, vec![overflow()]);
+    assert_only(&written, &created("new/main.ts"));
+}
+
+#[test]
+fn deleted_and_recreated_subfolder_is_watched_again() {
+    let root = test_root("recreate");
+    fs::create_dir(root.join("src")).expect("create src");
+    let watch = Watch::start(&root);
+    fs::remove_dir(root.join("src")).expect("delete src");
+    let deleted = watch.until(&overflow());
+    fs::create_dir(root.join("src")).expect("recreate src");
+    let recreated = watch.until(&overflow());
+    fs::write(root.join("src/main.ts"), "created").expect("write src/main.ts");
+    let written = watch.until(&created("src/main.ts"));
+    watch.stop();
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(deleted, vec![overflow()]);
+    assert_eq!(recreated, vec![overflow()]);
+    assert_only(&written, &created("src/main.ts"));
+}
+
+#[test]
+fn folder_past_the_watch_cap_resyncs_and_the_watch_keeps_running() {
+    let root = test_root("cap");
+    for index in 1..unix_events::MAX_UNIX_WATCH_DIRECTORIES {
+        fs::create_dir(root.join(format!("dir-{index}"))).expect("create folder");
+    }
+    let watch = Watch::start(&root);
+    fs::create_dir(root.join("extra")).expect("create folder past the cap");
+    let made = watch.until(&overflow());
+    fs::write(root.join("marker.ts"), "created").expect("write marker");
+    let written = watch.until(&created("marker.ts"));
+    watch.stop();
+    let (directories, truncated) =
+        unix_events::bounded_watch_directories(&root).expect("walk test root");
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert!(truncated);
+    assert_eq!(directories.len(), unix_events::MAX_UNIX_WATCH_DIRECTORIES);
+    assert_eq!(made, vec![overflow()]);
+    assert_only(&written, &created("marker.ts"));
+}

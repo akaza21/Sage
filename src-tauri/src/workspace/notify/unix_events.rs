@@ -77,12 +77,83 @@ pub(super) fn unix_kind_from_inotify_mask(mask: u32) -> UnixWatchKind {
 #[cfg(any(target_os = "linux", test))]
 const INOTIFY_EVENT_BYTES: usize = 16;
 
-/// Each inotify watch descriptor's folder, relative to the first watched
-/// folder with `/` separators (empty for that folder). `None` marks a folder
-/// whose path is not UTF-8, or a descriptor shared by two paths: its events
-/// are delivered as an overflow resync rather than under a wrong name.
 #[cfg(any(target_os = "linux", test))]
-pub(super) type InotifyFolders = HashMap<i32, Option<String>>;
+pub(super) const IN_DELETE_SELF: u32 = 0x0000_0400;
+#[cfg(any(target_os = "linux", test))]
+pub(super) const IN_MOVE_SELF: u32 = 0x0000_0800;
+#[cfg(any(target_os = "linux", test))]
+const IN_UNMOUNT: u32 = 0x0000_2000;
+#[cfg(any(target_os = "linux", test))]
+const IN_IGNORED: u32 = 0x0000_8000;
+#[cfg(any(target_os = "linux", test))]
+const IN_ISDIR: u32 = 0x4000_0000;
+
+/// Each inotify watch descriptor's folder, relative to the first watched
+/// folder with `/` separators (empty for that folder). A `None` folder has a
+/// path that is not UTF-8, or its descriptor is shared by two paths: its
+/// events are delivered as an overflow resync rather than under a wrong name.
+///
+/// With `subfolders`, the watch covers a folder tree whose shape can change:
+/// a folder created, deleted or moved, a watched folder removed, or a lost
+/// queue makes the batch ask for the tree to be watched again, and every
+/// later record in that batch is folded into one resync.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug)]
+pub(super) struct InotifyFolders {
+    by_watch: HashMap<i32, Option<String>>,
+    subfolders: bool,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl InotifyFolders {
+    pub(super) fn new(subfolders: bool) -> Self {
+        Self {
+            by_watch: HashMap::new(),
+            subfolders,
+        }
+    }
+
+    pub(super) fn record(&mut self, watch: i32, relative: Option<String>) {
+        self.by_watch
+            .entry(watch)
+            .and_modify(|known| {
+                if *known != relative {
+                    *known = None;
+                }
+            })
+            .or_insert(relative);
+    }
+
+    pub(super) fn subfolders(&self) -> bool {
+        self.subfolders
+    }
+
+    /// The watch descriptors this map holds that `next` does not.
+    pub(super) fn dropped_from(&self, next: &Self) -> Vec<i32> {
+        self.by_watch
+            .keys()
+            .filter(|watch| !next.by_watch.contains_key(watch))
+            .copied()
+            .collect()
+    }
+
+    fn changes_tree(&self, watch: i32, mask: u32) -> bool {
+        self.subfolders
+            && (mask & IN_Q_OVERFLOW != 0
+                || (mask & IN_ISDIR != 0
+                    && mask & (IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO) != 0)
+                || (mask & IN_WATCH_GONE != 0 && self.by_watch.contains_key(&watch)))
+    }
+
+    /// The tail of a watch this notifier already removed.
+    fn stale(&self, watch: i32, mask: u32) -> bool {
+        mask & IN_WATCH_GONE != 0 && !self.by_watch.contains_key(&watch)
+    }
+}
+
+/// Records that say a watched folder itself is gone or moved.
+#[cfg(any(target_os = "linux", test))]
+const IN_WATCH_GONE: u32 = IN_DELETE_SELF | IN_MOVE_SELF | IN_UNMOUNT | IN_IGNORED;
 
 #[cfg(any(target_os = "linux", test))]
 pub(super) fn inotify_folder_relative(first: &Path, directory: &Path) -> Option<String> {
@@ -96,52 +167,41 @@ pub(super) fn inotify_folder_relative(first: &Path, directory: &Path) -> Option<
     Some(parts.join("/"))
 }
 
+/// What one read of inotify records delivers. When `rewatch` is set, the
+/// caller must watch the folder tree again before it delivers, since the
+/// trailing resync stands for every change from the tree change on.
 #[cfg(any(target_os = "linux", test))]
-pub(super) fn record_inotify_folder(
-    folders: &mut InotifyFolders,
-    watch: i32,
-    relative: Option<String>,
-) {
-    folders
-        .entry(watch)
-        .and_modify(|known| {
-            if *known != relative {
-                *known = None;
-            }
-        })
-        .or_insert(relative);
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct InotifyBatch {
+    pub(super) deliveries: Vec<(String, u32)>,
+    pub(super) rewatch: bool,
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn inotify_u32(buffer: &[u8], start: usize) -> Option<u32> {
+    buffer
+        .get(start..start.checked_add(4)?)
+        .and_then(|bytes| bytes.try_into().ok())
+        .map(u32::from_le_bytes)
 }
 
 #[cfg(any(target_os = "linux", test))]
 pub(super) fn unix_watch_deliveries_from_inotify_bytes(
     buffer: &[u8],
     folders: &InotifyFolders,
-) -> Vec<(String, u32)> {
+) -> InotifyBatch {
     let mut offset = 0_usize;
     let mut deliveries = Vec::new();
+    let mut rewatch = false;
     while offset
         .checked_add(INOTIFY_EVENT_BYTES)
         .is_some_and(|end| end <= buffer.len())
     {
-        let Some(wd) = buffer
-            .get(offset..offset + 4)
-            .and_then(|bytes| bytes.try_into().ok())
-            .map(i32::from_le_bytes)
-        else {
-            break;
-        };
-        let Some(mask) = buffer
-            .get(offset + 4..offset + 8)
-            .and_then(|bytes| bytes.try_into().ok())
-            .map(u32::from_le_bytes)
-        else {
-            break;
-        };
-        let Some(name_len) = buffer
-            .get(offset + 12..offset + 16)
-            .and_then(|bytes| bytes.try_into().ok())
-            .and_then(|bytes| usize::try_from(u32::from_le_bytes(bytes)).ok())
-        else {
+        let (Some(wd), Some(mask), Some(name_len)) = (
+            inotify_u32(buffer, offset).map(|wd| wd as i32),
+            inotify_u32(buffer, offset + 4),
+            inotify_u32(buffer, offset + 12).and_then(|len| usize::try_from(len).ok()),
+        ) else {
             break;
         };
         let name_start = offset + INOTIFY_EVENT_BYTES;
@@ -150,6 +210,14 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
         };
         if name_end > buffer.len() {
             break;
+        }
+        offset = name_end;
+        if rewatch || folders.changes_tree(wd, mask) {
+            rewatch = true;
+            continue;
+        }
+        if folders.stale(wd, mask) {
+            continue;
         }
         let name = if name_len == 0 {
             None
@@ -160,7 +228,7 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
                 .ok()
                 .filter(|name| !name.is_empty())
         };
-        let path = match folders.get(&wd) {
+        let path = match folders.by_watch.get(&wd) {
             Some(Some(folder)) if folder.is_empty() => name.map(str::to_string),
             Some(Some(folder)) => name.map(|name| format!("{folder}/{name}")),
             _ => None,
@@ -169,9 +237,14 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
         if let Ok(delivery) = unix_watch_delivery(path.as_deref(), kind) {
             deliveries.push(delivery);
         }
-        offset = name_end;
     }
-    deliveries
+    if rewatch {
+        deliveries.push((OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION));
+    }
+    InotifyBatch {
+        deliveries,
+        rewatch,
+    }
 }
 
 pub(super) const MAX_UNIX_WATCH_DIRECTORIES: usize = 64;
@@ -328,10 +401,18 @@ mod tests {
     }
 
     fn root_and_src_folders() -> InotifyFolders {
-        let mut folders = InotifyFolders::new();
-        record_inotify_folder(&mut folders, 1, Some(String::new()));
-        record_inotify_folder(&mut folders, 2, Some("src".to_string()));
+        let mut folders = InotifyFolders::new(true);
+        folders.record(1, Some(String::new()));
+        folders.record(2, Some("src".to_string()));
         folders
+    }
+
+    fn overflow() -> (String, u32) {
+        (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION)
+    }
+
+    fn deliveries(buffer: &[u8], folders: &InotifyFolders) -> Vec<(String, u32)> {
+        unix_watch_deliveries_from_inotify_bytes(buffer, folders).deliveries
     }
 
     #[test]
@@ -340,10 +421,10 @@ mod tests {
         buffer.extend(inotify_record(-1, IN_Q_OVERFLOW, ""));
         assert_eq!(
             unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
-            vec![
-                ("main.ts".to_string(), 1),
-                (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION),
-            ]
+            InotifyBatch {
+                deliveries: vec![("main.ts".to_string(), 1), overflow()],
+                rewatch: true,
+            }
         );
     }
 
@@ -354,35 +435,107 @@ mod tests {
         buffer.extend(inotify_record(2, IN_DELETE, "old.ts"));
         assert_eq!(
             unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
-            vec![
-                ("main.ts".to_string(), 3),
-                ("src/main.ts".to_string(), 3),
-                ("src/old.ts".to_string(), 2),
-            ]
+            InotifyBatch {
+                deliveries: vec![
+                    ("main.ts".to_string(), 3),
+                    ("src/main.ts".to_string(), 3),
+                    ("src/old.ts".to_string(), 2),
+                ],
+                rewatch: false,
+            }
         );
     }
 
     #[test]
     fn inotify_bytes_resync_for_unknown_or_unnamed_watch_folder() {
         let mut folders = root_and_src_folders();
-        record_inotify_folder(&mut folders, 3, None);
+        folders.record(3, None);
         let mut buffer = inotify_record(7, IN_CREATE, "main.ts");
         buffer.extend(inotify_record(3, IN_CREATE, "main.ts"));
         buffer.extend(inotify_record(2, IN_Q_OVERFLOW, "main.ts"));
-        let overflow = (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION);
         assert_eq!(
-            unix_watch_deliveries_from_inotify_bytes(&buffer, &folders),
-            vec![overflow.clone(), overflow.clone(), overflow]
+            deliveries(&buffer, &folders),
+            vec![overflow(), overflow(), overflow()]
         );
     }
 
     #[test]
     fn inotify_watch_shared_by_two_folders_resyncs() {
         let mut folders = root_and_src_folders();
-        record_inotify_folder(&mut folders, 2, Some("lib".to_string()));
-        assert_eq!(folders.get(&2), Some(&None));
-        record_inotify_folder(&mut folders, 1, Some(String::new()));
-        assert_eq!(folders.get(&1), Some(&Some(String::new())));
+        folders.record(2, Some("lib".to_string()));
+        let buffer = inotify_record(2, IN_CREATE, "main.ts");
+        assert_eq!(deliveries(&buffer, &folders), vec![overflow()]);
+    }
+
+    #[test]
+    fn inotify_folder_tree_changes_ask_for_rewatch_and_fold_into_one_resync() {
+        let folders = root_and_src_folders();
+        for (watch, mask, name) in [
+            (1, IN_ISDIR | IN_MOVED_FROM, "src"),
+            (1, IN_ISDIR | IN_MOVED_TO, "lib"),
+            (1, IN_ISDIR | IN_CREATE, "new"),
+            (1, IN_ISDIR | IN_DELETE, "src"),
+            (2, IN_MOVE_SELF, ""),
+            (2, IN_DELETE_SELF, ""),
+            (2, IN_IGNORED, ""),
+            (2, IN_UNMOUNT, ""),
+        ] {
+            let mut buffer = inotify_record(2, IN_MODIFY, "before.ts");
+            buffer.extend(inotify_record(watch, mask, name));
+            buffer.extend(inotify_record(2, IN_MODIFY, "after.ts"));
+            assert_eq!(
+                unix_watch_deliveries_from_inotify_bytes(&buffer, &folders),
+                InotifyBatch {
+                    deliveries: vec![("src/before.ts".to_string(), 3), overflow()],
+                    rewatch: true,
+                },
+                "mask {mask:#x} on watch {watch}"
+            );
+        }
+    }
+
+    #[test]
+    fn inotify_tail_of_a_removed_watch_is_dropped() {
+        let mut buffer = inotify_record(9, IN_MOVE_SELF, "");
+        buffer.extend(inotify_record(9, IN_DELETE_SELF, ""));
+        buffer.extend(inotify_record(9, IN_UNMOUNT, ""));
+        buffer.extend(inotify_record(9, IN_IGNORED, ""));
+        assert_eq!(
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
+            InotifyBatch {
+                deliveries: Vec::new(),
+                rewatch: false,
+            }
+        );
+    }
+
+    #[test]
+    fn single_folder_watch_keeps_bare_names_for_folder_events() {
+        let mut folders = InotifyFolders::new(false);
+        folders.record(1, Some(String::new()));
+        let mut buffer = inotify_record(1, IN_ISDIR | IN_CREATE, "new");
+        buffer.extend(inotify_record(1, IN_MODIFY, "main.ts"));
+        buffer.extend(inotify_record(1, IN_IGNORED, ""));
+        assert_eq!(
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &folders),
+            InotifyBatch {
+                deliveries: vec![
+                    ("new".to_string(), 1),
+                    ("main.ts".to_string(), 3),
+                    overflow(),
+                ],
+                rewatch: false,
+            }
+        );
+    }
+
+    #[test]
+    fn inotify_watch_dropped_from_next_tree_is_listed() {
+        let folders = root_and_src_folders();
+        let mut next = InotifyFolders::new(true);
+        next.record(1, Some(String::new()));
+        next.record(5, Some("lib".to_string()));
+        assert_eq!(folders.dropped_from(&next), vec![2]);
     }
 
     #[test]

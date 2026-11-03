@@ -62,7 +62,7 @@ pub(crate) fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<macos::P
 
 #[cfg(target_os = "linux")]
 pub(crate) fn prepare_watch(directories: &[PathBuf]) -> std::io::Result<linux::Prepared> {
-    linux::prepare(directories)
+    linux::prepare(directories, true)
 }
 
 #[cfg(target_os = "macos")]
@@ -96,7 +96,7 @@ pub(crate) fn prepare_editor_watch(path: &std::path::Path) -> std::io::Result<li
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "editor watch parent")
     })?;
-    prepare_watch(&[parent.to_path_buf()])
+    linux::prepare(&[parent.to_path_buf()], false)
 }
 
 #[cfg(target_os = "linux")]
@@ -108,6 +108,7 @@ mod linux {
             raw::{c_char, c_int},
             unix::ffi::OsStrExt,
         },
+        path::PathBuf,
     };
 
     const IN_CLOEXEC: c_int = 0x8_0000;
@@ -119,6 +120,8 @@ mod linux {
         | unix_events::IN_CREATE
         | unix_events::IN_DELETE
         | unix_events::IN_Q_OVERFLOW;
+    const IN_TREE_MASK: u32 =
+        IN_WATCH_MASK | unix_events::IN_DELETE_SELF | unix_events::IN_MOVE_SELF;
     const POLLIN: i16 = 0x001;
 
     #[repr(C)]
@@ -131,6 +134,7 @@ mod linux {
     unsafe extern "C" {
         fn inotify_init1(flags: c_int) -> c_int;
         fn inotify_add_watch(fd: c_int, pathname: *const c_char, mask: u32) -> c_int;
+        fn inotify_rm_watch(fd: c_int, wd: c_int) -> c_int;
         fn close(fd: c_int) -> c_int;
         fn read(fd: c_int, buf: *mut u8, count: usize) -> isize;
         fn poll(fds: *mut PollFd, nfds: u64, timeout: c_int) -> c_int;
@@ -138,6 +142,7 @@ mod linux {
 
     pub(crate) struct Prepared {
         fd: c_int,
+        root: PathBuf,
         folders: unix_events::InotifyFolders,
     }
 
@@ -147,7 +152,10 @@ mod linux {
         }
     }
 
-    pub(super) fn prepare(directories: &[std::path::PathBuf]) -> std::io::Result<Prepared> {
+    /// Watches `directories`, the first of which is the root. With
+    /// `subfolders`, they are the root's bounded folder tree, which `run`
+    /// watches again whenever its shape changes.
+    pub(super) fn prepare(directories: &[PathBuf], subfolders: bool) -> std::io::Result<Prepared> {
         let fd = unsafe { inotify_init1(IN_CLOEXEC | IN_NONBLOCK) };
         if fd < 0 {
             return Err(std::io::Error::last_os_error());
@@ -155,26 +163,63 @@ mod linux {
         // Dropping `prepared` on any early return closes the descriptor.
         let mut prepared = Prepared {
             fd,
-            folders: unix_events::InotifyFolders::new(),
+            root: directories.first().cloned().unwrap_or_default(),
+            folders: unix_events::InotifyFolders::new(subfolders),
         };
-        let first = directories.first();
-        for directory in directories {
-            let path = CString::new(directory.as_os_str().as_bytes()).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path")
-            })?;
-            let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), IN_WATCH_MASK) };
-            if watch < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            let relative =
-                first.and_then(|first| unix_events::inotify_folder_relative(first, directory));
-            unix_events::record_inotify_folder(&mut prepared.folders, watch, relative);
-        }
+        prepared.folders = add_watches(fd, directories, subfolders, true)?;
         Ok(prepared)
     }
 
+    /// Adds a watch for each directory. Re-adding a folder that is already
+    /// watched returns its existing descriptor. Only the root must succeed
+    /// unless `strict`: a folder that vanished during the walk shows up as
+    /// another tree change.
+    fn add_watches(
+        fd: c_int,
+        directories: &[PathBuf],
+        subfolders: bool,
+        strict: bool,
+    ) -> std::io::Result<unix_events::InotifyFolders> {
+        let mask = if subfolders {
+            IN_TREE_MASK
+        } else {
+            IN_WATCH_MASK
+        };
+        let mut folders = unix_events::InotifyFolders::new(subfolders);
+        let first = directories.first();
+        for (index, directory) in directories.iter().enumerate() {
+            let path = CString::new(directory.as_os_str().as_bytes()).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path")
+            })?;
+            let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), mask) };
+            if watch < 0 {
+                if strict || index == 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                continue;
+            }
+            let relative =
+                first.and_then(|first| unix_events::inotify_folder_relative(first, directory));
+            folders.record(watch, relative);
+        }
+        Ok(folders)
+    }
+
+    /// Watches the root's bounded folder tree as it is now and removes the
+    /// watches of folders that left it. The walk keeps the 64-folder cap.
+    fn rewatch(prepared: &mut Prepared) -> std::io::Result<()> {
+        let (directories, _truncated) = unix_events::bounded_watch_directories(&prepared.root)
+            .map_err(|error| std::io::Error::other(error.code()))?;
+        let next = add_watches(prepared.fd, &directories, true, false)?;
+        for watch in prepared.folders.dropped_from(&next) {
+            unsafe { inotify_rm_watch(prepared.fd, watch) };
+        }
+        prepared.folders = next;
+        Ok(())
+    }
+
     pub(super) fn run(
-        prepared: Prepared,
+        mut prepared: Prepared,
         cancelled: &AtomicBool,
         deliver: &mut impl FnMut(String, u32),
     ) -> std::io::Result<()> {
@@ -203,16 +248,26 @@ mod linux {
                 }
                 return Err(error);
             }
-            for (relative, action) in unix_events::unix_watch_deliveries_from_inotify_bytes(
+            let batch = unix_events::unix_watch_deliveries_from_inotify_bytes(
                 &buffer[..read_bytes as usize],
                 &prepared.folders,
-            ) {
+            );
+            // Watch the new tree before the resync goes out, so a rescan
+            // that follows it cannot miss a change in a new folder.
+            if batch.rewatch && prepared.folders.subfolders() {
+                rewatch(&mut prepared)?;
+            }
+            for (relative, action) in batch.deliveries {
                 deliver(relative, action);
             }
         }
         Ok(())
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "unix/linux_tests.rs"]
+mod linux_tests;
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -280,103 +335,5 @@ mod tests {
             .expect("cancelled watch should not fail");
         worker.join().expect("watch worker should not panic");
         fs::remove_dir_all(directory).expect("remove test directory");
-    }
-
-    #[cfg(target_os = "linux")]
-    fn linux_test_root(label: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "sage-workspace-notify-{label}-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time is after the Unix epoch")
-                .as_nanos(),
-        ));
-        fs::create_dir(&root).expect("create test root");
-        root
-    }
-
-    /// Watches `root` as the Project watch does, runs `change` once the
-    /// watches are in place, and returns the notices that arrive until
-    /// `expected` does or two seconds pass.
-    #[cfg(target_os = "linux")]
-    fn linux_notices_after(
-        root: &std::path::Path,
-        change: impl FnOnce(),
-        expected: &(String, u32),
-    ) -> Vec<(String, u32)> {
-        let (directories, truncated) =
-            unix_events::bounded_watch_directories(root).expect("walk test root");
-        assert!(!truncated);
-        let prepared = prepare_watch(&directories).expect("watch test root");
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let worker_cancelled = Arc::clone(&cancelled);
-        let (notices, receive_notice) = mpsc::sync_channel(64);
-        let worker = std::thread::spawn(move || {
-            run_prepared(prepared, &worker_cancelled, &mut |relative, action| {
-                let _ = notices.try_send((relative, action));
-            })
-        });
-        change();
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let mut received = Vec::new();
-        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
-            let Ok(notice) = receive_notice.recv_timeout(left) else {
-                break;
-            };
-            let done = &notice == expected;
-            received.push(notice);
-            if done {
-                break;
-            }
-        }
-        cancelled.store(true, Ordering::Release);
-        worker
-            .join()
-            .expect("watch worker should not panic")
-            .expect("cancelled watch should not fail");
-        received
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_root_watch_reports_subfolder_change_at_its_real_path() {
-        let root = linux_test_root("subfolder");
-        fs::create_dir(root.join("src")).expect("create src");
-        let expected = ("src/main.ts".to_string(), 1);
-        let received = linux_notices_after(
-            &root,
-            || fs::write(root.join("src").join("main.ts"), "created").expect("write src/main.ts"),
-            &expected,
-        );
-        fs::remove_dir_all(&root).expect("remove test root");
-        assert!(
-            received.contains(&expected),
-            "expected a create notice for src/main.ts, got {received:?}"
-        );
-        assert!(
-            received.iter().all(|(relative, _)| relative != "main.ts"),
-            "a subfolder change must not be reported at the root, got {received:?}"
-        );
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_root_watch_covers_non_utf8_subfolder_with_resync() {
-        use std::os::unix::ffi::OsStrExt;
-        let root = linux_test_root("non-utf8");
-        let folder = root.join(std::ffi::OsStr::from_bytes(b"bad\xff"));
-        fs::create_dir(&folder).expect("create non-UTF-8 folder");
-        let expected = (
-            super::super::OVERFLOW_RELATIVE_PATH.to_string(),
-            super::super::OVERFLOW_NOTIFY_ACTION,
-        );
-        let received = linux_notices_after(
-            &root,
-            || fs::write(folder.join("main.ts"), "created").expect("write in non-UTF-8 folder"),
-            &expected,
-        );
-        fs::remove_dir_all(&root).expect("remove test root");
-        assert_eq!(received, vec![expected]);
     }
 }
