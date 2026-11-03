@@ -37,14 +37,16 @@ import {
   stagedText,
   type GutterState,
 } from "./gitGutterState";
-import type { GutterConnection } from "./gutterWorkerClient";
-import type { GutterResult } from "./gutterWorkerCore";
+import type {
+  GutterConnection,
+  GutterWorkerResult,
+} from "./gutterWorkerClient";
 
 /** AD-7: the diff waits for this long a pause in typing. */
 export const GUTTER_IDLE_MS = 250;
 
 export interface GutterPool {
-  connect: (listener: (result: GutterResult) => void) => GutterConnection;
+  connect: (listener: (result: GutterWorkerResult) => void) => GutterConnection;
 }
 
 class ChangeMarker extends GutterMarker {
@@ -209,7 +211,7 @@ const changeGutter = gutter({
   },
 });
 
-type ResultSink = { current: (result: GutterResult) => void };
+type ResultSink = { current: (result: GutterWorkerResult) => void };
 
 /**
  * The document as a string the caller already holds (a File's text as
@@ -279,6 +281,23 @@ function driver(
     };
 
     sink.current = (result) => {
+      if ("failed" in result) {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        opened = false;
+        inFlight = false;
+        pending = null;
+        baseChanged = false;
+        posted = null;
+        view.dispatch({
+          effects: [
+            setGutterHunks.of({ hunks: [], truncated: false }),
+            setGutterPeek.of(null),
+          ],
+        });
+        // Retry only on the next edit/base change, with the whole document.
+        return;
+      }
       if (result.version !== version) return;
       inFlight = false;
       if (result.lost) {

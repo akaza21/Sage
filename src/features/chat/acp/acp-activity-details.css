@@ -75,8 +75,7 @@
 }
 
 .acp-tool-rollup__summary-copy,
-.acp-tool-rollup__meta,
-.acp-tool-rollup__duration {
+.acp-tool-rollup__meta {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -144,15 +143,10 @@
   white-space: nowrap;
 }
 
-.acp-tool-rollup[data-activity-state="completed"] .acp-tool-rollup__duration,
 .acp-tool-rollup[data-activity-state="completed"]
   .acp-tool-rollup__meta
   > .acp-state {
   display: none;
-}
-
-.acp-tool-rollup__duration {
-  font-variant-numeric: tabular-nums;
 }
 
 .acp-tool-rollup__chevron {
