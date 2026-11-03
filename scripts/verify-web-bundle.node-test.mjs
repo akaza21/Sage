@@ -204,6 +204,155 @@ test("named TerminalDock budget isolates xterm from the core bundle", async () =
   }
 });
 
+async function terminalCandidate(terminalLimit = 100000) {
+  const root = await candidate({ dynamic: "ordinary dynamic" });
+  await mkdir(path.join(root, "src/workbench"), { recursive: true });
+  await writeFile(
+    path.join(root, "src/workbench/TerminalDock.tsx"),
+    'import "@xterm/xterm";\n',
+  );
+  await writeFile(
+    path.join(root, "src/workbench/TerminalDockShell.tsx"),
+    'import("./TerminalDock");\n',
+  );
+  await writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({ dependencies: { "@xterm/xterm": "6.0.0" } }),
+  );
+  await writeFile(path.join(root, "dist/assets/terminal.css"), ".xterm {}");
+  const manifestPath = path.join(root, "dist/.vite/manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest["index.html"].dynamicImports.push(
+    "src/workbench/TerminalDockShell.tsx",
+  );
+  manifest["src/workbench/TerminalDockShell.tsx"] = {
+    file: "assets/terminal-shell.js",
+    src: "src/workbench/TerminalDockShell.tsx",
+    isDynamicEntry: true,
+    imports: ["_terminal-port.js"],
+    dynamicImports: ["src/workbench/TerminalDock.tsx"],
+  };
+  manifest["src/workbench/TerminalDock.tsx"] = {
+    file: "assets/terminal.js",
+    src: "src/workbench/TerminalDock.tsx",
+    isDynamicEntry: true,
+    imports: ["index.html", "_terminal-port.js"],
+    css: ["assets/terminal.css"],
+  };
+  manifest["_terminal-port.js"] = {
+    file: "assets/terminal-port.js",
+    name: "userTerminalDesktop",
+    imports: ["index.html"],
+  };
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const budgetPath = path.join(root, "docs/performance/budgets.json");
+  const budgets = JSON.parse(await readFile(budgetPath, "utf8"));
+  budgets.bundle.webTotalJsGzipBytes = 100000;
+  budgets.bundle.webTerminalLazyJsGzipBytes = terminalLimit;
+  await writeFile(budgetPath, JSON.stringify(budgets));
+  await writeFile(
+    path.join(root, "dist/.sage-web-build-receipt.json"),
+    JSON.stringify({
+      schemaVersion: 2,
+      target: desktopTarget,
+      gzip: "node:zlib.gzipSync defaults",
+      source: webBuildSourceFingerprint(root),
+    }),
+  );
+  return root;
+}
+
+// Emitted terminal chunks as the desktop build writes them: identical code
+// that imports shared chunks by their content-hashed file names.
+async function writeTerminalChunks(root, [shared, deps, port, dock], code) {
+  const assets = path.join(root, "dist/assets");
+  await writeFile(
+    path.join(assets, "terminal.js"),
+    `import{a as e}from"./${shared}.js";import{t}from"./${deps}.js";` +
+      `import{p as n}from"./${port}.js";${code}`,
+  );
+  await writeFile(
+    path.join(assets, "terminal-shell.js"),
+    `import{a as e}from"./${shared}.js";import{p as n}from"./${port}.js";` +
+      "const r=()=>import(`./" +
+      dock +
+      ".js`);export{r as TerminalDockShell};",
+  );
+  await writeFile(
+    path.join(assets, "terminal-port.js"),
+    `import{a as e}from"./${shared}.js";const p={open:e};export{p};`,
+  );
+}
+
+const terminalCode =
+  "var xterm=class{constructor(e){this.rows=e.rows;this.cols=e.cols}" +
+  "write(e){return n.write(this.rows,this.cols,e)}};export{xterm as T};";
+
+test("terminal budget ignores which content hashes the chunks import", async () => {
+  const root = await terminalCandidate();
+  try {
+    await writeTerminalChunks(
+      root,
+      ["DLlys00o", "CcCufrF-2", "CHrBYBpZ2", "MjEmMWCT2"],
+      terminalCode,
+    );
+    const first = verifyWebBundle(root);
+    await writeTerminalChunks(
+      root,
+      ["BLP16Psh", "DqQcVKt_2", "CNAtOgS52", "DHLqKPLh2"],
+      terminalCode,
+    );
+    const second = verifyWebBundle(root);
+    assert.notEqual(
+      first.terminalLazyEmittedGzipBytes,
+      second.terminalLazyEmittedGzipBytes,
+    );
+    assert.equal(first.terminalLazyGzipBytes, second.terminalLazyGzipBytes);
+    assert.equal(
+      second.coreTotalGzipBytes,
+      second.totalGzipBytes - second.terminalLazyEmittedGzipBytes,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("terminal budget still counts one byte of terminal code growth", async () => {
+  const hashes = ["DLlys00o", "CcCufrF-2", "CHrBYBpZ2", "MjEmMWCT2"];
+  const baselineRoot = await terminalCandidate();
+  let limit;
+  try {
+    await writeTerminalChunks(baselineRoot, hashes, terminalCode);
+    limit = verifyWebBundle(baselineRoot).terminalLazyGzipBytes;
+  } finally {
+    await rm(baselineRoot, { recursive: true, force: true });
+  }
+  const root = await terminalCandidate(limit);
+  try {
+    await writeTerminalChunks(root, hashes, terminalCode);
+    assert.equal(verifyWebBundle(root).terminalLazyGzipBytes, limit);
+    await writeTerminalChunks(
+      root,
+      hashes,
+      terminalCode.replace("this.rows=e.rows", "this.rows=+e.rows"),
+    );
+    assert.throws(
+      () => verifyWebBundle(root),
+      (error) => {
+        const match = /terminal lazy gzip (\d+) exceeds (\d+)/.exec(
+          error.message,
+        );
+        assert.ok(match);
+        assert.equal(Number(match[2]), limit);
+        assert.ok(Number(match[1]) > limit);
+        return true;
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 const desktopTarget = "desktop-native";
 const browserFixtureSentinel =
   "Simulated browser fixture — not live repository state.";
@@ -733,6 +882,35 @@ test("a lazy feature fails at one byte over its own cap", async () => {
     assert.throws(
       () => verifyWebBundle(root),
       new RegExp(`${featureKey} lazy gzip ${measured} exceeds ${measured - 1}`),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lazy feature budget ignores imported content hashes but counts code growth", async () => {
+  const { root } = await lazyFeatureCandidate();
+  const featureFile = path.join(root, "dist/assets/feature.js");
+  const code =
+    "const s=e.useMemo(()=>t.snapshot(n),[n]);export{s as ChangesSurface};";
+  const chunk = (shared, deps, body = code) =>
+    `import{a as e}from"./${shared}.js";import{t}from"./${deps}.js";${body}`;
+  try {
+    await writeFile(featureFile, chunk("DLlys00o", "CPZB2TWi"));
+    const first = verifyWebBundle(root);
+    const firstEmitted = gzipSync(await readFile(featureFile)).length;
+    await writeFile(featureFile, chunk("snapshot", "useMemo_"));
+    const second = verifyWebBundle(root);
+    const measured = first.lazyFeatureChunks[featureKey].gzipBytes;
+    // As emitted, the two chunks compress to different sizes.
+    assert.notEqual(gzipSync(await readFile(featureFile)).length, firstEmitted);
+    assert.equal(second.lazyFeatureChunks[featureKey].gzipBytes, measured);
+    await writeFile(
+      featureFile,
+      chunk("snapshot", "useMemo_", code.replace("[n]", "[+n]")),
+    );
+    assert.ok(
+      verifyWebBundle(root).lazyFeatureChunks[featureKey].gzipBytes > measured,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

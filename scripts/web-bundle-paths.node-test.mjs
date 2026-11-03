@@ -355,6 +355,7 @@ test("committed path caps tighten startup and Agent within the original 0.5 perc
   assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
   // Codex §7 Subagents (w8sub): measured 5,101 B + 10%.
   assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5612);
-  // The terminal follows forced-colors palette changes (89,579 B measured).
-  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89579);
+  // The terminal follows forced-colors palette changes (89,516 B measured
+  // with hashed import names normalized; 89,579 B as emitted before).
+  assert.equal(budgets.bundle.webTerminalLazyJsGzipBytes, 89516);
 });
