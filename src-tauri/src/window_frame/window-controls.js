@@ -34,11 +34,15 @@
   const resize = new ResizeObserver(schedule);
   const paletteChanges = new MutationObserver(schedule);
 
-  async function update() {
-    const next = document.querySelector(".title-bar");
+  function connectHeader(next) {
     if (next !== header) {
-      if (header) resize.unobserve(header);
       paletteChanges.disconnect();
+      if (header) {
+        resize.unobserve(header);
+        header.removeAttribute("data-sage-window-frame");
+        header.removeAttribute("data-tauri-drag-region");
+        header.style.removeProperty("--sage-window-controls-width");
+      }
       header = next;
       if (header) {
         header.setAttribute("data-sage-window-frame", "");
@@ -58,6 +62,25 @@
         }
       }
     }
+    schedule();
+  }
+  // The workbench declares this customized header; only the native Windows
+  // adapter upgrades it. DOM connection owns observer setup and teardown,
+  // including renderer recreation, without observing workbench content.
+  window.customElements.define(
+    "sage-titlebar",
+    class extends window.HTMLElement {
+      connectedCallback() {
+        connectHeader(this);
+      }
+      disconnectedCallback() {
+        if (header === this) connectHeader(undefined);
+      }
+    },
+    { extends: "header" },
+  );
+
+  async function update() {
     let layout = null;
     if (header?.getClientRects().length) {
       const rect = header.getBoundingClientRect();
@@ -140,14 +163,6 @@
     }
     document.head.append(chromeStyle);
     document.body.append(host);
-    // Content rendering does not cause IPC work; only mounting/replacing the
-    // title bar matters here. ResizeObserver owns its geometry changes.
-    new MutationObserver(() => {
-      if (!header?.isConnected) schedule();
-    }).observe(document.getElementById("root"), {
-      childList: true,
-      subtree: true,
-    });
     schedule();
   });
   window.addEventListener("resize", schedule);

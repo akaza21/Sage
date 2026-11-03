@@ -25,40 +25,6 @@ const modeLabels: Record<WorkbenchWindowMode, string> = {
   editor: "Editor",
 };
 
-function WorkbenchModeSwitch({
-  mode,
-  onModeChange,
-}: {
-  mode: WorkbenchWindowMode;
-  onModeChange: (mode: WorkbenchWindowMode) => void;
-}) {
-  return (
-    <div
-      className="title-bar__modes"
-      role="radiogroup"
-      aria-label="Window mode"
-    >
-      {WORKBENCH_WINDOW_MODES.map((value) => (
-        <label
-          key={value}
-          className={`title-bar__mode${
-            mode === value ? " title-bar__mode--active" : ""
-          }`}
-        >
-          <input
-            checked={mode === value}
-            name="workbench-window-mode"
-            onChange={() => onModeChange(value)}
-            type="radio"
-            value={value}
-          />
-          {modeLabels[value]}
-        </label>
-      ))}
-    </div>
-  );
-}
-
 export function TitleBar({
   inert = false,
   mode,
@@ -79,6 +45,7 @@ export function TitleBar({
     (state) => state.projectTransitioning,
   );
   const openSettings = useWorkbenchStore((state) => state.openSettings);
+  const isAgent = mode === "agent";
   const chatSearchRef = useRef<HTMLButtonElement | null>(null);
   const chatSearchDisabled = !project || projectTransitioning;
   const navigationLabel = agentNavigationCollapsed
@@ -93,7 +60,7 @@ export function TitleBar({
     requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
   }, [project]);
   useEffect(() => {
-    if (inert || mode !== "agent" || chatSearchDisabled) return;
+    if (inert || !isAgent || chatSearchDisabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       // Control+K on macOS is the text fields' kill-line, so only Command.
       if (
@@ -109,27 +76,47 @@ export function TitleBar({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [inert, chatSearchDisabled, mode, openChatSearch]);
+  }, [inert, chatSearchDisabled, isAgent, openChatSearch]);
   // A side chat keeps its parent's window title.
   const focusedId = useRailChatId(
     titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
   );
-  const sessionTitle =
-    mode === "agent"
-      ? titleBarSessionTitle(
-          tabs.find((tab) => tab.id === focusedId)?.title ?? null,
-        )
-      : null;
+  const sessionTitle = isAgent
+    ? titleBarSessionTitle(tabs.find((tab) => tab.id === focusedId)?.title)
+    : null;
 
   return (
     <header
+      is="sage-titlebar"
       className="title-bar"
       inert={inert}
       aria-hidden={inert || undefined}
     >
       <div className="title-bar__start">
-        <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />
-        {mode === "agent" && onToggleAgentNavigation ? (
+        <div
+          className="title-bar__modes"
+          role="radiogroup"
+          aria-label="Window mode"
+        >
+          {WORKBENCH_WINDOW_MODES.map((value) => (
+            <label
+              key={value}
+              className={`title-bar__mode${
+                mode === value ? " title-bar__mode--active" : ""
+              }`}
+            >
+              <input
+                checked={mode === value}
+                name="workbench-window-mode"
+                onChange={() => onModeChange(value)}
+                type="radio"
+                value={value}
+              />
+              {modeLabels[value]}
+            </label>
+          ))}
+        </div>
+        {isAgent && onToggleAgentNavigation ? (
           <button
             className="title-bar__chat-search"
             type="button"
@@ -143,7 +130,7 @@ export function TitleBar({
         ) : null}
       </div>
       <div className="title-bar__center">
-        {mode === "editor" ? (
+        {!isAgent ? (
           <button
             className="title-bar__search"
             type="button"
@@ -159,7 +146,7 @@ export function TitleBar({
         ) : null}
       </div>
       <div className="title-bar__end">
-        {mode === "agent" ? (
+        {isAgent ? (
           <button
             ref={chatSearchRef}
             className="title-bar__chat-search title-bar__chat-search--pill"
