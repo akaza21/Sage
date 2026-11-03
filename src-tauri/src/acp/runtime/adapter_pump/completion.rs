@@ -238,10 +238,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 Err(_) => return false,
             };
             loop {
-                if frame
-                    .as_ref()
-                    .is_some_and(|frame| !self.adapter.is_duplicate_terminal(frame))
-                {
+                // The same structural check idle ingestion applies first: a
+                // frame it would discard is never a proven duplicate.
+                if frame.as_ref().is_some_and(|frame| {
+                    validate_structure(frame).is_err() || !self.adapter.is_duplicate_terminal(frame)
+                }) {
                     return false;
                 }
                 if !decoder.has_pending_input() {

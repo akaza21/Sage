@@ -14,7 +14,7 @@ use super::super::{request::RequestKind, state::CodexAdapter};
 
 impl HarnessAdapter for CodexRuntime {
     fn is_duplicate_terminal(&self, frame: &Frame) -> bool {
-        self.inner.is_duplicate_terminal(frame.as_bytes())
+        super::super::incoming::is_duplicate_terminal(&self.inner, frame.as_bytes())
     }
     fn discard_invalid_response(
         &mut self,

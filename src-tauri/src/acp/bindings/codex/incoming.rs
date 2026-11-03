@@ -227,26 +227,19 @@ fn ingest_inner<M: ResourceMapper>(
     mapper: &M,
     declarations: &crate::acp::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
-    if bytes.len() > LIMITS.wire.frame_bytes as usize {
-        return Err(IngressError::FrameBytes);
-    }
-    let value: Value = serde_json::from_slice(bytes).map_err(|_| IngressError::Malformed)?;
-    validate_shape(&value)?;
+    let value = parse_frame(bytes)?;
     if adapter.provisional_expired() {
         return Err(IngressError::Identity);
     }
-    let object = value.as_object().ok_or(IngressError::Malformed)?;
-    if object.contains_key("result") || object.contains_key("error") {
-        return response(adapter, object);
-    }
-    let method = text(object, "method", LIMITS.wire.method_bytes as usize)?;
-    let params = object
-        .get("params")
-        .and_then(Value::as_object)
-        .ok_or(IngressError::Malformed)?;
-    if object.contains_key("id") {
-        return server_request(adapter, object, method, params);
-    }
+    let (method, params) = match route(&value)? {
+        Routed::Response(object) => return response(adapter, object),
+        Routed::ServerRequest {
+            object,
+            method,
+            params,
+        } => return server_request(adapter, object, method, params),
+        Routed::Notification { method, params } => (method, params),
+    };
     let thread = params.get("threadId").and_then(Value::as_str).or_else(|| {
         (method == "thread/started")
             .then(|| params.get("thread")?.get("id")?.as_str())
@@ -265,4 +258,86 @@ fn ingest_inner<M: ResourceMapper>(
         return Ok(IngressDisposition::IgnoredLate);
     }
     notification(adapter, method, params, mapper, declarations)
+}
+
+fn parse_frame(bytes: &[u8]) -> Result<Value, IngressError> {
+    if bytes.len() > LIMITS.wire.frame_bytes as usize {
+        return Err(IngressError::FrameBytes);
+    }
+    let value: Value = serde_json::from_slice(bytes).map_err(|_| IngressError::Malformed)?;
+    validate_shape(&value)?;
+    Ok(value)
+}
+
+enum Routed<'a> {
+    Response(&'a Map<String, Value>),
+    ServerRequest {
+        object: &'a Map<String, Value>,
+        method: &'a str,
+        params: &'a Map<String, Value>,
+    },
+    Notification {
+        method: &'a str,
+        params: &'a Map<String, Value>,
+    },
+}
+
+/// Classifies a parsed frame exactly as ingestion dispatches it.
+fn route(value: &Value) -> Result<Routed<'_>, IngressError> {
+    let object = value.as_object().ok_or(IngressError::Malformed)?;
+    if object.contains_key("result") || object.contains_key("error") {
+        return Ok(Routed::Response(object));
+    }
+    let method = text(object, "method", LIMITS.wire.method_bytes as usize)?;
+    let params = object
+        .get("params")
+        .and_then(Value::as_object)
+        .ok_or(IngressError::Malformed)?;
+    if object.contains_key("id") {
+        return Ok(Routed::ServerRequest {
+            object,
+            method,
+            params,
+        });
+    }
+    Ok(Routed::Notification { method, params })
+}
+
+/// True only for a frame that ingestion would read as a `turn/completed`
+/// notification for the bound thread repeating the terminal `adapter` last
+/// applied. It parses and routes through the same steps as ingestion, so a
+/// frame ingestion rejects is never a duplicate.
+pub(in crate::acp::bindings::codex) fn is_duplicate_terminal(
+    adapter: &CodexAdapter,
+    bytes: &[u8],
+) -> bool {
+    let Ok(value) = parse_frame(bytes) else {
+        return false;
+    };
+    if adapter.provisional_expired() {
+        return false;
+    }
+    let Ok(Routed::Notification {
+        method: "turn/completed",
+        params,
+    }) = route(&value)
+    else {
+        return false;
+    };
+    let Ok(thread) = text(params, "threadId", 512) else {
+        return false;
+    };
+    let Some(turn) = params.get("turn").and_then(Value::as_object) else {
+        return false;
+    };
+    let (Ok(id), Ok(status)) = (text(turn, "id", 512), text(turn, "status", 32)) else {
+        return false;
+    };
+    let state = match status {
+        "completed" => TurnState::Completed,
+        "interrupted" => TurnState::Interrupted,
+        "failed" => TurnState::Failed,
+        _ => return false,
+    };
+    !adapter.is_bound_child_thread(thread) && adapter.repeats_previous_terminal(thread, id, state)
 }

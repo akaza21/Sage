@@ -376,3 +376,43 @@ fn split_duplicate_terminal_keeps_the_handoff_closed() {
         );
     });
 }
+
+/// Same thread, turn and status, but a repeated key that ingestion's
+/// structural validation rejects.
+#[test]
+fn duplicate_key_terminal_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("duplicate-key terminal behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, turn| {
+                vec![
+                    format!(
+                        "{}\n",
+                        r#"{"method":"turn/completed","method":"turn/completed","params":{"threadId":"THREAD","turn":{"id":"TURN","status":"interrupted"}}}"#
+                            .replace("THREAD", thread)
+                            .replace("TURN", turn)
+                    )
+                    .into_bytes(),
+                ]
+            })
+            .await,
+        );
+    });
+}
+
+/// Same thread, turn and status, but a top-level `result` makes ingestion
+/// route it as a response without an id and reject it.
+#[test]
+fn terminal_with_a_result_member_keeps_the_handoff_closed() {
+    crate::test_wait::guarded("result-bearing terminal behind the callback", async {
+        assert_not_reusable(
+            accept_terminal_behind(|thread, turn| {
+                vec![line(
+                    json!({"method":"turn/completed","result":{},"params":{
+                        "threadId":thread,"turn":{"id":turn,"status":"interrupted"}
+                    }}),
+                )]
+            })
+            .await,
+        );
+    });
+}
