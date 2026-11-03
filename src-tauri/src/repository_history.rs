@@ -316,10 +316,30 @@ mod tests {
         let author = git(&["var", "GIT_AUTHOR_IDENT"]);
         let committer = git(&["var", "GIT_COMMITTER_IDENT"]);
         let mut parent = git(&["rev-parse", "HEAD"]);
-        let mut expected = Vec::new();
+        let mut expected = vec![
+            GitRecentCommit {
+                sha: git(&["rev-parse", "HEAD^"]),
+                subject: "first".into(),
+            },
+            GitRecentCommit {
+                sha: parent.clone(),
+                subject: "second".into(),
+            },
+        ];
+        // Byte 255 falls inside é, so the bound must stop at byte 254.
+        let long_prefix = "a".repeat(254);
+        let long_message = format!("{long_prefix}é{}\n", "z".repeat(4096));
         for (message, subject) in [
             (&b"\x1b[31mred\n"[..], "\u{fffd}[31mred"),
             (&b"caf\xe9\n"[..], "caf\u{fffd}"),
+            (&b""[..], ""),
+            (long_message.as_bytes(), long_prefix.as_str()),
+            (
+                &b"first line\nsecond line\n\nbody is not the subject\n"[..],
+                "first line second line",
+            ),
+            (&b"--option\n"[..], "--option"),
+            (&b"%H %s\n"[..], "%H %s"),
         ] {
             // Write the object verbatim: commit-tree may recode invalid UTF-8.
             let mut object =
@@ -358,8 +378,14 @@ mod tests {
             .unwrap();
         std::fs::remove_dir_all(root).unwrap();
         expected.reverse();
-        assert_eq!(&listed.commits[..2], expected.as_slice());
-        assert_eq!(listed.commits.len(), 4);
+        assert_eq!(listed.commits, expected);
+        assert_eq!(listed.commits.len(), 9);
+        assert!(
+            listed
+                .commits
+                .iter()
+                .all(|commit| commit.subject.len() <= MAX_COMMIT_SUBJECT_BYTES)
+        );
         assert!(!listed.truncated);
     }
 
