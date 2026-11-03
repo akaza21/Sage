@@ -387,3 +387,21 @@ test("reads a declaration's priority apart from its value", () => {
   assert.deepEqual(inventory.cornerRadii, []);
   assert.deepEqual(inventory.importants, []);
 });
+
+test("splits selectors only at commas outside comments and strings", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .shared/* note, note */ { color: var(--color-text-primary); }
+      [data-label="/*x*/"] { color: var(--color-text-primary); }
+    `,
+    "src/styles/b.css": `
+      .shared { color: var(--color-text-primary); }
+      [data-label=" "] { color: var(--color-text-primary); }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.duplicateSelectors.map(({ selector }) => selector),
+    [".shared"],
+  );
+});
