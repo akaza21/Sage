@@ -186,8 +186,8 @@ test("reports malformed CSS deterministically", () => {
     "src/styles/a.css": `.a { content: "unterminated;`,
   });
 
-  // The parser stops at a file's first error; the file fails either way.
   assert.deepEqual(inventory.parseErrors, [
+    "src/styles/a.css:1 has an unclosed block.",
     "src/styles/a.css:1 has an unterminated string.",
     "src/styles/z.css:1 has an unclosed block.",
   ]);

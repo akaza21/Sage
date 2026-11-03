@@ -1,8 +1,6 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import postcss from "postcss";
-
 export const CSS_HYGIENE_MAX_FILES = 128;
 export const CSS_HYGIENE_MAX_FILE_BYTES = 512 * 1024;
 const CSS_HYGIENE_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
@@ -26,59 +24,176 @@ function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** Splits `text` on `delimiter` where it sits outside brackets and strings. */
-function splitTopLevel(text, delimiter) {
-  const parts = [];
-  let depth = 0;
+function lineIndex(source) {
+  const starts = [0];
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] === "\n") starts.push(index + 1);
+  }
+  return (offset) => {
+    let low = 0;
+    let high = starts.length;
+    while (low + 1 < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (starts[middle] <= offset) low = middle;
+      else high = middle;
+    }
+    return low + 1;
+  };
+}
+
+function maskCss(source, relativePath, lineAt) {
+  const characters = [...source];
+  const errors = [];
+  let state = "code";
   let quote = "";
-  let start = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (quote) {
-      if (character === "\\") index += 1;
-      else if (character === quote) quote = "";
+  let constructStart = 0;
+
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    const next = characters[index + 1];
+    if (state === "comment") {
+      if (character === "*" && next === "/") {
+        characters[index] = " ";
+        characters[index + 1] = " ";
+        index += 1;
+        state = "code";
+      } else if (character !== "\n" && character !== "\r") {
+        characters[index] = " ";
+      }
+      continue;
+    }
+    if (state === "string") {
+      if (character === "\\" && next !== undefined) {
+        characters[index] = " ";
+        if (next !== "\n" && next !== "\r") characters[index + 1] = " ";
+        index += 1;
+      } else if (character === quote) {
+        characters[index] = " ";
+        state = "code";
+      } else if (character !== "\n" && character !== "\r") {
+        characters[index] = " ";
+      }
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      constructStart = index;
+      characters[index] = " ";
+      characters[index + 1] = " ";
+      index += 1;
+      state = "comment";
     } else if (character === '"' || character === "'") {
+      constructStart = index;
       quote = character;
-    } else if (character === "(" || character === "[") {
-      depth += 1;
-    } else if (character === ")" || character === "]") {
-      depth = Math.max(0, depth - 1);
-    } else if (depth === 0 && delimiter.test(text.slice(index))) {
-      parts.push({ start, text: text.slice(start, index) });
-      start = index + text.slice(index).match(delimiter)[0].length;
-      index = start - 1;
+      characters[index] = " ";
+      state = "string";
     }
   }
-  parts.push({ start, text: text.slice(start) });
-  return parts;
+
+  if (state !== "code") {
+    errors.push(
+      `${relativePath}:${lineAt(constructStart)} has an unterminated ${state}.`,
+    );
+  }
+  return { errors, masked: characters.join("") };
+}
+
+function trimmedRange(value, start, end) {
+  while (start < end && /\s/u.test(value[start])) start += 1;
+  while (end > start && /\s/u.test(value[end - 1])) end -= 1;
+  return { end, start };
 }
 
 function normalizeSelector(selector) {
   let result = "";
+  let state = "code";
   let quote = "";
   let pendingSpace = false;
   for (let index = 0; index < selector.length; index += 1) {
     const character = selector[index];
-    if (quote) {
+    const next = selector[index + 1];
+    if (state === "comment") {
+      if (character === "*" && next === "/") {
+        index += 1;
+        state = "code";
+        pendingSpace = true;
+      }
+      continue;
+    }
+    if (state === "string") {
       result += character;
-      if (character === "\\" && index + 1 < selector.length) {
-        result += selector[index + 1];
+      if (character === "\\" && next !== undefined) {
+        result += next;
         index += 1;
       } else if (character === quote) {
-        quote = "";
+        state = "code";
       }
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      index += 1;
+      state = "comment";
+    } else if (character === '"' || character === "'") {
+      if (pendingSpace && result) result += " ";
+      pendingSpace = false;
+      quote = character;
+      state = "string";
+      result += character;
     } else if (/\s/u.test(character)) {
       pendingSpace = true;
     } else {
       if (pendingSpace && result) result += " ";
       pendingSpace = false;
-      if (character === '"' || character === "'") quote = character;
       result += character;
     }
   }
   return result.trim();
 }
 
+function selectorParts(source, masked, start, end, lineAt) {
+  const parts = [];
+  let partStart = start;
+  let roundDepth = 0;
+  let squareDepth = 0;
+  for (let index = start; index < end; index += 1) {
+    if (masked[index] === "(") roundDepth += 1;
+    else if (masked[index] === ")") roundDepth = Math.max(0, roundDepth - 1);
+    else if (masked[index] === "[") squareDepth += 1;
+    else if (masked[index] === "]") squareDepth = Math.max(0, squareDepth - 1);
+    else if (masked[index] === "," && roundDepth === 0 && squareDepth === 0) {
+      const range = trimmedRange(masked, partStart, index);
+      if (range.start < range.end) {
+        parts.push({
+          line: lineAt(range.start),
+          selector: normalizeSelector(source.slice(range.start, range.end)),
+        });
+      }
+      partStart = index + 1;
+    }
+  }
+  const range = trimmedRange(masked, partStart, end);
+  if (range.start < range.end) {
+    parts.push({
+      line: lineAt(range.start),
+      selector: normalizeSelector(source.slice(range.start, range.end)),
+    });
+  }
+  return parts;
+}
+
+function atRuleBlockKind(prelude) {
+  if (/^@(?:-[a-z]+-)?keyframes\b/iu.test(prelude)) return "keyframes";
+  if (
+    /^@(?:media|supports|layer|container|scope|document|starting-style)\b/iu.test(
+      prelude,
+    )
+  ) {
+    return "rules";
+  }
+  return "declarations";
+}
+
+/** A z-index names a stacking layer from global.css, optionally offset by a
+ * whole step inside `calc()` when a third-party layer has to be cleared. */
 /** One element owns a surface's radius. A per-corner longhand may only square
  * a corner where segments of a control meet (a split button). A box rounded
  * on some corners is a slice of a larger surface, and that surface should own
@@ -91,6 +206,28 @@ const ACCESSIBILITY_FEATURES = new Set([
   "prefers-reduced-motion:reduce",
   "forced-colors:active",
 ]);
+
+/** Splits `text` at `delimiter` matches that sit outside parentheses. The
+ * text is already masked, so strings and comments cannot hold brackets. */
+function splitTopLevel(text, delimiter) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "(") depth += 1;
+    else if (text[index] === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      const match = text.slice(index).match(delimiter);
+      if (match) {
+        parts.push(text.slice(start, index));
+        start = index + match[0].length;
+        index = start - 1;
+      }
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
 
 /** True when the outer parentheses enclose the whole condition, as in
  * `((forced-colors: active))` but not `(a) and (b)`. */
@@ -111,61 +248,92 @@ function mediaFeature(condition) {
   return feature.replace(/\s+/gu, "").toLowerCase();
 }
 
-/** True when every query in the list requires an accessibility preference:
- * each alternative must state it as a top-level `and` conjunct, not under
- * `not` or beside an `or`. */
-function accessibilityMedia(params) {
-  return splitTopLevel(params, /^,/u).every(({ text }) => {
-    const query = text.trim();
+/** True for `@media` whose every query requires an accessibility preference
+ * as a top-level `and` conjunct, never under `not` or beside an `or`. */
+function accessibilityMedia(prelude) {
+  const media = prelude.match(/^@media\b([\s\S]*)$/iu);
+  if (!media) return false;
+  return splitTopLevel(media[1], /^,/u).every((alternative) => {
+    const query = alternative.trim();
     if (!query || /^not\b/iu.test(query)) return false;
     if (splitTopLevel(query, /^\s+or\s+/iu).length > 1) return false;
-    return splitTopLevel(query, /^\s+and\s+/iu).some(({ text: conjunct }) =>
+    return splitTopLevel(query, /^\s+and\s+/iu).some((conjunct) =>
       ACCESSIBILITY_FEATURES.has(mediaFeature(conjunct)),
     );
   });
 }
 
+/** A conditional group nested in a style rule holds that rule's
+ * declarations (CSS nesting), so its body is read as declarations. */
+const CONDITIONAL_GROUP =
+  /^@(?:media|supports|container|layer|scope|starting-style)\b/iu;
+
 const Z_INDEX_LAYER =
   /^(?:auto|inherit|initial|unset|revert|var\(\s*--z-[a-z0-9-]+\s*\)|calc\(\s*var\(\s*--z-[a-z0-9-]+\s*\)\s*[+-]\s*\d+\s*\))$/iu;
 
-const QUOTED = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gu;
-
-function declarationRecords(declaration, relativePath) {
-  const property = declaration.prop.toLowerCase();
-  const value = declaration.value.trim().replace(/\s+/gu, " ");
-  const unquoted = value.replace(QUOTED, (literal) =>
-    " ".repeat(literal.length),
-  );
-  const line = declaration.source.start.line;
-  const records = {
+function declarationRecords(
+  source,
+  masked,
+  start,
+  end,
+  relativePath,
+  lineAt,
+  importantAllowed,
+) {
+  const range = trimmedRange(masked, start, end);
+  const none = {
     cornerRadii: [],
     importants: [],
     rawColors: [],
     rawRadii: [],
     rawZIndexes: [],
   };
+  if (range.start >= range.end) return none;
+  const declaration = masked.slice(range.start, range.end);
+  const match = declaration.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:/iu);
+  if (!match) return none;
+
+  const property = match[1].toLowerCase();
+  const colonOffset = declaration.indexOf(":");
+  const valueStart = range.start + colonOffset + 1;
+  const valueRange = trimmedRange(masked, valueStart, range.end);
+  // The priority is not part of the value: read it, then check the value.
+  const maskedDeclarationValue = masked.slice(valueRange.start, valueRange.end);
+  const priority = maskedDeclarationValue.match(/\s*!\s*important\s*$/iu);
+  const valueEnd = valueRange.end - (priority?.[0].length ?? 0);
+  const maskedValue = masked.slice(valueRange.start, valueEnd);
+  const rawValue = source
+    .slice(valueRange.start, valueEnd)
+    .trim()
+    .replace(/\s+/gu, " ");
+  const line = lineAt(range.start);
+  const rawRadii = [];
+  const rawColors = [];
+  const rawZIndexes = [];
+  const cornerRadii = [];
+  const importants = [];
 
   if (
     CORNER_RADIUS.test(property) &&
-    !/^var\(\s*--radius-none\s*\)$/iu.test(value)
+    !/^var\(\s*--radius-none\s*\)$/iu.test(maskedValue.trim())
   ) {
-    records.cornerRadii.push({ line, property, relativePath, value });
+    cornerRadii.push({ line, property, relativePath, value: rawValue });
   }
 
-  if (declaration.important && !importantAllowed(declaration)) {
-    records.importants.push({ line, property, relativePath });
+  if (!importantAllowed && priority) {
+    importants.push({ line, property, relativePath });
   }
 
   if (
     relativePath !== GLOBAL_TOKEN_AUTHORITY &&
     property === "border-radius" &&
-    !/^var\(\s*--radius-[a-z0-9-]+\s*\)$/iu.test(value)
+    !/^var\(\s*--radius-[a-z0-9-]+\s*\)$/iu.test(maskedValue.trim())
   ) {
-    records.rawRadii.push({ line, relativePath, value });
+    rawRadii.push({ line, relativePath, value: rawValue });
   }
 
-  if (property === "z-index" && !Z_INDEX_LAYER.test(value)) {
-    records.rawZIndexes.push({ line, relativePath, value });
+  if (property === "z-index" && !Z_INDEX_LAYER.test(maskedValue.trim())) {
+    rawZIndexes.push({ line, relativePath, value: rawValue });
   }
 
   const ownsTokens =
@@ -173,99 +341,104 @@ function declarationRecords(declaration, relativePath) {
   if (relativePath !== GLOBAL_TOKEN_AUTHORITY && !ownsTokens) {
     const colorPattern =
       /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b|\brgba?\s*\(/giu;
-    for (const color of unquoted.matchAll(colorPattern)) {
+    for (const color of maskedValue.matchAll(colorPattern)) {
       const literal = color[0].startsWith("#")
         ? color[0]
         : color[0].toLowerCase().replace(/\s+/gu, "");
-      records.rawColors.push({ line, literal, relativePath });
+      rawColors.push({ line, literal, relativePath });
     }
   }
-  return records;
-}
-
-function importantAllowed(node) {
-  for (let parent = node.parent; parent; parent = parent.parent) {
-    if (
-      parent.type === "atrule" &&
-      parent.name.toLowerCase() === "media" &&
-      accessibilityMedia(parent.params)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function insideKeyframes(node) {
-  for (let parent = node.parent; parent; parent = parent.parent) {
-    if (parent.type === "atrule" && /keyframes$/iu.test(parent.name)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-const PARSE_REASONS = new Map([
-  ["Unclosed block", "has an unclosed block"],
-  ["Unclosed bracket", "has an unclosed bracket"],
-  ["Unclosed comment", "has an unterminated comment"],
-  ["Unclosed quote", "has an unterminated string"],
-  ["Unclosed string", "has an unterminated string"],
-  ["Unexpected }", 'has an unexpected "}"'],
-]);
-
-function parseError(error, relativePath) {
-  const reason =
-    PARSE_REASONS.get(error.reason) ?? `is not valid CSS (${error.reason})`;
-  return `${relativePath}:${error.line ?? 1} ${reason}.`;
-}
-
-function selectorRecords(rule, relativePath) {
-  const selector = rule.raws.selector?.raw ?? rule.selector;
-  const startLine = rule.source.start.line;
-  return splitTopLevel(selector, /^,/u)
-    .map(({ start, text }) => {
-      const leading = text.length - text.trimStart().length;
-      const before = selector.slice(0, start + leading);
-      return {
-        line: startLine + (before.match(/\n/gu)?.length ?? 0),
-        relativePath,
-        selector: normalizeSelector(text.replace(/\/\*[\s\S]*?\*\//gu, " ")),
-      };
-    })
-    .filter(({ selector: part }) => part.length > 0);
+  return { cornerRadii, importants, rawColors, rawRadii, rawZIndexes };
 }
 
 function analyzeCss(source, relativePath) {
-  const result = {
-    cornerRadii: [],
-    importants: [],
-    parseErrors: [],
-    rawColors: [],
-    rawRadii: [],
-    rawZIndexes: [],
-    selectors: [],
+  const lineAt = lineIndex(source);
+  const { errors, masked } = maskCss(source, relativePath, lineAt);
+  const selectors = [];
+  const rawColors = [];
+  const rawRadii = [];
+  const rawZIndexes = [];
+  const cornerRadii = [];
+  const importants = [];
+  const stack = [
+    {
+      importantAllowed: false,
+      kind: "rules",
+      openIndex: -1,
+      statementStart: 0,
+    },
+  ];
+  const collect = (frame, end) => {
+    const records = declarationRecords(
+      source,
+      masked,
+      frame.statementStart,
+      end,
+      relativePath,
+      lineAt,
+      frame.importantAllowed,
+    );
+    cornerRadii.push(...records.cornerRadii);
+    importants.push(...records.importants);
+    rawColors.push(...records.rawColors);
+    rawRadii.push(...records.rawRadii);
+    rawZIndexes.push(...records.rawZIndexes);
   };
-  let root;
-  try {
-    root = postcss.parse(source, { from: undefined });
-  } catch (error) {
-    if (error?.name !== "CssSyntaxError") throw error;
-    result.parseErrors.push(parseError(error, relativePath));
-    return result;
+
+  for (let index = 0; index < masked.length; index += 1) {
+    const frame = stack.at(-1);
+    const character = masked[index];
+    if (character === "{") {
+      const range = trimmedRange(masked, frame.statementStart, index);
+      const prelude = masked.slice(range.start, range.end);
+      let kind;
+      if (frame.kind === "keyframes") kind = "declarations";
+      else if (frame.kind === "declarations" && CONDITIONAL_GROUP.test(prelude))
+        kind = "declarations";
+      else if (prelude.startsWith("@")) kind = atRuleBlockKind(prelude);
+      else {
+        kind = "declarations";
+        selectors.push(
+          ...selectorParts(source, masked, range.start, range.end, lineAt).map(
+            (selector) => ({ ...selector, relativePath }),
+          ),
+        );
+      }
+      stack.push({
+        importantAllowed: frame.importantAllowed || accessibilityMedia(prelude),
+        kind,
+        openIndex: index,
+        statementStart: index + 1,
+      });
+    } else if (character === ";") {
+      if (frame.kind === "declarations") collect(frame, index);
+      frame.statementStart = index + 1;
+    } else if (character === "}") {
+      if (stack.length === 1) {
+        errors.push(`${relativePath}:${lineAt(index)} has an unexpected "}".`);
+        frame.statementStart = index + 1;
+        continue;
+      }
+      if (frame.kind === "declarations") collect(frame, index);
+      stack.pop();
+      stack.at(-1).statementStart = index + 1;
+    }
   }
-  root.walkRules((rule) => {
-    if (!insideKeyframes(rule)) {
-      result.selectors.push(...selectorRecords(rule, relativePath));
-    }
-  });
-  root.walkDecls((declaration) => {
-    const records = declarationRecords(declaration, relativePath);
-    for (const [kind, entries] of Object.entries(records)) {
-      result[kind].push(...entries);
-    }
-  });
-  return result;
+
+  if (stack.length > 1) {
+    errors.push(
+      `${relativePath}:${lineAt(stack[1].openIndex)} has an unclosed block.`,
+    );
+  }
+  return {
+    cornerRadii,
+    importants,
+    parseErrors: errors,
+    rawColors,
+    rawRadii,
+    rawZIndexes,
+    selectors,
+  };
 }
 
 function compareLocation(left, right) {
