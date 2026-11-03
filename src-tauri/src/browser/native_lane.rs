@@ -7,6 +7,7 @@
 //! the Agent reaches.
 
 mod annotate;
+mod device;
 mod diagnostics;
 
 use std::{

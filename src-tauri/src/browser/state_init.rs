@@ -38,6 +38,7 @@ impl BrowserState {
             popups: Mutex::new(PopupRequests::default()),
             annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
+            device_updates: Mutex::new(()),
         })
     }
 

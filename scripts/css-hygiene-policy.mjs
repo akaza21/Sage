@@ -5,6 +5,20 @@ export const CSS_HYGIENE_MAX_FILES = 128;
 export const CSS_HYGIENE_MAX_FILE_BYTES = 512 * 1024;
 const CSS_HYGIENE_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 const GLOBAL_TOKEN_AUTHORITY = "src/styles/global.css";
+// Stylesheets that may define raw colours, as custom properties only, beside
+// the global authority. A lazy feature keeps tokens no other code uses in its
+// own chunk so they stay off the initial CSS; its rules still read them
+// through var().
+const FEATURE_TOKEN_OWNERS = new Map([
+  [
+    "src/features/browser/browser-device.css",
+    "Device toolbar gutter, grip and field fills; loads with the lazy toolbar.",
+  ],
+  [
+    "src/styles/workbench-chrome.css",
+    "Title bar fill, defined beside the chrome rules before this check.",
+  ],
+]);
 
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -188,7 +202,7 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
   const none = { rawColors: [], rawRadii: [], rawZIndexes: [] };
   if (range.start >= range.end) return none;
   const declaration = masked.slice(range.start, range.end);
-  const match = declaration.match(/^([a-z][a-z0-9-]*)\s*:/iu);
+  const match = declaration.match(/^((?:--)?[a-z][a-z0-9-]*)\s*:/iu);
   if (!match) return none;
 
   const property = match[1].toLowerCase();
@@ -217,7 +231,9 @@ function declarationRecords(source, masked, start, end, relativePath, lineAt) {
     rawZIndexes.push({ line, relativePath, value: rawValue });
   }
 
-  if (relativePath !== GLOBAL_TOKEN_AUTHORITY) {
+  const ownsTokens =
+    property.startsWith("--") && FEATURE_TOKEN_OWNERS.has(relativePath);
+  if (relativePath !== GLOBAL_TOKEN_AUTHORITY && !ownsTokens) {
     const colorPattern =
       /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b|\brgba?\s*\(/giu;
     for (const color of maskedValue.matchAll(colorPattern)) {

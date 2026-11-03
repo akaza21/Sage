@@ -4,9 +4,12 @@
   /* Start at one row; spare composer space expands the queue. */
   flex: 1 1 40px;
   display: grid;
+  grid-auto-rows: max-content;
   max-height: min(320px, 40vh);
   gap: var(--space-1);
   overflow-y: auto;
+  /* Keep focused controls clear of the scroll viewport's clipping edge. */
+  padding-block: var(--space-1);
   scrollbar-width: thin;
 }
 
