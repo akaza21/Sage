@@ -1,10 +1,5 @@
 import type { AgentRailTrailingState } from "./agentRailStatusView";
 
-/**
- * A rail row's one trailing state: the approval spinner (the Turn still runs
- * behind the "Awaiting approval" pill, Codex s6/f0526), the focused row's
- * status chip, or the quiet glyph.
- */
 export function ProjectChatTrailingState({
   awaitingApproval,
   focused,
@@ -27,7 +22,7 @@ export function ProjectChatTrailingState({
         <span className="spinner agent-chat-chip__spinner" />
       </span>
     );
-  if (!focused || !state || state.kind === "time")
+  if (!focused || !state || state.kind === "time" || state.kind === "unread")
     return (
       <ProjectChatRailGlyph
         state={state}

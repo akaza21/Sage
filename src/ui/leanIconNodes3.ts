@@ -114,7 +114,7 @@ export const PinOff = leanIcon("pin-off", [
   "m2 2 20 20",
   "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11",
 ]);
-/** The ⌘ glyph Codex gives MCP, web and integration rows (s5/f0390). */
+
 export const Command = leanIcon("command", [
   "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
 ]);

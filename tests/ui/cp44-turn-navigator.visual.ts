@@ -82,8 +82,7 @@ test("CP-44 dashes widen, preview and jump with the measured gutter geometry", a
   await page.keyboard.press("ArrowDown");
   await expect(buttons.nth(3)).toBeFocused();
   await page.addStyleTag({
-    content:
-      ".agent-chat-panes--split { grid-template-columns: 719px 8px 719px !important; }",
+    content: ".agent-chat-panes { grid-template-columns: 719px !important; }",
   });
   await expect(rail).toBeHidden();
 });

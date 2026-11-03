@@ -1,11 +1,12 @@
 import { EditorView } from "@codemirror/view";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <section>Active chat</section>,
@@ -58,6 +59,8 @@ const tabs: WorkbenchTab[] = [
     dirty: false,
   },
 ];
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();

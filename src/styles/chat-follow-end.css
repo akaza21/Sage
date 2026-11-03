@@ -1,12 +1,3 @@
-/*
- * Jump to latest floats over the transcript, centred on its column (Codex
- * s2/f0001: a 28 px circle about 23 px above the composer). It shares the
- * transcript grid area instead of taking a row, so showing it never changes
- * the transcript height. The right margin skips the stable scrollbar gutter
- * so the centre matches the reading column. It stays mounted while hidden:
- * the opacity fades over 150 ms and display flips only after the fade
- * (Codex s2/f0046-f0049 and s6/f0699).
- */
 .chat-follow-end {
   position: relative;
   z-index: var(--z-sticky);
@@ -26,12 +17,7 @@
     display var(--motion-duration-fade) allow-discrete;
 }
 
-/*
- * Centred on the reading column, not the scrollport (s2/f0046): the column
- * is the Turn's first grid track, so the scrollbar gutter plus the Turn's
- * column gap (--chat-column-trailing) sit right of it. Compact panes zero
- * both (workbench-window-mode.css).
- */
+/* Centred on the reading column, accounting for its reserved scrollbar. */
 .chat-surface--agent > .chat-follow-end {
   grid-area: transcript;
   align-self: end;
@@ -39,7 +25,6 @@
   margin: 0 var(--chat-column-trailing) var(--space-6) 0;
 }
 
-/* Codex's arrow is white and thin, 14 px (s2/f0046). */
 .chat-follow-end:not([data-mode="activity"]) > svg {
   color: var(--color-text-emphasis);
   stroke-width: 1;
@@ -60,13 +45,6 @@
   background: var(--color-surface-hover);
 }
 
-/*
- * New activity below a paused reader (Codex s6/f0051-f0128): three 4 px dots
- * dip one at a time, left to right, about 125 ms apart, on a 1 s cycle. The
- * data-mode="activity" selects this mode: the arrow icon becomes the middle dot
- * and the button's ::before and ::after are the outer dots, laid out as three
- * grid columns so each moves on its own.
- */
 .chat-follow-end[data-mode="activity"] {
   grid-auto-flow: column;
   gap: var(--space-1);

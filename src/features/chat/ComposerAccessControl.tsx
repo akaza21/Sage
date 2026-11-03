@@ -1,22 +1,12 @@
-import { useId, useRef } from "react";
+import { lazy, Suspense, useId, useRef } from "react";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import {
   SESSION_ACCESS_MODE_SCOPE,
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
-import {
-  Check,
-  Eye,
-  MessageCircleQuestion,
-  ShieldCheck,
-} from "../../ui/leanIcons";
-import { MenuPopover } from "../../ui/MenuPopover";
-
-const ACCESS_ICONS = {
-  readOnly: Eye,
-  ask: MessageCircleQuestion,
-  workspaceWrite: ShieldCheck,
-};
+import { ACCESS_ICONS } from "./composerAccessIcons";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
+const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
 
 export function ComposerAccessControl({
   bindingId,
@@ -60,60 +50,23 @@ export function ComposerAccessControl({
           {selected?.label ?? "Choose access"}
         </span>
       </button>
-      <MenuPopover
-        id={id}
-        open={open && !disabled && ready}
-        triggerRef={trigger}
-        ariaLabel="Access mode"
-        ariaDescribedBy={`${id}-heading`}
-        className="composer__popover composer-access-menu"
-        initialFocus="selected"
-        focusKey={`${effective}:${candidates.map((candidate) => candidate.id).join()}`}
-        restoreFocusOnTab
-        onDismiss={onDismiss}
-        gap={8}
-      >
-        <p
-          id={`${id}-heading`}
-          className="composer-access-menu__heading"
-          aria-hidden="true"
+      {open && !disabled && ready ? (
+        <Suspense
+          fallback={
+            <ComposerMenuLoading triggerRef={trigger} onDismiss={onDismiss} />
+          }
         >
-          How should agent actions be approved?
-        </p>
-        {candidates.map((candidate) => {
-          const Icon = ACCESS_ICONS[candidate.id];
-          return (
-            <button
-              key={candidate.id}
-              type="button"
-              role="menuitemradio"
-              className="menu-item composer-access-menu__option"
-              aria-label={candidate.label}
-              aria-checked={candidate.id === effective}
-              data-option-id={candidate.id}
-              aria-describedby={`${id}-${candidate.id}`}
-              tabIndex={-1}
-              onClick={() => {
-                setMode(bindingId, candidate.id);
-                onDismiss();
-                trigger.current?.focus();
-              }}
-            >
-              <Icon size={14} aria-hidden="true" />
-              <span>{candidate.label}</span>
-              {candidate.id === effective ? (
-                <Check size={14} aria-hidden="true" />
-              ) : null}
-              <span
-                id={`${id}-${candidate.id}`}
-                className="composer-access-menu__description"
-              >
-                {candidate.description}
-              </span>
-            </button>
-          );
-        })}
-      </MenuPopover>
+          <AccessMenu
+            key={bindingId}
+            id={id}
+            triggerRef={trigger}
+            candidates={candidates}
+            effective={effective}
+            onDismiss={onDismiss}
+            onSelect={(mode) => setMode(bindingId, mode)}
+          />
+        </Suspense>
+      ) : null}
       <span id={`${id}-scope`} className="sr-only">
         {selected?.description} {SESSION_ACCESS_MODE_SCOPE}
       </span>

@@ -1,4 +1,4 @@
-import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
+import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,
@@ -115,7 +115,12 @@ const editor: EditorPort = {
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
   getRepositoryChangeStamp: async () => "browser",
-  getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
+  getFileDiff: (resource, scope) =>
+    scope
+      ? Promise.reject(
+          new Error("Scoped Git diffs require the native Git backend."),
+        )
+      : browserDesktop.getFileDiff(resource),
   getFileGitBase: (resource, knownOid) =>
     browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>

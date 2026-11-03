@@ -1,3 +1,7 @@
+import {
+  validateCreateProjectFileResult,
+  validateCreateProjectFolderResult,
+} from "./newFileResult";
 import { describe, expect, it } from "vitest";
 
 import { resourceKey } from "../../domain/resourceIdentity";
@@ -5,8 +9,6 @@ import type { ProjectSummary, WorkbenchTab } from "../../domain/workbench";
 import {
   explorerCreateParent,
   MAX_NEW_FILE_NAME_BYTES,
-  validateCreateProjectFileResult,
-  validateCreateProjectFolderResult,
   validateNewFileBasename,
   validateNewFilePath,
 } from "./newFileContract";

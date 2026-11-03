@@ -15,6 +15,12 @@ const desktopWorkbenchRuntime = path.join(
   root,
   "src/ports/workbenchRuntime.desktop.ts",
 );
+const devWatchIgnoredRoots = new Set([
+  "src-tauri",
+  "work",
+  "output",
+  "local-evidence",
+]);
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
 
@@ -41,7 +47,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|streamTail))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",
@@ -142,7 +148,12 @@ export default defineConfig(({ command, mode }) => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: (file: string) => {
+        const directory = path.relative(root, file).split(path.sep)[0] ?? "";
+        return devWatchIgnoredRoots.has(
+          process.platform === "win32" ? directory.toLowerCase() : directory,
+        );
+      },
     },
   },
   build: {

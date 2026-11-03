@@ -167,13 +167,14 @@ fn capacity_lease_is_mandatory_bounded_and_fail_closed_after_activation() {
         &TreeCapacityPool::global()
     ));
     let pool = TreeCapacityPool::isolated_ade_0006a();
-    let lease = pool.try_acquire(32).unwrap();
-    assert_eq!(pool.usage(), (1, 32));
+    let trees = crate::acp::limits::LIMITS.process.operational_live_trees as u32;
+    let leases: Vec<_> = (0..trees).map(|_| pool.try_acquire(32).unwrap()).collect();
+    assert_eq!(pool.usage(), (trees, 32 * trees));
     assert_eq!(
         pool.try_acquire(1).err(),
         Some(LaunchError::CapacityUnavailable)
     );
-    drop(lease);
+    drop(leases);
     assert_eq!(pool.usage(), (0, 0));
 
     let mut active = pool.try_acquire(32).unwrap();

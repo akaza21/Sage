@@ -65,7 +65,10 @@ test.describe("Editor Find and Replace", () => {
 
     await replacement.fill("size($1)");
     await expectFindContained(page);
+    await page.clock.runFor(1_000);
+    await expect(workbench.getByRole("alert")).toHaveCount(0);
     await expect(workbench).toHaveScreenshot("editor-find-replace.png");
+    await expect(workbench.getByRole("alert")).toHaveCount(0);
 
     await replacement.press("Enter");
     await expect(line(page, 0)).toHaveText("const total = size(items);");
@@ -80,6 +83,8 @@ test.describe("Editor Find and Replace", () => {
     await expect(line(page, 1)).toHaveText("const label = count(names);");
     await expect(line(page, 2)).toHaveText("const width = count(columns);");
     await expect(line(page, 0)).toHaveText("const total = size(items);");
+    await page.clock.runFor(1_000);
+    await expect(workbench.getByRole("alert")).toHaveCount(0);
   });
 
   test("stops a runaway pattern after 250 ms while typing stays live", async ({
