@@ -855,6 +855,13 @@ test("Codex readiness wait times out naming the first unmet condition", async ()
     '<section class="acp-chat-projection" aria-label="Agent chat ACP" data-projection-revision="1" data-project-id="project-1" data-chat-id="chat-1" data-current-session-id=""></section>';
   const ready = (overrides = {}) =>
     agentWorkbenchMarkup({ projection, ...overrides });
+  const surfaceOpen =
+    '<section class="chat-surface chat-surface--agent" aria-label="Agent chat">';
+  const composerOpen =
+    '<textarea id="prompt-chat-1" aria-label="Message agent">';
+  const composerDisabled = composerOpen.replace(">", " disabled>");
+  const disable = (controls, label) =>
+    controls.replace(`aria-label="${label}"`, `aria-label="${label}" disabled`);
   const cases = [
     ["pane-count", ready() + ready()],
     ["projection-count", agentWorkbenchMarkup()],
@@ -896,6 +903,62 @@ test("Codex readiness wait times out naming the first unmet condition", async ()
       ready({ controls: composerControlsMarkup({ modelId: "" }) }),
     ],
     ["harness-not-ready", ready({ header: agentHeaderMarkup("Starting") })],
+    [
+      "surface-count",
+      ready().replace(surfaceOpen, `${surfaceOpen}</section>${surfaceOpen}`),
+    ],
+    // Surface is checked before the projection it contains.
+    ["surface-count", agentWorkbenchMarkup().replace(surfaceOpen, "<section>")],
+    [
+      "harness-disabled",
+      ready({ controls: disable(composerControlsMarkup(), "Harness") }),
+    ],
+    // Both controls disabled: the harness is named first.
+    [
+      "harness-disabled",
+      ready({
+        controls: disable(
+          disable(composerControlsMarkup(), "Harness"),
+          "Model",
+        ),
+      }),
+    ],
+    // A disabled harness that is not Codex: disabled is named first.
+    [
+      "harness-disabled",
+      ready({
+        controls: disable(
+          composerControlsMarkup({
+            harnessId: "simulator",
+            harnessName: "Simulator",
+          }),
+          "Harness",
+        ),
+      }),
+    ],
+    [
+      "model-disabled",
+      ready({ controls: disable(composerControlsMarkup(), "Model") }),
+    ],
+    // Missing Model trigger with a disabled harness: counts come first.
+    [
+      "control-count",
+      ready({
+        controls: disable(composerControlsMarkup(), "Harness").replace(
+          'aria-label="Model"',
+          "",
+        ),
+      }),
+    ],
+    ["composer", ready().replace(composerOpen, composerDisabled)],
+    // A Starting harness with a disabled composer: status is named first.
+    [
+      "harness-not-ready",
+      ready({ header: agentHeaderMarkup("Starting") }).replace(
+        composerOpen,
+        composerDisabled,
+      ),
+    ],
     [
       "model-unidentified",
       ready({
