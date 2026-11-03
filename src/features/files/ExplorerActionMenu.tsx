@@ -23,7 +23,6 @@ import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
 import { RenameFileControl } from "./RenameFileControl";
 import { RenameFolderControl } from "./RenameFolderControl";
 import { TrashResourceControl } from "./TrashResourceControl";
-import "../../styles/editor-menu.css";
 
 export function ExplorerActionMenu() {
   const project = useWorkbenchStore(selectOpenProject);

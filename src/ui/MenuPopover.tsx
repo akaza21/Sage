@@ -29,6 +29,15 @@ const ITEM_SELECTOR = [
   '[role="option"]',
 ].join(",");
 const POPOVER_GAP = 4;
+/** The style keys the placement functions set. */
+const POSITION_KEYS = [
+  "left",
+  "top",
+  "minWidth",
+  "maxWidth",
+  "maxHeight",
+  "visibility",
+] as const;
 const MAX_POSITION_UPDATES_PER_FRAME = 4;
 
 type InitialFocus = "first" | "last" | "selected";
@@ -164,15 +173,7 @@ export function MenuPopover({
         popover,
       );
       const current = positionRef.current;
-      if (
-        current.left === next.left &&
-        current.top === next.top &&
-        current.minWidth === next.minWidth &&
-        current.maxWidth === next.maxWidth &&
-        current.maxHeight === next.maxHeight &&
-        current.visibility === next.visibility
-      )
-        return;
+      if (POSITION_KEYS.every((key) => current[key] === next[key])) return;
       // Two placements can each make the other the better fit (a flip that
       // changes the room left for the list), so bound synchronous
       // re-measures per frame instead of looping until React gives up.
