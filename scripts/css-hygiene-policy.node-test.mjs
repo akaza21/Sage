@@ -405,3 +405,33 @@ test("splits selectors only at commas outside comments and strings", () => {
     [".shared"],
   );
 });
+
+test("holds vendor-prefixed aliases to the standard property's rules", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .a { -webkit-border-top-left-radius: 8px; }
+      .b { -moz-border-radius: 4px; }
+      .c { -webkit-border-top-left-radius: var(--radius-none); }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.cornerRadii.map(({ line, property }) => ({ line, property })),
+    [{ line: 2, property: "-webkit-border-top-left-radius" }],
+  );
+  assert.deepEqual(
+    inventory.rawRadii.map(({ line, value }) => ({ line, value })),
+    [{ line: 3, value: "4px" }],
+  );
+});
+
+// The scan is linear: 400 KiB of masked comment takes tens of milliseconds,
+// where the earlier per-position rescans took minutes.
+test("reads a long media condition in one pass", { timeout: 20_000 }, () => {
+  const filler = " ".repeat(400 * 1024);
+  const inventory = analyze({
+    "src/styles/a.css": `@media screen/*${filler}*/and (forced-colors: active) { .a { color: CanvasText !important; } }`,
+  });
+
+  assert.deepEqual(inventory.importants, []);
+});

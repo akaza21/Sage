@@ -207,66 +207,89 @@ const ACCESSIBILITY_FEATURES = new Set([
   "forced-colors:active",
 ]);
 
-/** Splits `text` at `delimiter` matches that sit outside parentheses. The
- * text is already masked, so strings and comments cannot hold brackets. */
-function splitTopLevel(text, delimiter) {
-  const parts = [];
+/** Reads a media query list in one forward pass. Each query becomes its
+ * top-level words and parenthesized groups; whitespace runs separate them.
+ * The prelude is already masked, so strings and comments hold no brackets. */
+function mediaQueryList(text) {
+  const queries = [[]];
   let depth = 0;
-  let start = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "(") depth += 1;
-    else if (text[index] === ")") depth = Math.max(0, depth - 1);
-    else if (depth === 0) {
-      const match = text.slice(index).match(delimiter);
-      if (match) {
-        parts.push(text.slice(start, index));
-        start = index + match[0].length;
-        index = start - 1;
+  let token = "";
+  const flush = () => {
+    if (token) queries.at(-1).push(token);
+    token = "";
+  };
+  for (const character of text) {
+    if (depth > 0) {
+      token += character;
+      if (character === "(") depth += 1;
+      else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) flush();
       }
+    } else if (character === "(") {
+      flush();
+      token = character;
+      depth = 1;
+    } else if (character === ",") {
+      flush();
+      queries.push([]);
+    } else if (/\s/u.test(character)) {
+      flush();
+    } else {
+      token += character;
     }
   }
-  parts.push(text.slice(start));
-  return parts;
+  flush();
+  return depth === 0 ? queries : [];
 }
 
-/** True when the outer parentheses enclose the whole condition, as in
- * `((forced-colors: active))` but not `(a) and (b)`. */
-function wrappedInParentheses(condition) {
-  if (!condition.startsWith("(") || !condition.endsWith(")")) return false;
-  let depth = 0;
+/** The feature inside a group with redundant parentheses and whitespace
+ * removed: `( ( forced-colors : active ) )` reads `forced-colors:active`. */
+function mediaFeature(group) {
+  const condition = group.replace(/\s+/gu, "");
+  const closing = new Array(condition.length);
+  const open = [];
   for (let index = 0; index < condition.length; index += 1) {
-    if (condition[index] === "(") depth += 1;
-    else if (condition[index] === ")") depth -= 1;
-    if (depth === 0 && index < condition.length - 1) return false;
+    if (condition[index] === "(") open.push(index);
+    else if (condition[index] === ")") closing[open.pop()] = index;
   }
-  return true;
-}
-
-function mediaFeature(condition) {
-  let feature = condition.trim();
-  while (wrappedInParentheses(feature)) feature = feature.slice(1, -1).trim();
-  return feature.replace(/\s+/gu, "").toLowerCase();
+  let start = 0;
+  let end = condition.length - 1;
+  while (start < end && closing[start] === end) {
+    start += 1;
+    end -= 1;
+  }
+  return condition.slice(start, end + 1).toLowerCase();
 }
 
 /** True for `@media` whose every query requires an accessibility preference
- * as a top-level `and` conjunct, never under `not` or beside an `or`. */
+ * as a top-level `and` condition, never after `not` or beside an `or`. */
 function accessibilityMedia(prelude) {
-  const media = prelude.match(/^@media\b([\s\S]*)$/iu);
+  const media = prelude.match(/^@media\b/iu);
   if (!media) return false;
-  return splitTopLevel(media[1], /^,/u).every((alternative) => {
-    const query = alternative.trim();
-    if (!query || /^not\b/iu.test(query)) return false;
-    if (splitTopLevel(query, /^\s+or\s+/iu).length > 1) return false;
-    return splitTopLevel(query, /^\s+and\s+/iu).some((conjunct) =>
-      ACCESSIBILITY_FEATURES.has(mediaFeature(conjunct)),
-    );
-  });
+  const queries = mediaQueryList(prelude.slice(media[0].length));
+  return (
+    queries.length > 0 &&
+    queries.every((tokens) => {
+      const words = tokens.map((token) => token.toLowerCase());
+      if (words.length === 0 || words[0] === "not" || words.includes("or")) {
+        return false;
+      }
+      return tokens.some(
+        (token) =>
+          token.startsWith("(") &&
+          ACCESSIBILITY_FEATURES.has(mediaFeature(token)),
+      );
+    })
+  );
 }
 
 /** A conditional group nested in a style rule holds that rule's
  * declarations (CSS nesting), so its body is read as declarations. */
 const CONDITIONAL_GROUP =
   /^@(?:media|supports|container|layer|scope|starting-style)\b/iu;
+
+const VENDOR_PREFIX = /^-(?:webkit|moz|ms|o)-/u;
 
 const Z_INDEX_LAYER =
   /^(?:auto|inherit|initial|unset|revert|var\(\s*--z-[a-z0-9-]+\s*\)|calc\(\s*var\(\s*--z-[a-z0-9-]+\s*\)\s*[+-]\s*\d+\s*\))$/iu;
@@ -293,7 +316,9 @@ function declarationRecords(
   const match = declaration.match(/^(-{0,2}[a-z][a-z0-9-]*)\s*:/iu);
   if (!match) return none;
 
-  const property = match[1].toLowerCase();
+  // Vendor aliases follow the rules of the standard property they stand for.
+  const declared = match[1].toLowerCase();
+  const property = declared.replace(VENDOR_PREFIX, "");
   const colonOffset = declaration.indexOf(":");
   const valueStart = range.start + colonOffset + 1;
   const valueRange = trimmedRange(masked, valueStart, range.end);
@@ -317,11 +342,16 @@ function declarationRecords(
     CORNER_RADIUS.test(property) &&
     !/^var\(\s*--radius-none\s*\)$/iu.test(maskedValue.trim())
   ) {
-    cornerRadii.push({ line, property, relativePath, value: rawValue });
+    cornerRadii.push({
+      line,
+      property: declared,
+      relativePath,
+      value: rawValue,
+    });
   }
 
   if (!importantAllowed && priority) {
-    importants.push({ line, property, relativePath });
+    importants.push({ line, property: declared, relativePath });
   }
 
   if (
