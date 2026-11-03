@@ -1,4 +1,4 @@
-import type { SyntaxOutline } from "./syntaxOutline";
+import type { OutlineSymbol, SyntaxOutline } from "./syntaxOutline";
 
 export interface OutlineNavigationSelection {
   start: number;
@@ -18,13 +18,21 @@ export function localSymbolNavigation(
   if (!outline) return null;
   const name = identifierAtSelection(content, selection);
   if (!name) return null;
-  const symbol = outline.symbols.find(
-    (candidate) =>
+  // The shallowest declaration wins, then the first in the File: a bare name
+  // resolves to the top-level symbol before any class or module member that
+  // shares it, and to a member only when nothing outside declares it.
+  let symbol: OutlineSymbol | undefined;
+  for (const candidate of outline.symbols) {
+    if (
       candidate.name === name &&
       candidate.kind !== "heading" &&
       candidate.offset >= 0 &&
-      candidate.offset <= content.length,
-  );
+      candidate.offset <= content.length &&
+      (!symbol || candidate.depth < symbol.depth)
+    ) {
+      symbol = candidate;
+    }
+  }
   return symbol ? { start: symbol.offset, end: symbol.offset } : null;
 }
 

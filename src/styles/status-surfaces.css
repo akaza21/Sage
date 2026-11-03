@@ -101,8 +101,10 @@
   text-align: center;
 }
 
+/* Window modes tune the copy through --placeholder-title-gap and
+   --placeholder-body-font-size. */
 .placeholder-surface h1 {
-  margin: 12px 0 4px;
+  margin: var(--placeholder-title-gap, var(--space-3)) 0 var(--space-1);
   color: var(--color-text-primary);
   font-size: var(--font-size-lg);
   font-weight: 600;
@@ -111,6 +113,7 @@
 .placeholder-surface p {
   max-width: 470px;
   margin: 0;
+  font-size: var(--placeholder-body-font-size, inherit);
   line-height: 1.6;
 }
 

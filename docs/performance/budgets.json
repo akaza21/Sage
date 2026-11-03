@@ -78,13 +78,13 @@
       },
       {
         "entry": "src/features/outline/OutlineSurface.tsx",
-        "maxGzipBytes": 1600,
-        "reason": "Outline side panel (symbol rows and honest empty states); loads when the Outline view first opens."
+        "maxGzipBytes": 2020,
+        "reason": "Outline side panel (collapsible symbol tree and honest empty states); loads when the Outline view first opens. Measured 1835 B plus 10%."
       },
       {
         "entry": "src/features/outline/syntaxOutline.ts",
-        "maxGzipBytes": 1850,
-        "reason": "Syntax-tree Outline builder (sliced incremental parse, per-language collectors); loads with the Outline view or the first Go to Definition."
+        "maxGzipBytes": 2055,
+        "reason": "Syntax-tree Outline builder (sliced incremental parse, nested per-language collectors); loads with the Outline view or first Go to Definition. Measured 1868 B plus 10%."
       },
       {
         "entry": "src/features/files/editorEditing.ts",
