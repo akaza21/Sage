@@ -125,7 +125,7 @@ export function MenuPopover({
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
     () => document.body,
   );
-  useNativePageLayer(popoverRef, open, portalRoot);
+  useNativePageLayer(popoverRef, { open, portalRoot });
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );

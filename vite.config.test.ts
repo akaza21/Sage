@@ -79,11 +79,13 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
+  "src/app/agentWorkingDiffRepository.ts",
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
   "src/features/browser/browserSuggestions.ts",
   "src/features/browser/browserClipboard.ts",
   "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
   "src/features/outline/outlineNavigation.ts",
 ];

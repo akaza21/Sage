@@ -1,5 +1,27 @@
 import { expect, test } from "@playwright/test";
 
+test("preserves manual tab scrolling across transcript updates", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/artifact-tabs.html");
+  await page.getByRole("button", { name: "Select last resource" }).click();
+  const strip = page.locator(".tab-strip__scroll");
+  await expect
+    .poll(() => strip.evaluate((node) => node.scrollLeft))
+    .toBeGreaterThan(0);
+  await strip.evaluate((node) => {
+    node.scrollLeft = 0;
+  });
+  await page.getByRole("button", { name: "Transcript update 0" }).click();
+  await expect(
+    page.getByRole("button", { name: "Transcript update 1" }),
+  ).toBeVisible();
+  expect(await strip.evaluate((node) => node.scrollLeft)).toBe(0);
+  await expect(page.getByRole("tab", { selected: true })).toHaveAccessibleName(
+    "Browser Browser page 8",
+  );
+});
+
 test("selected overflow tab stays fully visible on selection, keyboard navigation and resize", async ({
   page,
 }) => {

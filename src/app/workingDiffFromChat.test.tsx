@@ -18,6 +18,7 @@ import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
 import { TurnFileActivity } from "../features/chat/acp/TurnFileActivity";
 import { DiffSurface } from "../features/diff/DiffSurface";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { diffCacheKey } from "../domain/diffIdentity";
 
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
@@ -26,6 +27,72 @@ afterEach(() => {
   clearAcpProjectionRegistry();
   useAgentArtifactAdmissionStore.getState().clear();
   useWorkbenchStore.setState(initial, true);
+});
+
+it("admits and renders the owning nested repository's working Diff", async () => {
+  const projection = seedSnapshotOwner();
+  const page = projection.getState().page!;
+  const resource = { ...snapshotResource, relativePath: "nested/src/a.ts" };
+  const repository = { rootId: resource.rootId, relativePath: "nested" };
+  vi.spyOn(
+    getWorkbenchPorts().repository,
+    "resolveResourceRepository",
+  ).mockResolvedValue({
+    projectId: page.projectId,
+    transitionEpoch: 1,
+    repository,
+  });
+  vi.spyOn(
+    getWorkbenchPorts().repository,
+    "getNestedRepositoryFileDiff",
+  ).mockResolvedValue({
+    projectId: page.projectId,
+    transitionEpoch: 1,
+    diff: {
+      resource,
+      binary: false,
+      truncated: false,
+      hunks: [
+        {
+          header: "@@ -1 +1 @@",
+          lines: [
+            {
+              kind: "removed",
+              text: "nested before",
+              oldLine: 1,
+              newLine: null,
+            },
+            { kind: "added", text: "nested after", oldLine: null, newLine: 1 },
+          ],
+        },
+      ],
+    },
+  });
+  const owner = {
+    projectId: page.projectId,
+    chatId: page.chatId,
+    sessionId: page.currentSessionId!,
+  };
+  expect(
+    await openAgentArtifact({ owner, target: "workingTreeDiff", resource }),
+  ).toBe(true);
+  const state = useWorkbenchStore.getState();
+  const tab = state.tabs.find((tab) => tab.id === state.activeTabId)!;
+  expect(tab.repository).toEqual(repository);
+  expect(useAgentArtifactAdmissionStore.getState().admissions).toContainEqual({
+    owner,
+    tabId: tab.id,
+  });
+  await waitFor(() =>
+    expect(
+      useWorkbenchStore.getState().diffs[diffCacheKey(repository, resource)]
+        ?.phase,
+    ).toBe("ready"),
+  );
+  render(<DiffSurface tab={tab} readOnly />);
+  expect(
+    await screen.findByRole("table", { name: "Unified file diff" }),
+  ).toHaveTextContent("nested after");
 });
 
 it.each([true, false])(

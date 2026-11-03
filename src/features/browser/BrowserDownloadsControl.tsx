@@ -35,7 +35,7 @@ export function BrowserDownloadsControl({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
-  useNativePageLayer(popover, open);
+  useNativePageLayer(popover, { open });
   const active = downloads.filter(isActiveDownload).length;
   const progress = activeDownloadProgress(downloads);
   useDismissOnOutsidePointer(open, [root], onOpenChange);

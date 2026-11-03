@@ -2,23 +2,25 @@ import { create } from "zustand";
 import { useLayoutEffect, type RefObject } from "react";
 
 const MAX_NATIVE_PAGE_LAYERS = 32;
+type Coverage = "overlap" | "window";
 const layerState = create(() => ({
-  layers: [] as HTMLElement[],
+  layers: [] as { element: HTMLElement; coverage: Coverage }[],
   overflow: 0,
 }));
 
 export const nativePageLayers = layerState.getState;
 export const subscribeNativePageLayers = layerState.subscribe;
 
-/** Native child windows sit above DOM layers; only intersecting layers cover them. */
+/** Modals block every native page; nonmodal layers cover only their overlap. */
 export function nativePageOverlapped(page: DOMRectReadOnly): boolean {
   const { layers, overflow } = nativePageLayers();
   return (
     overflow > 0 ||
-    layers.some((layer) => {
-      const rect = layer.getBoundingClientRect();
+    layers.some(({ element, coverage }) => {
+      if (coverage === "window") return true;
+      const rect = element.getBoundingClientRect();
       return (
-        getComputedStyle(layer).visibility !== "hidden" &&
+        getComputedStyle(element).visibility !== "hidden" &&
         rect.width > 0 &&
         rect.height > 0 &&
         rect.left < page.right &&
@@ -30,17 +32,17 @@ export function nativePageOverlapped(page: DOMRectReadOnly): boolean {
   );
 }
 
-function registerNativePageLayer(element: HTMLElement) {
+function registerNativePageLayer(element: HTMLElement, coverage: Coverage) {
   const admitted = layerState.getState().layers.length < MAX_NATIVE_PAGE_LAYERS;
   layerState.setState((state) =>
     admitted
-      ? { layers: [...state.layers, element] }
+      ? { layers: [...state.layers, { element, coverage }] }
       : { overflow: state.overflow + 1 },
   );
   return () => {
     layerState.setState((state) =>
       admitted
-        ? { layers: state.layers.filter((layer) => layer !== element) }
+        ? { layers: state.layers.filter((layer) => layer.element !== element) }
         : { overflow: state.overflow - 1 },
     );
   };
@@ -49,13 +51,20 @@ function registerNativePageLayer(element: HTMLElement) {
 /** Register only open UI layers; native pages never scan the document. */
 export function useNativePageLayer(
   ref: RefObject<HTMLElement | null>,
-  open = true,
-  portalRoot?: HTMLElement,
+  {
+    open = true,
+    portalRoot,
+    coverage = "overlap",
+  }: {
+    open?: boolean;
+    portalRoot?: HTMLElement;
+    coverage?: Coverage;
+  } = {},
 ) {
   useLayoutEffect(() => {
     const layer = ref.current;
     if (!open || !layer) return;
-    const unregister = registerNativePageLayer(layer);
+    const unregister = registerNativePageLayer(layer, coverage);
     const changed = () => layerState.setState({});
     const resize =
       typeof ResizeObserver === "undefined"
@@ -72,5 +81,5 @@ export function useNativePageLayer(
       mutation.disconnect();
       unregister();
     };
-  }, [ref, open, portalRoot]);
+  }, [ref, open, portalRoot, coverage]);
 }

@@ -22,41 +22,40 @@ export function useBrowserPlacement(
     const agentCanvas = element.closest(".agent-artifact-pane__canvas");
     let active = true;
     let frameId = 0;
+    let lastPlacement: string | undefined;
     const reportError = (cause: unknown) => {
       if (active) onError(String(cause).slice(0, 512));
+    };
+    const update = (key: string, send: () => Promise<void>) => {
+      if (lastPlacement === key) return;
+      lastPlacement = key;
+      void send().catch((cause) => {
+        if (lastPlacement === key) lastPlacement = undefined;
+        reportError(cause);
+      });
     };
     const place = () => {
       cancelAnimationFrame(frameId);
       // The page is a native window above Sage's DOM, so it hides while the
       // centre pane is hidden, and a resize must not show it again.
       if (center?.getAttribute("aria-hidden") === "true") {
-        void hideBrowser(tabId).catch(reportError);
+        update("hidden", () => hideBrowser(tabId));
         return;
       }
       frameId = requestAnimationFrame(() => {
         const rect = element.getBoundingClientRect();
-        const canvasRect = agentCanvas?.getBoundingClientRect();
+        const canvasRect = agentCanvas?.getBoundingClientRect() ?? rect;
         const toolbarBottom = agentCanvas
           ? (surface.current
               ?.querySelector(".browser-surface__toolbar")
-              ?.getBoundingClientRect().bottom ??
-            canvasRect?.top ??
-            rect.top)
+              ?.getBoundingClientRect().bottom ?? canvasRect.top)
           : rect.top;
-        const left = canvasRect
-          ? Math.max(rect.left, canvasRect.left)
-          : rect.left;
-        const top = canvasRect
-          ? Math.max(rect.top, canvasRect.top, toolbarBottom)
-          : rect.top;
-        const right = canvasRect
-          ? Math.min(rect.right, canvasRect.right)
-          : rect.right;
-        const bottom = canvasRect
-          ? Math.min(rect.bottom, canvasRect.bottom)
-          : rect.bottom;
+        const left = Math.max(rect.left, canvasRect.left);
+        const top = Math.max(rect.top, canvasRect.top, toolbarBottom);
+        const right = Math.min(rect.right, canvasRect.right);
+        const bottom = Math.min(rect.bottom, canvasRect.bottom);
         if (right - left < 1 || bottom - top < 1) {
-          if (agentCanvas) void hideBrowser(tabId).catch(reportError);
+          update("hidden", () => hideBrowser(tabId));
           return;
         }
         if (
@@ -64,15 +63,18 @@ export function useBrowserPlacement(
             new DOMRect(left, top, right - left, bottom - top),
           )
         ) {
-          void coverBrowser(tabId).catch(reportError);
+          update("covered", () => coverBrowser(tabId));
           return;
         }
-        void positionBrowser(tabId, {
+        const bounds = {
           x: left,
           y: top,
           width: right - left,
           height: bottom - top,
-        }).catch(reportError);
+        };
+        update(JSON.stringify([bounds, window.devicePixelRatio]), () =>
+          positionBrowser(tabId, bounds),
+        );
       });
     };
     // Another display scale moves the native pixel grid even when the CSS
@@ -101,8 +103,17 @@ export function useBrowserPlacement(
         attributeFilter: ["aria-hidden"],
       });
     const unsubscribe = subscribeNativePageLayers(place);
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (
+        target === window ||
+        target === document ||
+        (target instanceof Element && target.contains(element))
+      )
+        place();
+    };
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
+    window.addEventListener("scroll", onScroll, true);
     place();
     return () => {
       active = false;
@@ -112,7 +123,7 @@ export function useBrowserPlacement(
       visibilityObserver.disconnect();
       resolution?.removeEventListener("change", onResolution);
       window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("scroll", onScroll, true);
       void hideBrowser(tabId).catch(() => undefined);
     };
   }, [tabId, frame, surface, onError]);

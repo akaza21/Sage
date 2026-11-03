@@ -92,7 +92,7 @@ export function BrowserNavigationControls({
   }, [editing, addressField]);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  useNativePageLayer(menu, menuOpen);
+  useNativePageLayer(menu, { open: menuOpen });
   useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
   useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useEffect(() => {
@@ -249,7 +249,7 @@ export function BrowserNavigationControls({
                 disabled={!page || (navigation?.zoomPercent ?? 100) <= 50}
                 onClick={() => onZoom(-25)}
               >
-                âˆ’
+                −
               </button>
               <span>{navigation?.zoomPercent ?? 100}%</span>
               <button
@@ -268,7 +268,7 @@ export function BrowserNavigationControls({
                 disabled={!page}
                 onClick={onZoomReset}
               >
-                â†º
+                ↺
               </button>
             </div>
             <button

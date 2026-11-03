@@ -48,7 +48,7 @@ export function ModalDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousFocusRef = useRef(document.activeElement);
-  useNativePageLayer(dialogRef);
+  useNativePageLayer(dialogRef, { coverage: "window" });
 
   useEffect(() => {
     const dialog = dialogRef.current;

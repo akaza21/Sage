@@ -13,6 +13,7 @@ import { sameAgentArtifactOwner } from "../domain/agentArtifact";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
 import { useAgentChangesState } from "../workbench/agentChangesState";
 import { useSubagentPaneStore } from "./subagentPaneStore";
+import type { RepositoryRef } from "../domain/workbench";
 
 export function agentArtifactOwnerIsCurrent(
   owner: AgentArtifactOwner,
@@ -50,13 +51,22 @@ export async function openAgentArtifact(
     return false;
   }
 
+  let repository: RepositoryRef | undefined;
   if (intent.target === "file") {
     await useWorkbenchStore.getState().openFile(intent.resource);
   } else if (intent.target === "workingTreeDiff") {
     // Summary-only edits use the ordinary Git Diff resource. Never downgrade
     // an invalid or stale saved snapshot reference to a working-tree diff.
     if (intent.diffRef) return false;
-    await useWorkbenchStore.getState().openDiff(intent.resource);
+    const { resolveAgentWorkingDiffRepository } =
+      await import("./agentWorkingDiffRepository");
+    const resolved = await resolveAgentWorkingDiffRepository(
+      intent,
+      projectGeneration,
+    );
+    if (!resolved) return false;
+    repository = resolved.repository;
+    await useWorkbenchStore.getState().openDiff(intent.resource, repository);
   } else {
     const { selectedSnapshotIsCurrent, snapshotProjectionRevision } =
       await import("./agentDiffAdmission");
@@ -97,7 +107,7 @@ export async function openAgentArtifact(
         (intent.target === "file" ||
           (!intent.diffRef &&
             !candidate.diffRef &&
-            sameRepository(candidate.repository, undefined)) ||
+            sameRepository(candidate.repository, repository)) ||
           (sameRepository(candidate.repository, undefined) &&
             candidate.diffRef &&
             intent.diffRef &&

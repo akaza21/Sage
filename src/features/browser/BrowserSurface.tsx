@@ -189,9 +189,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   useBrowserPlacement(tab.id, viewport, surface, setError);
   const status = navigation?.tabId === tab.id ? navigation : null;
   const device = useBrowserDeviceTrigger(tab.id, status);
-  async function navigate() {
-    try {
-      setError(null);
+  function navigate() {
+    return pageAction(async () => {
       setScreenshotStatus(null);
       screenshotEpoch.current += 1;
       const url = resolveBrowserAddress(address);
@@ -200,22 +199,17 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         current ? { ...current, loading: true } : current,
       );
       addressField.current?.blur();
-    } catch (cause) {
-      setError(String(cause).slice(0, 512));
-    }
+    });
   }
-  async function control(action: BrowserControlAction) {
-    try {
-      setError(null);
+  function control(action: BrowserControlAction) {
+    return pageAction(async () => {
       await browserControl(tab.id, action);
       if (action === "stop") {
         setNavigation((current) =>
           current ? { ...current, loading: false } : current,
         );
       }
-    } catch (cause) {
-      setError(String(cause).slice(0, 512));
-    }
+    });
   }
   async function pageAction(action: () => Promise<void>) {
     try {

@@ -17,12 +17,16 @@ const artifacts = Array.from({ length: 8 }, (_, position) => ({
   dirty: false,
 }));
 function Fixture() {
+  const [updates, update] = useState(0);
   const [selected, select] = useState<AgentArtifactTarget>({
     kind: "tab",
     tabId: "browser-0",
   });
   return (
     <div className="workbench--agent">
+      <button onClick={() => update((count) => count + 1)}>
+        Transcript update {updates}
+      </button>
       <button onClick={() => select({ kind: "tab", tabId: "browser-7" })}>
         Select last resource
       </button>

@@ -151,6 +151,11 @@ const repository: RepositoryPort = {
     refs: [],
     truncated: false,
   }),
+  resolveResourceRepository: async (request) => ({
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    repository: { rootId: request.resource.rootId, relativePath: "" },
+  }),
   getNestedRepositoryStatus: () =>
     Promise.reject(new Error("nested repository status is not implemented")),
   getNestedRepositoryFileDiff: () =>
