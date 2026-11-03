@@ -45,46 +45,42 @@ const initialState = (): WorkspaceSearchState => ({
 });
 
 /**
- * Splits a field on the commas that sit outside `{…}`; a field whose braces
- * do not balance splits on every comma.
+ * Splits a field on the commas outside `{…}` groups. A brace that opens no
+ * whole group is an ordinary character, so the field still splits after it.
  */
 function splitFilterField(value: string): string[] {
-  const pieces: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    if (char === "{") depth += 1;
-    else if (char === "}" && depth > 0) depth -= 1;
-    else if (char === "," && depth === 0) {
-      pieces.push(value.slice(start, index));
-      start = index + 1;
-    }
-  }
-  pieces.push(value.slice(start));
-  return (depth === 0 ? pieces : value.split(","))
-    .map((piece) => piece.trim())
-    .filter(Boolean);
+  const pieces = value.match(/(?:[^,{]|\{[^{}]*\}|\{)+/g) ?? [];
+  return pieces.map((piece) => piece.trim()).filter(Boolean);
 }
 
 /**
- * Expands each `{a,b}` group that holds no other brace; others stay literal.
- * Stops once the distinct results pass `limit`, so a long field cannot grow
- * without bound before the caller refuses it.
+ * Expands each `{a,b}` group that holds no other brace, left to right, in one
+ * bounded pass; other braces stay literal. Returns `null` (overflow) once the
+ * distinct alternatives pass `limit` or one grows past `maxBytes`, so the
+ * caller refuses the whole field instead of sending part of it.
  */
-function expandBraces(piece: string, limit: number): string[] {
-  const group = /\{([^{}]*)\}/.exec(piece);
-  if (!group) return [piece];
-  const head = piece.slice(0, group.index);
-  const tail = expandBraces(piece.slice(group.index + group[0].length), limit);
-  const results = new Set<string>();
-  for (const choice of group[1].split(",")) {
-    for (const rest of tail) {
-      results.add(head + choice + rest);
-      if (results.size > limit) return [...results];
+function expandBraces(
+  piece: string,
+  limit: number,
+  maxBytes: number,
+): string[] | null {
+  const groups = /\{([^{}]*)\}/g;
+  let results = [""];
+  let end = 0;
+  for (let group = groups.exec(piece); group; group = groups.exec(piece)) {
+    const head = piece.slice(end, group.index);
+    const next = new Set<string>();
+    for (const prefix of results) {
+      for (const choice of group[1].split(",")) {
+        // UTF-16 length never exceeds the UTF-8 byte length.
+        const text = prefix + head + choice;
+        if (text.length > maxBytes || next.add(text).size > limit) return null;
+      }
     }
+    results = [...next];
+    end = groups.lastIndex;
   }
-  return [...results];
+  return results.map((prefix) => prefix + piece.slice(end));
 }
 
 /**
@@ -94,31 +90,26 @@ function expandBraces(piece: string, limit: number): string[] {
  * leading `./` anchors to the root. A piece that names a path is unchanged.
  */
 function expandFilterPiece(piece: string): string[] {
-  let pattern = piece;
-  let anchored = false;
-  while (pattern.startsWith("./")) {
-    pattern = pattern.slice(2);
-    anchored = true;
-  }
-  if (pattern.endsWith("/")) {
-    pattern = pattern.replace(/\/+$/, "");
-    return pattern ? [`${pattern}/**`] : [];
-  }
+  const pattern = piece.replace(/^(?:\.\/)+/, "");
+  const anchored = pattern !== piece;
+  const folder = pattern.replace(/\/+$/, "");
+  if (folder !== pattern) return folder ? [`${folder}/**`] : [];
   if (!pattern) return [];
   if (pattern.includes("/") || pattern === "**") return [pattern];
   const prefixed = anchored ? pattern : `**/${pattern}`;
   return /[*?]/.test(pattern) ? [prefixed] : [prefixed, `${prefixed}/**`];
 }
 
-function filterPatterns(value: string): string[] {
-  const limit = WORKSPACE_SEARCH_LIMITS.filterPatterns;
+/** The expanded, deduplicated patterns, or `null` when they pass the limits. */
+function filterPatterns(value: string): string[] | null {
+  const { filterPatterns: limit, filterBytes } = WORKSPACE_SEARCH_LIMITS;
   const patterns = new Set<string>();
   for (const piece of splitFilterField(value)) {
-    for (const choice of expandBraces(piece, limit)) {
+    const choices = expandBraces(piece, limit, filterBytes);
+    if (!choices) return null;
+    for (const choice of choices) {
       for (const pattern of expandFilterPiece(choice.trim())) {
-        patterns.add(pattern);
-        // One past the limit is enough for the caller to refuse the field.
-        if (patterns.size > limit) return [...patterns];
+        if (patterns.add(pattern).size > limit) return null;
       }
     }
   }
@@ -132,24 +123,21 @@ function filterPatterns(value: string): string[] {
 function searchFilters(includeText: string, excludeText: string) {
   const includePatterns = filterPatterns(includeText);
   const excludePatterns = filterPatterns(excludeText);
-  const { filterPatterns: maxPatterns, filterBytes } = WORKSPACE_SEARCH_LIMITS;
   if (
-    includePatterns.length > maxPatterns ||
-    excludePatterns.length > maxPatterns ||
+    !includePatterns ||
+    !excludePatterns ||
     utf8ByteLength([...includePatterns, ...excludePatterns].join("")) >
-      filterBytes
+      WORKSPACE_SEARCH_LIMITS.filterBytes
   ) {
     throw new Error("workspace Search path filters are invalid");
   }
   return { includePatterns, excludePatterns };
 }
 
-type CriterionKey =
-  | "query"
-  | "caseSensitive"
-  | "wholeWord"
-  | "includePatternText"
-  | "excludePatternText";
+type CriterionKey = Exclude<
+  keyof WorkspaceSearchState,
+  "phase" | "response" | "pages" | "error"
+>;
 
 const clearedResults = {
   phase: "idle",

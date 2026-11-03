@@ -371,6 +371,13 @@ describe("workspace Search state", () => {
           ",",
         ),
       ],
+      [
+        "17 differently spaced copies of one name before another",
+        `{${Array.from({ length: 17 }, (_, i) => `${" ".repeat(i)}a`).join(",")},b}`,
+        "",
+      ],
+      ["20,000 brace groups", "{a}".repeat(20_000), ""],
+      ["20,000 brace groups in exclude", "", "{a}".repeat(20_000)],
     ])(
       "refuses an expansion with %s and sends nothing",
       async (_reason, include, exclude) => {

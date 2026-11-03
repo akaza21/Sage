@@ -586,6 +586,16 @@ describe("Workspace Search view", () => {
       ).toBeVisible();
       expect(search).not.toHaveBeenCalled();
     });
+
+    it("shows the invalid-filter message and sends nothing for a pasted run of brace groups", async () => {
+      const search = filteringGateway();
+      searchWithFilters(search, "{a}".repeat(20_000), "");
+
+      expect(
+        await screen.findByText("workspace Search path filters are invalid"),
+      ).toBeVisible();
+      expect(search).not.toHaveBeenCalled();
+    });
   });
 
   it("asks native Search to keep ignored files only when the setting is off", async () => {
