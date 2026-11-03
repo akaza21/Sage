@@ -1,0 +1,313 @@
+.create-project-dialog {
+  width: min(466px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--color-panel-raised-hover);
+  border-radius: var(--radius-side-chat-dialog);
+  color: var(--color-status-foreground);
+  font-size: var(--font-size-sm);
+}
+
+.create-project-dialog__form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.create-project-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.create-project-dialog h2 {
+  margin: 0;
+}
+
+.create-project-dialog__close,
+.create-project-dialog__remove {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.create-project-dialog__close:hover:not(:disabled),
+.create-project-dialog__remove:hover:not(:disabled) {
+  color: var(--color-status-foreground);
+  background: var(--color-panel-raised-hover);
+}
+
+.create-project-dialog__name {
+  display: grid;
+  height: 34px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--color-panel-raised-hover);
+  border-radius: var(--radius-md);
+}
+
+.create-project-dialog__name:focus-within {
+  border-color: var(--color-focus-ring);
+}
+
+.create-project-dialog__name-icon {
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--color-panel-raised-hover);
+  color: var(--color-text-secondary);
+}
+
+.create-project-dialog__name input {
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: 0;
+  color: var(--color-status-foreground);
+  outline: none;
+  background: transparent;
+  font: inherit;
+}
+
+.create-project-dialog__name input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.create-project-dialog__sources {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.create-project-dialog__sources-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.create-project-dialog__sources h3 {
+  margin: 0;
+  color: var(--color-status-foreground);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.create-project-dialog__location {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.create-project-dialog__folders,
+.create-project-dialog__source-empty {
+  border: 1px solid var(--color-panel-raised-hover);
+  border-radius: var(--radius-lg);
+}
+
+.create-project-dialog__folders {
+  display: grid;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.create-project-dialog__folders > li {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  color: var(--color-text-secondary);
+}
+
+.create-project-dialog__folders > li + li {
+  border-top: 1px solid var(--color-panel-raised-hover);
+}
+
+.create-project-dialog__folder-name {
+  overflow: hidden;
+  color: var(--color-status-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.create-project-dialog__folders > li:has(.create-project-dialog__add-row) {
+  display: block;
+  padding: 0;
+}
+
+.create-project-dialog__add-row {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 0;
+  color: var(--color-status-foreground);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.create-project-dialog__add-row > svg {
+  color: var(--color-text-secondary);
+}
+
+.create-project-dialog__add-row:hover:not(:disabled) {
+  background: var(--chat-dialog-cancel-fill);
+}
+
+.create-project-dialog__add-row:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+
+.create-project-dialog__source-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+}
+
+.create-project-dialog__source-empty p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.create-project-dialog__location-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  color: var(--color-status-foreground);
+  background: transparent;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.create-project-dialog__location-menu.menu-popover {
+  width: 200px;
+  padding: var(--space-1);
+  border-color: var(--color-panel-raised-hover);
+  border-radius: var(--radius-lg);
+  background: var(--color-panel-raised);
+}
+
+.create-project-dialog__location-menu .menu-item {
+  gap: var(--space-2);
+  color: var(--color-status-foreground);
+  font-size: var(--font-size-sm);
+}
+
+.create-project-dialog__location-menu .menu-item[aria-checked="true"] {
+  background: transparent;
+}
+
+.create-project-dialog__location-menu .menu-item:is(:hover, :focus-visible) {
+  background: var(--color-panel-raised-hover);
+}
+
+.create-project-dialog__location-check {
+  margin-left: auto;
+}
+
+.create-project-dialog__add {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-status-foreground);
+  background: var(--chat-dialog-cancel-fill);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.create-project-dialog__add:hover:not(:disabled) {
+  background: var(--color-panel-raised-hover);
+}
+
+.create-project-dialog__add:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+
+.create-project-dialog__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+}
+
+.create-project-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.create-project-dialog__cancel,
+.create-project-dialog__submit {
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.create-project-dialog__cancel {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.create-project-dialog__cancel:hover:not(:disabled) {
+  color: var(--color-status-foreground);
+}
+
+.create-project-dialog__submit {
+  color: var(--dialog-primary-text);
+  background: var(--dialog-primary-fill);
+  font-weight: var(--font-weight-semibold);
+}
+
+.create-project-dialog__submit:hover:not(:disabled) {
+  background: var(--dialog-primary-hover);
+}
+
+.create-project-dialog__submit:disabled {
+  color: var(--dialog-primary-disabled-text);
+  cursor: default;
+}
+
+.create-project-dialog :is(button, input):focus-visible,
+.create-project-dialog__location-menu .menu-item:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The folder list clips its rows, so the Add folder ring sits inside. */
+.create-project-dialog__add-row:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+@media (forced-colors: active) {
+  .create-project-dialog__submit {
+    border: 1px solid ButtonText;
+  }
+}
