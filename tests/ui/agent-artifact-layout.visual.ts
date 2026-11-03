@@ -1,4 +1,50 @@
 import { expect, test } from "@playwright/test";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
+
+for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
+  test(`${command} reveals navigation and collapses inline Files when space is tight`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openScenario(page, "agent-single", "agent");
+    await settleChatProjections(page);
+    await page.getByRole("button", { name: "Hide projects and chats" }).click();
+    await page.getByRole("button", { name: /^Show files and preview/ }).click();
+    const pane = page.getByLabel("Agent artifacts", { exact: true });
+    await expect(pane).toBeVisible();
+    await expect(
+      page.getByRole("separator", { name: "Resize files and preview" }),
+    ).toBeVisible();
+    const resourceControl = pane.getByRole("button", {
+      name: "Collapse files, changes, and preview",
+    });
+    await resourceControl.focus();
+    await expect(resourceControl).toBeFocused();
+
+    if (command === "Ctrl+B") await page.keyboard.press("Control+b");
+    else
+      await page
+        .getByRole("button", { name: "Show projects and chats" })
+        .click();
+
+    await expect(
+      page.getByRole("button", { name: "Hide projects and chats" }),
+    ).toBeVisible();
+    await expect(pane).toBeHidden();
+    expect((await page.locator(".project-sidebar").boundingBox())!.width).toBe(
+      326,
+    );
+    expect((await page.locator(".center-region").boundingBox())!.width).toBe(
+      466,
+    );
+    const composer = page.getByRole("textbox", { name: "Message agent" });
+    await composer.fill("Chat remains usable");
+    await expect(composer).toBeFocused();
+  });
+}
 
 test("preserves manual tab scrolling across transcript updates", async ({
   page,

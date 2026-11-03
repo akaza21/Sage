@@ -129,10 +129,9 @@ export function Workbench() {
     void useUiAppearanceStore.getState().restore();
   }, []);
   useWorkbenchKeys({
-    narrowAgent,
     resourceModal,
     windowMode,
-    setNavigation,
+    toggleAgentNavigation,
     setWindowMode,
   });
   useEditorHistoryKeys(windowMode === "editor");
