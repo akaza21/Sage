@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -8,14 +7,14 @@ import {
   useState,
 } from "react";
 
-import { useWorkbenchStore } from "../../app/store";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
-import type { HarnessDefinition } from "../../domain/harness";
-import type { SearchablePickerOption } from "../../ui/SearchablePicker";
-import { harnessIconKind } from "./composerChrome";
-import { harnessAvailability } from "./harnessAvailability";
+import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
+import type { HarnessDefinition } from "../../domain/harness";
+import { harnessIconKind } from "../../domain/harness";
+import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
+import { harnessAvailability } from "./harnessAvailability";
 
 export function harnessPickerCandidates(
   harnesses: readonly HarnessDefinition[],
@@ -27,7 +26,6 @@ export function harnessPickerCandidates(
         Number(Boolean(harnessAvailability(right).disabledReason)),
     )
     .map((harness) => {
-      const icon = harnessIconKind(harness.name);
       const availability = harnessAvailability(harness);
       const status = harness.versionChecking
         ? "version checking…"
@@ -36,8 +34,7 @@ export function harnessPickerCandidates(
           : availability.label;
       return {
         id: harness.id,
-        icon,
-        logo: `/harness-${icon ?? "generic"}.svg`,
+        icon: harnessIconKind(harness.name) ?? "generic",
         label: harness.name,
         triggerLabel: harness.name,
         accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
@@ -56,9 +53,7 @@ export function useComposerPopovers(disabled = false) {
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (disabled) queueMicrotask(() => setActive(null));
-  }, [disabled]);
+  if (disabled && selected !== null) setActive(null);
 
   return {
     active,
@@ -67,6 +62,12 @@ export function useComposerPopovers(disabled = false) {
     optionsId,
     optionsTrigger,
     dismiss: () => setActive(null),
+    setHarnessOpen: (open: boolean) => {
+      if (!disabled)
+        setActive((current) =>
+          open ? "harness" : current === "harness" ? null : current,
+        );
+    },
     toggle: (
       kind: "options" | "access" | "harness" | "model" | "effort" | "project",
     ) => {
@@ -208,8 +209,10 @@ export function useChatHarnessSelection(chatId?: string): {
     sessionSelection?.harnessId,
     setChatHarnessSelection,
   ]);
+  const selectionRequest = useRef(0);
   const chooseHarness = useCallback(
     async (harnessId: string) => {
+      const request = ++selectionRequest.current;
       const ownership = captureChatOwnership(chatId);
       if (!ownership) {
         await selectHarness(harnessId);
@@ -218,7 +221,11 @@ export function useChatHarnessSelection(chatId?: string): {
       setChatHarnessSelection(ownership, { harnessId, modelId: null });
       await selectHarness(harnessId);
       const state = useWorkbenchStore.getState();
-      if (state.selectedHarnessId !== harnessId) return;
+      if (
+        request !== selectionRequest.current ||
+        state.selectedHarnessId !== harnessId
+      )
+        return;
       setChatHarnessSelection(ownership, {
         harnessId,
         modelId: state.selectedModelId,

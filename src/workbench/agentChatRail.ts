@@ -1,10 +1,10 @@
+import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 import type {
   AgentRailChat,
   ArchivedChatSummary,
   ProjectListItem,
 } from "../domain/workbench";
 import { compareAgentRailViewChats } from "./agentRailStatusView";
-import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 
 export { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
 
@@ -12,7 +12,9 @@ export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 8;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
+// Keep the ready rail small; retain a bounded page for explicit expansion.
 export const MAX_AGENT_RAIL_RECENT_CHATS = 8;
+export const MAX_AGENT_RAIL_RECENT_CANDIDATES = 64;
 export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
 export const UNKNOWN_PROJECT_NAME = "Unknown project";
 
@@ -211,15 +213,14 @@ export function deriveAgentRailSections(
         pinned.push(item);
       } else {
         projectChats.push(chat);
-        if (
-          !chat.pinned &&
-          typeof chat.updatedAt === "number" &&
-          Number.isFinite(chat.updatedAt) &&
-          chat.updatedAt > 0
-        ) {
-          recentCandidates.push(item);
-        }
       }
+      if (
+        !chat.pinned &&
+        typeof chat.updatedAt === "number" &&
+        Number.isFinite(chat.updatedAt) &&
+        chat.updatedAt > 0
+      )
+        recentCandidates.push(item);
     }
     projects.push({
       ...group,
@@ -234,39 +235,8 @@ export function deriveAgentRailSections(
   return {
     pinned,
     projects,
-    recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CHATS),
+    recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
   };
-}
-
-export function filterAgentRailGroups(
-  groups: ReadonlyArray<AgentRailProjectGroup>,
-  normalizedQuery: string,
-): AgentRailProjectGroup[] {
-  if (!normalizedQuery) return groups.slice();
-  const next: AgentRailProjectGroup[] = [];
-  for (const group of groups) {
-    const groupMatches = group.name
-      .toLocaleLowerCase()
-      .includes(normalizedQuery);
-    const chats = groupMatches
-      ? group.chats
-      : group.chats.filter((chat) =>
-          chat.title.toLocaleLowerCase().includes(normalizedQuery),
-        );
-    const archived = groupMatches
-      ? group.archived
-      : group.archived.filter((chat) =>
-          chat.title.toLocaleLowerCase().includes(normalizedQuery),
-        );
-    if (chats.length === 0 && archived.length === 0 && !groupMatches) continue;
-    next.push({
-      ...group,
-      chats,
-      archived,
-      truncated: group.truncated,
-    });
-  }
-  return next;
 }
 
 export function collectAgentRailPinIds(

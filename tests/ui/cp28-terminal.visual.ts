@@ -71,9 +71,7 @@ for (const width of [1888, 720, 480]) {
       await settleChatProjections(page);
       const panes = page.locator(".agent-chat-pane");
       // Below the two-pane floor only the focused Chat stays visible.
-      await expect(panes).toHaveCount(
-        scenario === "agent-dual" && width === 1888 ? 2 : 1,
-      );
+      await expect(panes).toHaveCount(1);
       await installTurn(page, false);
       const bounds = [];
       for (const pane of await panes.all()) {

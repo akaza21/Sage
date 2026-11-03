@@ -216,7 +216,7 @@ pub(crate) fn persist_layout_in(
                pinned = excluded.pinned,
                dirty = excluded.dirty,
                status = excluded.status,
-               metadata_json = CASE WHEN workbench_tabs.id GLOB 'side-*' THEN workbench_tabs.metadata_json ELSE excluded.metadata_json END,
+               metadata_json = CASE WHEN json_extract(workbench_tabs.metadata_json,'$.ephemeral')=1 THEN workbench_tabs.metadata_json ELSE excluded.metadata_json END,
                updated_at = excluded.updated_at",
             params![
                 tab.id,

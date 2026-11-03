@@ -221,14 +221,19 @@ pub async fn get_repository_status(
 pub async fn get_file_diff(
     state: State<'_, AppState>,
     resource: ResourceRef,
+    scope: Option<crate::repository_diff::GitDiffScope>,
 ) -> Result<FileDiff, String> {
     let workspace = state
         .database
         .resolve_active_resource(&resource)
         .map_err(|error| error.to_string())?;
-    repository::file_diff(&workspace, &resource)
-        .await
-        .map_err(|error| error.to_string())
+    match scope {
+        Some(scope) => {
+            crate::repository_diff::scoped_file_diff(&workspace, &resource, Some(scope)).await
+        }
+        None => repository::file_diff(&workspace, &resource).await,
+    }
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -259,11 +264,30 @@ pub fn read_text_file(
         .map_err(|error| error.to_string())
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorOpenError {
+    kind: &'static str,
+    message: String,
+}
+impl From<crate::error::AppError> for EditorOpenError {
+    fn from(error: crate::error::AppError) -> Self {
+        Self {
+            kind: if matches!(error, crate::error::AppError::MixedLineEndings) {
+                "mixedLineEndings"
+            } else {
+                "unavailable"
+            },
+            message: error.to_string(),
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn open_editor_document(
     state: State<'_, AppState>,
     resource: ResourceRef,
-) -> Result<EditorDocument, String> {
+) -> Result<EditorDocument, EditorOpenError> {
     run_editor_operation(
         state,
         resource,
@@ -271,6 +295,7 @@ pub async fn open_editor_document(
         editor::open_document,
     )
     .await
+    .map_err(EditorOpenError::from)
 }
 
 #[tauri::command]
@@ -286,6 +311,7 @@ pub async fn snapshot_editor_buffer(
         move |database, workspace, _| editor::snapshot_buffer(database, workspace, request),
     )
     .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -300,6 +326,7 @@ pub async fn save_editor_document(
         editor::save_document,
     )
     .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -314,6 +341,7 @@ pub async fn discard_editor_buffer(
         editor::discard_document,
     )
     .await
+    .map_err(|error| error.to_string())
 }
 
 async fn run_editor_operation<T: Send + 'static>(
@@ -327,12 +355,10 @@ async fn run_editor_operation<T: Send + 'static>(
     ) -> crate::error::AppResult<T>
     + Send
     + 'static,
-) -> Result<T, String> {
+) -> crate::error::AppResult<T> {
     let database = state.database.clone();
     let operations = state.editor_operations.clone();
-    let ticket = operations
-        .issue_ticket()
-        .map_err(|error| error.to_string())?;
+    let ticket = operations.issue_ticket()?;
     tauri::async_runtime::spawn_blocking(move || {
         operations.execute(ticket, kind, || {
             let workspace = database.resolve_active_resource(&resource)?;
@@ -340,8 +366,7 @@ async fn run_editor_operation<T: Send + 'static>(
         })
     })
     .await
-    .map_err(|error| error.to_string())?
-    .map_err(|error| error.to_string())
+    .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
 }
 
 #[cfg(test)]

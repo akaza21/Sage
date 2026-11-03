@@ -6,7 +6,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
 import {
@@ -18,6 +18,7 @@ import type { AcpChatPage, ProjectGeneration } from "../domain/acp";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -27,7 +28,7 @@ vi.mock("../features/chat/ChatSurface", () => ({
 let compactViewport = false;
 
 vi.mock("./useCompactWorkbenchLayout", () => ({
-  useCompactWorkbenchLayout: () => compactViewport,
+  useCompactWorkbenchLayout: (query?: string) => !query && compactViewport,
 }));
 
 const initialState = useWorkbenchStore.getState();
@@ -57,6 +58,8 @@ function seedArtifactOwner(): void {
     nextCursor: null,
   } as unknown as AcpChatPage);
 }
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
@@ -120,7 +123,9 @@ describe("compact workbench window mode seam", () => {
     expect(
       screen.getByRole("dialog", { name: "Explorer project tools" }),
     ).toBeInTheDocument();
-    const editorCenter = container.querySelector(".center-region");
+    const editorCenter = [...container.querySelectorAll(".center-region")].find(
+      (region) => !region.closest("[style*='display: none']"),
+    );
     expect(editorCenter).toHaveAttribute("inert");
     expect(editorCenter).toHaveAttribute("aria-hidden", "true");
   });

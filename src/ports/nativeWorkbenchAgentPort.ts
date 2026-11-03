@@ -1,6 +1,9 @@
-import type { AgentPort, SendPromptRequest } from "./workbenchPorts";
-import type { ModelOption, SimulatorTurnResult } from "../domain/workbench";
+import {
+  type ModelOption,
+  type SimulatorTurnResult,
+} from "../domain/workbench";
 import { invokeNative } from "./nativeInvoke";
+import { type AgentPort, type SendPromptRequest } from "./workbenchPorts";
 
 export const nativeWorkbenchAgentPort: AgentPort = {
   listHarnesses() {

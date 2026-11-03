@@ -1,5 +1,4 @@
 import { Eye, FilePenLine } from "../../ui/leanIcons";
-
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import { FilePathChips } from "./FilePathChips";
 import { unsavedState } from "./fileSurfaceCommands";

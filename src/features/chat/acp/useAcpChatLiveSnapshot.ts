@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useWorkbenchStore } from "../../../app/store";
 import type {
@@ -30,6 +30,7 @@ export function useAcpChatLiveSnapshot(
     (state) => state.projectTransitioning,
   );
   const [snapshot, setSnapshot] = useState<ChatLiveSnapshot | null>(null);
+  const idle = useMemo(() => idleSnapshot(chatId), [chatId]);
   const active = Boolean(
     enabled && projectId && chatId && !projectTransitioning,
   );
@@ -99,7 +100,5 @@ export function useAcpChatLiveSnapshot(
     };
   }, [active, chatId, nativeTransitionEpoch, projectId]);
 
-  return active && snapshot?.chatId === chatId
-    ? snapshot
-    : idleSnapshot(chatId);
+  return active && snapshot?.chatId === chatId ? snapshot : idle;
 }

@@ -21,11 +21,13 @@ const INLINE_RESOURCE_MIN =
 export function agentWorkbenchLayout({
   viewportWidth,
   artifactExpanded,
+  navigationCollapsed = false,
   requestedWidths,
   prioritize = "left",
 }: {
   viewportWidth: number;
   artifactExpanded: boolean;
+  navigationCollapsed?: boolean;
   requestedWidths?: AgentDesktopSidebarWidths;
   prioritize?: AgentDesktopSidebarPriority;
 }) {
@@ -34,7 +36,8 @@ export function agentWorkbenchLayout({
     AGENT_LEFT_RAIL_WIDTH.defaultWidth,
     Math.round(262 + ((Math.max(480, viewportWidth) - 480) * 70) / 240),
   );
-  const navigationResizable = viewportWidth >= NAVIGATION_RESIZE_MIN;
+  const desktop = viewportWidth >= NAVIGATION_RESIZE_MIN;
+  const navigationResizable = desktop && !navigationCollapsed;
   const defaults = initialAgentDesktopSidebarWidths(desktopWidth);
   const requested = requestedWidths ?? {
     ...defaults,
@@ -53,33 +56,53 @@ export function agentWorkbenchLayout({
         )
       : navigationCap,
   };
-  const navigationWidth = clampWorkbenchSidebarWidth(
-    navigationBounds,
-    requested.leftRailWidth,
-  );
+  const navigationWidth = navigationCollapsed
+    ? 54
+    : clampWorkbenchSidebarWidth(navigationBounds, requested.leftRailWidth);
   const artifactInlineAvailable =
-    navigationResizable &&
+    desktop &&
     viewportWidth - navigationWidth >=
       AGENT_CHAT_MIN_WIDTH + 16 + AGENT_ARTIFACT_WIDTH.minWidth;
   const artifactInline = artifactExpanded && artifactInlineAvailable;
   const leftRailBounds = artifactInline
     ? agentDesktopLeftRailWidth(viewportWidth)
     : navigationBounds;
-  const artifactBounds = agentDesktopArtifactWidth(
-    artifactInline ? viewportWidth : desktopWidth,
-  );
-  const widths = artifactInline
-    ? fitAgentDesktopSidebarWidths({ viewportWidth, ...requested, prioritize })
-    : {
-        leftRailWidth: clampWorkbenchSidebarWidth(
-          leftRailBounds,
-          requested.leftRailWidth,
-        ),
+  const artifactBounds =
+    navigationCollapsed && artifactInline
+      ? {
+          ...AGENT_ARTIFACT_WIDTH,
+          maxWidth: Math.min(
+            AGENT_ARTIFACT_WIDTH.maxWidth,
+            viewportWidth - 54 - AGENT_CHAT_MIN_WIDTH - 8,
+          ),
+        }
+      : agentDesktopArtifactWidth(
+          artifactInline ? viewportWidth : desktopWidth,
+        );
+  const widths = navigationCollapsed
+    ? {
+        leftRailWidth: 54,
         artifactWidth: clampWorkbenchSidebarWidth(
           artifactBounds,
           requested.artifactWidth,
         ),
-      };
+      }
+    : artifactInline
+      ? fitAgentDesktopSidebarWidths({
+          viewportWidth,
+          ...requested,
+          prioritize,
+        })
+      : {
+          leftRailWidth: clampWorkbenchSidebarWidth(
+            leftRailBounds,
+            requested.leftRailWidth,
+          ),
+          artifactWidth: clampWorkbenchSidebarWidth(
+            artifactBounds,
+            requested.artifactWidth,
+          ),
+        };
   const leadingSplitter = navigationResizable ? 8 : 0;
   const chatWidth =
     viewportWidth -
@@ -97,6 +120,7 @@ export function agentWorkbenchLayout({
     leftRailBounds,
     artifactBounds,
     navigationResizable,
+    compact: !desktop,
     artifactOverlay,
     artifactOverlayOnExpand: !artifactInlineAvailable,
     artifactModal,
@@ -104,7 +128,7 @@ export function agentWorkbenchLayout({
     artifactOverlayLeft: viewportWidth - artifactOverlayWidth,
     chatWidth,
     gridTemplateColumns: artifactInline
-      ? `${widths.leftRailWidth}px 8px minmax(0, 1fr) 8px ${widths.artifactWidth}px`
+      ? `${widths.leftRailWidth}px ${navigationResizable ? "8px " : ""}minmax(0, 1fr) 8px ${widths.artifactWidth}px`
       : `${widths.leftRailWidth}px ${navigationResizable ? "8px " : ""}minmax(0, 1fr)`,
   };
 }

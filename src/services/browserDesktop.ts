@@ -142,6 +142,9 @@ export const browserDesktop = {
   async getFileDiff(resource: ResourceRef): Promise<FileDiff> {
     return { resource, binary: false, truncated: false, hunks: [] };
   },
+  async getFileGitBase(resource: ResourceRef, knownOid: string | null) {
+    return browserEditor.stagedText(resource, knownOid);
+  },
   ...browserGitUnavailable,
   async persistProjectLayout(
     request: ProjectLayoutRequest,

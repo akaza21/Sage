@@ -51,7 +51,8 @@ impl AcpService {
         {
             return Err(CharacterizationError::Intent);
         }
-        self.sessions
+        self.lane_at(0)
+            .sessions
             .start_session(command)
             .await
             .map_err(|_| CharacterizationError::Session)
@@ -102,28 +103,29 @@ impl AcpService {
         .map_err(|_| CharacterizationError::Activation)?;
         let mailbox = Arc::new(DriverMailbox::new().map_err(|_| CharacterizationError::Capacity)?);
 
-        self.runtime
+        self.lane_at(0)
+            .runtime
             .reserve_start(owner.clone())
             .map_err(map_slot)?;
         let process_lease = match TreeCapacityPool::global().try_acquire(spec.limits.descendants) {
             Ok(lease) => lease,
             Err(_) => {
-                let _ = self.runtime.abandon_start(&owner);
+                let _ = self.lane_at(0).runtime.abandon_start(&owner);
                 return Err(CharacterizationError::Capacity);
             }
         };
         if binding.begin_receipt(&owner).is_err() {
-            let _ = self.runtime.abandon_start(&owner);
+            let _ = self.lane_at(0).runtime.abandon_start(&owner);
             return Err(CharacterizationError::Observation);
         }
-        let mut session_lease = match self.sessions.activate_session(command).await {
+        let mut session_lease = match self.lane_at(0).sessions.activate_session(command).await {
             Ok(lease) => lease,
             Err(failure) => {
                 let recovery = failure.recovery.is_some();
                 if recovery {
-                    let _ = self.runtime.mark_recovery(&owner);
+                    let _ = self.lane_at(0).runtime.mark_recovery(&owner);
                 } else {
-                    let _ = self.runtime.abandon_start(&owner);
+                    let _ = self.lane_at(0).runtime.abandon_start(&owner);
                 }
                 return Err(if recovery {
                     CharacterizationError::Recovery
@@ -137,7 +139,7 @@ impl AcpService {
             .set_characterization_observation(observation.clone())
             .is_err()
         {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             return Err(CharacterizationError::Observation);
         }
         let tree = match PlatformSupervisor::launch(&spec, process_lease) {
@@ -154,7 +156,7 @@ impl AcpService {
             .is_err()
         {
             return Err(converge_failed_runtime(
-                &self.runtime,
+                &self.lane_at(0).runtime,
                 &owner,
                 &control,
                 cleanup_deadline,
@@ -164,7 +166,7 @@ impl AcpService {
             Ok(receipt) => receipt,
             Err(_) => {
                 return Err(converge_failed_runtime(
-                    &self.runtime,
+                    &self.lane_at(0).runtime,
                     &owner,
                     &control,
                     cleanup_deadline,
@@ -177,7 +179,7 @@ impl AcpService {
             .is_err()
         {
             return Err(converge_failed_runtime(
-                &self.runtime,
+                &self.lane_at(0).runtime,
                 &owner,
                 &control,
                 cleanup_deadline,
@@ -197,7 +199,7 @@ impl AcpService {
             Ok(host) => Arc::new(host),
             Err(_) => {
                 return Err(converge_failed_runtime(
-                    &self.runtime,
+                    &self.lane_at(0).runtime,
                     &owner,
                     &control,
                     cleanup_deadline,
@@ -225,8 +227,12 @@ impl AcpService {
         ) {
             Ok(pump) => pump,
             Err(_) => {
-                let error =
-                    converge_failed_runtime(&self.runtime, &owner, &control, cleanup_deadline);
+                let error = converge_failed_runtime(
+                    &self.lane_at(0).runtime,
+                    &owner,
+                    &control,
+                    cleanup_deadline,
+                );
                 let _ = host.shutdown(RuntimeHost::close_deadline());
                 return Err(error);
             }
@@ -241,8 +247,12 @@ impl AcpService {
         ) {
             Ok(activation) => activation,
             Err(_) => {
-                let error =
-                    converge_failed_runtime(&self.runtime, &owner, &control, cleanup_deadline);
+                let error = converge_failed_runtime(
+                    &self.lane_at(0).runtime,
+                    &owner,
+                    &control,
+                    cleanup_deadline,
+                );
                 let _ = host.shutdown(RuntimeHost::close_deadline());
                 return Err(error);
             }
@@ -258,7 +268,7 @@ impl AcpService {
             publisher: Arc::clone(&self.publisher),
             clock,
             mailbox,
-            session_recovery: Some(self.sessions.clone()),
+            session_recovery: Some(self.lane_at(0).sessions.clone()),
             zero_sequence: AtomicU64::new(0),
         };
         if runner
@@ -273,17 +283,21 @@ impl AcpService {
             .is_err()
             || host.activate(owner.clone()).is_err()
         {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             let _ = host.shutdown(RuntimeHost::close_deadline());
             return Err(CharacterizationError::Recovery);
         }
-        if let Err(error) = self.runtime.finish_start(&owner, Arc::clone(&host)) {
-            let _ = self.runtime.mark_recovery(&owner);
+        if let Err(error) = self
+            .lane_at(0)
+            .runtime
+            .finish_start(&owner, Arc::clone(&host))
+        {
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             let _ = host.shutdown(RuntimeHost::close_deadline());
             return Err(map_slot(error));
         }
-        if observe_runner(&self.runtime, &owner, &runner).is_err() {
-            let _ = self.runtime.mark_recovery(&owner);
+        if observe_runner(&self.lane_at(0).runtime, &owner, &runner).is_err() {
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             return Err(CharacterizationError::Recovery);
         }
         Ok(())
@@ -294,7 +308,8 @@ impl AcpService {
         command: PrepareTurnCommand,
     ) -> Result<HostOutcome, super::PromptSendError<CharacterizationError>> {
         let owner = command_owner(&command);
-        self.runtime
+        self.lane_at(0)
+            .runtime
             .for_owner(&owner)
             .map_err(map_slot)
             .map_err(super::PromptSendError::not_started)?
@@ -303,7 +318,11 @@ impl AcpService {
                 access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             })
             .map_err(|error| {
-                super::PromptSendError::unknown(map_host_error(&self.runtime, &owner, error))
+                super::PromptSendError::unknown(map_host_error(
+                    &self.lane_at(0).runtime,
+                    &owner,
+                    error,
+                ))
             })
     }
 
@@ -312,7 +331,11 @@ impl AcpService {
         intent: HostCancelIntent,
     ) -> Result<HostOutcome, CharacterizationError> {
         let owner = intent.owner.clone();
-        let host = self.runtime.for_owner(&owner).map_err(map_slot)?;
+        let host = self
+            .lane_at(0)
+            .runtime
+            .for_owner(&owner)
+            .map_err(map_slot)?;
         let tick = monotonic_tick().map_err(|_| CharacterizationError::Observation)?;
         self.characterization
             .as_ref()
@@ -320,7 +343,7 @@ impl AcpService {
             .observation()
             .record(CharacterizationObservationEvent::CancelReceived(tick));
         host.cancel(intent)
-            .map_err(|error| map_host_error(&self.runtime, &owner, error))
+            .map_err(|error| map_host_error(&self.lane_at(0).runtime, &owner, error))
     }
 
     #[cfg(test)]
@@ -328,11 +351,12 @@ impl AcpService {
         &self,
         owner: &RuntimeOwner,
     ) -> Result<crate::acp::runtime::HostState, CharacterizationError> {
-        self.runtime
+        self.lane_at(0)
+            .runtime
             .for_owner(owner)
             .map_err(map_slot)?
             .state()
-            .map_err(|error| map_host_error(&self.runtime, owner, error))
+            .map_err(|error| map_host_error(&self.lane_at(0).runtime, owner, error))
     }
 
     pub(crate) fn close_characterization(
@@ -345,7 +369,11 @@ impl AcpService {
             session_id: command.session_id.clone(),
             runtime_epoch: command.runtime_epoch,
         };
-        let host = self.runtime.for_owner(&owner).map_err(map_slot)?;
+        let host = self
+            .lane_at(0)
+            .runtime
+            .for_owner(&owner)
+            .map_err(map_slot)?;
         let observation = self
             .characterization
             .as_ref()
@@ -353,14 +381,17 @@ impl AcpService {
             .observation();
         observation.record(CharacterizationObservationEvent::CloseReceived);
         let outcome = host.close(HostCloseIntent { command }).map_err(|_| {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             CharacterizationError::Recovery
         })?;
         host.shutdown(RuntimeHost::close_deadline()).map_err(|_| {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             CharacterizationError::Recovery
         })?;
-        self.runtime.release(&owner, &host).map_err(map_slot)?;
+        self.lane_at(0)
+            .runtime
+            .release(&owner, &host)
+            .map_err(map_slot)?;
         let wal = self
             .database
             .converge_wal_for_observation()

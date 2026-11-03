@@ -1,34 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { EditorView } from "@codemirror/view";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useEditorCaretPublisher } from "../../app/editorCaretStore";
 import { watchEditorHistory } from "../../app/editorHistory";
 import { useWorkbenchStore } from "../../app/store";
+import {
+  keymapBinding,
+  matchesPlatformChord,
+} from "../../domain/keymapRegistry";
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
+import { usesMetaModifier } from "../../ui/shortcutLabel";
 import type { EditorAdapterHandle } from "./EditorAdapter";
 import {
   subscribeEditorFocusRequest,
   takeEditorFocusRequest,
 } from "./editorFocusRequest";
-import { contentText, sameContent } from "./editorContent";
-import {
-  FileSurfaceContent,
-  FileSurfaceResourceState,
-} from "./FileSurfaceContent";
-import {
-  keymapBinding,
-  matchesPlatformChord,
-} from "../../domain/keymapRegistry";
-import { usesMetaModifier } from "../../ui/shortcutLabel";
 import {
   registerFileSurfaceCommands,
   type FileSurfaceCommands,
 } from "./fileSurfaceCommandBus";
 import { handleFileSurfaceCommandKey } from "./fileSurfaceCommands";
-import { goToLineSelection } from "./goToLine";
+import {
+  FileSurfaceContent,
+  FileSurfaceResourceState,
+} from "./FileSurfaceContent";
 import { canPreviewMarkdown } from "./markdownPreview";
-import { localSymbolNavigation } from "../outline/outlineNavigation";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
+
+const MixedEolFileView = lazy(() =>
+  import("./MixedEolFileView").then((module) => ({
+    default: module.MixedEolFileView,
+  })),
+);
 
 const LIMIT_EXCEEDED_STATUS =
   "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
@@ -51,7 +63,6 @@ export function FileSurface({
     projectTransitioning,
     updateEditorContent,
     saveActiveEditor,
-    content: findContent,
     findOpen,
     openFind,
     closeFind,
@@ -59,12 +70,10 @@ export function FileSurface({
     findControlRef,
     find,
   } = useFileSurfaceModel(tab, editorInputRef, findInputRef);
-  const goToInputRef = useRef<HTMLInputElement>(null);
   const [previewSessionKey, setPreviewSessionKey] = useState("");
   const [sourceSessionKey, setSourceSessionKey] = useState("");
   const [goToSessionKey, setGoToSessionKey] = useState("");
   const [goToQuery, setGoToQuery] = useState("");
-  const [goToError, setGoToError] = useState(false);
   const agentMarkdown = readOnly && canPreviewMarkdown(path);
   const previewing = agentMarkdown
     ? sourceSessionKey !== activeResourceKey
@@ -113,6 +122,22 @@ export function FileSurface({
     editor?.phase === "ready" &&
     !!resource &&
     sameResource(editor.resource, resource);
+  // The editor, with the File it was made for, so markers never cross Files.
+  const [gutterEditor, setGutterEditor] = useState<
+    (GitGutterEditor & { key: string }) | null
+  >(null);
+  const onEditorView = useCallback(
+    (view: EditorView | null, text: string | null) =>
+      setGutterEditor(
+        view && { view, text, doc: view.state.doc, key: activeResourceKey },
+      ),
+    [activeResourceKey],
+  );
+  useGitGutter(
+    gutterEditor?.key === activeResourceKey ? gutterEditor : null,
+    resource ?? null,
+    editorShown,
+  );
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
     () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
@@ -124,22 +149,13 @@ export function FileSurface({
     }
   }, [resource, editorShown, focusRequests]);
 
-  useEffect(() => {
-    if (goToOpen) {
-      goToInputRef.current?.focus();
-      goToInputRef.current?.select();
-    }
-  }, [goToOpen]);
-
   function openGoToLine() {
     hideFind();
-    setGoToError(false);
     setGoToSessionKey(activeResourceKey);
   }
 
   function openFindFromSurface(replace = false) {
     setGoToSessionKey("");
-    setGoToError(false);
     openFind(replace);
   }
 
@@ -153,7 +169,6 @@ export function FileSurface({
 
   function closeGoToLine() {
     setGoToSessionKey("");
-    setGoToError(false);
     editorInputRef.current?.focus();
   }
 
@@ -171,7 +186,6 @@ export function FileSurface({
       if (!direction && !matches("find")) return;
       event.preventDefault();
       setGoToSessionKey("");
-      setGoToError(false);
       if (direction && findOpen && findControlRef.current) {
         findControlRef.current.move(direction);
       } else {
@@ -215,44 +229,22 @@ export function FileSurface({
     });
   }, [readOnly]);
 
-  function submitGoToLine() {
-    const selection = goToLineSelection(contentText(findContent), goToQuery);
-    if (!selection) {
-      setGoToError(true);
-      return;
-    }
+  function submitGoToLine(selection: { start: number; end: number }) {
     editorInputRef.current?.setSelection(selection.start, selection.end);
     closeGoToLine();
   }
 
   async function goToLocalSymbol() {
     const input = editorInputRef.current;
-    const readyEditor = editor;
-    if (!input || !resource || readyEditor?.phase !== "ready") {
-      setLanguageNavigationStatus("Local symbol navigation is unavailable.");
-      return;
-    }
-    const { content } = readyEditor;
-    const selection = input.selection();
-    const { syntaxOutline } = await import("../outline/syntaxOutline");
-    const text = contentText(content);
-    const outline = await syntaxOutline(resource.relativePath, text);
-    const stillCurrent = useWorkbenchStore.getState().activeEditor;
-    if (
-      stillCurrent?.phase !== "ready" ||
-      !sameResource(stillCurrent.resource, resource) ||
-      !sameContent(stillCurrent.content, content)
-    ) {
-      return;
-    }
-    const target = localSymbolNavigation(text, selection, outline);
-    if (!target) {
-      setLanguageNavigationStatus("No declaration in this File for that name.");
-      return;
-    }
-    input.focus();
-    input.setSelection(target.start, target.end);
-    setLanguageNavigationStatus("Moved to local symbol.");
+    const selection = input?.selection();
+    const { navigateFileSymbol } = await import("./fileSymbolNavigation");
+    const message = await navigateFileSymbol(
+      input,
+      resource,
+      editor,
+      selection,
+    );
+    if (message) setLanguageNavigationStatus(message);
   }
 
   if (
@@ -264,6 +256,12 @@ export function FileSurface({
     return <FileSurfaceResourceState path={path} />;
   }
   if (editor.phase === "error") {
+    if (editor.kind === "mixedLineEndings")
+      return (
+        <Suspense fallback={<p role="status">Loading file viewer...</p>}>
+          <MixedEolFileView key={activeResourceKey} resource={resource} />
+        </Suspense>
+      );
     return <FileSurfaceResourceState path={path} error={editor.message} />;
   }
 
@@ -277,13 +275,8 @@ export function FileSurface({
       goTo={
         goToOpen && !previewing
           ? {
-              inputRef: goToInputRef,
               query: goToQuery,
-              status: goToError ? "Enter a line" : "Line or line:column",
-              onQueryChange: (query) => {
-                setGoToQuery(query);
-                setGoToError(false);
-              },
+              onQueryChange: setGoToQuery,
               onSubmit: submitGoToLine,
               onClose: closeGoToLine,
             }
@@ -299,6 +292,7 @@ export function FileSurface({
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onLimitExceeded={reportLimitExceeded}
+      onEditorView={onEditorView}
       onEditorChange={readOnly ? () => undefined : editorChanged}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {

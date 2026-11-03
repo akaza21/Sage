@@ -3,6 +3,29 @@ import { describe, expect, it } from "vitest";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 describe("Agent navigation allocation", () => {
+  it.each([480, 760, 1000, 1280, 1888])(
+    "keeps only the 54px icon rail when navigation is collapsed at %i",
+    (viewportWidth) => {
+      for (const artifactExpanded of [false, true]) {
+        const layout = agentWorkbenchLayout({
+          viewportWidth,
+          artifactExpanded,
+          navigationCollapsed: true,
+        });
+        expect(layout.leftRailWidth).toBe(54);
+        expect(layout.navigationResizable).toBe(false);
+        expect(layout.gridTemplateColumns).toMatch(/^54px minmax/);
+        expect(layout.chatWidth).toBe(
+          viewportWidth -
+            54 -
+            (artifactExpanded && !layout.artifactOverlay
+              ? layout.artifactWidth + 8
+              : 0),
+        );
+        expect(layout.chatWidth).toBeGreaterThanOrEqual(360);
+      }
+    },
+  );
   it.each([
     [480, true, 60, 420],
     [623, true, 203, 420],

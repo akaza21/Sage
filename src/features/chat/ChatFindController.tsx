@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
-import type { TurnProjection } from "../../domain/acp";
+import { type TurnProjection } from "../../domain/acp";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
+import "./chat-find.css";
 import { ChatFindSession } from "./ChatFindSession";
-import type { TurnListNavigation } from "./chatScroll";
+import { type TurnListNavigation } from "./chatScroll";
 
 interface Props {
   turns: readonly TurnProjection[];

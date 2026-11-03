@@ -1,15 +1,14 @@
 import { memo, useId, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
-
 import { isConflictedChange, isSafeDiscardChange } from "../domain/gitMutation";
 import { isRootRepository } from "../domain/repositoryInventory";
-import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
-import type {
-  FileChange,
-  GitFileMutationAction,
-  RepositoryRef,
-  ResourceRef,
+import {
+  type FileChange,
+  type GitFileMutationAction,
+  type RepositoryRef,
+  type ResourceRef,
 } from "../domain/workbench";
+import { sourceChangeStatusChip } from "../features/git/conflictPresentation";
+import { Minus, Plus, RotateCcw } from "../ui/leanIcons";
 
 interface SourceChangeRowProps {
   change: FileChange;
@@ -161,47 +160,49 @@ export const SourceChangeRow = memo(function SourceChangeRow({
               </button>
             </>
           ) : null}
-          {canDiscard ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Discard unstaged changes to ${path} in ${rootName}`}
-              title="Discard unstaged changes"
-              ref={discardTriggerRef}
-              disabled={controlsDisabled}
-              onClick={() => setConfirmingDiscard(true)}
-            >
-              <RotateCcw size={14} aria-hidden="true" />
-            </button>
-          ) : null}
-          {canStage ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Stage ${path} in ${rootName}`}
-              title="Stage file"
-              disabled={controlsDisabled}
-              onClick={() =>
-                void mutateRepositoryFile(change.resource, "stage")
-              }
-            >
-              <Plus size={14} aria-hidden="true" />
-            </button>
-          ) : null}
-          {canUnstage ? (
-            <button
-              className="source-change__action"
-              type="button"
-              aria-label={`Unstage ${path} in ${rootName}`}
-              title="Unstage file"
-              disabled={controlsDisabled}
-              onClick={() =>
-                void mutateRepositoryFile(change.resource, "unstage")
-              }
-            >
-              <Minus size={14} aria-hidden="true" />
-            </button>
-          ) : null}
+          <span className="source-change__row-actions">
+            {canDiscard ? (
+              <button
+                className="source-change__action"
+                type="button"
+                aria-label={`Discard unstaged changes to ${path} in ${rootName}`}
+                title="Discard unstaged changes"
+                ref={discardTriggerRef}
+                disabled={controlsDisabled}
+                onClick={() => setConfirmingDiscard(true)}
+              >
+                <RotateCcw size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            {canStage ? (
+              <button
+                className="source-change__action"
+                type="button"
+                aria-label={`Stage ${path} in ${rootName}`}
+                title="Stage file"
+                disabled={controlsDisabled}
+                onClick={() =>
+                  void mutateRepositoryFile(change.resource, "stage")
+                }
+              >
+                <Plus size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            {canUnstage ? (
+              <button
+                className="source-change__action"
+                type="button"
+                aria-label={`Unstage ${path} in ${rootName}`}
+                title="Unstage file"
+                disabled={controlsDisabled}
+                onClick={() =>
+                  void mutateRepositoryFile(change.resource, "unstage")
+                }
+              >
+                <Minus size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+          </span>
         </span>
       )}
     </div>

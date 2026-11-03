@@ -14,7 +14,7 @@ mod legacy_welcome;
 
 impl Database {
     pub(crate) fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
-        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
+        crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         validate_chat_identifier("Target Project ID", &request.target_project_id)?;
