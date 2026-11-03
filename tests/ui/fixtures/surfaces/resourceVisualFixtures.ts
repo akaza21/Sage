@@ -356,7 +356,7 @@ export async function installVisualAgentLongPathFixture() {
   useWorkbenchStore.setState({
     tabs: [...state.tabs, fileTab, diffTab],
   });
-  const longDocument = { ...editorDocument(), resource: longResource };
+  const longDocument = editorDocument(longResource);
   useWorkbenchStore.setState({
     activeEditor: {
       phase: "ready",

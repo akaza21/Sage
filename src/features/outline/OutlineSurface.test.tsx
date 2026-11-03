@@ -103,7 +103,7 @@ describe("OutlineSurface", () => {
     ).toBeInTheDocument();
     expect(
       screen
-        .getAllByRole("button")
+        .getAllByRole("treeitem")
         .map((row) => row.getAttribute("aria-label")),
     ).toEqual([
       "Function: first. src/example.ts, line 2, column 17",
@@ -119,11 +119,12 @@ describe("OutlineSurface", () => {
     setContent("\nexport function example() {}\n");
     render(<OutlineSurface />);
 
-    const row = await screen.findByRole("button", {
+    const row = await screen.findByRole("treeitem", {
       name: "Function: example. src/example.ts, line 2, column 17",
     });
+    // The location is in the tooltip, not repeated on every row.
     expect(row).toHaveAttribute("title", "example — src/example.ts:2:17");
-    expect(row).toHaveTextContent("example.ts:2:17");
+    expect(row).not.toHaveTextContent(":2:17");
     fireEvent.click(row);
 
     expect(openFileLocation).toHaveBeenCalledWith({
@@ -136,6 +137,86 @@ describe("OutlineSurface", () => {
     });
     expect(screen.getByText("1 Symbol")).toBeInTheDocument();
     expect(screen.getByText("Function")).toBeInTheDocument();
+  });
+
+  it("nests members under their class and collapses them from the keyboard or the chevron", async () => {
+    activateResource();
+    setContent(
+      "class Shape {\n  area() {}\n  name = 1;\n}\nconst after = 1;\n",
+    );
+    const { container } = render(<OutlineSurface />);
+
+    const shape = await screen.findByRole("treeitem", {
+      name: /^Class: Shape/,
+    });
+    const names = () =>
+      screen
+        .getAllByRole("treeitem")
+        .map((row) => [
+          row.querySelector(".outline-card__name")?.textContent,
+          row.getAttribute("aria-level"),
+        ]);
+    expect(shape).toHaveAttribute("aria-expanded", "true");
+    expect(names()).toEqual([
+      ["Shape", "1"],
+      ["area", "2"],
+      ["name", "2"],
+      ["after", "1"],
+    ]);
+    expect(
+      screen.getByRole("treeitem", { name: /^Variable: after/ }),
+    ).not.toHaveAttribute("aria-expanded");
+
+    fireEvent.keyDown(shape, { key: "ArrowLeft" });
+    expect(shape).toHaveAttribute("aria-expanded", "false");
+    expect(names()).toEqual([
+      ["Shape", "1"],
+      ["after", "1"],
+    ]);
+
+    fireEvent.keyDown(shape, { key: "ArrowRight" });
+    expect(names()).toHaveLength(4);
+
+    const twisty = container.querySelector(".outline-row__twisty");
+    expect(twisty).not.toBeNull();
+    fireEvent.click(twisty!);
+    expect(names()).toHaveLength(2);
+  });
+
+  it("keeps a collapsed row collapsed through edits and forgets rows the File no longer declares", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    activateResource();
+    const body = " {\n  area() {}\n}\nclass Box {\n  side() {}\n}\n";
+    setContent(`class Shape${body}`);
+    render(<OutlineSurface />);
+    const row = (name: string) =>
+      screen.findByRole("treeitem", { name: new RegExp(`^Class: ${name}`) });
+    const edit = async (content: string) => {
+      act(() => setContent(content));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(OUTLINE_SETTLE_MS);
+      });
+    };
+
+    fireEvent.keyDown(await row("Shape"), { key: "ArrowLeft" });
+    expect(await row("Shape")).toHaveAttribute("aria-expanded", "false");
+
+    // Lines typed above move every offset; the row is still the same row.
+    await edit(`// one\n// two\nclass Shape${body}`);
+    await waitFor(async () =>
+      expect(await row("Shape")).toHaveAttribute("aria-expanded", "false"),
+    );
+
+    // Renamed away, the collapsed entry is stale; the next toggle drops it,
+    // so the old name comes back expanded.
+    await edit(`// one\n// two\nclass Renamed${body}`);
+    await row("Renamed");
+    fireEvent.keyDown(await row("Box"), { key: "ArrowLeft" });
+    await edit(`// one\n// two\nclass Shape${body}`);
+    await waitFor(async () =>
+      expect(await row("Shape")).toHaveAttribute("aria-expanded", "true"),
+    );
+    expect(await row("Box")).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps the last Outline while typing and rebuilds once edits settle", async () => {
@@ -168,7 +249,7 @@ describe("OutlineSurface", () => {
     expect(
       await screen.findByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("button")).toHaveLength(MAX_OUTLINE_SYMBOLS);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(MAX_OUTLINE_SYMBOLS);
   });
 
   it("shows an honest empty state for a File type without an Outline", async () => {

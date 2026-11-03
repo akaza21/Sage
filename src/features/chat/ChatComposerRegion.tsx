@@ -140,34 +140,36 @@ export function ChatComposerRegion({
           composerRef.current?.focus();
         }}
       >
-        {projectScopeName ? (
-          <div
-            className="composer__scope"
-            role="group"
-            aria-label="Project scope"
-          >
-            <Folder size={14} aria-hidden="true" />
-            <span>{projectScopeName}</span>
-          </div>
-        ) : null}
-        {otherContext.length < attachedContext.length ? (
-          <TranscriptPart
-            part="ComposerAnnotations"
-            contexts={attachedContext}
+        <div className="composer__slots">
+          {projectScopeName ? (
+            <div
+              className="composer__scope"
+              role="group"
+              aria-label="Project scope"
+            >
+              <Folder size={14} aria-hidden="true" />
+              <span>{projectScopeName}</span>
+            </div>
+          ) : null}
+          {otherContext.length < attachedContext.length ? (
+            <TranscriptPart
+              part="ComposerAnnotations"
+              contexts={attachedContext}
+              disabled={actionBusy || projectTransitioning}
+              onRemove={onRemoveContext}
+              chatId={dictationScope}
+            />
+          ) : null}
+          <QueuedRows
+            composerRef={composerRef}
+            prompts={queuedPrompts}
+            steerAvailable={steerAvailable}
             disabled={actionBusy || projectTransitioning}
-            onRemove={onRemoveContext}
-            chatId={dictationScope}
+            onDelete={onDeleteQueuedPrompt}
+            onRetry={onRetryQueuedPrompt}
+            onSteer={onSteerQueuedPrompt}
           />
-        ) : null}
-        <QueuedRows
-          composerRef={composerRef}
-          prompts={queuedPrompts}
-          steerAvailable={steerAvailable}
-          disabled={actionBusy || projectTransitioning}
-          onDelete={onDeleteQueuedPrompt}
-          onRetry={onRetryQueuedPrompt}
-          onSteer={onSteerQueuedPrompt}
-        />
+        </div>
         <div className="composer__body">
           {goal.kind === "goal" ? (
             <BoundChatGoalControl

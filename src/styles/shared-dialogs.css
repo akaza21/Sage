@@ -153,6 +153,7 @@
 
 .chat-search-dialog {
   width: min(620px, calc(100vw - 32px));
+  height: 100%;
   max-height: min(720px, calc(100vh - 32px));
   padding: 20px;
   border: 1px solid var(--search-dialog-border);
@@ -172,8 +173,14 @@
 }
 
 .chat-search-dialog__form {
-  display: grid;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
   gap: 12px;
+}
+
+.chat-search-dialog__form > * {
+  flex: none;
 }
 
 .chat-search-dialog__form > h2,
@@ -212,7 +219,8 @@
 
 .chat-search-dialog__actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -245,8 +253,9 @@
 }
 
 .chat-search-dialog__results {
-  min-height: 48px;
+  min-height: 0;
   max-height: 420px;
+  flex: 1 1 0;
   overflow: auto;
   border-top: 1px solid var(--color-border-subtle);
   padding-top: 8px;
