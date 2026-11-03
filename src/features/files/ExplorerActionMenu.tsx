@@ -1,4 +1,3 @@
-import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 import {
   useCallback,
   useContext,
@@ -9,6 +8,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";

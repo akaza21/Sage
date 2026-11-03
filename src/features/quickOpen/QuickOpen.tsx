@@ -102,7 +102,7 @@ export default function QuickOpen({
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
-  /** Enter pressed before the answer for the current query arrived. */
+  /** A File was confirmed before the current query's answer arrived. */
   const pendingEnter = useRef(false);
   const list = useRef<HTMLUListElement | null>(null);
   const projectId = project?.id ?? null;
@@ -247,6 +247,13 @@ export default function QuickOpen({
     // A refreshed answer can move the selected File without changing it.
   }, [activeKey, active]);
 
+  const confirmFile = (match: QuickOpenMatch | undefined) => {
+    if (bareLine || answer?.key === key) open(match);
+    // The list on screen answers an earlier request: open the first match
+    // for this one once it arrives.
+    else if (!error) pendingEnter.current = true;
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // keyCode 229 is the key that ends a composition, which WebKit (macOS)
     // reports after `compositionend`.
@@ -284,10 +291,7 @@ export default function QuickOpen({
       // isn't yet, so it opens in place too.
       event.preventDefault();
       if (commandMode) runCommand(commands[active]);
-      else if (bareLine || answer?.key === key) open(results[active]);
-      // The list on screen answers an earlier request: open the first match
-      // for this one once it arrives.
-      else if (!error) pendingEnter.current = true;
+      else confirmFile(results[active]);
     }
   };
 
@@ -385,7 +389,7 @@ export default function QuickOpen({
                 className="quick-open__row"
                 role="option"
                 aria-selected={index === active}
-                onClick={() => open(match)}
+                onClick={() => confirmFile(match)}
               >
                 <span className="quick-open__icon">
                   <FileKindIcon path={match.relativePath} size={16} />

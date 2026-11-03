@@ -125,11 +125,6 @@ export function initialAgentLeftRailWidth(viewportWidth: number): number {
   );
 }
 
-/**
- * The default right-pane width, 45% of the viewport. It is global: every
- * right-pane resource (file, diff, Preview, Subagents) shares it, as Codex
- * uses one panel width.
- */
 export function initialAgentArtifactWidth(viewportWidth: number): number {
   return clampWorkbenchSidebarWidth(
     agentDesktopArtifactWidth(viewportWidth),

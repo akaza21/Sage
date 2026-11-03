@@ -151,6 +151,30 @@ struct Session {
     process: Box<dyn TerminalProcess>,
 }
 
+/// Whether `scope` names a chat tab of its project, read off the async runtime.
+async fn chat_tab_exists(
+    database: &crate::persistence::Database,
+    scope: &TerminalScope,
+) -> Result<bool, TerminalError> {
+    let database = database.clone();
+    let project = scope.project.clone();
+    let chat = scope.chat.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .connection()
+            .query_row(
+                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
+                [project.as_str(), chat.as_str()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+    })
+    .await
+    .map_err(|_| TerminalError::Backend)?
+    .map(|row| row.is_some())
+    .map_err(|_| TerminalError::InvalidScope)
+}
+
 impl TerminalSessionPort {
     fn shell_path(&self, handle: TerminalHandle) -> Result<String, TerminalError> {
         let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
@@ -195,17 +219,7 @@ impl TerminalSessionPort {
             .lock_active_project(&scope.project, scope.generation)
             .await
             .map_err(|_| TerminalError::InvalidScope)?;
-        let chat_exists: Option<i64> = state
-            .database
-            .connection()
-            .query_row(
-                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
-                [scope.project.as_str(), scope.chat.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|_| TerminalError::InvalidScope)?;
-        if chat_exists.is_none() {
+        if !chat_tab_exists(&state.database, scope).await? {
             return Err(TerminalError::InvalidScope);
         }
         let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;

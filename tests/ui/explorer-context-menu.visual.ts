@@ -11,7 +11,9 @@ test.describe("Explorer context menu", () => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "editor", "editor");
     await expect(page.locator(".cm-content")).toBeVisible();
-    const row = page.getByRole("treeitem", { name: /^Open file / }).first();
+    const row = page.getByRole("treeitem", {
+      name: /^Open file src\/workbench\/AgentChatPanes\.tsx(?:,|$)/,
+    });
     await expect(row).toBeVisible();
     // The title carries the Git status too ("app.ts, Modified").
     const name = (await row.locator(".tree__name").textContent())!;

@@ -163,7 +163,9 @@ it("announces Copy on an inherited answer through the transcript's feedback", as
 it("shows the answer's own time in the row, and none without a real time (s2/f0093)", () => {
   const projection = twoTurns();
   presentation(projection);
-  const time = within(turnSection(1)).getByText(
+  const time = within(
+    within(turnSection(1)).getByRole("group", { name: "Message actions" }),
+  ).getByText(
     new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
       minute: "2-digit",
@@ -191,6 +193,26 @@ it("shows the answer's own time in the row, and none without a real time (s2/f00
       .getByRole("group", { name: "Message actions" })
       .querySelector("time"),
   ).toBeNull();
+});
+
+it("retains the owner-requested Retry on a successful native answer", () => {
+  const onRetry = vi.fn();
+  const projection = page("completed");
+  const { rerender } = render(
+    <ChatTranscriptFooter
+      useNativeAcp
+      page={projection}
+      messages={[]}
+      onRetry={onRetry}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(onRetry).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+  rerender(
+    <ChatTranscriptFooter useNativeAcp page={projection} messages={[]} />,
+  );
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 });
 
 it("gives the latest answer's footer the same timed row", () => {

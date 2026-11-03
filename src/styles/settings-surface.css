@@ -3,7 +3,6 @@
  * box spans the measure, then the page navigation, then the rows.
  */
 .settings-surface {
-  --settings-measure: 1000px;
   --settings-header-padding-top: 14px;
   --settings-gutter: var(--space-6);
   --settings-row-inset: 14px;
@@ -20,16 +19,24 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-content-gap);
   padding: var(--settings-header-padding-top) var(--settings-gutter)
     var(--space-8);
   color: var(--color-text-primary);
   background: var(--color-canvas);
 }
 
+.settings-surface > * {
+  width: 100%;
+  flex: none;
+}
+
 .settings-surface__header {
   display: grid;
   max-width: var(--settings-measure);
-  margin: 0 auto var(--space-3);
+  margin: 0 auto;
 }
 
 .settings-surface__search .input {
@@ -39,7 +46,7 @@
 
 .settings-surface .settings-surface__description {
   max-width: var(--settings-measure);
-  margin: var(--space-3) auto var(--space-2);
+  margin: 0 auto;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);
@@ -67,7 +74,7 @@
 }
 
 .settings-surface h3 {
-  padding: 12px 0 4px;
+  padding: 12px var(--settings-row-inset) 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -89,7 +96,7 @@
 
 .settings-surface__nav {
   max-width: var(--settings-measure);
-  margin: 0 auto 4px;
+  margin: 0 auto;
 }
 
 .settings-surface__nav-list {
@@ -128,7 +135,7 @@
 }
 
 .settings-surface__group-note {
-  padding-bottom: 4px;
+  padding: 0 var(--settings-row-inset) 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -139,9 +146,16 @@
   text-align: left;
 }
 
+/* The cells are a grid and a flex row, so the row lays them out side by side. */
+.settings-surface__keymap tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Inset like the setting rows, so every page lines up with its headings. */
 .settings-surface__keymap th,
 .settings-surface__keymap td {
-  padding: 8px 0;
+  padding: 8px var(--settings-row-inset);
   border-bottom: 1px solid var(--color-border-subtle);
   font-weight: 400;
   vertical-align: baseline;
@@ -166,6 +180,7 @@
 .settings-surface__keymap td {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 4px;
   width: 168px;
@@ -200,7 +215,7 @@
 .settings-surface__section-header {
   display: grid;
   gap: 4px;
-  padding: 16px 0 12px;
+  padding: 16px var(--settings-row-inset) 12px;
 }
 
 .settings-surface__row {
@@ -208,8 +223,6 @@
   grid-template-columns: minmax(0, 1fr) minmax(132px, 180px);
   align-items: center;
   gap: var(--space-6);
-  /* The hover fill reaches past the text, which stays on the headings' edge. */
-  margin-inline: calc(-1 * var(--settings-row-inset));
   padding: var(--settings-row-padding-top) var(--settings-row-inset)
     var(--settings-row-padding-bottom);
   border-radius: var(--radius-sm);
@@ -408,7 +421,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: -8px auto 16px;
+  margin: 0 auto;
   padding: 8px 8px 8px 12px;
   border-left: 2px solid var(--color-danger);
   color: var(--color-text-secondary);
@@ -429,7 +442,7 @@
 
 .settings-surface__loading {
   max-width: var(--settings-measure);
-  margin: -8px auto 16px;
+  margin: 0 auto;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
@@ -455,10 +468,6 @@
   .settings-surface__row .browser-clear-data {
     align-items: flex-start;
     text-align: left;
-  }
-
-  .settings-surface__error {
-    margin-top: 0;
   }
 }
 

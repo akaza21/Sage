@@ -30,6 +30,8 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     let chat = snapshot.active_tab_id.unwrap();
     assert!(snapshot.messages.is_empty());
     assert!(snapshot.session_id.is_none());
+    assert_eq!(snapshot.tabs[0].title, "Chat: Chat");
+    assert!(!snapshot.tabs[0].pinned);
     let initial = page(&database, &project.id, &chat);
     assert!(initial.turns.as_slice().is_empty());
     assert!(initial.sessions.as_slice().is_empty());
@@ -51,6 +53,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     assert_eq!(result.messages[0].text, "first prompt");
     assert_eq!(result.messages[1].text, "real answer");
     let history = page(&reopened, &project.id, &chat);
+    assert_eq!(history.title.as_str(), "Chat: first prompt");
     assert_eq!(history.turns.as_slice().len(), 1);
     assert_eq!(history.turns.as_slice()[0].items.as_slice().len(), 2);
     let counters = usage(&reopened);

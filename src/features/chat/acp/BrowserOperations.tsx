@@ -1,7 +1,7 @@
-import type { BrowserOperationProjection } from "../../../domain/browserOperation";
 import { useContext } from "react";
-import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
+import { type BrowserOperationProjection } from "../../../domain/browserOperation";
 import { BrowserOperationItem } from "./BrowserOperationItem";
+import { WorkedActivityVisibility } from "./WorkedActivityVisibility";
 
 const MAX_VISIBLE_BROWSER_OPERATIONS = 32;
 

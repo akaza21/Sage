@@ -1,17 +1,8 @@
-import { Search, Settings, SquarePen, X } from "../ui/leanIcons";
+import { Search, Settings, SquarePen } from "../ui/leanIcons";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
-import { ChatSearchPart } from "../features/chat/lazyParts";
-import {
-  CHAT_SEARCH_ALL_FOLDERS_ID,
-  hasChatSearchFolderRequest,
-  MAX_CHAT_SEARCH_QUERY_BYTES,
-  requestChatSearchInFolder,
-  subscribeChatSearchFolderRequest,
-} from "../features/chatSearch/chatSearchScope";
 import {
   ackSessionRailUnread,
   pinSessionRailIds,
@@ -20,25 +11,46 @@ import {
   sessionRailGitLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
+import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
+import {
+  CHAT_SEARCH_ALL_FOLDERS_ID,
+  hasChatSearchFolderRequest,
+  requestChatSearchInFolder,
+  subscribeChatSearchFolderRequest,
+} from "../features/chatSearch/chatSearchScope";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import {
   collectAgentRailPinIds,
   deriveAgentRailSections,
-  filterAgentRailGroups,
   groupAgentRailProjects,
 } from "./agentChatRail";
-import { AgentRailSections } from "./AgentRailSections";
+import type * as ArchiveNoticeChunk from "./AgentRailArchiveNotice";
 import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
 import {
+  clearAgentRailUnread,
+  pruneAgentRailInteractions,
+  useAgentRailInteractions,
+} from "./agentRailInteractions";
+import { AgentRailSections } from "./AgentRailSections";
+import { classifyAgentRailSection } from "./agentRailStatusView";
+import {
+  agentRailSectionCollapsed,
+  expandAgentRailSection,
   syncAgentRailClock,
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
+import { useRailChatId } from "./sideChatState";
+const ArchiveNoticePart = lazyParts<typeof ArchiveNoticeChunk>(
+  () => import("./AgentRailArchiveNotice"),
+);
 
 /**
  * Tiny core trigger for the Chat search dialog. The first folder request
  * (rail, title bar or shortcut) loads the dialog chunk once; the dialog then
  * takes that pending request on mount and owns every later one.
  */
-function ChatSearchGate({
+export function ChatSearchGate({
   triggerRef,
 }: {
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -61,10 +73,8 @@ function ChatSearchGate({
 
 export function LeftSidebar({
   inert = false,
-  onOpenSettings,
 }: {
   inert?: boolean;
-  onOpenSettings?: () => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
@@ -72,7 +82,8 @@ export function LeftSidebar({
   const switchProject = useWorkbenchStore((state) => state.switchProject);
   const createProject = useWorkbenchStore((state) => state.createProject);
   const createChat = useWorkbenchStore((state) => state.createChat);
-  const openSettings = useWorkbenchStore((state) => state.openSettings);
+  const interactions = useAgentRailInteractions();
+  const openSettings = useAgentSettingsState((state) => state.open);
   const loadRepositoryInventory = useWorkbenchStore(
     (state) => state.loadRepositoryInventory,
   );
@@ -86,6 +97,9 @@ export function LeftSidebar({
     (state) => state.projectTransitioning,
   );
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const railChatId = useRailChatId(activeTabId);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const previousChatId = useRef(railChatId);
   const gitLabel = sessionRailGitLabel(
     useWorkbenchStore(
       (state) =>
@@ -94,10 +108,6 @@ export function LeftSidebar({
     ),
   );
   const [railTick, setRailTick] = useState(0);
-  const [query, setQuery] = useState("");
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterTriggerRef = useRef<HTMLButtonElement>(null);
-  const filterInputRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const groups = useMemo(
     () =>
@@ -113,49 +123,69 @@ export function LeftSidebar({
   const unreadByChatId: Record<string, boolean> = {};
   for (const group of groups) {
     for (const chat of group.chats) {
-      unreadByChatId[chat.id] = sessionRailUnreadVisible({
-        focused: group.id === project?.id && chat.id === activeTabId,
-        status: chat.status,
-        seenFingerprint: seenSessionRailFingerprint(chat.id),
-      });
+      unreadByChatId[chat.id] =
+        interactions.unread.has(chat.id) ||
+        sessionRailUnreadVisible({
+          focused: group.id === project?.id && chat.id === activeTabId,
+          status: chat.status,
+          updatedAt: chat.updatedAt,
+          seenFingerprint: seenSessionRailFingerprint(chat.id),
+        });
     }
   }
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredGroups = useMemo(
-    () => filterAgentRailGroups(groups, normalizedQuery),
-    [groups, normalizedQuery],
-  );
-  const chatCountByProjectId = useMemo(
-    () =>
-      Object.fromEntries(
-        groups.map((group) => [
-          group.id,
-          group.totalChatCount ?? group.chats.length,
-        ]),
-      ),
-    [groups],
-  );
-  const sections = useMemo(
-    () => deriveAgentRailSections(filteredGroups, chatCountByProjectId),
-    [chatCountByProjectId, filteredGroups],
-  );
-
-  const railEpoch = groups
-    .map((group) =>
-      group.chats
-        .map((chat) => `${chat.id}:${chat.status ?? ""}:${chat.updatedAt ?? 0}`)
-        .join(","),
-    )
-    .join(";");
+  useEffect(() => {
+    if (projectTransitioning) return;
+    const scroll = () =>
+      sidebarRef.current
+        ?.querySelector(".project-chat[aria-current='page']")
+        ?.scrollIntoView?.({ block: "nearest" });
+    if (previousChatId.current !== railChatId) {
+      previousChatId.current = railChatId;
+      const active = useWorkbenchStore
+        .getState()
+        .tabs.find((tab) => tab.id === railChatId);
+      const sections = [
+        "projects",
+        ...(active?.pinned
+          ? ["pinned"]
+          : prefs.grouping === "folder"
+            ? [`project:${project?.id}`]
+            : [
+                classifyAgentRailSection({
+                  status: active?.status,
+                  unread: unreadByChatId[railChatId ?? ""] === true,
+                }),
+                `project:${project?.id}`,
+              ]),
+      ];
+      const hidden = sections.some(agentRailSectionCollapsed);
+      sections.forEach(expandAgentRailSection);
+      if (hidden) {
+        const frame = requestAnimationFrame(scroll);
+        return () => cancelAnimationFrame(frame);
+      }
+    }
+    scroll();
+    // Only explicit navigation reveals a section; badge updates do not expand it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [railChatId, project?.id, projectTransitioning, prefs.grouping]);
+  useEffect(() => {
+    pruneAgentRailInteractions(
+      new Set(groups.flatMap((group) => group.chats.map((chat) => chat.id))),
+    );
+  }, [groups]);
+  const sections = useMemo(() => deriveAgentRailSections(groups), [groups]);
 
   const markAllRead = () => {
+    clearAgentRailUnread();
     for (const group of groups) {
       for (const chat of group.chats) {
-        const fingerprint = sessionRailFingerprint(chat.status);
+        const fingerprint = sessionRailFingerprint(chat.status, chat.updatedAt);
         if (
           sessionRailUnreadVisible({
             focused: group.id === project?.id && chat.id === activeTabId,
             status: chat.status,
+            updatedAt: chat.updatedAt,
             seenFingerprint: seenSessionRailFingerprint(chat.id),
           })
         ) {
@@ -169,7 +199,7 @@ export function LeftSidebar({
   useEffect(() => {
     syncAgentRailClock(Date.now());
   }, [
-    railEpoch,
+    groups,
     railTick,
     prefs.grouping,
     prefs.ordering,
@@ -177,6 +207,11 @@ export function LeftSidebar({
     nativeTransitionEpoch,
     projectGeneration,
   ]);
+
+  useEffect(() => {
+    const timer = setInterval(() => syncAgentRailClock(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     void loadRepositoryInventory();
@@ -188,30 +223,19 @@ export function LeftSidebar({
     projectTransitioning,
   ]);
 
-  useEffect(() => {
-    if (filterOpen) filterInputRef.current?.focus();
-  }, [filterOpen]);
-
-  const closeFilter = () => {
-    setQuery("");
-    setFilterOpen(false);
-    filterTriggerRef.current?.focus();
-  };
-
   const navigation = (
     <>
       <div className="project-sidebar__actions">
         <div className="project-sidebar__brand">
           <strong>Sage</strong>
           <button
-            ref={filterTriggerRef}
+            ref={searchTriggerRef}
             type="button"
-            aria-label="Filter tasks"
-            title="Filter tasks"
-            aria-expanded={filterOpen}
+            aria-label="Search chats"
+            title="Search chats"
+            disabled={!project || projectTransitioning}
             onClick={() => {
-              if (filterOpen) closeFilter();
-              else setFilterOpen(true);
+              if (project) requestChatSearchInFolder(project.id);
             }}
           >
             <Search size={15} aria-hidden="true" />
@@ -220,9 +244,10 @@ export function LeftSidebar({
         <button
           className="project-action project-action--primary"
           type="button"
-          title="New task"
-          aria-label="New task"
+          title="New chat"
+          aria-label="New chat"
           aria-keyshortcuts={usesMetaModifier() ? "Meta+N" : "Control+N"}
+          disabled={projectTransitioning}
           onClick={() => void createChat()}
         >
           <SquarePen size={16} aria-hidden="true" />
@@ -231,63 +256,6 @@ export function LeftSidebar({
             {shortcutLabel("n", usesMetaModifier())}
           </kbd>
         </button>
-        {filterOpen ? (
-          <div
-            className="agent-rail-search-row"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                closeFilter();
-              }
-            }}
-          >
-            <div className="agent-rail-search">
-              <Search size={14} aria-hidden="true" />
-              <label
-                className="agent-rail-search__label"
-                htmlFor="rail-task-search"
-              >
-                Filter rail tasks
-              </label>
-              <input
-                ref={filterInputRef}
-                id="rail-task-search"
-                type="search"
-                aria-label="Search tasks"
-                placeholder="Search tasks…"
-                maxLength={MAX_CHAT_SEARCH_QUERY_BYTES}
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
-              {query ? (
-                <button
-                  type="button"
-                  aria-label="Clear task search"
-                  title="Clear task search"
-                  onClick={() => setQuery("")}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-            <button
-              ref={searchTriggerRef}
-              className="agent-rail-search-row__global"
-              type="button"
-              aria-label="Search all chats"
-              title="Search all chats"
-              disabled={!project || projectTransitioning}
-              onClick={(event) => {
-                if (!project || projectTransitioning) return;
-                const trigger = event.currentTarget;
-                requestChatSearchInFolder(project.id, () => trigger.focus());
-              }}
-            >
-              <Search size={14} aria-hidden="true" />
-            </button>
-          </div>
-        ) : null}
       </div>
 
       <div className="project-sidebar__scroll" data-rail-tick={railTick}>
@@ -296,10 +264,11 @@ export function LeftSidebar({
           projects={sections.projects}
           recent={sections.recent}
           currentProjectId={project?.id ?? null}
+          currentChatId={railChatId}
           unreadByChatId={unreadByChatId}
           prefs={prefs}
           currentBranchLabel={gitLabel}
-          emptyProjects={projects.length === 0 && !normalizedQuery}
+          emptyProjects={projects.length === 0}
           createChat={createChat}
           createProject={createProject}
           switchProject={switchProject}
@@ -309,6 +278,9 @@ export function LeftSidebar({
           }
           onMarkAllRead={markAllRead}
         />
+        {interactions.undo ? (
+          <ArchiveNoticePart part="AgentRailArchiveNotice" />
+        ) : null}
       </div>
 
       <footer className="project-sidebar__account">
@@ -324,13 +296,7 @@ export function LeftSidebar({
           type="button"
           title="Open settings"
           aria-label="Open settings"
-          onClick={() => {
-            if (onOpenSettings) {
-              onOpenSettings();
-              return;
-            }
-            void openSettings();
-          }}
+          onClick={() => openSettings()}
         >
           <Settings size={16} aria-hidden="true" />
         </button>
@@ -341,22 +307,13 @@ export function LeftSidebar({
   return (
     <aside
       className="project-sidebar"
+      ref={sidebarRef}
       aria-label="Projects and chats"
       inert={inert}
       aria-hidden={inert || undefined}
     >
       <ChatSearchGate triggerRef={searchTriggerRef} />
-      <AgentPrimaryNavigation
-        onNewChat={() => void createChat()}
-        onSearch={() => {
-          if (project) requestChatSearchInFolder(project.id);
-        }}
-        onSettings={() => {
-          if (onOpenSettings) onOpenSettings();
-          else void openSettings();
-        }}
-        searchDisabled={!project || projectTransitioning}
-      />
+      <AgentPrimaryNavigation />
       {navigation}
     </aside>
   );

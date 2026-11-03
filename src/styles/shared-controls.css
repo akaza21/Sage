@@ -247,12 +247,15 @@
   min-width: 0;
 }
 
+/* Callers size the field through --picker-field-padding and
+   --picker-field-border-color instead of restyling it. */
 .searchable-picker__trigger,
 .searchable-picker__input {
   width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
-  border: 1px solid var(--color-border-strong);
+  padding: var(--picker-field-padding, 0 var(--space-2));
+  border: 1px solid var(--picker-field-border-color, var(--color-border-strong));
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   background: var(--color-surface);
@@ -262,11 +265,9 @@
 
 .searchable-picker__trigger {
   display: flex;
-  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-1);
-  padding: 0 8px;
   overflow: hidden;
   text-align: left;
 }
@@ -287,10 +288,6 @@
   overflow: hidden;
 }
 
-.searchable-picker__input {
-  padding: 0 8px;
-}
-
 .searchable-picker__popover > [role="listbox"] {
   max-height: min(224px, calc(100vh - 148px));
   min-height: 0;
@@ -300,9 +297,14 @@
 
 .searchable-picker__current,
 .searchable-picker__footer,
-.searchable-picker__limit,
+.searchable-picker__limit {
+  margin: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .searchable-picker__reason {
-  margin: 4px 8px;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -339,10 +341,6 @@
 
 .searchable-picker__option:has([data-harness-icon]) .searchable-picker__reason {
   grid-column: 2;
-}
-
-.searchable-picker__reason {
-  margin: 0;
 }
 
 @keyframes menu-popover-enter {
@@ -452,10 +450,12 @@
   padding: 0 20px 0 0;
   overflow: hidden;
   appearance: none;
-  border: 0;
+  border: var(--select-control-trigger-border, 0);
   outline: 0;
   color: var(--color-text-primary);
-  background: transparent;
+  background: var(--select-control-trigger-fill, transparent);
+  backdrop-filter: var(--select-control-trigger-blur, none);
+  box-shadow: var(--select-control-trigger-shadow, none);
   font: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);

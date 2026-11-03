@@ -167,7 +167,7 @@ describe("MenuPopover", () => {
       function (this: HTMLElement) {
         if (this.classList.contains(ownerClass))
           return new DOMRect(300, 40, viewport - 300, 700);
-        if (this.classList.contains("composer"))
+        if (this.classList.contains("chat-dock"))
           return new DOMRect(316, 600, viewport - 332, 120);
         if (this.getAttribute("role") === "menu")
           return new DOMRect(0, 0, 420, 140);
@@ -177,9 +177,11 @@ describe("MenuPopover", () => {
     render(
       <section className={ownerClass}>
         {ownerClass === "agent-chat-pane" ? (
-          <form className="composer">
-            <MenuHarness />
-          </form>
+          <div className="chat-dock">
+            <form className="composer">
+              <MenuHarness />
+            </form>
+          </div>
         ) : (
           <header>
             <MenuHarness />
@@ -251,10 +253,10 @@ describe("MenuPopover", () => {
     expect(screen.queryByRole("menu", { name: "Actions" })).toBeNull();
   });
 
-  it("keeps a left-edge composer menu inside its composer when it fits", () => {
+  it("keeps a left-edge composer menu inside its dock when it fits", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
-        if (this.classList.contains("composer"))
+        if (this.classList.contains("chat-dock"))
           return new DOMRect(480, 400, 580, 120);
         if (this.getAttribute("role") === "menu")
           return new DOMRect(0, 0, 298, 140);
@@ -262,9 +264,11 @@ describe("MenuPopover", () => {
       },
     );
     render(
-      <form className="composer">
-        <MenuHarness />
-      </form>,
+      <div className="chat-dock">
+        <form className="composer">
+          <MenuHarness />
+        </form>
+      </div>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Actions" }));
     expect(screen.getByRole("menu", { name: "Actions" })).toHaveStyle({

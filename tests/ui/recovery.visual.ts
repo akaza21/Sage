@@ -83,8 +83,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openScenario(page, "waiting", "agent");
 
+    // AP-C4: the row spins in both its project group and Recents.
     const working = page.locator(".project-chat__working");
-    await expect(working).toBeVisible();
-    await expect(working).toHaveCSS("animation-name", "none");
+    await expect(working.first()).toBeVisible();
+    for (const spinner of await working.all())
+      await expect(spinner).toHaveCSS("animation-name", "none");
   });
 });

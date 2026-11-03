@@ -13,7 +13,6 @@ use crate::{
             BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher,
             SessionCoordinator, ThreadWaitError,
         },
-        scheduler::Scheduler,
         store::{StoreError, load_chat_page},
     },
     persistence::Database,
@@ -48,6 +47,9 @@ mod codex_operation;
 mod configuration;
 mod debug;
 mod intent_snapshot;
+mod live_lanes;
+mod live_routes;
+pub(crate) use live_lanes::LIVE_RUNTIME_LANES;
 mod permission;
 mod session;
 mod session_close;
@@ -125,11 +127,11 @@ impl<E> PromptSendError<E> {
 
 pub(crate) struct AcpService {
     database: Database,
-    scheduler: Scheduler,
     journal: JournalHandle,
     journal_thread: Mutex<Option<BoundedThread>>,
-    sessions: SessionCoordinator,
-    runtime: Arc<RuntimeSlot>,
+    /// Starts durable sessions; it never reserves a runtime tree.
+    session_starts: SessionCoordinator,
+    lanes: Box<[live_lanes::LiveLane]>,
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
@@ -147,7 +149,6 @@ pub(crate) struct AcpService {
     codex_gate: Arc<codex_operation::CodexOperationGate>,
     codex_discovery: Arc<CodexDiscoveryManager>,
     codex_auth: Arc<CodexAuthManager>,
-    codex_recovery: Arc<Mutex<Option<codex_live::PendingCodexRecovery>>>,
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     codex_runtime_identity: Arc<CodexRuntimeIdentityLedger>,
     #[cfg(test)]
@@ -390,7 +391,7 @@ impl AcpService {
             &self.database.connection(),
             project_id,
             chat_id,
-            u8::from(self.runtime.is_active()),
+            u8::try_from(self.live_runtime_count()).unwrap_or(u8::MAX),
             live_trees,
             live_descendants,
         )
@@ -402,7 +403,10 @@ impl AcpService {
         owner: crate::acp::scheduler::RuntimeOwner,
         runtime: Arc<crate::acp::runtime::RuntimeHost>,
     ) {
-        self.runtime.claim(owner, runtime).expect("empty test slot");
+        self.lane_at(0)
+            .runtime
+            .claim(owner, runtime)
+            .expect("empty test slot");
     }
 }
 

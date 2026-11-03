@@ -151,7 +151,6 @@ export function SideChatDialogs() {
   ) : null;
 }
 
-/** Empty-state copy matches Codex. */
 export function SideChatHome() {
   return (
     <div className="side-chat-home">

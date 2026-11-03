@@ -21,6 +21,7 @@ import type {
   EditorDocument,
   EditorSaveResult,
   FileDiff,
+  FileGitBase,
   GitFileMutationRequest,
   GitFileMutationResult,
   GitRepositoryCommitRequest,
@@ -142,7 +143,15 @@ export interface RepositoryPort {
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
   /** Changes when Git state may have changed outside Sage (EP-12). */
   getRepositoryChangeStamp(): Promise<string>;
-  getFileDiff(resource: ResourceRef): Promise<FileDiff>;
+  getFileDiff(
+    resource: ResourceRef,
+    scope?: "staged" | "unstaged",
+  ): Promise<FileDiff>;
+  /** The staged text the gutter compares against (EP-14). */
+  getFileGitBase(
+    resource: ResourceRef,
+    knownOid: string | null,
+  ): Promise<FileGitBase>;
   mutateGitFile(
     request: GitFileMutationRequest,
     expectedTransitionEpoch: number,
@@ -312,6 +321,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "discoverProjectRepositories",
     "fetchGitRemote",
     "getFileDiff",
+    "getFileGitBase",
     "getNestedRepositoryFileDiff",
     "getNestedRepositoryStatus",
     "getRepositoryChangeStamp",

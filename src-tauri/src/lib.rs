@@ -62,6 +62,7 @@ mod repository_conflict;
 mod repository_diff;
 mod repository_discovery;
 mod repository_git;
+mod repository_git_base;
 mod repository_history;
 mod repository_in_progress;
 mod repository_index_status;
@@ -95,6 +96,7 @@ mod state;
 mod test_paths;
 #[cfg(test)]
 mod test_wait;
+mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
 mod window_memory;

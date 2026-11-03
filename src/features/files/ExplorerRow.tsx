@@ -1,5 +1,5 @@
 import { ChevronRight } from "../../ui/leanIcons";
-import { forwardRef, memo } from "react";
+import { forwardRef, memo, type CSSProperties } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
@@ -72,7 +72,7 @@ export const ExplorerRow = memo(
         aria-current={selected ? "page" : undefined}
         aria-expanded={directory ? expanded : undefined}
         title={entry.resource.relativePath + gitStatus}
-        style={{ paddingLeft: 8 + entry.depth * 16 }}
+        style={{ "--tree-depth": entry.depth } as CSSProperties}
         disabled={!directory && !file}
         onClick={() => {
           if (directory) {
@@ -100,7 +100,6 @@ export const ExplorerRow = memo(
         {directory ? (
           <ChevronRight
             className={expanded ? "tree__chevron--expanded" : undefined}
-            size={14}
             aria-hidden="true"
           />
         ) : (

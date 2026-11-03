@@ -4,10 +4,11 @@ import {
   resourceKey,
 } from "../../../../src/domain/resourceIdentity";
 import { useWorkbenchStore } from "../../../../src/app/store";
+import { getWorkbenchPorts } from "../../../../src/ports/workbenchRuntime";
 import { workspaceSearchDesktop } from "../../../../src/features/search/workspaceSearchDesktop";
 
 import { standardPage } from "../visualChatPages";
-import { fileResource } from "../visualDocumentFixtures";
+import { fileResource, visualFileGitBase } from "../visualDocumentFixtures";
 import { ROOT_ID } from "../visualFixtureIds";
 import type { VisualScenarioName } from "../visualScenarioTypes";
 
@@ -82,6 +83,8 @@ export function installVisualRepositoryPickerFixture({
 }
 
 export function installEditorToolFixtures() {
+  getWorkbenchPorts().repository.getFileGitBase = async (resource, knownOid) =>
+    visualFileGitBase(resource, knownOid);
   workspaceSearchDesktop.search = async (request) => ({
     requestId: "visual-search",
     projectId: request.projectId,

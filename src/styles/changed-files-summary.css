@@ -1,5 +1,4 @@
-.edit-summary,
-.acp-file-changes {
+.edit-summary {
   position: relative;
   min-width: 0;
   padding: 0 0 var(--space-1) var(--space-2);
@@ -16,20 +15,30 @@
 }
 
 .acp-file-changes {
-  width: min(100%, var(--reading-measure));
-  margin: var(--space-3) auto 0;
+  width: var(--edit-summary-width, min(100%, var(--reading-measure)));
+  margin: var(--edit-summary-margin, var(--space-3) auto 0);
   padding: var(--space-1);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
+  border: var(
+    --edit-summary-border,
+    var(--border-width) solid var(--color-border-subtle)
+  );
+  border-radius: var(--radius-edit-summary);
+  background: var(--edit-summary-fill, var(--color-panel));
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
 .acp-file-changes--collapsed {
-  width: max-content;
-  max-width: min(100%, var(--reading-measure));
+  --radius-edit-summary: var(
+    --edit-summary-collapsed-radius,
+    var(--radius-pill)
+  );
+  width: var(--edit-summary-width, max-content);
+  max-width: 100%;
+  background: var(--edit-summary-fill, var(--color-plane-raised));
+}
+
+.acp-file-changes--collapsed .acp-file-changes__header {
   border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
 }
 
 .acp-editing-files {
