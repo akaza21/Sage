@@ -2,9 +2,9 @@ import type {
   AcpItem,
   ItemLifecycle,
   ToolState,
+  TurnProjection,
   TurnState,
   TurnTerminalReason,
-  TurnProjection,
 } from "../../../domain/acp";
 
 export const terminalItemLifecycles: ReadonlySet<ItemLifecycle> = new Set([

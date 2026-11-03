@@ -10,17 +10,22 @@ mod tests;
 
 impl AcpService {
     pub(crate) fn set_session_config_notice_sink(&self, sink: NoticeSink) {
-        self.runtime.config.set_sink(sink);
+        for lane in self.lanes() {
+            lane.runtime.config.set_sink(sink.clone());
+        }
     }
     pub(crate) fn configure_session(
         &self,
         intent: ConfigIntent,
     ) -> Result<(), crate::acp::runtime::HostError> {
-        let host = self
+        let lane = self
+            .lane_for(&intent.owner)
+            .ok_or(crate::acp::runtime::HostError::Intent)?;
+        let host = lane
             .runtime
             .for_owner(&intent.owner)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
-        self.runtime
+        lane.runtime
             .config
             .validate(&intent)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
@@ -61,13 +66,14 @@ impl AcpService {
                 session_id: session.id.clone(),
                 runtime_epoch,
             };
-            if self.runtime.for_owner(&owner).is_ok()
-                || matches!(
-                    self.runtime.for_owner(&owner),
-                    Err(super::runtime_slot::RuntimeSlotError::Recovery)
-                )
-            {
-                page.session_config = self.runtime.config.snapshot(&owner);
+            let Some(lane) = self.lane_for(&owner) else {
+                continue;
+            };
+            if matches!(
+                lane.runtime.for_owner(&owner),
+                Ok(_) | Err(super::runtime_slot::RuntimeSlotError::Recovery)
+            ) {
+                page.session_config = lane.runtime.config.snapshot(&owner);
                 session.capabilities.config_count = page
                     .session_config
                     .as_ref()

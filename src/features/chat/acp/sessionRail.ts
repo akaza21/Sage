@@ -80,19 +80,22 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
 
 export function sessionRailFingerprint(
   status: SessionStatus | undefined,
+  updatedAt?: number,
 ): string {
-  return sessionRailStatusLabel(status);
+  const label = sessionRailStatusLabel(status);
+  return label && updatedAt ? `${label}:${updatedAt}` : label;
 }
 
 export function sessionRailUnreadVisible(input: {
   focused: boolean;
   status: SessionStatus | undefined;
+  updatedAt?: number;
   seenFingerprint: string | undefined;
 }): boolean {
   return unreadDotVisible({
     focused: input.focused,
     live: sessionRailLive(input.status),
-    activityFingerprint: sessionRailFingerprint(input.status),
+    activityFingerprint: sessionRailFingerprint(input.status, input.updatedAt),
     seenFingerprint: input.seenFingerprint,
   });
 }

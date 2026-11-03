@@ -193,7 +193,16 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
                 .iter()
                 .any(|t| t.id == second && t.state == TurnState::Queued)
         );
-        assert!(setup.service.scheduler.active().unwrap().turn_id.is_none());
+        assert!(
+            setup
+                .service
+                .lane_at(0)
+                .scheduler
+                .active()
+                .unwrap()
+                .turn_id
+                .is_none()
+        );
         let prebind = perform(context.clone(), trace.clone(), &snapshot);
         assert_eq!(prebind, Err(BrowserFailure::Denied));
         assert_eq!(trace.lock().unwrap().dispatched, 0);

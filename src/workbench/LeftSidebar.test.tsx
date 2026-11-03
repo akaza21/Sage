@@ -4,18 +4,21 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import {
   clearChatSearchFolderRequest,
   hasChatSearchFolderRequest,
   requestChatSearchInFolder,
 } from "../features/chatSearch/chatSearchScope";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { LeftSidebar } from "./LeftSidebar";
+import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
   resetAgentRailViewPrefs,
   setAgentRailGrouping,
@@ -45,22 +48,26 @@ it("provides a separate icon rail and sidebar header with reachable chat actions
   fireEvent.click(
     within(
       screen.getByRole("navigation", { name: "Primary navigation" }),
-    ).getByRole("button", { name: "New chat" }),
+    ).getByRole("button", { name: "Home" }),
   );
+  expect(createChat).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
   expect(createChat).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
-  expect(screen.getByRole("searchbox", { name: "Search tasks" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Search chats" })).toBeEnabled();
   expect(
-    screen.getByRole("button", { name: "Search all chats" }),
-  ).toBeEnabled();
+    screen.queryByRole("button", { name: "Open settings from rail" }),
+  ).toBeNull();
 });
 
-it("dismisses the task filter without hiding persistent Agent navigation", () => {
+it("dismisses the live palette without hiding persistent Agent navigation", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "sage", name: "Sage", roots: [] },
+  });
   render(<LeftSidebar />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
-  const search = screen.getByRole("searchbox", { name: "Search tasks" });
+  fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+  const search = await screen.findByRole("searchbox", { name: "Search Chats" });
   fireEvent.change(search, { target: { value: "example" } });
   fireEvent.keyDown(search, { key: "Escape" });
 
@@ -71,10 +78,12 @@ it("dismisses the task filter without hiding persistent Agent navigation", () =>
   expect(
     screen.queryByRole("button", { name: "Open projects and chats" }),
   ).toBeNull();
-  expect(screen.getByRole("button", { name: "Filter tasks" })).toHaveFocus();
+  await vi.waitFor(() =>
+    expect(screen.getByRole("button", { name: "Search chats" })).toHaveFocus(),
+  );
 
-  fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
-  expect(screen.getByRole("searchbox", { name: "Search tasks" })).toHaveValue(
+  fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+  expect(screen.getByRole("searchbox", { name: "Search Chats" })).toHaveValue(
     "",
   );
 });
@@ -122,18 +131,72 @@ it("keeps open and running chats keyboard-reachable in the sidebar", () => {
   ).toBeEnabled();
 });
 
-it("opens the durable Settings tab from the rail footer", () => {
+it("opens Agent settings from the rail footer without opening an Editor tab", () => {
   const openSettings = vi.fn();
   useWorkbenchStore.setState({ openSettings });
   render(<LeftSidebar />);
   fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-  expect(openSettings).toHaveBeenCalled();
+  expect(openSettings).not.toHaveBeenCalled();
+  expect(useAgentSettingsState.getState().page).toBe("Appearance");
 });
 
 const initialState = useWorkbenchStore.getState();
 
+it.each([false, true])(
+  "scrolls a newly selected Chat beyond eight rows into view (collapsed: %s) without jumping on status updates",
+  async (collapsed) => {
+    const prior = Element.prototype.scrollIntoView;
+    const seen: string[] = [];
+    Element.prototype.scrollIntoView = function () {
+      seen.push((this as HTMLElement).dataset.chatId ?? "");
+    };
+    const chats = Array.from({ length: 12 }, (_, position) => ({
+      id: `chat-${position}`,
+      kind: "chat" as const,
+      title: `Chat ${position}`,
+      position,
+      pinned: false,
+      dirty: false,
+      status: "idle" as const,
+    }));
+    useWorkbenchStore.setState({
+      project: { id: "sage", name: "Sage", roots: [] },
+      projects: [{ id: "sage", name: "Sage", rootCount: 0, lastOpenedAt: 1 }],
+      tabs: chats,
+      activeTabId: "chat-0",
+      projectTransitioning: false,
+      loadRepositoryInventory: vi.fn(async () => undefined),
+    });
+    try {
+      render(<LeftSidebar />);
+      expect(seen).toEqual(["chat-0"]);
+      if (collapsed)
+        fireEvent.click(screen.getByRole("button", { name: "Project Sage" }));
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat-11" }));
+      await waitFor(() => expect(seen).toEqual(["chat-0", "chat-11"]));
+      expect(
+        within(screen.getByRole("region", { name: "Projects" })).getAllByRole(
+          "button",
+          { name: /^Open chat / },
+        ),
+      ).toHaveLength(8);
+      act(() =>
+        useWorkbenchStore.setState({
+          tabs: chats.map((chat) => ({ ...chat, updatedAt: 10 })),
+        }),
+      );
+      expect(seen).toEqual(["chat-0", "chat-11"]);
+    } finally {
+      if (prior) Element.prototype.scrollIntoView = prior;
+      else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  },
+);
+
 afterEach(() => {
   cleanup();
+  resetAgentRailInteractions();
+  useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
   clearSessionRailAcks();
   resetAgentRailViewPrefs();
@@ -179,19 +242,19 @@ it("shows a Devin space-header branch chip on the selected project", () => {
 
   render(<LeftSidebar />);
 
-  const space = screen.getByTitle("Open project Onboarding");
+  const space = screen.getByTitle("Project Onboarding");
   expect(space).toHaveTextContent("feat/onboarding");
   expect(space.querySelector(".project-row__count")).not.toBeInTheDocument();
 });
 
-it("labels the New task action with its keyboard chord", () => {
+it("labels the New chat action with its keyboard chord", () => {
   render(<LeftSidebar />);
-  const button = screen.getByRole("button", { name: "New task" });
+  const button = screen.getByRole("button", { name: "New chat" });
   expect(button).toHaveTextContent("Ctrl+N");
   expect(button).toHaveAttribute("aria-keyshortcuts", "Control+N");
 });
 
-it("keeps New task available when no folder project is open", () => {
+it("keeps New chat available when no folder project is open", () => {
   const createChat = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
     project: null,
@@ -199,7 +262,7 @@ it("keeps New task available when no folder project is open", () => {
     createChat,
   });
   render(<LeftSidebar />);
-  const button = screen.getByRole("button", { name: "New task" });
+  const button = screen.getByRole("button", { name: "New chat" });
   expect(button).toBeEnabled();
   expect(
     screen.getByText(
@@ -260,7 +323,7 @@ it("lists chats under every project folder and opens a foreign chat", () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("pins and moves a foreign-folder chat without switching first", () => {
+it("pins and moves a foreign-folder chat without switching first", async () => {
   const pinChat = vi.fn(async () => undefined);
   const moveChat = vi.fn(async () => undefined);
   const switchProject = vi.fn(async () => undefined);
@@ -307,7 +370,7 @@ it("pins and moves a foreign-folder chat without switching first", () => {
       name: "Chat actions for Research agent memory",
     }),
   );
-  fireEvent.click(screen.getByRole("menuitem", { name: "Pin chat" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Pin chat" }));
   expect(pinChat).toHaveBeenCalledWith("chat:cross", "cross");
   expect(switchProject).not.toHaveBeenCalled();
   fireEvent.click(
@@ -363,7 +426,7 @@ it("restores a foreign-folder archived chat without switching first", () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("creates a chat on a foreign folder without switching first", () => {
+it("creates a chat from a foreign project menu without switching first", async () => {
   const createChat = vi.fn(async () => undefined);
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
@@ -402,7 +465,12 @@ it("creates a chat on a foreign folder without switching first", () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: "New task in Cross" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Project actions for Cross" }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "New chat in project" }),
+  );
   expect(createChat).toHaveBeenCalledWith("cross");
   expect(switchProject).not.toHaveBeenCalled();
 });
@@ -578,8 +646,8 @@ it("groups chats by durable status without dropping folder identity", () => {
   expect(screen.getByRole("region", { name: "Done" })).toHaveTextContent(
     "Research agent memory",
   );
-  expect(screen.getAllByTitle("Open project Sage").length).toBeGreaterThan(0);
-  expect(screen.getByTitle("Open project Cross")).toBeInTheDocument();
+  expect(screen.getAllByTitle("Project Sage").length).toBeGreaterThan(0);
+  expect(screen.getByTitle("Project Cross")).toBeInTheDocument();
   expect(
     screen
       .getByTitle("Open chat Kickoff")
@@ -588,7 +656,7 @@ it("groups chats by durable status without dropping folder identity", () => {
   ).toBeInTheDocument();
 });
 
-it("promotes pinned tasks, keeps recent flat, and filters all rail sections live", () => {
+it("promotes pinned tasks without duplicating them in recents", async () => {
   const now = Date.now();
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
@@ -646,7 +714,9 @@ it("promotes pinned tasks, keeps recent flat, and filters all rail sections live
   ).toBeTruthy();
   expect(within(pinned).getByText("Pinned research")).toBeInTheDocument();
   expect(within(projects).queryByText("Pinned research")).toBeNull();
-  expect(within(recent).getByText("Recent research")).toBeInTheDocument();
+  expect(
+    await within(recent).findByText("Recent research"),
+  ).toBeInTheDocument();
   expect(within(recent).getByText("2h ago")).toBeInTheDocument();
   expect(
     within(recent).getByRole("button", {
@@ -654,33 +724,11 @@ it("promotes pinned tasks, keeps recent flat, and filters all rail sections live
     }),
   ).toBeEnabled();
   expect(within(recent).queryByText("Pinned research")).toBeNull();
-
-  fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
-  fireEvent.change(screen.getByRole("searchbox", { name: "Search tasks" }), {
-    target: { value: "rail" },
-  });
-  expect(
-    screen.getByRole("button", { name: "Search all chats" }),
-  ).toBeEnabled();
-  expect(within(projects).getByText("Build rail")).toBeInTheDocument();
-  expect(within(projects).queryByText("Recent research")).toBeNull();
-  expect(within(pinned).getByText("No pinned tasks")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "Clear task search" }));
-  expect(within(projects).getByText("Recent research")).toBeInTheDocument();
-
-  fireEvent.change(screen.getByRole("searchbox", { name: "Search tasks" }), {
-    target: { value: "rail" },
-  });
-  fireEvent.keyDown(screen.getByRole("searchbox", { name: "Search tasks" }), {
-    key: "Escape",
-  });
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
   expect(within(projects).getByText("Recent research")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Filter tasks" })).toHaveFocus();
 });
 
-it("keeps archive enabled from a one-result local filter", () => {
+it("keeps archive enabled for a project with other attached chats", () => {
   useWorkbenchStore.setState({
     project: { id: "sage", name: "Sage", roots: [] },
     projects: [{ id: "sage", name: "Sage", rootCount: 1, lastOpenedAt: 1 }],
@@ -698,10 +746,6 @@ it("keeps archive enabled from a one-result local filter", () => {
   });
   render(<LeftSidebar />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Filter tasks" }));
-  fireEvent.change(screen.getByRole("searchbox", { name: "Search tasks" }), {
-    target: { value: "Stale" },
-  });
   fireEvent.click(
     screen.getByRole("button", { name: "Chat actions for Stale task" }),
   );

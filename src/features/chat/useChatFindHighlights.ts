@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
-import type { ChatMatch } from "./chatFindModel";
 import { chatMatchRanges, publishChatHighlights } from "./chatFindHighlights";
+import { type ChatMatch } from "./chatFindModel";
 import {
   chatScrollBehavior,
   pauseChatFollow,

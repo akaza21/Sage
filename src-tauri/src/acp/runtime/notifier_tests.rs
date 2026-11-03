@@ -177,13 +177,13 @@ fn a_child_epoch_at_an_unchanged_revision_is_still_delivered() {
             Ok(PublishOutcome::Scheduled)
         );
         sink.wait_for_entries(1).await;
-        sink.release(1);
-        tokio::task::yield_now().await;
-        // Only the child epoch moved; the revision is the same.
+        // Keep the original revision in flight so only the newer child epoch
+        // can admit this second event at the unchanged revision.
         assert_eq!(
             notifier.publish_committed(child(7)),
             Ok(PublishOutcome::Scheduled)
         );
+        sink.release(1);
         sink.wait_for_entries(2).await;
         // A repeat of the child epoch being delivered coalesces into it. Once
         // that delivery settles the notifier is idle and would schedule the

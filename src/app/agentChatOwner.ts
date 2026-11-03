@@ -1,4 +1,4 @@
-import { createContext } from "react";
+import { createContext, useContext } from "react";
 import { create } from "zustand";
 
 import type { AcpChatPage } from "../domain/acp";
@@ -28,15 +28,30 @@ export const AgentSessionChromeContext = createContext<
 
 interface AgentChatOwnerStore {
   ownerId: string | null;
+  agentFocusId: string | null;
 }
 
 const useAgentChatOwnerStore = create<AgentChatOwnerStore>(() => ({
   ownerId: null,
+  agentFocusId: null,
 }));
 
+/**
+ * True inside the Agent body. Its readers keep the last focused Chat while the
+ * body sleeps under Activity, so hidden renders never see the withdrawn pin.
+ */
+export const AgentChatOwnerScopeContext = createContext(false);
+
 export function pinAgentChatOwner(chatId: string | null): void {
-  if (useAgentChatOwnerStore.getState().ownerId === chatId) return;
-  useAgentChatOwnerStore.setState({ ownerId: chatId });
+  const { ownerId, agentFocusId } = useAgentChatOwnerStore.getState();
+  if (ownerId === chatId && agentFocusId === chatId) return;
+  useAgentChatOwnerStore.setState({ ownerId: chatId, agentFocusId: chatId });
+}
+
+/** Withdraws the pin seen outside Agent; the Agent body keeps its focus. */
+export function releaseAgentChatOwner(): void {
+  if (useAgentChatOwnerStore.getState().ownerId === null) return;
+  useAgentChatOwnerStore.setState({ ownerId: null });
 }
 
 export function pinnedAgentChatOwner(): string | null {
@@ -44,7 +59,10 @@ export function pinnedAgentChatOwner(): string | null {
 }
 
 export function usePinnedAgentChatOwner(): string | null {
-  return useAgentChatOwnerStore((state) => state.ownerId);
+  const insideAgent = useContext(AgentChatOwnerScopeContext);
+  return useAgentChatOwnerStore((state) =>
+    insideAgent ? state.agentFocusId : state.ownerId,
+  );
 }
 
 export function clearAgentChatOwner(): void {

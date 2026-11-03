@@ -1,40 +1,14 @@
-import {
-  Archive,
-  ArrowLeft,
-  ArrowRightLeft,
-  FileDiff,
-  Folder,
-  FolderInput,
-  Laptop,
-  MoreHorizontal,
-  Pencil,
-  Pin,
-  PinOff,
-} from "../ui/leanIcons";
-import { useContext, useId, useRef, useState, type ReactNode } from "react";
-import { AgentHeaderMenuContext } from "./AgentToolsProvider";
-
-import { MenuPopover } from "../ui/MenuPopover";
-import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
+import { useId, useRef, useState, type ReactNode } from "react";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
-import { agentChatMoveDestinations } from "./agentChatRail";
-import { useWorkbenchStore } from "../app/store";
-
-export function ProjectChatActionMenu({
-  chatId,
-  chatTitle,
-  pinned,
-  open,
-  disabled,
-  archiveDisabled,
-  projectId,
-  onOpenChange,
-  onRename,
-  triggerRef,
-  sessionChrome,
-  triggerLabel,
-  triggerRole,
-}: {
+import { lazyParts } from "../features/chat/lazyParts";
+import { FileDiff, MoreHorizontal } from "../ui/leanIcons";
+import { MenuPopover } from "../ui/MenuPopover";
+import { AgentHeaderMenuContext } from "./AgentToolsProvider";
+import type * as ActionsChunk from "./ProjectChatActionPopover";
+const ActionsPart = lazyParts<typeof ActionsChunk>(
+  () => import("./ProjectChatActionPopover"),
+);
+export interface ProjectChatMenuProps {
   chatId: string;
   chatTitle: string;
   pinned: boolean;
@@ -44,37 +18,28 @@ export function ProjectChatActionMenu({
   projectId: string;
   onOpenChange: (open: boolean) => void;
   onRename: () => void;
+  onArchive?: () => void;
+  onMarkUnread?: () => void;
   triggerRef?: (node: HTMLButtonElement | null) => void;
   sessionChrome?: AgentSessionChrome | null;
   triggerLabel?: string;
   triggerRole?: "menuitem";
-}) {
+}
+export function ProjectChatActionMenu(props: ProjectChatMenuProps) {
+  const {
+    chatTitle,
+    open,
+    disabled,
+    onOpenChange,
+    triggerRef,
+    triggerLabel,
+    triggerRole,
+  } = props;
   const localTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const headerMenu = useContext(AgentHeaderMenuContext);
-  const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
-  const [moving, setMoving] = useState(false);
-  const projects = useWorkbenchStore((state) =>
-    moving ? state.projects : null,
+  const [openingFocus, setOpeningFocus] = useState<"first" | "last" | null>(
+    null,
   );
-  const destinations = projects
-    ? agentChatMoveDestinations(projects, projectId)
-    : [];
   const menuId = useId();
-  const PinIcon = pinned ? PinOff : Pin;
-
-  const closeAndRestoreFocus = () => {
-    setMoving(false);
-    localTriggerRef.current?.focus();
-    onOpenChange(false);
-  };
-
-  const completeAction = (action: () => void) => {
-    closeAndRestoreFocus();
-    headerMenu?.close();
-    headerMenu?.returnFocus();
-    action();
-  };
-
   return (
     <div className="project-chat-actions">
       <button
@@ -92,185 +57,31 @@ export function ProjectChatActionMenu({
         disabled={disabled}
         onClick={() => {
           setOpeningFocus("first");
-          setMoving(false);
           onOpenChange(!open);
         }}
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           setOpeningFocus(event.key === "ArrowUp" ? "last" : "first");
-          setMoving(false);
           onOpenChange(true);
         }}
       >
         <MoreHorizontal size={16} aria-hidden="true" />
       </button>
-      <MenuPopover
-        id={menuId}
-        open={open}
-        ariaLabel={`Actions for ${chatTitle}`}
-        className="project-chat-actions__menu"
-        focusKey={moving}
-        initialFocus={openingFocus}
-        triggerRef={localTriggerRef}
-        portalTarget={triggerRole ? "closest-popover" : "document"}
-        keepMounted={Boolean(sessionChrome)}
-        onDismiss={() => {
-          setMoving(false);
-          onOpenChange(false);
-        }}
-      >
-        {moving ? (
-          <>
-            <button
-              className="menu-item"
-              type="button"
-              role="menuitem"
-              onClick={() => setMoving(false)}
-            >
-              <ArrowLeft size={14} aria-hidden="true" />
-              <span>Back</span>
-            </button>
-            <div className="menu-group-label">Move to project</div>
-            {destinations.length === 0 ? (
-              <p className="menu-empty">No other project available.</p>
-            ) : (
-              destinations.map((destination) => (
-                <button
-                  key={destination.id}
-                  className="menu-item"
-                  type="button"
-                  role="menuitem"
-                  aria-label={`Move chat to ${destination.name}`}
-                  onClick={() =>
-                    completeAction(() => {
-                      void useWorkbenchStore
-                        .getState()
-                        .moveChat(chatId, destination.id, projectId);
-                    })
-                  }
-                >
-                  {destination.kind === "local" ? (
-                    <Laptop size={14} aria-hidden="true" />
-                  ) : (
-                    <Folder size={14} aria-hidden="true" />
-                  )}
-                  <span>{destination.name}</span>
-                </button>
-              ))
-            )}
-          </>
-        ) : (
-          <>
-            {sessionChrome ? (
-              <>
-                <ChatHandoffControl
-                  acpPage={sessionChrome.acpPage}
-                  messages={sessionChrome.messages}
-                  busy={sessionChrome.busy}
-                  onCommitted={() =>
-                    sessionChrome.actions.current.focusComposer()
-                  }
-                  menuItem
-                  returnFocusRef={localTriggerRef}
-                  onReturnFocus={headerMenu?.returnFocus}
-                  onOpen={() => {
-                    onOpenChange(false);
-                    headerMenu?.close();
-                  }}
-                />
-                {sessionChrome.canCloseSession ? (
-                  <button
-                    className="menu-item"
-                    type="button"
-                    role="menuitem"
-                    disabled={sessionChrome.busy}
-                    onClick={() =>
-                      completeAction(() =>
-                        sessionChrome.actions.current.closeSession(),
-                      )
-                    }
-                  >
-                    <ArrowRightLeft size={14} aria-hidden="true" />
-                    <span>Close session</span>
-                  </button>
-                ) : null}
-                {sessionChrome.canEndSession ? (
-                  <button
-                    className="menu-item"
-                    type="button"
-                    role="menuitem"
-                    disabled={sessionChrome.busy}
-                    onClick={() =>
-                      completeAction(() =>
-                        sessionChrome.actions.current.endSession(),
-                      )
-                    }
-                  >
-                    <ArrowRightLeft size={14} aria-hidden="true" />
-                    <span>End session</span>
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-            <button
-              className="menu-item"
-              type="button"
-              role="menuitem"
-              onClick={() =>
-                completeAction(() => {
-                  void useWorkbenchStore.getState().pinChat(chatId, projectId);
-                })
-              }
-            >
-              <PinIcon size={14} aria-hidden="true" />
-              <span>{pinned ? "Unpin chat" : "Pin chat"}</span>
-            </button>
-            <button
-              className="menu-item"
-              type="button"
-              role="menuitem"
-              onClick={() => setMoving(true)}
-            >
-              <FolderInput size={14} aria-hidden="true" />
-              <span>Move to project</span>
-            </button>
-            <button
-              className="menu-item"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onOpenChange(false);
-                onRename();
-              }}
-            >
-              <Pencil size={14} aria-hidden="true" />
-              <span>Rename chat</span>
-            </button>
-            <button
-              className="menu-item"
-              type="button"
-              role="menuitem"
-              disabled={archiveDisabled}
-              onClick={() =>
-                completeAction(() => {
-                  void useWorkbenchStore
-                    .getState()
-                    .archiveChat(chatId, projectId);
-                })
-              }
-            >
-              <Archive size={14} aria-hidden="true" />
-              <span>Archive chat</span>
-            </button>
-          </>
-        )}
-      </MenuPopover>
+      {open || (props.sessionChrome && openingFocus) ? (
+        <ActionsPart
+          part="ProjectChatActionPopover"
+          {...props}
+          localTriggerRef={localTriggerRef}
+          menuId={menuId}
+          openingFocus={openingFocus ?? "first"}
+        />
+      ) : null}
     </div>
   );
 }
 
-// The Agent header "…" (Codex 68): the project row hosts the chat actions
+// The Agent header "…": the project row hosts the chat actions
 // above as a nested menu, then Changes opens this Chat's diff picker.
 export function AgentHeaderMore({
   scope,

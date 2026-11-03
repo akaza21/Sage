@@ -114,6 +114,19 @@ impl PiRuntime {
         ))
     }
 
+    pub(crate) fn from_native_binding(
+        binding_digest: [u8; 32],
+        runtime_epoch: RuntimeEpoch,
+        session_id: SageAgentSessionId,
+    ) -> Self {
+        Self::new(
+            PiTranslator::native_admitted(runtime_epoch.get()),
+            binding_digest,
+            runtime_epoch,
+            session_id,
+        )
+    }
+
     pub(crate) fn from_binding(
         binding: &ResearchPiBinding,
         binding_digest: [u8; 32],

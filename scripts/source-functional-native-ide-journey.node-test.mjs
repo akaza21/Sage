@@ -1984,7 +1984,10 @@ test("Windows verbatim executable paths match their canonical filesystem form", 
   assert.deepEqual(actual, { path: verbatim, ...expected });
 });
 
-test("bounded Playwright helper settles overflow and timeout when child never closes", async () => {
+test("bounded Playwright helper settles overflow and timeout when child never closes", async (context) => {
+  // This test exercises a running child's timeout, not preflight scheduling.
+  // Keep its five-millisecond deadline from expiring before the runner starts.
+  context.mock.method(Date, "now", () => 1_000);
   for (const mode of ["overflow", "timeout"]) {
     const child = new EventEmitter();
     child.stdout = new PassThrough();
