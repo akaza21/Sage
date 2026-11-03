@@ -57,6 +57,11 @@
 
 - Apply the implicit `engineering-workflow` skill to software work; the user
   does not need to invoke individual skills.
+- These skills are optional local tooling. When they are not installed (for
+  example in a cloud agent environment), follow the same stages using this
+  file and the issue as the spec, and do not stop to ask for the skills. An
+  agent-ready issue (status:ready, with Goal, Files to touch, Acceptance checks
+  and Gates) starts at `implement`.
 - Use the main flow as an index, entering at the earliest unresolved stage:
   `grill-with-docs` -> `to-spec` -> `to-tickets` -> `implement`, with `tdd`
   driving implementation and `code-review` closing it out.
