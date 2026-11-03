@@ -12,9 +12,9 @@ import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
-  agentRailClockMs,
   resetAgentRailViewPrefs,
-  syncAgentRailClock,
+  setAgentRailOrdering,
+  setAgentRailOrganize,
 } from "./agentRailViewPrefs";
 
 const initial = useWorkbenchStore.getState();
@@ -45,12 +45,6 @@ function seed() {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
 }
-
-it("never moves the rail clock backwards when activity or archive changes", () => {
-  syncAgentRailClock(100_000);
-  syncAgentRailClock(20_000);
-  expect(agentRailClockMs()).toBe(100_000);
-});
 
 it("collapses projects without activating them and reopens the section from the rail", () => {
   seed();
@@ -127,7 +121,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   await act(async () => undefined);
 });
 
-it("caps long projects at eight rows and Show more opens the focused project palette", async () => {
+it("previews five chats per project and Show more expands the list in place", () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 12 }, (_, position) => ({
@@ -140,22 +134,28 @@ it("caps long projects at eight rows and Show more opens the focused project pal
       status: "idle",
       updatedAt: position + 1,
     })),
+    activeTabId: null,
   });
   render(<LeftSidebar />);
-  expect(
+  const rows = () =>
     within(screen.getByRole("region", { name: "Projects" })).getAllByRole(
       "button",
       { name: /^Open chat / },
-    ),
-  ).toHaveLength(8);
-  fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-  expect(
-    await screen.findByRole("searchbox", { name: "Search Chats" }),
-  ).toHaveFocus();
-  expect(screen.getByRole("button", { name: "Search in" })).toHaveAttribute(
-    "data-selected-id",
-    "project-a",
-  );
+    );
+  expect(rows().map((row) => row.textContent)).toEqual([
+    "Task 11",
+    "Task 10",
+    "Task 9",
+    "Task 8",
+    "Task 7",
+  ]);
+  const projects = () =>
+    within(screen.getByRole("region", { name: "Projects" }));
+  fireEvent.click(projects().getByRole("button", { name: "Show more" }));
+  expect(rows()).toHaveLength(12);
+  expect(screen.queryByRole("searchbox", { name: "Search Chats" })).toBeNull();
+  fireEvent.click(projects().getByRole("button", { name: "Show less" }));
+  expect(rows()).toHaveLength(5);
 });
 
 it("does not offer Undo for an archive rejected by the durable store", async () => {
@@ -175,7 +175,7 @@ it("does not offer Undo for an archive rejected by the durable store", async () 
   expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
 });
 
-it("classifies all admitted chats before applying the folder row cap", async () => {
+it("shows a collapsed project as running when any of its chats runs, even past the preview", () => {
   seed();
   useWorkbenchStore.setState({
     tabs: Array.from({ length: 10 }, (_, position) => ({
@@ -185,21 +185,153 @@ it("classifies all admitted chats before applying the folder row cap", async () 
       position,
       pinned: false,
       dirty: false,
-      status: position === 8 ? "waiting" : position === 9 ? "working" : "idle",
+      status: position === 0 ? "working" : "idle",
+      updatedAt: position + 1,
     })),
+    activeTabId: null,
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: "Chat list options" }));
-  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Status" }));
-  fireEvent.click(
-    await screen.findByRole("menuitemradio", { name: "Needs Attention" }),
-  );
-  expect(
-    screen.getByRole("button", { name: "Open chat Task 8" }),
-  ).toBeVisible();
+  const header = screen
+    .getByRole("button", { name: "Project A" })
+    .closest(".project-entry__header") as HTMLElement;
+  expect(within(header).queryByRole("img", { name: "Working" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Project A" }));
+  expect(within(header).getByRole("img", { name: "Working" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Open chat Task 0" })).toBeNull();
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Working" }));
+});
+
+it("pins, unpins and archives a chat from its hover actions", async () => {
+  seed();
+  // Stand-ins for the durable store: they change the projection the rail
+  // renders, or refuse, so the test reads what the person would see.
+  let refuseArchive = false;
+  useWorkbenchStore.setState({
+    pinChat: async (chatId: string) =>
+      useWorkbenchStore.setState((state) => ({
+        tabs: state.tabs.map((tab) =>
+          tab.id === chatId ? { ...tab, pinned: !tab.pinned } : tab,
+        ),
+      })),
+    archiveChat: async (chatId: string) => {
+      if (refuseArchive) return false;
+      useWorkbenchStore.setState((state) => ({
+        archivedChats: [{ id: chatId, title: chatId }],
+        tabs: state.tabs.filter((tab) => tab.id !== chatId),
+      }));
+      return true;
+    },
+  });
+  render(<LeftSidebar />);
+  const projects = () =>
+    within(screen.getByRole("region", { name: "Projects" }));
+
+  fireEvent.click(projects().getByRole("button", { name: "Pin Beta" }));
+  const pinned = await screen.findByRole("region", { name: "Pinned" });
   expect(
-    screen.getByRole("button", { name: "Open chat Task 9" }),
+    within(pinned).getByRole("button", { name: /^Open chat Beta/ }),
   ).toBeVisible();
+  expect(
+    projects().queryByRole("button", { name: /^Open chat Beta/ }),
+  ).toBeNull();
+
+  fireEvent.click(within(pinned).getByRole("button", { name: "Unpin Beta" }));
+  expect(
+    await projects().findByRole("button", { name: "Open chat Beta" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("region", { name: "Pinned" })).toBeNull();
+
+  refuseArchive = true;
+  fireEvent.click(projects().getByRole("button", { name: "Archive Beta" }));
+  await act(async () => undefined);
+  expect(
+    projects().getByRole("button", { name: "Open chat Beta" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Undo archive" })).toBeNull();
+
+  refuseArchive = false;
+  fireEvent.click(projects().getByRole("button", { name: "Archive Beta" }));
+  expect(
+    await screen.findByRole("button", { name: "Undo archive" }),
+  ).toBeVisible();
+  expect(
+    projects().queryByRole("button", { name: "Open chat Beta" }),
+  ).toBeNull();
+});
+
+it("keeps the open chat in view In one list, even far down a manual order", () => {
+  seed();
+  const tabs = Array.from({ length: 40 }, (_, position) => ({
+    id: `chat-${position}`,
+    kind: "chat" as const,
+    title: `Task ${position}`,
+    position,
+    pinned: false,
+    dirty: false,
+    status: "idle" as const,
+    updatedAt: 100 - position,
+  }));
+  useWorkbenchStore.setState({ tabs, activeTabId: "chat-39" });
+  act(() => {
+    setAgentRailOrganize("list");
+    setAgentRailOrdering("manual");
+  });
+  render(<LeftSidebar />);
+  const recents = within(screen.getByRole("region", { name: "Recents" }));
+  const open = recents.getByRole("button", { name: "Open chat Task 39" });
+  expect(open).toHaveAttribute("aria-current", "page");
+  // One list fills the rail with every chat it holds, in order, rather than
+  // paging; the open chat keeps its place instead of jumping the queue.
+  const listed = recents
+    .getAllByRole("button", { name: /^Open chat Task / })
+    .map((button) => button.getAttribute("aria-label"));
+  expect(listed).toHaveLength(40);
+  expect(listed[0]).toBe("Open chat Task 0");
+  expect(listed[39]).toMatch(/^Open chat Task 39/);
+  expect(recents.queryByRole("button", { name: "Show more" })).toBeNull();
+});
+
+it("keeps the open chat In one list when it is past the list's cap", () => {
+  seed();
+  const tabs = Array.from({ length: 64 }, (_, position) => ({
+    id: `chat-${position}`,
+    kind: "chat" as const,
+    title: `Task ${position}`,
+    position,
+    pinned: false,
+    dirty: false,
+    status: "idle" as const,
+    updatedAt: 1_000 - position,
+  }));
+  useWorkbenchStore.setState({
+    tabs,
+    activeTabId: "chat-63",
+    projects: [
+      { id: "project-a", name: "A", rootCount: 0, lastOpenedAt: 2 },
+      {
+        id: "project-b",
+        name: "B",
+        rootCount: 0,
+        lastOpenedAt: 1,
+        railChats: [
+          {
+            id: "chat:b",
+            title: "Elsewhere",
+            pinned: false,
+            position: 0,
+            updatedAt: 999,
+          },
+        ],
+      },
+    ],
+  });
+  act(() => setAgentRailOrganize("list"));
+  render(<LeftSidebar />);
+  expect(
+    within(screen.getByRole("region", { name: "Recents" })).getByRole(
+      "button",
+      {
+        name: "Open chat Task 63",
+      },
+    ),
+  ).toHaveAttribute("aria-current", "page");
 });

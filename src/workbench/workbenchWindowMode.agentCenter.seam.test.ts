@@ -499,7 +499,9 @@ describe("Agent center workbench window mode seam", () => {
       expect(screen.getByRole("region", { name: "Agent chat" }));
     });
 
-    fireEvent.click(screen.getByTitle("Open chat B"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Open chat B(?:,|$)/ }),
+    );
     await settleLazyModules();
     await vi.waitFor(() => {
       expect(activateTab).toHaveBeenCalledWith("chat:b");
