@@ -26,13 +26,20 @@ pub(super) fn run_version_command(
     path: &Path,
     limits: ProbeLimits,
 ) -> Option<VersionCommandOutput> {
-    let mut child = Command::new(path)
+    let mut command = Command::new(path);
+    command
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::piped());
+    // Release builds use the GUI subsystem, so a console harness or `.cmd`
+    // shim would otherwise open a visible console window for every probe.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
+    let mut child = command.spawn().ok()?;
     let stdout = child.stdout.take()?;
     let stderr = child.stderr.take()?;
     let (stdout_tx, stdout_rx) = mpsc::sync_channel(1);
@@ -122,4 +129,147 @@ fn handoff_version_reaper(
         let _ = child.kill();
         let _ = child.wait();
     });
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use std::{
+        path::{Path, PathBuf},
+        process::{Command, Stdio},
+    };
+
+    use super::run_version_command;
+    use crate::harness_discovery::ProbeLimits;
+
+    /// Prints the console window handle it sees, then its arguments, so a
+    /// probe proves both that it ran without a console window and that the
+    /// fixed `--version` argument reached it.
+    const CONSOLE_FIXTURE: &str = r#"
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetConsoleWindow() -> *mut std::ffi::c_void;
+        }
+        fn main() {
+            let console = unsafe { GetConsoleWindow() as usize };
+            let arguments: Vec<String> = std::env::args().skip(1).collect();
+            println!("console={console} arguments={arguments:?}");
+        }
+    "#;
+
+    fn fixture_directory() -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("sage-version-probe-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
+
+    fn compile_console_fixture(directory: &Path) -> PathBuf {
+        let source = directory.join("fixture.rs");
+        let executable = directory.join("codex.exe");
+        std::fs::write(&source, CONSOLE_FIXTURE).unwrap();
+        let status = Command::new("rustc")
+            .arg(&source)
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap();
+        assert!(status.success(), "rustc failed to build the fixture");
+        executable
+    }
+
+    fn console_window_seen_by(stdout: &[u8]) -> usize {
+        let line = std::str::from_utf8(stdout).unwrap().trim();
+        let (console, arguments) = line
+            .strip_prefix("console=")
+            .and_then(|rest| rest.split_once(' '))
+            .unwrap_or_else(|| panic!("unexpected fixture output {line:?}"));
+        assert_eq!(arguments, r#"arguments=["--version"]"#);
+        console.parse().unwrap()
+    }
+
+    /// Names the fixture for the re-run of the console test that stands in for
+    /// a release build: a process with no console of its own.
+    const DETACHED_FIXTURE_ENV: &str = "SAGE_VERSION_PROBE_DETACHED_FIXTURE";
+
+    /// The detached re-run writes its findings here, next to the fixture, so
+    /// they do not depend on how a console-less process's stdout is wired.
+    fn report_path(fixture: &Path) -> PathBuf {
+        fixture.with_file_name("report.txt")
+    }
+
+    /// Runs inside the detached re-run. Like a GUI-subsystem release build it
+    /// has no console, so a console child started without CREATE_NO_WINDOW
+    /// gets a new console window of its own.
+    fn report_from_detached_process(fixture: &Path) {
+        assert_eq!(
+            unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize,
+            0
+        );
+        let unflagged = Command::new(fixture).arg("--version").output().unwrap();
+        assert!(unflagged.status.success());
+        let probed = run_version_command(fixture, ProbeLimits::PRODUCTION)
+            .expect("the console fixture's version output is captured");
+        assert!(!probed.stdout.truncated);
+        assert!(probed.stderr.bytes.is_empty());
+        let report = format!(
+            "unflagged={}\nprobed={}\n",
+            console_window_seen_by(&unflagged.stdout),
+            console_window_seen_by(&probed.stdout.bytes)
+        );
+        std::fs::write(report_path(fixture), report).unwrap();
+    }
+
+    #[test]
+    fn version_probe_starts_harness_without_a_console_window() {
+        if let Some(fixture) = std::env::var_os(DETACHED_FIXTURE_ENV) {
+            report_from_detached_process(Path::new(&fixture));
+            return;
+        }
+        use std::os::windows::process::CommandExt;
+        let directory = fixture_directory();
+        let executable = compile_console_fixture(&directory);
+        let test_path = module_path!().split_once("::").unwrap().1;
+        let test_name =
+            format!("{test_path}::version_probe_starts_harness_without_a_console_window");
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([test_name.as_str(), "--exact", "--test-threads=1"])
+            .env(DETACHED_FIXTURE_ENV, &executable)
+            .creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "the detached re-run failed: {status}");
+        let report = std::fs::read_to_string(report_path(&executable)).unwrap();
+        // Control: started without the flag, the same fixture reports the new
+        // console window it was given, so a 0 below is not a blind fixture.
+        let unflagged = report
+            .lines()
+            .find_map(|line| line.strip_prefix("unflagged="));
+        assert!(
+            matches!(unflagged, Some(window) if window != "0"),
+            "{report}"
+        );
+        let probed = report.lines().find_map(|line| line.strip_prefix("probed="));
+        assert_eq!(probed, Some("0"), "{report}");
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn version_probe_still_reads_cmd_shim_output() {
+        let directory = fixture_directory();
+        let shim = directory.join("claude.cmd");
+        std::fs::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n").unwrap();
+
+        let output = run_version_command(&shim, ProbeLimits::PRODUCTION)
+            .expect("the .cmd shim's version output is captured");
+        assert_eq!(
+            std::str::from_utf8(&output.stdout.bytes).unwrap().trim(),
+            "claude --version 4.5.6"
+        );
+        assert!(!output.stdout.truncated);
+        assert!(output.stderr.bytes.is_empty());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
 }
