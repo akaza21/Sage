@@ -1,4 +1,5 @@
 import {
+  AGENT_ICON_RAIL_WIDTH,
   AGENT_ARTIFACT_WIDTH,
   AGENT_CHAT_MIN_WIDTH,
   AGENT_LEFT_RAIL_WIDTH,
@@ -57,7 +58,7 @@ export function agentWorkbenchLayout({
       : navigationCap,
   };
   const navigationWidth = navigationCollapsed
-    ? 54
+    ? AGENT_ICON_RAIL_WIDTH
     : clampWorkbenchSidebarWidth(navigationBounds, requested.leftRailWidth);
   const artifactInlineAvailable =
     desktop &&
@@ -73,7 +74,7 @@ export function agentWorkbenchLayout({
           ...AGENT_ARTIFACT_WIDTH,
           maxWidth: Math.min(
             AGENT_ARTIFACT_WIDTH.maxWidth,
-            viewportWidth - 54 - AGENT_CHAT_MIN_WIDTH - 8,
+            viewportWidth - AGENT_ICON_RAIL_WIDTH - AGENT_CHAT_MIN_WIDTH - 8,
           ),
         }
       : agentDesktopArtifactWidth(
@@ -81,7 +82,7 @@ export function agentWorkbenchLayout({
         );
   const widths = navigationCollapsed
     ? {
-        leftRailWidth: 54,
+        leftRailWidth: AGENT_ICON_RAIL_WIDTH,
         artifactWidth: clampWorkbenchSidebarWidth(
           artifactBounds,
           requested.artifactWidth,
