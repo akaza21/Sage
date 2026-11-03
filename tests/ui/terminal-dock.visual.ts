@@ -20,6 +20,8 @@ async function attachNativeTerminal(page: Page) {
     ]);
     let sequence = 0;
     const sessions = new Map<string, string>();
+    const pty = { columns: 80, rows: 24 };
+    Object.assign(window, { terminalPtySize: pty });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
@@ -27,7 +29,12 @@ async function attachNativeTerminal(page: Page) {
           command: string,
           args?: {
             visible: boolean;
-            request: { handle: { sessionId: string }; cursor: string };
+            request: {
+              handle: { sessionId: string };
+              cursor: string;
+              columns: number;
+              rows: number;
+            };
           },
         ) => {
           if (
@@ -68,6 +75,11 @@ async function attachNativeTerminal(page: Page) {
               sessions.delete(args!.request.handle.sessionId);
               return;
             case "terminal_resize":
+              Object.assign(pty, {
+                columns: args!.request.columns,
+                rows: args!.request.rows,
+              });
+              return;
             case "terminal_write":
               return;
             default:
@@ -242,3 +254,141 @@ test("returns to the toggle when opened without a focus target", async ({
   await expect(toggle).toBeFocused();
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
 });
+
+async function gridGeometry(page: Page) {
+  return page.locator(".terminal-dock__screen").evaluate((host) => {
+    const grid = host.querySelector<HTMLElement>(".xterm-screen")!;
+    const rows = host.querySelector<HTMLElement>(".xterm-rows")!;
+    const scrollbar = host.querySelector(".scrollbar.vertical")!;
+    const font = getComputedStyle(rows);
+    const context = new OffscreenCanvas(1, 1).getContext("2d")!;
+    context.font = `${font.fontSize} ${font.fontFamily}`;
+    const character = context.measureText("W");
+    const pty = (
+      window as unknown as {
+        terminalPtySize: { columns: number; rows: number };
+      }
+    ).terminalPtySize;
+    return {
+      ...pty,
+      renderedRows: rows.children.length,
+      width: grid.getBoundingClientRect().width,
+      height: grid.getBoundingClientRect().height,
+      availableWidth:
+        host.clientWidth - scrollbar.getBoundingClientRect().width,
+      availableHeight: host.clientHeight,
+      cellWidth: character.width,
+      cellHeight: Number.parseFloat(
+        getComputedStyle(rows.firstElementChild!).height,
+      ),
+    };
+  });
+}
+
+async function dockGeometry(page: Page) {
+  return page.locator(".terminal-dock").evaluate((dock) => {
+    const header = dock.querySelector<HTMLElement>(".terminal-dock__header")!;
+    const viewport = dock.querySelector<HTMLElement>(
+      ".terminal-dock__viewport",
+    )!;
+    const pty = (
+      window as unknown as {
+        terminalPtySize: { columns: number; rows: number };
+      }
+    ).terminalPtySize;
+    return {
+      unusedHeight: Math.round(
+        dock.clientHeight -
+          header.getBoundingClientRect().height -
+          viewport.getBoundingClientRect().height,
+      ),
+      columns: pty.columns,
+      rows: pty.rows,
+    };
+  });
+}
+
+test("the terminal viewport follows the dock as the window shrinks and grows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page
+    .getByRole("button", { name: "Toggle terminal", exact: true })
+    .click();
+  await expect(page.locator(".xterm-screen:visible")).toBeVisible();
+  await expect
+    .poll(async () => (await dockGeometry(page)).unusedHeight)
+    .toBe(0);
+  const first = await dockGeometry(page);
+  let tallest = first;
+  for (const [width, height] of [
+    [900, 620],
+    [1700, 1000],
+    [1280, 800],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect
+      .poll(async () => (await dockGeometry(page)).unusedHeight)
+      .toBe(0);
+    if (height === 1000) tallest = await dockGeometry(page);
+  }
+  expect(tallest.rows).toBeGreaterThan(first.rows);
+  await expect.poll(() => dockGeometry(page)).toEqual(first);
+});
+
+for (const deviceScaleFactor of [1, 1.25, 2]) {
+  test.describe(`terminal grid at ${deviceScaleFactor} device scale`, () => {
+    test.use({ deviceScaleFactor });
+
+    test("fits both axes and matches the PTY after narrow and wide resizes", async ({
+      page,
+    }) => {
+      await page
+        .getByRole("button", { name: "Toggle terminal", exact: true })
+        .click();
+      await expect(page.locator(".xterm-screen:visible")).toBeVisible();
+      const host = page.locator(".terminal-dock__screen");
+      let firstFit: Awaited<ReturnType<typeof gridGeometry>> | undefined;
+      for (const [width, height] of [
+        [32, 32],
+        [800, 160],
+        [1600, 320],
+        [800, 160],
+      ]) {
+        await host.evaluate(
+          (element, size) => {
+            element.style.width = `${size.width}px`;
+            element.style.height = `${size.height}px`;
+          },
+          { width, height },
+        );
+        await expect
+          .poll(async () => {
+            const grid = await gridGeometry(page);
+            return {
+              fitsWidth: grid.width <= grid.availableWidth,
+              fitsHeight: grid.height <= grid.availableHeight,
+              fillsWidth: grid.availableWidth - grid.width < grid.cellWidth,
+              fillsHeight: grid.availableHeight - grid.height < grid.cellHeight,
+              matchesColumns:
+                grid.width === Math.round(grid.columns * grid.cellWidth),
+              matchesRows: grid.renderedRows === grid.rows,
+            };
+          })
+          .toEqual({
+            fitsWidth: true,
+            fitsHeight: true,
+            fillsWidth: true,
+            fillsHeight: true,
+            matchesColumns: true,
+            matchesRows: true,
+          });
+        if (width === 800) {
+          const fit = await gridGeometry(page);
+          if (firstFit) expect(fit).toEqual(firstFit);
+          else firstFit = fit;
+        }
+      }
+    });
+  });
+}

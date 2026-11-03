@@ -81,6 +81,11 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/app/browserPopupNative.ts",
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
+  "src/features/browser/browserSuggestions.ts",
+  "src/features/browser/browserClipboard.ts",
+  "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/outline/outlineNavigation.ts",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
@@ -92,6 +97,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/app/openFileRelease.ts",
   // Explorer's files.exclude matcher loads beside the startup bundle.
   "src/domain/pathGlobMatcher.ts",
+  // The device toolbar, its state, handles and styles load when first shown.
+  "src/features/browser/BrowserDeviceController.tsx",
   // The browser downloads popover body loads on its first open.
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.
@@ -141,6 +148,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/git/gitDecorationsUi.ts",
   // The Editor tab strip loads with the Editor.
   "src/workbench/TabStrip.tsx",
+  // Change markers (EP-14) load with the first File in a repository.
+  "src/features/files/gitGutter/index.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",

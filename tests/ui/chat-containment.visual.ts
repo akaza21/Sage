@@ -182,27 +182,19 @@ async function expectComposerControls(
   );
   const queue = composer.locator(".composer__queued");
   if (await queue.count()) {
-    const narrow = await composer.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return (
-        element.clientWidth -
-          Number.parseFloat(style.paddingLeft) -
-          Number.parseFloat(style.paddingRight) <=
-        520
-      );
-    });
-    await expect(queue).toHaveCSS("position", narrow ? "static" : "absolute");
-    if (!narrow) {
-      const box = await queue.boundingBox();
-      const owner = await composer.boundingBox();
-      expect(box!.y + box!.height).toBeLessThanOrEqual(owner!.y);
-    }
-    // Narrow queues live in the scrollable composer body.
+    const box = await queue.boundingBox();
+    const owner = await composer.boundingBox();
+    const toolbar = await composer.locator(".composer__toolbar").boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(owner!.y);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y);
+    expect(box!.x).toBeGreaterThanOrEqual(owner!.x);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(owner!.x + owner!.width);
+    // Every row's controls remain reachable in the bounded queue viewport.
     await expectControls(
       queue,
       queue.locator('button, [tabindex="0"]'),
       viewport,
-      narrow,
+      true,
       true,
     );
   }
@@ -309,7 +301,7 @@ for (const forcedColors of ["none", "active"] as const) {
   });
 }
 
-test("single-pane composer options stay inside the wide composer", async ({
+test("single-pane composer options stay inside the wide dock", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -321,7 +313,7 @@ test("single-pane composer options stay inside the wide composer", async ({
     .click();
   const options = page.getByRole("menu", { name: "Composer options menu" });
   await expectOverlay(options, { width: 1280, height: 1000 });
-  const bounds = await composer.boundingBox();
+  const bounds = await page.locator(".chat-dock").boundingBox();
   const panel = await options.boundingBox();
   expect(panel!.x).toBeGreaterThanOrEqual(bounds!.x);
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(

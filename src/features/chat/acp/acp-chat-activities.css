@@ -335,15 +335,6 @@
   cursor: pointer;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .acp-chat-projection * {
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto;
-    transition-duration: 0s !important;
-  }
-}
-
 @media (forced-colors: active) {
   .acp-mermaid svg {
     color: CanvasText;

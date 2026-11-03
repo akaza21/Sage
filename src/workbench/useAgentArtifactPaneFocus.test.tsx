@@ -41,6 +41,8 @@ function BrowserResourceFixture({
         onScreenshot={noop}
         onZoom={noop}
         onZoomReset={noop}
+        deviceOpen={false}
+        onDevice={noop}
         onDownloads={noop}
         onHistory={noop}
         onSettings={noop}

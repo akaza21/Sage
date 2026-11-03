@@ -13,7 +13,8 @@ const native = vi.hoisted(() => ({
   close: vi.fn(),
 }));
 
-vi.mock("../services/userTerminalDesktop", () => ({
+vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
+  ...(await importOriginal()),
   createUserTerminal: native.create,
   closeUserTerminal: native.close,
   terminalErrorLabel: () => "Terminal operation failed.",

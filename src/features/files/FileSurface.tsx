@@ -1,3 +1,4 @@
+import type { EditorView } from "@codemirror/view";
 import {
   lazy,
   Suspense,
@@ -17,7 +18,6 @@ import {
 import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
-import { localSymbolNavigation } from "../outline/outlineNavigation";
 import type { EditorAdapterHandle } from "./EditorAdapter";
 import { contentText, sameContent } from "./editorContent";
 import {
@@ -36,6 +36,8 @@ import {
 import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
+import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
+
 const MixedEolFileView = lazy(() =>
   import("./MixedEolFileView").then((module) => ({
     default: module.MixedEolFileView,
@@ -125,6 +127,22 @@ export function FileSurface({
     editor?.phase === "ready" &&
     !!resource &&
     sameResource(editor.resource, resource);
+  // The editor, with the File it was made for, so markers never cross Files.
+  const [gutterEditor, setGutterEditor] = useState<
+    (GitGutterEditor & { key: string }) | null
+  >(null);
+  const onEditorView = useCallback(
+    (view: EditorView | null, text: string | null) =>
+      setGutterEditor(
+        view && { view, text, doc: view.state.doc, key: activeResourceKey },
+      ),
+    [activeResourceKey],
+  );
+  useGitGutter(
+    gutterEditor?.key === activeResourceKey ? gutterEditor : null,
+    resource ?? null,
+    editorShown,
+  );
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
     () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
@@ -246,9 +264,13 @@ export function FileSurface({
     }
     const { content } = readyEditor;
     const selection = input.selection();
-    const { syntaxOutline } = await import("../outline/syntaxOutline");
+    const { findLocalSymbol } = await import("../outline/outlineNavigation");
     const text = contentText(content);
-    const outline = await syntaxOutline(resource.relativePath, text);
+    const target = await findLocalSymbol(
+      resource.relativePath,
+      text,
+      selection,
+    );
     const stillCurrent = useWorkbenchStore.getState().activeEditor;
     if (
       stillCurrent?.phase !== "ready" ||
@@ -257,7 +279,6 @@ export function FileSurface({
     ) {
       return;
     }
-    const target = localSymbolNavigation(text, selection, outline);
     if (!target) {
       setLanguageNavigationStatus("No declaration in this File for that name.");
       return;
@@ -317,6 +338,7 @@ export function FileSurface({
       agentMarkdown={agentMarkdown}
       onCaretOffset={onCaretOffset}
       onLimitExceeded={reportLimitExceeded}
+      onEditorView={onEditorView}
       onEditorChange={readOnly ? () => undefined : editorChanged}
       onSurfaceKeyDown={(event) => {
         handleFileSurfaceCommandKey(event, {

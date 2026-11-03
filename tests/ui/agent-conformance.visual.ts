@@ -985,17 +985,24 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await expect(
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
-    const inventory = await composer(page).evaluate((form) =>
-      [
-        ...form.querySelectorAll<HTMLElement>(
-          'button, textarea, input, select, [role="button"], [role="combobox"]',
+    await expect(
+      page.getByRole("button", { name: /^2 files changed/ }),
+    ).toBeVisible();
+    const inventory = await page
+      .locator(".chat-dock")
+      .first()
+      .evaluate((dock) =>
+        [
+          ...dock.querySelectorAll<HTMLElement>(
+            'button, textarea, input, select, [role="button"], [role="combobox"]',
+          ),
+        ].map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
         ),
-      ].map(
-        (node) =>
-          node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
-      ),
-    );
+      );
     expect(inventory).toEqual([
+      "2 files changed+44-18",
       "Message agent",
       "Access options",
       "Harness",

@@ -1,100 +1,6 @@
 .message-list__content {
-  width: min(100%, 740px);
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items {
   width: min(100%, var(--reading-measure));
   margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items > .chat-transcript-actions {
-  margin-top: calc(var(--space-2) - var(--space-3));
-}
-
-.message-list__content > .chat-transcript-day,
-.message-list__content > .chat-transcript-work,
-.message-list__content > .chat-transcript-actions {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items > .chat-transcript-day,
-.message-list__content .acp-turn__items > .chat-transcript-work {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content > .message {
-  width: min(100%, 700px);
-  margin-inline: auto;
-}
-
-.message-list__content .acp-message {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn {
-  grid-template-columns: minmax(0, 1fr) 0;
-}
-
-.message-list__content .acp-turn::before {
-  display: none;
-}
-
-.message-list__content .acp-turn__state {
-  display: none;
-}
-
-.message-list__content .acp-turn > .acp-turn__header,
-.message-list__content .acp-turn > .acp-turn__items {
-  grid-column: 1;
-}
-
-.message-list__content .acp-turn > .acp-turn__header {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-  min-height: 0;
-  margin-block: 0;
-}
-
-/*
- * Rows on the reading column: the Turn's first grid track (its column gap
- * sits right of it). A fork's "Continued from chat" rules span it exactly
- * (s2/f0066), as do inherited answers' rows.
- */
-.message-list__content:has(> .acp-chat-projection) > .chat-transcript-actions,
-.message-list__content > .chat-fork-divider,
-.chat-fork-inherited > .chat-transcript-actions {
-  width: min(calc(100% - var(--space-3)), var(--reading-measure));
-  margin-inline-start: max(
-    0px,
-    calc((100% - var(--space-3) - var(--reading-measure)) / 2)
-  );
-}
-
-/* An inherited answer's row follows its inert Turn at the answer gap. */
-.chat-fork-inherited > .chat-transcript-actions {
-  margin-top: calc(var(--space-2) - var(--space-6));
-}
-
-.message-list__content > .message--user,
-.message-list__content .acp-message--user {
-  width: fit-content;
-  max-width: min(82%, 560px);
-  margin-right: max(calc((100% - 700px) / 2), 0px);
-  margin-left: auto;
-}
-
-.message-list__content .acp-message--user {
-  margin-right: 0;
-  max-width: min(100%, 440px);
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: var(--radius-xl);
-  background: var(--agent-shell-user-bubble);
 }
 
 .message-list__content .acp-turn__attachments {
@@ -305,7 +211,7 @@
   align-items: center;
 
   gap: 0;
-  margin-top: var(--space-2);
+  margin-top: 0;
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
@@ -394,18 +300,6 @@
   white-space: nowrap;
   pointer-events: none;
   content: attr(aria-label);
-}
-
-@media (max-width: 640px) {
-  .message-list__content {
-    width: 100%;
-  }
-
-  .message-list__content > .message--user,
-  .message-list__content .acp-message--user {
-    max-width: 92%;
-    margin-right: 0;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

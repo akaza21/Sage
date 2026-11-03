@@ -17,7 +17,12 @@
   min-width: 0;
   min-height: 0;
   margin-left: var(--project-sidebar-width);
-  grid-template-rows: 34px auto minmax(0, 1fr);
+  /* Named areas keep the viewport in the 1fr row when no message shows. */
+  grid-template:
+    "header" 34px
+    "message" auto
+    "viewport" minmax(0, 1fr)
+    / minmax(0, 1fr);
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-canvas);
 }
@@ -31,6 +36,7 @@
 }
 
 .terminal-dock__header {
+  grid-area: header;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -40,7 +46,7 @@
 }
 
 .terminal-dock--collapsed {
-  grid-template-rows: 34px;
+  grid-template: "header" 34px / minmax(0, 1fr);
 }
 
 .terminal-dock__tabs {
@@ -111,6 +117,7 @@
 }
 
 .terminal-dock__message {
+  grid-area: message;
   margin: 0;
   padding: 4px 8px;
   color: var(--color-warning);
@@ -118,12 +125,15 @@
 }
 
 .terminal-dock__viewport {
+  grid-area: viewport;
   min-width: 0;
   min-height: 0;
   padding: 8px;
   overflow: hidden;
 }
 
+/* The grid is sized from this box, which carries no padding. */
+.terminal-dock__screen,
 .terminal-dock__viewport .xterm {
   height: 100%;
 }

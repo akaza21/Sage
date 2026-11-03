@@ -207,12 +207,16 @@ test("CI plans Rust from both sides of every changed path", async () => {
   }
 });
 
-test("draft pull requests start no jobs", async () => {
+test("draft pull requests and schedules start only the security job", async () => {
   const workflow = await readFile(workflowPath, "utf8");
+  const notScheduled = "github.event_name != 'schedule'";
   const notDraft =
     "github.event_name != 'pull_request' || !github.event.pull_request.draft";
-  assert.ok(jobBlock(workflow, "plan").includes(`if: ${notDraft}`));
+  assert.doesNotMatch(jobBlock(workflow, "security"), /^ {4}if:/m);
+  assert.ok(
+    jobBlock(workflow, "plan").includes(`if: ${notScheduled} && (${notDraft})`),
+  );
   const mergeGate = jobBlock(workflow, "merge-gate");
-  assert.ok(mergeGate.includes("always() &&"));
+  assert.ok(mergeGate.includes(`always() && ${notScheduled} &&`));
   assert.ok(mergeGate.includes(`(${notDraft})`));
 });
