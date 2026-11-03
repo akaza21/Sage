@@ -85,9 +85,6 @@ describe("Project and chat navigation stylesheet seams", () => {
       /\.project-chat\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*grid-row:\s*1;/s,
     );
     expect(chatCss).toMatch(
-      /\.project-chat__context\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*2;/s,
-    );
-    expect(chatCss).toMatch(
       /\.project-chat__trailing\s*\{[^}]*grid-row:\s*2;/s,
     );
     expect(chatCss).toMatch(
@@ -110,12 +107,6 @@ describe("Project and chat navigation stylesheet seams", () => {
     );
     expect(projectCss).not.toMatch(/\.project-section\b/);
     expect(projectCss).toMatch(/\.project-row\s*\{[^}]*height:\s*32px;/s);
-    expect(projectCss).toMatch(
-      /\.project-row \.project-row__branch\s*\{[^}]*border:\s*0;/s,
-    );
-    expect(projectCss).toMatch(
-      /\.project-row \.project-row__branch--chip\s*\{[^}]*border:\s*1px solid var\(--color-border-strong\);[^}]*border-radius:\s*var\(--radius-pill\);/s,
-    );
   });
 
   it("keeps Agent navigation persistent instead of a compact drawer", async () => {

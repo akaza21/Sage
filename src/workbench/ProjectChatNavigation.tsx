@@ -1,9 +1,10 @@
 import {
+  Archive,
   ChevronDown,
   ChevronRight,
-  GitBranch,
   MessageSquare,
   Pin,
+  PinOff,
   RotateCcw,
 } from "../ui/leanIcons";
 
@@ -18,8 +19,6 @@ import {
   ackSessionRailUnread,
   seenSessionRailFingerprint,
   sessionRailFingerprint,
-  sessionRailGitLabel,
-  sessionRailLive,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -29,14 +28,14 @@ import {
   markAgentRailUnread,
   setAgentRailArchiveUndo,
   useAgentRailInteractions,
+  useRailHoverCard,
 } from "./agentRailInteractions";
+import { agentRailTrailingState } from "./agentRailStatusView";
 import {
-  agentRailAgeStamp,
-  agentRailTrailingState,
-} from "./agentRailStatusView";
-import { agentRailClockMs } from "./agentRailViewPrefs";
-import { ProjectChatActionMenu } from "./ProjectChatActionMenu";
-import { ProjectChatTrailingState } from "./ProjectChatRailGlyph";
+  ProjectChatActionMenu,
+  ProjectChatHoverCard,
+  ProjectChatTrailingState,
+} from "./ProjectChatActionMenu";
 import type * as RenameChunk from "./ProjectChatRename";
 import {
   isSideChatId,
@@ -51,31 +50,25 @@ export function ProjectChatNavigation({
   projectId,
   chats,
   archived,
-  truncated = false,
+  more,
   selected,
-  onShowMore,
-  workspaceLabel,
-  showUpdated = true,
-  showBranch = true,
   hideArchived = false,
   flat = false,
   projectChatCount,
-  relativeTimeSuffix = false,
+  recent = false,
   suppressActive = false,
 }: {
   projectId: string;
   chats: AgentRailChat[];
   archived?: ArchivedChatSummary[];
-  truncated?: boolean;
+  /** A trailing "Show more" / "Show less" row. */
+  more?: { label: string; onClick: () => void };
   selected: boolean;
-  onShowMore?: (projectId: string) => void;
-  workspaceLabel?: string;
-  showUpdated?: boolean;
-  showBranch?: boolean;
   hideArchived?: boolean;
   flat?: boolean;
   projectChatCount?: number;
-  relativeTimeSuffix?: boolean;
+  /** Rows of the Recents list, which name themselves as recent chats. */
+  recent?: boolean;
   suppressActive?: boolean;
 }) {
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
@@ -100,20 +93,19 @@ export function ProjectChatNavigation({
   const openRailChat = useWorkbenchStore((state) => state.openRailChat);
   const renameChat = useWorkbenchStore((state) => state.renameChat);
   const restoreChat = useWorkbenchStore((state) => state.restoreChat);
+  const projectName = useWorkbenchStore(
+    (state) =>
+      state.projects.find((project) => project.id === projectId)?.name ??
+      (state.project?.id === projectId ? state.project.name : undefined),
+  );
+  const hoverCard = useRailHoverCard();
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
-  );
-  const gitLabel = sessionRailGitLabel(
-    useWorkbenchStore((state) =>
-      selected
-        ? (state.repositories.roots.find((root) => root.branch)?.branch ??
-          state.selectedRepositoryStatus?.branch)
-        : undefined,
-    ),
   );
   // Temporary side chats never list; a parent shows working while one runs.
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
+  const hoverChat = chatTabs.find((tab) => tab.id === hoverCard.card?.chatId);
   const awaitingApprovalIds = useChatsAwaitingApproval();
 
   useEffect(() => {
@@ -152,6 +144,15 @@ export function ProjectChatNavigation({
 
   return (
     <div className="project-chats">
+      {hoverChat && hoverCard.card ? (
+        <ProjectChatHoverCard
+          row={hoverCard.card.row}
+          shownAt={hoverCard.card.shownAt}
+          title={chatDisplayTitle(hoverChat.title)}
+          updatedAt={hoverChat.updatedAt}
+          project={projectName}
+        />
+      ) : null}
       {chatTabs.map((tab) => {
         const displayTitle = chatDisplayTitle(tab.title);
         if (renamingChatId === tab.id) {
@@ -186,31 +187,36 @@ export function ProjectChatNavigation({
             updatedAt: tab.updatedAt,
             seenFingerprint: seenSessionRailFingerprint(tab.id),
           });
-        const branchLabel = showBranch ? gitLabel : "";
-        const stamp = showUpdated
-          ? agentRailAgeStamp({
-              updatedAt: tab.updatedAt,
-              live: sessionRailLive(status),
-              nowMs: agentRailClockMs(),
-            })
-          : "";
-        const trailingState = agentRailTrailingState({
-          status,
-          unread,
-          stamp,
-        });
+        const trailingState = agentRailTrailingState({ status, unread });
+        const PinIcon = tab.pinned ? PinOff : Pin;
+        const archiveDisabled =
+          projectTransitioning || (projectChatCount ?? chatTabs.length) <= 1;
+        const archive = () => {
+          void useWorkbenchStore
+            .getState()
+            .archiveChat(tab.id, projectId)
+            .then((committed) => {
+              if (committed)
+                setAgentRailArchiveUndo({
+                  projectId,
+                  chatId: tab.id,
+                  title: displayTitle,
+                });
+            });
+        };
         const approvalLabel =
           awaitingApprovalIds.has(tab.id) || interactions.approval.has(tab.id)
             ? sessionRailStatusLabel(tab.status, true)
             : "";
-        const updatedDateTime =
-          tab.updatedAt && Number.isFinite(tab.updatedAt)
-            ? new Date(tab.updatedAt).toISOString()
-            : undefined;
         return (
           <div
             className={`project-chat-row${focused ? " project-chat-row--active" : ""}${selected ? "" : " project-chat-row--foreign"}${flat ? " project-chat-row--flat" : ""}`}
             key={tab.id}
+            onPointerEnter={(event) =>
+              hoverCard.show(tab.id, event.currentTarget)
+            }
+            onPointerLeave={hoverCard.hide}
+            onPointerDown={hoverCard.hide}
             onContextMenu={(event) => {
               if (projectTransitioning) return;
               event.preventDefault();
@@ -222,8 +228,7 @@ export function ProjectChatNavigation({
                 focused ? "project-chat--active" : ""
               }`}
               type="button"
-              title={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}`}
-              aria-label={`${relativeTimeSuffix ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
+              aria-label={`${recent ? "Open recent chat" : "Open chat"} ${displayTitle}${tab.pinned ? ", pinned" : ""}${approvalLabel ? `, ${approvalLabel}` : ""}`}
               data-chat-id={tab.id}
               aria-current={focused ? "page" : undefined}
               onClick={() => {
@@ -236,11 +241,6 @@ export function ProjectChatNavigation({
                 void openRailChat(projectId, tab.id);
               }}
             >
-              <MessageSquare
-                className="project-chat__identity"
-                size={14}
-                aria-hidden="true"
-              />
               <span className="project-chat__copy">
                 <span className="project-chat__title">
                   <span className="project-chat__title-label">
@@ -261,29 +261,34 @@ export function ProjectChatNavigation({
                 </span>
               </span>
             </button>
-            {branchLabel || workspaceLabel ? (
-              <span className="project-chat__context" aria-hidden="true">
-                {workspaceLabel ? (
-                  <span className="project-chat__workspace">
-                    {workspaceLabel}
-                  </span>
-                ) : null}
-                {branchLabel ? (
-                  <span className="project-chat__git project-chat__git--chip">
-                    <GitBranch size={10} aria-hidden="true" />
-                    {branchLabel}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
             <div className="project-chat__trailing">
               <ProjectChatTrailingState
                 awaitingApproval={Boolean(approvalLabel)}
                 focused={focused}
                 state={trailingState}
-                dateTime={updatedDateTime}
-                relative={relativeTimeSuffix}
               />
+              <div className="project-chat__quick-actions">
+                <button
+                  type="button"
+                  aria-label={`${tab.pinned ? "Unpin" : "Pin"} ${displayTitle}`}
+                  title={tab.pinned ? "Unpin chat" : "Pin chat"}
+                  disabled={projectTransitioning}
+                  onClick={() =>
+                    void useWorkbenchStore.getState().pinChat(tab.id, projectId)
+                  }
+                >
+                  <PinIcon size={14} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Archive ${displayTitle}`}
+                  title="Archive chat"
+                  disabled={archiveDisabled}
+                  onClick={archive}
+                >
+                  <Archive size={14} aria-hidden="true" />
+                </button>
+              </div>
               <ProjectChatActionMenu
                 chatId={tab.id}
                 projectId={projectId}
@@ -291,10 +296,7 @@ export function ProjectChatNavigation({
                 pinned={tab.pinned}
                 open={actionMenuChatId === tab.id}
                 disabled={projectTransitioning}
-                archiveDisabled={
-                  projectTransitioning ||
-                  (projectChatCount ?? chatTabs.length) <= 1
-                }
+                archiveDisabled={archiveDisabled}
                 onOpenChange={(open) =>
                   setActionMenuChatId(open ? tab.id : null)
                 }
@@ -304,19 +306,7 @@ export function ProjectChatNavigation({
                   setRenamingChatId(tab.id);
                 }}
                 onMarkUnread={() => markAgentRailUnread(tab.id)}
-                onArchive={() => {
-                  void useWorkbenchStore
-                    .getState()
-                    .archiveChat(tab.id, projectId)
-                    .then((committed) => {
-                      if (committed)
-                        setAgentRailArchiveUndo({
-                          projectId,
-                          chatId: tab.id,
-                          title: displayTitle,
-                        });
-                    });
-                }}
+                onArchive={archive}
                 triggerRef={(node) => {
                   if (node) renameTriggerRefs.current.set(tab.id, node);
                   else renameTriggerRefs.current.delete(tab.id);
@@ -327,14 +317,13 @@ export function ProjectChatNavigation({
         );
       })}
 
-      {truncated ? (
+      {more ? (
         <button
           className="project-chat-more"
           type="button"
-          title="Show more"
-          onClick={() => onShowMore?.(projectId)}
+          onClick={more.onClick}
         >
-          Show more
+          {more.label}
         </button>
       ) : null}
 

@@ -1,9 +1,38 @@
 import { describe, expect, it } from "vitest";
+import type { FileDiff } from "../../domain/workbench";
 import { snapshotFileDiff } from "./snapshotDiff";
 
 const resource = { rootId: "root", relativePath: "a.ts" };
 const diff = (oldText: string, newText: string) =>
   snapshotFileDiff(resource, oldText, newText);
+
+function expectHeadersMatchLines(result: FileDiff) {
+  for (const hunk of result.hunks) {
+    const match = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@$/.exec(hunk.header);
+    expect(match, hunk.header).not.toBeNull();
+    const [, , oldCount, , newCount] = match!.map(Number);
+    expect({ header: hunk.header, oldCount, newCount }).toEqual({
+      header: hunk.header,
+      oldCount: hunk.lines.filter((line) => line.oldLine !== null).length,
+      newCount: hunk.lines.filter((line) => line.newLine !== null).length,
+    });
+  }
+}
+
+const fixtures: [string, string][] = [
+  ["start\nold\nend\n", "start\nnew\nend\n"],
+  [`${"x\n".repeat(100_000)}old\n`, `${"x\n".repeat(100_000)}new\n`],
+  [
+    `old\n${"repeat\n".repeat(12)}old2\n`,
+    `new\n${"repeat\n".repeat(12)}new2\n`,
+  ],
+  ["a", "a\n"],
+  ["", "a\n"],
+  ["a\n", ""],
+  ["", "new\n".repeat(1200)],
+  ["", "new\n".repeat(1201)],
+  ["old\n".repeat(1000), "new\n".repeat(1000)],
+];
 describe("bounded immutable snapshot diff", () => {
   it("renders exact old/new lines with context and line numbers", () => {
     const result = diff("start\nold\nend\n", "start\nnew\nend\n");
@@ -56,5 +85,23 @@ describe("bounded immutable snapshot diff", () => {
     expect(result.truncated).toBe(true);
     expect(() => diff("a".repeat(262145), "")).toThrow(/bounded/);
     expect(() => diff("é".repeat(131073), "")).toThrow(/bounded/);
+  });
+  it("re-heads a hunk clipped by the display cap to the lines shown", () => {
+    const result = diff("", "new\n".repeat(1201));
+    expect(result.hunks).toHaveLength(1);
+    expect(result.hunks[0].header).toBe("@@ -0,0 +1,1200 @@");
+    expect(result.hunks[0].lines).toHaveLength(1200);
+    expect(result.truncated).toBe(true);
+  });
+  it("re-heads the clipped bounded-alignment hunk to its shown sides", () => {
+    const result = diff("old\n".repeat(1000), "new\n".repeat(1000));
+    expect(result.hunks.map((hunk) => hunk.header)).toEqual([
+      "@@ -1,1000 +1,200 @@",
+    ]);
+    expectHeadersMatchLines(result);
+  });
+  it("keeps every hunk header's counts equal to its shown lines", () => {
+    for (const [oldText, newText] of fixtures)
+      expectHeadersMatchLines(diff(oldText, newText));
   });
 });

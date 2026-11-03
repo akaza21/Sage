@@ -1,4 +1,10 @@
+use std::os::windows::ffi::OsStringExt;
+
+use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
+
 use super::*;
+
+const SYSTEM_CMD_EXE: &str = "cmd.exe";
 
 /// Preview reuses the proven Job accounting/termination primitive without
 /// inheriting ACP artifact, binding, or batch-launch authority.
@@ -222,11 +228,27 @@ impl PreviewWindowsProcess {
 }
 
 fn preview_cmd_exe() -> Result<PathBuf, LaunchError> {
-    let cmd = std::env::var_os("ComSpec").ok_or(LaunchError::InvalidAbsolutePath)?;
-    let cmd = PathBuf::from(cmd)
+    let mut directory = vec![0_u16; MAX_WINDOWS_WIDE];
+    // SAFETY: directory is writable for the supplied number of UTF-16 units.
+    let length = unsafe {
+        GetSystemDirectoryW(
+            directory.as_mut_ptr(),
+            u32::try_from(directory.len()).map_err(|_| LaunchError::InvalidAbsolutePath)?,
+        )
+    };
+    let length = usize::try_from(length).map_err(|_| LaunchError::InvalidAbsolutePath)?;
+    if length == 0 || length >= directory.len() {
+        return Err(LaunchError::InvalidAbsolutePath);
+    }
+    let cmd = PathBuf::from(std::ffi::OsString::from_wide(&directory[..length]))
+        .join(SYSTEM_CMD_EXE)
         .canonicalize()
         .map_err(|_| LaunchError::InvalidAbsolutePath)?;
-    cmd.is_file()
+    let metadata = cmd
+        .metadata()
+        .map_err(|_| LaunchError::InvalidAbsolutePath)?;
+    metadata
+        .is_file()
         .then_some(cmd)
         .ok_or(LaunchError::InvalidAbsolutePath)
 }
@@ -253,4 +275,73 @@ fn launcher_metadata(path: &Path) -> Result<(u64, std::time::SystemTime), Launch
         metadata.len(),
         metadata.modified().map_err(|_| LaunchError::Io)?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    use uuid::Uuid;
+
+    use super::*;
+
+    const CHILD_TEST: &str =
+        "acp::process::windows::preview::tests::app_preview_system_shell_child";
+    const EXPECTED_OUTPUT: &str = "sage-preview-system-shell";
+
+    /// Removes the scratch directory even when an assertion panics.
+    struct ScratchDir(std::path::PathBuf);
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn app_preview_system_shell_ignores_comspec() {
+        let executable = std::env::current_exe().unwrap();
+        let scratch =
+            ScratchDir(std::env::temp_dir().join(format!("sage-preview-shell-{}", Uuid::new_v4())));
+        let missing = &scratch.0;
+        std::fs::create_dir(missing).unwrap();
+        for comspec in [
+            None,
+            Some(missing.join(SYSTEM_CMD_EXE)),
+            Some(executable.clone()),
+        ] {
+            let mut child = Command::new(&executable);
+            child.args(["--exact", CHILD_TEST, "--nocapture"]);
+            match comspec {
+                Some(path) => {
+                    child.env("ComSpec", path);
+                }
+                None => {
+                    child.env_remove("ComSpec");
+                }
+            }
+            let output = child.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains(EXPECTED_OUTPUT));
+        }
+    }
+
+    #[test]
+    fn app_preview_system_shell_child() {
+        let cmd = preview_cmd_exe().unwrap();
+        let output = Command::new(cmd)
+            .args(["/d", "/c", "echo", EXPECTED_OUTPUT])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap().trim(),
+            EXPECTED_OUTPUT
+        );
+        println!("{EXPECTED_OUTPUT}");
+    }
 }
