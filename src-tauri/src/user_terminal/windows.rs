@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsString,
     fs::File,
     io::{Read, Write},
     mem::size_of,
@@ -36,6 +37,24 @@ const SETTLE_DEADLINE: Duration = Duration::from_secs(3);
 /// script planted in the project folder never shadows a real tool.
 const NO_CURRENT_DIRECTORY_COMMAND_SEARCH: (&str, &str) =
     ("NoDefaultCurrentDirectoryInExePath", "1");
+/// The standard user variables `cmd.exe` receives when Sage has them, since
+/// `cmd.exe` reads no profile to rebuild them. The list is closed: credentials,
+/// tool settings and Sage's own variables stay out. It leaves out the variable
+/// above, so a host value can never override that one.
+#[rustfmt::skip]
+const PASSED_VARIABLES: [&str; 29] = [
+    "ComSpec", "PATH", "PATHEXT", "PSModulePath", "TEMP", "TMP",
+    "SystemDrive", "SystemRoot", "windir", "OS", "COMPUTERNAME",
+    "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS",
+    "USERPROFILE", "USERNAME", "USERDOMAIN", "HOMEDRIVE", "HOMEPATH",
+    "APPDATA", "LOCALAPPDATA", "ProgramData", "ALLUSERSPROFILE", "PUBLIC",
+    "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+    "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432",
+];
+/// Windows's limit for one variable's value, in UTF-16 units.
+const VARIABLE_UNITS: usize = 32_767;
+/// Room for a `PATH` at `VARIABLE_UNITS` beside the other listed variables.
+const BLOCK_UNITS: usize = 65_536;
 
 pub(super) struct ConPtyFactory;
 
@@ -387,33 +406,36 @@ fn wide_text(value: &str) -> Vec<u16> {
 }
 
 fn environment_block() -> Result<Vec<u16>, TerminalError> {
-    let mut entries = Vec::new();
-    for name in [
-        "ComSpec",
-        "SystemRoot",
-        "TEMP",
-        "TMP",
-        "PATH",
-        "PATHEXT",
-        "USERPROFILE",
-    ] {
-        if let Some(value) = std::env::var_os(name) {
-            let value = value.to_string_lossy();
-            if value.contains('\0') || value.len() > 8_192 {
-                return Err(TerminalError::Backend);
-            }
-            entries.extend(format!("{name}={value}").encode_utf16());
-            entries.push(0);
+    environment_block_from(std::env::var_os)
+}
+
+/// Builds the block from `host`, which is Sage's own environment outside
+/// tests. Values are copied as UTF-16 unchanged: a value with a NUL or over the
+/// variable limit, or a block over its cap, fails the launch instead.
+fn environment_block_from(
+    host: impl Fn(&'static str) -> Option<OsString>,
+) -> Result<Vec<u16>, TerminalError> {
+    let (search, disabled) = NO_CURRENT_DIRECTORY_COMMAND_SEARCH;
+    let mut entries = vec![(search, OsString::from(disabled))];
+    let passed = PASSED_VARIABLES.map(|name| Some((name, host(name)?)));
+    entries.extend(passed.into_iter().flatten());
+    // Windows asks for entries sorted by name ignoring case, compared as
+    // uppercase ordinals (the order Rust's own `Command` uses).
+    entries.sort_by_cached_key(|(name, _)| name.to_ascii_uppercase());
+    let mut block = Vec::new();
+    for (name, value) in entries {
+        block.extend(name.encode_utf16().chain([u16::from(b'=')]));
+        let start = block.len();
+        block.extend(value.encode_wide());
+        if block[start..].contains(&0) || block.len() - start > VARIABLE_UNITS {
+            return Err(TerminalError::Backend);
         }
+        block.push(0);
     }
-    let (name, value) = NO_CURRENT_DIRECTORY_COMMAND_SEARCH;
-    entries.extend(format!("{name}={value}").encode_utf16());
-    entries.push(0);
-    entries.push(0);
-    if entries.len() > 16_384 {
-        return Err(TerminalError::Backend);
-    }
-    Ok(entries)
+    block.push(0);
+    (block.len() <= BLOCK_UNITS)
+        .then_some(block)
+        .ok_or(TerminalError::Backend)
 }
 
 #[cfg(test)]
