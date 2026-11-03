@@ -61,7 +61,7 @@ export function agentRailClockMs(): number {
 }
 
 export function syncAgentRailClock(nowMs: number) {
-  if (!Number.isFinite(nowMs) || nowMs <= 0 || clockMs === nowMs) return;
+  if (!Number.isFinite(nowMs) || nowMs <= clockMs) return;
   clockMs = nowMs;
   prefs = { ...prefs };
   emit();
@@ -109,6 +109,12 @@ export function agentRailSectionCollapsed(id: string): boolean {
 export function toggleAgentRailSection(id: string) {
   if (collapsed.has(id)) collapsed.delete(id);
   else collapsed.add(id);
+  prefs = { ...prefs };
+  emit();
+}
+
+export function expandAgentRailSection(id: string) {
+  if (!collapsed.delete(id)) return;
   prefs = { ...prefs };
   emit();
 }

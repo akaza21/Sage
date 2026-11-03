@@ -325,12 +325,9 @@ mod tests {
                     GetConsoleMode(GetStdHandle(-10_i32 as u32), &mut mode) != 0
                 };
                 let cwd = std::env::current_dir().unwrap();
-                // Publish the marker atomically: the test polls for it and
-                // must never read a partly written report.
-                let mut staging = marker.clone();
-                staging.push(".partial");
-                std::fs::write(&staging, format!("{:?}|{console}|{input}|{}", arguments, cwd.display())).unwrap();
-                std::fs::rename(&staging, &marker).unwrap();
+                let staged = std::path::PathBuf::from(&marker).with_extension("pending");
+                std::fs::write(&staged, format!("{}|{:?}|{console}|{input}|{}", std::process::id(), arguments, cwd.display())).unwrap();
+                std::fs::rename(staged, marker).unwrap();
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
         "#;
@@ -371,6 +368,8 @@ mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         let content = std::fs::read_to_string(&marker).unwrap();
+        let (process_id, content) = content.split_once('|').unwrap();
+        let process_id = process_id.parse().unwrap();
         let (arguments, rest) = content.split_once('|').unwrap();
         let (console, rest) = rest.split_once('|').unwrap();
         let (input, cwd) = rest.split_once('|').unwrap();
@@ -386,7 +385,18 @@ mod tests {
             console,
             unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize
         );
-        thread::sleep(Duration::from_millis(150));
+        use windows_sys::Win32::{
+            Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, GetLastError, WAIT_OBJECT_0},
+            System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+        };
+        let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, process_id) };
+        if process.is_null() {
+            assert_eq!(unsafe { GetLastError() }, ERROR_INVALID_PARAMETER);
+        } else {
+            let exited = unsafe { WaitForSingleObject(process, 3_000) };
+            unsafe { CloseHandle(process) };
+            assert_eq!(exited, WAIT_OBJECT_0);
+        }
         remove_fixture_directory(&directory).unwrap();
     }
 }

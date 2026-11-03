@@ -197,7 +197,7 @@ async fn list_side_chats_async(database: &Database) -> Result<Vec<SideChatSummar
 
 fn list_side_chats_inner(database: &Database) -> Result<Vec<SideChatSummary>, String> {
     let connection = database.connection();
-    let mut statement = connection.prepare("SELECT w.id,w.project_id,json_extract(w.metadata_json,'$.parentChatId'),EXISTS(SELECT 1 FROM turns t WHERE t.project_id=w.project_id AND t.chat_id=w.id AND t.state NOT IN ('completed','cancelled','failed','interrupted','deliveryUnknown')) FROM workbench_tabs w WHERE w.kind='chat' AND w.id GLOB 'side-*' ORDER BY w.id LIMIT 9").map_err(|error| error.to_string())?;
+    let mut statement = connection.prepare("SELECT w.id,w.project_id,json_extract(w.metadata_json,'$.parentChatId'),EXISTS(SELECT 1 FROM turns t WHERE t.project_id=w.project_id AND t.chat_id=w.id AND t.state NOT IN ('completed','cancelled','failed','interrupted','deliveryUnknown')) FROM workbench_tabs w WHERE w.kind='chat' AND json_extract(w.metadata_json,'$.ephemeral')=1 ORDER BY w.id LIMIT 9").map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {
             Ok(SideChatSummary {

@@ -295,13 +295,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .acp-activity-card * {
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
-  }
-}
-
 @media (forced-colors: active) {
   .acp-activity-card {
     border-color: CanvasText;

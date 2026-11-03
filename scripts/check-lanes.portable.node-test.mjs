@@ -26,6 +26,7 @@ import {
 import {
   createRustValidationCommands,
   resolveNpmInvocation,
+  PROCESS_LIMITS,
   VALIDATION_DEADLINES_MS,
 } from "./lib/check-plans.mjs";
 import { createDevPlan, parseDevArguments } from "./check-dev.mjs";
@@ -1259,7 +1260,7 @@ test("newline-free output is bounded and terminates the offending command", asyn
           cwd: root,
           timeoutMs: 5_000,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },

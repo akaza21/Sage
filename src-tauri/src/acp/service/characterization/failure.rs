@@ -22,18 +22,18 @@ impl AcpService {
                 Ok((_, recovery)) => match recovery.retry_zero() {
                     Ok(token) => token,
                     Err(_) => {
-                        let _ = self.runtime.mark_recovery(&owner);
+                        let _ = self.lane_at(0).runtime.mark_recovery(&owner);
                         return Err(CharacterizationError::ProcessRecovery);
                     }
                 },
                 Err(_) => {
-                    let _ = self.runtime.mark_recovery(&owner);
+                    let _ = self.lane_at(0).runtime.mark_recovery(&owner);
                     return Err(CharacterizationError::ProcessRecovery);
                 }
             },
         };
         let proof = ZeroProcessProof::from_supervisor(owner.clone(), &token).map_err(|_| {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             CharacterizationError::ProcessRecovery
         })?;
         let fail_command = FailActivationCommand {
@@ -56,10 +56,13 @@ impl AcpService {
             .await
             .is_err()
         {
-            let _ = self.runtime.mark_recovery(&owner);
+            let _ = self.lane_at(0).runtime.mark_recovery(&owner);
             return Err(CharacterizationError::Recovery);
         }
-        self.runtime.abandon_start(&owner).map_err(map_slot)?;
+        self.lane_at(0)
+            .runtime
+            .abandon_start(&owner)
+            .map_err(map_slot)?;
         Err(CharacterizationError::Launch)
     }
 }

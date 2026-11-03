@@ -60,5 +60,9 @@ export function installPopoverSubagents(kind: "children" | "tasks") {
       collaborationEventProjection: kind === "children",
     },
   }));
+  // A newer revision, so a later reload of the scenario page cannot undo it.
+  page.projectionRevision = String(
+    BigInt(page.projectionRevision) + 1n,
+  ) as typeof page.projectionRevision;
   projection.applyAuthoritativePage(projection.scope, page);
 }

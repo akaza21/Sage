@@ -7,7 +7,6 @@ import type {
 import type { ChatPort } from "../ports/workbenchPorts";
 import {
   commitIdentityChatResult,
-  errorMessage,
   type ProjectionOutcome,
 } from "./chatTransitions";
 import {
@@ -51,10 +50,10 @@ export async function runCreateChat(
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
   try {
     await get().flushActiveEditor();
-  } catch (error) {
+  } catch {
     set({
       projectTransitioning: false,
-      error: `Chat creation blocked by editor snapshot failure: ${errorMessage(error)}`,
+      error: "Could not save the editor. Try again.",
     });
     return;
   }
@@ -62,7 +61,7 @@ export async function runCreateChat(
   if (!current) {
     set({
       projectTransitioning: false,
-      error: "active Project disappeared before Chat creation",
+      error: "Open a project before starting a new chat.",
     });
     return;
   }
@@ -72,7 +71,9 @@ export async function runCreateChat(
       get,
       applyProjection,
       loadAuthoritativeProjection,
-      failedMessage: "native Chat creation did not commit",
+      failedMessage: "Could not create the chat. Try again.",
+      failureMessage:
+        "Chat creation is unconfirmed. Reopen the project before retrying.",
       invoke: () =>
         chat.createChat(current, expectedTransitionEpoch, sourceProjectId),
     });
@@ -135,15 +136,14 @@ async function createOnActiveProject(input: {
   let mutationInvoked = false;
   try {
     const latest = currentProjectLayout(get());
-    if (!latest)
-      throw new Error("active Project disappeared before Chat creation");
+    if (!latest) throw new Error("Open a project before starting a new chat.");
     mutationInvoked = true;
     const result = await chat.createChat(latest, input.expectedTransitionEpoch);
     validateTransitionIntent(result, input.expectedTransitionEpoch);
     if (!result.committed) {
       set({
         projectTransitioning: false,
-        error: result.recoveryError ?? "native Chat creation did not commit",
+        error: "Could not create the chat. Try again.",
       });
       return;
     }
@@ -163,29 +163,33 @@ async function createOnActiveProject(input: {
     } else {
       await loadAuthoritativeProjection(generation, classify);
     }
-  } catch (error) {
+  } catch {
     if (committed) {
       set({
-        phase: "error",
         projectTransitioning: false,
         repositoryRefreshing: false,
-        error: `Chat creation committed but projection recovery failed: ${errorMessage(error)}`,
+        error:
+          "Chat creation succeeded. Reopen the project to load the new chat.",
       });
     } else if (mutationInvoked) {
       const generation = nextProjectGeneration(get().projectGeneration);
       set({ projectGeneration: generation, repositoryRefreshing: false });
       try {
         const outcome = await loadAuthoritativeProjection(generation, classify);
-        if (outcome === "unchanged") set({ error: errorMessage(error) });
-      } catch (recoveryError) {
+        if (outcome === "unchanged")
+          set({ error: "Could not create the chat. Try again." });
+      } catch {
         set({
-          phase: "error",
           projectTransitioning: false,
-          error: `Chat creation state is unknown: ${errorMessage(recoveryError)}`,
+          error:
+            "Chat creation is unconfirmed. Reopen the project before retrying.",
         });
       }
     } else {
-      set({ projectTransitioning: false, error: errorMessage(error) });
+      set({
+        projectTransitioning: false,
+        error: "Could not create the chat. Try again.",
+      });
     }
   }
 }

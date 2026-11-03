@@ -1,9 +1,8 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
-  --reading-measure: 660px;
-  --chat-column-gutter: var(--space-4);
-  --chat-column-trailing: calc(var(--scrollbar-size) + var(--space-3));
+  --chat-column-gutter: var(--space-1);
+  --chat-column-trailing: var(--scrollbar-size);
   position: relative;
   container-name: chat;
   container-type: inline-size;
@@ -16,11 +15,13 @@
 }
 
 .chat-surface--agent {
-  grid-template-areas: "notice" "transcript" "edits" "composer";
-  grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) fit-content(60%);
+  grid-template-areas: "notice" "transcript" "composer";
+  grid-template-rows: auto minmax(0, 1fr) fit-content(60%);
+  padding-block-end: var(--chat-column-inset-block-end);
 }
 
-.chat-surface--agent > .composer__notice {
+.chat-surface--agent > .composer__notice,
+.chat-surface--agent > .composer__error {
   grid-area: notice;
 }
 
@@ -28,35 +29,25 @@
   grid-area: transcript;
 }
 
-.chat-surface--agent > .composer {
+.chat-surface--agent > .chat-dock {
   grid-area: composer;
 }
 
-.chat-surface--agent > .chat-edit-summary-zone {
-  grid-area: edits;
-  display: flex;
+/* The dock owns the edit summary slot; the transcript only supplies content. */
+.chat-edit-summary-zone {
+  --edit-summary-width: 100%;
+  --edit-summary-margin: 0;
+  --edit-summary-border: 0;
+  --radius-edit-summary: var(--radius-none);
+  --edit-summary-collapsed-radius: var(--radius-none);
+  --edit-summary-fill: transparent;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-  padding-inline: var(--chat-column-gutter)
-    calc(var(--chat-column-gutter) + var(--chat-column-trailing));
+  overflow-y: auto;
 }
 
 .chat-edit-summary-zone:empty {
   display: none;
-}
-
-@container chat (max-width: 520px) {
-  .chat-surface--agent > .chat-edit-summary-zone {
-    padding-inline: var(--chat-column-gutter);
-  }
-}
-
-.chat-edit-summary-zone > .acp-file-changes {
-  min-height: 0;
-  margin: 0 auto var(--space-2);
-  max-height: 40vh;
-  overflow-y: auto;
 }
 
 .surface-header {

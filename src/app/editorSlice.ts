@@ -1,29 +1,28 @@
-import type { StateCreator } from "zustand";
-
+import { type StateCreator } from "zustand";
+import { errorMessage } from "../domain/errors";
 import {
   parentResource,
   resourceKey,
   sameResource,
 } from "../domain/resourceIdentity";
-import type { ResourceRef } from "../domain/workbench";
-import type {
-  EditorContent,
-  EditorContentBase,
+import { type ResourceRef } from "../domain/workbench";
+import {
+  type EditorContent,
+  type EditorContentBase,
 } from "../features/files/editorContent";
 import {
   getFileEditorController,
   type ActiveEditorState,
   type EditorStateBridge,
 } from "../features/files/fileEditorController";
-import { errorMessage } from "../domain/errors";
 import { enqueueEditorOperation } from "./editorOperations";
 import {
+  issueRequestIntent,
   matchesActiveTabIntent,
   matchesProjectIntent,
   matchesRequestIntent,
-  issueRequestIntent,
 } from "./projectIntent";
-import type { WorkbenchState } from "./store";
+import { type WorkbenchState } from "./store";
 
 export type { ActiveEditorState } from "../features/files/fileEditorController";
 

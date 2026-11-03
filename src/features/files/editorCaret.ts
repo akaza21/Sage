@@ -1,5 +1,4 @@
 import type { Text } from "@codemirror/state";
-
 import { MAX_GOTO_LINE_POSITION } from "./goToLine";
 
 export interface EditorCaret {

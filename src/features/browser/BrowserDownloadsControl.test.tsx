@@ -1,16 +1,18 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
+import { Activity, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
-import { progressLabel } from "./browserDownloadLabel";
+import BrowserDownloadsPanel from "./BrowserDownloadsPanel";
 import { activeDownloadProgress } from "./useBrowserDownloads";
 
 const browserDownloads = vi.fn(
@@ -60,7 +62,43 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it("disposes late downloads registration after Activity sleeps without reading hidden state", async () => {
+  let finish: ((dispose: () => void) => void) | undefined;
+  const dispose = vi.fn();
+  vi.mocked(listen).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = render(
+    <Activity mode="visible">
+      <Harness />
+    </Activity>,
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(
+    <Activity mode="hidden">
+      <Harness />
+    </Activity>,
+  );
+  await act(async () => finish?.(dispose));
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(browserDownloads).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 it("labels bounded progress and all terminal download states", () => {
+  const progressLabel = (item: BrowserDownload) => {
+    const view = render(
+      <BrowserDownloadsPanel tabId="browser-1" downloads={[item]} />,
+    );
+    const label = view.container
+      .querySelector(".browser-downloads__status")!
+      .textContent!.split(" · ")[0];
+    view.unmount();
+    return label;
+  };
   expect(progressLabel(download)).toBe("50%");
   expect(progressLabel({ ...download, receivedBytes: 20 })).toBe("100%");
   expect(progressLabel({ ...download, totalBytes: null })).toBe("Downloading");
