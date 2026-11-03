@@ -10,7 +10,9 @@ import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
 import { nativeSettingsPort } from "./nativeSettingsPort";
 import type { EditorWatchSubscription } from "../domain/editorWatch";
 import type {
+  CreateProjectRequest,
   ProjectLayoutRequest,
+  ProjectSourceFolder,
   ProjectSwitchRequest,
   ProjectTransitionResult,
   ResourceRef,
@@ -48,11 +50,16 @@ const project: ProjectPort = {
       prompts,
     });
   },
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null> {
+    return invokeNative("pick_project_source_folder");
+  },
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    return invokeNative("create_project_from_picker", {
+    return invokeNative("create_project", {
+      request,
       expectedActiveProjectId,
       expectedTransitionEpoch,
     });

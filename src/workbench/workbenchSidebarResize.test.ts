@@ -13,24 +13,27 @@ import {
 } from "./workbenchSidebarResize";
 
 describe("resizeWorkbenchSidebar", () => {
-  it("opens the icon rail and project sidebar at Codex reference width", () => {
-    expect(initialAgentLeftRailWidth(1936)).toBe(385);
+  // The owner's Codex desktop capture (1872 px wide, 100% scale): the icon
+  // rail plus the chat list end at x = 326.
+  it("opens the icon rail and project sidebar at the captured Codex width", () => {
+    expect(initialAgentLeftRailWidth(1936)).toBe(326);
+    expect(initialAgentLeftRailWidth(1872)).toBe(326);
     expect(initialAgentArtifactWidth(1936)).toBe(871);
     expect(initialAgentDesktopSidebarWidths(1380)).toEqual({
-      leftRailWidth: 385,
-      artifactWidth: 619,
+      leftRailWidth: 326,
+      artifactWidth: 621,
     });
   });
-  // Live Codex s4/f0244 at 1888: the right pane takes about 57% of the space
-  // beside the sidebar (chat 43%).
+  // The artifact pane opens at 45% of the window. Beside the 326 px sidebar
+  // at 1888 that leaves Chat about 45% of the remaining space.
   it("opens the desktop Agent rail and artifact pane at the reference proportions", () => {
-    expect(initialAgentLeftRailWidth(1672)).toBe(385);
+    expect(initialAgentLeftRailWidth(1672)).toBe(326);
     expect(initialAgentArtifactWidth(1672)).toBe(752);
-    expect(initialAgentLeftRailWidth(1380)).toBe(385);
+    expect(initialAgentLeftRailWidth(1380)).toBe(326);
     expect(initialAgentArtifactWidth(1380)).toBe(621);
     const pane = initialAgentArtifactWidth(1888);
     const chat = 1888 - initialAgentLeftRailWidth(1888) - 16 - pane;
-    expect(pane / (pane + chat)).toBeCloseTo(0.57, 2);
+    expect(pane / (pane + chat)).toBeCloseTo(0.55, 2);
   });
 
   it("keeps a usable Chat column when either desktop splitter reaches its end", () => {
@@ -84,7 +87,7 @@ describe("resizeWorkbenchSidebar", () => {
   it("uses keyboard steps and Home or End within the same bounds", () => {
     expect(
       resizeWorkbenchSidebar(AGENT_LEFT_RAIL_WIDTH, { key: "ArrowRight" }),
-    ).toBe(393);
+    ).toBe(334);
     expect(
       resizeWorkbenchSidebar(EDITOR_TOOL_RAIL_WIDTH, {
         key: "ArrowLeft",
