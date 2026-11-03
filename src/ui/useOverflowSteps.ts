@@ -14,16 +14,16 @@ const SUBPIXEL = 0.5;
  * Each fit starts from the full row and adds one step at a time until no
  * child ends past the row's edge, writing and measuring every step
  * before paint. Text and children that change inside the row refit it at
- * once; a resize refits it on the next frame, which also lets the last steps
- * reshape the row itself without a resize loop. While paused (a popover from
+ * once; a resize of the row or of any child refits it on the next frame,
+ * which also lets the last steps reshape the row itself without a loop. While paused (a popover from
  * the row is open) the row keeps its steps, so nothing the person is using
- * moves under them. Returns how many steps are taken.
+ * moves under them. Returns the steps taken.
  */
-export function useOverflowSteps(
+export function useOverflowSteps<Step extends string>(
   row: RefObject<HTMLElement | null>,
-  steps: readonly string[],
+  steps: readonly Step[],
   paused = false,
-) {
+): Step[] {
   const [taken, setTaken] = useState(0);
   const key = steps.join(" ");
   useLayoutEffect(() => {
@@ -36,22 +36,28 @@ export function useOverflowSteps(
         (child) => child.getBoundingClientRect().right > edge,
       );
     };
+    let frame = 0;
+    // A child that changes size without a content change (a class or
+    // attribute flip, a late stylesheet) refits too. Settled steps leave the
+    // children at the size they were observed at, so this never loops.
+    const resize =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(fit);
+          });
     const fit = () => {
       let count = 0;
       element.setAttribute("data-fit", "");
       while (count < names.length && overflows())
         element.setAttribute("data-fit", names.slice(0, ++count).join(" "));
       setTaken(count);
+      for (const child of [element, ...element.children])
+        resize?.observe(child);
     };
     fit();
-    if (typeof ResizeObserver === "undefined") return;
-    let frame = 0;
-    const resize = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fit);
-    });
-    resize.observe(element);
-    // Only content changes refit: the steps themselves are attribute writes.
+    // Only content changes refit at once: the steps are attribute writes.
     const content = new MutationObserver(fit);
     content.observe(element, {
       subtree: true,
@@ -59,10 +65,10 @@ export function useOverflowSteps(
       characterData: true,
     });
     return () => {
-      cancelAnimationFrame(frame);
-      resize.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+      resize?.disconnect();
       content.disconnect();
     };
   }, [row, key, paused]);
-  return taken;
+  return steps.slice(0, taken);
 }

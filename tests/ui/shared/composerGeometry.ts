@@ -1,5 +1,27 @@
 import { expect, type Locator } from "@playwright/test";
 
+/**
+ * The composer toolbar's compaction steps once they stop changing. A resize
+ * refits the row on the next frame, and an open popover holds its steps, so a
+ * test settles the row before it reads where a control is or opens a menu.
+ */
+export async function settledComposerFit(composer: Locator) {
+  const fit = await composer
+    .locator(".composer__controls")
+    .evaluate(async (row) => {
+      const frame = () => new Promise(requestAnimationFrame);
+      let current = row.getAttribute("data-fit");
+      for (let stable = 0; stable < 3;) {
+        await frame();
+        const next = row.getAttribute("data-fit");
+        stable = next === current ? stable + 1 : 0;
+        current = next;
+      }
+      return current ?? "";
+    });
+  return fit.split(" ").filter(Boolean);
+}
+
 export async function expectCompactComposerTargets(composer: Locator) {
   const targets = await composer
     .locator(

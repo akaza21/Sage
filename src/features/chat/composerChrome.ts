@@ -17,6 +17,7 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
 import { shortcutLabel } from "../../ui/shortcutLabel";
+import { useOverflowSteps } from "../../ui/useOverflowSteps";
 
 export { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
 
@@ -331,4 +332,49 @@ export function useComposerFocusHotkey(
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [composerRef, enabled]);
+}
+
+/**
+ * The toolbar's compaction steps, lowest priority first, as data-fit tokens
+ * that chat-container-controls.css keys on. A disabled placeholder goes first
+ * and the model name last: it truncates to a readable prefix before it gives
+ * way to its icon.
+ */
+const TOOLBAR_STEPS = [
+  "placeholder",
+  "capacity",
+  "access",
+  "harness",
+  "project",
+  "effort",
+  "effort-menu",
+  "project-menu",
+  "model-shrink",
+  "model",
+  "dense",
+  "wrap",
+] as const;
+
+/**
+ * Fits the composer toolbar's controls row. Effort and the project chip move
+ * into the options menu only when there is a menu item to take their place;
+ * while a popover from the row is open, the row keeps its steps.
+ */
+export function useComposerToolbarFit(
+  canSelectEffort: boolean,
+  hasProject: boolean,
+  paused: boolean,
+) {
+  const controls = useRef<HTMLDivElement>(null);
+  const steps = TOOLBAR_STEPS.filter(
+    (step) =>
+      (step !== "effort-menu" || canSelectEffort) &&
+      (step !== "project-menu" || hasProject),
+  );
+  const taken = useOverflowSteps(controls, steps, paused);
+  return {
+    controls,
+    effortInMenu: taken.includes("effort-menu"),
+    projectInMenu: taken.includes("project-menu"),
+  };
 }

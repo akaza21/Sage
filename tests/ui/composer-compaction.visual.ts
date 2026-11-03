@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+import { settledComposerFit } from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
@@ -334,8 +335,8 @@ const LABEL_PRIORITY = [
 ];
 
 const toolbarStates = {
-  "awaiting a session": () => {
-    void (async () => {
+  "awaiting a session": {
+    install: async () => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const { acpProjectionStoreFor } =
         await import("/src/app/acpProjectionRegistry.ts");
@@ -350,20 +351,26 @@ const toolbarStates = {
           state: "closed",
         })),
       });
-    })();
+    },
+    // Until a session confirms effort, the toolbar shows its placeholder.
+    ready: (composer: Locator) =>
+      composer.locator(".composer__effort-picker:not([aria-controls])"),
   },
-  "with a confirmed model and effort": () => {
-    void import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts").then(
-      (fixture) =>
-        fixture.installVisualComposerEffortFixture({
-          levels: ["medium", "extra high"],
-          currentValue: "extra high",
-        }),
-    );
+  "with a confirmed model and effort": {
+    install: async () => {
+      const fixture =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      fixture.installVisualComposerEffortFixture({
+        levels: ["medium", "extra high"],
+        currentValue: "extra high",
+      });
+    },
+    ready: (composer: Locator) =>
+      composer.locator(".composer__effort-picker[aria-controls]"),
   },
 };
 
-for (const [state, install] of Object.entries(toolbarStates)) {
+for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
   test(`Composer toolbar compacts its labels in priority order ${state}`, async ({
     page,
   }) => {
@@ -372,6 +379,7 @@ for (const [state, install] of Object.entries(toolbarStates)) {
     await settleChatProjections(page);
     await page.evaluate(install);
     const composer = page.locator("form.composer").first();
+    await expect(ready(composer)).toHaveCount(1);
     await expect(
       composer.locator(".composer__effort-label").first(),
     ).toBeVisible();
@@ -465,3 +473,29 @@ for (const [state, install] of Object.entries(toolbarStates)) {
     }
   });
 }
+
+test("Composer toolbar refits when a control grows without a content change", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  await composer.evaluate((element) => {
+    (element as HTMLElement).style.width = "480px";
+  });
+  const before = await settledComposerFit(composer);
+  // A style change is an attribute write: no text or child changes.
+  await composer
+    .locator(".composer__model-trigger")
+    .evaluate((trigger: HTMLElement) => {
+      trigger.style.marginInlineStart = "160px";
+    });
+  const after = await settledComposerFit(composer);
+  expect(after.length).toBeGreaterThan(before.length);
+  expect(
+    await composer
+      .locator(".composer__controls")
+      .evaluate((row) => row.scrollWidth <= row.clientWidth),
+  ).toBe(true);
+});

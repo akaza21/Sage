@@ -1,7 +1,7 @@
 import { Plus, Settings } from "../../ui/leanIcons";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
-import { lazy, Suspense, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import {
   cachedHarnessModels,
@@ -19,13 +19,12 @@ import {
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
-import { useOverflowSteps } from "../../ui/useOverflowSteps";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { composerOptionLabel } from "./composerChrome";
+import { composerOptionLabel, useComposerToolbarFit } from "./composerChrome";
 import { formatContextWindow } from "./composerModelContext";
-import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import { lazyComposerMenu } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { useComposerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
@@ -36,28 +35,10 @@ import {
 } from "./useChatHarnessSelection";
 import { useComposerModelChoices } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
-/**
- * The toolbar's compaction steps, lowest priority first, as data-fit tokens
- * that chat-container-controls.css keys on. A disabled placeholder goes first
- * and the model name last: it truncates to a readable prefix before it gives
- * way to its icon.
- */
-const TOOLBAR_STEPS = [
-  "placeholder",
-  "capacity",
-  "access",
-  "harness",
-  "project",
-  "effort",
-  "effort-menu",
-  "project-menu",
-  "model-shrink",
-  "model",
-  "dense",
-  "wrap",
-] as const;
 
-const ComposerOptionsMenu = lazy(() => import("./ComposerAddActions"));
+const ComposerOptionsMenu = lazyComposerMenu(
+  () => import("./ComposerAddActions"),
+);
 
 interface Props {
   accessBindingId?: string | null;
@@ -235,20 +216,11 @@ export function ChatHarnessControls({
     flattenChoices(effortOption).some(
       (choice) => choice.value === effortOption.currentValue,
     );
-  // Effort and the project chip move into the options menu only when there is
-  // a menu item to take their place.
-  const steps = TOOLBAR_STEPS.filter(
-    (step) =>
-      (step !== "effort-menu" || canSelectEffort) &&
-      (step !== "project-menu" || Boolean(projectName)),
+  const { controls, effortInMenu, projectInMenu } = useComposerToolbarFit(
+    canSelectEffort,
+    Boolean(projectName),
+    active !== null,
   );
-  const controls = useRef<HTMLDivElement>(null);
-  const taken = steps.slice(
-    0,
-    useOverflowSteps(controls, steps, active !== null),
-  );
-  const effortInMenu = taken.includes("effort-menu");
-  const projectInMenu = taken.includes("project-menu");
   // The options trigger appears once a control moves into its menu; that
   // refits the row with the trigger in place, so the controls only return to
   // the toolbar once they fit beside it.
@@ -391,41 +363,32 @@ export function ChatHarnessControls({
         />
       ) : null}
       {active === "options" && hasActions ? (
-        <Suspense
-          fallback={
-            <ComposerMenuLoading
-              triggerRef={optionsTriggerRef}
-              onDismiss={dismiss}
-            />
+        <ComposerOptionsMenu
+          id={optionsId}
+          triggerRef={optionsTriggerRef}
+          onDismiss={dismiss}
+          projectAction={
+            projectInMenu && projectName ? (
+              <ProjectScopeChip projectName={projectName} menuItem />
+            ) : undefined
           }
-        >
-          <ComposerOptionsMenu
-            id={optionsId}
-            triggerRef={optionsTriggerRef}
-            onDismiss={dismiss}
-            projectAction={
-              projectInMenu && projectName ? (
-                <ProjectScopeChip projectName={projectName} menuItem />
-              ) : undefined
-            }
-            sessionConfig={selectedSessionConfig}
-            pending={modePending}
-            disabled={turnBusy || projectTransitioning}
-            imageAction={imageAction}
-            onOpenGoal={onOpenGoal}
-            onOpenEffort={
-              canSelectEffort && effortInMenu
-                ? () => {
-                    setEffortFromAdd(true);
-                    toggle("effort");
-                  }
-                : undefined
-            }
-            onClose={closeActions}
-            onSetSessionMode={onSetSessionMode}
-            onSetSessionConfigOption={onSetSessionConfigOption}
-          />
-        </Suspense>
+          sessionConfig={selectedSessionConfig}
+          pending={modePending}
+          disabled={turnBusy || projectTransitioning}
+          imageAction={imageAction}
+          onOpenGoal={onOpenGoal}
+          onOpenEffort={
+            effortInMenu
+              ? () => {
+                  setEffortFromAdd(true);
+                  toggle("effort");
+                }
+              : undefined
+          }
+          onClose={closeActions}
+          onSetSessionMode={onSetSessionMode}
+          onSetSessionConfigOption={onSetSessionConfigOption}
+        />
       ) : null}
       {modePending ? (
         <span className="select-control__reason" role="status">

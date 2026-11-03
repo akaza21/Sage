@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { settledComposerFit } from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
@@ -26,7 +27,11 @@ async function expectEffortReachable(composer: Locator, level: string) {
     name: `Thinking level: ${level}`,
     exact: true,
   });
-  if ((await effort.count()) > 0) return expect(effort).toBeVisible();
+  await expect(
+    composer.locator(".composer__effort-picker[aria-controls]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu"))
+    return expect(effort).toBeVisible();
   const add = composer.getByRole("button", {
     name: "Composer options",
     exact: true,
@@ -43,19 +48,11 @@ async function expectEffortReachable(composer: Locator, level: string) {
 }
 
 async function expectResponsiveToolbar(composer: Locator) {
-  // A resize refits the toolbar on the next frame.
-  await composer.evaluate(
-    () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-      ),
-  );
+  const fit = await settledComposerFit(composer);
   const project = composer.getByRole("button", { name: /^Project: / });
   // The chip leaves the toolbar for the composer options menu only once every
   // lower-priority control has compacted and the row still cannot fit it.
-  if ((await project.count()) === 0) {
+  if (fit.includes("project-menu")) {
     await expectProjectInOptionsMenu(composer);
     return expectToolbarGeometry(composer);
   }

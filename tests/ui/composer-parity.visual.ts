@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
-import { expectCompactComposerTargets } from "./shared/composerGeometry";
+import {
+  expectCompactComposerTargets,
+  settledComposerFit,
+} from "./shared/composerGeometry";
 
 let script: string;
 let styles: string;
@@ -57,7 +60,10 @@ async function openEffort(page: Page, level: string) {
   const effort = composer.getByRole("button", {
     name: `Thinking level: ${level}`,
   });
-  if ((await effort.count()) > 0) {
+  await expect(
+    composer.locator(".composer__effort-picker[aria-controls]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu")) {
     await expect(effort.locator(".lucide-brain")).toHaveCount(1);
     return effort.click();
   }

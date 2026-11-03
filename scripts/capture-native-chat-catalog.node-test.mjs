@@ -50,7 +50,6 @@ test("capture accessible selectors stay anchored to product controls", () => {
   assert.ok(subagentSummary.includes('aria-label="Subagents"'));
   const composer = source("features/chat/ChatHarnessControls.tsx");
   assert.ok(composer.includes('aria-label="Composer options"'));
-  assert.ok(composer.includes('from "./ComposerAddActions"'));
   assert.ok(composer.includes("<ComposerOptionsMenu"));
   const options = source("features/chat/ComposerAddActions.tsx");
   assert.ok(options.includes('ariaLabel="Composer options menu"'));
