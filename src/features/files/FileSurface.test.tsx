@@ -346,7 +346,9 @@ describe("FileSurface durability cadence", () => {
       await screen.findByRole("textbox", { name: "Find text" }),
     ).toBeVisible();
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
-    expect(screen.getByRole("textbox", { name: "Go to line" })).toBeVisible();
+    expect(
+      await screen.findByRole("textbox", { name: "Go to line" }),
+    ).toBeVisible();
     fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
     expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
       content: document.buffer.content,
@@ -1187,7 +1189,7 @@ describe("FileSurface Go-to Line", () => {
     });
 
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
-    const input = screen.getByRole("textbox", { name: "Go to line" });
+    const input = await screen.findByRole("textbox", { name: "Go to line" });
     expect(input).toHaveFocus();
     expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();
 
@@ -1206,6 +1208,9 @@ describe("FileSurface Go-to Line", () => {
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
     expect(screen.queryByRole("search", { name: "Find in file" })).toBeNull();
     expect(screen.getByRole("search", { name: "Go to line" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Go to line" })).toHaveValue(
+      "2:2",
+    );
 
     fireEvent.keyDown(screen.getByLabelText(`File editor ${path}`), {
       key: "Escape",
@@ -1227,7 +1232,7 @@ describe("FileSurface Go-to Line", () => {
       name: `Edit ${path}`,
     });
     fireEvent.keyDown(editor, { key: "g", ctrlKey: true });
-    const input = screen.getByRole("textbox", { name: "Go to line" });
+    const input = await screen.findByRole("textbox", { name: "Go to line" });
     fireEvent.change(input, { target: { value: "nope" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByRole("status")).toHaveTextContent("Enter a line");
@@ -1275,6 +1280,26 @@ describe("FileSurface local symbol navigation", () => {
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       "Moved to local symbol.",
+    );
+  });
+
+  it("keeps F12's command-time identifier when the caret moves during loading", async () => {
+    const content =
+      "alpha(); beta();\nfunction alpha() {}\nfunction beta() {}\n";
+    setReadyEditor(sourceTab, content);
+    render(<FileSurface tab={sourceTab} />);
+    const editor = await screen.findByRole("textbox", {
+      name: "Edit src/example.ts",
+    });
+    act(() => viewForEditor(editor).dispatch({ selection: { anchor: 2 } }));
+    fireEvent.keyDown(editor, { key: "F12" });
+    act(() => viewForEditor(editor).dispatch({ selection: { anchor: 11 } }));
+    const declaration = content.indexOf("alpha() {}");
+    await waitFor(() =>
+      expect(editorSelection(editor)).toEqual({
+        start: declaration,
+        end: declaration,
+      }),
     );
   });
 

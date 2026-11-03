@@ -12,7 +12,7 @@
       "editorFile": 290998
     },
     "webTotalJsGzipBytes": 461000,
-    "webTerminalLazyJsGzipBytes": 89500,
+    "webTerminalLazyJsGzipBytes": 89579,
     "webSubagentLazyJsGzipBytes": 5612,
     "lazyFeatureChunks": [
       {
@@ -312,6 +312,16 @@
         "entry": "src/features/diff/DiffSurface.tsx",
         "maxGzipBytes": 2153,
         "reason": "Per-file Diff resource surface; loads only when a Diff is opened in either workbench mode."
+      },
+      {
+        "entry": "src/features/files/FileGoToLineBar.tsx",
+        "maxGzipBytes": 600,
+        "reason": "Go to Line input, focus and validation; loads only when its command opens the bar. Measured 550 B; cap 600 B."
+      },
+      {
+        "entry": "src/features/files/fileSymbolNavigation.ts",
+        "maxGzipBytes": 910,
+        "reason": "Same-file symbol navigation and stale-buffer guard; loads only on F12 or Go to Definition. Measured 823 B; cap 910 B."
       },
       {
         "entry": "src/features/files/FileSurface.tsx",

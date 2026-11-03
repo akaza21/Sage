@@ -76,6 +76,28 @@ async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
   await expect(radio).toBeChecked();
 }
 
+test("transcript replacement keeps following through a queued old-layout scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 1000 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const transcript = page.locator(".message-list");
+  const remaining = () =>
+    transcript.evaluate(
+      (element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop,
+    );
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  const revisions = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
+    return fixture.replaceChatChromeWithQueuedScroll();
+  });
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  expect(revisions).toEqual({ before: "42", after: "43" });
+});
+
 async function expectSingleHeaderRow(page: Page, width: number) {
   await expect(page.locator(".agent-task-header__title")).toBeVisible();
   const header = page.locator(".agent-task-header");

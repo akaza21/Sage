@@ -1,24 +1,29 @@
-import { type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "../../ui/leanIcons";
-import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLine";
+import { contentText, type EditorContent } from "./editorContent";
+import { goToLineSelection, MAX_GOTO_LINE_INPUT_CHARS } from "./goToLine";
 
-interface FileGoToLineBarProps {
-  inputRef: RefObject<HTMLInputElement | null>;
+export interface FileGoToLineBarProps {
   query: string;
-  status: string;
   onQueryChange: (query: string) => void;
-  onSubmit: () => void;
+  content: EditorContent;
+  onSubmit: (selection: { start: number; end: number }) => void;
   onClose: () => void;
 }
 
 export function FileGoToLineBar({
-  inputRef,
   query,
-  status,
   onQueryChange,
+  content,
   onSubmit,
   onClose,
 }: FileGoToLineBarProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [inputRef]);
   return (
     <div className="editor-find" role="search" aria-label="Go to line">
       <label className="editor-find__query">
@@ -29,21 +34,24 @@ export function FileGoToLineBar({
           aria-label="Go to line"
           maxLength={MAX_GOTO_LINE_INPUT_CHARS}
           value={query}
-          onChange={(event) =>
+          onChange={(event) => {
             onQueryChange(
               event.target.value.slice(0, MAX_GOTO_LINE_INPUT_CHARS),
-            )
-          }
+            );
+            setInvalid(false);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              onSubmit();
+              const selection = goToLineSelection(contentText(content), query);
+              if (selection) onSubmit(selection);
+              else setInvalid(true);
             }
           }}
         />
       </label>
       <span className="editor-find__status" role="status">
-        {status}
+        {invalid ? "Enter a line" : "Line or line:column"}
       </span>
       <button
         className="icon-button editor-find__button"
