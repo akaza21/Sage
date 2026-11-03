@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { execFileSync } from "node:child_process";
+import test, { afterEach } from "node:test";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +24,25 @@ import {
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const evidenceRelative = "local-evidence/BETA-0001/source-functional";
 const manifestRelative = `${evidenceRelative}/attestation-v1.json`;
+const cliRelative = "scripts/beta0001-source-functional-profile.mjs";
+const fixtureRoots = [];
+
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function runCli(
+  fixture,
+  args = ["--current", "--attestation", fixture.attestationCommit],
+) {
+  return spawnSync(
+    process.execPath,
+    [path.join(fixture.root, cliRelative), ...args],
+    { cwd: fixture.root, encoding: "utf8" },
+  );
+}
 
 function git(root, args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -48,9 +73,23 @@ function writeAttestation(fixture, inventory) {
   );
 }
 
-function attestedFixture({ statuses } = {}) {
+function attestedFixture({ statuses, cli = false } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "sage-source-evidence-"));
+  fixtureRoots.push(root);
   execFileSync("git", ["init"], { cwd: root });
+  // The CLI locates its repository and contract relative to its own module.
+  // Install the real files before candidate A so both A and B stay clean.
+  if (cli) {
+    const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+    for (const relative of [
+      cliRelative,
+      "docs/work-items/BETA-0001-primary-beta-path/contracts/beta-source-functional-evidence-v1.json",
+    ]) {
+      const destination = path.join(root, relative);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(path.join(repositoryRoot, relative), destination);
+    }
+  }
   writeFileSync(path.join(root, "pinned.txt"), "immutable\n");
   const candidateCommit = commit(root, "candidate");
   const candidateTree = git(root, ["rev-parse", "HEAD^{tree}"]);
@@ -345,28 +384,60 @@ test("authenticated failed evidence outranks missing evidence", () => {
 });
 
 test("CLI reports the current checkout state with --attestation", () => {
-  const repositoryRoot = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-  );
-  const attestationCommit = git(repositoryRoot, ["rev-parse", "HEAD"]);
-  assert.deepEqual(
-    JSON.parse(
-      execFileSync(
-        process.execPath,
-        [
-          path.join(
-            repositoryRoot,
-            "scripts",
-            "beta0001-source-functional-profile.mjs",
-          ),
-          "--current",
-          "--attestation",
-          attestationCommit,
-        ],
-        { cwd: repositoryRoot, encoding: "utf8" },
-      ),
-    ),
-    currentWorkingTreeResult({ repositoryRoot, attestationCommit }),
-  );
+  const fixture = attestedFixture({ cli: true });
+  const result = runCli(fixture);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    sourceCommit: fixture.candidateCommit,
+    verdict: "passed",
+    acceptance: "local-green-only",
+  });
 });
+
+test("CLI reports HEAD as unbound without --attestation", () => {
+  const fixture = attestedFixture({ cli: true });
+  const result = runCli(fixture, ["--current"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    sourceCommit: fixture.attestationCommit,
+    verdict: "incomplete",
+    acceptance: "local-green-only",
+    reason: "evidence-unbound",
+  });
+});
+
+test("CLI rejects a non-ancestor candidate even with the same source tree", () => {
+  const fixture = attestedFixture({ cli: true });
+  // Model rewritten history without changing the candidate's contents.
+  fixture.candidateCommit = git(fixture.root, [
+    "-c",
+    "user.name=test",
+    "-c",
+    "user.email=test@example.invalid",
+    "commit-tree",
+    fixture.candidateTree,
+    "-m",
+    "unrelated candidate",
+  ]);
+  writeAttestation(fixture, fixture.inventory);
+  fixture.attestationCommit = commit(fixture.root, "stale attestation");
+  const result = runCli(fixture);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /source-functional-binding-stale/u);
+});
+
+for (const file of ["pinned.txt", "untracked.txt"]) {
+  test(`CLI reports dirty source identity for ${file}`, () => {
+    const fixture = attestedFixture({ cli: true });
+    writeFileSync(path.join(fixture.root, file), "dirty\n");
+    const result = runCli(fixture);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      sourceCommit: fixture.candidateCommit,
+      verdict: "incomplete",
+      acceptance: "local-green-only",
+      reason: "source-identity-dirty",
+    });
+  });
+}

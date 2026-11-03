@@ -1,6 +1,9 @@
 use super::*;
 use crate::acp::attached_context::effective_prompt;
 
+mod lifecycle;
+pub(crate) use lifecycle::{close_acp_session_inner, end_acp_session_inner};
+
 /// Context a prompt cannot carry: images (until CP-26) and page elements that
 /// fail admission.
 fn image_input_block(contexts: &AttachedContexts) -> Result<(), AcpIpcError> {
@@ -27,7 +30,7 @@ pub(crate) async fn send_acp_turn_inner(
     request: SendAcpTurnRequest,
 ) -> Result<AcpMutationResponse, SendAcpTurnFailure> {
     let (project_id, generation, chat_id) = send_owner(&request);
-    let (_transition, snapshot) =
+    let (transition, snapshot) =
         snapshot_for(state, project_id.clone(), generation, chat_id.clone())
             .await
             .map_err(prompt_not_dispatched)?;
@@ -151,7 +154,19 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Choose a supported access mode before sending."),
         })
     })?;
-    state
+    super::turn_workspace::mark_before_prompt(state, transition, &client_intent_id, &session_id)
+        .await;
+    // Capture can outlive a project switch. Reacquire authority before dispatch.
+    let _transition = match lock_acp_context(state, &project_id, project_generation).await {
+        Ok(transition) => transition,
+        Err(error) => {
+            super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
+            return Err(prompt_not_dispatched(error));
+        }
+    };
+    let tracked_session = session_id.clone();
+    let tracked_intent = client_intent_id.clone();
+    let dispatch = state
         .acp
         .dispatch_session_turn(
             &binding_id,
@@ -173,7 +188,11 @@ pub(crate) async fn send_acp_turn_inner(
         .map_err(|failure| SendAcpTurnFailure {
             failure: dispatch_error(failure.error),
             prompt_dispatch: failure.prompt_dispatch,
-        })?;
+        });
+    if dispatch.is_err() {
+        super::turn_workspace::forget_unprepared(state, &tracked_session, &tracked_intent);
+    }
+    dispatch?;
     mutation_response(state, project_id, chat_id).map_err(prompt_dispatch_unknown)
 }
 
@@ -277,126 +296,5 @@ pub(crate) async fn steer_acp_turn_inner(
             },
         )
         .map_err(dispatch_error)?;
-    mutation_response(state, project_id, chat_id)
-}
-
-pub(crate) async fn close_acp_session_inner(
-    state: &AppState,
-    request: CloseAcpSessionRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_base_intent(
-        &request.project_id,
-        request.project_generation,
-        &request.chat_id,
-        request.expected_projection_revision,
-        &snapshot,
-    )
-    .map_err(intent_error)?;
-    if snapshot.session_id.as_ref() != Some(&request.session_id) {
-        return Err(intent_error(IntentError::ForeignSession));
-    }
-    if snapshot.runtime_epoch != Some(request.runtime_epoch) {
-        return Err(intent_error(IntentError::StaleRuntimeEpoch));
-    }
-    let binding_id =
-        session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    if state.acp.accepts_characterization(&binding_id) {
-        return characterization::close(state, request);
-    }
-    let project_id = request.project_id.clone();
-    let chat_id = request.chat_id.clone();
-    state
-        .acp
-        .dispatch_session_close(
-            &binding_id,
-            CloseSessionCommand {
-                project_id: request.project_id,
-                chat_id: request.chat_id,
-                expected_projection_revision: request.expected_projection_revision,
-                client_intent_id: request.client_intent_id,
-                session_id: request.session_id,
-                runtime_epoch: request.runtime_epoch,
-                now_millis: crate::persistence::now_millis(),
-            },
-        )
-        .map_err(dispatch_error)?;
-    mutation_response(state, project_id, chat_id)
-}
-
-pub(crate) async fn end_acp_session_inner(
-    state: &AppState,
-    request: CloseAcpSessionRequest,
-) -> Result<AcpMutationResponse, AcpIpcError> {
-    let (_transition, snapshot) = snapshot_for(
-        state,
-        request.project_id.clone(),
-        request.project_generation,
-        request.chat_id.clone(),
-    )
-    .await?;
-    validate_base_intent(
-        &request.project_id,
-        request.project_generation,
-        &request.chat_id,
-        request.expected_projection_revision,
-        &snapshot,
-    )
-    .map_err(intent_error)?;
-    if snapshot.session_id.as_ref() != Some(&request.session_id) {
-        return Err(intent_error(IntentError::ForeignSession));
-    }
-    if snapshot.runtime_epoch != Some(request.runtime_epoch) {
-        return Err(intent_error(IntentError::StaleRuntimeEpoch));
-    }
-    #[cfg(all(windows, feature = "acp-fixture"))]
-    {
-        let binding_id =
-            session_routes::durable_binding_id(state, &request.session_id).map_err(store_error)?;
-        if state.acp.accepts_characterization(&binding_id) {
-            return Err(AcpIpcError::InvalidRequest {
-                message: safe_message(
-                    "Characterization sessions cannot be ended by native recovery.",
-                ),
-            });
-        }
-    }
-    let page = state
-        .acp
-        .load_chat_page(request.project_id.clone(), request.chat_id.clone(), None)
-        .map_err(store_error)?;
-    let session = page
-        .sessions
-        .as_slice()
-        .iter()
-        .find(|session| session.id == request.session_id)
-        .ok_or_else(|| intent_error(IntentError::ForeignSession))?;
-    if session.capabilities.close_session {
-        return Err(AcpIpcError::InvalidRequest {
-            message: safe_message(
-                "Native session recovery is available only when close is unproven.",
-            ),
-        });
-    }
-    let project_id = request.project_id.clone();
-    let chat_id = request.chat_id.clone();
-    state
-        .acp
-        .end_session_natively(RuntimeOwner {
-            project_id: request.project_id,
-            chat_id: request.chat_id,
-            session_id: request.session_id,
-            runtime_epoch: request.runtime_epoch,
-        })
-        .map_err(|error| {
-            dispatch_error(crate::acp::service::SessionDispatchError::Operation(error))
-        })?;
     mutation_response(state, project_id, chat_id)
 }

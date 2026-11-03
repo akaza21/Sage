@@ -174,6 +174,43 @@ fn apply_deleted_file_uses_workspace_trash() {
     assert!(!fixture.root.join("deleted.txt").exists());
 }
 
+#[cfg(windows)]
+#[test]
+fn apply_renamed_file_keeps_exact_utf16_targets_at_each_alignment() {
+    for basename in [
+        "a.txt",
+        "ab.txt",
+        "abc.txt",
+        "abcd.txt",
+        "é.txt",
+        "漢字.txt",
+        "🦀.txt",
+        "after.txt",
+    ] {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("before.txt"), "preserve\n").unwrap();
+        let mut intent = fixture.intent(
+            AgentFileOperation::Renamed,
+            ResourceRef {
+                root_id: fixture.workspace.root_id().into(),
+                relative_path: basename.into(),
+            },
+        );
+        intent.source = Some(fixture.resource("before.txt"));
+        intent.basename = Some(basename.into());
+
+        apply_agent_file_intent(fixture.database(), &fixture.workspace, intent)
+            .unwrap_or_else(|error| panic!("rename to {basename:?}: {error}"));
+
+        assert!(!fixture.root.join("before.txt").exists());
+        assert_eq!(
+            fs::read_to_string(fixture.root.join(basename))
+                .unwrap_or_else(|error| panic!("read exact target {basename:?}: {error}")),
+            "preserve\n"
+        );
+    }
+}
+
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 #[test]
 fn apply_renamed_file_fails_closed_without_mutating_the_source() {

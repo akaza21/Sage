@@ -1,46 +1,7 @@
 use super::live_recovery::{ClosedShutdownAuthority, LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 
-impl AcpService {
-    #[cfg(test)]
-    pub(crate) fn cancel_codex_turn(
-        &self,
-        intent: crate::acp::runtime::HostCancelIntent,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        #[cfg(windows)]
-        let started = Instant::now();
-        #[cfg(windows)]
-        let owner = intent.owner.clone();
-        let result = self.cancel_session_turn(intent);
-        #[cfg(windows)]
-        if let Err(error) = &result {
-            let host = self.runtime.active().map(|host| {
-                (
-                    host.lifecycle.load(std::sync::atomic::Ordering::Acquire),
-                    host.last_shutdown_phase(),
-                )
-            });
-            eprintln!(
-                "ACP cancellation failed: stage={} elapsed_ms={} error={error:?} slot={:?} host={host:?} scheduler={:?}",
-                self.last_cancel_stage(),
-                started.elapsed().as_millis(),
-                self.runtime.for_owner(&owner).err(),
-                self.scheduler
-                    .active()
-                    .map(|allocation| (allocation.turn_reserved, allocation.turn_id)),
-            );
-        }
-        result
-    }
-
-    #[cfg(test)]
-    pub(crate) fn close_codex_session(
-        &self,
-        command: crate::acp::store::CloseSessionCommand,
-    ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
-        self.close_session(command)
-    }
-
+impl Lane<'_> {
     pub(crate) fn cancel_session_turn(
         &self,
         intent: crate::acp::runtime::HostCancelIntent,
@@ -53,7 +14,7 @@ impl AcpService {
                 let deadline = Instant::now()
                     + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
                 let _ = self.shutdown_codex_recovery(deadline);
-                return Err(CodexSessionError::Recovery);
+                return self.settled_cancel_outcome(&owner, &turn_id);
             }
             Err(error) => return Err(map_slot_error(error)),
         };
@@ -63,6 +24,11 @@ impl AcpService {
             // for it here incorrectly turns an admitted owner's cancellation
             // into recovery solely because the runner has not replied yet.
             Ok(outcome) => self.finish_cancelled_shutdown(owner, turn_id, host, outcome),
+            Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State)
+                if self.host_failed_closed(&host) =>
+            {
+                self.settle_cancel_on_failed_host(owner, turn_id, host)
+            }
             Err(error) => Err(self.retain_live_host_error(
                 owner,
                 host,

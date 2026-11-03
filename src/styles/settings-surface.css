@@ -4,18 +4,26 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-content-gap);
   padding: 28px clamp(20px, 5vw, 56px) 48px;
   color: var(--color-text-primary);
   background: var(--color-canvas);
 }
 
+.settings-surface > * {
+  width: 100%;
+  flex: none;
+}
+
 .settings-surface__header {
   display: grid;
-  max-width: 820px;
+  max-width: var(--settings-measure);
   grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
   align-items: end;
   gap: 24px;
-  margin: 0 auto 28px;
+  margin: 0 auto;
 }
 
 .settings-surface__title,
@@ -76,8 +84,8 @@
 }
 
 .settings-surface__nav {
-  max-width: 820px;
-  margin: 0 auto 4px;
+  max-width: var(--settings-measure);
+  margin: 0 auto;
 }
 
 .settings-surface__nav-list {
@@ -127,6 +135,12 @@
   text-align: left;
 }
 
+/* The cells are a grid and a flex row, so the row lays them out side by side. */
+.settings-surface__keymap tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .settings-surface__keymap th,
 .settings-surface__keymap td {
   padding: 8px 0;
@@ -154,6 +168,7 @@
 .settings-surface__keymap td {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 4px;
   width: 168px;
@@ -172,7 +187,7 @@
 }
 
 .settings-surface__section {
-  max-width: 820px;
+  max-width: var(--settings-measure);
   margin: 0 auto;
   border-top: 1px solid var(--color-border-subtle);
 }
@@ -385,11 +400,11 @@
 .settings-surface__error {
   display: flex;
   width: 100%;
-  max-width: 820px;
+  max-width: var(--settings-measure);
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: -8px auto 16px;
+  margin: 0 auto;
   padding: 8px 8px 8px 12px;
   border-left: 2px solid var(--color-danger);
   color: var(--color-text-secondary);
@@ -402,15 +417,15 @@
 }
 
 .settings-surface__empty {
-  max-width: 820px;
+  max-width: var(--settings-measure);
   margin: 0 auto;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
 
 .settings-surface__loading {
-  max-width: 820px;
-  margin: -8px auto 16px;
+  max-width: var(--settings-measure);
+  margin: 0 auto;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
@@ -429,7 +444,6 @@
   .settings-surface__header {
     align-items: stretch;
     gap: 16px;
-    margin-bottom: 20px;
   }
 
   .settings-surface__row {
@@ -443,10 +457,6 @@
   .settings-surface__row .browser-clear-data {
     align-items: flex-start;
     text-align: left;
-  }
-
-  .settings-surface__error {
-    margin-top: 0;
   }
 }
 

@@ -1,0 +1,14 @@
+{
+  "pendingQueue": ["L1", "M14", "C20", "C8", "C10", "R2", "R5", "R6"],
+  "statuses": {
+    "L1": "absent",
+    "M14": "absent",
+    "C20": "absent",
+    "C8": "absent",
+    "C10": "absent",
+    "R2": "absent",
+    "R5": "absent",
+    "R6": "absent",
+    "M11": "present"
+  }
+}

@@ -1,11 +1,5 @@
 import { MoreHorizontal, X } from "../../ui/leanIcons";
-import {
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useId, useRef, useState, type RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import { QueuedAttachmentPreview } from "./ComposerAttachments";
@@ -31,40 +25,6 @@ export function ComposerQueuedPrompts({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const rowTriggersRef = useRef(new Map<string, HTMLButtonElement>());
   const panelId = useId();
-  const queueRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const queue = queueRef.current;
-    const composer = queue?.closest<HTMLElement>(".composer");
-    if (!queue || !composer) return;
-    let frame = 0;
-    const measure = () => {
-      const space =
-        getComputedStyle(queue).position === "absolute"
-          ? composer.getBoundingClientRect().top -
-            queue.getBoundingClientRect().top
-          : 0;
-      const value = space + "px";
-      if (composer.style.getPropertyValue("--queued-tray-space") !== value)
-        composer.style.setProperty("--queued-tray-space", value);
-    };
-    measure();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            if (frame) return;
-            frame = requestAnimationFrame(() => {
-              frame = 0;
-              measure();
-            });
-          });
-    observer?.observe(queue);
-    return () => {
-      observer?.disconnect();
-      cancelAnimationFrame(frame);
-      composer.style.removeProperty("--queued-tray-space");
-    };
-  }, [prompts?.length]);
   if (disabled && menuId !== null) setMenuId(null);
   const selected = prompts?.find((prompt) => prompt.id === menuId);
   if (!prompts?.length) return null;
@@ -82,11 +42,7 @@ export function ComposerQueuedPrompts({
     (nextTrigger ?? composerRef?.current)?.focus();
   };
   return (
-    <div
-      ref={queueRef}
-      className="composer__queued"
-      aria-label="Queued messages"
-    >
+    <div className="composer__queued" aria-label="Queued messages">
       {prompts.map((prompt) => (
         <div className="composer__queued-row" key={prompt.id}>
           <QueuedAttachmentPreview contexts={prompt.attachedContext} />

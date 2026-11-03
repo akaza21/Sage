@@ -3,10 +3,8 @@ impl std::fmt::Debug for super::AcpService {
         formatter
             .debug_struct("AcpService")
             .field("database", &self.database)
-            .field("scheduler", &self.scheduler)
             .field("journal", &self.journal)
-            .field("sessions", &self.sessions)
-            .field("runtime_active", &self.runtime.is_active())
+            .field("live_runtimes", &self.live_runtime_count())
             .field(
                 "codex_admitted",
                 &self.registry.codex_admission().is_available(),

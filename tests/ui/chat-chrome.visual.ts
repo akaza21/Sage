@@ -45,7 +45,8 @@ async function openChrome(
     { harness, state, status, tone, harnessStatus },
   );
   await chooseWindowMode(page, "Editor");
-  await expect(page.locator(".agent-task-header")).toHaveCount(0);
+  await expect(page.locator(".agent-task-header")).toHaveCount(1);
+  await expect(page.locator(".agent-task-header")).toBeHidden();
   await chooseWindowMode(page, "Agent");
   await settleChatProjections(page);
   const profile =
@@ -74,6 +75,28 @@ async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
   await radio.locator("..").click();
   await expect(radio).toBeChecked();
 }
+
+test("transcript replacement keeps following through a queued old-layout scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 1000 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const transcript = page.locator(".message-list");
+  const remaining = () =>
+    transcript.evaluate(
+      (element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop,
+    );
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  const revisions = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
+    return fixture.replaceChatChromeWithQueuedScroll();
+  });
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  expect(revisions).toEqual({ before: "42", after: "43" });
+});
 
 async function expectSingleHeaderRow(page: Page, width: number) {
   await expect(page.locator(".agent-task-header__title")).toBeVisible();
@@ -115,6 +138,10 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     test(`${harness} header and Archived row at ${width}`, async ({ page }) => {
       await openChrome(page, harness, width);
       await expectSingleHeaderRow(page, width);
+      if (width <= 600)
+        await page
+          .getByRole("button", { name: "Show projects and chats" })
+          .click();
       const archived = page.getByRole("button", { name: "Archived chats: 1" });
       await expect(archived).toHaveText("Archived 1");
       await expect(archived).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
@@ -167,6 +194,8 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
           name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
           exact: true,
         })
+        // AP-C4: Recents lists every chat, so a pinned chat has two rows.
+        .first()
         .click();
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
@@ -303,12 +332,12 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       }
     });
   }
-  test(`${harness} split home keeps both project names visible`, async ({
+  test(`${harness} multiple open chats show only the selected home`, async ({
     page,
   }) => {
     await openChrome(page, harness, 1888, "home-split");
     const homes = page.getByRole("region", { name: "New chat", exact: true });
-    await expect(homes).toHaveCount(2);
+    await expect(homes).toHaveCount(1);
     for (const home of await homes.all()) {
       await expect(
         home.getByText("Sage project with a long name", { exact: true }),

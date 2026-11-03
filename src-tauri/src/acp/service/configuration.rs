@@ -99,7 +99,7 @@ impl AcpService {
         )
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
     pub(crate) fn new_with_registry_publisher_for_test(
         database: Database,
         registry: Arc<BindingRegistry>,
