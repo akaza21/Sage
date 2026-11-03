@@ -104,7 +104,10 @@ mod linux {
     use super::{AtomicBool, Ordering, unix_events};
     use std::{
         ffi::CString,
-        os::raw::{c_char, c_int},
+        os::{
+            raw::{c_char, c_int},
+            unix::ffi::OsStrExt,
+        },
     };
 
     const IN_CLOEXEC: c_int = 0x8_0000;
@@ -135,6 +138,7 @@ mod linux {
 
     pub(crate) struct Prepared {
         fd: c_int,
+        folders: unix_events::InotifyFolders,
     }
 
     impl Drop for Prepared {
@@ -148,18 +152,25 @@ mod linux {
         if fd < 0 {
             return Err(std::io::Error::last_os_error());
         }
+        // Dropping `prepared` on any early return closes the descriptor.
+        let mut prepared = Prepared {
+            fd,
+            folders: unix_events::InotifyFolders::new(),
+        };
+        let first = directories.first();
         for directory in directories {
-            let path = CString::new(directory.to_string_lossy().as_bytes()).map_err(|_| {
+            let path = CString::new(directory.as_os_str().as_bytes()).map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path")
             })?;
             let watch = unsafe { inotify_add_watch(fd, path.as_ptr(), IN_WATCH_MASK) };
             if watch < 0 {
-                let error = std::io::Error::last_os_error();
-                unsafe { close(fd) };
-                return Err(error);
+                return Err(std::io::Error::last_os_error());
             }
+            let relative =
+                first.and_then(|first| unix_events::inotify_folder_relative(first, directory));
+            unix_events::record_inotify_folder(&mut prepared.folders, watch, relative);
         }
-        Ok(Prepared { fd })
+        Ok(prepared)
     }
 
     pub(super) fn run(
@@ -194,6 +205,7 @@ mod linux {
             }
             for (relative, action) in unix_events::unix_watch_deliveries_from_inotify_bytes(
                 &buffer[..read_bytes as usize],
+                &prepared.folders,
             ) {
                 deliver(relative, action);
             }
@@ -268,5 +280,103 @@ mod tests {
             .expect("cancelled watch should not fail");
         worker.join().expect("watch worker should not panic");
         fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[cfg(target_os = "linux")]
+    fn linux_test_root(label: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "sage-workspace-notify-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time is after the Unix epoch")
+                .as_nanos(),
+        ));
+        fs::create_dir(&root).expect("create test root");
+        root
+    }
+
+    /// Watches `root` as the Project watch does, runs `change` once the
+    /// watches are in place, and returns the notices that arrive until
+    /// `expected` does or two seconds pass.
+    #[cfg(target_os = "linux")]
+    fn linux_notices_after(
+        root: &std::path::Path,
+        change: impl FnOnce(),
+        expected: &(String, u32),
+    ) -> Vec<(String, u32)> {
+        let (directories, truncated) =
+            unix_events::bounded_watch_directories(root).expect("walk test root");
+        assert!(!truncated);
+        let prepared = prepare_watch(&directories).expect("watch test root");
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let worker_cancelled = Arc::clone(&cancelled);
+        let (notices, receive_notice) = mpsc::sync_channel(64);
+        let worker = std::thread::spawn(move || {
+            run_prepared(prepared, &worker_cancelled, &mut |relative, action| {
+                let _ = notices.try_send((relative, action));
+            })
+        });
+        change();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut received = Vec::new();
+        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+            let Ok(notice) = receive_notice.recv_timeout(left) else {
+                break;
+            };
+            let done = &notice == expected;
+            received.push(notice);
+            if done {
+                break;
+            }
+        }
+        cancelled.store(true, Ordering::Release);
+        worker
+            .join()
+            .expect("watch worker should not panic")
+            .expect("cancelled watch should not fail");
+        received
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_root_watch_reports_subfolder_change_at_its_real_path() {
+        let root = linux_test_root("subfolder");
+        fs::create_dir(root.join("src")).expect("create src");
+        let expected = ("src/main.ts".to_string(), 1);
+        let received = linux_notices_after(
+            &root,
+            || fs::write(root.join("src").join("main.ts"), "created").expect("write src/main.ts"),
+            &expected,
+        );
+        fs::remove_dir_all(&root).expect("remove test root");
+        assert!(
+            received.contains(&expected),
+            "expected a create notice for src/main.ts, got {received:?}"
+        );
+        assert!(
+            received.iter().all(|(relative, _)| relative != "main.ts"),
+            "a subfolder change must not be reported at the root, got {received:?}"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_root_watch_covers_non_utf8_subfolder_with_resync() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = linux_test_root("non-utf8");
+        let folder = root.join(std::ffi::OsStr::from_bytes(b"bad\xff"));
+        fs::create_dir(&folder).expect("create non-UTF-8 folder");
+        let expected = (
+            super::super::OVERFLOW_RELATIVE_PATH.to_string(),
+            super::super::OVERFLOW_NOTIFY_ACTION,
+        );
+        let received = linux_notices_after(
+            &root,
+            || fs::write(folder.join("main.ts"), "created").expect("write in non-UTF-8 folder"),
+            &expected,
+        );
+        fs::remove_dir_all(&root).expect("remove test root");
+        assert_eq!(received, vec![expected]);
     }
 }

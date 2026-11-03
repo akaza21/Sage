@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "linux", test))]
+use std::{collections::HashMap, path::Component};
 
 use super::{
     OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH, WorkspaceNotifyError, reject,
@@ -75,14 +77,59 @@ pub(super) fn unix_kind_from_inotify_mask(mask: u32) -> UnixWatchKind {
 #[cfg(any(target_os = "linux", test))]
 const INOTIFY_EVENT_BYTES: usize = 16;
 
+/// Each inotify watch descriptor's folder, relative to the first watched
+/// folder with `/` separators (empty for that folder). `None` marks a folder
+/// whose path is not UTF-8, or a descriptor shared by two paths: its events
+/// are delivered as an overflow resync rather than under a wrong name.
 #[cfg(any(target_os = "linux", test))]
-pub(super) fn unix_watch_deliveries_from_inotify_bytes(buffer: &[u8]) -> Vec<(String, u32)> {
+pub(super) type InotifyFolders = HashMap<i32, Option<String>>;
+
+#[cfg(any(target_os = "linux", test))]
+pub(super) fn inotify_folder_relative(first: &Path, directory: &Path) -> Option<String> {
+    let mut parts = Vec::new();
+    for component in directory.strip_prefix(first).ok()?.components() {
+        let Component::Normal(part) = component else {
+            return None;
+        };
+        parts.push(part.to_str()?);
+    }
+    Some(parts.join("/"))
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(super) fn record_inotify_folder(
+    folders: &mut InotifyFolders,
+    watch: i32,
+    relative: Option<String>,
+) {
+    folders
+        .entry(watch)
+        .and_modify(|known| {
+            if *known != relative {
+                *known = None;
+            }
+        })
+        .or_insert(relative);
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(super) fn unix_watch_deliveries_from_inotify_bytes(
+    buffer: &[u8],
+    folders: &InotifyFolders,
+) -> Vec<(String, u32)> {
     let mut offset = 0_usize;
     let mut deliveries = Vec::new();
     while offset
         .checked_add(INOTIFY_EVENT_BYTES)
         .is_some_and(|end| end <= buffer.len())
     {
+        let Some(wd) = buffer
+            .get(offset..offset + 4)
+            .and_then(|bytes| bytes.try_into().ok())
+            .map(i32::from_le_bytes)
+        else {
+            break;
+        };
         let Some(mask) = buffer
             .get(offset + 4..offset + 8)
             .and_then(|bytes| bytes.try_into().ok())
@@ -113,7 +160,13 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(buffer: &[u8]) -> Vec<(St
                 .ok()
                 .filter(|name| !name.is_empty())
         };
-        if let Ok(delivery) = unix_watch_delivery(name, unix_kind_from_inotify_mask(mask)) {
+        let path = match folders.get(&wd) {
+            Some(Some(folder)) if folder.is_empty() => name.map(str::to_string),
+            Some(Some(folder)) => name.map(|name| format!("{folder}/{name}")),
+            _ => None,
+        };
+        let kind = unix_kind_from_inotify_mask(mask);
+        if let Ok(delivery) = unix_watch_delivery(path.as_deref(), kind) {
             deliveries.push(delivery);
         }
         offset = name_end;
@@ -260,30 +313,93 @@ mod tests {
         assert_eq!(unix_kind_from_inotify_mask(0), UnixWatchKind::Overflow);
     }
 
-    fn inotify_record(mask: u32, name: &str) -> Vec<u8> {
+    fn inotify_record(wd: i32, mask: u32, name: &str) -> Vec<u8> {
         let mut name_bytes = name.as_bytes().to_vec();
         name_bytes.push(0);
         while !name_bytes.len().is_multiple_of(4) {
             name_bytes.push(0);
         }
         let mut bytes = vec![0_u8; INOTIFY_EVENT_BYTES];
+        bytes[0..4].copy_from_slice(&wd.to_le_bytes());
         bytes[4..8].copy_from_slice(&mask.to_le_bytes());
         bytes[12..16].copy_from_slice(&(name_bytes.len() as u32).to_le_bytes());
         bytes.extend(name_bytes);
         bytes
     }
 
+    fn root_and_src_folders() -> InotifyFolders {
+        let mut folders = InotifyFolders::new();
+        record_inotify_folder(&mut folders, 1, Some(String::new()));
+        record_inotify_folder(&mut folders, 2, Some("src".to_string()));
+        folders
+    }
+
     #[test]
     fn inotify_bytes_yield_named_create_and_overflow() {
-        let mut buffer = inotify_record(IN_CREATE, "src/main.ts");
-        buffer.extend(inotify_record(IN_Q_OVERFLOW, ""));
+        let mut buffer = inotify_record(1, IN_CREATE, "main.ts");
+        buffer.extend(inotify_record(-1, IN_Q_OVERFLOW, ""));
         assert_eq!(
-            unix_watch_deliveries_from_inotify_bytes(&buffer),
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
             vec![
-                ("src/main.ts".to_string(), 1),
+                ("main.ts".to_string(), 1),
                 (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION),
             ]
         );
+    }
+
+    #[test]
+    fn inotify_bytes_join_event_name_to_its_watch_folder() {
+        let mut buffer = inotify_record(1, IN_MODIFY, "main.ts");
+        buffer.extend(inotify_record(2, IN_MODIFY, "main.ts"));
+        buffer.extend(inotify_record(2, IN_DELETE, "old.ts"));
+        assert_eq!(
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
+            vec![
+                ("main.ts".to_string(), 3),
+                ("src/main.ts".to_string(), 3),
+                ("src/old.ts".to_string(), 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn inotify_bytes_resync_for_unknown_or_unnamed_watch_folder() {
+        let mut folders = root_and_src_folders();
+        record_inotify_folder(&mut folders, 3, None);
+        let mut buffer = inotify_record(7, IN_CREATE, "main.ts");
+        buffer.extend(inotify_record(3, IN_CREATE, "main.ts"));
+        buffer.extend(inotify_record(2, IN_Q_OVERFLOW, "main.ts"));
+        let overflow = (OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION);
+        assert_eq!(
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &folders),
+            vec![overflow.clone(), overflow.clone(), overflow]
+        );
+    }
+
+    #[test]
+    fn inotify_watch_shared_by_two_folders_resyncs() {
+        let mut folders = root_and_src_folders();
+        record_inotify_folder(&mut folders, 2, Some("lib".to_string()));
+        assert_eq!(folders.get(&2), Some(&None));
+        record_inotify_folder(&mut folders, 1, Some(String::new()));
+        assert_eq!(folders.get(&1), Some(&Some(String::new())));
+    }
+
+    #[test]
+    fn inotify_folder_relative_uses_slashes_and_rejects_non_utf8() {
+        let root = Path::new("/project");
+        assert_eq!(inotify_folder_relative(root, root), Some(String::new()));
+        assert_eq!(
+            inotify_folder_relative(root, &root.join("src").join("lib")),
+            Some("src/lib".to_string())
+        );
+        assert_eq!(inotify_folder_relative(root, Path::new("/elsewhere")), None);
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let invalid = std::ffi::OsStr::from_bytes(b"bad\xff");
+            assert_eq!(inotify_folder_relative(root, &root.join(invalid)), None);
+        }
     }
 
     #[test]
