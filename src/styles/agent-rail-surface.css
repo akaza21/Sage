@@ -112,12 +112,16 @@
   padding-block: 0;
 }
 
+/* The trailing cell is positioned after the title button, so it paints and
+   hit-tests above the button's full-width box (project-navigation-surface.css);
+   the row is its own stacking context. */
 .workbench--agent .project-chat-row {
   grid-template-rows: 28px;
   border: 0;
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
+  isolation: isolate;
 }
 
 .workbench--agent .project-chat-row--active {
@@ -394,13 +398,6 @@
 
 .workbench--agent .project-chat__state--waiting::before {
   background: var(--color-warning);
-}
-
-/* The trailing cell is positioned after the title button, so it paints and
-   hit-tests above the button's full-width box (project-navigation-surface.css);
-   the row is its own stacking context. */
-.workbench--agent .project-chat-row {
-  isolation: isolate;
 }
 
 .workbench--agent

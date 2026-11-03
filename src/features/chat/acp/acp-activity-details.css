@@ -9,9 +9,13 @@
 }
 
 .acp-tool-rollup > summary {
-  min-height: 32px;
+  min-height: var(--row-height-compact);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-right: var(--space-1);
+  list-style: none;
+  transition: color var(--motion-duration-fast) ease;
 }
 
 .acp-tool-rollup__items .acp-tool-rollup > summary {
@@ -64,14 +68,6 @@
   padding: 0;
   border: 0;
   background: transparent;
-}
-
-.acp-tool-rollup > summary {
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: var(--row-height-compact);
-  padding-right: var(--space-1);
-  list-style: none;
-  transition: color var(--motion-duration-fast) ease;
 }
 
 .acp-tool-rollup > summary::-webkit-details-marker {
