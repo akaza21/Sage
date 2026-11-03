@@ -1,5 +1,44 @@
 Set-StrictMode -Version Latest
 
+if (-not ("SageFootprint.ProcessImagePath" -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace SageFootprint {
+  public static class ProcessImagePath {
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder name, ref uint size);
+
+    // The kernel records the image path when it creates the process, so this
+    // read is valid before the loader has initialised the main module.
+    // Returns null when the process cannot be opened or queried.
+    public static string Query(int processId) {
+      IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+      if (handle == IntPtr.Zero) { return null; }
+      try {
+        uint size = 32768;
+        StringBuilder name = new StringBuilder((int)size);
+        if (!QueryFullProcessImageNameW(handle, 0, name, ref size)) { return null; }
+        return name.ToString(0, (int)size);
+      } finally {
+        CloseHandle(handle);
+      }
+    }
+  }
+}
+'@
+}
+
 $script:MaxProcessSnapshotRows = 4096
 $script:MaxRetainedProcessRecords = 128
 $script:MaxRetainedIdentityBytes = 64KB
@@ -206,7 +245,9 @@ function Get-FootprintRootIdentity {
 
 function Get-FootprintLaunchIdentity {
   param([Parameter(Mandatory)]$Process, [Parameter(Mandatory)][string]$ExpectedExecutablePath)
-  $path = $Process.Path
+  # $Process.Path reads the main module, which is unavailable while the process
+  # is still initialising; the kernel's image path is valid from creation.
+  $path = [SageFootprint.ProcessImagePath]::Query([int]$Process.Id)
   if (-not $path -or -not [string]::Equals([IO.Path]::GetFullPath($path), [IO.Path]::GetFullPath($ExpectedExecutablePath), [StringComparison]::OrdinalIgnoreCase)) {
     throw "The launched process object does not identify the exact executable."
   }

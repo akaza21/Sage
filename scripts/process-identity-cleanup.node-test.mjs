@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -16,7 +17,7 @@ const identityModule = path.resolve(
   "ProcessIdentity.psm1",
 );
 
-function runPowerShellFixture(body) {
+function runPowerShellFixture(body, { timeout = 10_000 } = {}) {
   const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module $env:SAGE_PROCESS_IDENTITY_MODULE -Force;${body}`;
   const result = spawnSync(
     powershell,
@@ -33,7 +34,7 @@ function runPowerShellFixture(body) {
         SAGE_PROCESS_IDENTITY_MODULE: identityModule,
       },
       windowsHide: true,
-      timeout: 10_000,
+      timeout,
     },
   );
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -449,4 +450,66 @@ try{
     stopped: true,
     exited: true,
   });
+});
+
+test("a launch identity is captured before the process has initialised its main module", () => {
+  const observed = runPowerShellFixture(String.raw`
+$powershell=(Get-Process -Id $PID).Path;
+$cmd=Join-Path $env:SystemRoot 'System32\cmd.exe';
+$startup=([wmiclass]'Win32_ProcessStartup').CreateInstance();$startup.CreateFlags=[uint32]4;
+$created=([wmiclass]'Win32_Process').Create(('"'+$powershell+'" -NoProfile -NonInteractive -Command exit'),$null,$startup);
+if($created.ReturnValue -ne 0){throw "suspended launch failed: $($created.ReturnValue)"};
+$suspended=Get-Process -Id ([int]$created.ProcessId);
+$running=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+try{
+  $mainModuleReadable=$null -ne $suspended.Path;
+  $identity=Get-FootprintLaunchIdentity $suspended $powershell;
+  $exact=Open-FootprintExactProcess $identity;$creationMatches=$null -ne $exact;if($creationMatches){$exact.Dispose()};
+  $suspendedWrong=$null;try{[void](Get-FootprintLaunchIdentity $suspended $cmd)}catch{$suspendedWrong=$_.Exception.Message};
+  $runningWrong=$null;try{[void](Get-FootprintLaunchIdentity $running $cmd)}catch{$runningWrong=$_.Exception.Message};
+  [ordered]@{mainModuleReadable=$mainModuleReadable;processIdMatches=($identity.processId -eq $suspended.Id);executablePathMatches=($identity.executablePath -eq [IO.Path]::GetFullPath($powershell));creationMatches=$creationMatches;suspendedWrong=$suspendedWrong;runningWrong=$runningWrong}|ConvertTo-Json -Compress
+}finally{
+  foreach($child in @($suspended,$running)){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)}
+}
+`);
+  assert.deepEqual(observed, {
+    mainModuleReadable: false,
+    processIdMatches: true,
+    executablePathMatches: true,
+    creationMatches: true,
+    suspendedWrong:
+      "The launched process object does not identify the exact executable.",
+    runningWrong:
+      "The launched process object does not identify the exact executable.",
+  });
+});
+
+test("a launch identity captured immediately holds with every core busy at BelowNormal priority", () => {
+  const load = Array.from({ length: os.availableParallelism() }, () => {
+    const busy = spawn(process.execPath, ["-e", "for(;;){}"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    os.setPriority(busy.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+    return busy;
+  });
+  try {
+    const observed = runPowerShellFixture(
+      String.raw`
+$powershell=(Get-Process -Id $PID).Path;$launches=20;$captured=0;$failures=@();
+for($i=0;$i -lt $launches;$i++){
+  $child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+  try{
+    $identity=Get-FootprintLaunchIdentity $child $powershell;
+    if($identity.processId -eq $child.Id -and $identity.executablePath -eq [IO.Path]::GetFullPath($powershell)){$captured++}else{$failures+='mismatched identity'}
+  }catch{$failures+=$_.Exception.Message}finally{Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)}
+};
+[ordered]@{launches=$launches;captured=$captured;failures=@($failures)}|ConvertTo-Json -Compress
+`,
+      { timeout: 120_000 },
+    );
+    assert.deepEqual(observed, { launches: 20, captured: 20, failures: [] });
+  } finally {
+    for (const busy of load) busy.kill();
+  }
 });
