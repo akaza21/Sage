@@ -112,8 +112,9 @@
 }
 
 /* The model name takes the room the other controls leave and truncates no
-   shorter than a readable prefix; its containment keeps that prefix, not the
-   whole name, as the row's minimum, so a name that needs less still fits. */
+   shorter than a readable prefix. Its base width is that prefix, capped at
+   the whole name, and it never shrinks below it, so a name shorter than the
+   prefix needs no more room than before this step. */
 .composer [data-fit~="model-shrink"] > .composer__model-group {
   flex: 1 1 0;
 }
@@ -124,9 +125,9 @@
 }
 
 .composer [data-fit~="model-shrink"] .composer__model-label {
-  min-width: var(--composer-label-min);
-  flex: 1 1 auto;
-  contain: inline-size;
+  width: var(--composer-label-min);
+  max-width: max-content;
+  flex: 1 0 auto;
 }
 
 .composer [data-fit~="dense"] {

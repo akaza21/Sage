@@ -60,46 +60,75 @@ async function expectControls(
   // A queue that scrolls as one block keeps its controls' local offsets.
   checkOverlap = !scrollControls,
 ) {
-  const boxes = [];
-  for (const control of await controls.all()) {
-    if (!(await control.isVisible())) continue;
-    if (scrollControls) await control.scrollIntoViewIfNeeded();
-    const boundary = await owner.boundingBox();
-    expect(boundary).not.toBeNull();
-    const box = await control.boundingBox();
-    expect(box).not.toBeNull();
-    if (
-      await control.evaluate((element) =>
-        element.classList.contains("composer__plus"),
-      )
-    )
-      // The plus is an exact 24px target at every composer width.
-      expect(box!.width).toBe(24);
-    else expect(box!.width).toBeGreaterThanOrEqual(24);
-    expect(box!.height).toBeGreaterThanOrEqual(24);
-    expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, boundary!.x));
-    expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, boundary!.y));
-    expect(box!.x + box!.width).toBeLessThanOrEqual(
-      Math.min(viewport.width, boundary!.x + boundary!.width) + 0.5,
-    );
-    expect(box!.y + box!.height).toBeLessThanOrEqual(
-      Math.min(viewport.height, boundary!.y + boundary!.height) + 0.5,
-    );
-    expect(
-      await control.evaluate((element) => {
+  // One page round trip measures every control; a round trip per control and
+  // property made these loops slow enough to time out under CPU load.
+  const ownerHandle = await owner.elementHandle();
+  const measured = await controls.evaluateAll(
+    (elements, { root, scroll }) =>
+      elements.flatMap((element) => {
+        const visible = () => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            getComputedStyle(element).visibility !== "hidden"
+          );
+        };
+        if (!visible()) return [];
+        if (scroll)
+          (
+            element as Element & {
+              scrollIntoViewIfNeeded(center: boolean): void;
+            }
+          ).scrollIntoViewIfNeeded(true);
+        const boundary = root!.getBoundingClientRect();
         const rect = element.getBoundingClientRect();
-        return element.contains(
-          document.elementFromPoint(
-            rect.x + rect.width / 2,
-            rect.y + rect.height / 2,
-          ),
-        );
+        return [
+          {
+            plus: element.classList.contains("composer__plus"),
+            boundary: {
+              x: boundary.x,
+              y: boundary.y,
+              width: boundary.width,
+              height: boundary.height,
+            },
+            box: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+            hit: element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            ),
+          },
+        ];
       }),
-    ).toBe(true);
+    { root: ownerHandle, scroll: scrollControls },
+  );
+  await ownerHandle?.dispose();
+  const boxes: { x: number; y: number; width: number; height: number }[] = [];
+  for (const { plus, boundary, box, hit } of measured) {
+    // The plus is an exact 24px target at every composer width.
+    if (plus) expect(box.width).toBe(24);
+    else expect(box.width).toBeGreaterThanOrEqual(24);
+    expect(box.height).toBeGreaterThanOrEqual(24);
+    expect(box.x).toBeGreaterThanOrEqual(Math.max(0, boundary.x));
+    expect(box.y).toBeGreaterThanOrEqual(Math.max(0, boundary.y));
+    expect(box.x + box.width).toBeLessThanOrEqual(
+      Math.min(viewport.width, boundary.x + boundary.width) + 0.5,
+    );
+    expect(box.y + box.height).toBeLessThanOrEqual(
+      Math.min(viewport.height, boundary.y + boundary.height) + 0.5,
+    );
+    expect(hit).toBe(true);
     const localBox = {
-      ...box!,
-      x: box!.x - boundary!.x,
-      y: box!.y - boundary!.y,
+      ...box,
+      x: box.x - boundary.x,
+      y: box.y - boundary.y,
     };
     if (checkOverlap) {
       for (const sibling of boxes) {
@@ -204,36 +233,42 @@ async function expectOverlay(
   panel: Locator,
   viewport: { width: number; height: number },
 ) {
-  await expect(panel).toBeVisible();
+  // One page round trip per attempt: the panel sits inside the viewport's
+  // 8px inset and its first actionable item is reachable by a pointer.
   await expect
-    .poll(async () => {
-      const box = await panel.boundingBox();
-      return Boolean(
-        box &&
-        box.x >= 8 &&
-        box.y >= 8 &&
-        box.x + box.width <= viewport.width - 7.5 &&
-        box.y + box.height <= viewport.height - 7.5,
-      );
-    })
-    .toBe(true);
-  const actionable = panel
-    .locator('button:enabled, input:not(:disabled), [tabindex="0"]')
-    .first();
-  if (await actionable.count()) {
-    await actionable.scrollIntoViewIfNeeded();
-    expect(
-      await actionable.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return element.contains(
+    .poll(() =>
+      panel.evaluate((element, { width, height }) => {
+        const box = element.getBoundingClientRect();
+        if (
+          box.width === 0 ||
+          box.height === 0 ||
+          box.x < 8 ||
+          box.y < 8 ||
+          box.right > width - 7.5 ||
+          box.bottom > height - 7.5
+        )
+          return "outside the viewport";
+        const actionable = element.querySelector(
+          'button:enabled, input:not(:disabled), [tabindex="0"]',
+        );
+        if (!actionable) return "contained";
+        (
+          actionable as Element & {
+            scrollIntoViewIfNeeded(center: boolean): void;
+          }
+        ).scrollIntoViewIfNeeded(true);
+        const rect = actionable.getBoundingClientRect();
+        return actionable.contains(
           document.elementFromPoint(
             rect.x + rect.width / 2,
             rect.y + rect.height / 2,
           ),
-        );
-      }),
-    ).toBe(true);
-  }
+        )
+          ? "contained"
+          : "covered";
+      }, viewport),
+    )
+    .toBe("contained");
 }
 
 async function expectNestedPlacement(picker: Locator, parent: Locator) {
@@ -613,138 +648,156 @@ for (const forcedColors of ["none", "active"] as const) {
   });
 }
 
+// One test per picker keeps each resize sweep short under CPU load.
+const emptyChatPickers = (profile: ChatContainmentProfile) => [
+  "Harness",
+  "Model",
+  ...(profile.effort ? ["Thinking level: High"] : []),
+  // Add stays disabled here (no capability-backed action); its menu
+  // keyboard and resize behaviour is covered with installModeActions.
+  "Access options",
+  "Project",
+];
+
 for (const profile of profiles) {
-  for (const forcedColors of ["none", "active"] as const) {
-    test(`${profile.name} empty chat pickers remain hit-testable and viewport-contained through resizing (${forcedColors})`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: 1888, height: 1096 });
-      await page.emulateMedia({ forcedColors, reducedMotion: "no-preference" });
-      await prepare(page, profile, true, false);
-      const composer = page.locator("form.composer").first();
-      const harness = composer.getByRole("button", {
-        name: "Harness",
-        exact: true,
-      });
-      const model = composer.getByRole("button", {
-        name: "Model",
-        exact: true,
-      });
-      const harnessBox = await harness.boundingBox();
-      const modelBox = await model.boundingBox();
-      expect(harnessBox!.x + harnessBox!.width).toBeLessThanOrEqual(
-        modelBox!.x,
-      );
-      for (const name of [
-        "Harness",
-        "Model",
-        ...(profile.effort ? ["Thinking level: High"] : []),
-        // Add stays disabled here (no capability-backed action); its menu
-        // keyboard and resize behaviour is covered with installModeActions.
-        "Access options",
-      ]) {
-        const trigger = composer.getByRole("button", { name, exact: true });
-        await trigger.focus();
-        await page.keyboard.press("Enter");
-        const panel = page.locator(".menu-popover").filter({ visible: true });
-        await expect(panel).toHaveCount(1);
-        if (name === "Access options") {
-          const first = panel.getByRole("menuitemradio").first();
-          const last = panel.getByRole("menuitemradio").last();
-          await expect(first).toBeFocused();
-          await page.keyboard.press("End");
-          await expect(last).toBeFocused();
-          await page.keyboard.press("Home");
-          await expect(first).toBeFocused();
+  for (const target of emptyChatPickers(profile)) {
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`${profile.name} empty chat ${target} picker remains hit-testable and viewport-contained through resizing (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: 1888, height: 1096 });
+        await page.emulateMedia({
+          forcedColors,
+          reducedMotion: "no-preference",
+        });
+        await prepare(page, profile, true, false);
+        const composer = page.locator("form.composer").first();
+        if (target === "Harness") {
+          const harness = composer.getByRole("button", {
+            name: "Harness",
+            exact: true,
+          });
+          const model = composer.getByRole("button", {
+            name: "Model",
+            exact: true,
+          });
+          const harnessBox = await harness.boundingBox();
+          const modelBox = await model.boundingBox();
+          expect(harnessBox!.x + harnessBox!.width).toBeLessThanOrEqual(
+            modelBox!.x,
+          );
         }
-        for (const viewport of [
-          viewports[2],
-          viewports[1],
-          viewports[0],
-          viewports[3],
-          viewports[2],
-        ]) {
-          await page.setViewportSize(viewport);
-          await expectOverlay(panel, viewport);
+        if (target !== "Project") {
+          const name = target;
+          const trigger = composer.getByRole("button", { name, exact: true });
+          await trigger.focus();
+          await page.keyboard.press("Enter");
+          const panel = page.locator(".menu-popover").filter({ visible: true });
+          await expect(panel).toHaveCount(1);
+          if (name === "Access options") {
+            const first = panel.getByRole("menuitemradio").first();
+            const last = panel.getByRole("menuitemradio").last();
+            await expect(first).toBeFocused();
+            await page.keyboard.press("End");
+            await expect(last).toBeFocused();
+            await page.keyboard.press("Home");
+            await expect(first).toBeFocused();
+          }
+          for (const viewport of [
+            viewports[2],
+            viewports[1],
+            viewports[0],
+            viewports[3],
+            viewports[2],
+          ]) {
+            await page.setViewportSize(viewport);
+            await expectOverlay(panel, viewport);
+          }
           await expect(composer.getByRole("textbox")).toHaveValue(
             "Draft survives resizing",
           );
+          await page.keyboard.press("Escape");
+          await expect(
+            composer.getByRole("button", {
+              name,
+              exact: true,
+            }),
+          ).toBeFocused();
+          return;
         }
-        await page.keyboard.press("Escape");
         await expect(
           composer.getByRole("button", {
-            name,
+            name: "Composer options",
             exact: true,
           }),
+        ).toHaveCount(0);
+        const options = page.getByRole("menu", {
+          name: "Composer options menu",
+        });
+        // The fixture renames the project, so match the picker by its prefix.
+        // A new chat scopes its project from the heading caption, not the composer.
+        const project = page
+          .getByRole("region", { name: "New chat", exact: true })
+          .first()
+          .getByRole("button", { name: /^Project: / });
+        await project.click();
+        await expect(options).toHaveCount(0);
+        const picker = page.locator(".searchable-picker__popover");
+        await expectOverlay(picker, viewports[2]);
+        await page.setViewportSize(viewports[1]);
+        await expectOverlay(picker, viewports[1]);
+        await expectNestedPlacement(picker, project);
+        expect(
+          await project.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        const selected = picker.getByRole("option").last();
+        await selected.scrollIntoViewIfNeeded();
+        expect(
+          await selected.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        await selected.click();
+        await expect(picker).toHaveCount(0);
+        await project.focus();
+        await page.keyboard.press("Enter");
+        await expect(
+          picker.getByRole("combobox", { name: /^Project: / }),
         ).toBeFocused();
-      }
-      await expect(
-        composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toHaveCount(0);
-      const options = page.getByRole("menu", {
-        name: "Composer options menu",
+        await page.keyboard.press("Escape");
+        await expect(project).toBeFocused();
+        await expect(options).toHaveCount(0);
+        // The new-chat caption picker does not fold at 480 (only the composer
+        // chip does); its open picker stays contained across the resize.
+        await page.keyboard.press("Enter");
+        await expect(picker).toHaveCount(1);
+        await page.setViewportSize(viewports[3]);
+        await expect(project).toBeVisible();
+        await expectOverlay(picker, viewports[3]);
+        await page.keyboard.press("Escape");
+        await expect(picker).toHaveCount(0);
+        await page.setViewportSize(viewports[2]);
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
+        for (const field of await page
+          .locator("form.composer textarea")
+          .all()) {
+          await expect(field).toHaveValue("Draft survives resizing");
+        }
       });
-      // The fixture renames the project, so match the picker by its prefix.
-      // A new chat scopes its project from the heading caption, not the composer.
-      const project = page
-        .getByRole("region", { name: "New chat", exact: true })
-        .first()
-        .getByRole("button", { name: /^Project: / });
-      await project.click();
-      await expect(options).toHaveCount(0);
-      const picker = page.locator(".searchable-picker__popover");
-      await expectOverlay(picker, viewports[2]);
-      await page.setViewportSize(viewports[1]);
-      await expectOverlay(picker, viewports[1]);
-      await expectNestedPlacement(picker, project);
-      expect(
-        await project.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          return element.contains(
-            document.elementFromPoint(
-              rect.x + rect.width / 2,
-              rect.y + rect.height / 2,
-            ),
-          );
-        }),
-      ).toBe(true);
-      const selected = picker.getByRole("option").last();
-      await selected.scrollIntoViewIfNeeded();
-      expect(
-        await selected.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          return element.contains(
-            document.elementFromPoint(
-              rect.x + rect.width / 2,
-              rect.y + rect.height / 2,
-            ),
-          );
-        }),
-      ).toBe(true);
-      await selected.click();
-      await expect(picker).toHaveCount(0);
-      await project.focus();
-      await page.keyboard.press("Enter");
-      await expect(
-        picker.getByRole("combobox", { name: /^Project: / }),
-      ).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(project).toBeFocused();
-      await expect(options).toHaveCount(0);
-      // The new-chat caption picker does not fold at 480 (only the composer
-      // chip does); its open picker stays contained across the resize.
-      await page.keyboard.press("Enter");
-      await expect(picker).toHaveCount(1);
-      await page.setViewportSize(viewports[3]);
-      await expect(project).toBeVisible();
-      await expectOverlay(picker, viewports[3]);
-      await page.keyboard.press("Escape");
-      await expect(picker).toHaveCount(0);
-      await page.setViewportSize(viewports[2]);
-      await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
-      for (const field of await page.locator("form.composer textarea").all()) {
-        await expect(field).toHaveValue("Draft survives resizing");
-      }
-    });
+    }
   }
 }

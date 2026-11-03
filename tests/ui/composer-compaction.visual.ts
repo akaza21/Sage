@@ -364,105 +364,160 @@ const toolbarStates = {
     ready: (composer: Locator) =>
       composer.locator(".composer__effort-picker[aria-controls]"),
   },
+  // A name shorter than the readable prefix must not need more room once the
+  // model name starts to truncate.
+  "with a short model name": {
+    install: async () => {
+      const fixture =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      fixture.installVisualComposerEffortFixture({
+        levels: ["medium", "extra high"],
+        currentValue: "extra high",
+        modelName: "GPT-5",
+      });
+    },
+    ready: (composer: Locator) =>
+      composer.getByRole("button", { name: "Model", exact: true }).filter({
+        hasText: "GPT-5",
+      }),
+  },
 };
 
-for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
-  test(`Composer toolbar compacts its labels in priority order ${state}`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1888, height: 1096 });
-    await openScenario(page, "agent-single", "agent");
-    await settleChatProjections(page);
-    await page.evaluate(install);
-    const composer = page.locator("form.composer").first();
-    await expect(ready(composer)).toHaveCount(1);
-    await expect(
-      composer.locator(".composer__effort-label").first(),
-    ).toBeVisible();
-    await page.evaluate(installComposerRowSettle);
-    const sweep = await composer.evaluate(async (element, priority) => {
-      const settle = (
-        window as Window & {
-          settleComposerRow?: (row: Element) => Promise<void>;
-        }
-      ).settleComposerRow!;
-      const controls = element.querySelector<HTMLElement>(
-        ".composer__controls",
-      )!;
-      const readableCharacter = (label: HTMLElement) => {
-        const probe = document.createElement("span");
-        probe.textContent = "0";
-        probe.style.font = getComputedStyle(label).font;
-        document.body.append(probe);
-        const width = probe.getBoundingClientRect().width;
-        probe.remove();
-        return width;
-      };
-      const results = [];
-      for (let width = 560; width >= 200; width -= 2) {
-        element.style.width = `${width}px`;
-        await settle(controls);
-        const labels = priority.map((selector) => {
-          const label = element.querySelector<HTMLElement>(selector);
-          const box = label?.getBoundingClientRect();
-          const shown = Boolean(box && box.width > 0);
-          const host = label?.closest("button, .composer__capacity, label");
-          const hostBox = host?.getBoundingClientRect();
-          return {
-            present: Boolean(label),
-            shown,
-            // A label may shorten only to an ellipsis after a readable
-            // prefix of eight characters; it is never cut off by its control.
-            clipped:
-              shown &&
-              (box!.right > hostBox!.right + 0.5 ||
-                box!.left < hostBox!.left - 0.5 ||
-                (label!.scrollWidth > label!.clientWidth &&
-                  (getComputedStyle(label!).textOverflow !== "ellipsis" ||
-                    label!.clientWidth < 8 * readableCharacter(label!) - 0.5))),
-          };
-        });
-        const edge =
-          controls.getBoundingClientRect().right -
-          Number.parseFloat(getComputedStyle(controls).paddingRight);
-        const overflow = [...controls.children].some(
-          (child) =>
-            !["absolute", "fixed"].includes(getComputedStyle(child).position) &&
-            child.getBoundingClientRect().right > edge + 0.5,
-        );
-        results.push({ width, labels, overflow });
-      }
-      element.style.width = "";
-      return results;
-    }, LABEL_PRIORITY);
+// Each state sweeps 560px to 200px in 2px steps, in ranges short enough to
+// finish within the test timeout under CPU load.
+const SWEEP_RANGES = [
+  [560, 442],
+  [440, 322],
+  [320, 200],
+] as const;
 
-    expect(sweep[0].labels.filter((label) => label.present)).toEqual(
-      sweep[0].labels
-        .filter((label) => label.present)
-        .map(() => ({ present: true, shown: true, clipped: false })),
-    );
-    let previous = sweep[0];
-    for (const step of sweep) {
-      const at = `at ${step.width}px`;
-      expect(step.overflow, `controls overflow ${at}`).toBe(false);
-      step.labels.forEach((label, index) => {
-        expect(label.clipped, `${LABEL_PRIORITY[index]} clipped ${at}`).toBe(
-          false,
+for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
+  for (const [from, to] of SWEEP_RANGES)
+    test(`Composer toolbar compacts its labels in priority order ${state} from ${from}px to ${to}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1888, height: 1096 });
+      await openScenario(page, "agent-single", "agent");
+      await settleChatProjections(page);
+      await page.evaluate(install);
+      const composer = page.locator("form.composer").first();
+      await expect(ready(composer)).toHaveCount(1);
+      await expect(
+        composer.locator(".composer__effort-label").first(),
+      ).toBeVisible();
+      await page.evaluate(installComposerRowSettle);
+      const sweep = await composer.evaluate(
+        async (element, { priority, from, to }) => {
+          const settle = (
+            window as Window & {
+              settleComposerRow?: (row: Element) => Promise<void>;
+            }
+          ).settleComposerRow!;
+          const controls = element.querySelector<HTMLElement>(
+            ".composer__controls",
+          )!;
+          const readableCharacter = (label: HTMLElement) => {
+            const probe = document.createElement("span");
+            probe.textContent = "0";
+            probe.style.font = getComputedStyle(label).font;
+            document.body.append(probe);
+            const width = probe.getBoundingClientRect().width;
+            probe.remove();
+            return width;
+          };
+          const results = [];
+          for (let width = from; width >= to; width -= 2) {
+            element.style.width = `${width}px`;
+            await settle(controls);
+            const labels = priority.map((selector) => {
+              const label = element.querySelector<HTMLElement>(selector);
+              const box = label?.getBoundingClientRect();
+              const shown = Boolean(box && box.width > 0);
+              const host = label?.closest("button, .composer__capacity, label");
+              const hostBox = host?.getBoundingClientRect();
+              return {
+                present: Boolean(label),
+                shown,
+                // A label may shorten only to an ellipsis after a readable
+                // prefix of eight characters; it is never cut off by its control.
+                clipped:
+                  shown &&
+                  (box!.right > hostBox!.right + 0.5 ||
+                    box!.left < hostBox!.left - 0.5 ||
+                    (label!.scrollWidth > label!.clientWidth &&
+                      (getComputedStyle(label!).textOverflow !== "ellipsis" ||
+                        label!.clientWidth <
+                          8 * readableCharacter(label!) - 0.5))),
+              };
+            });
+            const edge =
+              controls.getBoundingClientRect().right -
+              Number.parseFloat(getComputedStyle(controls).paddingRight);
+            const overflow = [...controls.children].some(
+              (child) =>
+                !["absolute", "fixed"].includes(
+                  getComputedStyle(child).position,
+                ) && child.getBoundingClientRect().right > edge + 0.5,
+            );
+            // The model name gives way to its icon only when the row cannot fit
+            // it whole or truncated: undoing either step must overflow the row.
+            const fit = controls.getAttribute("data-fit") ?? "";
+            const steps = fit.split(" ");
+            const fitsBefore = (step: string) => {
+              controls.setAttribute(
+                "data-fit",
+                steps.slice(0, steps.indexOf(step)).join(" "),
+              );
+              const right = controls.getBoundingClientRect().right + 0.5;
+              return ![...controls.children].some(
+                (child) => child.getBoundingClientRect().right > right,
+              );
+            };
+            const modelHiddenThoughItFits =
+              steps.includes("model") &&
+              (fitsBefore("model-shrink") || fitsBefore("model"));
+            controls.setAttribute("data-fit", fit);
+            results.push({ width, labels, overflow, modelHiddenThoughItFits });
+          }
+          element.style.width = "";
+          return results;
+        },
+        { priority: LABEL_PRIORITY, from, to },
+      );
+
+      // The widest composer shows every label whole.
+      if (from === SWEEP_RANGES[0][0])
+        expect(sweep[0].labels.filter((label) => label.present)).toEqual(
+          sweep[0].labels
+            .filter((label) => label.present)
+            .map(() => ({ present: true, shown: true, clipped: false })),
         );
-        if (!label.shown) return;
-        for (const higher of step.labels.slice(index + 1))
-          expect(
-            !higher.present || higher.shown,
-            `${LABEL_PRIORITY[index]} outlasts a higher-priority label ${at}`,
-          ).toBe(true);
+      let previous = sweep[0];
+      for (const step of sweep) {
+        const at = `at ${step.width}px`;
+        expect(step.overflow, `controls overflow ${at}`).toBe(false);
         expect(
-          previous.labels[index].shown || !previous.labels[index].present,
-          `${LABEL_PRIORITY[index]} reappears while narrowing ${at}`,
-        ).toBe(true);
-      });
-      previous = step;
-    }
-  });
+          step.modelHiddenThoughItFits,
+          `model name hidden though it fits ${at}`,
+        ).toBe(false);
+        step.labels.forEach((label, index) => {
+          expect(label.clipped, `${LABEL_PRIORITY[index]} clipped ${at}`).toBe(
+            false,
+          );
+          if (!label.shown) return;
+          for (const higher of step.labels.slice(index + 1))
+            expect(
+              !higher.present || higher.shown,
+              `${LABEL_PRIORITY[index]} outlasts a higher-priority label ${at}`,
+            ).toBe(true);
+          expect(
+            previous.labels[index].shown || !previous.labels[index].present,
+            `${LABEL_PRIORITY[index]} reappears while narrowing ${at}`,
+          ).toBe(true);
+        });
+        previous = step;
+      }
+    });
 }
 
 test("Composer toolbar refits when a control grows without a content change", async ({
