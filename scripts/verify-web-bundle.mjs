@@ -77,6 +77,11 @@ function gzipBytes(file) {
 // The core total still subtracts the chunks' emitted sizes.
 // Entry, initial-closure and core-total measurements stay as emitted.
 const HASHED_CHUNK_SPECIFIER = /^\.\/([A-Za-z0-9_-]{8}\d*)\.js$/u;
+// Vite's preload helper lists the CSS a lazy chunk needs as
+// `assets/<name>-<hash>.css` in the `__vite__mapDeps` array, so an unrelated
+// stylesheet change renames those entries too. Only the hash is masked.
+const HASHED_PRELOAD_DEPENDENCY =
+  /^assets\/[A-Za-z0-9_.-]+-([A-Za-z0-9_-]{8})\.(?:css|js)$/u;
 
 function importSpecifier(node) {
   if (
@@ -106,7 +111,26 @@ export function normalizeHashedImports(source) {
   // A chunk that does not parse cleanly is measured exactly as written.
   if (file.parseDiagnostics.length > 0) return source;
   const ranges = [];
+  const maskPreloadDependencies = (node) => {
+    if (ts.isStringLiteral(node)) {
+      const match = HASHED_PRELOAD_DEPENDENCY.exec(node.text);
+      const start = node.getStart(file) + 1;
+      if (match && source.slice(start, start + node.text.length) === node.text)
+        ranges.push([start + node.text.lastIndexOf(match[1]), match[1].length]);
+      return;
+    }
+    ts.forEachChild(node, maskPreloadDependencies);
+  };
   const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "__vite__mapDeps" &&
+      node.initializer
+    ) {
+      maskPreloadDependencies(node.initializer);
+      return;
+    }
     const specifier = importSpecifier(node);
     if (
       specifier &&

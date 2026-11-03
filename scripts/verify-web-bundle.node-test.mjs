@@ -948,6 +948,24 @@ test("only import specifiers lose their content hashes", () => {
   ]) {
     assert.equal(normalizeHashedImports(source), source);
   }
+  // The preload helper's stylesheet list loses only its hashes; the same
+  // names anywhere else are measured as written.
+  const preload = (hash) =>
+    `const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/index-${hash}.css","assets/TerminalDock-B1njb2Cr.css"])))=>i.map(i=>d[i]);const css="assets/index-${hash}.css";`;
+  assert.equal(
+    normalizeHashedImports(preload("BYhftfGF")),
+    preload("BYhftfGF").replace(
+      '"assets/index-BYhftfGF.css","assets/TerminalDock-B1njb2Cr.css"',
+      '"assets/index-xxxxxxxx.css","assets/TerminalDock-xxxxxxxx.css"',
+    ),
+  );
+  assert.equal(
+    normalizeHashedImports(preload("BYhftfGF")).replace(
+      /BYhftfGF/g,
+      "CWtMMHlB",
+    ),
+    normalizeHashedImports(preload("CWtMMHlB")),
+  );
   const malformed = 'import("./DLlys00o.js");const x=;';
   assert.equal(normalizeHashedImports(malformed), malformed);
   // A longer chunk-like string is real growth and still measures larger.

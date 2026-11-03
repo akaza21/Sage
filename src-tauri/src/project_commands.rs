@@ -41,45 +41,6 @@ pub fn trace_close_stage(stage: CloseStage, status: CloseStageStatus) {
 const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
 
 #[tauri::command]
-pub async fn create_project_from_picker(
-    app: AppHandle,
-    window: Window,
-    state: State<'_, AppState>,
-    browser: State<'_, BrowserState>,
-    expected_active_project_id: Option<String>,
-    expected_transition_epoch: u64,
-) -> Result<ProjectTransitionResult, String> {
-    let selected = pick_folder(&app, &window, "Open folder as project").await?;
-    let Some(root) = selected else {
-        return Ok(cancelled_transition(&state).await);
-    };
-    let database = state.database.clone();
-    let preflight_root = root.clone();
-    let operations = state.editor_operations.clone();
-    let ticket = operations
-        .issue_ticket()
-        .map_err(|error| error.to_string())?;
-    Ok(execute_committed_transition_checked(
-        &state,
-        expected_transition_epoch,
-        || {
-            browser
-                .validate_project_roots(std::slice::from_ref(&preflight_root))
-                .map_err(AppError::InvalidRequest)
-        },
-        move || {
-            operations.execute_project_transition(ticket, || {
-                database.create_project_from_root_if_active(
-                    &root,
-                    expected_active_project_id.as_deref(),
-                )
-            })
-        },
-    )
-    .await)
-}
-
-#[tauri::command]
 pub async fn add_project_root_from_picker(
     app: AppHandle,
     window: Window,
@@ -229,7 +190,7 @@ async fn execute_committed_transition<T: Send + 'static>(
         .await
 }
 
-async fn execute_committed_transition_checked<T: Send + 'static>(
+pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
     state: &AppState,
     expected_transition_epoch: u64,
     preflight: impl FnOnce() -> AppResult<()>,
@@ -302,7 +263,7 @@ async fn committed_projection(state: &AppState, transition_epoch: u64) -> Projec
     }
 }
 
-async fn cancelled_transition(state: &AppState) -> ProjectTransitionResult {
+pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionResult {
     let transition_epoch = *state.project_transitions.lock().await;
     ProjectTransitionResult {
         committed: false,
@@ -321,7 +282,7 @@ fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTran
     }
 }
 
-async fn pick_folder(
+pub(crate) async fn pick_folder(
     app: &AppHandle,
     window: &Window,
     title: &str,
@@ -337,15 +298,6 @@ async fn pick_folder(
     selection
         .map(|path| path.into_path().map_err(|error| error.to_string()))
         .transpose()
-}
-
-#[cfg(test)]
-fn apply_create_selection(database: &Database, selected: Option<PathBuf>) -> AppResult<bool> {
-    let Some(root) = selected else {
-        return Ok(false);
-    };
-    database.create_project_from_root(&root)?;
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -376,7 +328,6 @@ mod tests {
     fn window_commands_accept_multi_webview_hosts() {
         let source = include_str!("project_commands.rs");
         for command in [
-            "create_project_from_picker",
             "add_project_root_from_picker",
             "persist_project_layout_and_close",
         ] {
@@ -397,7 +348,6 @@ mod tests {
     #[test]
     fn picker_cancellation_does_not_create_or_mutate_projects() {
         let database = Database::open(Path::new(":memory:")).unwrap();
-        assert!(!apply_create_selection(&database, None).unwrap());
         assert!(!apply_add_root_selection(&database, "unused", None).unwrap());
         assert_eq!(database.project_count().unwrap(), 0);
     }

@@ -198,9 +198,9 @@
         "reason": "Queued-message rows above the composer (status, Steer, delete and More options); loads with the first queued message."
       },
       {
-        "entry": "src/workbench/AgentRailFilterOptions.tsx",
-        "maxGzipBytes": 805,
-        "reason": "The open Chat list options menu (grouping, ordering, show, filters, Collapse All, Mark All as Read); loads on the first open."
+        "entry": "src/workbench/AgentRailOptionsPopover.tsx",
+        "maxGzipBytes": 990,
+        "reason": "The open sidebar options menu (Organize sidebar, Sort chats by); loads on the first open."
       },
       {
         "entry": "src/workbench/AgentProjectMenu.tsx",

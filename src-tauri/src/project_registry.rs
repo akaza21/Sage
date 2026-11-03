@@ -1,3 +1,4 @@
+mod create;
 mod launch_root;
 mod local;
 mod rail;
@@ -17,10 +18,11 @@ use crate::{
     workspace::Workspace,
 };
 
+pub use create::project_name;
 pub(crate) use launch_root::ProjectRootAuthority;
 
 use self::rail::load_project_list;
-use self::seed::{active_project_in, insert_root, seed_project};
+use self::seed::{active_project_in, insert_root};
 
 pub const MAX_PROJECTS: i64 = 64;
 pub const MAX_ROOTS_PER_PROJECT: i64 = 8;
@@ -209,63 +211,6 @@ impl Database {
             )
             .optional()?
             .ok_or_else(|| AppError::InvalidRequest("unknown project root".into()))
-    }
-
-    pub fn create_project_from_root(&self, root: &Path) -> AppResult<ProjectSummary> {
-        self.create_project_from_root_with_intent(root, None)
-    }
-
-    pub fn create_project_from_root_if_active(
-        &self,
-        root: &Path,
-        expected_active_project_id: Option<&str>,
-    ) -> AppResult<ProjectSummary> {
-        self.create_project_from_root_with_intent(root, Some(expected_active_project_id))
-    }
-
-    fn create_project_from_root_with_intent(
-        &self,
-        root: &Path,
-        expected_active_project_id: Option<Option<&str>>,
-    ) -> AppResult<ProjectSummary> {
-        let canonical = canonical_folder(root)?;
-        let name = folder_name(&canonical);
-        let project_id = Uuid::new_v4().to_string();
-        let root_id = Uuid::new_v4().to_string();
-        let tab_id = Uuid::new_v4().to_string();
-        let now = now_millis();
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        if let Some(expected) = expected_active_project_id
-            && active_project_in(&transaction)?.as_deref() != expected
-        {
-            return Err(AppError::InvalidRequest(
-                "project changed while the folder picker was open".into(),
-            ));
-        }
-        let count: i64 =
-            transaction.query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))?;
-        if count >= MAX_PROJECTS {
-            return Err(AppError::ResourceLimit(format!(
-                "project registry reached its {MAX_PROJECTS}-project limit"
-            )));
-        }
-        transaction.execute(
-            "INSERT INTO projects(id, name, created_at, updated_at, last_opened_at)
-             VALUES (?1, ?2, ?3, ?3, ?3)",
-            params![project_id, name, now],
-        )?;
-        insert_root(&transaction, &project_id, &root_id, &canonical, 0)?;
-        seed_project(
-            &transaction,
-            &project_id,
-            &tab_id,
-            Some(root_id.as_str()),
-            now,
-        )?;
-        let summary = project_summary_in(&transaction, &project_id)?;
-        transaction.commit()?;
-        Ok(summary)
     }
 
     pub fn ensure_local_project(&self) -> AppResult<ProjectSummary> {
