@@ -15,9 +15,9 @@ pub(crate) fn commit(error: &AppError) -> String {
             "The Git commit outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git commit."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git commit.",
     };
     bounded(message)
 }
@@ -37,9 +37,9 @@ pub(crate) fn create_branch(error: &AppError) -> String {
             "The Git create branch outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git create branch."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git create branch.",
     };
     bounded(message)
 }
@@ -57,9 +57,9 @@ pub(crate) fn sequence_abort(error: &AppError) -> String {
             "The Git abort outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git abort."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git abort.",
     };
     bounded(message)
 }
@@ -79,9 +79,9 @@ pub(crate) fn rename_branch(error: &AppError) -> String {
             "The Git rename branch outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git rename branch."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git rename branch.",
     };
     bounded(message)
 }
@@ -101,9 +101,9 @@ pub(crate) fn delete_branch(error: &AppError) -> String {
             "The Git delete branch outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git delete branch."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git delete branch.",
     };
     bounded(message)
 }
@@ -121,9 +121,9 @@ pub(crate) fn checkout(error: &AppError) -> String {
             "The Git checkout outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git checkout."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git checkout.",
     };
     bounded(message)
 }
@@ -141,9 +141,9 @@ pub(crate) fn rebase(error: &AppError) -> String {
             "The Git rebase outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the rebase continue."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the rebase continue.",
     };
     bounded(message)
 }
@@ -163,9 +163,9 @@ pub(crate) fn cherry_pick(error: &AppError) -> String {
             "The Git cherry-pick outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the cherry-pick continue."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the cherry-pick continue.",
     };
     bounded(message)
 }
@@ -185,9 +185,9 @@ pub(crate) fn remote_transport(error: &AppError) -> String {
             "The Git fetch or push outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git fetch or push."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git fetch or push.",
     };
     bounded(message)
 }
@@ -205,9 +205,9 @@ pub(crate) fn pull(error: &AppError) -> String {
             "The Git pull outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the Git pull."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the Git pull.",
     };
     bounded(message)
 }
@@ -225,9 +225,9 @@ pub(crate) fn revert(error: &AppError) -> String {
             "The Git revert outcome is uncertain. Refresh Source Control before continuing."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Sage could not complete the revert continue."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Sage could not complete the revert continue.",
     };
     bounded(message)
 }
@@ -250,9 +250,9 @@ pub(crate) fn projection(error: &AppError) -> String {
             "Repository status is unavailable while a Git outcome remains uncertain. Refresh Source Control."
         }
         AppError::GitContainment { .. } => containment(),
-        AppError::UnknownHarness(_) | AppError::HarnessUnavailable(_) => {
-            "Repository status is unavailable."
-        }
+        AppError::MixedLineEndings
+        | AppError::UnknownHarness(_)
+        | AppError::HarnessUnavailable(_) => "Repository status is unavailable.",
     };
     bounded(message)
 }

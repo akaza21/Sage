@@ -1,22 +1,22 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
 } from "../../app/chatTransitions";
 import { currentProjectLayout } from "../../app/projectProjection";
 import { useWorkbenchStore } from "../../app/store";
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import { inheritComposerModel } from "./inheritedComposerModel";
 import type { AcpChatPage, ProjectGeneration } from "../../domain/acp";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { getGoalChatPage } from "../../services/acpGoalDesktop";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
-import { isSideChatId, useSideChatState } from "../../workbench/sideChatState";
+import { isSideChatId } from "../../workbench/sideChatState";
 import "./fork-chat.css";
+import { inheritComposerModel } from "./inheritedComposerModel";
 
 /** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
 
@@ -103,7 +103,7 @@ export async function forkChat({
   if (!layout || get().projectTransitioning)
     return "Wait for the current Project operation.";
   const context = createChatTransitionContext(set, get);
-  // The native fork keeps the parent's model and effort (Codex s2/f0066).
+  // The native fork keeps the parent's model and effort.
   const parentConfig =
     acpProjectionStoreFor(chatId).getState().page?.sessionConfig;
   set({ projectTransitioning: true, error: null });
@@ -128,7 +128,6 @@ export async function forkChat({
     // Rust activates the fork; it replaces the parent's pane, unpaired.
     const fork = get().activeTabId;
     if (fork && fork !== chatId) {
-      useSideChatState.setState({ soloChatId: fork });
       inheritComposerModel(fork, parentConfig);
     }
     return null;
@@ -204,7 +203,7 @@ export function ForkChatDialog({
   const busyRef = useRef(false);
   const [result, setResult] = useState<string | null | undefined>(null);
   const busy = result === undefined;
-  // Focus the first option; highlight only for keyboard input (s2/f0055).
+  // Focus the first option; highlight only for keyboard input.
   const [fresh, setFresh] = useState(!keyboard);
   const dismiss = () => {
     if (!busyRef.current) onClose();
@@ -284,7 +283,7 @@ export function ForkDivider({
   return (
     <>
       {inherited ? (
-        // Parent Turns are read-only except answer actions; the fork owns the sole navigator, find and virtual list (s2/f0066).
+        // Parent Turns are read-only except answer actions; the fork owns the sole navigator, find and virtual list.
         <div
           className="chat-fork-inherited"
           aria-label="History from the parent chat"

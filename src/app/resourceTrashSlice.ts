@@ -12,7 +12,6 @@ import type {
   TrashProjectResourceResult,
   TrashResourceKind,
 } from "../domain/workbench";
-import { validateResourceTrashResult } from "../features/files/resourceTrashContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { trashName } from "../ui/trashName";
 import { currentProjectLayout } from "./projectProjection";
@@ -218,6 +217,8 @@ async function trashResource(
   });
   try {
     await get().flushActiveEditor();
+    const { validateResourceTrashResult } =
+      await import("../features/files/resourceTrashContract");
     if (
       !intentMatches(
         get(),

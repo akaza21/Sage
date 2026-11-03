@@ -14,6 +14,7 @@ import test from "node:test";
 
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import { verifyWebBundle } from "./verify-web-bundle.mjs";
+import { parseLazyFeatureBudgets } from "./web-bundle-lazy-features.mjs";
 import {
   WEB_BUNDLE_PATH_ROOTS,
   measureWebBundlePaths,
@@ -22,6 +23,23 @@ import {
 const pathLimits = Object.fromEntries(
   Object.keys(WEB_BUNDLE_PATH_ROOTS).map((name) => [name, 1000]),
 );
+
+test("lazy feature catalog admits 96 distinct entries and rejects 97", () => {
+  const features = Array.from({ length: 96 }, (_, index) => ({
+    entry: `src/features/Deferred${index}.tsx`,
+    maxGzipBytes: 1000,
+    reason: "Explicitly opened deferred surface.",
+  }));
+  assert.deepEqual(parseLazyFeatureBudgets(features), features);
+  assert.throws(
+    () =>
+      parseLazyFeatureBudgets([
+        ...features,
+        { ...features[0], entry: "src/features/Overflow.tsx" },
+      ]),
+    /lazy feature chunk budgets are missing or invalid/,
+  );
+});
 
 test("named TerminalDock budget isolates xterm from the core bundle", async () => {
   const root = await candidate({ dynamic: "ordinary dynamic" });

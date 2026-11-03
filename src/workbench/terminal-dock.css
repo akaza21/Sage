@@ -133,3 +133,9 @@
 .terminal-dock__viewport .xterm {
   height: 100%;
 }
+
+/* xterm paints the theme background only behind whole rows; the part-row
+   left under them shows its viewport, which xterm.css fills black. */
+.terminal-dock__viewport .xterm .xterm-viewport {
+  background-color: var(--color-canvas);
+}

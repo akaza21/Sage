@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { errorMessage } from "../../domain/errors";
 import { sameResource } from "../../domain/resourceIdentity";
 import type {
   BufferSnapshotAck,
@@ -8,8 +9,8 @@ import type {
   EditorSaveResult,
   ResourceRef,
 } from "../../domain/workbench";
-import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import type { EditorPort } from "../../ports/workbenchPorts";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import type { EditorContent, EditorContentBase } from "./editorContent";
 
 export const EDITOR_SNAPSHOT_DELAY_MS = 750;
@@ -18,7 +19,12 @@ const MAX_SNAPSHOTS_PER_FLUSH = 8;
 
 export type ActiveEditorState =
   | { phase: "loading"; resource: ResourceRef }
-  | { phase: "error"; resource: ResourceRef; message: string }
+  | {
+      phase: "error";
+      resource: ResourceRef;
+      message: string;
+      kind?: "mixedLineEndings";
+    }
   | {
       phase: "ready";
       resource: ResourceRef;
@@ -176,6 +182,13 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         phase: "error",
         resource,
         message: errorMessage(error),
+        kind:
+          typeof error === "object" &&
+          error !== null &&
+          "kind" in error &&
+          error.kind === "mixedLineEndings"
+            ? "mixedLineEndings"
+            : undefined,
       });
     },
     load: async (resource, bridge, canCommit = () => true) => {
@@ -332,4 +345,3 @@ export function useFileEditorLifecycle(
     revision,
   ]);
 }
-import { errorMessage } from "../../domain/errors";

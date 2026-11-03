@@ -2,6 +2,7 @@ import type { AcpChatPage } from "../../../src/domain/acp";
 import type {
   EditorDocument,
   FileDiff,
+  FileGitBase,
   ResourceRef,
   WorkbenchTab,
 } from "../../../src/domain/workbench";
@@ -11,6 +12,8 @@ import type {
   SageItemId,
   SageTurnId,
 } from "../../../src/domain/acp";
+import { browserEditor } from "../../../src/services/browserEditor";
+import { resourceKey } from "../../../src/domain/resourceIdentity";
 
 import type { BuiltVisualScenario } from "./visualScenarioTypes";
 import {
@@ -38,25 +41,39 @@ export const editorContent = [
   "}",
 ].join("\n");
 
-export function editorDocument(): EditorDocument {
-  const version = {
-    fingerprint: "visual-editor-v1",
-    byteLen: editorContent.length,
-    modifiedAt: FIXED_NOW - 90_000,
-  };
-  return {
-    resource: fileResource,
-    disk: version,
-    base: version,
-    buffer: {
-      ...version,
-      revision: 0,
-      content: editorContent,
-    },
+const stagedFiles = new Map<string, FileGitBase>();
+
+export function visualFileGitBase(
+  resource: ResourceRef,
+  knownOid: string | null,
+): FileGitBase {
+  const staged = stagedFiles.get(resourceKey(resource));
+  if (!staged) return browserEditor.stagedText(resource, knownOid);
+  return staged.state === "ready" && staged.oid === knownOid
+    ? { state: "unchanged", oid: staged.oid }
+    : staged;
+}
+
+export function editorDocument(
+  resource: ResourceRef = fileResource,
+): EditorDocument {
+  // A disk save must not stage changes. Preserve the initial browser index
+  // fixture independently of the disk content seeded below.
+  const key = resourceKey(resource);
+  if (!stagedFiles.has(key)) {
+    stagedFiles.set(key, browserEditor.stagedText(resource, null));
+  }
+  // Seed through the browser adapter so edits, recovery snapshots and reopen
+  // all use the same disk content and base fingerprint as the rendered File.
+  const document = browserEditor.discard(resource);
+  browserEditor.snapshot({
+    resource,
+    base: document.base,
     lineEnding: "lf",
-    dirty: false,
-    conflict: null,
-  };
+    revision: document.buffer.revision + 1,
+    content: editorContent,
+  });
+  return browserEditor.save(resource).document;
 }
 
 export const visualSnapshotOldText =

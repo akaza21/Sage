@@ -37,7 +37,9 @@ pub(super) fn capabilities(
 pub(super) fn binding(binding: &AdmittedBinding) -> Option<&Arc<AdmittedCodexBinding>> {
     match binding {
         AdmittedBinding::Codex(binding) => Some(binding),
-        AdmittedBinding::Claude(_) | AdmittedBinding::OpenCode { .. } => None,
+        AdmittedBinding::Claude(_)
+        | AdmittedBinding::OpenCode { .. }
+        | AdmittedBinding::PiNative(_) => None,
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         AdmittedBinding::Pi(_) => None,
     }

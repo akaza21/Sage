@@ -163,3 +163,16 @@ describe("useAcpChatLiveSnapshot", () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
+
+it("returns one idle snapshot identity across renders while inactive", () => {
+  const { result, rerender } = renderHook(
+    ({ chatId }) => useAcpChatLiveSnapshot(chatId, false),
+    { initialProps: { chatId: "chat-1" } },
+  );
+  const idle = result.current;
+  rerender({ chatId: "chat-1" });
+  expect(result.current).toBe(idle);
+  rerender({ chatId: "chat-2" });
+  expect(result.current).not.toBe(idle);
+  expect(result.current.chatId).toBe("chat-2");
+});
