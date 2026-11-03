@@ -238,11 +238,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
     formatCount = 0;
     scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
-    const fence = /^( *)(`{3,}|~{3,})(.*)$/u.exec(line);
+    const fence = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(line);
     if (fence) {
       const language = fence[3].trim().split(/\s/u)[0];
       const closing = new RegExp(
-        `^ *${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
+        `^ {0,3}${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
         "u",
       );
       const start = ++cursor;
@@ -317,9 +317,11 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       continue;
     }
     const list = readMarkdownList(lines, cursor, (text, itemIndex) => {
-      if (remaining > 0) return inline(text, itemIndex);
+      // Empty items still consume a rendered list slot.
+      if (remaining > 0 && itemIndex < MAX_MARKDOWN_PREVIEW_BLOCK_CHARS)
+        return inline(text, itemIndex);
       document.truncated = true;
-      return "";
+      return null;
     });
     if (list) {
       blocks.push(list.block);
@@ -336,7 +338,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         ? quoteMarker.test(lines[cursor])
         : !setextUnderline.test(lines[cursor]) &&
           !isMarkdownRule(lines[cursor]) &&
-          !/^(?: *(?:`{3,}|~{3,})|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
+          !/^(?: {0,3}(?:`{3,}|~{3,})|#{1,6} | {0,3}(?:[-*+]|\d{1,9}[.)]) | {0,3}>|\|)/u.test(
             lines[cursor],
           ))
     ) {

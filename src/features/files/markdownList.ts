@@ -33,31 +33,35 @@ export function isMarkdownRule(line: string): boolean {
 
 export function listItem(line: string): ListItem | null {
   if (isMarkdownRule(line)) return null;
-  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)]) (.+)$/u.exec(line);
+  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)])(?:[ \t]+(.*))?$/u.exec(
+    line,
+  );
   if (!match) return null;
   const indent = match[1].replace(/\t/gu, "    ").length;
-  const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(match[4]);
+  const text = match[4] ?? "";
+  const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(text);
   return {
     indent,
     content: indent + (match[2] ?? match[3]).length + (match[2] ? 1 : 2),
     ordered: !match[2],
     start: Number(match[3] ?? 1),
     ...(task ? { checked: task[1] !== " " } : {}),
-    text: task ? task[2] : match[4],
+    text: task ? task[2] : text,
   };
 }
 
 /**
  * Reads the list that starts at `lines[cursor]`. An item indented to the
  * content column of the item above it at its level nests one level deeper,
- * up to the depth limit. `read` formats an item's text; an empty result drops
- * the item, and a kept item is never more than one level below the kept item
+ * up to the depth limit. `read` returns null when its budget is exhausted.
+ * Empty source items are retained; other items whose rendered text is empty
+ * are dropped. A kept item is never more than one level below the kept item
  * before it, so the flat list always rebuilds into a well-formed tree.
  */
 export function readMarkdownList(
   lines: readonly string[],
   cursor: number,
-  read: (text: string, itemIndex: number) => string,
+  read: (text: string, itemIndex: number) => string | null,
 ): { block: MarkdownListBlock; cursor: number } | null {
   const first = listItem(lines[cursor].trimEnd());
   if (!first || first.indent >= 4) return null;
@@ -77,7 +81,7 @@ export function readMarkdownList(
       levels.push({ indent: next.indent, content: next.content });
     else levels.at(-1)!.content = next.content;
     const text = read(next.text, items.length);
-    if (text) {
+    if (text || (text === "" && !next.text.trim())) {
       const depth = Math.min(
         levels.length - 1,
         items.length ? shape.at(-1)!.depth + 1 : 0,

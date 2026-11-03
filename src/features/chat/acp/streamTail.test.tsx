@@ -272,3 +272,72 @@ it("does not track a textless rule while streaming its marker", () => {
   );
   expect(container.querySelector("hr")).not.toBeNull();
 });
+
+it.each(["~~~", "```"])(
+  "keeps incomplete and over-indented %s closers literal while streaming",
+  (fence) => {
+    const { container, rerender } = render(
+      <ChatMarkdown text={`${fence}js\ncode\n    ~`} streaming />,
+    );
+    const sources = [
+      `${fence}js\ncode\n    ${fence}\nAfter`,
+      `${fence}js\ncode\n    ${fence}\nAfter\n  ${fence.slice(0, 2)}`,
+    ];
+    for (const source of sources) {
+      rerender(<ChatMarkdown text={source} streaming />);
+      const expected = source.slice(source.indexOf("\n") + 1);
+      expect(doc(source).blocks).toEqual([
+        { kind: "code", language: "js", text: expected, fenceClosed: false },
+      ]);
+      expect(
+        [...container.querySelectorAll("pre code")].map(
+          (node) => node.textContent,
+        ),
+      ).toEqual([expected]);
+      expect([...container.querySelectorAll(".acp-markdown > p")]).toEqual([]);
+      expect(tails(container)).toEqual([]);
+    }
+    const source = `${fence}js\ncode\n    ${fence}\nAfter\n  ${fence}\nDone`;
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(doc(source).blocks).toEqual([
+      {
+        kind: "code",
+        language: "js",
+        text: `code\n    ${fence}\nAfter`,
+        fenceClosed: true,
+      },
+      { kind: "paragraph", text: "Done" },
+    ]);
+    expect(
+      [...container.querySelectorAll("pre code")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual([`code\n    ${fence}\nAfter`]);
+    expect(
+      [...container.querySelectorAll(".acp-markdown > p")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Done"]);
+  },
+);
+
+it("reclassifies streaming setext text while keeping an empty list separate from a rule", () => {
+  const { container, rerender } = render(
+    <ChatMarkdown text="Title" streaming />,
+  );
+  const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+  expect(surface()).toBe("<p>Title</p>");
+  for (const [source, expected] of [
+    ["Title\n=", "<h1>Title</h1>"],
+    ["Title\n===", "<h1>Title</h1>"],
+    ["Title\n-", "<h2>Title</h2>"],
+    ["Title\n---", "<h2>Title</h2>"],
+    ["-", "<ul><li></li></ul>"],
+    ["-\n-", "<ul><li></li><li></li></ul>"],
+    ["-\n---", "<ul><li></li></ul><hr>"],
+  ]) {
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(surface()).toBe(expected);
+    expect(tails(container)).toEqual([]);
+  }
+});

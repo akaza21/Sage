@@ -517,19 +517,17 @@ describe("CommonMark block syntax", () => {
   it.each(["--", "**", "__", "-_*", "    ---", "--- text"])(
     "does not turn %s into a rule",
     (source) => {
-      expect(
-        renderMarkdownPreview(source).blocks.some(
-          (block) => block.kind === "rule",
-        ),
-      ).toBe(false);
+      expect(renderMarkdownPreview(source).blocks).toEqual([
+        { kind: "paragraph", text: source.trim() },
+      ]);
     },
   );
   it.each(["- - -", "* * *", "___"])("ends a list before %s", (rule) => {
-    expect(
-      renderMarkdownPreview(`- item\n${rule}\nAfter`).blocks.map(
-        (block) => block.kind,
-      ),
-    ).toEqual(["list", "rule", "paragraph"]);
+    expect(renderMarkdownPreview(`- item\n${rule}\nAfter`).blocks).toEqual([
+      { kind: "list", items: ["item"] },
+      { kind: "rule" },
+      { kind: "paragraph", text: "After" },
+    ]);
   });
   it("keeps table delimiter rows as tables", () => {
     expect(
@@ -553,11 +551,11 @@ describe("CommonMark block syntax", () => {
     ]);
   });
   it("lets spaced rules interrupt paragraphs without becoming headings", () => {
-    expect(
-      renderMarkdownPreview("Intro\n- - -\nAfter").blocks.map(
-        (block) => block.kind,
-      ),
-    ).toEqual(["paragraph", "rule", "paragraph"]);
+    expect(renderMarkdownPreview("Intro\n- - -\nAfter").blocks).toEqual([
+      { kind: "paragraph", text: "Intro" },
+      { kind: "rule" },
+      { kind: "paragraph", text: "After" },
+    ]);
   });
   it("keeps tilde code literal until a matching fence of sufficient length", () => {
     expect(
@@ -599,5 +597,87 @@ describe("CommonMark block syntax", () => {
       renderMarkdownPreview("***\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCKS))
         .truncated,
     ).toBe(false);
+  });
+});
+
+describe("fence indentation and empty list precedence", () => {
+  it.each(["~~~", "```"])(
+    "keeps a four-space %s closer inside literal code",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(`${fence}js\ncode\n    ${fence}\nAfter`).blocks,
+      ).toEqual([
+        {
+          kind: "code",
+          language: "js",
+          text: `code\n    ${fence}\nAfter`,
+          fenceClosed: false,
+        },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "admits a three-space %s opener and closer",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(
+          `Before\n   ${fence}js\n   code\n   ${fence}\nAfter`,
+        ).blocks,
+      ).toEqual([
+        { kind: "paragraph", text: "Before" },
+        { kind: "code", language: "js", text: "code", fenceClosed: true },
+        { kind: "paragraph", text: "After" },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "does not open a four-space %s fence or interrupt a paragraph",
+    (fence) => {
+      expect(renderMarkdownPreview(`    ${fence}js\ncode`).blocks).toEqual([
+        { kind: "paragraph", text: `${fence}js code` },
+      ]);
+      expect(
+        renderMarkdownPreview(`Before\n    ${fence}js\ncode`).blocks,
+      ).toEqual([{ kind: "paragraph", text: `Before ${fence}js code` }]);
+    },
+  );
+  it.each(["-", "+", "*", "-   ", "+\t"])(
+    "classifies empty %s as a list before a rule",
+    (marker) => {
+      expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
+        { kind: "list", items: [""] },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each(["1.", "2)"])(
+    "retains empty ordered marker %s before a rule",
+    (marker) => {
+      expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
+        { kind: "list", items: [""], ordered: true, start: Number(marker[0]) },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it("keeps empty items among nonempty items without converting them to headings", () => {
+    expect(renderMarkdownPreview("- one\n-\n- two\n---").blocks).toEqual([
+      { kind: "list", items: ["one", "", "two"] },
+      { kind: "rule" },
+    ]);
+  });
+  it("does not use an equals underline to turn an empty list into a heading", () => {
+    expect(renderMarkdownPreview("-\n===").blocks).toEqual([
+      { kind: "list", items: [""] },
+      { kind: "paragraph", text: "===" },
+    ]);
+  });
+  it("bounds retained empty items just like one-character items", () => {
+    const document = renderMarkdownPreview(
+      "-\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS + 1),
+    );
+    expect(document.blocks).toEqual([
+      { kind: "list", items: Array(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS).fill("") },
+    ]);
+    expect(document.truncated).toBe(true);
   });
 });

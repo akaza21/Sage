@@ -77,19 +77,9 @@ it("renders the parsed rule, headings, literal code and quote as DOM blocks", ()
     "Title\n===\n\n---\n\nSubtitle\n---\n\n~~~js\n*a*\n~~~\n\n> one\n>\n> two",
   );
   const { container } = render(<MarkdownBlocks document={document} />);
-  expect([...container.children].map((node) => node.tagName)).toEqual([
-    "H1",
-    "HR",
-    "H2",
-    "DIV",
-    "BLOCKQUOTE",
-  ]);
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Title");
-  expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
-    "Subtitle",
+  expect(container.innerHTML).toBe(
+    "<h1>Title</h1><hr><h2>Subtitle</h2><div><pre>*a*</pre></div><blockquote>one two</blockquote>",
   );
-  expect(container.querySelector("pre")).toHaveTextContent("*a*");
-  expect(container.querySelector("blockquote")).toHaveTextContent("one two");
 });
 
 it.each(["preview", "chat"])("renders rules in the %s surface", (surface) => {
@@ -104,4 +94,30 @@ it.each(["preview", "chat"])("renders rules in the %s surface", (surface) => {
   expect(screen.getByRole("separator").tagName).toBe("HR");
   expect(container.querySelectorAll("li")).toHaveLength(0);
   expect(container.textContent).toBe("IntroAfter");
+});
+
+it.each(["-", "+", "*", "1.", "2)"])(
+  "renders an empty %s list and a separate rule",
+  (marker) => {
+    const { container } = render(
+      <MarkdownBlocks document={renderMarkdownPreview(`${marker}\n---`)} />,
+    );
+    const ordered = /\d/u.test(marker);
+    expect(container.innerHTML).toBe(
+      ordered
+        ? `<ol start="${marker[0]}"><li></li></ol><hr>`
+        : "<ul><li></li></ul><hr>",
+    );
+  },
+);
+
+it("renders an over-indented closer as literal code through the end of the preview", () => {
+  const { container } = render(
+    <MarkdownBlocks
+      document={renderMarkdownPreview("~~~js\ncode\n    ~~~\nAfter")}
+    />,
+  );
+  expect(container.innerHTML).toBe(
+    "<div><pre>code\n    ~~~\nAfter</pre></div>",
+  );
 });
