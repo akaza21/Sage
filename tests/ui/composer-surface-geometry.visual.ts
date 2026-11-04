@@ -42,7 +42,10 @@ for (const width of [480, 1280]) {
       await control.click({ trial: true });
     }
     await summary
-      .getByRole("button", { name: /Open file .*disclosure-15.tsx/ })
+      .getByRole("button", {
+        name: "Open diff Sage / src/disclosure-15.tsx",
+        exact: true,
+      })
       .click({ trial: true });
     await page.evaluate(async () => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
