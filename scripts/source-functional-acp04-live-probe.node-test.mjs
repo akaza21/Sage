@@ -654,11 +654,11 @@ function composerControlsMarkup({
 }
 
 function agentHeaderMarkup(harnessStatus = "Ready") {
-  return `<div class="agent-chat-center__header"><header class="agent-task-header"><span class="agent-task-header__status" role="status" aria-label="Chat status: Idle">Idle</span><details class="agent-task-header__harness-status"><summary aria-label="Harness status: ${harnessStatus}" title="${harnessStatus}"><span>${harnessStatus}</span></summary><p>${harnessStatus}</p></details></header><div class="agent-artifact-header-slot"></div></div>`;
+  return `<div class="agent-chat-center__header"><header class="agent-task-header"><button class="agent-task-header__pencil" type="button" aria-label="New chat" title="New chat"></button><span class="agent-task-header__status" role="status" aria-label="Chat status: Idle">Idle</span><details class="agent-task-header__harness-status"><summary aria-label="Harness status: ${harnessStatus}" title="${harnessStatus}"><span>${harnessStatus}</span></summary><p>${harnessStatus}</p></details></header><div class="agent-artifact-header-slot"></div></div>`;
 }
 
 function sidebarMarkup(chatId = "chat-1") {
-  return `<aside class="project-sidebar" aria-label="Projects and chats"><nav class="project-sidebar__icon-rail" aria-label="Primary navigation"><button type="button" aria-label="New chat" title="New chat"></button><button type="button" aria-label="Go to recent chats" title="Recent chats"></button></nav><div class="project-sidebar__actions"><div class="project-sidebar__brand"><strong>Sage</strong><button type="button" aria-label="Filter tasks" title="Filter tasks" aria-expanded="false"></button></div><button class="project-action project-action--primary" type="button" title="New task" aria-label="New task" aria-keyshortcuts="Control+N"><svg aria-hidden="true"></svg><span>New chat</span><kbd class="project-action__chord">Ctrl+N</kbd></button></div><div class="project-sidebar__scroll"><div class="project-entry"><div class="project-entry__header"><button class="project-row project-row--active" type="button" aria-current="page" title="Open project Sage"><span>Sage</span></button><button class="project-entry__new-chat" type="button" aria-label="New task in Sage" title="New task in Sage"></button></div><div class="project-chat-row project-chat-row--active"><button class="project-chat project-chat--active" type="button" title="Open chat Seeded chat" aria-label="Open chat Seeded chat" data-chat-id="${chatId}" aria-current="page"><span class="project-chat__title-label">Seeded chat</span></button></div></div></div></aside>`;
+  return `<aside class="project-sidebar" aria-label="Projects and chats"><nav class="project-sidebar__icon-rail" aria-label="Primary navigation"><button type="button" aria-label="Home" title="Home"></button><button type="button" aria-label="Go to recent chats" title="Recent chats"></button><button type="button" aria-label="Go to projects" title="Projects"></button></nav><div class="project-sidebar__actions"><div class="project-sidebar__brand"><strong>Sage</strong><button type="button" aria-label="Search chats" title="Search chats"></button></div><button class="project-action project-action--primary" type="button" title="New chat" aria-label="New chat" aria-keyshortcuts="Control+N"><svg aria-hidden="true"></svg><span>New chat</span></button></div><div class="project-sidebar__scroll"><div class="project-entry"><div class="project-entry__header"><button class="project-row project-row--active" type="button" aria-current="page" title="Sage" aria-label="Project Sage" aria-expanded="true"><span>Sage</span></button><div class="project-entry__trailing"><div class="project-entry__actions"><button class="project-entry__new-chat" type="button" aria-label="New chat in Sage" title="New chat in Sage"></button></div></div></div><div class="project-chat-row project-chat-row--active"><button class="project-chat project-chat--active" type="button" aria-label="Open chat Seeded chat" data-chat-id="${chatId}" aria-current="page"><span class="project-chat__title-label">Seeded chat</span></button></div></div></div></aside>`;
 }
 
 function turnMarkup({ id, ordinal, state, label, items }) {
@@ -1158,15 +1158,15 @@ test("Mode A uses behavior seams for Editor to one seeded Agent chat", async () 
   assert.equal(calls.filter((call) => call === "new-chat").length, 1);
 });
 
-test("clean Chat navigation clicks only the sidebar New task action and waits for a different empty Chat", () => {
+test("clean Chat navigation clicks only the sidebar New chat action and waits for a different empty Chat", () => {
   withDom(agentWorkbenchMarkup(), (document) => {
     const ui = createAcp04Ui(CODEX_VERSION);
     const action = document.querySelector(
-      'aside[aria-label="Projects and chats"] button[aria-label="New task"]',
+      'aside[aria-label="Projects and chats"] button.project-action--primary',
     );
     const decoys = [
       ...document.querySelectorAll(
-        'button[aria-label="New chat"], button[aria-label="New task in Sage"]',
+        '.agent-task-header button[aria-label="New chat"], button[aria-label="New chat in Sage"]',
       ),
     ];
     assert.equal(decoys.length, 2);
@@ -1194,7 +1194,7 @@ test("clean Chat navigation clicks only the sidebar New task action and waits fo
     action.after(action.cloneNode(true));
     assert.equal(eval(ui.createFreshChat), false);
     document
-      .querySelectorAll('button[aria-label="New task"]')
+      .querySelectorAll("aside button.project-action--primary")
       .forEach((button) => button.remove());
     assert.equal(eval(ui.createFreshChat), false);
     assert.equal(clicks, 1);
