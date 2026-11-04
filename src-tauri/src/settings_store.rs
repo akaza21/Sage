@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
-mod browser_developer;
 mod agent_rail_view;
+mod browser_developer;
 mod browser_preferences;
 mod browser_site_permissions;
 mod editor_settings;

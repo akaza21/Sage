@@ -19,16 +19,19 @@ pub(crate) struct LeaseDeveloperPolicy {
     /// `developer::switch_generation`.
     generation: u64,
     resource_generation: u64,
+    grant_generation: u64,
 }
 
 impl LeaseDeveloperPolicy {
     pub(crate) fn new(lease: AttachmentLease, settings: SettingsStore) -> Arc<Self> {
         let resource_generation = lease.resource_generation();
+        let grant_generation = lease.grant_generation();
         Arc::new(Self {
             lease,
             settings,
             generation: developer::switch_generation(),
             resource_generation,
+            grant_generation,
         })
     }
 }
@@ -37,8 +40,9 @@ impl DeveloperModePolicy for LeaseDeveloperPolicy {
     fn enabled(&self) -> bool {
         // Only WebView2 has CDP, and an unreadable switch is off.
         cfg!(windows)
-            && developer::switch_generation() == self.generation
+            && developer::switch_is_current(self.generation)
             && self.lease.resource_generation() == self.resource_generation
+            && self.lease.grant_generation() == self.grant_generation
             && self.settings.browser_developer_mode().unwrap_or(false)
     }
 
@@ -48,15 +52,31 @@ impl DeveloperModePolicy for LeaseDeveloperPolicy {
 
     fn grant(&self, session: &str, origin: &str) -> bool {
         let settings = self.settings.clone();
-        let (session_id, grant_origin, tab_id) = (session.to_owned(), origin.to_owned(), self.lease.tab_number);
-        let audit = Arc::new(move |outcome| record(&settings, &CdpAuditEntry {
-            session_id: session_id.clone(), tab_id, origin: grant_origin.clone(), method: "Grant".into(),
-            params: String::new(), result_bytes: None, outcome,
-        }));
+        let (session_id, grant_origin, tab_id) =
+            (session.to_owned(), origin.to_owned(), self.lease.tab_number);
+        let audit = Arc::new(move |outcome| {
+            record(
+                &settings,
+                &CdpAuditEntry {
+                    session_id: session_id.clone(),
+                    tab_id,
+                    origin: grant_origin.clone(),
+                    method: "Grant".into(),
+                    params: String::new(),
+                    result_bytes: None,
+                    outcome,
+                },
+            )
+        });
         self.enabled()
-            && self
-                .lease
-                .grant_developer_mode_audited_at(session, origin, self.generation, self.resource_generation, audit)
+            && self.lease.grant_developer_mode_audited_at(
+                session,
+                origin,
+                self.generation,
+                self.resource_generation,
+                self.grant_generation,
+                audit,
+            )
     }
 
     fn audit(&self, entry: CdpAuditEntry) -> bool {

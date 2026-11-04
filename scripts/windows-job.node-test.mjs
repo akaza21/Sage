@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +15,59 @@ function readUtf8Receipt(file) {
   const text = readFileSync(file, "utf8");
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
+
+test("native Job completion and stop accept an exited root without a managed wrapper", () => {
+  const directory = path.resolve("work");
+  mkdirSync(directory, { recursive: true });
+  const root = mkdtempSync(path.join(directory, "job-null-root-"));
+  try {
+    const driver = path.join(root, "driver.ps1");
+    writeFileSync(
+      driver,
+      [
+        "param([string]$JobModule,[string]$CompletionModule,[string]$NodePath,[string]$FixtureRoot)",
+        "$ErrorActionPreference = 'Stop'",
+        "Import-Module $JobModule -Force",
+        "Import-Module $CompletionModule -Force",
+        "$info = [Diagnostics.ProcessStartInfo]::new()",
+        "$info.FileName = $NodePath; $info.WorkingDirectory = $FixtureRoot",
+        "$info.UseShellExecute = $false; $info.CreateNoWindow = $true",
+        "$launch = Start-FootprintJobProcess $info -ArgumentList @('-e','process.exit(7)') -ActiveProcessLimit 2",
+        "try {",
+        "  $wait = Wait-FootprintJobProcess $null $launch.boundary 5000 100",
+        "  $stop = Stop-FootprintJobProcess $null $launch.boundary 0 100",
+        "  [ordered]@{ exitCode=$wait.exitCode; waitOrphans=$wait.orphanProcessesAfterClose; stopOrphans=$stop.orphanProcessesAfterClose; verified=$stop.treeBoundaryVerified; forced=$stop.forced } | ConvertTo-Json -Compress",
+        "} finally { $launch.boundary.Dispose(); if ($null -ne $launch.process) { $launch.process.Dispose() } }",
+      ].join("\n"),
+    );
+    const stdout = execFileSync(
+      "powershell.exe",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        driver,
+        path.resolve("scripts/footprint/WindowsJob.psm1"),
+        path.resolve("scripts/footprint/WindowsJobCompletion.psm1"),
+        process.execPath,
+        root,
+      ],
+      { encoding: "utf8", timeout: 20_000, windowsHide: true },
+    );
+    assert.deepEqual(JSON.parse(stdout.trim()), {
+      exitCode: 7,
+      waitOrphans: 0,
+      stopOrphans: 0,
+      verified: true,
+      forced: false,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function strictPidReceipt(file, label) {
   let text;

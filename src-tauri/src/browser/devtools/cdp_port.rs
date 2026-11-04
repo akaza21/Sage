@@ -187,7 +187,7 @@ pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(t
 
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
     fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
-        self.call(
+        self.transport.raw(
             method,
             params,
             BROWSER_LIMITS.cdp_result_bytes,
@@ -196,7 +196,7 @@ impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
     }
 
     fn release_developer_objects(&mut self) {
-        release_developer_objects(&self.transport);
+        self.transport.release_raw_objects();
     }
 
     fn navigate(&mut self, url: &str) -> Result<(String, u64), BrowserFailure> {

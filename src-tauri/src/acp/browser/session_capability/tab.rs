@@ -28,12 +28,39 @@ impl BrowserCapabilityDispatch for AttachedTabPort<'_> {
             return Err(permit.revoked_failure());
         }
         let generation = self.lease.resource_generation();
+        let cdp = matches!(
+            request.command,
+            crate::acp::browser::BrowserCommand::Cdp { .. }
+        );
+        let operation = if cdp {
+            None
+        } else {
+            Some(self.lease.begin_diagnostic_operation()?)
+        };
         let mut native = self
             .lanes
             .get_or_try_insert(&request.scope, &self.lease, || {
-                NativeDevtools::for_attachment(self.browser, request.scope.clone(), &self.lease, generation, &permit)
+                NativeDevtools::for_attachment(
+                    self.browser,
+                    request.scope.clone(),
+                    &self.lease,
+                    generation,
+                    &permit,
+                )
             })?;
-        native.wake_diagnostics(&self.lease, &permit)?;
-        native.dispatch(request, permit)
+        // Raw CDP does not own an event subscription. Ordinary browser tools
+        // keep their independent diagnostic lifetime and origin permission.
+        if !cdp {
+            native.wake_diagnostics(&self.lease, &permit)?;
+        }
+        let pending = if cdp {
+            native.dispatch_developer(request, permit, self.lease.developer_scope())?
+        } else {
+            native.dispatch(request, permit)?
+        };
+        Ok(Box::new(move || {
+            let _operation = operation;
+            pending()
+        }))
     }
 }

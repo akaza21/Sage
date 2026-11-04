@@ -116,6 +116,8 @@ impl BrowserState {
 
 struct BrowserTab<T> {
     handle: T,
+    #[cfg(windows)]
+    developer: devtools::developer_session::Slot,
     visibility: Arc<visibility::PageVisibility>,
     loading: bool,
     title: Option<String>,
@@ -207,6 +209,8 @@ impl<T> BrowserTabs<T> {
             label,
             BrowserTab {
                 handle,
+                #[cfg(windows)]
+                developer: devtools::developer_session::Slot::default(),
                 visibility: Arc::default(),
                 loading,
                 title: None,

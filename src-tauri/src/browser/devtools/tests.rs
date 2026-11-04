@@ -23,6 +23,15 @@ fn suspended_diagnostics_drop_history_and_ignore_late_events() {
     rings.push_network("GET", "https://example.com/late", 200);
     assert!(rings.console(None, 10).unwrap().1.is_empty());
     assert!(rings.network(None, 10).unwrap().1.is_empty());
+    let mut resumed = rings.resumed();
+    resumed.push_console("log", "after wake");
+    resumed.push_network("GET", "https://example.com/wake", 200);
+    let (cursor, entries) = resumed.console(Some(1), 10).unwrap();
+    assert_eq!(cursor, 2);
+    assert_eq!(entries[0].text, "after wake");
+    let (cursor, entries) = resumed.network(Some(1), 10).unwrap();
+    assert_eq!(cursor, 2);
+    assert_eq!(entries[0].url, "https://example.com/wake");
 }
 
 #[test]

@@ -188,26 +188,91 @@ fn sleeping_keeps_handles_and_approval_but_releases_diagnostic_history() {
     let registry = BrowserAttachments::default();
     let project = SageProjectId::parse("project-one").unwrap();
     let chat = SageChatId::parse("chat-one").unwrap();
-    registry.attach(project.clone(), chat.clone(), "browser-1", "https://example.com/", 1).unwrap();
+    registry
+        .attach(
+            project.clone(),
+            chat.clone(),
+            "browser-1",
+            "https://example.com/",
+            1,
+        )
+        .unwrap();
     let lease = registry.resolve(&project, &chat).unwrap();
-    let scope = BrowserScope { session_id: "session-1".into(), tab_id: 1 };
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
     lease.authority_for(&scope).unwrap();
     assert!(lease.grant_developer_mode("session-1", "https://example.com"));
     let mut lanes = AttachmentLanes::default();
-    let lane = lanes.get_or_try_insert(&scope, &lease, || Ok(DevtoolsCapability::new(scope.clone(), Page(1)))).unwrap();
-    let BrowserResult::SnapshotPage { nodes, .. } = lane.perform(&BrowserRequest { scope: scope.clone(), command: BrowserCommand::SnapshotPage {} }).unwrap() else { panic!("snapshot") };
+    let lane = lanes
+        .get_or_try_insert(&scope, &lease, || {
+            Ok(DevtoolsCapability::new(scope.clone(), Page(1)))
+        })
+        .unwrap();
+    let BrowserResult::SnapshotPage { nodes, .. } = lane
+        .perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::SnapshotPage {},
+        })
+        .unwrap()
+    else {
+        panic!("snapshot")
+    };
     let rings = lane.diagnostics();
     rings.lock().unwrap().push_console("log", "before sleeping");
-    lease.bind_resources(lease.resource_generation(), || true, Box::new(lane.release_buffers())).unwrap();
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(lane.release_buffers()),
+        )
+        .unwrap();
     let sleeping_rings = rings.clone();
-    lease.diagnostic_scope().unwrap().with_registered_diagnostics(|| Ok(((), Some(Box::new(move || sleeping_rings.lock().unwrap().suspend()))))).unwrap();
+    lease
+        .diagnostic_scope()
+        .unwrap()
+        .with_registered_diagnostics(|| {
+            Ok((
+                (),
+                Some(Box::new(move || sleeping_rings.lock().unwrap().suspend())),
+            ))
+        })
+        .unwrap();
     registry.suspend_tab("browser-1");
     assert!(lease.developer_granted("session-1", "https://example.com"));
-    assert!(rings.lock().unwrap().console(None, 10).unwrap().1.is_empty());
-    let lane = lanes.get_or_try_insert(&scope, &lease, || panic!("sleep discarded semantic handles")).unwrap();
-    assert_eq!(lane.perform(&BrowserRequest::act(scope.clone(), BrowserAction::Click { handle: nodes[0].handle.clone() })), Ok(BrowserResult::Act { applied: true }));
+    assert!(
+        rings
+            .lock()
+            .unwrap()
+            .console(None, 10)
+            .unwrap()
+            .1
+            .is_empty()
+    );
+    let lane = lanes
+        .get_or_try_insert(&scope, &lease, || {
+            panic!("sleep discarded semantic handles")
+        })
+        .unwrap();
+    assert_eq!(
+        lane.perform(&BrowserRequest::act(
+            scope.clone(),
+            BrowserAction::Click {
+                handle: nodes[0].handle.clone()
+            }
+        )),
+        Ok(BrowserResult::Act { applied: true })
+    );
     registry.end_developer_mode();
-    assert_eq!(lane.perform(&BrowserRequest { scope, command: BrowserCommand::SnapshotPage {} }), Err(BrowserFailure::Denied));
+    assert!(!lease.developer_granted("session-1", "https://example.com"));
+    assert!(
+        lane.perform(&BrowserRequest {
+            scope,
+            command: BrowserCommand::SnapshotPage {}
+        })
+        .is_ok()
+    );
 }
 
 #[test]
@@ -215,11 +280,126 @@ fn switching_developer_mode_off_preserves_an_ordinary_lane() {
     let registry = BrowserAttachments::default();
     let project = SageProjectId::parse("project-one").unwrap();
     let chat = SageChatId::parse("chat-one").unwrap();
-    registry.attach(project.clone(), chat.clone(), "browser-1", "https://example.com/", 1).unwrap();
+    registry
+        .attach(
+            project.clone(),
+            chat.clone(),
+            "browser-1",
+            "https://example.com/",
+            1,
+        )
+        .unwrap();
     let lease = registry.resolve(&project, &chat).unwrap();
-    let scope = BrowserScope { session_id: "session-1".into(), tab_id: 1 };
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
     let mut lane = DevtoolsCapability::new(scope.clone(), Page(1));
-    lease.bind_resources(lease.resource_generation(), || true, Box::new(lane.release_buffers())).unwrap();
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(lane.release_buffers()),
+        )
+        .unwrap();
     registry.end_developer_mode();
-    assert!(lane.perform(&BrowserRequest { scope, command: BrowserCommand::SnapshotPage {} }).is_ok());
+    assert!(
+        lane.perform(&BrowserRequest {
+            scope,
+            command: BrowserCommand::SnapshotPage {}
+        })
+        .is_ok()
+    );
+}
+
+#[test]
+fn switching_developer_mode_off_during_an_ordinary_wait_keeps_its_result_and_history() {
+    use std::sync::Arc;
+    struct RevokingPage {
+        registry: Arc<BrowserAttachments>,
+        ready: bool,
+    }
+    impl DevtoolsPort for RevokingPage {
+        fn snapshot(&mut self) -> Result<(DocumentStamp, Vec<NativeNode>), BrowserFailure> {
+            Page(1).snapshot()
+        }
+        fn capture(&mut self, _: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure> {
+            Err(BrowserFailure::Unavailable)
+        }
+        fn matches(
+            &mut self,
+            _: &WaitCondition,
+            _: std::time::Duration,
+        ) -> Result<bool, BrowserFailure> {
+            if self.ready {
+                return Ok(true);
+            }
+            self.registry.end_developer_mode();
+            self.ready = true;
+            Ok(false)
+        }
+    }
+    let registry = Arc::new(BrowserAttachments::default());
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    registry
+        .attach(
+            project.clone(),
+            chat.clone(),
+            "browser-1",
+            "https://example.com/",
+            1,
+        )
+        .unwrap();
+    let lease = registry.resolve(&project, &chat).unwrap();
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    lease.authority_for(&scope).unwrap();
+    assert!(lease.grant_developer_mode("session-1", "https://example.com"));
+    let mut lane = DevtoolsCapability::new(
+        scope.clone(),
+        RevokingPage {
+            registry,
+            ready: false,
+        },
+    );
+    lane.diagnostics()
+        .lock()
+        .unwrap()
+        .push_console("log", "ordinary history");
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(lane.release_buffers()),
+        )
+        .unwrap();
+    assert_eq!(
+        lane.perform(&BrowserRequest {
+            scope: scope.clone(),
+            command: BrowserCommand::WaitFor {
+                condition: WaitCondition::Text {
+                    text: "ready".into()
+                },
+                timeout_ms: 5000
+            }
+        }),
+        Ok(BrowserResult::WaitFor { matched: true })
+    );
+    let BrowserResult::ReadConsole { entries, .. } = lane
+        .perform(&BrowserRequest {
+            scope,
+            command: BrowserCommand::ReadConsole {
+                cursor: None,
+                limit: 1,
+            },
+        })
+        .unwrap()
+    else {
+        panic!("console")
+    };
+    assert_eq!(entries[0].text, "ordinary history");
+    assert!(!lease.developer_granted("session-1", "https://example.com"));
 }

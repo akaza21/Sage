@@ -6,8 +6,8 @@
 //! top-level parameters, are sent. Every one of them runs in the main
 //! frame's default execution context (where the same-origin policy keeps
 //! cross-origin iframes out) or navigates or captures the tab, and none
-//! enables a domain or leaves other state on the tab's shared DevTools
-//! session after the grant ends. The `DOM` domain is left out because its
+//! enables a domain. Native raw calls use a grant-owned session detached on
+//! revocation, sleep and timeout. The `DOM` domain is left out because its
 //! node ids reach same-process iframe documents and it enables itself;
 //! cookie commands are left out because they hand over `HttpOnly` session
 //! tokens that page script cannot read. Frame and context ids are never
@@ -15,11 +15,11 @@
 //! context it belongs to, so a hand-built one could name an iframe's
 //! context. Results come back by value or as previews.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use serde_json::{Map, Value};
 
 use super::BrowserFailure;
+mod switch;
+pub(crate) use switch::{switch_generation, switch_is_current, with_switch_change};
 
 /// `Runtime.evaluate` parameters the Agent may set. Sage itself sets
 /// `returnByValue: true` and its own `objectGroup`, and releases that group
@@ -41,9 +41,8 @@ const EVALUATE: &[&str] = &[
 /// port releases it after each call and when a grant ends.
 pub const DEVELOPER_OBJECT_GROUP: &str = "sage-developer-mode";
 
-/// The longest a developer-mode evaluation may run before V8 terminates it;
-/// below the 30 s the port waits, so a slow script ends before Sage stops
-/// waiting for it.
+/// V8's synchronous evaluation limit, below the native 30 s deadline.
+/// `awaitPromise` can outlive V8's limit; native timeout detaches its session.
 pub const EVALUATE_TIMEOUT_MS: u64 = 25_000;
 
 /// Whether this command's completion, whenever it arrives and whether or
@@ -151,7 +150,10 @@ impl CdpAuditOutcome {
             Self::Blocked => "blocked",
             Self::Failed(BrowserFailure::Capacity) => "capacity",
             Self::Failed(BrowserFailure::OutcomeUnknown) => "outcomeUnknown",
-            Self::Failed(BrowserFailure::Denied) => "denied",
+            Self::Failed(
+                BrowserFailure::Denied | BrowserFailure::NoAttachment | BrowserFailure::UserControl,
+            ) => "denied",
+            Self::Failed(BrowserFailure::InvalidRequest) => "blocked",
             Self::Failed(_) => "unavailable",
         }
     }
@@ -168,21 +170,6 @@ pub struct CdpAuditEntry {
     pub params: String,
     pub result_bytes: Option<usize>,
     pub outcome: CdpAuditOutcome,
-}
-
-/// Bumped whenever the Settings switch changes. A call captures it when it
-/// starts; a grant or send made after the switch changed is refused, even
-/// when the user approves a card that was already open.
-static SWITCH_GENERATION: AtomicU64 = AtomicU64::new(0);
-
-pub fn switch_generation() -> u64 {
-    SWITCH_GENERATION.load(Ordering::SeqCst)
-}
-
-/// Called before the switch's grants are ended, so a grant racing the
-/// switch either lands first and is ended, or sees the new generation.
-pub fn bump_switch_generation() {
-    SWITCH_GENERATION.fetch_add(1, Ordering::SeqCst);
 }
 
 /// What the permission gate needs to admit an elevated command. Grants are

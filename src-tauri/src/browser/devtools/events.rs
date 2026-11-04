@@ -41,8 +41,13 @@ struct AttachmentLease {
 
 impl AttachmentLease {
     fn activate(&self) -> Result<(), crate::acp::browser::BrowserFailure> {
-        if self.rings.lock().is_ok_and(|rings| rings.is_suspended()) { return Err(crate::acp::browser::BrowserFailure::Denied); }
-        self.state.compare_exchange(PENDING, ACTIVE, Ordering::AcqRel, Ordering::Acquire).map(|_| ()).map_err(|_| crate::acp::browser::BrowserFailure::Denied)
+        if self.rings.lock().is_ok_and(|rings| rings.is_suspended()) {
+            return Err(crate::acp::browser::BrowserFailure::Denied);
+        }
+        self.state
+            .compare_exchange(PENDING, ACTIVE, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| crate::acp::browser::BrowserFailure::Denied)
     }
 }
 
@@ -69,17 +74,27 @@ impl<R: Subscription> SubscriptionTable<R> {
             Arc<Mutex<DiagnosticRings>>,
         ) -> Result<R, crate::acp::browser::BrowserFailure>,
     ) -> Result<AttachmentLease, crate::acp::browser::BrowserFailure> {
-        self.attach_scoped_once(label, None, cancelled, register)
+        self.attach_scoped_once(label, None, cancelled, DiagnosticRings::default(), register)
     }
 
     fn attach_scoped_once(
-        &mut self, label: &str, owner: Option<DiagnosticScope>, cancelled: &AtomicBool,
-        mut register: impl FnMut(&'static str, Arc<Mutex<DiagnosticRings>>) -> Result<R, crate::acp::browser::BrowserFailure>,
+        &mut self,
+        label: &str,
+        owner: Option<DiagnosticScope>,
+        cancelled: &AtomicBool,
+        initial: DiagnosticRings,
+        mut register: impl FnMut(
+            &'static str,
+            Arc<Mutex<DiagnosticRings>>,
+        ) -> Result<R, crate::acp::browser::BrowserFailure>,
     ) -> Result<AttachmentLease, crate::acp::browser::BrowserFailure> {
         use crate::acp::browser::BrowserFailure;
         if let Some(tab) = self.tabs.get(label) {
             match tab.state.load(Ordering::Acquire) {
-                ACTIVE if tab.owner == owner && tab.rings.lock().is_ok_and(|rings| !rings.is_suspended()) => {
+                ACTIVE
+                    if tab.owner == owner
+                        && tab.rings.lock().is_ok_and(|rings| !rings.is_suspended()) =>
+                {
                     return Ok(AttachmentLease {
                         rings: tab.rings.clone(),
                         state: tab.state.clone(),
@@ -90,7 +105,7 @@ impl<R: Subscription> SubscriptionTable<R> {
                 _ => self.detach(label),
             }
         }
-        let rings = Arc::new(Mutex::new(DiagnosticRings::default()));
+        let rings = Arc::new(Mutex::new(initial));
         let state = Arc::new(AtomicU8::new(PENDING));
         let mut registrations: Vec<R> = Vec::new();
         for event in EVENTS {
@@ -146,7 +161,9 @@ impl<R: Subscription> SubscriptionTable<R> {
     pub(super) fn detach(&mut self, label: &str) {
         if let Some(tab) = self.tabs.remove(label) {
             tab.state.store(FAILED, Ordering::Release);
-            if let Ok(mut rings) = tab.rings.lock() { rings.suspend(); }
+            if let Ok(mut rings) = tab.rings.lock() {
+                rings.suspend();
+            }
             for registration in tab.registrations.iter().rev() {
                 registration.unregister();
             }
@@ -230,6 +247,6 @@ mod subscription_tests;
 #[cfg(windows)]
 mod native;
 #[cfg(windows)]
-pub(super) use native::{attach, suspend};
-#[cfg(windows)]
 pub(crate) use native::detach;
+#[cfg(windows)]
+pub(super) use native::attach;

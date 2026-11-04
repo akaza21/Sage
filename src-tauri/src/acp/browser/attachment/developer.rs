@@ -19,7 +19,9 @@ pub(super) struct DeveloperGrant {
 }
 
 impl Drop for DeveloperGrant {
-    fn drop(&mut self) { (self.audit)(developer::CdpAuditOutcome::Revoked); }
+    fn drop(&mut self) {
+        (self.audit)(developer::CdpAuditOutcome::Revoked);
+    }
 }
 
 fn origin_of(url: &str) -> Option<String> {
@@ -37,8 +39,20 @@ impl AttachmentLease {
     }
 
     #[cfg(test)]
-    pub(crate) fn grant_developer_mode_at(&self, session: &str, origin: &str, generation: u64) -> bool {
-        self.grant_developer_mode_audited_at(session, origin, generation, self.resource_generation(), Arc::new(|_| true))
+    pub(crate) fn grant_developer_mode_at(
+        &self,
+        session: &str,
+        origin: &str,
+        generation: u64,
+    ) -> bool {
+        self.grant_developer_mode_audited_at(
+            session,
+            origin,
+            generation,
+            self.resource_generation(),
+            self.grant_generation(),
+            Arc::new(|_| true),
+        )
     }
 
     /// Records the grant unless the Settings switch changed since
@@ -50,6 +64,7 @@ impl AttachmentLease {
         origin: &str,
         generation: u64,
         resource_generation: u64,
+        grant_generation: u64,
         audit: GrantAudit,
     ) -> bool {
         let Ok(slot) = self.authority.lock() else {
@@ -65,10 +80,15 @@ impl AttachmentLease {
         let Ok(mut grant) = self.developer.lock() else {
             return false;
         };
-        if developer::switch_generation() != generation || self.resource_generation() != resource_generation {
+        if !developer::switch_is_current(generation)
+            || self.resource_generation() != resource_generation
+            || self.grant_generation() != grant_generation
+        {
             return false;
         }
-        if !audit(developer::CdpAuditOutcome::Granted) { return false; }
+        if !audit(developer::CdpAuditOutcome::Granted) {
+            return false;
+        }
         *grant = Some(DeveloperGrant {
             session: session.to_owned(),
             origin: origin.to_owned(),
@@ -95,29 +115,39 @@ impl AttachmentLease {
     }
 
     pub(super) fn end_developer_mode(&self) -> bool {
-        let ended = self.developer.lock().ok().and_then(|mut grant| {
-            grant.take().map(|grant| (grant, self.invalidate_resources()))
-        });
-        if let Some((grant, generation)) = ended {
-            drop(grant);
-            self.release_invalidated_resources(generation);
-            true
-        } else { false }
+        let ended = self
+            .developer
+            .lock()
+            .ok()
+            .and_then(|mut grant| grant.take().map(|grant| (grant, self.invalidate_grant())));
+        let had_grant = ended.is_some();
+        if let Some((_, generation)) = &ended {
+            self.release_developer_resources(None, Some(*generation));
+        }
+        drop(ended);
+        had_grant
     }
 
     /// Keeps the grant across an in-site commit and ends it on any other.
     pub(super) fn end_developer_mode_unless_on(&self, url: &str) {
+        let incoming = origin_of(url);
+        let changed = origin_of(&self.url) != incoming;
         let ended = self.developer.lock().ok().and_then(|mut grant| {
-            if grant.as_ref().is_some_and(|grant| origin_of(url).as_deref() != Some(grant.origin.as_str())) {
-                grant.take().map(|grant| (grant, self.invalidate_resources()))
-            } else { None }
+            if changed
+                || grant
+                    .as_ref()
+                    .is_some_and(|grant| incoming.as_deref() != Some(grant.origin.as_str()))
+            {
+                Some((grant.take(), self.invalidate_grant()))
+            } else {
+                None
+            }
         });
-        if let Some((grant, generation)) = ended {
-            drop(grant);
-            self.release_invalidated_resources(generation);
+        if let Some((_, generation)) = &ended {
+            self.release_developer_resources(None, Some(*generation));
         }
+        drop(ended);
     }
-
 }
 
 impl BrowserAttachments {

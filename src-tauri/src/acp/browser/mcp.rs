@@ -1,6 +1,5 @@
 use super::{
-    BrowserCapability, BrowserFailure, BrowserRequest, BrowserResponse, BrowserScope,
-    dispatch,
+    BrowserCapability, BrowserFailure, BrowserRequest, BrowserResponse, BrowserScope, dispatch,
 };
 use crate::acp::limits::BROWSER_LIMITS;
 use serde::Deserialize;
@@ -9,8 +8,8 @@ use sha2::{Digest, Sha256};
 use std::io::{BufRead, Write};
 
 mod auth;
-mod schema;
 mod developer;
+mod schema;
 use schema::tools;
 
 pub struct BrowserMcpToken(String);
@@ -214,17 +213,32 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
     }
 
     fn call(&mut self, params: Value) -> Result<Value, BrowserMcpError> {
-        let refusal = developer::preflight_request(&params, &self.session_id, self.fixed_scope.as_ref().map(|scope| scope.tab_id).or_else(|| self.port.attached_tab_id()));
+        let refusal = developer::preflight_request(
+            &params,
+            &self.session_id,
+            self.fixed_scope
+                .as_ref()
+                .map(|scope| scope.tab_id)
+                .or_else(|| self.port.attached_tab_id()),
+        );
         let mut dispatched = false;
         let result = self.call_inner(params, &mut dispatched);
         if !dispatched && let Some(request) = refusal {
-            let failed = result.as_ref().map_or(true, |response| response["isError"] == true);
-            if failed { self.port.refused(&request, BrowserFailure::Denied); }
+            let failed = result
+                .as_ref()
+                .map_or(true, |response| response["isError"] == true);
+            if failed {
+                self.port.refused(&request, BrowserFailure::Denied);
+            }
         }
         result
     }
 
-    fn call_inner(&mut self, params: Value, dispatched: &mut bool) -> Result<Value, BrowserMcpError> {
+    fn call_inner(
+        &mut self,
+        params: Value,
+        dispatched: &mut bool,
+    ) -> Result<Value, BrowserMcpError> {
         let call: CallParams =
             serde_json::from_value(params).map_err(|_| BrowserMcpError::InvalidRequest)?;
         let kind = match call.name.as_str() {
@@ -289,12 +303,18 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
         arguments.insert("kind".into(), Value::String(kind));
         let bytes = serde_json::to_vec(&json!({"scope":scope,"command":arguments}))
             .map_err(|_| BrowserMcpError::InvalidRequest)?;
-        if bytes.len() > BROWSER_LIMITS.request_bytes { return Err(BrowserMcpError::Capacity); }
-        let request: BrowserRequest = serde_json::from_slice(&bytes).map_err(|_| BrowserMcpError::InvalidRequest)?;
+        if bytes.len() > BROWSER_LIMITS.request_bytes {
+            return Err(BrowserMcpError::Capacity);
+        }
+        let request: BrowserRequest =
+            serde_json::from_slice(&bytes).map_err(|_| BrowserMcpError::InvalidRequest)?;
         if let Err(failure) = super::validate_request(&request) {
             *dispatched = true;
             self.port.refused(&request, failure);
-            return Err(match failure { BrowserFailure::Capacity => BrowserMcpError::Capacity, _ => BrowserMcpError::InvalidRequest });
+            return Err(match failure {
+                BrowserFailure::Capacity => BrowserMcpError::Capacity,
+                _ => BrowserMcpError::InvalidRequest,
+            });
         }
         if let Some(observer) = self.operation_observer.as_mut() {
             observer.started(&request)?;

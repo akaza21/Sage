@@ -84,7 +84,8 @@ fn session_fingerprint(session: &str) -> String {
 }
 
 fn safe_origin(origin: &str) -> String {
-    url::Url::parse(origin).ok()
+    url::Url::parse(origin)
+        .ok()
         .filter(|url| matches!(url.scheme(), "http" | "https"))
         .map(|url| url.origin().ascii_serialization())
         .filter(|origin| origin.len() <= 2048)
@@ -92,18 +93,25 @@ fn safe_origin(origin: &str) -> String {
 }
 
 fn safe_method(method: &str, grant_event: bool) -> &str {
-    if grant_event { return "Grant"; }
-    if crate::acp::browser::developer::allowed_methods().contains(&method) { method }
-    else { "[unrecognized]" }
+    if grant_event {
+        return "Grant";
+    }
+    if crate::acp::browser::developer::allowed_methods().contains(&method) {
+        method
+    } else {
+        "[unrecognized]"
+    }
 }
 
 /// Stream at most the newest 5,000 legacy rows through the same privacy
 /// boundary as new writes, inside the caller's migration transaction.
 fn rebuild_audit(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(&format!("ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_old; {AUDIT_TABLE}"))?;
+    connection.execute_batch(&format!(
+        "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_old; {AUDIT_TABLE}"
+    ))?;
     let mut statement = connection.prepare(
         "SELECT id, at_ms, session_id, tab_id, origin, method, params_bytes, result_bytes, outcome
-         FROM browser_cdp_audit_old ORDER BY id DESC LIMIT ?1"
+         FROM browser_cdp_audit_old ORDER BY id DESC LIMIT ?1",
     )?;
     let mut rows = statement.query(params![CDP_AUDIT_ROWS])?;
     while let Some(row) = rows.next()? {
@@ -171,7 +179,13 @@ impl SettingsStore {
                 session_fingerprint(&entry.session_id),
                 i64::try_from(entry.tab_id).unwrap_or(i64::MAX),
                 safe_origin(&entry.origin),
-                safe_method(&entry.method, matches!(entry.outcome, CdpAuditOutcome::Granted | CdpAuditOutcome::Revoked)),
+                safe_method(
+                    &entry.method,
+                    matches!(
+                        entry.outcome,
+                        CdpAuditOutcome::Granted | CdpAuditOutcome::Revoked
+                    )
+                ),
                 OMITTED,
                 i64::try_from(entry.params.len()).unwrap_or(i64::MAX),
                 entry
@@ -319,17 +333,24 @@ mod tests {
     #[test]
     fn audit_never_persists_untrusted_text_or_url_credentials() {
         let store = SettingsStore::in_memory().unwrap();
-        let mut attempt = entry(r#"{"expression":"window.x='plain-secret'","unknown-secret":"value"}"#.into());
+        let mut attempt =
+            entry(r#"{"expression":"window.x='plain-secret'","unknown-secret":"value"}"#.into());
         attempt.origin = "https://user:password@example.com/path?token=secret#secret".into();
         attempt.method = "secret-in-invalid-method".into();
         attempt.session_id = "secret-in-session".into();
         attempt.tab_id = 0;
         attempt.outcome = CdpAuditOutcome::Denied;
         store.record_cdp_audit(&attempt, 1).unwrap();
-        let (session, origin, method, preview): (String, String, String, String) = store.0.lock().unwrap().query_row(
-            "SELECT session_id, origin, method, params_preview FROM browser_cdp_audit", [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        ).unwrap();
+        let (session, origin, method, preview): (String, String, String, String) = store
+            .0
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT session_id, origin, method, params_preview FROM browser_cdp_audit",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
         assert_eq!(origin, "https://example.com");
         assert_eq!(method, "[unrecognized]");
         assert_eq!(preview, "[omitted]");
@@ -361,7 +382,21 @@ mod tests {
         connection.execute_batch(AUDIT_TABLE).unwrap();
         connection.execute("INSERT INTO browser_cdp_audit(at_ms,session_id,tab_id,origin,method,params_preview,params_bytes,outcome) VALUES (1,'secret-session',7,'https://user:password@example.com/path?token=secret','secret-method','plain-secret',12,'denied')", []).unwrap();
         migrate(&connection).unwrap();
-        let row: (String, String, String, String, String) = connection.query_row("SELECT session_id,origin,method,params_preview,outcome FROM browser_cdp_audit", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))).unwrap();
+        let row: (String, String, String, String, String) = connection
+            .query_row(
+                "SELECT session_id,origin,method,params_preview,outcome FROM browser_cdp_audit",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
         assert_eq!(row.0, session_fingerprint("secret-session"));
         assert_eq!(row.1, "https://example.com");
         assert_eq!(row.2, "[unrecognized]");

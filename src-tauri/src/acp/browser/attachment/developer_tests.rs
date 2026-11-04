@@ -144,25 +144,59 @@ fn a_grant_made_after_the_switch_changed_is_refused() {
 }
 
 #[test]
-fn hidden_or_revoked_attachments_release_buffers_and_reject_late_setup() {
-    for end in [
-        |registry: &BrowserAttachments| { registry.take_over("browser-7"); },
-        |registry: &BrowserAttachments| { registry.revoke_tab("browser-7"); },
-        |registry: &BrowserAttachments| { registry.end_developer_mode(); },
+fn full_revocation_releases_native_state_while_developer_off_preserves_ordinary_state() {
+    for (end, full) in [
+        (
+            (|registry: &BrowserAttachments| {
+                registry.take_over("browser-7");
+            }) as fn(&BrowserAttachments),
+            true,
+        ),
+        (
+            (|registry: &BrowserAttachments| {
+                registry.revoke_tab("browser-7");
+            }) as fn(&BrowserAttachments),
+            true,
+        ),
+        (
+            (|registry: &BrowserAttachments| {
+                registry.end_developer_mode();
+            }) as fn(&BrowserAttachments),
+            false,
+        ),
     ] {
         let (registry, lease) = attached();
         assert!(lease.grant_developer_mode(SESSION, ORIGIN));
         let generation = lease.resource_generation();
+        let grant_generation = lease.grant_generation();
         let buffer = Arc::new(vec![0u8; 1024]);
         let weak = Arc::downgrade(&buffer);
-        lease.bind_resources(generation, || true, Box::new(move || drop(buffer))).unwrap();
-        assert!(weak.upgrade().is_some());
+        lease
+            .bind_resources(generation, || true, Box::new(move || drop(buffer)))
+            .unwrap();
         end(&registry);
-        assert!(weak.upgrade().is_none(), "revocation must release native state immediately");
-        let late = Arc::new(vec![0u8; 1024]);
-        let weak = Arc::downgrade(&late);
-        assert!(lease.bind_resources(generation, || true, Box::new(move || drop(late))).is_err());
-        assert!(weak.upgrade().is_none(), "a stale setup must release its state too");
+        assert_eq!(weak.upgrade().is_none(), full);
+        assert!(!lease.developer_granted(SESSION, ORIGIN));
+        assert!(!lease.grant_developer_mode_audited_at(
+            SESSION,
+            ORIGIN,
+            crate::acp::browser::developer::switch_generation(),
+            generation,
+            grant_generation,
+            Arc::new(|_| true)
+        ));
+        if full {
+            let late = Arc::new(vec![0u8; 1024]);
+            let weak = Arc::downgrade(&late);
+            assert!(
+                lease
+                    .bind_resources(generation, || true, Box::new(move || drop(late)))
+                    .is_err()
+            );
+            assert!(weak.upgrade().is_none());
+        } else {
+            assert_eq!(lease.resource_generation(), generation);
+        }
     }
 }
 
@@ -172,10 +206,43 @@ fn a_revocation_between_card_checks_and_grant_publication_refuses_the_stale_card
     assert!(lease.grant_developer_mode(SESSION, ORIGIN));
     let switch = crate::acp::browser::developer::switch_generation();
     let resource = lease.resource_generation();
+    let grant_generation = lease.grant_generation();
     registry.end_developer_mode();
-    assert!(!lease.grant_developer_mode_audited_at(SESSION, ORIGIN, switch, resource, Arc::new(|_| true)));
+    assert!(!lease.grant_developer_mode_audited_at(
+        SESSION,
+        ORIGIN,
+        switch,
+        resource,
+        grant_generation,
+        Arc::new(|_| true)
+    ));
     assert!(!lease.developer_granted(SESSION, ORIGIN));
     assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+}
+
+#[test]
+fn a_cross_origin_commit_invalidates_a_pending_card_without_an_existing_grant() {
+    let (registry, stale) = attached();
+    let switch = crate::acp::browser::developer::switch_generation();
+    let resource = stale.resource_generation();
+    let grant_generation = stale.grant_generation();
+    registry.navigation_settled("browser-7", "https://other.example/", 2);
+    let (project, chat) = ids();
+    registry
+        .resolve(&project, &chat)
+        .unwrap()
+        .authority_for(&scope(SESSION))
+        .unwrap();
+    assert!(!stale.grant_developer_mode_audited_at(
+        SESSION,
+        ORIGIN,
+        switch,
+        resource,
+        grant_generation,
+        Arc::new(|_| true)
+    ));
+    registry.navigation_settled("browser-7", "https://example.com/", 3);
+    assert!(!granted(&registry));
 }
 
 #[test]
@@ -184,9 +251,117 @@ fn delayed_revocation_cleanup_cannot_release_a_replacement_lane() {
     let old = lease.invalidate_resources();
     let buffer = Arc::new(vec![0u8; 1024]);
     let weak = Arc::downgrade(&buffer);
-    lease.bind_resources(lease.resource_generation(), || true, Box::new(move || drop(buffer))).unwrap();
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(move || drop(buffer)),
+        )
+        .unwrap();
     lease.release_invalidated_resources(old);
     assert!(weak.upgrade().is_some());
     registry.revoke_tab("browser-7");
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
+fn revocation_releases_buffers_before_a_slow_audit_writer_finishes() {
+    use std::sync::mpsc::sync_channel;
+    use std::time::Duration;
+    let (registry, lease) = attached();
+    let registry = Arc::new(registry);
+    let (ready, entered) = sync_channel(1);
+    let (resume, blocked) = sync_channel(1);
+    let blocked = Mutex::new(blocked);
+    let audit = Arc::new(move |outcome| {
+        if outcome == crate::acp::browser::developer::CdpAuditOutcome::Revoked {
+            ready.send(()).unwrap();
+            blocked.lock().unwrap().recv().unwrap();
+        }
+        true
+    });
+    assert!(lease.grant_developer_mode_audited_at(
+        SESSION,
+        ORIGIN,
+        crate::acp::browser::developer::switch_generation(),
+        lease.resource_generation(),
+        lease.grant_generation(),
+        audit
+    ));
+    let buffer = Arc::new(vec![0u8; 1024]);
+    let weak = Arc::downgrade(&buffer);
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(move || drop(buffer)),
+        )
+        .unwrap();
+    let worker_registry = registry.clone();
+    let worker = std::thread::spawn(move || worker_registry.revoke_tab("browser-7"));
+    let started = entered.recv_timeout(Duration::from_secs(5)).is_ok();
+    let released = weak.upgrade().is_none();
+    resume.send(()).unwrap();
+    worker.join().unwrap();
+    assert!(started);
+    assert!(
+        released,
+        "slow audit I/O must not retain revoked native state"
+    );
+}
+
+#[test]
+fn hiding_releases_diagnostics_after_the_active_operation_consumes_its_result() {
+    let (registry, lease) = attached();
+    let operation = lease.begin_diagnostic_operation().unwrap();
+    let result = Arc::new(String::from("console result"));
+    let weak = Arc::downgrade(&result);
+    lease
+        .diagnostic_scope()
+        .unwrap()
+        .with_registered_diagnostics(|| Ok(((), Some(Box::new(move || drop(result))))))
+        .unwrap();
+    registry.suspend_tab("browser-7");
+    assert_eq!(&**weak.upgrade().unwrap(), "console result");
+    drop(operation);
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
+fn privileged_state_is_released_on_revocation_without_losing_ordinary_handles() {
+    let (registry, lease) = attached();
+    assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+    let ordinary = Arc::new(String::from("snapshot handle"));
+    let ordinary_weak = Arc::downgrade(&ordinary);
+    lease.bind_resources(lease.resource_generation(), || true, Box::new(move || drop(ordinary))).unwrap();
+    let privileged = Arc::new(String::from("privileged session"));
+    let privileged_weak = Arc::downgrade(&privileged);
+    let held = Mutex::new(Some(privileged));
+    lease.developer_scope().bind(Arc::new(move |force| {
+        if force { held.lock().unwrap().take(); }
+    })).unwrap();
+    registry.end_developer_mode();
+    assert!(privileged_weak.upgrade().is_none());
+    assert_eq!(&**ordinary_weak.upgrade().unwrap(), "snapshot handle");
+    registry.revoke_tab("browser-7");
+    assert!(ordinary_weak.upgrade().is_none());
+}
+
+#[test]
+fn late_privileged_cleanup_cannot_end_a_reapproved_session() {
+    let (registry, lease) = attached();
+    assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+    let old = lease.developer_scope();
+    let old_generation = lease.grant_generation();
+    registry.end_developer_mode();
+    assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+    let state = Arc::new(String::from("replacement session"));
+    let weak = Arc::downgrade(&state);
+    let held = Mutex::new(Some(state));
+    lease.developer_scope().bind(Arc::new(move |_| { held.lock().unwrap().take(); })).unwrap();
+    assert_eq!(old.bind(Arc::new(|_| {})), Err(crate::acp::browser::BrowserFailure::Denied));
+    lease.release_developer_resources(None, Some(old_generation));
+    assert_eq!(&**weak.upgrade().unwrap(), "replacement session");
+    registry.end_developer_mode();
     assert!(weak.upgrade().is_none());
 }

@@ -280,7 +280,8 @@ pub fn dispatch_json<P: BrowserCapability>(
     bytes: &[u8],
 ) -> Result<BrowserResponse, BrowserFailure> {
     admit_count(bytes.len(), BROWSER_LIMITS.request_bytes)?;
-    let request: BrowserRequest = serde_json::from_slice(bytes).map_err(|_| BrowserFailure::InvalidRequest)?;
+    let request: BrowserRequest =
+        serde_json::from_slice(bytes).map_err(|_| BrowserFailure::InvalidRequest)?;
     dispatch(port, request)
 }
 

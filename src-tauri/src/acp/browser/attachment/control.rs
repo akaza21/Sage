@@ -30,8 +30,8 @@ impl AttachmentLease {
                 authority.stop();
             }
             self.stop_retired();
-            self.end_developer_mode();
             self.release_resources();
+            self.end_developer_mode();
         }
     }
 }

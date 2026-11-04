@@ -9,7 +9,15 @@ use std::{
 
 use tauri::{Manager, Webview};
 use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-use windows_core::PCWSTR;
+use windows_core::{Interface, PCWSTR};
+use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_11;
+use super::developer_session::Session;
+
+#[derive(Default)]
+pub(super) struct Dispatch {
+    pub issued: Option<Arc<AtomicBool>>,
+    pub session: Option<Arc<Session>>,
+}
 
 use crate::acp::browser::BrowserFailure;
 use crate::acp::browser::permission::BrowserDispatchPermit;
@@ -68,7 +76,7 @@ pub(super) fn call(
         max_result_bytes,
         timeout,
         None,
-        None,
+        Dispatch::default(),
     )
 }
 
@@ -79,7 +87,7 @@ pub(super) fn call_with_permit(
     max_result_bytes: usize,
     timeout: Duration,
     permit: Option<BrowserDispatchPermit>,
-    issued_marker: Option<Arc<AtomicBool>>,
+    dispatch: Dispatch,
 ) -> Result<String, BrowserFailure> {
     // Developer-mode params are admitted up to `cdp_params_bytes` of JSON.
     if method.len() > 128 || params.len() > 16_384 {
@@ -95,6 +103,7 @@ pub(super) fn call_with_permit(
     let attempt = IssueAttempt::new();
     let callback_attempt = attempt.clone();
     let timeout_permit = permit.clone();
+    let scoped_session = dispatch.session.clone();
     let app = webview.app_handle().clone();
     let tab_id = webview.label().to_owned();
     let (sender, receiver) = mpsc::sync_channel(1);
@@ -105,6 +114,7 @@ pub(super) fn call_with_permit(
                     .map_err(|_| BrowserFailure::Unavailable)?;
                 let completed_sender = sender.clone();
                 let release_core = release_on_completion.then(|| core.clone());
+                let release_session = dispatch.session.clone();
                 let completed = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
                     move |outcome, json| {
                         let _ = completed_sender.try_send(if json.len() > max_result_bytes {
@@ -115,12 +125,24 @@ pub(super) fn call_with_permit(
                             Err(BrowserFailure::Unavailable)
                         });
                         if let Some(core) = release_core {
-                            release_developer_objects(&core);
+                            if let Some(session) = release_session {
+                                let _ = session.with_id(|id| {
+                                    notify_session(&core, id, "Runtime.releaseObjectGroup", &crate::acp::browser::developer::release_params());
+                                    Ok(())
+                                });
+                            } else { release_developer_objects(&core); }
                         }
                         Ok(())
                     },
                 ));
                 let issue = || {
+                    if let Some(session) = &dispatch.session {
+                        return session.with_id(|id| {
+                            let session = wide(id);
+                            unsafe { core.cast::<ICoreWebView2_11>().and_then(|core| core.CallDevToolsProtocolMethodForSession(PCWSTR(session.as_ptr()), PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &completed)) }
+                                .map_err(|_| BrowserFailure::Unavailable)
+                        });
+                    }
                     unsafe {
                         core.CallDevToolsProtocolMethod(
                             PCWSTR(method.as_ptr()),
@@ -134,12 +156,12 @@ pub(super) fn call_with_permit(
                     Some(permit) => permit.with_live_lock(|| {
                         app.state::<BrowserState>()
                             .mark_agent_download_provenance(&tab_id);
-                        callback_attempt.issue(issued_marker.as_deref(), || {
+                        callback_attempt.issue(dispatch.issued.as_deref(), || {
                             permit.mark_issued();
                             issue()
                         })
                     }),
-                    None => callback_attempt.issue(issued_marker.as_deref(), issue),
+                    None => callback_attempt.issue(dispatch.issued.as_deref(), issue),
                 }
             })();
             if let Err(error) = result {
@@ -154,12 +176,14 @@ pub(super) fn call_with_permit(
             .is_some_and(|permit| !permit.is_live() && !permit.was_invalidated_by_navigation())
         {
             attempt.timeout();
+            if let Some(session) = &scoped_session { session.close(true); }
             return Err(timeout_permit.as_ref().unwrap().revoked_failure());
         }
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
             let error = attempt.timeout();
-            if error == BrowserFailure::OutcomeUnknown
+            if let Some(session) = &scoped_session { session.close(true); }
+            else if error == BrowserFailure::OutcomeUnknown
                 && let Some(permit) = timeout_permit
             {
                 permit.revoke();
@@ -170,6 +194,7 @@ pub(super) fn call_with_permit(
             Ok(result) => break result?,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if let Some(session) = &scoped_session { session.close(true); }
                 return Err(attempt.disconnected_failure());
             }
         }
@@ -182,11 +207,21 @@ pub(super) fn call_with_permit(
 
 /// Fire-and-forget `Runtime.releaseObjectGroup` on developer mode's group,
 /// from the UI thread, outside any permit.
-pub(super) fn release_developer_objects(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
-    notify(core, "Runtime.releaseObjectGroup", &crate::acp::browser::developer::release_params());
+pub(super) fn release_developer_objects(
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+) {
+    notify(
+        core,
+        "Runtime.releaseObjectGroup",
+        &crate::acp::browser::developer::release_params(),
+    );
 }
 
-pub(super) fn notify(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, method: &str, params: &str) {
+pub(super) fn notify(
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    method: &str,
+    params: &str,
+) {
     let method = wide(method);
     let params = wide(params);
     let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
@@ -195,7 +230,18 @@ pub(super) fn notify(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICore
     };
 }
 
-fn wide(value: &str) -> Vec<u16> {
+pub(super) fn notify_session(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, session: &str, method: &str, params: &str) {
+    if session.is_empty() { return; }
+    let session = wide(session);
+    let method = wide(method);
+    let params = wide(params);
+    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+    if let Ok(core) = core.cast::<ICoreWebView2_11>() {
+        let _ = unsafe { core.CallDevToolsProtocolMethodForSession(PCWSTR(session.as_ptr()), PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &done) };
+    }
+}
+
+pub(super) fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
 

@@ -65,7 +65,6 @@ pub struct BrowserDispatchPermit {
     issued: Arc<AtomicBool>,
 }
 
-
 impl<F: FnMut(&BrowserPermissionPrompt) -> BrowserPermissionChoice> BrowserPermissionDecider for F {
     fn decide(&mut self, prompt: &BrowserPermissionPrompt) -> BrowserPermissionChoice {
         self(prompt)

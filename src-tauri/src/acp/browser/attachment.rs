@@ -22,9 +22,10 @@ mod control;
 mod developer;
 mod popup;
 mod resources;
-pub(crate) use resources::DiagnosticScope;
 pub(crate) use control::AgentControl;
 pub(crate) use popup::AgentAction;
+pub(crate) use resources::DiagnosticScope;
+pub(crate) use resources::DeveloperScope;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -85,8 +86,8 @@ impl AttachmentLease {
                 return Some(authority.clone());
             }
             authority.stop();
-            self.end_developer_mode();
             self.release_resources();
+            self.end_developer_mode();
         }
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
@@ -105,16 +106,16 @@ impl AttachmentLease {
         self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
-            self.end_developer_mode();
             self.release_resources();
+            self.end_developer_mode();
             return;
         };
         self.active.store(false, Ordering::Release);
-        self.end_developer_mode();
-            self.release_resources();
         if let Some((_, authority)) = slot.as_ref() {
             authority.stop();
         }
+        self.release_resources();
+        self.end_developer_mode();
     }
 
     /// Stops the authorities navigations took out of the slot, which ends
@@ -144,14 +145,14 @@ impl AttachmentLease {
 
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
-        self.end_developer_mode();
-            self.release_resources();
         self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
         {
             authority.stop();
         }
+        self.release_resources();
+        self.end_developer_mode();
     }
 
     fn navigation_started(&self) {

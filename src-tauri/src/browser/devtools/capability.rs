@@ -113,15 +113,21 @@ impl<P: DevtoolsPort> DevtoolsCapability<P> {
         let (cancelled, handles) = (self.cancelled.clone(), self.handles.clone());
         move || {
             cancelled.store(true, Ordering::SeqCst);
-            if let Ok(mut handles) = handles.lock() { *handles = HashMap::new(); }
+            if let Ok(mut handles) = handles.lock() {
+                *handles = HashMap::new();
+            }
         }
     }
 
     #[cfg(windows)]
-    pub(super) fn diagnostic_rings(&self) -> Arc<Mutex<DiagnosticRings>> { self.diagnostics.clone() }
+    pub(super) fn diagnostic_rings(&self) -> Arc<Mutex<DiagnosticRings>> {
+        self.diagnostics.clone()
+    }
 
     #[cfg(windows)]
-    pub(super) fn set_diagnostic_rings(&mut self, rings: Arc<Mutex<DiagnosticRings>>) { self.diagnostics = rings; }
+    pub(super) fn set_diagnostic_rings(&mut self, rings: Arc<Mutex<DiagnosticRings>>) {
+        self.diagnostics = rings;
+    }
 
     #[cfg(test)]
     pub(super) fn cancel(&self) {
@@ -186,7 +192,9 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                     .handles
                     .lock()
                     .map_err(|_| BrowserFailure::Unavailable)?;
-                if self.cancelled.load(Ordering::SeqCst) { return Err(BrowserFailure::Denied); }
+                if self.cancelled.load(Ordering::SeqCst) {
+                    return Err(BrowserFailure::Denied);
+                }
                 handles.clear();
                 let (text, nodes) = project(native_nodes)?;
                 let nodes = nodes

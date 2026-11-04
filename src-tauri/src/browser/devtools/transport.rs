@@ -25,6 +25,16 @@ pub(crate) trait CdpTransport {
         timeout: Duration,
     ) -> Result<String, BrowserFailure>;
 
+    /// Privileged calls use a grant-owned native session. Test transports
+    /// already isolate their target and may use their normal command lane.
+    fn raw(&self, method: &str, params: &str, max_result_bytes: usize, timeout: Duration) -> Result<String, BrowserFailure> {
+        self.call(method, params, max_result_bytes, timeout)
+    }
+
+    fn release_raw_objects(&self) {
+        let _ = self.observe("Runtime.releaseObjectGroup", &crate::acp::browser::developer::release_params(), 4096, Duration::from_secs(2));
+    }
+
     /// Reads page state without the dispatch permit: after an Agent command
     /// was issued, and for wait probes and page-context reads, which also
     /// make and check the Agent's isolated world this way. It never consumes

@@ -63,7 +63,10 @@ impl BrowserDispatchPermit {
 
     pub(crate) fn was_invalidated_by_navigation(&self) -> bool {
         self.authority.was_invalidated_by_navigation(self.revision)
-            && self.elevated_is_current.as_ref().is_none_or(|check| check())
+            && self
+                .elevated_is_current
+                .as_ref()
+                .is_none_or(|check| check())
     }
 
     pub fn revoke(&self) {

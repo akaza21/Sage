@@ -45,12 +45,7 @@ pub(crate) fn browser_set_developer_mode(
     }
     // Calls already in flight, and cards already open, belong to the old
     // setting: they are refused from here on.
-    crate::acp::browser::developer::bump_switch_generation();
-    let enabled = state
-        .settings
-        .set_browser_developer_mode(enabled)
-        .map_err(|error| error.to_string())?;
-    if !enabled {
+    let enabled = crate::acp::browser::developer::with_switch_change(|| persist_after_revocation(&state.settings, enabled, || {
         for tab_id in state.acp.end_browser_developer_mode() {
             let _ = app.emit_to(
                 "main",
@@ -58,10 +53,24 @@ pub(crate) fn browser_set_developer_mode(
                 serde_json::json!({ "tabId": tab_id }),
             );
         }
-    }
+    }))?;
     Ok(BrowserDeveloperMode {
         available: AVAILABLE,
         enabled,
         allowed_methods: crate::acp::browser::developer::allowed_methods(),
     })
 }
+
+/// Runtime privilege ends even if persisting the new switch value fails.
+/// Reconfiguring an enabled switch also retires sessions of its old epoch.
+fn persist_after_revocation(
+    settings: &crate::settings_store::SettingsStore,
+    enabled: bool,
+    revoke: impl FnOnce(),
+) -> Result<bool, String> {
+    revoke();
+    settings.set_browser_developer_mode(enabled).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests;

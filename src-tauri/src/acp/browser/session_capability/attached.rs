@@ -16,7 +16,10 @@ pub(crate) trait BrowserSessionContext: Clone + Send + Sync + 'static {
 
 impl BrowserSessionContext for AppHandle {
     fn sleep_hidden_lane(&self, lease: &AttachmentLease, generation: u64) {
-        if self.state::<BrowserState>().tab_is_sleeping(&lease.tab_label) {
+        if self
+            .state::<BrowserState>()
+            .tab_is_sleeping(&lease.tab_label)
+        {
             lease.sleep_diagnostics(Some(generation));
         }
     }
@@ -132,7 +135,11 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
                 BrowserFailure::Denied
             })?;
         let native = self.native.port(&self.context, lease.clone());
-        let _sleep = SleepHiddenLane { context: self.context.clone(), generation: lease.resource_generation(), lease: lease.clone() };
+        let _sleep = SleepHiddenLane {
+            context: self.context.clone(),
+            generation: lease.resource_generation(),
+            lease: lease.clone(),
+        };
         let developer = self
             .context
             .developer_settings()
@@ -166,10 +173,16 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
     }
 }
 
-struct SleepHiddenLane<C: BrowserSessionContext> { context: C, lease: AttachmentLease, generation: u64 }
+struct SleepHiddenLane<C: BrowserSessionContext> {
+    context: C,
+    lease: AttachmentLease,
+    generation: u64,
+}
 
 impl<C: BrowserSessionContext> Drop for SleepHiddenLane<C> {
-    fn drop(&mut self) { self.context.sleep_hidden_lane(&self.lease, self.generation); }
+    fn drop(&mut self) {
+        self.context.sleep_hidden_lane(&self.lease, self.generation);
+    }
 }
 
 impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> BrowserCapability

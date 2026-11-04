@@ -22,15 +22,19 @@ impl<Port> AttachmentLanes<Port> {
         lease: &AttachmentLease,
         create: impl FnOnce() -> Result<Port, BrowserFailure>,
     ) -> Result<&mut Port, BrowserFailure> {
-        self.entries.retain(|(cached_scope, cached, generation, _)| {
-            cached.is_live()
-                && cached.resource_generation() == *generation
-                && (cached_scope.tab_id != scope.tab_id
-                    || (cached_scope == scope && cached.same_attachment(lease)))
-        });
-        let index = match self.entries.iter().position(|(cached_scope, cached, _, _)| {
-            cached_scope == scope && cached.same_attachment(lease)
-        }) {
+        self.entries
+            .retain(|(cached_scope, cached, generation, _)| {
+                cached.is_live()
+                    && cached.resource_generation() == *generation
+                    && (cached_scope.tab_id != scope.tab_id
+                        || (cached_scope == scope && cached.same_attachment(lease)))
+            });
+        let index = match self
+            .entries
+            .iter()
+            .position(|(cached_scope, cached, _, _)| {
+                cached_scope == scope && cached.same_attachment(lease)
+            }) {
             Some(index) => index,
             None => {
                 if self.entries.len() >= MAX_LANES {
@@ -38,7 +42,8 @@ impl<Port> AttachmentLanes<Port> {
                 }
                 let generation = lease.resource_generation();
                 let port = create()?;
-                self.entries.push((scope.clone(), lease.clone(), generation, port));
+                self.entries
+                    .push((scope.clone(), lease.clone(), generation, port));
                 self.entries.len() - 1
             }
         };
