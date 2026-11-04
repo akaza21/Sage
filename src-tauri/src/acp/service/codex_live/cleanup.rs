@@ -1,6 +1,6 @@
 use super::*;
 
-impl AcpService {
+impl Lane<'_> {
     #[allow(clippy::result_large_err)]
     pub(super) fn shutdown_journal_after_startup_host(
         &self,

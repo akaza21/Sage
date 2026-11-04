@@ -24,6 +24,68 @@ fn request(project_id: &str, query: &str) -> ProjectChatSearchRequest {
 }
 
 #[test]
+fn empty_query_browses_bounded_chats_without_scanning_transcripts() {
+    let (database, project_id, root) = database_with_project();
+    database
+        .connection()
+        .execute(
+            "UPDATE chats SET updated_at=0 WHERE project_id=?1",
+            [&project_id],
+        )
+        .unwrap();
+    for ordinal in 1..70_i64 {
+        database.connection().execute(
+            "INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at)
+             VALUES(?1,?2,?3,'Hidden chat',0,?3,?3)",
+            rusqlite::params![format!("browse-{ordinal}"), project_id, ordinal],
+        ).unwrap();
+    }
+    let response = super::search_with_limits(
+        &database,
+        &request(&project_id, ""),
+        SearchLimits {
+            max_item_rows: 0,
+            max_item_bytes: 0,
+            ..SearchLimits::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(response.results.len(), 64);
+    assert_eq!(response.results[0].chat_id, "browse-69");
+    assert!(response.has_more);
+    assert!(
+        response
+            .results
+            .iter()
+            .all(|result| result.matched_title && result.snippet.is_none())
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn disk_search_does_not_wait_for_the_acp_writer_mutex() {
+    let root = std::env::temp_dir().join(format!("sage-search-lock-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let database = Database::open(&root.join("sage.db")).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let search_database = database.clone();
+    let search_request = request(&project.id, "Chat");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let writer = database.connection();
+    let worker = std::thread::spawn(move || {
+        sender
+            .send(search_project_chats(&search_database, &search_request))
+            .unwrap();
+    });
+    let response = receiver.recv_timeout(std::time::Duration::from_secs(2));
+    drop(writer);
+    worker.join().unwrap();
+    assert!(response.unwrap().is_ok());
+    drop(database);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn search_excludes_only_proven_legacy_welcome_text_and_keeps_real_answers() {
     for fact_kind in ["simulatorTurnCommitted", "observedTurn"] {
         let (database, project_id, root) = database_with_project();
@@ -264,7 +326,13 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
                 .unwrap();
         }
     }
-    let response = search_project_chats(&database, &request(&project_id, "needle")).unwrap();
+    // Exercise size limits independently of the production wall-clock deadline.
+    let limits = SearchLimits {
+        deadline: Duration::from_secs(60),
+        ..SearchLimits::default()
+    };
+    let response =
+        super::search_with_limits(&database, &request(&project_id, "needle"), limits).unwrap();
     assert_eq!(response.results.len(), 64);
     assert!(response.has_more);
 
@@ -273,7 +341,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_item_rows: 0,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap_err();
@@ -284,7 +352,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_item_bytes: 0,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap_err();
@@ -295,7 +363,7 @@ fn result_and_scan_limits_are_truthful_and_fail_closed() {
         &request(&project_id, "needle"),
         SearchLimits {
             max_response_bytes: 512,
-            ..SearchLimits::default()
+            ..limits
         },
     )
     .unwrap();

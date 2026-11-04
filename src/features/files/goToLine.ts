@@ -1,6 +1,7 @@
 import { fileNavigationSelection } from "./fileNavigation";
+import { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLineLimits";
 
-export const MAX_GOTO_LINE_INPUT_CHARS = 32;
+export { MAX_GOTO_LINE_INPUT_CHARS } from "./goToLineLimits";
 export const MAX_GOTO_LINE_POSITION = 0xffff_ffff;
 
 export function parseGoToLineInput(raw: string): {

@@ -1,15 +1,23 @@
-import { FileSearch, Search, Settings } from "../ui/leanIcons";
 import { useCallback, useEffect, useRef } from "react";
-
 import { useWorkbenchStore } from "../app/store";
+import { useAgentChatFocus } from "../app/agentChatOwner";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
-import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
-import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
-import { useRailChatId } from "./sideChatState";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import {
+  FileSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+} from "../ui/leanIcons";
+import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
+import { useRailChatId } from "./sideChatState";
+import { titleBarSessionTitle } from "./titleBarCenter";
 import {
   collectChatTabIds,
+  focusedAgentChatId,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -19,91 +27,43 @@ const modeLabels: Record<WorkbenchWindowMode, string> = {
   editor: "Editor",
 };
 
-function WorkbenchBrand() {
-  return (
-    <div className="title-bar__brand">
-      <svg
-        className="title-bar__mark"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinejoin="round"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path
-          transform="rotate(-17 12 12)"
-          d="M6.03 12.16 A 17 17 0 0 1 18.35 3.22 A 17 17 0 0 1 16.67 8.28 Z"
-        />
-        <path
-          transform="rotate(-17 12 12)"
-          d="M17.97 11.85 A 17 17 0 0 1 5.65 20.79 A 17 17 0 0 1 7.33 15.73 Z"
-        />
-      </svg>
-      <strong className="title-bar__wordmark">Sage</strong>
-    </div>
-  );
-}
-
-function WorkbenchModeSwitch({
-  mode,
-  onModeChange,
-}: {
-  mode: WorkbenchWindowMode;
-  onModeChange: (mode: WorkbenchWindowMode) => void;
-}) {
-  return (
-    <div
-      className="title-bar__modes"
-      role="radiogroup"
-      aria-label="Window mode"
-    >
-      {WORKBENCH_WINDOW_MODES.map((value) => (
-        <label
-          key={value}
-          className={`title-bar__mode${
-            mode === value ? " title-bar__mode--active" : ""
-          }`}
-        >
-          <input
-            checked={mode === value}
-            name="workbench-window-mode"
-            onChange={() => onModeChange(value)}
-            type="radio"
-            value={value}
-          />
-          {modeLabels[value]}
-        </label>
-      ))}
-    </div>
-  );
-}
-
 export function TitleBar({
   inert = false,
   mode,
   onModeChange,
+  agentNavigationCollapsed = false,
+  onToggleAgentNavigation,
 }: {
   inert?: boolean;
   mode: WorkbenchWindowMode;
   onModeChange: (mode: WorkbenchWindowMode) => void;
+  agentNavigationCollapsed?: boolean;
+  onToggleAgentNavigation?: () => void;
 }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const agentChatId = useAgentChatFocus();
   const project = useWorkbenchStore((state) => state.project);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
   const openSettings = useWorkbenchStore((state) => state.openSettings);
+  const isAgent = mode === "agent";
   const chatSearchRef = useRef<HTMLButtonElement | null>(null);
   const chatSearchDisabled = !project || projectTransitioning;
+  const navigationLabel = agentNavigationCollapsed
+    ? "Show projects and chats"
+    : "Hide projects and chats";
+  const NavigationIcon = agentNavigationCollapsed
+    ? PanelLeftOpen
+    : PanelLeftClose;
   const openChatSearch = useCallback(() => {
     if (!project) return;
+    useAgentSettingsState.getState().close();
     requestChatSearchInFolder(project.id, () => chatSearchRef.current?.focus());
   }, [project]);
   useEffect(() => {
-    if (inert || mode !== "agent" || chatSearchDisabled) return;
+    if (inert || !isAgent || chatSearchDisabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       // Control+K on macOS is the text fields' kill-line, so only Command.
       if (
@@ -119,30 +79,61 @@ export function TitleBar({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [inert, chatSearchDisabled, mode, openChatSearch]);
-  // A side chat keeps its parent's window title (Codex s2/f0244).
+  }, [inert, chatSearchDisabled, isAgent, openChatSearch]);
+  // A side chat keeps its parent's window title.
   const focusedId = useRailChatId(
-    titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
+    focusedAgentChatId(collectChatTabIds(tabs), activeTabId, agentChatId),
   );
-  const sessionTitle =
-    mode === "agent"
-      ? titleBarSessionTitle(
-          tabs.find((tab) => tab.id === focusedId)?.title ?? null,
-        )
-      : null;
+  const sessionTitle = isAgent
+    ? titleBarSessionTitle(tabs.find((tab) => tab.id === focusedId)?.title)
+    : null;
 
   return (
     <header
+      is="sage-titlebar"
       className="title-bar"
       inert={inert}
       aria-hidden={inert || undefined}
     >
       <div className="title-bar__start">
-        <WorkbenchBrand />
-        <WorkbenchModeSwitch mode={mode} onModeChange={onModeChange} />
+        <div
+          className="title-bar__modes"
+          role="radiogroup"
+          aria-label="Window mode"
+        >
+          {WORKBENCH_WINDOW_MODES.map((value) => (
+            <label
+              key={value}
+              className={`title-bar__mode${
+                mode === value ? " title-bar__mode--active" : ""
+              }`}
+            >
+              <input
+                checked={mode === value}
+                name="workbench-window-mode"
+                onChange={() => onModeChange(value)}
+                type="radio"
+                value={value}
+              />
+              {modeLabels[value]}
+            </label>
+          ))}
+        </div>
+        {isAgent && onToggleAgentNavigation ? (
+          <button
+            className="title-bar__chat-search"
+            type="button"
+            aria-label={navigationLabel}
+            title={navigationLabel}
+            aria-expanded={!agentNavigationCollapsed}
+            onClick={onToggleAgentNavigation}
+          >
+            <NavigationIcon size={16} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       <div className="title-bar__center">
-        {mode === "editor" ? (
+        {!isAgent ? (
           <button
             className="title-bar__search"
             type="button"
@@ -158,7 +149,7 @@ export function TitleBar({
         ) : null}
       </div>
       <div className="title-bar__end">
-        {mode === "agent" ? (
+        {isAgent ? (
           <button
             ref={chatSearchRef}
             className="title-bar__chat-search title-bar__chat-search--pill"

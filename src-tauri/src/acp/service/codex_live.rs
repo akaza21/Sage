@@ -22,7 +22,9 @@ use crate::acp::{
     },
 };
 
-use super::{AcpService, CodexSessionError, codex_operation::ActiveCodexOperation};
+#[cfg(test)]
+use super::AcpService;
+use super::{CodexSessionError, codex_operation::ActiveCodexOperation, live_lanes::Lane};
 
 struct DatabaseAuthority(crate::persistence::Database);
 
@@ -50,6 +52,7 @@ mod live_send;
 mod native_end;
 mod projection_recovery;
 mod recovery;
+mod settle;
 mod steer;
 
 #[cfg(all(test, windows))]
@@ -95,7 +98,7 @@ fn hex_digest(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
+pub(super) fn deadlines() -> Result<(Instant, Instant), CodexSessionError> {
     let cleanup = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
     let reserve = Duration::from_millis(
         LIMITS.deadlines_ms.tree_termination.saturating_mul(2)

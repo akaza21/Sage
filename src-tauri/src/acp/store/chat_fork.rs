@@ -57,7 +57,9 @@ pub(crate) fn fork_source(
     chat_id: &SageChatId,
     turn_id: &SageTurnId,
 ) -> Result<ForkSource, StoreError> {
-    if chat_id.as_str().starts_with("side-") {
+    if crate::side_chat_storage::is_temporary(connection, chat_id.as_str())
+        .map_err(|_| StoreError::Corrupt("temporary Chat metadata"))?
+    {
         return Err(StoreError::Conflict {
             resource: "forkSource",
         });

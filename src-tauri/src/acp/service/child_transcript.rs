@@ -53,8 +53,7 @@ impl AcpService {
                 .ok_or(ChildTranscriptReadError::Unavailable);
         }
         let host = self
-            .runtime
-            .for_owner(&scope.owner)
+            .host_for(&scope.owner)
             .map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
         let result = host.native_rpc(NativeRpcIntent {
             owner: scope.owner.clone(),
