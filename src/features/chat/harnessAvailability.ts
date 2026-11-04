@@ -29,7 +29,7 @@ export function harnessAvailability(harness: HarnessDefinition): {
       };
     case "unavailable":
       return {
-        label: "installed but not drivable",
+        label: "unavailable",
         disabledReason: harnessUnavailableReason(harness.unavailableReason),
       };
   }

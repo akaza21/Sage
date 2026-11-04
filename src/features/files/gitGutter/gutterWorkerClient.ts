@@ -7,7 +7,9 @@ export interface GutterConnection {
   close: () => void;
 }
 
-type Listener = (result: GutterResult) => void;
+export type GutterWorkerResult = GutterResult | { id: number; failed: true };
+
+type Listener = (result: GutterWorkerResult) => void;
 
 /** Moving between Files keeps the worker; a File left closed stops it. */
 export const GUTTER_WORKER_LINGER_MS = 5_000;
@@ -24,33 +26,44 @@ export function createGutterWorkerPool(
 ) {
   let worker: Worker | null = null;
   let stopTimer: ReturnType<typeof setTimeout> | null = null;
-  // A worker that failed to load is not respawned for every edit.
-  let failed = false;
   let nextId = 1;
   const listeners = new Map<number, Listener>();
 
   const stop = () => {
     if (stopTimer !== null) clearTimeout(stopTimer);
     stopTimer = null;
-    worker?.terminate();
+    if (worker) {
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.onmessageerror = null;
+      worker.terminate();
+    }
     worker = null;
   };
 
+  const fail = () => {
+    stop();
+    // Defer notification: postMessage can throw during an editor update.
+    for (const [id, listener] of listeners) {
+      queueMicrotask(() => {
+        if (listeners.get(id) === listener) listener({ id, failed: true });
+      });
+    }
+  };
+
   function ensureWorker(): Worker | null {
-    if (worker || failed) return worker;
+    if (worker) return worker;
     try {
       worker = spawn();
     } catch {
-      failed = true;
+      fail();
       return null;
     }
     worker.onmessage = (event: MessageEvent<GutterResult>) =>
       listeners.get(event.data.id)?.(event.data);
     // A worker that fails leaves the editors without markers, never broken.
-    worker.onerror = () => {
-      failed = true;
-      stop();
-    };
+    worker.onerror = fail;
+    worker.onmessageerror = fail;
     return worker;
   }
 
@@ -63,11 +76,20 @@ export function createGutterWorkerPool(
       return {
         id,
         post: (request) => {
-          if (listeners.has(id)) ensureWorker()?.postMessage(request);
+          if (!listeners.has(id)) return;
+          try {
+            ensureWorker()?.postMessage(request);
+          } catch {
+            fail();
+          }
         },
         close: () => {
           if (!listeners.delete(id)) return;
-          worker?.postMessage({ type: "close", id });
+          try {
+            worker?.postMessage({ type: "close", id });
+          } catch {
+            fail();
+          }
           if (listeners.size === 0 && worker && stopTimer === null)
             stopTimer = setTimeout(stop, lingerMs);
         },
