@@ -377,6 +377,74 @@ describe("ChatSurface approval slot", () => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("keeps a restored unavailable binding selected and blocks sending after discovery", async () => {
+    const current = useWorkbenchStore.getState().harnesses;
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: projection().sessions.map((session) => ({
+        ...session,
+        bindingId: "absent-binding" as never,
+        runtimeEpoch: null,
+        state: "created" as const,
+      })),
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Older chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      harnesses: [
+        ...current,
+        {
+          id: "unavailable-binding:absent-binding",
+          name: "Unavailable harness",
+          description:
+            "The harness bound to this Chat is not available in this build.",
+          source: "custom",
+          transport: "acp",
+          installState: "unavailable",
+          bindingId: "absent-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    render(<ChatSurface chatId="chat-a" />);
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeDisabled();
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
+      "unavailable-binding:absent-binding",
+    );
+    await act(async () => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "unavailable-binding:absent-binding",
+        harnessDiscoveryPhase: "idle",
+      });
+      await useWorkbenchStore.getState().applyHarnessDiscovery(current);
+    });
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeDisabled();
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBe(
+      "unavailable-binding:absent-binding",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    expect(
+      screen.getByRole("option", { name: /Unavailable harness/ }),
+    ).toBeDisabled();
+  });
+
   it("attaches the full project name above the input only for an established empty chat", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };
     const name =
@@ -2418,7 +2486,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — installed but not drivable. Sage did not admit this harness and will not start it.",
+      "Codex — unavailable. Sage did not admit this harness and will not start it.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
@@ -3478,7 +3546,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — installed but not drivable. Sage did not admit this harness and will not start it.",
+        name: "Unavailable harness — unavailable. Sage did not admit this harness and will not start it.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));
