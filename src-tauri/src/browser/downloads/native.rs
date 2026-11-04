@@ -41,6 +41,9 @@ thread_local! {
 }
 
 fn emit_views(app: &AppHandle, tab_id: &str) {
+    if let Some(webview) = app.state::<BrowserState>().webview_for_tab(tab_id) {
+        crate::browser::background::refresh(&webview);
+    }
     let views: Option<Vec<DownloadView>> = app
         .state::<BrowserState>()
         .downloads

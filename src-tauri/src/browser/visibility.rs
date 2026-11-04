@@ -27,6 +27,10 @@ impl BrowserState {
 pub(super) struct PageVisibility(AtomicBool);
 
 impl PageVisibility {
+    pub(super) fn is_placed(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
     pub(super) fn place(&self) {
         self.0.store(true, Ordering::Release);
     }
@@ -37,11 +41,19 @@ impl PageVisibility {
 
     /// The caller runs this check and the native show/focus on the main thread.
     pub(super) fn reveal(&self, show: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
-        if self.0.load(Ordering::Acquire) {
+        if self.is_placed() { show() } else { Ok(()) }
+    }
+
+    /// Called on the main thread; wake finishes before the first visible frame.
+    pub(super) fn reveal_page(
+        &self,
+        webview: &tauri::Webview,
+        show: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.reveal(|| {
+            let _awake = super::background::ensure_awake(webview)?;
             show()
-        } else {
-            Ok(())
-        }
+        })
     }
 }
 

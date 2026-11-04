@@ -32,6 +32,7 @@ pub(crate) fn navigation_state(
 }
 
 pub(super) fn emit_snapshot(app: AppHandle, webview: Webview) {
+    crate::browser::background::refresh(&webview);
     let snapshot = app
         .state::<BrowserState>()
         .tabs

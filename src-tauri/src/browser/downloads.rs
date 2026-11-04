@@ -63,6 +63,13 @@ impl Default for DownloadRegistry {
 }
 
 impl DownloadRegistry {
+    #[cfg(windows)]
+    pub(super) fn has_active(&self, tab_id: &str) -> bool {
+        self.entries
+            .values()
+            .any(|entry| entry.tab_id == tab_id && is_active(entry.state))
+    }
+
     pub(super) fn set_provenance(&mut self, tab_id: &str, provenance: NavigationProvenance) {
         if provenance == NavigationProvenance::Agent {
             let generation = self.agent_generation.entry(tab_id.to_owned()).or_default();

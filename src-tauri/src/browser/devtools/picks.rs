@@ -40,6 +40,8 @@ pub(crate) fn watch_picks(
     webview: &Webview,
     on_pick: impl Fn(u64) + Send + 'static,
 ) -> Result<(), BrowserFailure> {
+    let _awake = crate::browser::background::ensure_awake(webview)
+        .map_err(|_| BrowserFailure::Unavailable)?;
     let label = webview.label().to_owned();
     on_main(webview, move |core, controller| {
         let pick = listen(core, PICK, move |_, payload| {

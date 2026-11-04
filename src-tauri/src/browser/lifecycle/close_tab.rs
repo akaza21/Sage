@@ -35,7 +35,7 @@ pub(crate) async fn close_browser_tab(
     site_permissions::cancel_tab_native(&webview, pending_permissions).await?;
     #[cfg(not(windows))]
     let _ = (webview, pending_permissions);
-    close_with_unlocked(&state.tabs, &tab_id, |webview| {
+    let closed = close_with_unlocked(&state.tabs, &tab_id, |webview| {
         let closing_tab_id = tab_id.clone();
         async move {
             #[cfg(windows)]
@@ -64,7 +64,15 @@ pub(crate) async fn close_browser_tab(
             close_webview_on_main_thread(app, &state.tabs, webview, true).await
         }
     })
-    .await?;
+    .await;
+    if closed.is_err()
+        && let Some(webview) = state.webview_for_tab(&tab_id)
+    {
+        // A pre-close failure restored the owner. Reconcile activity and any
+        // timer that expired while its tab was outside the registry.
+        let _ = crate::browser::background::ensure_awake(&webview);
+    }
+    closed?;
     state
         .popups
         .lock()

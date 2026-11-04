@@ -115,7 +115,9 @@ pub(crate) async fn browser_hide(
             if let Some(exit) = state.annotate.hiding(&tab_id, cover == Some(true)) {
                 super::annotate::leave(&app, &tab_id, exit);
             }
-            let _ = sender.send(webview.hide().map_err(|error| error.to_string()));
+            let result = webview.hide().map_err(|error| error.to_string());
+            super::background::refresh(&webview);
+            let _ = sender.send(result);
         })
         .map_err(|error| error.to_string())?;
     receiver
@@ -131,6 +133,7 @@ pub(crate) async fn browser_navigate(
 ) -> Result<(), String> {
     let url = admit_url(&url).map_err(str::to_owned)?;
     let webview = active_webview(&state, &tab_id)?;
+    let _awake = super::background::ensure_awake(&webview)?;
     state
         .downloads
         .lock()

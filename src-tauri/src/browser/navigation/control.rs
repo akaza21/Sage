@@ -89,6 +89,7 @@ async fn history_control(
         let native_aligned = tabs.native_history_aligned(&tab_id);
         (webview, target, native_aligned)
     };
+    let _awake = super::super::background::ensure_awake(&webview)?;
     if let Some(target) = target {
         if native_aligned {
             match native_history_action(webview.clone(), action.clone()).await {
@@ -181,6 +182,7 @@ async fn native_history_action(_webview: Webview, _action: String) -> Result<boo
 
 #[cfg(windows)]
 pub(in crate::browser) async fn native_stop(webview: Webview) -> Result<(), String> {
+    let _awake = super::super::background::ensure_awake(&webview)?;
     let (sender, receiver) = mpsc::sync_channel(1);
     webview
         .with_webview(move |platform| {

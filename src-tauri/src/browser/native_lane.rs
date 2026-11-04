@@ -7,6 +7,7 @@
 //! the Agent reaches.
 
 mod annotate;
+mod background;
 mod device;
 mod diagnostics;
 
@@ -333,7 +334,7 @@ impl Lane {
             session_id: "native-lane".into(),
             tab_id,
         };
-        let capability = devtools::NativeDevtools::for_tab(&self.state(), scope.clone())
+        let capability = devtools::NativeDevtools::for_tab(&self.state(), scope.clone(), None)
             .map_err(|failure| format!("attach: {failure:?}"))?;
         Ok(AgentTab { capability, scope })
     }

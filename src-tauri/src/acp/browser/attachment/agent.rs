@@ -64,6 +64,8 @@ impl BrowserAttachments {
         entries.insert(
             (project, chat, session.to_owned(), number),
             AttachmentLease {
+                #[cfg(windows)]
+                changed: tokio::sync::watch::channel(()).0,
                 tab_label: tab_label.to_owned(),
                 tab_number: number,
                 url: url.to_owned(),

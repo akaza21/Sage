@@ -22,9 +22,13 @@ impl AttachmentLease {
             if on {
                 self.active.store(false, Ordering::Release);
             }
+            #[cfg(windows)]
+            self.changed.send_replace(());
             return;
         };
         self.user_control.store(on, Ordering::Release);
+        #[cfg(windows)]
+        self.changed.send_replace(());
         if on {
             if let Some((_, authority)) = slot.take() {
                 authority.stop();

@@ -97,7 +97,12 @@ mod native {
         });
         if let Some(target) = target {
             for webview in window.webviews() {
-                apply_memory_target(&webview, label, target);
+                let browser_tab = app
+                    .try_state::<crate::browser::BrowserState>()
+                    .is_some_and(|state| state.refresh_tab_memory(&webview));
+                if target == MemoryTarget::Low || !browser_tab {
+                    apply_memory_target(&webview, label, target);
+                }
             }
         }
     }

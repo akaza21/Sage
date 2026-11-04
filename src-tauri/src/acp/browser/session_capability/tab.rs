@@ -30,7 +30,11 @@ impl BrowserCapabilityDispatch for AttachedTabPort<'_> {
         let mut native = self
             .lanes
             .get_or_try_insert(&request.scope, &self.lease, || {
-                NativeDevtools::for_tab(self.browser, request.scope.clone())
+                NativeDevtools::for_tab(
+                    self.browser,
+                    request.scope.clone(),
+                    Some(self.lease.clone()),
+                )
             })?;
         native.dispatch(request, permit)
     }
