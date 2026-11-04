@@ -37,18 +37,14 @@ it("removes dead partial chrome and reveals rollup chevrons only on interaction"
     "src/features/chat/acp/acp-activity-details.css",
     "utf8",
   );
-  const polishCss = await readFile(
-    "src/features/chat/chat-transcript-polish.css",
-    "utf8",
-  );
   expect(css).not.toContain(".acp-message__partial");
   expect(detailCss).toMatch(
     /\.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0/s,
   );
-  expect(polishCss).toMatch(
-    /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0/s,
+  expect(detailCss).toMatch(
+    /\.acp-tool-rollup > summary:focus-visible[^}]*opacity:\s*1/s,
   );
-  expect(polishCss).toMatch(
+  expect(detailCss).toMatch(
     /\.acp-tool-rollup\[open\]\s*> summary\s+\.acp-tool-rollup__chevron/,
   );
 });

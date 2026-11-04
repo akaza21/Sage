@@ -128,7 +128,7 @@ describe("CP-28 transcript style contracts", () => {
       "src/features/chat/acp/chat-markdown.css",
       ".acp-markdown .markdown-table :is(th, td)",
     );
-    expect(cells.fontSize).toBe("var(--font-size-sm)");
+    expect(cells.fontSize).toBe("var(--chat-table-font-size)");
     expect(cells.lineHeight).toBe("var(--line-height-relaxed)");
     const headers = declaration(
       "src/features/chat/acp/chat-markdown.css",

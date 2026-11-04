@@ -11,7 +11,7 @@
   min-width: 0;
   height: 100%;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--color-canvas);
+  background: var(--agent-shell-center);
 }
 
 .chat-surface--agent {
@@ -21,6 +21,7 @@
 }
 
 .chat-surface--agent > .composer__notice,
+.chat-surface--agent > .build-notice,
 .chat-surface--agent > .composer__error {
   grid-area: notice;
 }

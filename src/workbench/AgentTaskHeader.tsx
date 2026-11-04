@@ -1,5 +1,3 @@
-import { ListChecks, Folder, Pencil } from "../ui/leanIcons";
-
 import {
   useId,
   useLayoutEffect,
@@ -45,17 +43,6 @@ export function AgentTaskHeader({
   sessionChrome?: AgentSessionChrome | null;
   showNewChat?: boolean;
 }) {
-  const harnessName = useWorkbenchStore((state) => {
-    const page = sessionChrome?.acpPage;
-    const binding = page?.sessions.find(
-      (session) => session.id === page.currentSessionId,
-    )?.bindingId;
-    const id =
-      state.chatUiById[tab?.id ?? ""]?.harnessId ?? state.selectedHarnessId;
-    return state.harnesses.find((harness) =>
-      binding ? harness.bindingId === binding : harness.id === id,
-    )?.name;
-  });
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
   const projectTransitioning = useWorkbenchStore(
@@ -137,22 +124,9 @@ export function AgentTaskHeader({
         dismissPending();
       }}
     >
-      {showNewChat ? (
-        <AgentNavigationPart part="AgentNewChatButton" />
-      ) : (
-        <button
-          className="agent-task-header__pencil"
-          type="button"
-          aria-label="Rename chat"
-          title="Rename chat"
-          disabled={projectTransitioning || renaming}
-          onClick={() => setRenaming(true)}
-        >
-          <Pencil size={15} aria-hidden="true" />
-        </button>
-      )}
+      {showNewChat ? <AgentNavigationPart part="AgentNewChatButton" /> : null}
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
-        <Folder size={15} aria-hidden="true" />
+        <span className="agent-task-header__folder" aria-hidden="true" />
         {renaming ? (
           <AgentTaskResourcesPart
             part="AgentTaskRenameForm"
@@ -171,7 +145,6 @@ export function AgentTaskHeader({
       <AgentTaskStatus
         snapshot={snapshot}
         harnessStatus={sessionChrome?.harnessStatus}
-        harnessName={harnessName}
       />
       {isSideChatId(tab?.id) ? null : (
         <AgentHeaderMore
@@ -191,7 +164,11 @@ export function AgentTaskHeader({
             archiveDisabled={projectTransitioning || chatCount <= 1}
             projectId={currentProject.id}
             onOpenChange={setMenuOpen}
-            onRename={() => setRenaming(true)}
+            onRename={() => {
+              setRenaming(true);
+              // Keep keyboard dismissal available while the rename form loads.
+              resourcesTriggerRef.current?.focus();
+            }}
             sessionChrome={sessionChrome}
             triggerLabel={`More chat actions in ${currentProject.name}`}
             triggerRole="menuitem"
@@ -221,9 +198,7 @@ export function AgentTaskHeader({
             resourcesSession.current = scope;
             setResourcesOpen((open) => !open);
           }}
-        >
-          <ListChecks size={16} aria-hidden="true" />
-        </button>
+        ></button>
         {resourcesOpen ? (
           <AgentTaskResourcesPart
             part="AgentTaskResources"

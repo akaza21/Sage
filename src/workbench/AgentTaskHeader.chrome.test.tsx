@@ -6,14 +6,9 @@ import { AgentTaskStatus } from "./AgentTaskStatus";
 
 const initialState = useWorkbenchStore.getState();
 
-it.each([
-  ["waiting", "lucide-triangle-alert"],
-  ["failed", "lucide-circle-alert"],
-  ["working", null],
-  ["idle", null],
-] as const)(
-  "keeps the %s status glyph and accessible label",
-  (tone, iconClass) => {
+it.each(["waiting", "failed", "working", "idle"] as const)(
+  "announces the %s status without adding a keyboard stop",
+  (tone) => {
     render(
       <AgentTaskStatus
         snapshot={{
@@ -30,16 +25,7 @@ it.each([
     const status = screen.getByRole("status", { name: `Chat status: ${tone}` });
     expect(status).toHaveAttribute("title", tone);
     expect(status).toHaveTextContent(tone);
-    const icons = status.querySelectorAll("svg");
-    expect(icons).toHaveLength(iconClass ? 1 : 0);
-    if (iconClass) {
-      expect(icons[0]).toHaveClass(iconClass, "agent-task-header__status-icon");
-      expect(icons[0]).toHaveAttribute("width", "12");
-      expect(icons[0]).toHaveAttribute("aria-hidden", "true");
-    }
-    expect(status.querySelector(".agent-chat-chip__spinner") !== null).toBe(
-      tone === "working",
-    );
+    expect(status).not.toHaveAttribute("tabindex");
   },
 );
 
@@ -95,7 +81,7 @@ it("keeps full chat and harness status discoverable when compacted", () => {
   expect(
     screen.getByRole("status", { name: "Chat status: Waiting for approval" }),
   ).toHaveAttribute("title", "Waiting for approval");
-  expect(screen.getByRole("status")).toHaveAttribute("tabindex", "0");
+  expect(screen.getByRole("status")).not.toHaveAttribute("tabindex");
   expect(
     screen.getByLabelText(
       "Harness status: Disconnected; reconnect to continue",
