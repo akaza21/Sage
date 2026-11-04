@@ -2,7 +2,7 @@
 //! save, remembering the first folder, and releasing placeholders. That work
 //! can block (an offline network share), so it never runs on the WebView2
 //! UI thread. The queue is bounded; when it is full the caller falls back
-//! (a download is canceled, a placeholder waits for the startup sweep).
+//! (a download is canceled, private leftovers remain untouched).
 
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},

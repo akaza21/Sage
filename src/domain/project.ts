@@ -139,6 +139,23 @@ export interface ProjectSwitchRequest {
   currentLayout: ProjectLayoutRequest;
 }
 
+/** A folder picked for a new project; the token stands in for its path. */
+export interface ProjectSourceFolder {
+  token: string;
+  name: string;
+  path: string;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  sourceTokens: string[];
+}
+
+/** Matches the native project-name limit. */
+export const MAX_PROJECT_NAME_CHARS = 64;
+/** Matches the native per-project root limit. */
+export const MAX_PROJECT_SOURCE_FOLDERS = 8;
+
 export interface ProjectTransitionResult {
   committed: boolean;
   transitionEpoch: number;

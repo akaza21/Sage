@@ -124,9 +124,9 @@ export function processIdentityHelper(action, value) {
   const result = spawnSync(powershell, args, {
     windowsHide: true,
     encoding: "utf8",
-    // Cleanup includes a one-second grace period, identity revalidation,
-    // and up to five seconds of post-kill confirmation in ProcessIdentity.
-    timeout: action === "cleanup" ? 10_000 : 5000,
+    // Cleanup includes a one-second grace period and up to five seconds of
+    // post-kill verification, plus PowerShell startup and CIM snapshots.
+    timeout: action === "cleanup" ? 15_000 : 5000,
     maxBuffer: 64 * 1024,
   });
   return processIdentityHelperOutput(result);

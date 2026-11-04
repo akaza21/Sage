@@ -7,7 +7,7 @@ import {
 } from "react";
 
 export const FOLLOW_END_THRESHOLD_PX = 64;
-/** Jump to latest travels like Codex s2/f0046-f0048: ~320 ms, ease-out. */
+
 export const JUMP_DURATION_MS = 320;
 
 function followEndScrollBehavior(): ScrollBehavior {
@@ -59,7 +59,7 @@ export function useFollowEnd({
   const [followState, setFollowState] = useState({ ownerKey, following: true });
   const followingEnd =
     followState.ownerKey === ownerKey ? followState.following : true;
-  // "activity": new rows landed below a paused reader (Codex s6/f0200).
+  // "activity": new rows landed below a paused reader.
   const [jumpState, setJumpState] = useState<{
     ownerKey: string;
     visible: boolean | "activity";
@@ -146,9 +146,8 @@ export function useFollowEnd({
     };
     // An upward wheel that will move the transcript leaves the end at once:
     // its smooth scroll can still be inside the follow threshold when new
-    // activity lands, and anchoring then would pull the reader back down
-    // (cp47 paused-reader pill). A short chat, or a nested scroller that
-    // takes the wheel itself, keeps following.
+    // activity lands, and anchoring then would pull the reader back down.
+    // A short chat, or a nested scroller that takes the wheel itself, keeps following.
     const movesTranscriptUp = (event: WheelEvent) => {
       // A synthetic wheel without a deltaY is reader input, not navigation.
       if (!(event.deltaY < 0 && transcript.scrollTop > 0)) return false;
@@ -199,8 +198,10 @@ export function useFollowEnd({
       }
       followedHeightRef.current = current.scrollHeight;
       // Keep stale smooth steps protected until the anchor actually lands.
-      if (distanceFromEnd(current) <= 1) anchoringRef.current = false;
-      if (transcriptIsAtEnd(current)) return;
+      if (distanceFromEnd(current) <= 1) {
+        anchoringRef.current = false;
+        return;
+      }
       anchorToEnd("auto");
     });
     observer.observe(transcript);

@@ -76,10 +76,6 @@ pub struct DownloadFolderRecord {
 }
 
 impl SettingsStore {
-    pub fn browser_download_folder(&self) -> AppResult<Option<PathBuf>> {
-        Ok(self.browser_download_folder_record()?.path)
-    }
-
     pub fn browser_download_folder_record(&self) -> AppResult<DownloadFolderRecord> {
         read(&self.download_lock())
     }

@@ -26,6 +26,7 @@ import {
 import {
   createRustValidationCommands,
   resolveNpmInvocation,
+  PROCESS_LIMITS,
   VALIDATION_DEADLINES_MS,
 } from "./lib/check-plans.mjs";
 import { createDevPlan, parseDevArguments } from "./check-dev.mjs";
@@ -1121,33 +1122,47 @@ test("real command timeout terminates its spawned process tree without an orphan
   const source = `
     const { spawn } = require("node:child_process");
     const { writeFileSync } = require("node:fs");
+    writeFileSync(process.argv[1] + ".leader", String(process.pid));
     const descendant = spawn(process.execPath, ["-e", ${JSON.stringify(descendantSource)}], {
       stdio: "ignore",
       windowsHide: true,
     });
     writeFileSync(process.argv[1], String(descendant.pid));
+    process.stdout.write("READY\\n");
     setInterval(() => {}, 1000);
   `;
   let descendantPid;
+  const controller = new AbortController();
+  const deadline = new AbortController();
+  const ready = fixtureReadiness();
+  let execution;
   try {
-    await assert.rejects(
-      executeCommand(
-        {
-          label: "timeout-tree",
-          command: process.execPath,
-          args: ["-e", source, descendantPidPath],
-          cwd: root,
-          timeoutMs: 300,
-          terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
-          maximumLineBytes: 1_024,
-          maximumOutputBytes: 4_096,
-        },
-        new AbortController().signal,
-        { stdout: discardStream(), stderr: discardStream() },
-      ),
-      (error) => error?.code === "command-timeout",
+    execution = executeCommand(
+      {
+        label: "timeout-tree",
+        command: process.execPath,
+        args: ["-e", source, descendantPidPath],
+        cwd: root,
+        timeoutMs: 60_000,
+        terminationGraceMs: 200,
+        settlementTimeoutMs: 60_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      controller.signal,
+      {
+        stdout: ready.output,
+        stderr: discardStream(),
+        timeoutSignal: deadline.signal,
+      },
     );
+    const expired = assert.rejects(
+      execution,
+      (error) => error?.code === "command-timeout" && error.settled === true,
+    );
+    await Promise.race([ready.promise, execution]);
+    deadline.abort();
+    await expired;
     descendantPid = Number.parseInt(
       await readFile(descendantPidPath, "utf8"),
       10,
@@ -1155,10 +1170,9 @@ test("real command timeout terminates its spawned process tree without an orphan
     assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 0);
     await waitForProcessExit(descendantPid);
   } finally {
-    if (descendantPid && (await processExists(descendantPid))) {
-      process.kill(descendantPid, "SIGKILL");
-    }
-    await rm(root, { recursive: true, force: true });
+    controller.abort();
+    await execution?.catch(() => {});
+    await cleanProcessFixture(root, descendantPidPath, descendantPid);
   }
 });
 
@@ -1169,40 +1183,56 @@ test("leader exit cannot falsely prove descendant settlement", async () => {
   const source = `
     const { spawn } = require("node:child_process");
     const { writeFileSync } = require("node:fs");
+    writeFileSync(process.argv[1] + ".leader", String(process.pid));
     const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       stdio: ["ignore", "inherit", "inherit"],
       windowsHide: true,
     });
     writeFileSync(process.argv[1], String(descendant.pid));
     process.on("SIGTERM", () => process.exit(0));
+    process.stdout.write("READY\\n");
     setInterval(() => {}, 1000);
   `;
   let descendantPid;
+  const controller = new AbortController();
+  const deadline = new AbortController();
+  const ready = fixtureReadiness();
+  let execution;
   try {
-    await assert.rejects(
-      executeCommand(
-        {
-          label: "leader-exit-first",
-          command: process.execPath,
-          args: ["-e", source, descendantPidPath],
-          cwd: root,
-          timeoutMs: 300,
-          terminationGraceMs: 200,
-          settlementTimeoutMs: 1_000,
-          maximumLineBytes: 1_024,
-          maximumOutputBytes: 4_096,
-        },
-        new AbortController().signal,
-        { stdout: discardStream(), stderr: discardStream() },
-      ),
+    execution = executeCommand(
+      {
+        label: "leader-exit-first",
+        command: process.execPath,
+        args: ["-e", source, descendantPidPath],
+        cwd: root,
+        timeoutMs: 60_000,
+        terminationGraceMs: 200,
+        settlementTimeoutMs: 60_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      controller.signal,
+      {
+        stdout: ready.output,
+        stderr: discardStream(),
+        timeoutSignal: deadline.signal,
+      },
+    );
+    const expired = assert.rejects(
+      execution,
       (error) => error?.code === "command-timeout" && error.settled === true,
     );
+    await Promise.race([ready.promise, execution]);
+    deadline.abort();
+    await expired;
     descendantPid = Number.parseInt(
       await readFile(descendantPidPath, "utf8"),
       10,
     );
     await waitForProcessExit(descendantPid);
   } finally {
+    controller.abort();
+    await execution?.catch(() => {});
     await cleanProcessFixture(root, descendantPidPath, descendantPid);
   }
 });
@@ -1230,7 +1260,7 @@ test("newline-free output is bounded and terminates the offending command", asyn
           cwd: root,
           timeoutMs: 5_000,
           terminationGraceMs: 200,
-          settlementTimeoutMs: 1_500,
+          settlementTimeoutMs: PROCESS_LIMITS.settlementTimeoutMs,
           maximumLineBytes: 1_024,
           maximumOutputBytes: 4_096,
         },
@@ -1251,6 +1281,22 @@ function discardStream() {
       callback();
     },
   });
+}
+
+function fixtureReadiness() {
+  let announce;
+  const promise = new Promise((resolve) => {
+    announce = resolve;
+  });
+  let text = "";
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      text += chunk.toString();
+      if (text.includes("READY\n")) announce();
+      callback();
+    },
+  });
+  return { promise, output };
 }
 
 async function processExists(pid) {
@@ -1283,18 +1329,27 @@ async function cleanProcessFixture(root, pidPath, descendantPid) {
       if (error?.code !== "ENOENT") throw error;
     }
   }
-  if (descendantPid && (await processExists(descendantPid))) {
-    try {
-      process.kill(descendantPid, "SIGKILL");
-    } catch (error) {
-      if (error?.code !== "ESRCH") throw error;
+  let leaderPid;
+  try {
+    leaderPid = Number.parseInt(
+      await readFile(pidPath + ".leader", "utf8"),
+      10,
+    );
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  for (const pid of [descendantPid, leaderPid]) {
+    if (pid && (await processExists(pid))) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if (error?.code !== "ESRCH") throw error;
+      }
+      await waitForProcessExit(pid);
     }
-    await waitForProcessExit(descendantPid);
   }
   await rm(root, {
     recursive: true,
     force: true,
-    maxRetries: 5,
-    retryDelay: 100,
   });
 }

@@ -26,6 +26,8 @@ mod process_exit;
 mod shutdown;
 mod terminal;
 
+#[cfg(test)]
+pub(super) use drive::active_step_for_test;
 use drive::drive;
 use handle::RunInput;
 pub(crate) use handle::{
@@ -64,7 +66,7 @@ where
     Shutdown(Box<WorkerState<A, R, T, C>>, WorkerEnvelope),
 }
 
-struct RunnerExit<A, R, T, C = TreeControl>
+pub(super) struct RunnerExit<A, R, T, C = TreeControl>
 where
     A: HarnessAdapter,
     R: ResourceMapper,
@@ -74,7 +76,7 @@ where
 {
     state: WorkerState<A, R, T, C>,
     shutdown: Option<WorkerEnvelope>,
-    reason: TreeExit,
+    pub(super) reason: TreeExit,
 }
 
 fn run<A, R, T, Auth>(
@@ -333,6 +335,29 @@ where
     RunnerExit {
         state,
         shutdown: None,
+        reason,
+    }
+}
+
+pub(super) fn requested_shutdown<A, R, T, C>(
+    state: WorkerState<A, R, T, C>,
+    envelope: WorkerEnvelope,
+) -> RunnerExit<A, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
+{
+    let reason = if state.has_durable_completed_cursor() || state.has_durable_cancelled_cursor() {
+        TreeExit::Cancelled
+    } else {
+        TreeExit::ParentShutdown
+    };
+    RunnerExit {
+        state,
+        shutdown: Some(envelope),
         reason,
     }
 }

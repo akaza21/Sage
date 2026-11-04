@@ -238,3 +238,206 @@ test("fails closed at the CSS file and byte caps", async () => {
   assert.equal(tooMany.length, 1);
   assert.match(tooMany[0], /exceeds.*file scan limit/u);
 });
+
+test("allows raw colours in custom properties only in the global authority and listed feature owners", () => {
+  const inventory = analyze({
+    "src/styles/global.css": `:root { --global-fill: #111111; }`,
+    "src/features/browser/browser-device.css": `
+      .owner { --device-fill: #414141; }
+      .owner-rule { color: #414141; }
+    `,
+    "src/features/other/other.css": `.other { --other-fill: #222222; }`,
+  });
+
+  assert.deepEqual(
+    inventory.rawColors.map(({ relativePath, line, literal }) => ({
+      relativePath,
+      line,
+      literal,
+    })),
+    [
+      {
+        relativePath: "src/features/browser/browser-device.css",
+        line: 3,
+        literal: "#414141",
+      },
+      {
+        relativePath: "src/features/other/other.css",
+        line: 1,
+        literal: "#222222",
+      },
+    ],
+  );
+});
+
+test("reports rounded per-corner radii and allows only squaring a segment's corner", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .tab { border-top-left-radius: var(--radius-xl); }
+      .split > button { border-start-end-radius: 0; }
+      .split > button + button { border-end-start-radius: var(--radius-none); }
+      .whole { border-radius: var(--radius-xl); }
+    `,
+  });
+
+  assert.deepEqual(inventory.cornerRadii, [
+    {
+      line: 2,
+      property: "border-top-left-radius",
+      relativePath: "src/styles/a.css",
+      value: "var(--radius-xl)",
+    },
+    {
+      line: 3,
+      property: "border-start-end-radius",
+      relativePath: "src/styles/a.css",
+      value: "0",
+    },
+  ]);
+});
+
+test("allows !important only under reduced-motion and forced-colors queries", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .close:hover { color: var(--color-text-primary) !important; }
+      .label::after { content: "!important"; }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0s !important; }
+      }
+      @media (forced-colors: active) {
+        @supports (display: grid) {
+          .chip { color: CanvasText ! important; }
+        }
+      }
+      @media (max-width: 40rem) {
+        .row { padding: 0 !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line, property }) => ({ line, property })),
+    [
+      { line: 2, property: "color" },
+      { line: 13, property: "padding" },
+    ],
+  );
+});
+
+test("checks vendor-prefixed and nested declarations for !important", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .a { -webkit-user-select: none !important; }
+      .b {
+        @media (min-width: 40rem) { color: inherit !important; }
+      }
+      .c {
+        @media (forced-colors: active) { color: CanvasText !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line, property }) => ({ line, property })),
+    [
+      { line: 2, property: "-webkit-user-select" },
+      { line: 4, property: "color" },
+    ],
+  );
+});
+
+test("allows !important only when every media alternative requires the preference", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      @media (prefers-reduced-motion: reduce), (min-width: 1px) {
+        .a { color: inherit !important; }
+      }
+      @media ( forced-colors : active ) {
+        .b { color: CanvasText !important; }
+      }
+      @media screen and ((prefers-reduced-motion: reduce)) {
+        .c { animation: none !important; }
+      }
+      @media not (forced-colors: active) {
+        .d { color: inherit !important; }
+      }
+      @media (forced-colors: active) or (min-width: 1px) {
+        .e { color: inherit !important; }
+      }
+      @media screen and not (forced-colors: active) {
+        .f { color: inherit !important; }
+      }
+      @media screen and not (prefers-reduced-motion: reduce) {
+        .g { animation: none !important; }
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.importants.map(({ line }) => line),
+    [3, 12, 15, 18, 21],
+  );
+});
+
+test("reads a declaration's priority apart from its value", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      @media (forced-colors: active) {
+        .split > button {
+          border-top-left-radius: var(--radius-none) !important;
+        }
+      }
+    `,
+  });
+
+  assert.deepEqual(inventory.cornerRadii, []);
+  assert.deepEqual(inventory.importants, []);
+});
+
+test("splits selectors only at commas outside comments and strings", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .shared/* note, note */ { color: var(--color-text-primary); }
+      [data-label="/*x*/"] { color: var(--color-text-primary); }
+    `,
+    "src/styles/b.css": `
+      .shared { color: var(--color-text-primary); }
+      [data-label=" "] { color: var(--color-text-primary); }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.duplicateSelectors.map(({ selector }) => selector),
+    [".shared"],
+  );
+});
+
+test("holds vendor-prefixed aliases to the standard property's rules", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .a { -webkit-border-top-left-radius: 8px; }
+      .b { -moz-border-radius: 4px; }
+      .c { -webkit-border-top-left-radius: var(--radius-none); }
+    `,
+  });
+
+  assert.deepEqual(
+    inventory.cornerRadii.map(({ line, property }) => ({ line, property })),
+    [{ line: 2, property: "-webkit-border-top-left-radius" }],
+  );
+  assert.deepEqual(
+    inventory.rawRadii.map(({ line, value }) => ({ line, value })),
+    [{ line: 3, value: "4px" }],
+  );
+});
+
+// The scan is linear: 400 KiB of masked comment takes tens of milliseconds,
+// where the earlier per-position rescans took minutes.
+test("reads a long media condition in one pass", { timeout: 20_000 }, () => {
+  const filler = " ".repeat(400 * 1024);
+  const inventory = analyze({
+    "src/styles/a.css": `@media screen/*${filler}*/and (forced-colors: active) { .a { color: CanvasText !important; } }`,
+  });
+
+  assert.deepEqual(inventory.importants, []);
+});

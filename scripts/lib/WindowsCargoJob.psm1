@@ -119,6 +119,7 @@ function Invoke-CargoValidationJob {
       $ExecutablePath, $Arguments, $WorkingDirectory, $EnvironmentEntries,
       $MaximumActiveProcesses, [ref]$stdout, [ref]$stderr
     )
+    [Console]::Error.WriteLine(('cargo-job native-start remainingMs={0} rootRunning={1}' -f [long][Math]::Floor(($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds), $job.RootRunning))
     $protocol = [SageValidation.ProtocolWriter]::new(
       [Console]::OpenStandardOutput(), $RequestNonce
     )

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import "./browser-download-folder.css";
 
 import {
   admitDownloadFolder,
@@ -27,11 +28,12 @@ export function BrowserDownloadFolder() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Every folder value applied bumps this, so the first snapshot can tell
-  // whether an event or a button reply arrived while it was in flight.
-  const version = useRef(0);
+  // Probes and native dialogs can delay replies past a newer store change.
+  // SQLite's revision orders every source; arrival order cannot do that.
+  const revision = useRef(-1);
   const apply = (value: Folder) => {
-    version.current += 1;
+    if (value.revision < revision.current) return;
+    revision.current = value.revision;
     setFolder(value);
   };
 
@@ -50,13 +52,10 @@ export function BrowserDownloadFolder() {
     // Subscribe first, then read, so no change can fall between the two.
     void subscribe.then(() => {
       if (!live) return;
-      const seen = version.current;
       browserDownloadFolder()
         .then(
           (value) => {
-            if (live && version.current === seen) {
-              apply(admitDownloadFolder(value));
-            }
+            if (live) apply(admitDownloadFolder(value));
           },
           () => {
             if (live) setError(LOAD_FAILURE);

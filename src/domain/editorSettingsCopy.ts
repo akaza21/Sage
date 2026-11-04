@@ -123,4 +123,10 @@ export const EDITOR_SETTING_COPY: Readonly<
     description:
       "Shows Git status in Explorer and on tabs: a colored name and a letter for each changed file, and a dot on folders that contain changes.",
   },
+  "editor.gitGutter": {
+    group: "Git",
+    label: "Change markers",
+    description:
+      "Marks lines you have added, changed or deleted since the last stage or commit next to the line numbers. Click a marker to see what was there and revert it.",
+  },
 };

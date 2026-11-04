@@ -756,14 +756,19 @@ mod tests {
             let (cleanup_policy, reaper) =
                 repository::GitProcessPolicy::terminated_unreaped_withheld_wait(Duration::ZERO);
 
-            let first = mutate_git_file_inner_with_process_policy(
-                &state,
-                request.clone(),
-                0,
+            // Reserve mutation admission with a read-only command so
+            // interruption has no staging side effect. The blocked and
+            // recovered commands below exercise real staging.
+            let Err(first) = repository::run_git_with_policy(
+                &root,
+                &["rev-parse", "--is-inside-work-tree"],
+                1_024,
                 cleanup_policy,
             )
             .await
-            .unwrap_err();
+            else {
+                panic!("controlled Git cleanup must retain mutation admission");
+            };
             assert!(
                 matches!(
                     first,
@@ -808,6 +813,10 @@ mod tests {
             .await
             .unwrap();
             assert!(recovered.error.is_none());
+            assert_eq!(
+                recovered.repositories.roots[0].changes[0].index_status,
+                "added"
+            );
 
             drop(state);
             fs::remove_dir_all(base).unwrap();

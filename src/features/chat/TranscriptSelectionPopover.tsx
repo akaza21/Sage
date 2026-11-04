@@ -13,11 +13,6 @@ type Selected = NonNullable<ReturnType<typeof readTranscriptQuote>> & {
 const isSelectionMenuKey = (event: KeyboardEvent) =>
   event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
 
-/**
- * Codex "Add to chat | Ask in side chat" toolbar. Content listeners read the
- * selection only on pointer-up, Shift+Arrow key-up or the menu key; dismiss
- * listeners exist only while the toolbar is shown.
- */
 export function TranscriptSelectionPopover({
   content,
   scrollport,
@@ -125,7 +120,7 @@ export function TranscriptSelectionPopover({
     const rects = selected.range.getClientRects();
     if (!rects.length) return;
     // Centred on the selection start, the pill may overhang the answer
-    // column but stays inside the scrollport (Codex s2/f0093).
+    // column but stays inside the scrollport.
     const viewport = scrollport.getBoundingClientRect();
     const point = selectionPopoverPosition(
       {

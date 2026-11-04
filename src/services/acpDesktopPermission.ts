@@ -7,7 +7,7 @@ import {
   isRecord,
   safeCounter,
   safeIdentifier,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 
 function safePermissionDecision(
   value: unknown,

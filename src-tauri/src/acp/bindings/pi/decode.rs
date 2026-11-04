@@ -33,6 +33,16 @@ pub(super) enum Record {
 }
 
 pub(super) fn decode_record(bytes: &[u8]) -> Result<Record, AdapterError> {
+    decode_record_with_thinking_request(bytes, None)
+}
+
+/// Older Pi versions omit correlation IDs only for unknown commands. The
+/// runtime may supply the sole pending optional-discovery request for that
+/// method; every other response still requires its wire ID.
+pub(super) fn decode_record_with_thinking_request(
+    bytes: &[u8],
+    thinking_id: Option<&str>,
+) -> Result<Record, AdapterError> {
     if bytes.len() > FRAME_BYTES + 2 {
         return Err(AdapterError::Limit("frame bytes"));
     }
@@ -55,6 +65,14 @@ pub(super) fn decode_record(bytes: &[u8]) -> Result<Record, AdapterError> {
     let object = value.as_object_mut().ok_or(AdapterError::Malformed)?;
     let kind = bounded_field(object.get("type"), "record type", 128)?;
     if kind == "response" {
+        if !object.contains_key("id")
+            && object.get("command").and_then(Value::as_str)
+                == Some("get_available_thinking_levels")
+            && object.get("success").and_then(Value::as_bool) == Some(false)
+            && let Some(id) = thinking_id
+        {
+            object.insert("id".into(), Value::String(id.to_owned()));
+        }
         return Ok(Record::Response(Response {
             id: bounded_field(object.get("id"), "command ID", EXTERNAL_ID_BYTES)?,
             command: bounded_field(object.get("command"), "command", 128)?,

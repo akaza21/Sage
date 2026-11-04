@@ -52,14 +52,15 @@ pub(crate) fn plan(
     taken: impl Fn(&Path) -> bool,
 ) -> Plan {
     let file_name = sanitize_file_name(suggested);
+    let dangerous = is_dangerous(&file_name) || mime.is_some_and(is_dangerous_mime);
     let Some(folder) = stored.and_then(admit_folder) else {
         return Plan::Ask {
             file_name,
-            remember: true,
+            remember: stored.is_none() || !dangerous,
             directory: None,
         };
     };
-    if is_dangerous(&file_name) || mime.is_some_and(is_dangerous_mime) {
+    if dangerous {
         return Plan::Ask {
             file_name,
             remember: false,
@@ -134,7 +135,7 @@ fn is_writable(folder: &Path) -> bool {
     std::fs::metadata(folder).is_ok_and(|metadata| !metadata.permissions().readonly())
 }
 
-/// `std::fs::canonicalize` returns `\\?\C:\…` on Windows. WebView2 and the
+/// `std::fs::canonicalize` returns a verbatim path on Windows. WebView2 and the
 /// Settings row want the ordinary form, which is equivalent for any path that
 /// fits in `MAX_PATH` and has no component Windows would rewrite.
 fn simplify_verbatim(path: PathBuf) -> PathBuf {

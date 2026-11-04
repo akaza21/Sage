@@ -48,7 +48,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   ...(
     [
       ["agent.changes", "Changes", "g", "required", "forbidden"],
-      ["agent.terminal", "Terminal", "`", "forbidden", "forbidden"],
       ["agent.files", "Files", "p", "forbidden", "forbidden"],
       ["agent.sideChat", "Side chat", "s", "forbidden", "required"],
     ] as const
@@ -63,8 +62,19 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     ctrlOrMeta: "required" as const,
   })),
   {
+    id: "agent.terminal",
+    label: "Toggle terminal",
+    description:
+      "Shows or hides the terminal dock without ending its sessions.",
+    scope: "Global",
+    key: "`",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "newTask",
-    label: "New task",
+    label: "New chat",
     description: "Starts a new chat and switches to Agents.",
     scope: "Global",
     key: "n",
@@ -73,9 +83,19 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     alt: "forbidden",
   },
   {
+    id: "toggleSidebar",
+    label: "Toggle sidebar",
+    description: "Shows or hides the current mode's sidebar.",
+    scope: "Global",
+    key: "b",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
+  {
     id: "openSettings",
     label: "Open settings",
-    description: "Opens the Settings tab and switches to Editor.",
+    description: "Opens settings for the current mode.",
     scope: "Global",
     key: ",",
     ctrlOrMeta: "required",

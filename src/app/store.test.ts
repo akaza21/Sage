@@ -16,7 +16,7 @@ import type {
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
-import { acpDesktop } from "../services/acpDesktop";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { useWorkbenchStore } from "./store";
 import { useAcpProjectionStore } from "./acpProjectionStore";
 import {
@@ -491,6 +491,38 @@ describe("workbench resource and project navigation", () => {
     });
   });
 
+  it.each([false, true])(
+    "keeps a failed New chat local when projection recovery is unavailable (committed: %s)",
+    async (committed) => {
+      const creation = vi.spyOn(getWorkbenchPorts().chat, "createChat");
+      if (committed)
+        creation.mockResolvedValueOnce({
+          committed: true,
+          transitionEpoch: 1,
+          snapshot: null,
+          recoveryError: null,
+        });
+      else
+        creation.mockRejectedValueOnce(
+          new TypeError("Cannot read properties of undefined (reading invoke)"),
+        );
+      vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
+        new TypeError("Cannot read properties of undefined (reading invoke)"),
+      );
+      await useWorkbenchStore.getState().createChat();
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        phase: "ready",
+        projectTransitioning: false,
+        activeTabId: chatTab.id,
+        error: expect.stringContaining("Chat creation"),
+      });
+      expect(useWorkbenchStore.getState().tabs).toEqual([chatTab]);
+      expect(useWorkbenchStore.getState().error).not.toMatch(
+        /invoke|undefined|properties/,
+      );
+    },
+  );
+
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
     const newChat: WorkbenchTab = {
       id: "chat:new",
@@ -580,7 +612,9 @@ describe("workbench resource and project navigation", () => {
     };
     const pending = deferred<CodexDiscoveryResponse>();
     useWorkbenchStore.setState({ harnesses: [codex] });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
     vi.spyOn(getWorkbenchPorts().chat, "createChat").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
@@ -1034,6 +1068,66 @@ describe("workbench resource and project navigation", () => {
       messages: [],
       projectTransitioning: false,
     });
+  });
+
+  it("renames a Chat with a newly opened Diff after native nullable status round-trips", async () => {
+    useWorkbenchStore.setState({ tabs: [{ ...chatTab, status: "idle" }] });
+    const target = resource("src/example.ts");
+    vi.spyOn(repositoryPort, "getFileDiff").mockResolvedValue({
+      resource: target,
+      hunks: [],
+      binary: false,
+      truncated: false,
+    });
+    vi.spyOn(projectPort, "listDirectory").mockResolvedValue({
+      resource: resource(""),
+      entries: [],
+      truncated: false,
+    });
+    await useWorkbenchStore.getState().openDiff(target);
+    const opened = useWorkbenchStore.getState().activeTabId!;
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === opened),
+    ).toMatchObject({ kind: "diff", resource: target });
+    vi.spyOn(getWorkbenchPorts().chat, "renameChat").mockImplementation(
+      async (request, epoch) => ({
+        committed: true,
+        transitionEpoch: epoch + 1,
+        snapshot: chatProjection(
+          // Serde serializes WorkbenchTab.status: None as JSON null.
+          JSON.parse(
+            JSON.stringify(
+              request.currentLayout.tabs.map((tab) => ({
+                ...tab,
+                title: tab.id === request.chatId ? "Chat: Focus" : tab.title,
+                status: tab.status ?? null,
+              })),
+            ),
+          ),
+          opened,
+          epoch + 1,
+          null,
+          [],
+          "root-a",
+          target,
+        ),
+        recoveryError: null,
+      }),
+    );
+
+    expect(
+      await useWorkbenchStore.getState().renameChat(chatTab.id, "Focus"),
+    ).toBe(true);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      phase: "ready",
+      error: null,
+      activeTabId: opened,
+      selectedResource: target,
+    });
+    expect(
+      useWorkbenchStore.getState().tabs.find((tab) => tab.id === chatTab.id)
+        ?.title,
+    ).toBe("Chat: Focus");
   });
 
   it("blocks Chat rename when the newest editor snapshot fails", async () => {
@@ -3188,7 +3282,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3242,7 +3336,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const genericModels = vi.spyOn(desktop, "listHarnessModels");
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3281,7 +3375,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3321,7 +3415,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const discover = vi
-      .spyOn(acpDesktop, "discoverCodex")
+      .spyOn(acpHarnessDesktop, "discoverCodex")
       .mockResolvedValueOnce({
         projectId: "project-a",
         projectGeneration: "0",
@@ -3343,8 +3437,10 @@ describe("workbench resource and project navigation", () => {
         defaultModelId: "gpt-auth",
       } as never);
     const login =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(login.promise);
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      login.promise,
+    );
 
     await useWorkbenchStore.getState().selectHarness("account-harness");
     useWorkbenchStore.getState().requestHarnessSignIn();
@@ -3388,13 +3484,15 @@ describe("workbench resource and project navigation", () => {
       selectedHarnessId: "future-auth",
       harnessDiscoveryPhase: "waiting",
     });
-    const cancel = vi.spyOn(acpDesktop, "cancelCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "waiting",
-      revision: "2",
-    } as never);
+    const cancel = vi
+      .spyOn(acpHarnessDesktop, "cancelCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "waiting",
+        revision: "2",
+      } as never);
     await useWorkbenchStore.getState().cancelHarnessSignIn();
     expect(cancel).toHaveBeenCalledWith({
       projectId: "project-a",
@@ -3403,13 +3501,15 @@ describe("workbench resource and project navigation", () => {
     });
 
     useWorkbenchStore.setState({ harnessDiscoveryPhase: "ready" });
-    const logout = vi.spyOn(acpDesktop, "logoutCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "signedOut",
-      revision: "3",
-    } as never);
+    const logout = vi
+      .spyOn(acpHarnessDesktop, "logoutCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "signedOut",
+        revision: "3",
+      } as never);
     await useWorkbenchStore.getState().logoutHarness();
     expect(logout).toHaveBeenCalledOnce();
     expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
@@ -3435,9 +3535,11 @@ describe("workbench resource and project navigation", () => {
       harnessDiscoveryPhase: "consent",
     });
     const pending =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(pending.promise);
-    const discover = vi.spyOn(acpDesktop, "discoverCodex");
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      pending.promise,
+    );
+    const discover = vi.spyOn(acpHarnessDesktop, "discoverCodex");
 
     const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3470,7 +3572,9 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
 
     const selecting = useWorkbenchStore.getState().selectHarness("codex");
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3512,7 +3616,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-foreign",
@@ -3828,7 +3932,7 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("blocks the workbench if projection recovery fails after project creation", async () => {
-    vi.spyOn(projectPort, "createProjectFromPicker").mockResolvedValue({
+    vi.spyOn(projectPort, "createProject").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
       snapshot: null,
@@ -3838,7 +3942,9 @@ describe("workbench resource and project navigation", () => {
       .spyOn(projectPort, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("bootstrap unavailable"));
 
-    await useWorkbenchStore.getState().createProject();
+    await useWorkbenchStore
+      .getState()
+      .createProject({ name: "Project", sourceTokens: [] });
 
     const state = useWorkbenchStore.getState();
     expect(bootstrap).toHaveBeenCalledTimes(2);
@@ -3899,14 +4005,12 @@ describe("workbench resource and project navigation", () => {
       const persist = vi
         .spyOn(projectPort, "persistProjectLayout")
         .mockResolvedValue();
-      const create = vi
-        .spyOn(projectPort, "createProjectFromPicker")
-        .mockResolvedValue({
-          committed: false,
-          transitionEpoch: 0,
-          snapshot: null,
-          recoveryError: null,
-        });
+      const create = vi.spyOn(projectPort, "createProject").mockResolvedValue({
+        committed: false,
+        transitionEpoch: 0,
+        snapshot: null,
+        recoveryError: null,
+      });
       const addRoot = vi
         .spyOn(projectPort, "addProjectRootFromPicker")
         .mockResolvedValue({
@@ -3917,7 +4021,9 @@ describe("workbench resource and project navigation", () => {
         });
 
       if (operation === "create") {
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         await useWorkbenchStore.getState().addProjectRoot();
       }
@@ -4156,10 +4262,12 @@ describe("workbench resource and project navigation", () => {
         );
         await useWorkbenchStore.getState().switchProject("project-b");
       } else if (operation === "create") {
-        vi.spyOn(projectPort, "createProjectFromPicker").mockRejectedValue(
+        vi.spyOn(projectPort, "createProject").mockRejectedValue(
           new Error("response lost"),
         );
-        await useWorkbenchStore.getState().createProject();
+        await useWorkbenchStore
+          .getState()
+          .createProject({ name: "Project", sourceTokens: [] });
       } else {
         vi.spyOn(projectPort, "addProjectRootFromPicker").mockRejectedValue(
           new Error("response lost"),

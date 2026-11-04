@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import {
   readUserTerminal,
   resizeUserTerminal,
+  TERMINAL_INPUT_BYTES,
+  TERMINAL_MAX_COLUMNS,
+  TERMINAL_MAX_ROWS,
+  terminalErrorCode,
   terminalErrorLabel,
   writeUserTerminal,
   type UserTerminalScope,
@@ -15,29 +19,34 @@ import { withStyleNonce } from "../ports/styleNonce";
 
 /** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
+/** Backoff between offers of input the native side refused as busy. */
+const INPUT_RETRY_FIRST_DELAY_MS = 50;
+const INPUT_RETRY_MAX_DELAY_MS = 500;
+/** Pause before reading again after another reader held the output. */
+const READ_RETRY_DELAY_MS = 100;
+const SCROLLBACK_LINES = 1_000;
+/** The only system setting that redefines the theme tokens. */
+const FORCED_COLORS_QUERY = "(forced-colors: active)";
+// xterm requires two columns for wide characters and at least one row.
+const MIN_COLUMNS = 2;
+const MIN_ROWS = 1;
 
-function errorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
-    ? (error as { code?: unknown }).code
-    : undefined;
-}
+type Dimensions = readonly [columns: number, rows: number];
 
-interface Dimensions {
-  columns: number;
-  rows: number;
-}
-
-function dimensionsFor(element: HTMLElement): Dimensions {
-  return {
-    columns: Math.max(1, Math.min(500, Math.floor(element.clientWidth / 7.3))),
-    rows: Math.max(1, Math.min(300, Math.floor(element.clientHeight / 16))),
+/** xterm 6 has no public cell metrics API. Keep this private seam local. */
+type MeasuredTerminal = Terminal & {
+  _core: {
+    _renderService: {
+      dimensions: { device: { cell: { width: number; height: number } } };
+    };
   };
-}
+};
 
 export type TerminalDockProps = {
   scope: UserTerminalScope;
   session: UserTerminalSession;
   ended: boolean;
+  visible?: boolean;
   onStatus: (status: string, ended?: boolean) => void;
 };
 
@@ -46,64 +55,71 @@ export function TerminalDock({
   session,
   ended,
   onStatus,
+  visible = true,
 }: TerminalDockProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const onStatusRef = useRef(onStatus);
-  useEffect(() => {
-    onStatusRef.current = onStatus;
-  }, [onStatus]);
-  const ownerScope = useMemo(
-    () => ({
-      projectId: scope.projectId,
-      projectGeneration: scope.projectGeneration,
-      chatId: scope.chatId,
-    }),
-    [scope.projectId, scope.projectGeneration, scope.chatId],
-  );
+  const screenRef = useRef<HTMLDivElement>(null);
+  const reportStatus = useEffectEvent(onStatus);
+  const displayRef = useRef<((visible: boolean) => void) | null>(null);
 
   useEffect(() => {
-    const element = viewportRef.current;
+    const element = screenRef.current;
     if (!element) return;
     let stopped = false;
+    let showing = false;
     let sessionEnded = ended;
     let pendingInput = "";
     let pendingInputBytes = 0;
     let inputSending = false;
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
-    let observedPixelRatio = window.devicePixelRatio;
+    let observedPixelRatio = devicePixelRatio;
+    let resumeRead: (() => void) | null = null;
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
-      cursorBlink: true,
-      // xterm measures a concrete face; Menlo keeps macOS off Courier.
-      fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
+      scrollback: SCROLLBACK_LINES,
       fontSize: 12,
       lineHeight: 1.3,
-      scrollback: 1_000,
-      theme: {
-        background: "#141414",
-        foreground: "#dedede",
-        cursor: "#dedede",
-        selectionBackground: "#444444",
-      },
     });
+    // Theme tokens are read again whenever the system palette changes, so an
+    // open terminal follows it. An unset token leaves xterm's own default.
+    const applyTheme = () => {
+      const tokens = getComputedStyle(document.documentElement);
+      const token = (name: string) =>
+        tokens.getPropertyValue(name).trim() || undefined;
+      const text = token("--color-text-primary");
+      const font = token("--font-family-mono");
+      if (font) terminal.options.fontFamily = font;
+      terminal.options.theme = {
+        background: token("--color-canvas"),
+        foreground: text,
+        cursor: text,
+        selectionBackground: token("--color-selection"),
+      };
+    };
+    applyTheme();
     // xterm has no nonce option; its renderer and viewport create their
     // <style> elements inside open().
     withStyleNonce(element.ownerDocument, () => terminal.open(element));
-    const initial = dimensionsFor(element);
-    terminal.resize(initial.columns, initial.rows);
 
     async function pollOutput(): Promise<void> {
       let cursor = "0";
       try {
         while (!stopped) {
+          // Keep the reader and xterm screen across visibility changes. A pending
+          // native read owns an exclusive lease and cannot be replaced on hide.
+          if (!showing) {
+            await new Promise<void>((resolve) => {
+              resumeRead = resolve;
+            });
+            continue;
+          }
           let page;
           try {
-            page = await readUserTerminal(ownerScope, session, cursor);
+            page = await readUserTerminal(scope, session, cursor);
           } catch (error) {
-            if (errorCode(error) === "busy") {
-              await new Promise((resolve) => setTimeout(resolve, 100));
+            if (terminalErrorCode(error) === "busy") {
+              await new Promise((resolve) =>
+                setTimeout(resolve, READ_RETRY_DELAY_MS),
+              );
               continue;
             }
             throw error;
@@ -111,62 +127,35 @@ export function TerminalDock({
           if (stopped) return;
           if (page.truncated)
             terminal.write("\r\n[Earlier terminal output was truncated]\r\n");
-          if (page.bytes.length > 0) {
-            await new Promise<void>((resolve) =>
-              terminal.write(page.bytes, resolve),
-            );
-          }
+          await new Promise<void>((resolve) =>
+            terminal.write(page.bytes, resolve),
+          );
           cursor = page.nextCursor;
         }
       } catch (error) {
-        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
+        if (!stopped) reportStatus(terminalErrorLabel(error));
       }
     }
 
     async function drainResizes(): Promise<void> {
-      if (resizeActive) return;
       resizeActive = true;
       try {
         while (latestResize && !stopped) {
           const next = latestResize;
           latestResize = null;
-          await resizeUserTerminal(
-            ownerScope,
-            session,
-            next.columns,
-            next.rows,
-          );
+          try {
+            await resizeUserTerminal(scope, session, ...next);
+          } catch (error) {
+            if (!latestResize && !stopped)
+              reportStatus(terminalErrorLabel(error));
+          }
         }
-      } catch (error) {
-        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
       } finally {
         resizeActive = false;
       }
     }
 
-    // A program that is not reading its input makes the native side refuse
-    // a write as busy without taking any of it, so the same chunk is sent
-    // again after a growing pause, for up to INPUT_RETRY_MS.
-    async function writeWhenAccepted(chunk: string): Promise<void> {
-      const started = Date.now();
-      for (let delay = 50; ; delay = Math.min(delay * 2, 500)) {
-        try {
-          await writeUserTerminal(ownerScope, session, chunk);
-          return;
-        } catch (error) {
-          if (
-            errorCode(error) !== "busy" ||
-            stopped ||
-            Date.now() - started >= INPUT_RETRY_MS
-          )
-            throw error;
-        }
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-
     async function drainInput(): Promise<void> {
-      if (inputSending) return;
       inputSending = true;
       try {
         while (pendingInput && !stopped && !sessionEnded) {
@@ -174,13 +163,30 @@ export function TerminalDock({
           pendingInput = "";
           pendingInputBytes = 0;
           try {
-            await writeWhenAccepted(chunk);
+            const started = Date.now();
+            for (
+              let delay = INPUT_RETRY_FIRST_DELAY_MS;
+              !stopped;
+              delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
+            ) {
+              try {
+                await writeUserTerminal(scope, session, chunk);
+                break;
+              } catch (error) {
+                if (
+                  terminalErrorCode(error) !== "busy" ||
+                  stopped ||
+                  Date.now() - started >= INPUT_RETRY_MS
+                )
+                  throw error;
+              }
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
           } catch (error) {
             pendingInput = "";
             pendingInputBytes = 0;
-            sessionEnded = errorCode(error) === "ended";
-            if (!stopped)
-              onStatusRef.current(terminalErrorLabel(error), sessionEnded);
+            sessionEnded = terminalErrorCode(error) === "ended";
+            if (!stopped) reportStatus(terminalErrorLabel(error), sessionEnded);
             break;
           }
         }
@@ -190,52 +196,93 @@ export function TerminalDock({
     }
 
     const inputListener = terminal.onData((data) => {
-      if (stopped || sessionEnded) return;
+      if (stopped || sessionEnded || !data) return;
       const byteLength = utf8ByteLength(data);
-      if (byteLength === 0) return;
-      if (byteLength > 4_096 || pendingInputBytes + byteLength > 4_096) {
-        onStatusRef.current(
+      if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
+        reportStatus(
           "Input was not sent: terminal input buffer limit reached.",
         );
         return;
       }
       pendingInput += data;
       pendingInputBytes += byteLength;
-      void drainInput();
+      if (!inputSending) void drainInput();
     });
     const refreshDimensions = () => {
-      if (stopped) return;
-      if (window.devicePixelRatio !== observedPixelRatio) {
-        observedPixelRatio = window.devicePixelRatio;
+      if (stopped || !showing) return;
+      if (devicePixelRatio !== observedPixelRatio) {
+        observedPixelRatio = devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
       }
-      const next = dimensionsFor(element);
-      if (terminal.cols === next.columns && terminal.rows === next.rows) return;
-      terminal.resize(next.columns, next.rows);
+      const cell = (terminal as MeasuredTerminal)._core._renderService
+        .dimensions.device.cell;
+      if (cell.width <= 0 || cell.height <= 0) return;
+      const scrollbarWidth =
+        element.querySelector(".scrollbar.vertical")?.getBoundingClientRect()
+          .width ?? 0;
+      const next: Dimensions = [
+        Math.max(
+          MIN_COLUMNS,
+          Math.min(
+            TERMINAL_MAX_COLUMNS,
+            Math.floor(
+              ((element.clientWidth - scrollbarWidth) * devicePixelRatio) /
+                cell.width,
+            ),
+          ),
+        ),
+        Math.max(
+          MIN_ROWS,
+          Math.min(
+            TERMINAL_MAX_ROWS,
+            Math.floor((element.clientHeight * devicePixelRatio) / cell.height),
+          ),
+        ),
+      ];
+      if (terminal.cols === next[0] && terminal.rows === next[1]) return;
+      terminal.resize(...next);
       latestResize = next;
-      void drainResizes();
+      if (!resizeActive) void drainResizes();
     };
+    const palette = window.matchMedia?.(FORCED_COLORS_QUERY);
+    // A new font face can change the cell size, so the grid is refitted.
+    const followTheme = () => {
+      applyTheme();
+      refreshDimensions();
+    };
+    palette?.addEventListener("change", followTheme);
     const observer = new ResizeObserver(refreshDimensions);
     observer.observe(element);
     window.addEventListener("resize", refreshDimensions);
-    void resizeUserTerminal(
-      ownerScope,
-      session,
-      initial.columns,
-      initial.rows,
-    ).catch((error: unknown) => {
-      if (!stopped) onStatusRef.current(terminalErrorLabel(error));
-    });
+    displayRef.current = (show) => {
+      showing = show;
+      terminal.options.cursorBlink = show;
+      if (!show) return;
+      resumeRead?.();
+      resumeRead = null;
+      refreshDimensions();
+      terminal.focus();
+    };
     void pollOutput();
-    terminal.focus();
     return () => {
       stopped = true;
+      resumeRead?.();
+      displayRef.current = null;
       observer.disconnect();
+      palette?.removeEventListener("change", followTheme);
       window.removeEventListener("resize", refreshDimensions);
       inputListener.dispose();
       terminal.dispose();
     };
-  }, [ended, ownerScope, session]);
+  }, [ended, scope, session]);
 
-  return <div className="terminal-dock__viewport" ref={viewportRef} />;
+  useEffect(() => {
+    displayRef.current?.(visible);
+  }, [visible, ended, scope, session]);
+
+  return (
+    <div className="terminal-dock__viewport" hidden={!visible}>
+      <div className="terminal-dock__screen" ref={screenRef} />
+    </div>
+  );
 }

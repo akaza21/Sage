@@ -36,7 +36,7 @@ vi.mock("../../ports/nativeBrowserDownloadFolderPort", async (actual) => ({
 import { admitDownloadFolder } from "../../ports/nativeBrowserDownloadFolderPort";
 import { BrowserDownloadFolder } from "./BrowserDownloadFolder";
 
-const FOLDER = "C:\\Users\\me\\Downloads\\Sage";
+const FOLDER = "/downloads/remembered";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -112,18 +112,27 @@ it("reports a failed load and still lets the user choose a folder", async () => 
 });
 
 it("admits only the fields Rust sends", () => {
-  expect(admitDownloadFolder({ path: FOLDER, available: true, x: 1 })).toEqual({
+  expect(
+    admitDownloadFolder({ path: FOLDER, available: true, revision: 4, x: 1 }),
+  ).toEqual({
     path: FOLDER,
     available: true,
+    revision: 4,
   });
   expect(admitDownloadFolder({ path: "", available: true })).toEqual({
     path: null,
     available: false,
+    revision: 0,
   });
-  expect(admitDownloadFolder(null)).toEqual({ path: null, available: false });
+  expect(admitDownloadFolder(null)).toEqual({
+    path: null,
+    available: false,
+    revision: 0,
+  });
   expect(admitDownloadFolder({ path: FOLDER, available: "yes" })).toEqual({
     path: FOLDER,
     available: false,
+    revision: 0,
   });
 });
 
@@ -131,7 +140,7 @@ it("shows a folder the first download saved while Settings is open", async () =>
   const { unmount } = render(<BrowserDownloadFolder />);
   await screen.findByText(/Not set\. The next download asks/);
   await waitFor(() => expect(port.emit).not.toBeNull());
-  act(() => port.emit?.({ path: FOLDER, available: true }));
+  act(() => port.emit?.({ path: FOLDER, available: true, revision: 1 }));
   expect(await screen.findByText(FOLDER)).toBeVisible();
   expect(reset()).toBeEnabled();
   unmount();
@@ -149,11 +158,84 @@ it("subscribes before reading, and a late snapshot never overwrites a newer even
   await waitFor(() => expect(port.get).toHaveBeenCalledTimes(1));
   // The listener was registered before the read started.
   expect(port.emit).not.toBeNull();
-  act(() => port.emit?.({ path: FOLDER, available: true }));
+  act(() => port.emit?.({ path: FOLDER, available: true, revision: 1 }));
   expect(await screen.findByText(FOLDER)).toBeVisible();
   await act(async () => {
-    resolveSnapshot({ path: null, available: false });
+    resolveSnapshot({ path: null, available: false, revision: 0 });
   });
   expect(screen.getByText(FOLDER)).toBeVisible();
   await waitFor(() => expect(change()).toBeEnabled());
+});
+
+it("keeps a newly remembered folder when a canceled picker returns an older snapshot", async () => {
+  let resolveChoice: (value: unknown) => void = () => undefined;
+  port.get.mockResolvedValue({ path: FOLDER, available: false, revision: 1 });
+  port.choose.mockReturnValue(
+    new Promise((resolve) => {
+      resolveChoice = resolve;
+    }),
+  );
+  render(<BrowserDownloadFolder />);
+  await waitFor(() => expect(change()).toBeEnabled());
+  fireEvent.click(change());
+  act(() =>
+    port.emit?.({ path: "/downloads/newer", available: true, revision: 2 }),
+  );
+  expect(await screen.findByText("/downloads/newer")).toBeVisible();
+  await act(async () => {
+    resolveChoice({ path: FOLDER, available: false, revision: 1 });
+  });
+  expect(screen.getByText("/downloads/newer")).toBeVisible();
+  await waitFor(() => expect(change()).toBeEnabled());
+});
+
+it("applies an initial snapshot committed after an earlier event", async () => {
+  let resolveSnapshot: (value: unknown) => void = () => undefined;
+  let readStarted: () => void = () => undefined;
+  const started = new Promise<void>((resolve) => {
+    readStarted = resolve;
+  });
+  port.get.mockImplementation(() => {
+    readStarted();
+    return new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+  });
+  render(<BrowserDownloadFolder />);
+  await started;
+  act(() =>
+    port.emit?.({ path: "/downloads/earlier", available: true, revision: 1 }),
+  );
+  expect(await screen.findByText("/downloads/earlier")).toBeVisible();
+  await act(async () => {
+    resolveSnapshot({ path: null, available: false, revision: 2 });
+  });
+  expect(
+    await screen.findByText(/Not set\. The next download asks/),
+  ).toBeVisible();
+  expect(reset()).toBeDisabled();
+});
+
+it("applies a newer Reset reply after an earlier folder-change event", async () => {
+  let resolveReset: (value: unknown) => void = () => undefined;
+  port.get.mockResolvedValue({ path: FOLDER, available: true, revision: 1 });
+  port.reset.mockReturnValue(
+    new Promise((resolve) => {
+      resolveReset = resolve;
+    }),
+  );
+  render(<BrowserDownloadFolder />);
+  await screen.findByText(FOLDER);
+  fireEvent.click(reset());
+  act(() =>
+    port.emit?.({ path: "/downloads/earlier", available: true, revision: 2 }),
+  );
+  expect(await screen.findByText("/downloads/earlier")).toBeVisible();
+  await act(async () => {
+    resolveReset({ path: null, available: false, revision: 3 });
+  });
+  expect(
+    await screen.findByText(/Not set\. The next download asks/),
+  ).toBeVisible();
+  expect(reset()).toBeDisabled();
 });

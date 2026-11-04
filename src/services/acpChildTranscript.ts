@@ -1,6 +1,6 @@
 import type { AcpItem } from "../domain/acp";
 import { truncateUtf8, utf8ByteLength } from "../domain/text";
-import { isRecord, safeIdentifier } from "./acpDesktopResponses";
+import { isRecord, safeIdentifier } from "./acpDesktopGuards";
 import { safeItem } from "./acpDesktopResponseItems";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
 

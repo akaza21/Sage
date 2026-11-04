@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     browser::downloads::{DownloadRegistry, NavigationProvenance},
-    settings_commands::browser_download_folder::remember_folder,
+    settings_commands::browser_download_folder::{remember_first_choice, remember_folder},
     settings_store::SettingsStore,
 };
 
@@ -47,7 +47,7 @@ async fn download(
     let id = registry
         .begin("browser-one", "https://example.com/file", suggested)
         .unwrap();
-    let stored = store.browser_download_folder().unwrap();
+    let stored = store.browser_download_folder_record().unwrap().path;
     let claimed = registry.claimed();
     let plan = plan(stored.as_deref(), suggested, None, |path| {
         claimed.contains(path)
@@ -90,12 +90,27 @@ async fn first_download_asks_then_later_downloads_save_silently_to_that_folder()
     );
     assert_eq!(destination, Some(chosen.0.join("report.pdf")));
     assert_eq!(
-        store.browser_download_folder().unwrap(),
+        store.browser_download_folder_record().unwrap().path,
         Some(chosen.0.clone())
     );
 
     let (second, _) = download(&store, &mut registry, "photo.png", None).await;
     assert_eq!(silent_path(&second), Some(chosen.0.join("photo.png")));
+}
+
+#[tokio::test]
+async fn a_first_dangerous_download_remembers_the_explicit_choice() {
+    let store = SettingsStore::in_memory().unwrap();
+    let mut registry = user_registry();
+    let chosen = Scratch::new("first-dangerous");
+    let (first, _) = download(&store, &mut registry, "setup.exe", Some(&chosen.0)).await;
+    assert!(matches!(first, Plan::Ask { remember: true, .. }));
+    assert_eq!(
+        store.browser_download_folder_record().unwrap().path,
+        Some(chosen.0.clone())
+    );
+    let (second, _) = download(&store, &mut registry, "report.pdf", None).await;
+    assert_eq!(silent_path(&second), Some(chosen.0.join("report.pdf")));
 }
 
 #[tokio::test]
@@ -105,7 +120,7 @@ async fn a_canceled_first_save_dialog_saves_no_folder() {
     let (plan, destination) = download(&store, &mut registry, "report.pdf", None).await;
     assert!(matches!(plan, Plan::Ask { remember: true, .. }));
     assert_eq!(destination, None);
-    assert_eq!(store.browser_download_folder().unwrap(), None);
+    assert_eq!(store.browser_download_folder_record().unwrap().path, None);
 }
 
 #[tokio::test]
@@ -146,7 +161,7 @@ async fn a_missing_saved_folder_asks_again_and_remembers_the_new_choice() {
         }
     ));
     assert_eq!(
-        store.browser_download_folder().unwrap(),
+        store.browser_download_folder_record().unwrap().path,
         Some(new.0.clone())
     );
 }
@@ -192,7 +207,7 @@ async fn dangerous_types_always_ask_and_keep_the_saved_folder() {
         assert_eq!(directory.as_deref(), Some(saved.0.as_path()), "{name}");
     }
     assert_eq!(
-        store.browser_download_folder().unwrap(),
+        store.browser_download_folder_record().unwrap().path,
         Some(saved.0.clone())
     );
     // A stream colon cannot reach the file system, so the name is no
@@ -201,6 +216,43 @@ async fn dangerous_types_always_ask_and_keep_the_saved_folder() {
         silent_path(&plan(Some(&saved.0), "stream.exe:zone", None, free)),
         Some(saved.0.join("stream.exe_zone"))
     );
+}
+
+#[test]
+fn dangerous_downloads_keep_an_unavailable_remembered_folder() {
+    let store = SettingsStore::in_memory().unwrap();
+    let saved = Scratch::new("dangerous-unavailable");
+    store.set_browser_download_folder(&saved.0).unwrap();
+    std::fs::remove_dir_all(&saved.0).unwrap();
+    let chosen = Scratch::new("dangerous-choice");
+
+    for (name, mime) in [
+        ("setup.exe", None),
+        ("report.txt", Some("application/x-msdownload")),
+    ] {
+        let record = store.browser_download_folder_record().unwrap();
+        let Plan::Ask {
+            file_name,
+            remember,
+            directory,
+        } = plan(record.path.as_deref(), name, mime, free)
+        else {
+            panic!("{name} saved without asking");
+        };
+        assert_eq!(directory, None);
+        if remember {
+            assert!(remember_first_choice(
+                &store,
+                record.revision,
+                &chosen.0.join(file_name),
+            ));
+        }
+        assert_eq!(
+            store.browser_download_folder_record().unwrap().path,
+            Some(saved.0.clone()),
+            "{name} changed the remembered folder",
+        );
+    }
 }
 
 #[test]
@@ -278,8 +330,8 @@ fn a_relative_stored_folder_is_never_used() {
 #[test]
 fn verbatim_windows_paths_are_simplified_only_when_equivalent() {
     assert_eq!(
-        simplified_verbatim_text(r"\\?\C:\Users\me\Downloads").as_deref(),
-        Some(r"C:\Users\me\Downloads")
+        simplified_verbatim_text(r"\\?\C:\downloads").as_deref(),
+        Some(r"C:\downloads")
     );
     assert_eq!(
         simplified_verbatim_text(r"\\?\UNC\server\share\dl").as_deref(),

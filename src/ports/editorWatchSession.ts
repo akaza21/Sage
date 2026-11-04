@@ -1,9 +1,9 @@
 import {
-  createInjectedEditorWatchDelivery,
   noticeMatchesWatch,
   type EditorExternalWatchNotice,
   type EditorWatchSubscription,
 } from "../domain/editorWatch";
+import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import type { ResourceRef } from "../domain/workbench";
 import { EDITOR_EXTERNAL_WATCH_EVENT } from "../domain/editorWatch";
 import { invokeNative, isTauriRuntime } from "./nativeInvoke";

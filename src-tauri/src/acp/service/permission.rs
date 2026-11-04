@@ -108,8 +108,7 @@ impl AcpService {
             session_id: session_id.clone(),
             runtime_epoch,
         };
-        self.runtime
-            .for_owner(&owner)
+        self.host_for(&owner)
             .map_err(|_| HostError::Intent)?
             .resolve_permission(owner, request_id.clone(), decision)?;
         Ok(PermissionDecisionResponse {

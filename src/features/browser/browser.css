@@ -1,4 +1,6 @@
 .browser-surface {
+  /* The device toolbar's row, divider included (Codex ref 41). */
+  --browser-device-toolbar-height: 36px;
   position: absolute;
   inset: 0;
   min-width: 0;
@@ -97,8 +99,12 @@
   gap: 2px;
 }
 .browser-surface__nav-group {
+  overflow: clip;
   border-radius: var(--radius-pill);
   background: var(--browser-control-fill);
+}
+.browser-surface__nav-group button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .browser-surface__right-group {
   position: relative;
@@ -299,12 +305,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-.browser-surface__find {
   flex-wrap: wrap;
   padding: 4px 8px;
 }
+
 .browser-surface__find input {
   flex: 1 1 120px;
   min-width: 0;
@@ -321,10 +325,22 @@
   color: var(--color-text-secondary);
   background: var(--bg);
 }
+/* The device toolbar's row; it holds its height while the toolbar loads. */
+.browser-surface__device-slot {
+  flex: 0 0 var(--browser-device-toolbar-height);
+  min-width: 0;
+  z-index: var(--z-floating);
+}
 .browser-surface__frame {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+/* The native page sits over this box: the whole frame, or a centred
+   device with a gutter for its resize handles (BF-7a, browser-device.css). */
+.browser-surface__viewport {
+  position: absolute;
+  inset: 0;
 }
 /* Annotate's comment box over the frozen page (Codex ref 60). */
 .browser-annotate {
@@ -462,6 +478,9 @@
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
   font-size: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 4px 8px;
 }
 .browser-site-permissions ul {
   display: grid;
@@ -470,9 +489,9 @@
   overflow-y: auto;
   margin: 0;
   list-style: none;
+  padding: 0;
 }
-/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
-   popover hangs from the right group like the … menu does. */
+
 .browser-downloads__trigger {
   position: relative;
 }
@@ -579,12 +598,6 @@
   height: 4px;
   accent-color: var(--color-accent);
 }
-.browser-site-permissions {
-  display: grid;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
 .browser-site-permissions__prompt,
 .browser-site-permissions li {
   display: flex;
@@ -596,9 +609,6 @@
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
-}
-.browser-site-permissions ul {
-  padding: 0;
 }
 .browser-site-permissions p {
   margin: 0;

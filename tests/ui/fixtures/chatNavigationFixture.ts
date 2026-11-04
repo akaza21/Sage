@@ -12,8 +12,7 @@ export async function openNavigationChat(
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openJourney(page);
   await page.addStyleTag({
-    content:
-      ".agent-chat-panes--split { grid-template-columns: 760px 8px 760px !important; }",
+    content: ".agent-chat-panes { grid-template-columns: 760px !important; }",
   });
   await page.evaluate(
     async ({ count, incomplete, longAnswer }) => {

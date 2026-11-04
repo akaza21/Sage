@@ -2,8 +2,7 @@
   grid-template:
     "find" auto
     "notice" auto
-    "transcript" minmax(120px, 1fr)
-    "edits" minmax(0, auto)
+    "transcript" minmax(0, 1fr)
     "composer" fit-content(60%)
     / minmax(0, 1fr);
 }
@@ -11,7 +10,7 @@
 .chat-surface--agent > .chat-find {
   grid-area: find;
   justify-self: end;
-  margin: 8px;
+  margin: var(--space-2);
   width: min(314px, calc(100% - 16px));
   border: 1px solid var(--agent-shell-divider);
   border-radius: var(--radius-chat-find);
@@ -22,9 +21,9 @@
 .chat-find__input {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 40px;
-  padding: 0 8px 0 12px;
+  padding: 0 var(--space-2) 0 var(--space-3);
 }
 .chat-find__input input {
   min-width: 0;
@@ -58,12 +57,12 @@
 .chat-find button:disabled {
   opacity: 0.4;
 }
-/* Codex s6/f0676: a 32 px second row with #898989 arrows. */
+
 .chat-find__results {
   display: flex;
   align-items: center;
   height: 32px;
-  padding: 0 12px 0 8px;
+  padding: 0 var(--space-3) 0 var(--space-2);
   border-top: 1px solid var(--agent-shell-divider);
   color: var(--agent-find-status);
 }
@@ -73,7 +72,7 @@
 }
 .chat-find__scope {
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--agent-shell-divider);
   font-size: 12px;
   color: var(--color-text-muted);

@@ -10,6 +10,8 @@ export interface BrowserDownloadFolder {
   path: string | null;
   /** False when the saved folder is gone or read-only; the next download asks. */
   available: boolean;
+  /** SQLite change sequence, shared by snapshots, replies, and events. */
+  revision: number;
 }
 
 export function browserDownloadFolder(): Promise<unknown> {
@@ -34,7 +36,17 @@ export function admitDownloadFolder(input: unknown): BrowserDownloadFolder {
     typeof source.path === "string" && source.path.length > 0
       ? source.path
       : null;
-  return { path, available: path !== null && source.available === true };
+  const revision =
+    typeof source.revision === "number" &&
+    Number.isSafeInteger(source.revision) &&
+    source.revision >= 0
+      ? source.revision
+      : 0;
+  return {
+    path,
+    available: path !== null && source.available === true,
+    revision,
+  };
 }
 
 /**

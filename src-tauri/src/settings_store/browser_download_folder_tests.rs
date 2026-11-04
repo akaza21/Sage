@@ -8,7 +8,7 @@ fn no_download_folder_is_saved_until_one_is_set() {
         DownloadFolderRecord::default()
     );
     store.clear_browser_download_folder().unwrap();
-    assert_eq!(store.browser_download_folder().unwrap(), None);
+    assert_eq!(store.browser_download_folder_record().unwrap().path, None);
 }
 
 #[test]
@@ -23,15 +23,16 @@ fn the_download_folder_persists_until_reset() {
         .unwrap();
     let reopened = SettingsStore::open(&path).unwrap();
     assert_eq!(
-        reopened.browser_download_folder().unwrap(),
+        reopened.browser_download_folder_record().unwrap().path,
         Some(directory.clone())
     );
     reopened.clear_browser_download_folder().unwrap();
     assert_eq!(
         SettingsStore::open(&path)
             .unwrap()
-            .browser_download_folder()
-            .unwrap(),
+            .browser_download_folder_record()
+            .unwrap()
+            .path,
         None
     );
     drop(reopened);
@@ -89,14 +90,17 @@ fn a_conditional_save_loses_to_any_change_since_it_read_even_a_change_back() {
             .set_browser_download_folder_if(read.revision, &dialog)
             .unwrap()
     );
-    assert_eq!(store.browser_download_folder().unwrap(), None);
+    assert_eq!(store.browser_download_folder_record().unwrap().path, None);
     let read = store.browser_download_folder_record().unwrap();
     assert!(
         store
             .set_browser_download_folder_if(read.revision, &dialog)
             .unwrap()
     );
-    assert_eq!(store.browser_download_folder().unwrap(), Some(dialog));
+    assert_eq!(
+        store.browser_download_folder_record().unwrap().path,
+        Some(dialog)
+    );
 }
 
 #[test]

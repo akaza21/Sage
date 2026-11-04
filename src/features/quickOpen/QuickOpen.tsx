@@ -15,6 +15,7 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { FileKindIcon } from "../files/FileKindIcon";
 import {
   filterCommands,
   paletteCommands,
@@ -22,6 +23,7 @@ import {
 } from "./paletteCommands";
 import { queryQuickOpen } from "./quickOpenGateway";
 import { recentFiles } from "./quickOpenState";
+import { ShortcutKeys } from "./ShortcutKeys";
 import "./quick-open.css";
 
 /** While the index is being refreshed, the same query is asked again. */
@@ -100,7 +102,7 @@ export default function QuickOpen({
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
-  /** Enter pressed before the answer for the current query arrived. */
+  /** A File was confirmed before the current query's answer arrived. */
   const pendingEnter = useRef(false);
   const list = useRef<HTMLUListElement | null>(null);
   const projectId = project?.id ?? null;
@@ -245,6 +247,13 @@ export default function QuickOpen({
     // A refreshed answer can move the selected File without changing it.
   }, [activeKey, active]);
 
+  const confirmFile = (match: QuickOpenMatch | undefined) => {
+    if (bareLine || answer?.key === key) open(match);
+    // The list on screen answers an earlier request: open the first match
+    // for this one once it arrives.
+    else if (!error) pendingEnter.current = true;
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // keyCode 229 is the key that ends a composition, which WebKit (macOS)
     // reports after `compositionend`.
@@ -282,10 +291,7 @@ export default function QuickOpen({
       // isn't yet, so it opens in place too.
       event.preventDefault();
       if (commandMode) runCommand(commands[active]);
-      else if (bareLine || answer?.key === key) open(results[active]);
-      // The list on screen answers an earlier request: open the first match
-      // for this one once it arrives.
-      else if (!error) pendingEnter.current = true;
+      else confirmFile(results[active]);
     }
   };
 
@@ -315,7 +321,7 @@ export default function QuickOpen({
       }}
     >
       <div
-        className="quick-open"
+        className="quick-open popup-material"
         role="dialog"
         aria-modal="true"
         aria-label="Quick Open"
@@ -370,7 +376,7 @@ export default function QuickOpen({
             >
               <span className="quick-open__name">{command.label}</span>
               {command.shortcut ? (
-                <kbd className="quick-open__shortcut">{command.shortcut}</kbd>
+                <ShortcutKeys label={command.shortcut} />
               ) : null}
             </li>
           ))}
@@ -383,8 +389,11 @@ export default function QuickOpen({
                 className="quick-open__row"
                 role="option"
                 aria-selected={index === active}
-                onClick={() => open(match)}
+                onClick={() => confirmFile(match)}
               >
+                <span className="quick-open__icon">
+                  <FileKindIcon path={match.relativePath} size={16} />
+                </span>
                 <span className="quick-open__name">
                   <Highlighted
                     text={match.relativePath.slice(base)}

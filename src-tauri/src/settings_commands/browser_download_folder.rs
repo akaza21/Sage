@@ -18,25 +18,27 @@ use tauri_plugin_dialog::DialogExt;
 use crate::{
     browser::downloads::folder::{admit_folder, folder_of_choice},
     error::AppResult,
-    settings_store::SettingsStore,
+    settings_store::{DownloadFolderRecord, SettingsStore},
     state::AppState,
 };
 
 /// What the Downloads row shows. `path` is the saved folder as stored;
 /// `available` is false when it no longer exists or cannot be written, in
-/// which case the next download asks again.
+/// which case the next download asks again. `revision` orders this snapshot
+/// against replies and events even when the availability probe is slow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DownloadFolderView {
     pub(crate) path: Option<String>,
     pub(crate) available: bool,
+    pub(crate) revision: i64,
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 static PROBES: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 pub(crate) async fn folder_view(store: &SettingsStore) -> AppResult<DownloadFolderView> {
-    let stored = store.browser_download_folder()?;
+    let stored = store.browser_download_folder_record()?;
     Ok(view_with_probe(stored, PROBE_TIMEOUT, probe_slots(), admit_folder).await)
 }
 
@@ -45,19 +47,20 @@ fn probe_slots() -> Arc<Semaphore> {
 }
 
 async fn view_with_probe(
-    stored: Option<PathBuf>,
+    stored: DownloadFolderRecord,
     timeout: Duration,
     slots: Arc<Semaphore>,
     probe: impl FnOnce(&Path) -> Option<PathBuf> + Send + 'static,
 ) -> DownloadFolderView {
-    let available = if let Some(path) = stored.clone() {
+    let available = if let Some(path) = stored.path.clone() {
         bounded_probe(path, timeout, slots, probe).await.is_some()
     } else {
         false
     };
     DownloadFolderView {
         available,
-        path: stored.map(|path| path.to_string_lossy().into_owned()),
+        path: stored.path.map(|path| path.to_string_lossy().into_owned()),
+        revision: stored.revision,
     }
 }
 
@@ -109,10 +112,11 @@ pub(crate) fn remember_first_choice(store: &SettingsStore, revision: i64, chosen
 pub(crate) fn emit_folder_changed(app: &AppHandle, store: &SettingsStore) {
     // Every caller has just admitted and saved the folder. Announce that
     // value without starting another filesystem probe or delayed event.
-    if let Ok(stored) = store.browser_download_folder() {
+    if let Ok(stored) = store.browser_download_folder_record() {
         let view = DownloadFolderView {
-            available: stored.is_some(),
-            path: stored.map(|path| path.to_string_lossy().into_owned()),
+            available: stored.path.is_some(),
+            path: stored.path.map(|path| path.to_string_lossy().into_owned()),
+            revision: stored.revision,
         };
         let _ = app.emit_to("main", FOLDER_CHANGED, view);
     }
@@ -190,7 +194,8 @@ mod tests {
             folder_view(&store).await.unwrap(),
             DownloadFolderView {
                 path: None,
-                available: false
+                available: false,
+                revision: 0,
             }
         );
         let directory = scratch("change");
@@ -202,12 +207,15 @@ mod tests {
             .unwrap();
         let view = folder_view(&store).await.unwrap();
         assert!(view.available);
+        assert_eq!(view.revision, 1);
         assert_eq!(
             view.path.as_deref().map(Path::new),
             Some(admit_folder(&nested).unwrap().as_path())
         );
         store.clear_browser_download_folder().unwrap();
-        assert_eq!(folder_view(&store).await.unwrap().path, None);
+        let reset = folder_view(&store).await.unwrap();
+        assert_eq!(reset.path, None);
+        assert_eq!(reset.revision, 2);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -223,7 +231,7 @@ mod tests {
                 .is_err()
         );
         assert!(remember_folder(&store, &file).await.is_err());
-        assert_eq!(store.browser_download_folder().unwrap(), None);
+        assert_eq!(store.browser_download_folder_record().unwrap().path, None);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
@@ -239,12 +247,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_probe_keeps_the_path_and_revision_it_read_together() {
+        let store = SettingsStore::in_memory().unwrap();
+        let directory = scratch("probe-revision");
+        remember_folder(&store, &directory).await.unwrap();
+        let stored = store.browser_download_folder_record().unwrap();
+        let expected = stored.clone();
+        let changed = store.clone();
+        let view = view_with_probe(
+            stored,
+            Duration::from_secs(2),
+            Arc::new(Semaphore::new(1)),
+            move |path| {
+                changed.clear_browser_download_folder().unwrap();
+                admit_folder(path)
+            },
+        )
+        .await;
+        let path = view.path.as_deref().map(Path::new);
+        assert_eq!(path, expected.path.as_deref());
+        assert_eq!(view.revision, expected.revision);
+        let reset = folder_view(&store).await.unwrap();
+        assert_eq!(reset.path, None);
+        assert!(reset.revision > view.revision);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
     async fn timed_out_probes_keep_the_limit_until_the_os_work_finishes() {
         let directory = scratch("probe-limit");
         let slots = Arc::new(Semaphore::new(1));
         let (release, blocked) = std::sync::mpsc::channel();
         let first = view_with_probe(
-            Some(directory.clone()),
+            DownloadFolderRecord {
+                path: Some(directory.clone()),
+                revision: 1,
+            },
             Duration::from_millis(20),
             slots.clone(),
             move |path| {
@@ -254,7 +292,10 @@ mod tests {
         )
         .await;
         let second = view_with_probe(
-            Some(directory.clone()),
+            DownloadFolderRecord {
+                path: Some(directory.clone()),
+                revision: 1,
+            },
             Duration::from_millis(20),
             slots.clone(),
             |path| Some(path.to_owned()),
@@ -269,7 +310,10 @@ mod tests {
                 .unwrap(),
         );
         let recovered = view_with_probe(
-            Some(directory.clone()),
+            DownloadFolderRecord {
+                path: Some(directory.clone()),
+                revision: 1,
+            },
             Duration::from_secs(2),
             slots,
             |path| Some(path.to_owned()),
@@ -295,7 +339,10 @@ mod tests {
             let _ = release.send(());
         });
         let view = view_with_probe(
-            Some(directory.clone()),
+            DownloadFolderRecord {
+                path: Some(directory.clone()),
+                revision: 1,
+            },
             Duration::from_millis(20),
             Arc::new(Semaphore::new(1)),
             move |path| {
@@ -325,7 +372,7 @@ mod tests {
             read.revision,
             &dialog.join("file.zip")
         ));
-        assert_eq!(store.browser_download_folder().unwrap(), None);
+        assert_eq!(store.browser_download_folder_record().unwrap().path, None);
         // With nothing in between, the dialog's folder is saved.
         let read = store.browser_download_folder_record().unwrap();
         assert!(remember_first_choice(
@@ -334,7 +381,7 @@ mod tests {
             &dialog.join("file.zip")
         ));
         assert_eq!(
-            store.browser_download_folder().unwrap(),
+            store.browser_download_folder_record().unwrap().path,
             admit_folder(&dialog)
         );
         std::fs::remove_dir_all(dialog).unwrap();
