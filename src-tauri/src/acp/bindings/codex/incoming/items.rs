@@ -22,7 +22,10 @@ use super::{
 
 type ItemNormalization = (NormalizedPayload, Option<ToolState>, Option<ItemLifecycle>);
 
+mod file_change;
 mod presentation;
+
+pub(super) use file_change::normalize as normalize_file_change;
 mod tool_kinds;
 
 use tool_kinds::{explore_presentation, mcp_tool, web_search};
@@ -92,7 +95,7 @@ pub(super) fn normalize_item<M: ResourceMapper>(
         "webSearch" => web_search(item, lifecycle).map(Some),
         "collabAgentToolCall" | "subAgentActivity" => presentation::collaboration(item).map(Some),
         "fileChange" if !lifecycle.is_terminal() => Ok(None),
-        "fileChange" => file_change(item, mapper).map(Some),
+        "fileChange" => normalize_file_change(item, mapper, false).map(|(item, _)| Some(item)),
         "imageGeneration" => image_generation(item, lifecycle),
         "imageView" => image_view(item, mapper, lifecycle).map(Some),
         "enteredReviewMode" => review_mode(item, "Entered review mode", lifecycle).map(Some),
@@ -323,94 +326,6 @@ fn rejected_image(
         None,
         Some(ItemLifecycle::Unsupported),
     )))
-}
-
-fn file_change<M: ResourceMapper>(
-    item: &Map<String, Value>,
-    mapper: &M,
-) -> Result<ItemNormalization, IngressError> {
-    let changes = item
-        .get("changes")
-        .and_then(Value::as_array)
-        .ok_or(IngressError::Malformed)?;
-    if changes.len() != 1 {
-        return Ok((
-            unsupported("fileChange", "File change spans multiple resources")?,
-            None,
-            Some(ItemLifecycle::Unsupported),
-        ));
-    }
-    let change = changes[0].as_object().ok_or(IngressError::Malformed)?;
-    let absolute = text(
-        change,
-        "path",
-        LIMITS.wire.absolute_path_bytes_native_only as usize,
-    )?;
-    let operation = match change
-        .get("kind")
-        .and_then(Value::as_object)
-        .and_then(|kind| kind.get("type"))
-        .and_then(Value::as_str)
-    {
-        Some("add") => crate::acp::intent::FileChangeOperation::Created,
-        Some("delete") => crate::acp::intent::FileChangeOperation::Deleted,
-        _ => crate::acp::intent::FileChangeOperation::Updated,
-    };
-    let resource = match mapper.map_existing(absolute) {
-        Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-        Err(crate::acp::intent::UnavailableResourceReason::Missing)
-            if operation == crate::acp::intent::FileChangeOperation::Deleted =>
-        {
-            match mapper.map_missing_display(absolute) {
-                Some(display) => {
-                    crate::acp::intent::SafeResourceLocation::unavailable_with_display(
-                        crate::acp::intent::UnavailableResourceReason::Missing,
-                        display,
-                    )
-                }
-                None => crate::acp::intent::SafeResourceLocation::unavailable(
-                    crate::acp::intent::UnavailableResourceReason::Missing,
-                ),
-            }
-        }
-        Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
-    };
-    let verb = match operation {
-        crate::acp::intent::FileChangeOperation::Created => "Created",
-        crate::acp::intent::FileChangeOperation::Updated => "Edited",
-        crate::acp::intent::FileChangeOperation::Deleted => "Deleted",
-    };
-    let display = match &resource {
-        crate::acp::intent::SafeResourceLocation::Resource { resource }
-            if resource.relative_path.as_str().len() <= 480
-                && !resource
-                    .relative_path
-                    .as_str()
-                    .chars()
-                    .any(char::is_control) =>
-        {
-            resource.relative_path.as_str()
-        }
-        _ => "file",
-    };
-    let summary = SafeText::new("fileSummary", format!("{verb} {display}")).map_err(content)?;
-    // Codex `fileChange` wire evidence carries a single opaque `diff` string,
-    // never a bounded old/new pair. Map to typed unavailable metadata without
-    // inventing text from disk or Git; the card still opens its summary.
-    Ok((
-        NormalizedPayload::file_summary_only(
-            crate::acp::intent::FileChangeFacts {
-                resource,
-                summary,
-                additions: None,
-                deletions: None,
-                operation,
-            },
-            false,
-        ),
-        None,
-        None,
-    ))
 }
 
 #[cfg(test)]
