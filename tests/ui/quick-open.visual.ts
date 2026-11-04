@@ -85,7 +85,9 @@ test.describe("Command palette (ED-2a)", () => {
     await expect(options).toHaveCount(1);
     await expect(options.first()).toContainText("Go to Line…");
     // Its own shortcut is shown (Control+G on every platform).
-    await expect(options.first().locator("kbd")).toHaveText("Ctrl+G");
+    await expect(options.first().locator(".quick-open__shortcut")).toHaveText(
+      "Ctrl+G",
+    );
     await box.press("Enter");
     await expect(dialog).toBeHidden();
     await expect(

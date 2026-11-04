@@ -9,6 +9,7 @@ import { Profiler, useId, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MenuPopover } from "./MenuPopover";
+import { pointerPopoverPosition } from "./pointerPopoverPosition";
 
 const INITIAL_INNER_HEIGHT = window.innerHeight;
 const INITIAL_INNER_WIDTH = window.innerWidth;
@@ -126,6 +127,30 @@ function GrowingMenuHarness() {
   );
 }
 
+function PointerMenuHarness({ point }: { point: { x: number; y: number } }) {
+  const [open, setOpen] = useState(true);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button ref={triggerRef} type="button">
+        Row
+      </button>
+      <MenuPopover
+        id="pointer-menu"
+        open={open}
+        positionAt={(popover) => pointerPopoverPosition(point, popover)}
+        ariaLabel="Row actions"
+        triggerRef={triggerRef}
+        onDismiss={() => setOpen(false)}
+      >
+        <button className="menu-item" type="button" role="menuitem">
+          Rename
+        </button>
+      </MenuPopover>
+    </>
+  );
+}
+
 describe("MenuPopover", () => {
   it.each(
     [720, 480].flatMap((viewport) =>
@@ -169,6 +194,42 @@ describe("MenuPopover", () => {
       left: "300px",
       maxWidth: `${viewport - 308}px`,
     });
+  });
+
+  it.each([
+    ["at the pointer where it fits", { x: 100, y: 120 }, 100, 120],
+    ["flipped left and up near the far corner", { x: 950, y: 650 }, 750, 500],
+    ["clamped inside the viewport near the near corner", { x: 2, y: 4 }, 8, 8],
+  ])("opens a context menu %s", (_, point, left, top) => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 700,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 200, 150);
+        return new DOMRect(40, 300, 240, 22);
+      },
+    );
+    render(<PointerMenuHarness point={point} />);
+    expect(screen.getByRole("menu", { name: "Row actions" })).toHaveStyle({
+      left: `${left}px`,
+      top: `${top}px`,
+    });
+  });
+
+  it("hands the focus back to its row when a pointer-opened menu closes", () => {
+    render(<PointerMenuHarness point={{ x: 100, y: 120 }} />);
+    const item = screen.getByRole("menuitem", { name: "Rename" });
+    expect(item).toHaveFocus();
+    fireEvent.keyDown(item, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Row actions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Row" })).toHaveFocus();
   });
 
   it("dismisses when a resize stops rendering its trigger instead of anchoring to an empty rect", () => {
