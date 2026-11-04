@@ -76,6 +76,28 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
 }
 
 #[test]
+fn fresh_local_project_first_chat_loads_empty_history() {
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database.ensure_local_project().unwrap();
+    assert!(project.roots.is_empty());
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    let chat = snapshot.active_tab_id.unwrap();
+
+    let history = page(&database, &project.id, &chat);
+    assert!(history.turns.as_slice().is_empty());
+    assert!(history.sessions.as_slice().is_empty());
+    assert!(history.current_session_id.is_none());
+    assert!(history.next_cursor.is_none());
+
+    database
+        .append_simulator_turn(&chat, "first prompt", "real answer")
+        .unwrap();
+    let history = page(&database, &project.id, &chat);
+    assert_eq!(history.turns.as_slice().len(), 1);
+    assert_eq!(history.turns.as_slice()[0].items.as_slice().len(), 2);
+}
+
+#[test]
 fn local_project_starts_without_a_simulator_session_or_turn() {
     let database = Database::open(Path::new(":memory:")).unwrap();
     database.ensure_local_project().unwrap();
