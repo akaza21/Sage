@@ -1,7 +1,7 @@
 use crate::{
     acp, app_preview_commands, browser, chat_archive_commands, chat_commands, chat_queue_commands,
     chat_search_commands, commands, editor_watch, file_create_commands, file_rename_commands,
-    image_artifacts, project_commands, repository_branch_create_commands,
+    image_artifacts, project_commands, project_create_commands, repository_branch_create_commands,
     repository_branch_delete_commands, repository_branch_rename_commands, repository_change_stamp,
     repository_checkout_commands, repository_cherry_pick_commands, repository_commit_commands,
     repository_git_base, repository_mutation_commands, repository_pull_commands,
@@ -22,6 +22,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         return true;
     }
     let handle: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        #[cfg(windows)]
+        crate::window_frame::set_window_caption_controls,
         user_terminal::ipc::terminal_create,
         user_terminal::ipc::terminal_write,
         user_terminal::ipc::terminal_resize,
@@ -35,6 +37,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         resource_commands::get_file_diff,
         repository_git_base::get_file_git_base,
         repository_ref_commands::discover_project_repositories,
+        repository_ref_commands::resolve_resource_repository,
         repository_ref_commands::get_repository_ref_status,
         repository_ref_commands::get_repository_ref_file_diff,
         editor_watch::watch_editor_document,
@@ -65,7 +68,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         file_rename_commands::rename_project_file,
         file_rename_commands::rename_project_folder,
         resource_trash_commands::trash_project_resource,
-        project_commands::create_project_from_picker,
+        project_create_commands::pick_project_source_folder,
+        project_create_commands::create_project,
         project_commands::add_project_root_from_picker,
         project_commands::ensure_local_project,
         chat_commands::create_chat,
@@ -170,6 +174,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
         browser::page_controls::browser_find,
+        settings_commands::agent_rail_view::agent_rail_view,
+        settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
         settings_commands::browser_preferences::browser_set_preferences
     ];

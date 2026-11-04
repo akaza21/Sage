@@ -135,7 +135,7 @@ it("shows real line counts and opens the originating saved Diff from the edit ca
   expect(onOpenResource).toHaveBeenCalledTimes(2);
 });
 
-it("does not offer a working diff or invent line counts when a saved pair is unavailable", () => {
+it("offers an explicitly labeled working diff without inventing saved line counts", () => {
   const page = snapshotPage();
   const edit = page.turns[0].items[0];
   if (edit.kind !== "fileChangeDiff") throw new Error("Expected edit");
@@ -163,10 +163,14 @@ it("does not offer a working diff or invent line counts when a saved pair is una
   expect(card).not.toHaveTextContent("—");
   expect(
     within(card).getByRole("button", { name: "View changes" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  expect(within(card).getByRole("button", { name: /src\/a.ts/ })).toBeEnabled();
   expect(
     within(card).getByRole("button", { name: /src\/a.ts/ }),
-  ).toBeDisabled();
+  ).toHaveAttribute(
+    "title",
+    expect.stringContaining("working-tree changes against Git"),
+  );
 });
 
 it("keeps the edit card bounded to three rows until requested and 32 retained files overall", () => {

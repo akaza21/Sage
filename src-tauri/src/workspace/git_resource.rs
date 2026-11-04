@@ -1,13 +1,59 @@
 use std::{fs, path::Path};
 
 use crate::{
-    domain::ResourceRef,
+    domain::{RepositoryRef, ResourceRef},
     error::{AppError, AppResult},
 };
 
 use super::{Workspace, canonical_contract_relative, join_contract_path, validate_relative_path};
 
 impl Workspace {
+    /// Walk only this file's ancestors, including deleted paths. Discovery's
+    /// project-wide depth and repository caps must not choose a file's owner.
+    pub(crate) fn resource_repository(
+        &self,
+        resource: &ResourceRef,
+    ) -> AppResult<Option<RepositoryRef>> {
+        const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
+        if resource.relative_path.len() > MAX_RESOURCE_PATH_BYTES {
+            return Err(AppError::InvalidRequest(
+                "repository resource path is too long".into(),
+            ));
+        }
+        let resource = self.git_resource_identity(resource)?;
+        let file = self.root.join(&resource.relative_path);
+        let mut directory = file.parent();
+        while let Some(path) = directory {
+            if !path.starts_with(&self.root) {
+                break;
+            }
+            match fs::symlink_metadata(path.join(".git")) {
+                Ok(metadata) => {
+                    #[cfg(windows)]
+                    let reparse = {
+                        use std::os::windows::fs::MetadataExt;
+                        metadata.file_attributes() & 0x400 != 0
+                    };
+                    #[cfg(not(windows))]
+                    let reparse = metadata.file_type().is_symlink();
+                    if reparse || !(metadata.is_dir() || metadata.is_file()) {
+                        return Err(AppError::InvalidRequest(
+                            "repository marker is not a regular file or directory".into(),
+                        ));
+                    }
+                    return Ok(Some(RepositoryRef {
+                        root_id: self.root_id.clone(),
+                        relative_path: canonical_contract_relative(&self.root, path)?,
+                    }));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            directory = path.parent();
+        }
+        Ok(None)
+    }
+
     pub(crate) fn git_resource_identity(&self, resource: &ResourceRef) -> AppResult<ResourceRef> {
         if resource.root_id != self.root_id {
             return Err(AppError::InvalidRequest(

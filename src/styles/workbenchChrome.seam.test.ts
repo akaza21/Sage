@@ -53,7 +53,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.workbench--agent \.project-row--active\s*\{[^}]*background:\s*transparent;/s,
     );
     expect(css).toMatch(
-      /\.agent-rail-section__disclosure > svg\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:\s*var\(--space-1\);[^}]*opacity:\s*0;/s,
+      /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
   });
   it("matches every artifact grid header row to the rendered header height", async () => {
@@ -111,7 +111,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /@media \(max-width: 760px\)\s*\{[^@]*\.title-bar\s*\{/,
     );
     expect(narrow).toMatch(
-      /\.title-bar__wordmark,\s*\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
+      /\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
     );
     expect(narrow).toMatch(/\.title-bar__start\s*\{[^}]*\}/);
     expect(narrow.match(/\.title-bar__start\s*\{([^}]*)\}/)?.[1]).not.toMatch(

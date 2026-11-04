@@ -3,9 +3,15 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { TitleBar } from "./TitleBar";
+import {
+  clearAgentChatOwner,
+  pinAgentChatOwner,
+  releaseAgentChatOwner,
+} from "../app/agentChatOwner";
 const initial = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
+  clearAgentChatOwner();
   useWorkbenchStore.setState(initial, true);
 });
 function show(titles: string[], activeTabId: string | null = "chat-0") {
@@ -23,6 +29,14 @@ function show(titles: string[], activeTabId: string | null = "chat-0") {
   render(createElement(TitleBar, { mode: "agent", onModeChange: () => {} }));
 }
 describe("title bar center labels", () => {
+  it("keeps the visible Agent chat title while a resource or Settings is active", () => {
+    pinAgentChatOwner("chat-1");
+    show(["Chat A", "Chat B"], "browser-1");
+    expect(screen.getByRole("heading")).toHaveTextContent("Chat B");
+    useWorkbenchStore.setState({ activeTabId: "settings" });
+    releaseAgentChatOwner();
+    expect(screen.getByRole("heading")).toHaveTextContent("Chat B");
+  });
   it.each([
     ["Chat: Onboarding", "Onboarding"],
     ["Review PR", "Review PR"],
