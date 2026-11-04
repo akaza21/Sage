@@ -114,14 +114,23 @@ test("the real terminal keeps its monospace cell grid under the packaged CSP", a
   // Only the native PTY is simulated. TerminalDock loads the real xterm renderer.
   await page.evaluate(async () => {
     let columns = 80;
+    let visible = false;
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
         invoke: async (
           command: string,
-          args?: { request: { columns: number; cursor: string } },
+          args?: {
+            visible: boolean;
+            request: { columns: number; cursor: string };
+          },
         ) => {
           switch (command) {
+            case "get_terminal_dock_visible":
+              return visible;
+            case "set_terminal_dock_visible":
+              visible = args!.visible;
+              return visible;
             case "terminal_create":
               return {
                 sessionId: "f99cd56a-32d9-4600-a1f6-269e05734268",

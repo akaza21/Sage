@@ -40,7 +40,6 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
-    options = { cursorBlink: true };
     cols = xterm.initial[0];
     rows = xterm.initial[1];
     _core = {
@@ -61,7 +60,7 @@ vi.mock("@xterm/xterm", () => ({
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown>) {
       xterm.options = options;
-      this.options = { ...options };
+      this.options = { cursorBlink: true, ...options };
     }
     open(parent: HTMLElement) {
       // Like xterm, the screen is cols by rows cells of xterm.cell CSS px,
