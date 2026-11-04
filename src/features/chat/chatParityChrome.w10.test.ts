@@ -32,53 +32,6 @@ describe("Codex chrome parity (w10 group B)", () => {
     ).toMatch(/padding-inline-start:\s*var\(--space-1\);/);
   });
 
-  it("gaps the rail's approval pill before its spinner (B1, s6/f0526)", async () => {
-    const [navigation, project, global] = await Promise.all([
-      css("../../styles/chat-navigation-surface.css"),
-      css("../../styles/project-navigation-surface.css"),
-      css("../../styles/global.css"),
-    ]);
-    const pixels = (value: string) => {
-      const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
-      const literal = token
-        ? new RegExp(`${token}:\\s*([^;]+);`).exec(global)?.[1]
-        : value;
-      if (!literal || !/^\d+(?:\.\d+)?px$/.test(literal.trim()))
-        throw new Error(`Unresolved rail length: ${value}`);
-      return Number.parseFloat(literal);
-    };
-    const trailing = rule(project, ".workbench--agent .project-chat__trailing");
-    const padding = /padding:\s*([^;]+);/.exec(trailing ?? "")?.[1];
-    if (!padding) throw new Error("Missing rail trailing padding");
-    const sides = padding.trim().split(/\s+/);
-    const clearance =
-      pixels("var(--agent-rail-trailing-control)") +
-      pixels(sides[1] ?? sides[0]) +
-      4;
-    const reservations = [
-      rule(project, ".workbench--agent .project-chat-row > .project-chat"),
-      rule(
-        project,
-        ".workbench--agent .project-chat-row:is(:hover, :has(:focus-visible)) > .project-chat",
-      ),
-    ];
-    const approval = rule(
-      navigation,
-      ".project-chat-row:has(.project-chat__approval-spinner) .project-chat",
-    );
-    if (approval !== null) reservations.push(approval);
-    // Every resting, hovered or approval-specific reservation clears the
-    // trailing slot by the independent four-pixel minimum. The browser
-    // regression in cp46-approval.visual.ts verifies the rendered gap.
-    for (const reservation of reservations) {
-      const value = /padding-inline-end:\s*([^;]+);/.exec(
-        reservation ?? "",
-      )?.[1];
-      if (!value) throw new Error("Missing rail title reservation");
-      expect(pixels(value)).toBeGreaterThanOrEqual(clearance);
-    }
-  });
-
   it("shows an explicitly read-only model label at full strength (B2, s2/f0244)", async () => {
     const text = await css("../../styles/composer-model-picker.css");
     expect(
