@@ -1,10 +1,9 @@
+import { type Text } from "@codemirror/state";
 import { useEffect, type KeyboardEventHandler, type RefObject } from "react";
-import type { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ResourceStateNotice } from "../../ui/ResourceStateNotice";
-import type { ActiveEditorState } from "./fileEditorController";
 import { EditorAdapter, type EditorAdapterHandle } from "./EditorAdapter";
 import {
   MAX_EDITABLE_CONTENT_BYTES,
@@ -12,10 +11,11 @@ import {
   type EditorContent,
   type EditorContentBase,
 } from "./editorContent";
+import { type ActiveEditorState } from "./fileEditorController";
 import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
-import type { FindControl, FindOpenRequest } from "./FileFindBar";
-import { FileGoToLineBar } from "./FileGoToLineBar";
+import { type FindControl, type FindOpenRequest } from "./FileFindBar";
+import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
 
@@ -58,14 +58,7 @@ interface FileSurfaceFindView {
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
-interface FileSurfaceGoToView {
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  status: string;
-  onQueryChange: (query: string) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}
+type FileSurfaceGoToView = Omit<FileGoToLineProps, "content">;
 
 export function FileSurfaceContent({
   activeResourceKey,
@@ -150,14 +143,7 @@ export function FileSurfaceContent({
         </p>
       ) : null}
       {goTo && !previewing ? (
-        <FileGoToLineBar
-          inputRef={goTo.inputRef}
-          query={goTo.query}
-          status={goTo.status}
-          onQueryChange={goTo.onQueryChange}
-          onSubmit={goTo.onSubmit}
-          onClose={goTo.onClose}
-        />
+        <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
         <FileMarkdownPreview

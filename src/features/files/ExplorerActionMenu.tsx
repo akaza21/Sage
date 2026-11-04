@@ -1,4 +1,3 @@
-import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 import {
   useCallback,
   useContext,
@@ -9,10 +8,15 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { Ellipsis, FolderPlus } from "../../ui/leanIcons";
 
 import { useWorkbenchStore } from "../../app/store";
 import { selectOpenProject } from "../../app/workbenchSelectors";
 import { MenuPopover } from "../../ui/MenuPopover";
+import {
+  pointerPopoverPosition,
+  type PopoverPoint,
+} from "../../ui/pointerPopoverPosition";
 import { explorerSelectionAction } from "./explorerActionDialogController";
 import { ExplorerContextMenuContext } from "./explorerContextMenu";
 import { ExplorerReleasesOpenFiles } from "./explorerOpenFiles";
@@ -56,6 +60,8 @@ export function ExplorerActionMenu() {
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
   // The row a right-click opened the menu at, or null for the button.
   const [row, setRow] = useState<HTMLElement | null>(null);
+  // Where the right-click landed; null when the keyboard opened it.
+  const [point, setPoint] = useState<PopoverPoint | null>(null);
   // Focus goes back to that row, or to the button if the row is gone (a
   // renamed File's row is replaced). A new object per anchor, so the popover
   // follows the row it now belongs to.
@@ -79,9 +85,10 @@ export function ExplorerActionMenu() {
   const contextMenu = useContext(ExplorerContextMenuContext);
   useEffect(
     () =>
-      contextMenu?.register((anchor) => {
+      contextMenu?.register((anchor, at) => {
         keepFocus();
         setRow(anchor);
+        setPoint(at ?? null);
         setOpeningFocus("first");
         setOpen(true);
       }),
@@ -159,7 +166,12 @@ export function ExplorerActionMenu() {
         id={menuId}
         open={open}
         ariaLabel="Explorer actions"
-        className="menu-popover--editor explorer-action-menu__surface"
+        positionAt={
+          row && point
+            ? (popover) => pointerPopoverPosition(point, popover)
+            : undefined
+        }
+        className="menu-popover--editor editor-menu popup-material explorer-action-menu__surface"
         initialFocus={openingFocus}
         keepMounted
         triggerRef={anchorRef}

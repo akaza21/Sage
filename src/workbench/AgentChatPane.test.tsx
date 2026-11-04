@@ -1,6 +1,13 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { useWorkbenchStore } from "../app/store";
+import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import {
@@ -8,8 +15,10 @@ import {
   clearUnreadAcks,
   seenChatUnreadFingerprint,
 } from "../features/chat/acp/chatUnread";
-import { AgentChatPane } from "./AgentChatPane";
+import { AgentChatPanes } from "./AgentChatPanes";
+import { useSideChatState } from "./sideChatState";
 
+const initial = useWorkbenchStore.getState();
 const idleSnapshot = {
   chatId: "chat-2",
   statusLabel: "Completed",
@@ -19,29 +28,23 @@ const idleSnapshot = {
   working: false,
   statusTone: "idle" as const,
 };
-
 let snapshot: ChatLiveSnapshot = { ...idleSnapshot };
 const canvasArgs = vi.fn();
-
+const subscription = vi.fn();
 vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
-  useAcpChatLiveSnapshot: () => snapshot,
+  useAcpChatLiveSnapshot: (chatId: string, enabled: boolean) => {
+    subscription(chatId, enabled);
+    return { ...snapshot, chatId };
+  },
 }));
-
 vi.mock("./surfaceRegistry", () => ({
   renderRegisteredCanvas: (...args: unknown[]) => {
     canvasArgs(args.length);
-    return <button type="button">focused chat</button>;
+    return (
+      <button type="button">Focus {(args[1] as WorkbenchTab).title}</button>
+    );
   },
 }));
-
-beforeEach(() => {
-  snapshot = { ...idleSnapshot };
-  clearUnreadAcks();
-  canvasArgs.mockClear();
-});
-
-afterEach(cleanup);
-
 const tab: WorkbenchTab = {
   id: "chat-2",
   kind: "chat",
@@ -50,39 +53,66 @@ const tab: WorkbenchTab = {
   pinned: false,
   dirty: false,
 };
+beforeEach(() => {
+  snapshot = { ...idleSnapshot };
+  clearUnreadAcks();
+  clearAcpProjectionRegistry();
+  canvasArgs.mockClear();
+  subscription.mockClear();
+  useSideChatState.setState({ sides: [], pairedId: null });
+  useWorkbenchStore.setState({ ...initial, tabs: [tab], activeTabId: tab.id });
+});
+afterEach(() => {
+  cleanup();
+  clearAcpProjectionRegistry();
+  clearUnreadAcks();
+  useSideChatState.setState({ sides: [], pairedId: null });
+  useWorkbenchStore.setState(initial, true);
+});
 
-describe("AgentChatPane", () => {
+describe("Agent Chat pane through its public panes owner", () => {
   it("renders only the chat canvas, named for its Chat, with no pane header", () => {
-    render(
-      <AgentChatPane tab={tab} focused={false} onFocus={() => undefined} />,
-    );
+    render(<AgentChatPanes />);
     const pane = screen.getByRole("region", { name: "Chat pane Second chat" });
     expect(pane).toHaveAttribute("data-chat-id", "chat-2");
     expect(pane.children).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "focused chat" })).toBeVisible();
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.queryByLabelText("Unread updates")).toBeNull();
-    // The canvas gets the tab alone: no pane header option.
+    expect(
+      within(pane).getByRole("button", { name: "Focus Second chat" }),
+    ).toBeVisible();
+    expect(within(pane).queryByRole("status")).toBeNull();
+    expect(within(pane).queryByLabelText("Unread updates")).toBeNull();
     expect(canvasArgs).toHaveBeenCalledWith(2);
   });
-
   it("acks the current activity while focused", () => {
-    render(
-      <AgentChatPane tab={tab} focused={true} onFocus={() => undefined} />,
-    );
+    render(<AgentChatPanes />);
     expect(seenChatUnreadFingerprint("chat-2")).toBe(
       chatActivityFingerprint(snapshot),
     );
   });
-
   it("acks the current activity when focus enters an unfocused pane", () => {
-    const onFocus = vi.fn();
-    render(<AgentChatPane tab={tab} focused={false} onFocus={onFocus} />);
+    const activateTab = vi.fn(async () => {});
+    useWorkbenchStore.setState({
+      project: { id: "project", name: "Project", roots: [] },
+      tabs: [{ ...tab, id: "chat-1", title: "First chat" }, tab],
+      activeTabId: "chat-1",
+      activateTab,
+    });
+    useSideChatState.setState({
+      sides: [{ id: "chat-2", projectId: "project", parentChatId: "chat-1" }],
+      pairedId: "chat-2",
+    });
+    render(<AgentChatPanes />);
     expect(seenChatUnreadFingerprint("chat-2")).toBeUndefined();
-    fireEvent.focus(screen.getByRole("button", { name: "focused chat" }));
-    expect(onFocus).toHaveBeenCalledTimes(1);
+    fireEvent.focus(screen.getByRole("button", { name: "Focus Second chat" }));
+    expect(activateTab).toHaveBeenCalledExactlyOnceWith("chat-2");
     expect(seenChatUnreadFingerprint("chat-2")).toBe(
       chatActivityFingerprint(snapshot),
     );
+    expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
+      2,
+    );
+    // The focused owner supplies its snapshot; only the other child subscribes.
+    expect(subscription).toHaveBeenCalledWith("chat-1", false);
+    expect(subscription).toHaveBeenCalledWith("chat-2", true);
   });
 });

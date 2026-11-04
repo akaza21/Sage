@@ -104,7 +104,17 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
             .current_session_id
             .clone()
             .expect("characterization session is current");
-        assert!(database.bootstrap_snapshot().is_err());
+        let restored = database.bootstrap_snapshot().unwrap();
+        let unavailable = restored
+            .harnesses
+            .iter()
+            .find(|harness| Some(&harness.id) == restored.selected_harness_id.as_ref())
+            .unwrap();
+        assert_eq!(unavailable.install_state, "unavailable");
+        assert_eq!(
+            unavailable.binding_id.as_deref(),
+            Some(CHARACTERIZATION_BINDING_ID)
+        );
         assert_eq!(
             database
                 .bootstrap_snapshot_with_catalog(&state.harnesses)

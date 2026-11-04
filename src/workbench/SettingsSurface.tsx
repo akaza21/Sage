@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useWorkbenchStore } from "../app/store";
+import { useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import {
+  EDITOR_KEYMAP_SCOPES,
   SETTINGS_PAGES,
   matchingSettingsEntryIds,
   pagesWithMatches,
@@ -11,12 +13,6 @@ import {
 import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
-
-const SettingsBrowserPage = lazy(() =>
-  import("./settings/SettingsBrowserPage").then(({ SettingsBrowserPage }) => ({
-    default: SettingsBrowserPage,
-  })),
-);
 
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
@@ -64,13 +60,11 @@ export function SettingsSurface() {
       aria-label="Settings"
       aria-busy={persistencePhase === "loading"}
     >
+      {/* Search leads, as in VS Code: the tab already names the page. */}
       <header className="settings-surface__header">
-        <div className="settings-surface__title">
-          <h1>Settings</h1>
-          <p>{activePage?.description}</p>
-        </div>
+        <h1 className="sr-only">Settings</h1>
         <label className="settings-surface__search">
-          <span>Search settings</span>
+          <span className="sr-only">Search settings</span>
           <input
             autoFocus
             className="input"
@@ -84,8 +78,13 @@ export function SettingsSurface() {
       <SettingsNav
         activePageId={activePageId}
         matchingPageIds={matchingPageIds}
-        onSelect={setActivePageId}
+        onSelect={(page) => {
+          if (page === "browser")
+            void useWorkbenchStore.getState().openSettings(page);
+          else setActivePageId(page);
+        }}
       />
+      <p className="settings-surface__description">{activePage?.description}</p>
       {persistencePhase === "loading" ? (
         <p className="settings-surface__loading" role="status">
           Loading editor settings…
@@ -109,17 +108,7 @@ export function SettingsSurface() {
           No matching settings.
         </p>
       ) : activePageId === "keyboard" ? (
-        <SettingsKeyboardPage visible={visible} />
-      ) : activePageId === "browser" ? (
-        <Suspense
-          fallback={
-            <p className="settings-surface__loading" role="status">
-              Loading browser settings…
-            </p>
-          }
-        >
-          <SettingsBrowserPage visible={visible} />
-        </Suspense>
+        <SettingsKeyboardPage scopes={EDITOR_KEYMAP_SCOPES} visible={visible} />
       ) : (
         <SettingsEditorPage
           visible={visible}

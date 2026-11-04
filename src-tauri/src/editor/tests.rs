@@ -996,6 +996,13 @@ fn save_reports_a_target_held_open_without_delete_sharing_and_removes_the_temp()
     assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"base\n");
     assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
     drop(holder);
+
+    // The durable edit can be saved once the external sharing lock is released.
+    let saved = save_document(fixture.database(), &fixture.workspace, path).unwrap();
+    assert_eq!(saved.outcome, "saved");
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
+    assert!(fixture.buffer(path).is_none());
+    assert_eq!(temp_entries(&fixture.root), 0);
 }
 
 #[test]

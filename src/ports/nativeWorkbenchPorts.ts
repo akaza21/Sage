@@ -8,11 +8,10 @@ import type {
 import { invokeNative } from "./nativeInvoke";
 import { nativeWorkbenchAgentPort } from "./nativeWorkbenchAgentPort";
 import { nativeSettingsPort } from "./nativeSettingsPort";
-import { startNativeEditorWatchSession } from "./editorWatchSession";
 import type { EditorWatchSubscription } from "../domain/editorWatch";
 import type {
-  ProjectLayoutRequest,
-  ProjectSwitchRequest,
+  CreateProjectRequest,
+  ProjectSourceFolder,
   ProjectTransitionResult,
   ResourceRef,
 } from "../domain/workbench";
@@ -29,7 +28,7 @@ const requestCommand =
   (request: Request): Promise<Result> =>
     invokeNative(command, { request });
 
-/** A Git command that runs only in the transition epoch its caller saw. */
+/** A request that runs only in the transition epoch its caller saw. */
 const epochCommand =
   <Request, Result>(command: string) =>
   (request: Request, expectedTransitionEpoch: number): Promise<Result> =>
@@ -49,11 +48,16 @@ const project: ProjectPort = {
       prompts,
     });
   },
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null> {
+    return invokeNative("pick_project_source_folder");
+  },
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
-    return invokeNative("create_project_from_picker", {
+    return invokeNative("create_project", {
+      request,
       expectedActiveProjectId,
       expectedTransitionEpoch,
     });
@@ -67,30 +71,11 @@ const project: ProjectPort = {
       expectedTransitionEpoch,
     });
   },
-  persistProjectLayout(
-    request: ProjectLayoutRequest,
-    expectedTransitionEpoch: number,
-  ): Promise<void> {
-    return invokeNative("persist_project_layout", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  persistProjectLayoutAndClose(
-    request: ProjectLayoutRequest | null,
-    expectedTransitionEpoch: number,
-  ): Promise<void> {
-    return invokeNative("persist_project_layout_and_close", {
-      request,
-      expectedTransitionEpoch,
-    });
-  },
-  switchProject(
-    request: ProjectSwitchRequest,
-    expectedTransitionEpoch: number,
-  ): Promise<ProjectTransitionResult> {
-    return invokeNative("switch_project", { request, expectedTransitionEpoch });
-  },
+  persistProjectLayout: epochCommand("persist_project_layout"),
+  persistProjectLayoutAndClose: epochCommand(
+    "persist_project_layout_and_close",
+  ),
+  switchProject: epochCommand("switch_project"),
   ensureLocalProject(expectedTransitionEpoch) {
     return invokeNative("ensure_local_project", { expectedTransitionEpoch });
   },
@@ -114,7 +99,11 @@ const editor: EditorPort = {
   snapshotEditorBuffer: requestCommand("snapshot_editor_buffer"),
   saveEditorDocument: resourceCommand("save_editor_document"),
   discardEditorBuffer: resourceCommand("discard_editor_buffer"),
-  watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription> {
+  async watchEditorDocument(
+    resource: ResourceRef,
+  ): Promise<EditorWatchSubscription> {
+    const { startNativeEditorWatchSession } =
+      await import("./editorWatchSession");
     return startNativeEditorWatchSession(resource);
   },
 };
@@ -122,7 +111,12 @@ const editor: EditorPort = {
 const repository: RepositoryPort = {
   getRepositoryStatus: () => invokeNative("get_repository_status"),
   getRepositoryChangeStamp: () => invokeNative("get_repository_change_stamp"),
-  getFileDiff: resourceCommand("get_file_diff"),
+  getFileDiff(resource, scope) {
+    return invokeNative("get_file_diff", {
+      resource,
+      ...(scope ? { scope } : {}),
+    });
+  },
   getFileGitBase(resource, knownOid) {
     return invokeNative("get_file_git_base", { resource, knownOid });
   },
@@ -138,6 +132,7 @@ const repository: RepositoryPort = {
   fetchGitRemote: epochCommand("fetch_git_remote"),
   pullGitRepository: epochCommand("pull_git_repository"),
   discoverProjectRepositories: requestCommand("discover_project_repositories"),
+  resolveResourceRepository: requestCommand("resolve_resource_repository"),
   getNestedRepositoryStatus: requestCommand("get_repository_ref_status"),
   getNestedRepositoryFileDiff: requestCommand("get_repository_ref_file_diff"),
   pushGitRemote: epochCommand("push_git_remote"),
@@ -161,21 +156,11 @@ const chat: ChatPort = {
       expectedTransitionEpoch,
     });
   },
-  renameChat(request, expectedTransitionEpoch) {
-    return invokeNative("rename_chat", { request, expectedTransitionEpoch });
-  },
-  archiveChat(request, expectedTransitionEpoch) {
-    return invokeNative("archive_chat", { request, expectedTransitionEpoch });
-  },
-  restoreChat(request, expectedTransitionEpoch) {
-    return invokeNative("restore_chat", { request, expectedTransitionEpoch });
-  },
-  moveChat(request, expectedTransitionEpoch) {
-    return invokeNative("move_chat", { request, expectedTransitionEpoch });
-  },
-  pinChat(request, expectedTransitionEpoch) {
-    return invokeNative("pin_chat", { request, expectedTransitionEpoch });
-  },
+  renameChat: epochCommand("rename_chat"),
+  archiveChat: epochCommand("archive_chat"),
+  restoreChat: epochCommand("restore_chat"),
+  moveChat: epochCommand("move_chat"),
+  pinChat: epochCommand("pin_chat"),
 };
 
 export function createNativeWorkbenchPorts(): WorkbenchPorts {

@@ -12,7 +12,7 @@ pub const MAX_DIFF_LINES: usize = 1_200;
 pub struct ParsedStatus {
     pub branch: Option<String>,
     pub changes: Vec<FileChange>,
-    /// Anything was left out: the cap, or Git output cut short.
+    /// The change cap was exceeded, or Git output was cut short.
     pub truncated: bool,
     /// Another change followed the full list, so more than `MAX_CHANGES` exist.
     pub overflowed: bool,
@@ -33,9 +33,32 @@ pub fn parse_status(
     let mut index = 0;
 
     while index < fields.len() {
-        let record = std::str::from_utf8(fields[index])
-            .map_err(|_| AppError::Git("Git returned a non-UTF-8 path".into()))?;
+        let raw_record = fields[index];
         index += 1;
+        // A rename owns the next NUL field even when its new path cannot decode.
+        let original_path = if raw_record.starts_with(b"2 ") {
+            let original = fields.get(index).copied().unwrap_or_default();
+            if original.is_empty() {
+                if output_truncated {
+                    truncated = true;
+                    break;
+                }
+                return Err(AppError::Git("rename record is incomplete".into()));
+            }
+            index += 1;
+            let Ok(original) = std::str::from_utf8(original) else {
+                continue;
+            };
+            Some(original)
+        } else {
+            None
+        };
+        let record = match std::str::from_utf8(raw_record) {
+            Ok(record) => record,
+            // ResourceRef paths are strings: never invent a lossy file identity.
+            Err(_) if !raw_record.starts_with(b"# ") => continue,
+            Err(_) => return Err(AppError::Git("Git returned a non-UTF-8 header".into())),
+        };
         if record.is_empty() {
             continue;
         }
@@ -69,24 +92,8 @@ pub fn parse_status(
             })
         } else if record.starts_with("1 ") {
             parse_ordinary_change(root_id, record)?
-        } else if record.starts_with("2 ") {
-            let original_path = fields
-                .get(index)
-                .ok_or_else(|| AppError::Git("rename record is incomplete".into()))?;
-            if original_path.is_empty() {
-                if output_truncated {
-                    truncated = true;
-                    break;
-                }
-                return Err(AppError::Git("rename record is incomplete".into()));
-            }
-            index += 1;
-            parse_renamed_change(
-                root_id,
-                record,
-                std::str::from_utf8(original_path)
-                    .map_err(|_| AppError::Git("Git returned a non-UTF-8 original path".into()))?,
-            )?
+        } else if let Some(original_path) = original_path {
+            parse_renamed_change(root_id, record, original_path)?
         } else if record.starts_with("u ") {
             parse_unmerged_change(root_id, record)?
         } else {
@@ -201,9 +208,11 @@ pub fn merge_numstat(
     let fields = bytes.split(|byte| *byte == 0).collect::<Vec<_>>();
     let mut index = 0;
     while index < fields.len() {
-        let record = std::str::from_utf8(fields[index])
-            .map_err(|_| AppError::Git("Git returned non-UTF-8 numstat data".into()))?;
+        let raw_record = fields[index];
         index += 1;
+        let Ok(record) = std::str::from_utf8(raw_record) else {
+            continue;
+        };
         if record.is_empty() {
             continue;
         }
@@ -219,9 +228,15 @@ pub fn merge_numstat(
                 }
                 return Err(AppError::Git("rename numstat record is incomplete".into()));
             }
-            path = std::str::from_utf8(new_path)
-                .map_err(|_| AppError::Git("Git returned a non-UTF-8 rename path".into()))?;
+            let original_path = fields[index];
             index += 2;
+            let (Ok(_), Ok(new_path)) = (
+                std::str::from_utf8(original_path),
+                std::str::from_utf8(new_path),
+            ) else {
+                continue;
+            };
+            path = new_path;
         }
         if path.is_empty() {
             continue;
@@ -372,6 +387,88 @@ fn resource(root_id: &str, relative_path: &str) -> ResourceRef {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_skips_non_utf8_paths_and_consumes_rename_pairs() {
+        for record in [
+            b"? bad-\xff\0".as_slice(),
+            b"1 .M N... 100644 100644 100644 abc abc bad-\xff\0",
+            b"2 R. N... 100644 100644 100644 abc abc R100 bad-\xff\0? not-a-record\0",
+            b"2 R. N... 100644 100644 100644 abc abc R100 new\0old-\xff\0",
+            b"2 R. N... 100644 100644 100644 abc abc R100 new-\xff\0old-\xff\0",
+        ] {
+            let mut input = b"# branch.head main\0? before\0".to_vec();
+            input.extend_from_slice(record);
+            input.extend_from_slice(b"? after\0");
+            let parsed = parse_status("root-test", &input, false).unwrap();
+            let paths: Vec<_> = parsed
+                .changes
+                .iter()
+                .map(|change| change.resource.relative_path.as_str())
+                .collect();
+            assert_eq!(paths, ["before", "after"]);
+            assert_eq!(parsed.branch.as_deref(), Some("main"));
+            assert!(!parsed.truncated);
+            assert!(!parsed.overflowed);
+        }
+    }
+
+    #[test]
+    fn non_utf8_paths_after_full_status_do_not_signal_overflow() {
+        let mut input = Vec::new();
+        for index in 0..MAX_CHANGES {
+            input.extend_from_slice(format!("? file-{index}\0").as_bytes());
+        }
+        input.extend_from_slice(
+            b"? bad-\xff\0\
+            2 R. N... 100644 100644 100644 abc abc R100 new\0old-\xff\0",
+        );
+        let parsed = parse_status("root-test", &input, false).unwrap();
+        assert_eq!(parsed.changes.len(), MAX_CHANGES);
+        assert!(!parsed.truncated);
+        assert!(!parsed.overflowed);
+    }
+
+    #[test]
+    fn incomplete_non_utf8_rename_still_reports_truncated_output() {
+        let input = b"? before\0\
+            2 R. N... 100644 100644 100644 abc abc R100 new-\xff\0old";
+        let parsed = parse_status("root-test", input, true).unwrap();
+        assert_eq!(parsed.changes.len(), 1);
+        assert!(parsed.truncated);
+        assert!(!parsed.overflowed);
+        assert!(parse_status("root-test", &input[..input.len() - 3], false).is_err());
+
+        let mut stats = HashMap::new();
+        let input = b"1\t2\tbefore\0\
+            9\t8\t\0old-\xff\0new";
+        assert!(merge_numstat(&mut stats, input, true).unwrap());
+        assert_eq!(stats.len(), 1);
+        assert!(merge_numstat(&mut stats, &input[..input.len() - 3], false).is_err());
+    }
+
+    #[test]
+    fn numstat_skips_non_utf8_paths_and_consumes_rename_pairs() {
+        for record in [
+            b"9\t8\tbad-\xff\0".as_slice(),
+            b"9\t8\t\0old\0new-\xff\0",
+            b"9\t8\t\0old-\xff\0new\0",
+            b"9\t8\t\0old-\xff\0new-\xff\0",
+        ] {
+            let mut input = b"1\t2\tbefore\0".to_vec();
+            input.extend_from_slice(record);
+            input.extend_from_slice(
+                b"3\t4\tafter\0\
+                5\t6\t\0old-valid\0new-valid\0",
+            );
+            let mut stats = HashMap::new();
+            assert!(!merge_numstat(&mut stats, &input, false).unwrap());
+            assert_eq!(stats.len(), 3);
+            assert_eq!(stats["before"], (Some(1), Some(2)));
+            assert_eq!(stats["after"], (Some(3), Some(4)));
+            assert_eq!(stats["new-valid"], (Some(5), Some(6)));
+        }
+    }
 
     #[test]
     fn parses_porcelain_v2_without_losing_spaces_in_paths() {

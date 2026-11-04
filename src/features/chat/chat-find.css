@@ -2,8 +2,7 @@
   grid-template:
     "find" auto
     "notice" auto
-    "transcript" minmax(120px, 1fr)
-    "edits" minmax(0, auto)
+    "transcript" minmax(0, 1fr)
     "composer" fit-content(60%)
     / minmax(0, 1fr);
 }
@@ -58,7 +57,7 @@
 .chat-find button:disabled {
   opacity: 0.4;
 }
-/* Codex s6/f0676: a 32 px second row with #898989 arrows. */
+
 .chat-find__results {
   display: flex;
   align-items: center;

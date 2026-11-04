@@ -313,6 +313,9 @@
 }
 
 .editor-input .cm-editor {
+  --git-gutter-added: var(--diff-add);
+  --git-gutter-modified: var(--color-accent);
+  --git-gutter-deleted: var(--diff-delete);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -376,18 +379,6 @@
 .editor-input .cm-activeLine,
 .editor-input .cm-activeLineGutter {
   background: var(--resource-document-active-line);
-}
-
-/* With several cursors CodeMirror draws every selection and hides the
-   native one; these rules style the native selection only when it shows.
-   A class, not :has(), which would recheck styles on every edit. */
-.editor-input .cm-selectionBackground,
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  background: var(--resource-document-selection) !important;
-}
-
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  color: var(--resource-document-selection-foreground) !important;
 }
 
 .editor-input .cm-cursor {
@@ -572,12 +563,6 @@
 
 /* Change markers against the staged text (EP-14), as VS Code's gutter draws
    them: a bar for added and changed lines, a wedge where lines were deleted. */
-.editor-input .cm-editor {
-  --git-gutter-added: var(--diff-add);
-  --git-gutter-modified: var(--color-accent);
-  --git-gutter-deleted: var(--diff-delete);
-}
-
 .editor-input .git-gutter .cm-gutterElement {
   position: relative;
   width: 6px;

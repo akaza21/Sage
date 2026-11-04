@@ -1,34 +1,34 @@
 import { useId } from "react";
+import { type AcpItem } from "../../../domain/acp";
+import { type ResourceRef } from "../../../domain/workbench";
+import type { AgentArtifactOpenIntent } from "../../../domain/agentArtifact";
 import {
   ArrowRightLeft,
   Bot,
   Brain,
+  Command,
   FilePen,
   FileSymlink,
   FileText,
   Globe,
   Image,
-  Command,
   Search,
   TerminalSquare,
   Trash2,
   Wrench,
 } from "../../../ui/leanIcons";
-
-import type { AcpItem } from "../../../domain/acp";
-import type { ResourceRef } from "../../../domain/workbench";
-import { ToolItemDetails } from "./ToolItemDetails";
 import { extractAdmittedBrowseUrl } from "../../preview/harnessBrowse";
+import { CompactToolItem } from "./CompactToolItem";
 import { terminalToolStates, toolStateLabels } from "./statusSemantics";
 import { toolDurationLabel } from "./toolActivityRollup";
-import { ToolRunningIndicator } from "./ToolRunningIndicator";
-import { CompactToolItem } from "./CompactToolItem";
-import { ToolCommandFrame } from "./ToolCommandFrame";
 import { compactToolLabels, toolCommandContent } from "./toolCommandContent";
+import { ToolCommandFrame } from "./ToolCommandFrame";
+import { ToolItemDetails } from "./ToolItemDetails";
+import { ToolRunningIndicator } from "./ToolRunningIndicator";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
-export type OpenResourceTarget = "file" | "diff";
+export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
 type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
 

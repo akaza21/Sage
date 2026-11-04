@@ -6,6 +6,25 @@ use std::io::Cursor;
 mod activation;
 
 #[test]
+fn pi_0742_unknown_discovery_command_fixture_omits_the_id() {
+    let mut state = WireState::new();
+    let mut output = Vec::new();
+    execute_with_io(
+        &json!({"op":"awaitClient","kind":"piThinkingLevelsUnsupported"}),
+        &mut state,
+        &mut Cursor::new(b"{\"type\":\"get_available_thinking_levels\",\"id\":\"pi-7-6\"}\n"),
+        &mut output,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    let reply: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(
+        reply,
+        json!({"type":"response","command":"get_available_thinking_levels","success":false,"error":"Unknown command: get_available_thinking_levels"})
+    );
+}
+
+#[test]
 fn pi_replay_correlates_string_ids_and_handles_config_before_events() {
     let mut state = WireState::new();
     let mut output = Vec::new();
