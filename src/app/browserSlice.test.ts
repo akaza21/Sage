@@ -18,11 +18,10 @@ it("keeps unavailable browser creation local and never exposes invocation except
     error: null,
   });
   try {
-    await useWorkbenchStore.getState().openBrowser();
+    const unavailable = await useWorkbenchStore.getState().openBrowser();
     expect(openBrowser).not.toHaveBeenCalled();
-    expect(useWorkbenchStore.getState().error).toBe(
-      "The in-app browser is available in the desktop app.",
-    );
+    expect(unavailable).toBe("Requires the desktop app.");
+    expect(useWorkbenchStore.getState().error).toBeNull();
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
@@ -30,11 +29,10 @@ it("keeps unavailable browser creation local and never exposes invocation except
     vi.mocked(openBrowser).mockRejectedValueOnce(
       new TypeError("Cannot read properties of undefined (reading 'invoke')"),
     );
-    await useWorkbenchStore.getState().openBrowser();
+    const failed = await useWorkbenchStore.getState().openBrowser();
     expect(useWorkbenchStore.getState().phase).toBe("ready");
-    expect(useWorkbenchStore.getState().error).toBe(
-      "Could not open the browser tab. Try again.",
-    );
+    expect(failed).toBe("Could not open the browser tab. Try again.");
+    expect(useWorkbenchStore.getState().error).toBeNull();
   } finally {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
     useWorkbenchStore.setState(original, true);

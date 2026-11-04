@@ -7,7 +7,11 @@ export const PopoverPlacementContext = createContext<{
   position: CSSProperties;
 } | null>(null);
 
-export type MenuPlacement = "below-end" | "above-start";
+/**
+ * "below-end" aligns the menu's right edge with the trigger's; the "-start"
+ * placements open from the trigger's left edge toward the right.
+ */
+export type MenuPlacement = "below-end" | "below-start" | "above-start";
 
 export function menuPopoverPosition(
   trigger: HTMLElement,
@@ -113,7 +117,9 @@ export function menuPopoverPosition(
     top = Math.min(top, edits.top - surface.height - gap);
   return {
     ...shared,
-    left: clampLeft(aboveStart ? anchor.left : anchor.right - width),
+    left: clampLeft(
+      placement === "below-end" ? anchor.right - width : anchor.left,
+    ),
     top: clampTop(top),
   };
 }

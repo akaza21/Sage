@@ -19,7 +19,9 @@ use crate::{
     },
 };
 
-use self::bootstrap::{active_project_in, empty_snapshot, load_chat_id, load_session};
+use self::bootstrap::{
+    active_project_in, empty_snapshot, load_chat_id, load_session, restore_harnesses,
+};
 
 mod bootstrap;
 
@@ -43,7 +45,9 @@ impl Database {
             )));
         }
         let Some(project_id) = active_project_id else {
-            return Ok(empty_snapshot(projects));
+            let mut snapshot = empty_snapshot(projects);
+            snapshot.harnesses = harnesses.definitions();
+            return Ok(snapshot);
         };
         let project = self.project_summary(&project_id)?;
         let roots = self.root_records(&project_id)?;
@@ -76,16 +80,11 @@ impl Database {
             Some(id) => self.messages_for_chat(id)?,
             None => Vec::new(),
         };
+        let mut definitions = restore_harnesses(&self.connection(), &project_id, &tabs, harnesses)?;
         let selected_harness_id = match &session {
-            Some((_, binding_id, _)) => Some(
-                harnesses
-                    .harness_id_for_binding(binding_id)
-                    .ok_or_else(|| {
-                        AppError::InvalidRequest(
-                            "active Chat head has no curated harness binding".into(),
-                        )
-                    })?,
-            ),
+            Some((_, binding_id, _)) => {
+                Some(harnesses.restore_binding(binding_id, &mut definitions))
+            }
             None => harnesses.default_selected_harness_id(),
         };
         Ok(BootstrapSnapshot {
@@ -97,7 +96,7 @@ impl Database {
             active_tab_id,
             selected_root_id,
             selected_resource,
-            harnesses: Vec::new(),
+            harnesses: definitions,
             session_id: session.as_ref().map(|value| value.0.clone()),
             selected_harness_id,
             selected_model_id: session.and_then(|value| value.2),

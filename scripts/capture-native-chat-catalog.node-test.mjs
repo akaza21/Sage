@@ -73,11 +73,7 @@ test("capture accessible selectors stay anchored to product controls", () => {
   assert.ok(
     edits.includes("aria-label={`Preview saved diff ${qualifiedLabel}`}"),
   );
-  assert.ok(
-    edits.includes(
-      'aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}',
-    ),
-  );
+  assert.ok(edits.includes("aria-label={`Open diff ${qualifiedLabel}`}"));
   assert.ok(
     source("features/chat/acp/InlineSavedDiff.tsx").includes(
       'label="Inline saved diff"',

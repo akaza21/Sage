@@ -124,7 +124,6 @@ export function useChatHarnessSelection(chatId?: string): {
     (candidate) =>
       candidate.id === page.currentSessionId &&
       !candidate.legacy &&
-      candidate.runtimeEpoch &&
       !["closed", "failed", "incompatible"].includes(candidate.state),
   );
   const historicalSession =

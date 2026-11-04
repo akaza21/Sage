@@ -675,7 +675,7 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
 
   function runtimeSource(): Promise<string> {
     return readFile(
-      resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
+      resolve("src/features/files/editorDocumentTheme.ts"),
       "utf8",
     );
   }
@@ -691,6 +691,23 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
     for (const token of syntaxTokens) {
       expect(colors.join("\n")).toContain(`var(${token})`);
     }
+    runtime.destroy();
+  });
+
+  it("mounts the selection colors from the document tokens", () => {
+    const { runtime } = runtimeForPath("notes.txt");
+    const selection = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .filter((rule) => rule.selectorText.includes(".cm-selectionBackground"))
+      .map((rule) => [
+        rule.style.getPropertyValue("background"),
+        rule.style.getPropertyValue("color"),
+      ]);
+    expect(selection).toContainEqual([
+      "var(--resource-document-selection)",
+      "var(--resource-document-selection-foreground)",
+    ]);
     runtime.destroy();
   });
 

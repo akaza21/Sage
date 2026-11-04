@@ -292,6 +292,48 @@ describe("MenuPopover", () => {
     },
   );
 
+  it("opens a below-start menu from the trigger's left edge toward the right", () => {
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 768,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 200, 80);
+        return new DOMRect(255, 40, 24, 24);
+      },
+    );
+    function StartHarness() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={triggerRef}>Sidebar options</button>
+          <MenuPopover
+            ariaLabel="Sidebar options"
+            id="start"
+            open
+            gap={4}
+            placement="below-start"
+            triggerRef={triggerRef}
+            onDismiss={() => {}}
+          >
+            <button role="menuitem">Organize sidebar</button>
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<StartHarness />);
+    expect(screen.getByRole("menu", { name: "Sidebar options" })).toHaveStyle({
+      left: "255px",
+      top: "68px",
+    });
+  });
+
   it.each([
     [100, 244, 308],
     [200, 344, 208],
@@ -810,23 +852,31 @@ describe("MenuPopover", () => {
     expect(menu.style.top).toBe("126px");
   });
 
-  it("rebinds closest-dialog geometry observers after the portal node moves", () => {
-    const observed: HTMLElement[][] = [];
-    const disconnected: boolean[] = [];
+  it("repositions in the closest dialog when its trigger moves after portal migration", () => {
+    const observers = new Map<ResizeObserverCallback, Set<Element>>();
     class ResizeObserverStub {
-      index = observed.length;
-      constructor(_callback: ResizeObserverCallback) {
-        observed.push([]);
-        disconnected.push(false);
+      constructor(private callback: ResizeObserverCallback) {
+        observers.set(callback, new Set());
       }
-      observe(element: HTMLElement) {
-        observed[this.index].push(element);
+      observe(element: Element) {
+        observers.get(this.callback)?.add(element);
       }
       disconnect() {
-        disconnected[this.index] = true;
+        observers.delete(this.callback);
       }
-      unobserve() {}
+      unobserve(element: Element) {
+        observers.get(this.callback)?.delete(element);
+      }
     }
+    let triggerTop = 100;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.tagName === "BUTTON")
+          return new DOMRect(100, triggerTop, 120, 28);
+        if (this.id === "dialog-popup") return new DOMRect(0, 0, 160, 80);
+        return new DOMRect();
+      },
+    );
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     function DialogHarness() {
       const triggerRef = useRef<HTMLButtonElement>(null);
@@ -855,13 +905,18 @@ describe("MenuPopover", () => {
     expect(popup).not.toBeNull();
     if (!popup) throw new Error("dialog popup missing");
     expect(popup.closest("dialog")).not.toBeNull();
-    expect(observed).toHaveLength(2);
-    expect(disconnected[0]).toBe(true);
-    expect(observed[1]).toEqual([
-      popup,
-      screen.getByRole("button", { name: "Target" }),
-      popup.closest("dialog"),
-    ]);
+    expect(popup).toHaveStyle({ left: "60px", top: "132px" });
+    const input = screen.getByRole("combobox", { name: "Target" });
+    expect(input).toHaveFocus();
+    triggerTop = 180;
+    const trigger = screen.getByRole("button", { name: "Target" });
+    act(() => {
+      for (const [callback, targets] of observers) {
+        if (targets.has(trigger)) callback([], {} as ResizeObserver);
+      }
+    });
+    expect(popup).toHaveStyle({ left: "60px", top: "212px" });
+    expect(input).toHaveFocus();
   });
 });
 

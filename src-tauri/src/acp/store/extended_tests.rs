@@ -638,6 +638,26 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
 }
 
 #[test]
+fn chat_page_loads_an_empty_session_without_project_roots() {
+    let mut connection = setup();
+    connection.execute("DELETE FROM project_roots", []).unwrap();
+    let started = start_session(&mut connection, start(0, "start-empty-session")).unwrap();
+
+    let page = load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").unwrap(),
+        SageChatId::parse("chat-one").unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(page.current_session_id, Some(started.session_id.clone()));
+    assert_eq!(page.sessions.as_slice().len(), 1);
+    assert_eq!(page.sessions.as_slice()[0].id, started.session_id);
+    assert!(page.turns.as_slice().is_empty());
+    assert!(page.next_cursor.is_none());
+}
+
+#[test]
 fn chat_page_loads_a_turn_with_no_transcript_items() {
     let mut connection = setup();
     let started = start_session(&mut connection, start(0, "start-empty-turn")).unwrap();

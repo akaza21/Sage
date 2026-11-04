@@ -51,7 +51,9 @@ const project: ProjectPort = {
   getBootstrapSnapshot: () => browserDesktop.getBootstrapSnapshot(),
   getProjectChatQueuedPrompts: async () => ({}),
   replaceChatQueuedPrompts: async () => {},
-  createProjectFromPicker: (
+  pickProjectSourceFolder: () => Promise.resolve(null),
+  createProject: (
+    _request,
     _expectedActiveProjectId,
     expectedTransitionEpoch,
   ) => Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),
@@ -150,6 +152,11 @@ const repository: RepositoryPort = {
     transitionEpoch: request.expectedTransitionEpoch,
     refs: [],
     truncated: false,
+  }),
+  resolveResourceRepository: async (request) => ({
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    repository: { rootId: request.resource.rootId, relativePath: "" },
   }),
   getNestedRepositoryStatus: () =>
     Promise.reject(new Error("nested repository status is not implemented")),
