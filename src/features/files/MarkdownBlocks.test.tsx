@@ -10,6 +10,31 @@ afterEach(cleanup);
 
 describe("MarkdownBlocks lists", () => {
   it.each(["preview", "chat"])(
+    "keeps marker-like task labels and their accessible names in %s",
+    (surface) => {
+      const source = "- [x] - literal\n- [ ] 1. literal\n- [X] + literal";
+      const { container } = render(
+        surface === "preview" ? (
+          <FileMarkdownPreview source={source} />
+        ) : (
+          <ChatMarkdown text={source} />
+        ),
+      );
+      expect(container.querySelectorAll("ul, ol")).toHaveLength(1);
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+      for (const [name, checked] of [
+        ["- literal", true],
+        ["1. literal", false],
+        ["+ literal", true],
+      ] as const) {
+        const checkbox = screen.getByRole("checkbox", { name });
+        expect(checkbox).toBeDisabled();
+        expect((checkbox as HTMLInputElement).checked).toBe(checked);
+      }
+    },
+  );
+
+  it.each(["preview", "chat"])(
     "renders current-item nesting, relative fences and empty-marker setext in %s",
     (surface) => {
       const source =

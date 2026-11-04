@@ -1,9 +1,12 @@
-import { utf8Bytes } from "../../domain/text";
+import { truncateUtf8, utf8Bytes } from "../../domain/text";
 import * as lists from "./markdownList";
 import {
   atxHeading,
   isMarkdownRule,
   quoteMarker,
+  fenceOpener,
+  fenceCloser,
+  indentation,
   setextUnderline,
   startsLeafBlock,
   readFencedCode,
@@ -90,21 +93,14 @@ function delimiterFlanks(value: string, index: number, marker: string) {
 }
 
 export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
-  const encoded = utf8Bytes(source);
-  let end = Math.min(encoded.length, MAX_MARKDOWN_PREVIEW_SOURCE_BYTES);
-  while (end < encoded.length && end > 0 && (encoded[end] & 0xc0) === 0x80)
-    end--;
-  const windowed =
-    encoded.length > end
-      ? new TextDecoder().decode(encoded.slice(0, end))
-      : source;
+  const windowed = truncateUtf8(source, MAX_MARKDOWN_PREVIEW_SOURCE_BYTES);
   const lines = windowed.replace(/\r\n/gu, "\n").split("\n");
   const document: MarkdownPreviewDocument = {
     blocks: [],
     formats: [],
     fileLinks: [],
     truncated: false,
-    sourceLimitExceeded: encoded.length > end,
+    sourceLimitExceeded: windowed.length < source.length,
   };
   const blocks = document.blocks as MarkdownPreviewBlock[];
   const links =
@@ -205,9 +201,9 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     const spans = parse(
       raw
         .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (part) =>
-          part.startsWith("`") ? part : "",
+          part[0] === "`" ? part : "",
         )
-        .replace(/`[^`]+`|\s+/gu, (part) => (part.startsWith("`") ? part : " "))
+        .replace(/`[^`]+`|\s+/gu, (part) => (part[0] === "`" ? part : " "))
         .trim(),
       0,
     );
@@ -310,24 +306,36 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       continue;
     }
     const quoted = quoteMarker.test(line);
-    const parts = [quoted ? line.replace(quoteMarker, "") : line];
-    cursor++;
-    while (
-      cursor < lines.length &&
-      lines[cursor].trim() &&
-      (quoted
-        ? quoteMarker.test(lines[cursor]) ||
-          (parts.at(-1)!.trim() &&
-            !startsLeafBlock(lines[cursor]) &&
-            !lists.interruptsParagraph(lines[cursor]))
-        : !setextUnderline.test(lines[cursor]) &&
-          !lists.interruptsParagraph(lines[cursor]) &&
-          !startsLeafBlock(lines[cursor]) &&
-          !lines[cursor].startsWith("|"))
-    ) {
-      parts.push(
-        quoted ? lines[cursor].replace(quoteMarker, "") : lines[cursor],
-      );
+    const parts = quoted ? [] : [line];
+    if (!quoted) cursor++;
+    let paragraph = false;
+    let closing: RegExp | null = null;
+    while (cursor < lines.length && lines[cursor].trim()) {
+      let part = lines[cursor];
+      if (quoted && quoteMarker.test(part)) {
+        part = part.replace(quoteMarker, "");
+        // Literal quote children admit lazy lines only while a paragraph is
+        // open. A marked code line cannot reopen one inside a fence.
+        if (closing) {
+          if (closing.test(part)) closing = null;
+          paragraph = false;
+        } else {
+          const fence = fenceOpener(part);
+          closing = fence && fenceCloser(fence);
+          paragraph =
+            !!part.trim() &&
+            (paragraph || indentation(part) < 4) &&
+            !startsLeafBlock(part);
+        }
+      } else if (
+        startsLeafBlock(part) ||
+        lists.interruptsParagraph(part) ||
+        (quoted
+          ? !paragraph
+          : setextUnderline.test(part) || part.startsWith("|"))
+      )
+        break;
+      parts.push(part);
       cursor++;
     }
     const text = inline(parts.join(" "));
@@ -360,8 +368,7 @@ function tableCells(line: string): string[] {
   if (!line.includes("|")) return [];
   return line
     .trim()
-    .replace(/^\|/u, "")
-    .replace(/(?<!\\)\|$/u, "")
+    .replace(/^\||(?<!\\)\|$/gu, "")
     .split(/(?<!\\)\|/u)
     .map((cell) => cell.trim().replace(/\\\|/gu, "|"));
 }

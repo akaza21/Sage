@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixture from "./fixtures/commonmark-0.31.2-blocks.json";
+import tasks from "./fixtures/gfm-0.29-task-lists.json";
 import {
   renderMarkdownPreview,
   type MarkdownPreviewBlock,
@@ -67,6 +68,14 @@ describe("CommonMark 0.31.2 supported block structure", () => {
       expect(document.blocks.map(structure)).toEqual(expected);
     },
   );
+});
+
+describe("GFM 0.29 task list items extension", () => {
+  it.each(tasks.examples)("example $example", ({ markdown, expected }) => {
+    const document = renderMarkdownPreview(markdown);
+    expect(document.truncated).toBe(false);
+    expect(document.blocks).toEqual(expected);
+  });
 });
 
 describe("CommonMark list paragraph interruption sweep", () => {

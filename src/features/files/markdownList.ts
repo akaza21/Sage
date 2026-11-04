@@ -32,7 +32,6 @@ interface ListItem {
   marker: string;
   ordered: boolean;
   start: number;
-  checked?: boolean;
   text: string;
 }
 
@@ -46,7 +45,6 @@ export function listItem(line: string, initialColumn = 0): ListItem | null {
   const markerEnd = indent + (match[2] ? 1 : match[3].length + 1);
   const separatorWidth = columnAfter(match[5] ?? "", markerEnd) - markerEnd;
   const text = match[6] ?? "";
-  const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(text);
   return {
     indent,
     // Blank items and over-wide separators use one column of list padding.
@@ -54,8 +52,7 @@ export function listItem(line: string, initialColumn = 0): ListItem | null {
     marker: match[2] ?? match[4],
     ordered: !match[2],
     start: Number(match[3] ?? 1),
-    ...(task ? { checked: task[1] !== " " } : {}),
-    text: task ? task[2] : text,
+    text,
   };
 }
 
@@ -109,12 +106,13 @@ export function readMarkdownList(
         : null;
     // Collected text opens a paragraph, even after an empty opening marker.
     const parts = inner || !next.text ? [] : [next.text];
+    const startsWithLeaf = startsLeafBlock(next.text);
     if (!inner) {
       cursor++;
       // A lazy paragraph continuation need not carry container indentation.
       // Indented markers still need to be within three columns of their
       // containing level; otherwise they are paragraph text (spec 312).
-      while (cursor < lines.length && lines[cursor].trim()) {
+      while (!startsWithLeaf && cursor < lines.length && lines[cursor].trim()) {
         const line = lines[cursor];
         const candidate = listItem(line);
         if (
@@ -136,7 +134,11 @@ export function readMarkdownList(
       }
     }
     const raw = parts.join(" ");
-    const text = read(raw, items.length);
+    // GFM tasks decorate a paragraph after its container has been classified.
+    // Removing the checkbox earlier would reinterpret a label like "- literal"
+    // as a same-line nested list.
+    const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(raw);
+    const text = read(task ? task[2] : raw, items.length);
     if (text || (text === "" && !raw.trim())) {
       const depth = Math.min(
         levels.length - 1,
@@ -144,7 +146,7 @@ export function readMarkdownList(
       );
       items.push(text);
       const entry: ListItemShape = { depth, ordered: next.ordered };
-      if (next.checked !== undefined) entry.checked = next.checked;
+      if (task) entry.checked = task[1] !== " ";
       if (depth && next.ordered && next.start !== 1) entry.start = next.start;
       if (newList) entry.newList = true;
       shape.push(entry);
@@ -153,12 +155,10 @@ export function readMarkdownList(
       next = inner;
       continue;
     }
-    let following = cursor;
-    while (following < lines.length && !lines[following].trim()) following++;
-    next = listItem(lines[following] ?? "");
+    while (cursor < lines.length && !lines[cursor].trim()) cursor++;
+    next = listItem(lines[cursor] ?? "");
     if (!next) break;
     if (next.indent >= base + 4 && next.indent < contentIndent) break;
-    cursor = following;
   }
   return {
     block: {

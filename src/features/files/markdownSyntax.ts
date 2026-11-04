@@ -31,6 +31,10 @@ export function fenceOpener(line: string): RegExpExecArray | null {
   return fence?.[2][0] === "`" && fence[3].includes("`") ? null : fence;
 }
 
+export function fenceCloser(fence: RegExpExecArray): RegExp {
+  return new RegExp(`^ {0,3}${fence[2][0]}{${fence[2].length},}[ \\t]*$`, "u");
+}
+
 /** Fence indentation is relative to the enclosing item's content column. */
 export function readFencedCode(
   lines: readonly string[],
@@ -42,10 +46,7 @@ export function readFencedCode(
     contentIndent && indentation(line) >= contentIndent ? contentIndent : 0;
   const fence = fenceOpener(stripIndent(line, base));
   if (!fence) return null;
-  const closing = new RegExp(
-    `^ {0,3}${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
-    "u",
-  );
+  const closing = fenceCloser(fence);
   const start = ++cursor;
   while (
     cursor < lines.length &&
@@ -74,9 +75,7 @@ export function readFencedCode(
 
 /** A thematic break takes precedence over a list marker. */
 export function isMarkdownRule(line: string): boolean {
-  return /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(
-    line,
-  );
+  return /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/u.test(line);
 }
 
 export function startsLeafBlock(line: string): boolean {

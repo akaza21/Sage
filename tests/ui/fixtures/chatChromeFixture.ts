@@ -1,10 +1,25 @@
 import { acpProjectionStoreFor } from "../../../src/app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../../src/app/store";
 import { useSessionAccessModeStore } from "../../../src/app/sessionAccessModeStore";
-import type { TurnState } from "../../../src/domain/acp";
+import type {
+  CuratedBindingId,
+  CuratedModelId,
+  SageItemId,
+  TurnState,
+} from "../../../src/domain/acp";
 import { capabilitySetFixture } from "../../../src/domain/acpProjection.fixture";
 import { acpDesktop } from "../../../src/services/acpDesktop";
 import { popoverProfiles } from "./popoverProfiles";
+
+export const chatChromePrompt =
+  "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.";
+export function chatChromeAnswer(): string {
+  return Array.from(
+    { length: 60 },
+    (_, index) =>
+      `Paragraph ${index + 1}: A bounded transcript exercises scrolling and the latest-turn control.`,
+  ).join("\n\n");
+}
 
 export function installChatChromeFixture(
   harnessId: string,
@@ -16,8 +31,8 @@ export function installChatChromeFixture(
   const profile = popoverProfiles[ids.indexOf(harnessId)];
   if (!profile) throw new Error("Unknown chrome harness profile");
   const state = useWorkbenchStore.getState();
-  const bindingId = `visual-${harnessId}`;
-  const modelId = `${harnessId}-model`;
+  const bindingId = `visual-${harnessId}` as CuratedBindingId;
+  const modelId = `${harnessId}-model` as CuratedModelId;
   const modelName = `${profile.name} confirmed model`;
   const projectName = "Sage project with a long name";
   const title =
@@ -30,7 +45,6 @@ export function installChatChromeFixture(
       ...chatUiById[tab.id],
       harnessId,
       modelId,
-      harnessDiscoveryPhase: signIn ? "signInRequired" : "ready",
     };
   }
   useSessionAccessModeStore.setState({ modes: {}, ready: true, error: null });
@@ -81,7 +95,7 @@ export function installChatChromeFixture(
       bindingId,
       // A live matching session reports Ready/Live by design; sign-in
       // discovery only surfaces when no session owns the selected model.
-      modelId: signIn ? `${modelId}-previous` : modelId,
+      modelId: signIn ? (`${modelId}-previous` as CuratedModelId) : modelId,
       state: "active" as const,
       capabilities: capabilitySetFixture({
         closeSession: false,
@@ -130,28 +144,24 @@ export function installChatChromeFixture(
             items: [
               {
                 ...basis,
-                id: `${turn.id}-user`,
+                id: `${turn.id}-user` as SageItemId,
                 kind: "text" as const,
                 toolState: null,
                 lifecycle: "completed" as const,
                 payload: {
                   role: "user" as const,
-                  text: "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.",
+                  text: chatChromePrompt,
                 },
               },
               {
                 ...basis,
-                id: `${turn.id}-answer`,
+                id: `${turn.id}-answer` as SageItemId,
                 kind: "text" as const,
                 toolState: null,
                 lifecycle: "completed" as const,
                 payload: {
                   role: "assistant" as const,
-                  text: Array.from(
-                    { length: 60 },
-                    (_, index) =>
-                      `Paragraph ${index + 1}: A bounded transcript exercises scrolling and the latest-turn control.`,
-                  ).join("\n\n"),
+                  text: chatChromeAnswer(),
                 },
               },
             ],

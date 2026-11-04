@@ -742,6 +742,33 @@ describe("ATX classification before setext", () => {
 });
 
 describe("shared list interruption classification", () => {
+  it("keeps a quote paragraph open across marked indented continuation", () => {
+    expect(renderMarkdownPreview("> foo\n>     bar\nbaz\n").blocks).toEqual([
+      { kind: "quote", text: "foo bar baz" },
+    ]);
+  });
+
+  it.each([
+    [">     foo\n    bar\n", "foo", "bar"],
+    ["> ```\nfoo\n```\n", "```", "foo"],
+    ["> ```\n> code\noutside\n", "``` code", "outside"],
+  ])(
+    "does not lazily continue a quote opened by code: %j",
+    (source, text, outside) => {
+      expect(renderMarkdownPreview(source).blocks.slice(0, 2)).toEqual([
+        { kind: "quote", text },
+        { kind: "paragraph", text: outside },
+      ]);
+    },
+  );
+
+  it("does not collect a fenced list child's code as paragraph continuation", () => {
+    expect(renderMarkdownPreview("- ```\n  code\n").blocks).toEqual([
+      { kind: "list", items: ["```"] },
+      { kind: "paragraph", text: "code" },
+    ]);
+  });
+
   it.each(["- one", "-\n  one"])(
     "keeps an empty nested marker in the paragraph opened by %j",
     (prefix) => {

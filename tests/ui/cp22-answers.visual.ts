@@ -5,12 +5,7 @@ import {
   settleTranscriptAtEnd,
 } from "./shared/visualBrowserPrimitives";
 import { revealWorkedContent } from "./agentVisualHelpers";
-import {
-  flowchartSource,
-  pythonAnswer,
-  tableAnswer,
-  unlabelledAnswer,
-} from "./fixtures/cp22Answers";
+import { cp22MarkdownAnswers } from "./fixtures/cp22Answers";
 
 test.use({ deviceScaleFactor: 1 });
 
@@ -112,7 +107,7 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(page, tableAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.table);
     await expect(page.getByRole("cell", { name: "a|b" })).toBeVisible();
     await expect(page.locator(".acp-markdown strong").first()).toHaveText(
       "Harnesses",
@@ -122,7 +117,7 @@ for (const width of [1888, 560, 480]) {
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-table-${width}.png`,
     );
-    await installAnswer(page, pythonAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.python);
     const code = page.getByRole("region", { name: "Python code" });
     await code.scrollIntoViewIfNeeded();
     await expectFilledCodePanel(code);
@@ -143,7 +138,7 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(page, unlabelledAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.unlabelled);
     const code = page.getByRole("region", { name: "Code block" });
     await code.hover();
     await expectFilledCodePanel(code);
@@ -220,10 +215,7 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(
-      page,
-      `1. Password reset\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
-    );
+    await installAnswer(page, cp22MarkdownAnswers.passwordReset);
     await expect(
       page.getByRole("img", { name: "Mermaid diagram" }),
     ).toBeVisible();
@@ -233,14 +225,14 @@ for (const width of [1888, 560, 480]) {
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-flowchart-${width}.png`,
     );
-    await installAnswer(page, "```mermaid\ngraph TD\nA -->", true);
+    await installAnswer(page, cp22MarkdownAnswers.streaming, true);
     await expect(
       page.getByRole("status", { name: "Receiving diagram source" }),
     ).toBeVisible();
     await expect(page.locator(".acp-code-block")).toHaveScreenshot(
       `cp22-streaming-${width}.png`,
     );
-    await installAnswer(page, "```mermaid\nunsupported diagram\n```");
+    await installAnswer(page, cp22MarkdownAnswers.fallback);
     await expect(page.getByText(/could not be drawn/)).toBeVisible();
     await expect(page.locator(".acp-mermaid")).toHaveScreenshot(
       `cp22-fallback-${width}.png`,
@@ -274,10 +266,7 @@ test("CP-22 Pi-compatible text-only projection has no fabricated image controls"
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "rich", "agent");
-  await installAnswer(
-    page,
-    `${tableAnswer}\n\n${pythonAnswer}\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
-  );
+  await installAnswer(page, cp22MarkdownAnswers.combined);
   await expect(
     page.getByRole("img", { name: "Mermaid diagram" }),
   ).toBeVisible();
