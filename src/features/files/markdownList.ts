@@ -18,6 +18,7 @@ export interface MarkdownListBlock {
 interface ListItem {
   indent: number;
   content: number;
+  hasSeparator: boolean;
   ordered: boolean;
   start: number;
   checked?: boolean;
@@ -31,18 +32,29 @@ export function isMarkdownRule(line: string): boolean {
   );
 }
 
+/** Markdown tabs advance to the next four-column stop. */
+function columnAfter(text: string, column = 0): number {
+  for (const character of text)
+    column += character === "\t" ? 4 - (column % 4) : 1;
+  return column;
+}
+
 export function listItem(line: string): ListItem | null {
   if (isMarkdownRule(line)) return null;
-  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)])(?:[ \t]+(.*))?$/u.exec(
+  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)])(?:([ \t]+)(.*))?$/u.exec(
     line,
   );
   if (!match) return null;
-  const indent = match[1].replace(/\t/gu, "    ").length;
-  const text = match[4] ?? "";
+  const indent = columnAfter(match[1]);
+  const markerEnd = indent + (match[2] ? 1 : match[3].length + 1);
+  const separatorWidth = columnAfter(match[4] ?? "", markerEnd) - markerEnd;
+  const text = match[5] ?? "";
   const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(text);
   return {
     indent,
-    content: indent + (match[2] ?? match[3]).length + (match[2] ? 1 : 2),
+    // Blank items and over-wide separators use one column of list padding.
+    content: markerEnd + (text && separatorWidth <= 4 ? separatorWidth : 1),
+    hasSeparator: match[4] !== undefined,
     ordered: !match[2],
     start: Number(match[3] ?? 1),
     ...(task ? { checked: task[1] !== " " } : {}),
@@ -53,7 +65,7 @@ export function listItem(line: string): ListItem | null {
 /** Keep paragraph interruption limited to unindented, separator-bearing markers. */
 export function interruptsParagraph(line: string): boolean {
   const item = listItem(line);
-  return !!item && item.indent < 4 && line.length >= item.content;
+  return !!item && item.indent < 4 && item.hasSeparator;
 }
 
 /**

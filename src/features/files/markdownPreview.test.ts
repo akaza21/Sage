@@ -714,6 +714,106 @@ describe("ATX classification before setext", () => {
 });
 
 describe("shared list interruption classification", () => {
+  it.each(["-\t", "+\t", "*\t", " -\t", "  -\t", "- \t", "-   "])(
+    "keeps a two-space item beside a parent separated by %j",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n  - sibling`).blocks,
+      ).toEqual([{ kind: "list", items: ["parent", "sibling"] }]);
+    },
+  );
+
+  it.each([
+    ["-\t", 4, false],
+    [" -\t", 4, false],
+    ["  -\t", 4, false],
+    ["   -\t", 8, false],
+    ["1.\t", 4, true],
+    ["12)\t", 4, true],
+    ["123.\t", 8, true],
+    [" 1.\t", 4, true],
+    ["-\t ", 5, false],
+  ] as const)(
+    "uses %j to nest at column %i and keeps the preceding column as a sibling",
+    (prefix, column, ordered) => {
+      const source = [
+        `${prefix}parent`,
+        `${" ".repeat(column)}- child`,
+        `${" ".repeat(column - 1)}${ordered ? "2." : "-"} sibling`,
+      ].join("\n");
+      expect(renderMarkdownPreview(source).blocks).toEqual([
+        {
+          kind: "list",
+          items: ["parent", "child", "sibling"],
+          ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
+          shape: [
+            { depth: 0, ordered },
+            { depth: 1, ordered: false },
+            { depth: 0, ordered },
+          ],
+        },
+      ]);
+    },
+  );
+
+  it("aligns mixed space and tab indentation at the same nesting level", () => {
+    expect(
+      renderMarkdownPreview("- parent\n \t- child\n    - sibling").blocks,
+    ).toEqual([
+      {
+        kind: "list",
+        items: ["parent", "child", "sibling"],
+        shape: [
+          { depth: 0, ordered: false },
+          { depth: 1, ordered: false },
+          { depth: 1, ordered: false },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps the default content indentation after an empty tab-separated item", () => {
+    expect(renderMarkdownPreview("- one\n-\t\n  - child").blocks).toEqual([
+      {
+        kind: "list",
+        items: ["one", "", "child"],
+        shape: [
+          { depth: 0, ordered: false },
+          { depth: 0, ordered: false },
+          { depth: 1, ordered: false },
+        ],
+      },
+    ]);
+  });
+
+  it.each(["-     ", "-\t\t", "- \t\t"])(
+    "uses one column of list padding when %j separates more than four columns",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n  - child`).blocks,
+      ).toEqual([
+        {
+          kind: "list",
+          items: ["parent", "child"],
+          shape: [
+            { depth: 0, ordered: false },
+            { depth: 1, ordered: false },
+          ],
+        },
+      ]);
+    },
+  );
+
+  it.each(["-\tx", "   -\tx"])(
+    "interrupts a paragraph with short tab-separated content: %j",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}`).blocks).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        { kind: "list", items: ["x"] },
+      ]);
+    },
+  );
+
   it.each(["-", "+", "*", "1.", "2)"])(
     "interrupts a paragraph at a tab-separated %s item",
     (marker) => {

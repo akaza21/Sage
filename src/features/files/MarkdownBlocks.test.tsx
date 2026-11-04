@@ -9,6 +9,23 @@ import { FileMarkdownPreview } from "./FileMarkdownPreview";
 afterEach(cleanup);
 
 describe("MarkdownBlocks lists", () => {
+  it.each(["preview", "chat"])(
+    "keeps a two-space item beside a tab-separated parent in %s",
+    (surface) => {
+      const source = "-\tparent\n  - sibling";
+      const { container } = render(
+        surface === "preview" ? (
+          <FileMarkdownPreview source={source} />
+        ) : (
+          <ChatMarkdown text={source} />
+        ),
+      );
+      expect(container.querySelector("ul")!.outerHTML).toBe(
+        "<ul><li>parent</li><li>sibling</li></ul>",
+      );
+    },
+  );
+
   it("renders indented items as lists nested in their parent item", () => {
     const { container } = render(
       <FileMarkdownPreview
