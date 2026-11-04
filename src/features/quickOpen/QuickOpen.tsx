@@ -15,6 +15,7 @@ import {
   matchesPlatformChord,
 } from "../../domain/keymapRegistry";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
+import { FileKindIcon } from "../files/FileKindIcon";
 import {
   filterCommands,
   paletteCommands,
@@ -22,6 +23,7 @@ import {
 } from "./paletteCommands";
 import { queryQuickOpen } from "./quickOpenGateway";
 import { recentFiles } from "./quickOpenState";
+import { ShortcutKeys } from "./ShortcutKeys";
 import "./quick-open.css";
 
 /** While the index is being refreshed, the same query is asked again. */
@@ -319,7 +321,7 @@ export default function QuickOpen({
       }}
     >
       <div
-        className="quick-open"
+        className="quick-open popup-material"
         role="dialog"
         aria-modal="true"
         aria-label="Quick Open"
@@ -374,7 +376,7 @@ export default function QuickOpen({
             >
               <span className="quick-open__name">{command.label}</span>
               {command.shortcut ? (
-                <kbd className="quick-open__shortcut">{command.shortcut}</kbd>
+                <ShortcutKeys label={command.shortcut} />
               ) : null}
             </li>
           ))}
@@ -389,6 +391,9 @@ export default function QuickOpen({
                 aria-selected={index === active}
                 onClick={() => confirmFile(match)}
               >
+                <span className="quick-open__icon">
+                  <FileKindIcon path={match.relativePath} size={16} />
+                </span>
                 <span className="quick-open__name">
                   <Highlighted
                     text={match.relativePath.slice(base)}
