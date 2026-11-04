@@ -42,6 +42,7 @@ mod launch_profile;
 mod persistence;
 mod preview_lifecycle;
 mod project_commands;
+mod project_create_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
@@ -62,6 +63,7 @@ mod repository_conflict;
 mod repository_diff;
 mod repository_discovery;
 mod repository_git;
+mod repository_git_base;
 mod repository_history;
 mod repository_in_progress;
 mod repository_index_status;
@@ -95,9 +97,13 @@ mod state;
 mod test_paths;
 #[cfg(test)]
 mod test_wait;
+mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
+#[cfg(windows)]
+mod window_frame;
 mod window_memory;
+mod window_viewport;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
@@ -153,6 +159,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(window_memory::init())
+        .plugin(window_viewport::init())
         .setup(|app| {
             let disposable_root = std::env::var_os("SAGE_DISPOSABLE_PROFILE_ROOT");
             let profile = resolve_launch_profile(
@@ -199,12 +206,16 @@ pub fn run() {
                 next_browser_tab_number,
             )
             .map_err(std::io::Error::other)?;
+            let settings =
+                settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
+            browser_state
+                .attach_site_settings(settings.clone())
+                .map_err(std::io::Error::other)?;
             app.manage(browser_state);
+            app.manage(project_create_commands::ProjectSourcePicks::default());
             app.manage(browser::passwords::PasswordsState::new(
                 profile.durable_dir(),
             ));
-            let settings =
-                settings_store::SettingsStore::open(&profile.durable_dir().join("settings.db"))?;
             #[cfg(all(windows, feature = "acp-fixture"))]
             let state = match fixture_mode {
                 DesktopFixtureMode::GenericCharacterization(binding) => {
@@ -290,6 +301,12 @@ pub fn run() {
                             });
                         }
                     });
+            #[cfg(windows)]
+            let main_window = if main_window_config.decorations {
+                main_window
+            } else {
+                main_window.initialization_script(window_frame::initialization_script())
+            };
             let main_window = match profile.webview_dir() {
                 Some(directory) => main_window.data_directory(directory.to_owned()),
                 None => main_window,

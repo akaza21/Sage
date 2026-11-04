@@ -15,9 +15,19 @@ const luminance = (rgb: readonly number[]) =>
   }, 0);
 
 it("reveals hover times for inherited and truly final virtualized Turns", () => {
-  expect(read("src/features/chat/fork-chat.css")).toMatch(
-    /\.chat-fork-turn\s*\{\s*min-width:\s*0;/,
-  );
+  const style = document.createElement("style");
+  style.textContent = read("src/features/chat/fork-chat.css");
+  const turn = document.createElement("section");
+  turn.className = "chat-fork-turn";
+  document.head.append(style);
+  document.body.append(turn);
+  try {
+    expect(getComputedStyle(turn).minWidth).toBe("0px");
+    expect(getComputedStyle(turn).display).toBe("grid");
+  } finally {
+    style.remove();
+    turn.remove();
+  }
   const css = read("src/features/chat/chat-transcript-polish.css");
   expect(css).toContain(".chat-fork-turn:hover .chat-transcript-actions__time");
   expect(css).toMatch(

@@ -1,9 +1,24 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AcpItemIdentity } from "../../../domain/acp";
-import { DeferredInlineSavedDiff } from "./DeferredChatDetails";
+import {
+  DeferredInlineSavedDiff,
+  DeferredTurnFileActivity,
+} from "./DeferredChatDetails";
+import { snapshotPage } from "../../../app/agentDiff.fixture";
 
-const requests = vi.hoisted(() => ({ diff: vi.fn() }));
+const requests = vi.hoisted(() => ({
+  diff: vi.fn(),
+  files: vi.fn(),
+}));
+vi.mock("./TurnFileActivity", () => {
+  requests.files();
+  return {
+    TurnFileActivity: () => (
+      <section aria-label="Edited files">Edit card ready</section>
+    ),
+  };
+});
 vi.mock("./InlineSavedDiff", () => {
   requests.diff();
   return {
@@ -11,6 +26,29 @@ vi.mock("./InlineSavedDiff", () => {
   };
 });
 afterEach(cleanup);
+
+it("keeps the edit card unloaded until a turn reports edits and lazy-loads the disclosure", async () => {
+  const page = snapshotPage();
+  const { rerender } = render(
+    <DeferredTurnFileActivity
+      page={page}
+      turn={{ ...page.turns[0], items: [] }}
+    />,
+  );
+  expect(requests.files).not.toHaveBeenCalled();
+  rerender(<DeferredTurnFileActivity page={page} turn={page.turns[0]} />);
+  expect(
+    await screen.findByRole("region", { name: "Edited files" }),
+  ).toHaveTextContent("Edit card ready");
+  expect(requests.files).toHaveBeenCalledOnce();
+  rerender(
+    <DeferredTurnFileActivity
+      page={page}
+      turn={{ ...page.turns[0], items: [] }}
+    />,
+  );
+  expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
+});
 
 const identity = {
   id: "item-1",

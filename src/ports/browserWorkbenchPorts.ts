@@ -1,4 +1,4 @@
-import { createInjectedEditorWatchDelivery } from "../domain/editorWatch";
+import { createInjectedEditorWatchDelivery } from "../domain/editorWatchDelivery";
 import { browserDesktop } from "../services/browserDesktop";
 import type {
   ChatLifecycleRequest,
@@ -51,7 +51,9 @@ const project: ProjectPort = {
   getBootstrapSnapshot: () => browserDesktop.getBootstrapSnapshot(),
   getProjectChatQueuedPrompts: async () => ({}),
   replaceChatQueuedPrompts: async () => {},
-  createProjectFromPicker: (
+  pickProjectSourceFolder: () => Promise.resolve(null),
+  createProject: (
+    _request,
     _expectedActiveProjectId,
     expectedTransitionEpoch,
   ) => Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),
@@ -115,7 +117,14 @@ const editor: EditorPort = {
 const repository: RepositoryPort = {
   getRepositoryStatus: () => browserDesktop.getRepositoryStatus(),
   getRepositoryChangeStamp: async () => "browser",
-  getFileDiff: (resource) => browserDesktop.getFileDiff(resource),
+  getFileDiff: (resource, scope) =>
+    scope
+      ? Promise.reject(
+          new Error("Scoped Git diffs require the native Git backend."),
+        )
+      : browserDesktop.getFileDiff(resource),
+  getFileGitBase: (resource, knownOid) =>
+    browserDesktop.getFileGitBase(resource, knownOid),
   mutateGitFile: (request, expectedTransitionEpoch) =>
     browserDesktop.mutateGitFile(request, expectedTransitionEpoch),
   abortGitInProgress: (request, expectedTransitionEpoch) =>
@@ -143,6 +152,11 @@ const repository: RepositoryPort = {
     transitionEpoch: request.expectedTransitionEpoch,
     refs: [],
     truncated: false,
+  }),
+  resolveResourceRepository: async (request) => ({
+    projectId: request.projectId,
+    transitionEpoch: request.expectedTransitionEpoch,
+    repository: { rootId: request.resource.rootId, relativePath: "" },
   }),
   getNestedRepositoryStatus: () =>
     Promise.reject(new Error("nested repository status is not implemented")),

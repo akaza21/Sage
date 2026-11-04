@@ -1,13 +1,23 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FilePathChips } from "./FilePathChips";
+import { FileEditorHeader } from "./FileEditorHeader";
 
 afterEach(cleanup);
 
 describe("FilePathChips", () => {
   it("renders a bounded chip trail for the open editor path", () => {
-    render(<FilePathChips path="src/train.py" />);
+    render(
+      <FileEditorHeader
+        lineEnding="lf"
+        diskByteLen={0}
+        persisting={false}
+        dirty={false}
+        saving={false}
+        transitioning={false}
+        path="src/train.py"
+      />,
+    );
     expect(
       screen.getByRole("navigation", { name: "File path" }),
     ).toHaveTextContent("srctrain.py");
@@ -15,7 +25,18 @@ describe("FilePathChips", () => {
   });
 
   it("includes the Project name in an Agent file breadcrumb", () => {
-    render(<FilePathChips path="docs/readme.md" projectName="Sage" />);
+    render(
+      <FileEditorHeader
+        lineEnding="lf"
+        diskByteLen={0}
+        persisting={false}
+        dirty={false}
+        saving={false}
+        transitioning={false}
+        path="docs/readme.md"
+        projectName="Sage"
+      />,
+    );
     expect(
       screen.getByRole("navigation", { name: "File path" }),
     ).toHaveTextContent("Sagedocsreadme.md");
@@ -23,7 +44,13 @@ describe("FilePathChips", () => {
 
   it("keeps the first directory and marks omitted middle segments", () => {
     render(
-      <FilePathChips
+      <FileEditorHeader
+        lineEnding="lf"
+        diskByteLen={0}
+        persisting={false}
+        dirty={false}
+        saving={false}
+        transitioning={false}
         path="first/second/third/fourth/fifth/readme.md"
         projectName="Sage"
       />,

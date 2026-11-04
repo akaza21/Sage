@@ -59,14 +59,11 @@
       280px,
       40%
     );
+  position: relative;
 }
 
 .workbench--agent .center-region {
   grid-template-rows: minmax(0, 1fr);
-}
-
-.workbench--agent .workbench__body {
-  position: relative;
 }
 
 .agent-artifact-surface {
@@ -74,14 +71,14 @@
 }
 .workbench--agent .workbench__body .agent-artifact-pane--maximized {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   inset: 0;
-  width: 100%;
+  width: auto;
 }
 
 .workbench__body--artifact-overlay .agent-artifact-pane {
   position: absolute;
-  z-index: 12;
+  z-index: var(--z-overlay);
   top: 0;
   right: 0;
   bottom: 0;
@@ -91,7 +88,7 @@
 
 .agent-artifact-backdrop {
   position: absolute;
-  z-index: 11;
+  z-index: var(--z-overlay-backdrop);
   inset: 0;
   padding: 0;
   border: 0;
@@ -130,7 +127,6 @@
   grid-column: 1;
 }
 
-/* About 8 px from the divider, which sits mid-splitter (Codex s2/f0244). */
 .agent-chat-center__header--split > .agent-chat-center__side-tab {
   grid-column: 2;
   padding-inline-start: var(--space-1);
@@ -139,6 +135,7 @@
 .agent-chat-center__header--panes > .agent-artifact-header-slot {
   grid-column: -2;
   justify-self: end;
+  align-self: center;
   /* Clear of the side tab's bottom rule, which already spans the cell. */
   border-bottom: 0;
 }
@@ -175,43 +172,15 @@
   min-height: 28px;
   padding: 0;
   place-content: center;
+  align-self: center;
+  background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
 }
 
-@container chat (max-width: 520px) {
-  /* The approval card holds the composer slot at the composer's width. */
-  .workbench--agent .acp-permission-prompt,
-  .workbench--agent .chat-follow-end,
-  .workbench--agent .message-list,
-  .workbench--agent .composer {
-    --chat-column-trailing: 0px;
-  }
-
-  .workbench--agent .message-list {
-    padding-inline-end: calc(
-      var(--chat-column-gutter) + var(--chat-column-trailing) -
-        var(--scrollbar-size)
-    );
-  }
-
-  .workbench--agent .acp-turn {
-    column-gap: 0;
-  }
-
-  .workbench--agent
-    .message-list__content:has(> .acp-chat-projection)
-    > .chat-transcript-actions,
-  .workbench--agent .message-list__content > .chat-fork-divider,
-  .workbench--agent .chat-fork-inherited > .chat-transcript-actions {
-    width: min(100%, var(--reading-measure));
-    margin-inline-start: max(0px, calc((100% - var(--reading-measure)) / 2));
-  }
-}
-
 .workbench-sidebar-splitter {
   position: relative;
-  z-index: 2;
+  z-index: var(--z-sticky);
   min-width: 8px;
   cursor: col-resize;
   touch-action: none;
@@ -283,7 +252,6 @@
   container-name: agent-artifact-pane;
   container-type: inline-size;
   grid-template-rows: 44px minmax(0, 1fr);
-  background: var(--color-panel);
 }
 
 .agent-artifact-pane--empty {
@@ -301,7 +269,6 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-/* Codex 67: "+" follows the last tab; the other controls stay at the end. */
 .agent-artifact-pane__header > .tab-strip {
   width: auto;
   min-width: 0;
@@ -527,7 +494,7 @@
 .subagent-surface header {
   margin-bottom: var(--space-3);
 }
-/* Codex child header: back, avatar, name, and the model at the far right. */
+
 .subagent-surface__bar {
   display: flex;
   align-items: center;
@@ -584,7 +551,7 @@
   display: block;
   color: var(--color-text-muted);
 }
-/* Codex child transcripts carry no author row (s4/f0485, spec section 7). */
+
 .subagent-surface__transcript .acp-message__meta {
   display: none;
 }

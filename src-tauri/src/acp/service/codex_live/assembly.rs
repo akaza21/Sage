@@ -1,35 +1,19 @@
 use super::*;
 
-impl AcpService {
-    #[cfg(all(test, windows))]
-    pub(crate) async fn activate_codex_session(
-        &self,
-        command: ActivateSessionCommand,
-        project_root: crate::acp::bindings::codex::CodexProjectRootAuthority,
-    ) -> Result<(), CodexSessionError> {
-        let admitted = self
-            .refresh_codex_binding()
-            .map_err(CodexSessionError::Binding)?;
-        self.activate_session(
-            admitted,
-            command,
-            crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
-        )
-        .await
-    }
-
+impl Lane<'_> {
     pub(crate) async fn activate_session(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
+        deadlines: (Instant, Instant),
     ) -> Result<(), CodexSessionError> {
         let root = project_root.configured_resource_root();
         let (command, mut prepared) =
             self.prepare_session_activation(admitted, command, project_root)?;
         let abort = ActivationAbortIntent::from_prepared(&prepared);
         let resources = NativeResourceMapper::new([root]).map_err(|_| CodexSessionError::Intent)?;
-        let (operation_deadline, cleanup_deadline) = deadlines()?;
+        let (operation_deadline, cleanup_deadline) = deadlines;
         self.reclaim_zero_process_capacity(cleanup_deadline)
             .map_err(|_| CodexSessionError::Recovery)?;
         self.park_idle_runtime_for_replacement(cleanup_deadline)?;
@@ -351,13 +335,5 @@ impl AcpService {
             guard.commit();
         }
         Ok(())
-    }
-
-    #[cfg(all(test, windows))]
-    pub(crate) fn fail_next_runtime_port_finish_park(&self) {
-        *self
-            .runtime_port_finish_park_failure
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
     }
 }

@@ -1,0 +1,8 @@
+.agent-task-header__resource-panel section[aria-label="Background processes"] {
+  display: block;
+}
+.agent-task-header__resource-panel
+  section[aria-label="Background processes"]
+  p {
+  white-space: normal;
+}

@@ -107,7 +107,8 @@ describe("Agent motion style seams", () => {
       "sage-working-pulse var(--motion-duration-pulse)",
     );
     expect(chat).not.toMatch(/animation:[^;]*\b(?:1\.4s|900ms)\b/);
-    expect(chat).toContain("agent-chat-chip-spin var(--motion-duration-spin)");
+    expect(chat).toContain("sage-spin var(--motion-duration-spin)");
+    expect(global).toMatch(/@keyframes sage-spin\s*\{/);
     const stylesheets = (await readdir("src", { recursive: true })).filter(
       (path) => path.endsWith(".css"),
     );
@@ -116,6 +117,13 @@ describe("Agent motion style seams", () => {
       expect(source, stylesheet).not.toMatch(
         /animation:[^;]*sage-working-pulse\s+1\.4s\b/,
       );
+      // Durations come from --motion-* tokens so reduced motion zeroes them.
+      expect(source, stylesheet).not.toMatch(
+        /(?:animation|transition)(?:-duration|-delay)?:[^;{}]*(?<![\w.-])(?:\d*\.)?[1-9]\d*m?s\b/,
+      );
+      if (stylesheet.replaceAll("\\", "/") !== "styles/global.css") {
+        expect(source, stylesheet).not.toMatch(/@keyframes [\w-]*spin\b/);
+      }
     }
   });
 });
@@ -299,12 +307,10 @@ describe("Codex live motion (parity spec section 10)", () => {
       /margin:\s*0 var\(--chat-column-trailing\) var\(--space-6\) 0;/,
     );
     expect(surface).toMatch(
-      /--chat-column-trailing:\s*calc\(var\(--scrollbar-size\) \+ var\(--space-3\)\);/,
+      /--chat-column-trailing:\s*var\(--scrollbar-size\);/,
     );
     const compact = await css("src/workbench/workbench-window-mode.css");
-    expect(compact).toMatch(
-      /\.workbench--agent \.chat-follow-end,[^{]*\{\s*--chat-column-trailing:\s*0px;/,
-    );
+    expect(compact).not.toMatch(/--chat-column-trailing:/);
     // A white, thin 14 px arrow (s2/f0046); the activity dots keep theirs.
     expect(follow).toMatch(
       /\.chat-follow-end:not\(\[data-mode="activity"\]\) > svg\s*\{\s*color:\s*var\(--color-text-emphasis\);\s*stroke-width:\s*1;\s*\}/,
@@ -348,10 +354,14 @@ describe("Codex live motion (parity spec section 10)", () => {
       new RegExp(`${mode}\\s*\\{[^}]*grid-auto-flow:\\s*column;`),
     );
     expect(follow).toMatch(
-      new RegExp(`\\n${mode} > svg\\s*\\{\\s*animation-delay:\\s*125ms;`),
+      new RegExp(
+        `\\n${mode} > svg\\s*\\{\\s*animation-delay:\\s*calc\\(var\\(--motion-duration-bounce\\) \\/ 8\\);`,
+      ),
     );
     expect(follow).toMatch(
-      new RegExp(`\\n${mode}::after\\s*\\{\\s*animation-delay:\\s*250ms;`),
+      new RegExp(
+        `\\n${mode}::after\\s*\\{\\s*animation-delay:\\s*calc\\(var\\(--motion-duration-bounce\\) \\/ 4\\);`,
+      ),
     );
     const frames = follow.match(
       /@keyframes sage-dot-bounce\s*\{([\s\S]*?)\n\}/,

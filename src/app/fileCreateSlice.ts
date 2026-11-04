@@ -8,8 +8,6 @@ import type {
 } from "../domain/workbench";
 import {
   newFileResource,
-  validateCreateProjectFileResult,
-  validateCreateProjectFolderResult,
   validateNewFilePath,
 } from "../features/files/newFileContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -235,6 +233,10 @@ export const createFileCreateSlice: StateCreator<
     set(creationStart(kind, requestGeneration));
     try {
       await get().flushActiveEditor();
+      const {
+        validateCreateProjectFileResult,
+        validateCreateProjectFolderResult,
+      } = await import("../features/files/newFileResult");
       if (
         !matchesProjectIntent(get(), projectGeneration, project.id) ||
         get().nativeTransitionEpoch !== transitionEpoch ||

@@ -1,20 +1,8 @@
-.composer {
-  --queued-tray-space: 0px;
-  position: relative;
-  container-name: composer;
-  container-type: inline-size;
+.chat-dock {
   display: flex;
   min-height: 0;
   max-height: 100%;
   flex-direction: column;
-  margin: 0;
-  overflow: visible;
-  background: var(--composer-fill);
-  box-shadow: var(--composer-shadow);
-}
-
-.composer,
-.chat-surface > .acp-permission-prompt {
   width: min(
     var(--reading-measure),
     calc(
@@ -26,12 +14,66 @@
     var(--chat-column-gutter),
     calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
   );
-  border: 1px solid var(--composer-border);
-  border-radius: var(--radius-xl);
 }
 
-/* Codex draws no focus border on the composer; the caret shows focus
-   (s2/f0113, s2/f0244). Forced colors keep a system outline below. */
+/* Slots take space in the column before the composer shares the remainder. */
+.chat-dock > * {
+  flex: none;
+}
+
+.chat-dock > .chat-edit-summary-zone {
+  /* Expanded edits use spare room without squeezing the input and toolbar. */
+  flex: 1 1 auto;
+}
+
+.chat-dock > .chat-edit-summary-zone:not(:empty) {
+  min-height: 40px;
+}
+
+.chat-dock > .acp-permission-prompt {
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.composer {
+  --composer-slots-min-block-size: 0px;
+  --composer-toolbar-min-block-size: 40px;
+  position: relative;
+  container-name: composer;
+  container-type: inline-size;
+  display: grid;
+  min-height: calc(
+    var(--composer-slots-min-block-size) +
+      var(--composer-input-min-block-size) +
+      var(--composer-toolbar-min-block-size)
+  );
+  flex: 0 1 auto;
+  grid-template-areas: "slots" "body" "toolbar";
+  grid-template-rows:
+    minmax(var(--composer-slots-min-block-size), auto)
+    minmax(var(--composer-input-min-block-size), 1fr)
+    auto;
+}
+
+.composer:has(> .composer__slots:not(:empty)) {
+  --composer-slots-min-block-size: var(--control-height-default);
+}
+
+.composer:has(> .composer__slots > .composer__queued) {
+  --composer-slots-min-block-size: var(--chrome-row-height);
+}
+
+.composer__slots {
+  display: flex;
+  min-height: 0;
+  grid-area: slots;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.composer__slots > * {
+  flex-shrink: 0;
+}
 
 /* An approval holds the slot; the form stays mounted so the draft survives. */
 .composer[hidden] {
@@ -41,8 +83,26 @@
 .composer__body {
   display: block;
   min-height: 0;
+  grid-area: body;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* The dock clips its unpainted slots; menus use the shared portal. */
+.composer__scope {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.composer__scope > svg {
+  flex: none;
 }
 
 .composer__input-area {
@@ -53,9 +113,10 @@
 }
 
 .composer textarea {
+  field-sizing: content;
   display: block;
   width: 100%;
-  min-height: 44px;
+  min-height: var(--composer-input-min-block-size);
   max-height: min(180px, 28vh);
   padding: var(--space-3) var(--space-3) var(--space-1);
   resize: none;
@@ -176,8 +237,9 @@
 }
 
 .composer__toolbar {
+  grid-area: toolbar;
   display: grid;
-  min-height: 40px;
+  min-height: var(--composer-toolbar-min-block-size);
   flex: none;
   grid-template-areas: "controls mic meter send";
   grid-template-columns: minmax(0, 1fr) auto auto auto;
@@ -239,16 +301,34 @@
   text-overflow: ellipsis;
 }
 
-/* The trigger overlays the chip's 1px border so its 28px target is neither
-   clipped by the chip nor inset from the chip's visible edge. */
+/* Interactive scope delegates its entire box to the picker trigger. */
 .project-scope.select-control {
+  --select-control-trigger-border: var(
+    --project-scope-trigger-border,
+    var(--border-width) solid var(--glass-border)
+  );
+  --select-control-trigger-fill: var(
+    --project-scope-trigger-fill,
+    var(--glass-fill)
+  );
+  --select-control-trigger-blur: var(
+    --project-scope-trigger-blur,
+    var(--glass-blur)
+  );
+  --select-control-trigger-shadow: var(
+    --project-scope-trigger-shadow,
+    var(--glass-highlight)
+  );
   padding: 0;
   overflow: visible;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
 .project-scope .searchable-picker {
-  width: calc(100% + 2px);
-  margin: -1px;
+  width: 100%;
 }
 
 .project-scope .searchable-picker__trigger {
@@ -270,20 +350,6 @@
   background: var(--glass-fill);
   backdrop-filter: var(--glass-blur);
   box-shadow: var(--glass-highlight);
-}
-
-.select-control__unsupported {
-  min-width: 0;
-  min-height: var(--control-height-compact);
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  color: var(--color-text-disabled);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: default;
 }
 
 .composer__shortcut {
@@ -363,7 +429,7 @@
 }
 
 @media (forced-colors: active) {
-  .composer,
+  .chat-dock,
   .composer__attachment,
   .project-scope,
   .project-scope__icon,
@@ -373,7 +439,7 @@
     border: 1px solid CanvasText;
   }
 
-  .composer:focus-within {
+  .chat-dock:focus-within {
     border-color: Highlight;
     outline: 2px solid Highlight;
     outline-offset: -2px;

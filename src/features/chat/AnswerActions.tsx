@@ -3,14 +3,9 @@ import { Check, Copy } from "../../ui/leanIcons";
 
 import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
+import { chatTimestamp } from "./chatTimestamp";
 import { ForkPart } from "./lazyParts";
-import { chatTimestamp, timeOfDayLabel } from "./chatTimestamp";
 
-/**
- * Codex's row under a finished answer (s2/f0053, f0093): Copy, "…" for a
- * native Chat's answer, any extra actions, then the answer's own time,
- * muted, on hover or focus. Copy acts on this answer's text only.
- */
 export function AnswerActions({
   text,
   createdAt,
@@ -84,7 +79,7 @@ export function AnswerActions({
           className="chat-transcript-actions__time"
           dateTime={time.dateTime}
         >
-          {timeOfDayLabel(createdAt!)}
+          {time.label}
         </time>
       ) : null}
     </div>

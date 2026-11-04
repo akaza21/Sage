@@ -210,9 +210,9 @@ function Stop-UnadmittedOwnedRuntime(
   }
   try {
     $ProcessRows = @(Get-FootprintProcessSnapshot)
-    foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $ProcessRows)) {
-      [void](Add-FootprintRememberedIdentity $RememberedIdentities $row)
-    }
+    Add-FootprintRememberedIdentities $RememberedIdentities @(
+      Get-FootprintDescendants ([int]$Process.Id) $ProcessRows -RootCreationDate $Process.StartTime
+    )
   } catch {
     $ProcessRows = $null
   }
@@ -276,9 +276,9 @@ function Capture-OwnedRuntimeOrQuarantine(
     if ($refreshSucceeded) {
       try {
         $snapshot = @(Get-FootprintProcessSnapshot)
-        foreach ($row in @(Get-FootprintDescendants ([int]$Process.Id) $snapshot)) {
-          [void](Add-FootprintRememberedIdentity $remembered $row)
-        }
+        Add-FootprintRememberedIdentities $remembered @(
+          Get-FootprintDescendants ([int]$Process.Id) $snapshot -RootCreationDate $Process.StartTime
+        )
         $lastSnapshot = $snapshot
       } catch {
         # Cleanup retains any identities remembered by an earlier attempt.
@@ -540,15 +540,21 @@ function Update-OwnedRuntimeTree([Collections.IDictionary]$Runtime) {
     } catch { }
     throw
   }
-  foreach ($row in @(Get-FootprintDescendants ([int]$Runtime.identity.processId) $rows)) {
+  # Stage the whole tree so one incomplete row leaves the runtime store as it was.
+  $staged = [Collections.Generic.Dictionary[string, object]]::new($Runtime.store, [StringComparer]::Ordinal)
+  $descendants = @(Get-FootprintDescendants ([int]$Runtime.identity.processId) $rows -RootCreationDate $Runtime.identity.creationDate)
+  foreach ($row in $descendants) {
     $isRoot = $false
     try { $isRoot = [int]$row.ProcessId -eq [int]$Runtime.identity.processId } catch { }
     try {
-      [void](Add-FootprintRememberedIdentity $Runtime.store $row)
+      [void](Add-FootprintRememberedIdentity $staged $row)
     } catch {
       try { [void](Add-StartupIncompleteIdentityFact $_ "update-descendant" $row $isRoot) } catch { }
       throw
     }
+  }
+  foreach ($entry in $staged.GetEnumerator()) {
+    if (-not $Runtime.store.ContainsKey($entry.Key)) { $Runtime.store.Add($entry.Key, $entry.Value) }
   }
 }
 
@@ -620,22 +626,28 @@ function Wait-OwnedFrontendReady(
 ) {
   if ($null -eq $ListenerProbe) { $ListenerProbe = { param($value) Get-FrontendListenerIdentity $value } }
   if ($null -eq $HttpProbe) { $HttpProbe = { param($value, $timeout) Test-FrontendHttpReady $value $timeout } }
-  $unownedListenerSince = $null
+  $listenerSeen = $false
   do {
     $Runtime.process.Refresh()
     if ($Runtime.process.HasExited) { throw "The owned frontend exited before readiness." }
     Update-OwnedRuntimeTree $Runtime
     $listenerBefore = & $ListenerProbe $Contract
     if ($null -ne $listenerBefore) {
+      $listenerSeen = $true
       if (-not (Test-OwnedRuntimeProcessIdentity $Runtime $listenerBefore)) {
-        if ($null -eq $unownedListenerSince) { $unownedListenerSince = [DateTime]::UtcNow }
-        if (([DateTime]::UtcNow - $unownedListenerSince).TotalMilliseconds -ge 1000) {
-          throw "The frontend listener is not owned by the captured runtime tree."
+        # Ownership, not the deadline, decides an unowned listener. A tree snapshot taken
+        # after the listener was seen includes it if the runtime started it.
+        Update-OwnedRuntimeTree $Runtime
+        if (-not (Test-OwnedRuntimeProcessIdentity $Runtime $listenerBefore)) {
+          $listenerConfirmed = & $ListenerProbe $Contract
+          if ($null -ne $listenerConfirmed -and (Test-SameProcessIdentity $listenerBefore $listenerConfirmed)) {
+            throw "The frontend listener is not owned by the captured runtime tree."
+          }
+          # The listener went away or changed between probes; observe it afresh.
+          if ([DateTime]::UtcNow -lt $StartupDeadline) { Start-Sleep -Milliseconds 100 }
+          continue
         }
-        Start-Sleep -Milliseconds 100
-        continue
       }
-      $unownedListenerSince = $null
     }
     $remaining = [int][Math]::Max(1, [Math]::Min(500, ($StartupDeadline - [DateTime]::UtcNow).TotalMilliseconds))
     if ($null -ne $listenerBefore -and (& $HttpProbe $Contract $remaining) -and [DateTime]::UtcNow -le $StartupDeadline) {
@@ -649,6 +661,7 @@ function Wait-OwnedFrontendReady(
     }
     if ([DateTime]::UtcNow -lt $StartupDeadline) { Start-Sleep -Milliseconds 100 }
   } while ([DateTime]::UtcNow -lt $StartupDeadline)
+  if (-not $listenerSeen) { throw "The owned frontend opened no listener within its startup deadline." }
   throw "The owned frontend did not become ready within its startup deadline."
 }
 
@@ -903,7 +916,7 @@ if ($ToolIdentityAction) {
   $store = New-FootprintIdentityStore
   foreach ($item in @($owned.remembered)) { [void](Add-FootprintRememberedIdentity $store ([pscustomobject]@{ ProcessId = $item.processId; ExecutablePath = $item.executablePath; CreationDate = $item.creationDate })) }
   $root = [ordered]@{ processId = [int]$owned.processId; executablePath = [string]$owned.executablePath; creationDate = [string]$owned.creationDate }
-  Stop-FootprintTree $root $store 1 | ConvertTo-Json -Depth 5 -Compress
+  Stop-FootprintTree $root $store | ConvertTo-Json -Depth 5 -Compress
   exit 0
 }
 

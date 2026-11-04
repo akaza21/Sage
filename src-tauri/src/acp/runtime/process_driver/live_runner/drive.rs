@@ -19,6 +19,31 @@ use super::{
 };
 
 mod active;
+#[cfg(test)]
+pub(in crate::acp::runtime::process_driver) async fn active_step_for_test<A, R, T, Auth, C>(
+    state: WorkerState<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+    deadline_millis: i64,
+) -> Result<WorkerState<A, R, T, C>, TreeExit>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
+    let FirstTurnWorkerState::Active(active) = state else {
+        panic!("active runner step");
+    };
+    let mut pending = None;
+    let mut deadline = Some(deadline_millis);
+    match active::step(active, context, &mut pending, &mut deadline).await {
+        Ok((RunnerAction::Continue(next), None)) => Ok(next),
+        Ok(_) => panic!("expected a nonterminal runner step"),
+        Err(exit) => Err(exit.reason),
+    }
+}
 
 pub(super) async fn drive<A, R, T, Auth, C>(
     mut state: WorkerState<A, R, T, C>,
@@ -329,18 +354,7 @@ where
             }
             RunnerAction::Shutdown(state, envelope) => {
                 fail_pending_config(&mut pending_config, HostError::Closed);
-                let reason = if state.has_durable_completed_cursor()
-                    || state.has_durable_cancelled_cursor()
-                {
-                    TreeExit::Cancelled
-                } else {
-                    TreeExit::ParentShutdown
-                };
-                return RunnerExit {
-                    state: *state,
-                    shutdown: Some(envelope),
-                    reason,
-                };
+                return super::requested_shutdown(*state, envelope);
             }
         }
     }

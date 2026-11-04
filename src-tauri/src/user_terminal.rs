@@ -24,6 +24,17 @@ pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
 pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
 pub const OUTPUT_PAGE_BYTES: usize = 48_000;
+/// Largest grid a terminal may be created or resized to.
+pub const MAX_COLUMNS: u16 = 500;
+pub const MAX_ROWS: u16 = 300;
+
+fn validate_dimensions(columns: u16, rows: u16) -> Result<(), TerminalError> {
+    if (1..=MAX_COLUMNS).contains(&columns) && (1..=MAX_ROWS).contains(&rows) {
+        Ok(())
+    } else {
+        Err(TerminalError::InvalidDimensions)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TerminalSessionId(uuid::Uuid);
@@ -140,6 +151,30 @@ struct Session {
     process: Box<dyn TerminalProcess>,
 }
 
+/// Whether `scope` names a chat tab of its project, read off the async runtime.
+async fn chat_tab_exists(
+    database: &crate::persistence::Database,
+    scope: &TerminalScope,
+) -> Result<bool, TerminalError> {
+    let database = database.clone();
+    let project = scope.project.clone();
+    let chat = scope.chat.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database
+            .connection()
+            .query_row(
+                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
+                [project.as_str(), chat.as_str()],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+    })
+    .await
+    .map_err(|_| TerminalError::Backend)?
+    .map(|row| row.is_some())
+    .map_err(|_| TerminalError::InvalidScope)
+}
+
 impl TerminalSessionPort {
     fn shell_path(&self, handle: TerminalHandle) -> Result<String, TerminalError> {
         let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
@@ -179,24 +214,12 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<TerminalHandle, TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let context = state
             .lock_active_project(&scope.project, scope.generation)
             .await
             .map_err(|_| TerminalError::InvalidScope)?;
-        let chat_exists: Option<i64> = state
-            .database
-            .connection()
-            .query_row(
-                "SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2 LIMIT 1",
-                [scope.project.as_str(), scope.chat.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|_| TerminalError::InvalidScope)?;
-        if chat_exists.is_none() {
+        if !chat_tab_exists(&state.database, scope).await? {
             return Err(TerminalError::InvalidScope);
         }
         let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
@@ -279,9 +302,7 @@ impl TerminalSessionPort {
         rows: u16,
     ) -> Result<(), TerminalError> {
         let state = authority.0;
-        if !(1..=500).contains(&columns) || !(1..=300).contains(&rows) {
-            return Err(TerminalError::InvalidDimensions);
-        }
+        validate_dimensions(columns, rows)?;
         let _context = state
             .lock_active_project(&scope.project, scope.generation)
             .await

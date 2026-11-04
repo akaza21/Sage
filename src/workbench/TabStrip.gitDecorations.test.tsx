@@ -82,7 +82,7 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
     "src/a.ts",
   );
 
-  act(() => {
+  await act(async () => {
     useWorkbenchStore.setState({
       repositories: repositories([["src/b.ts", "untracked"]]),
     });
@@ -92,7 +92,7 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
     await screen.findByRole("tab", { name: "b.ts, Untracked" }),
   ).toBeTruthy();
 
-  act(() => {
+  await act(async () => {
     useEditorSettingsStore.setState({
       settings: {
         ...useEditorSettingsStore.getState().settings,

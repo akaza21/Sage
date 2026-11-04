@@ -1,4 +1,5 @@
 import { memo, useId } from "react";
+import { useAgentChangesState } from "../../../workbench/agentChangesState";
 
 import {
   attributedSubagentKey,
@@ -88,9 +89,10 @@ function SubagentRow({
                   ? `Show ${segment.text} subagents`
                   : `Open subagent ${segment.text}`
               }
-              onClick={() =>
-                useSubagentPaneStore.getState().show(open, segment.more)
-              }
+              onClick={() => {
+                useAgentChangesState.getState().select(false);
+                useSubagentPaneStore.getState().show(open, segment.more);
+              }}
             >
               {segment.text}
             </button>

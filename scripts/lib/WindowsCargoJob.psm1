@@ -119,6 +119,7 @@ function Invoke-CargoValidationJob {
       $ExecutablePath, $Arguments, $WorkingDirectory, $EnvironmentEntries,
       $MaximumActiveProcesses, [ref]$stdout, [ref]$stderr
     )
+    [Console]::Error.WriteLine(('cargo-job native-start remainingMs={0} rootRunning={1}' -f [long][Math]::Floor(($DeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds), $job.RootRunning))
     $protocol = [SageValidation.ProtocolWriter]::new(
       [Console]::OpenStandardOutput(), $RequestNonce
     )
@@ -161,6 +162,7 @@ function Invoke-CargoValidationJob {
       $reason = "command-timeout"
       # Record what was still running at the deadline before teardown.
       $stall = New-CargoJobStallReport ([bool]$job.RootRunning) @($job.MemberImageNames())
+      [Console]::Error.WriteLine("cargo-job deadline $($job.AccountingSummary())")
     }
     if ($null -ne $reason) {
       $graceDeadline = [DateTime]::UtcNow.AddMilliseconds($TerminationGraceMilliseconds)

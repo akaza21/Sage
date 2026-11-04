@@ -42,8 +42,35 @@ const SAFE_CHILD_ENVIRONMENT_KEYS = [
   "WINDIR",
 ];
 
-function fail(code) {
-  throw new Error(`journey-${code}`);
+function fail(code, cause) {
+  throw new Error(
+    `journey-${code}`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+export const HELPER_DIAGNOSTIC_CHARS_MAX = 4096;
+
+// Maps a finished process identity helper run to its JSON value. Failures keep
+// the stable journey code as the message and carry what PowerShell reported
+// as the cause.
+export function processIdentityHelperOutput(result) {
+  if (result.error) fail("tool-cleanup-unproven", result.error);
+  if (result.status !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    const signal = result.signal ? ` (${result.signal})` : "";
+    fail(
+      "tool-cleanup-unproven",
+      new Error(
+        `process identity helper exited with status ${result.status}${signal}: ${stderr.slice(0, HELPER_DIAGNOSTIC_CHARS_MAX)}`,
+      ),
+    );
+  }
+  try {
+    return JSON.parse(result.stdout.trim());
+  } catch (error) {
+    fail("tool-cleanup-unproven", error);
+  }
 }
 
 function samePath(left, right) {
@@ -97,15 +124,12 @@ export function processIdentityHelper(action, value) {
   const result = spawnSync(powershell, args, {
     windowsHide: true,
     encoding: "utf8",
-    timeout: 5000,
+    // Cleanup includes a one-second grace period and up to five seconds of
+    // post-kill verification, plus PowerShell startup and CIM snapshots.
+    timeout: action === "cleanup" ? 15_000 : 5000,
     maxBuffer: 64 * 1024,
   });
-  if (result.error || result.status !== 0) fail("tool-cleanup-unproven");
-  try {
-    return JSON.parse(result.stdout.trim());
-  } catch {
-    fail("tool-cleanup-unproven");
-  }
+  return processIdentityHelperOutput(result);
 }
 
 export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
@@ -143,6 +167,7 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
     const chunks = [];
     let bytes = 0;
     let terminal = null;
+    let proofFailure;
     let identity;
     let settled = false;
     let settlementTimer = null;
@@ -187,7 +212,12 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
       child.stdout.removeListener("data", take);
       child.stderr.removeListener("data", take);
       if (terminal || code !== 0)
-        reject(new Error(`playwright-cli-${terminal ?? `exit-${code}`}`));
+        reject(
+          new Error(
+            `playwright-cli-${terminal ?? `exit-${code}`}`,
+            proofFailure === undefined ? undefined : { cause: proofFailure },
+          ),
+        );
       else resolve(Buffer.concat(chunks).toString("utf8"));
     };
     const terminate = (reason) => {
@@ -199,7 +229,8 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
           deps.cleanupIdentity ??
           ((owned) => processIdentityHelper("cleanup", owned))
         )(identity);
-      } catch {
+      } catch (error) {
+        proofFailure ??= error;
         cleanup = null;
       }
       if (!cleanup || cleanup.identityLost || cleanup.remaining?.length !== 0) {
@@ -235,7 +266,8 @@ export function runBoundedTool(executable, args, deadline, cwd, deps = {}) {
       )
         fail("tool-cleanup-unproven");
       closeIdentityHandshake(deps.identityHandshake);
-    } catch {
+    } catch (error) {
+      proofFailure = error;
       terminal = "cleanup-unproven";
       try {
         closeIdentityHandshake();

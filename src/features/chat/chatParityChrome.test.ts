@@ -19,7 +19,7 @@ describe("Codex chrome parity (w9 group B)", () => {
     const [ordinary, forced] = text.split("@media (forced-colors: active)");
     expect(ordinary).not.toMatch(/\.composer:focus-within\s*{/);
     // Forced colors keep a system focus outline.
-    expect(forced).toMatch(/\.composer:focus-within\s*{/);
+    expect(forced).toMatch(/\.chat-dock:focus-within\s*{/);
   });
 
   it("sizes selection popover labels at 13 px with 7 px padding (B5, s2/f0093)", async () => {

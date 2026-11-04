@@ -4,10 +4,8 @@ import type {
   RenameProjectFolderResult,
   ResourceRef,
 } from "../../domain/workbench";
-import {
-  renameFolderTargetResource,
-  validateFolderRenameResult,
-} from "./folderRenameContract";
+import { validateFolderRenameResult } from "./fileRenameResult";
+import { renameFolderTargetResource } from "./folderRenameContract";
 
 const source: ResourceRef = { rootId: "root-a", relativePath: "src/empty" };
 const target: ResourceRef = {
