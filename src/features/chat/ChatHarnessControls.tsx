@@ -295,7 +295,7 @@ export function ChatHarnessControls({
           candidates={harnessCandidates}
           popoverClassName="composer__popover composer__harness-menu"
           popoverGap={8}
-          triggerClassName="composer__picker-trigger"
+          triggerClassName="composer__control-trigger composer__picker-trigger"
           sectionLabel="Harnesses"
           searchable={false}
           disabled={projectTransitioning || turnBusy}

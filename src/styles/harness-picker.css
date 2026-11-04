@@ -15,10 +15,6 @@
   --picker-chevron-display: none;
 }
 
-.composer__harness.composer__control-trigger:hover {
-  background: transparent;
-}
-
 .composer__popover.menu-popover {
   --menu-focus-edge: var(--color-border-strong);
   --menu-selected-fill: var(--color-surface-hover);

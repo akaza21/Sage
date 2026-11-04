@@ -243,9 +243,9 @@
   }
 }
 
-.composer__control-trigger:hover,
-.composer__control-trigger:has([aria-expanded="true"]),
-.composer__control-trigger[aria-expanded="true"] {
+button.composer__control-trigger:hover,
+button.composer__control-trigger:has([aria-expanded="true"]),
+button.composer__control-trigger[aria-expanded="true"] {
   color: var(--color-status-foreground);
   background: var(--composer-control-hover);
 }

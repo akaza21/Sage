@@ -26,6 +26,17 @@ test("gives harness and model triggers the same control treatment", async ({
       ];
     });
   expect(await treatment(harness)).toEqual(await treatment(model));
+  await harness.hover();
+  const harnessHover = await harness.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  await expect(composer.locator(".composer__harness")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await model.hover();
+  await expect(model).toHaveCSS("background-color", harnessHover);
+  expect(harnessHover).not.toBe("rgba(0, 0, 0, 0)");
   for (const [icon, size] of [
     [harness.locator("[data-harness-icon]"), "16px"],
     [model.locator("svg").last(), "16px"],

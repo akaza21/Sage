@@ -21,7 +21,7 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
 }));
 
 vi.mock("./TerminalDock", () => ({
-  TerminalDock: ({
+  default: ({
     session,
     ended,
     onStatus,

@@ -383,12 +383,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-.browser-surface__find {
   flex-wrap: wrap;
   padding: 4px 8px;
 }
+
 .browser-surface__find input {
   flex: 1 1 120px;
   min-width: 0;
@@ -558,6 +556,9 @@
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
   font-size: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 4px 8px;
 }
 .browser-site-permissions ul {
   display: grid;
@@ -566,6 +567,7 @@
   overflow-y: auto;
   margin: 0;
   list-style: none;
+  padding: 0;
 }
 
 .browser-downloads__trigger {
@@ -615,12 +617,6 @@
 .browser-downloads__popover:focus {
   outline: none;
 }
-.browser-site-permissions {
-  display: grid;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
 .browser-site-permissions__prompt,
 .browser-site-permissions li {
   display: flex;
@@ -632,9 +628,6 @@
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
-}
-.browser-site-permissions ul {
-  padding: 0;
 }
 .browser-site-permissions p {
   margin: 0;

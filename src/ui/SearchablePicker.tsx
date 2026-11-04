@@ -135,11 +135,11 @@ export function SearchablePicker({
     inputRef.current?.focus();
   }, [disabled, open, searchable]);
   useLayoutEffect(() => {
-    if (!activeId) return;
+    if (!active) return;
     triggerRef.current?.ownerDocument
-      .getElementById(optionId(id, activeId))
+      .getElementById(optionId(id, active.id))
       ?.scrollIntoView?.({ block: "nearest" });
-  }, [activeId, id]);
+  }, [active, id]);
 
   const close = useCallback(
     (reason?: MenuDismissReason) => {

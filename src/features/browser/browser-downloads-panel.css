@@ -1,22 +1,23 @@
 .browser-downloads__title {
   margin: 0;
-  padding: 2px 8px 4px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: calc(var(--space-1) / 2) var(--space-2) var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
 }
 .browser-downloads__empty {
   margin: 0;
-  padding: 8px;
+  padding: var(--space-2);
   color: var(--browser-muted-text);
 }
 .browser-downloads__error {
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
+  color: var(--color-danger);
 }
 .browser-downloads__list {
   display: grid;
-  gap: 2px;
-  max-height: 288px;
+  gap: calc(var(--space-1) / 2);
+  max-height: calc(9 * var(--row-height-default));
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -24,11 +25,11 @@
 }
 .browser-downloads__item {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: var(--icon-size-md) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0 8px;
+  gap: 0 var(--space-2);
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 .browser-downloads__item:hover {
   background: var(--browser-control-hover);
@@ -54,6 +55,6 @@
 .browser-downloads__item > progress {
   grid-column: 2 / -1;
   width: 100%;
-  height: 4px;
+  height: var(--space-1);
   accent-color: var(--color-accent);
 }
