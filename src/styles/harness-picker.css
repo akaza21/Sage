@@ -5,7 +5,6 @@
   --picker-trigger-icon-size: var(--icon-size-md);
   height: var(--control-height-compact);
   min-width: var(--control-height-compact);
-  max-width: var(--picker-harness-trigger-max-width);
   flex: 0 1 auto;
 }
 
@@ -93,16 +92,13 @@
 }
 
 .composer__harness .searchable-picker {
-  width: 100%;
   height: 100%;
 }
 
 .composer__harness .searchable-picker__trigger {
   display: inline-flex;
-  width: 100%;
   height: var(--picker-trigger-height, 100%);
   min-height: 0;
-  justify-content: var(--picker-trigger-justify, space-between);
   gap: var(--space-1);
   padding: var(--picker-trigger-padding, 0 var(--space-1));
   border: 0;
@@ -122,9 +118,6 @@
 .composer__harness .searchable-picker__trigger-label {
   display: var(--picker-label-display, block);
   min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: var(--border-width);
   overflow: hidden;
   line-height: 1.2;
   white-space: nowrap;
@@ -134,12 +127,6 @@
   display: var(--picker-chevron-display, block);
   width: var(--picker-chevron-size, var(--space-3));
   height: var(--picker-chevron-size, var(--space-3));
-}
-
-.composer__harness .searchable-picker__trigger > :is(svg, img):first-child {
-  width: var(--picker-trigger-icon-size, var(--icon-size-md));
-  height: var(--picker-trigger-icon-size, var(--icon-size-md));
-  flex: 0 0 auto;
 }
 
 .composer__harness-menu.menu-popover {

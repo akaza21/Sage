@@ -4,7 +4,6 @@
 
 .searchable-picker__trigger,
 .searchable-picker__input {
-  width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
   padding: var(--picker-field-padding, 0 var(--space-2));
@@ -19,12 +18,23 @@
 
 .searchable-picker__trigger {
   display: flex;
-  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   align-items: center;
-  justify-content: space-between;
+  justify-content: var(--picker-trigger-justify, flex-start);
   gap: var(--space-1);
   overflow: hidden;
   text-align: left;
+}
+
+.searchable-picker__input {
+  width: 100%;
+}
+
+.searchable-picker__trigger > :is(svg, img):first-child {
+  width: var(--picker-trigger-icon-size, var(--icon-size-md));
+  height: var(--picker-trigger-icon-size, var(--icon-size-md));
+  flex: 0 0 auto;
 }
 
 .searchable-picker__trigger-label {
@@ -98,7 +108,6 @@
 }
 
 .select-control .searchable-picker__trigger {
-  width: 100%;
   min-width: var(--select-control-trigger-min-width, 0);
   min-height: var(--control-height-compact);
   padding: var(--select-control-trigger-padding, 0 var(--icon-size-lg) 0 0);
