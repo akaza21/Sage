@@ -99,7 +99,6 @@
   display: inline-flex;
   height: var(--picker-trigger-height, 100%);
   min-height: 0;
-  gap: var(--space-1);
   padding: var(--picker-trigger-padding, 0 var(--space-1));
   border: 0;
   border-radius: var(--radius-sm);
@@ -117,10 +116,7 @@
 
 .composer__harness .searchable-picker__trigger-label {
   display: var(--picker-label-display, block);
-  min-width: 0;
-  overflow: hidden;
   line-height: 1.2;
-  white-space: nowrap;
 }
 
 .composer__harness .searchable-picker__chevron {
