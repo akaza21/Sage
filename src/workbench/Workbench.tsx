@@ -108,6 +108,16 @@ export function Workbench() {
       agentArtifactExpanded,
       agentNavigationCollapsed,
     );
+  const toggleAgentNavigation = useCallback(() => {
+    const collapsed = !agentLayout.navigationCollapsed;
+    if (!collapsed && !agentLayout.navigationFits)
+      setAgentArtifactExpanded(false);
+    setNavigation({ narrow: narrowAgent, collapsed });
+  }, [
+    agentLayout.navigationCollapsed,
+    agentLayout.navigationFits,
+    narrowAgent,
+  ]);
   const resourceModal =
     windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
@@ -119,10 +129,9 @@ export function Workbench() {
     void useUiAppearanceStore.getState().restore();
   }, []);
   useWorkbenchKeys({
-    narrowAgent,
     resourceModal,
     windowMode,
-    setNavigation,
+    toggleAgentNavigation,
     setWindowMode,
   });
   useEditorHistoryKeys(windowMode === "editor");
@@ -169,10 +178,8 @@ export function Workbench() {
             layout={agentLayout}
             style={{ gridTemplateColumns: agentLayout.gridTemplateColumns }}
             drawerOpen={agentLayout.artifactOverlay}
-            navigationCollapsed={agentNavigationCollapsed}
-            onExpandNavigation={() =>
-              setNavigation({ narrow: narrowAgent, collapsed: false })
-            }
+            navigationCollapsed={agentLayout.navigationCollapsed}
+            onExpandNavigation={toggleAgentNavigation}
             artifactExpanded={agentArtifactExpanded}
             onArtifactExpandedChange={changeAgentArtifact}
             onAgentLeftRailWidthChange={(width) =>
@@ -190,12 +197,11 @@ export function Workbench() {
     [
       agentArtifactExpanded,
       agentLayout,
-      agentNavigationCollapsed,
       changeAgentArtifact,
       changeAgentSidebarWidth,
-      narrowAgent,
       openArtifactInEditor,
       onPreviewTargetChange,
+      toggleAgentNavigation,
     ],
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
@@ -206,20 +212,15 @@ export function Workbench() {
       };
   return (
     <main
-      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
+      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentLayout.navigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
       style={workbenchGeometryStyle}
     >
       <TitleBar
         mode={windowMode}
         onModeChange={setWindowMode}
         inert={resourceModal}
-        agentNavigationCollapsed={agentNavigationCollapsed}
-        onToggleAgentNavigation={() =>
-          setNavigation({
-            narrow: narrowAgent,
-            collapsed: !agentNavigationCollapsed,
-          })
-        }
+        agentNavigationCollapsed={agentLayout.navigationCollapsed}
+        onToggleAgentNavigation={toggleAgentNavigation}
       />
       {isTauriRuntime() ? (
         <LazyModuleBoundary

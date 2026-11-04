@@ -1,7 +1,6 @@
 import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { PreviewTargetRef } from "../domain/previewProjection";
-import { isTauriRuntime } from "../ports/nativeInvoke";
 
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { useAgentArtifactAdmissionStore } from "../app/agentArtifactAdmissionStore";
@@ -33,10 +32,11 @@ import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
   AgentArtifactEmptyState,
-  AgentArtifactPaneControls,
+  AgentBrowserPaneControls,
+  AgentBrowserPaneStatus,
 } from "./AgentArtifactPaneControls";
+import { lazyParts } from "../features/chat/lazyParts";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
-import { AgentArtifactTabStrip } from "./AgentArtifactTabStrip";
 import { useAgentChangesState } from "./agentChangesState";
 import { agentPreviewControllerOwner } from "./agentPreviewControllerOwner";
 import { artifactChipStatsForTab } from "./artifactChipStats";
@@ -60,6 +60,7 @@ const SubagentSurface = lazy(() =>
     default: module.SubagentSurface,
   })),
 );
+const TabsPart = lazyParts(() => import("./AgentArtifactTabStrip"));
 const AgentArtifactHeader = lazy(() =>
   import("./AgentArtifactHeader").then((module) => ({
     default: module.AgentArtifactHeader,
@@ -96,7 +97,6 @@ export function AgentArtifactPane({
   );
   const activateTab = useWorkbenchStore((state) => state.activateTab);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
-  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const paneRef = useRef<HTMLElement | null>(null);
   const [canvasNode, setCanvasNode] = useRetainedElement<HTMLDivElement>();
   const [localMaximized, setLocalMaximized] = useState(false);
@@ -109,6 +109,7 @@ export function AgentArtifactPane({
   const onPaneKeyDown = useAgentArtifactPaneFocus({
     expanded,
     overlay: focusOnExpand,
+    overlayOnExpand,
     modal,
     paneRef,
     triggerRef: edgeTriggerRef,
@@ -320,7 +321,8 @@ export function AgentArtifactPane({
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />
           <header className="agent-artifact-pane__header">
             {hasResources ? (
-              <AgentArtifactTabStrip
+              <TabsPart
+                part="AgentArtifactTabStrip"
                 artifacts={artifacts}
                 selectedTarget={
                   changes.selected || subagentSelected ? null : selectedTarget
@@ -345,14 +347,9 @@ export function AgentArtifactPane({
             ) : (
               <strong>Files, changes, and preview</strong>
             )}
-            <AgentArtifactPaneControls
+            <AgentBrowserPaneControls
               maximized={maximized}
               onMaximizedChange={setMaximized}
-              disabled={!project || projectTransitioning || !isTauriRuntime()}
-              onNewTab={() => {
-                useAgentChangesState.getState().select(false);
-                void openBrowser();
-              }}
               onCollapse={() => {
                 setMaximized(false);
                 onExpandedChange?.(false);
@@ -374,6 +371,7 @@ export function AgentArtifactPane({
             </Suspense>
           ) : null}
           <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
+            <AgentBrowserPaneStatus />
             {changes.surface}
             {subagentSelected && focusedPage && subagentTarget ? (
               <Suspense fallback={<p role="status">Loading subagent view…</p>}>

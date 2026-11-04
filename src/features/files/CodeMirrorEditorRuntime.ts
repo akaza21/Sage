@@ -1,7 +1,5 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
-  HighlightStyle,
-  defaultHighlightStyle,
   indentUnit,
   syntaxHighlighting,
   language as languageFacet,
@@ -78,48 +76,10 @@ import type { EditorContent, EditorContentBase } from "./editorContent";
 import type * as EditingFeatures from "./editorEditing";
 import { utf8LengthField, withinUtf8Limit } from "./utf8Tracking";
 import { editorSaveRefocus } from "./editorSaveRefocus";
-
-/*
- * Document syntax palette resolves from --doc-syntax-* tokens (authority in
- * src/styles/global.css). Specs are the public default highlight table with
- * only color sources replaced, so tag order and non-color treatments match
- * the installed runtime exactly and prior pixels are preserved in both modes.
- * Null entries keep specs without color. A CI test pins count, order, and
- * treatments so dependency drift cannot silently mis-map a token.
- */
-const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly (string | null)[] = [
-  "var(--doc-syntax-meta)",
-  null,
-  null,
-  null,
-  null,
-  null,
-  "var(--doc-syntax-keyword)",
-  "var(--doc-syntax-atom)",
-  "var(--doc-syntax-literal)",
-  "var(--doc-syntax-string)",
-  "var(--doc-syntax-regexp)",
-  "var(--doc-syntax-variable-definition)",
-  "var(--doc-syntax-variable-local)",
-  "var(--doc-syntax-type)",
-  "var(--doc-syntax-class)",
-  "var(--doc-syntax-variable-special)",
-  "var(--doc-syntax-property-definition)",
-  "var(--doc-syntax-comment)",
-  "var(--doc-syntax-invalid)",
-];
-
-const documentSyntaxHighlightStyle = HighlightStyle.define(
-  defaultHighlightStyle.specs.map((spec, index) => {
-    const token = DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX[index];
-    if (token == null) {
-      return spec;
-    }
-    const { color: _replacedDefaultColor, ...rest } = spec;
-    void _replacedDefaultColor;
-    return { ...rest, color: token };
-  }),
-);
+import {
+  documentSelectionTheme,
+  documentSyntaxHighlightStyle,
+} from "./editorDocumentTheme";
 
 export const MAX_CODE_HIGHLIGHT_TOKENS = 512;
 export interface CodeSpan {
@@ -287,6 +247,7 @@ export function createCodeMirrorEditorRuntime(
         editingCompartment.of(editingExtensionsFor(current.editing)),
         keymap.of([...historyKeymap, ...defaultKeymap]),
         syntaxHighlighting(documentSyntaxHighlightStyle, { fallback: true }),
+        documentSelectionTheme,
         editableCompartment.of(editableExtensions(current)),
         languageCompartment.of([]),
         appearanceCompartment.of(

@@ -103,6 +103,34 @@ function mountArtifactHeader() {
   return render(<div />).container.firstElementChild as HTMLElement;
 }
 
+it("disables browser creation at capacity and explains it inside the pane", async () => {
+  vi.stubGlobal("__TAURI_INTERNALS__", {});
+  useWorkbenchStore.setState({
+    tabs: Array.from({ length: 8 }, (_, position) => ({
+      id: `browser-${position}`,
+      kind: "browser",
+      title: `Page ${position}`,
+      position,
+      pinned: false,
+      dirty: false,
+    })),
+  });
+  render(<AgentArtifactPane />);
+  await settleLazyModules();
+  expect(
+    screen.getByRole("button", { name: "New browser tab" }),
+  ).toBeDisabled();
+  expect(
+    within(screen.getByLabelText("Agent artifacts")).getByRole("status"),
+  ).toHaveTextContent("Browser tab limit reached");
+  expect(useWorkbenchStore.getState().error).toBeNull();
+  act(() =>
+    useWorkbenchStore.setState((state) => ({ tabs: state.tabs.slice(1) })),
+  );
+  expect(screen.getByRole("button", { name: "New browser tab" })).toBeEnabled();
+  expect(screen.queryByText(/Browser tab limit reached/)).toBeNull();
+});
+
 const initialState = useWorkbenchStore.getState();
 const focusedOwner = {
   projectId: "project-a",
