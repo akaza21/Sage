@@ -9,14 +9,14 @@ use super::super::{
     BrowserState, DownloadRegistry,
     folder::{self, Plan},
     reservation::Reservation,
-    worker,
 };
 use crate::{
     settings_commands::browser_download_folder::{emit_folder_changed, remember_first_choice},
+    settings_store::DownloadFolderRecord,
     state::AppState,
 };
 
-/// What to do with a download, decided on the worker. A silent save's
+/// What to do with a download, decided on an isolated probe. A silent save's
 /// placeholder is owned by its [`Reservation`] from the moment it exists.
 pub(super) enum Step {
     Silent(Reservation),
@@ -33,63 +33,123 @@ pub(super) struct Planned {
     pub(super) revision: i64,
 }
 
-/// Silent save into the saved download folder, or the Save dialog. Runs on
-/// the download worker; the registry lock is held only to copy the claimed
-/// paths.
-pub(super) fn plan_download(app: &AppHandle, suggested: &str, mime: Option<&str>) -> Planned {
-    let Ok(record) = app
+/// A snapshot for isolated filesystem planning. The registry lock is held
+/// only while copying claimed paths.
+pub(super) struct Request {
+    record: Option<DownloadFolderRecord>,
+    claimed: folder::Claimed,
+    suggested: String,
+    mime: Option<String>,
+}
+
+impl Request {
+    pub(super) fn new(
+        record: Option<DownloadFolderRecord>,
+        claimed: folder::Claimed,
+        suggested: String,
+        mime: Option<String>,
+    ) -> Self {
+        Self {
+            record,
+            claimed,
+            suggested,
+            mime,
+        }
+    }
+    /// A deadline or saturation is treated like an unavailable folder, without
+    /// giving the picker a path that may itself be unresponsive.
+    pub(super) fn fallback(&self) -> Planned {
+        let file_name = folder::sanitize_file_name(&self.suggested);
+        let dangerous = folder::is_dangerous(&file_name)
+            || self.mime.as_deref().is_some_and(folder::is_dangerous_mime);
+        Planned {
+            step: Step::Ask {
+                file_name,
+                remember: self
+                    .record
+                    .as_ref()
+                    .is_some_and(|record| record.path.is_none() || !dangerous),
+                directory: None,
+            },
+            revision: self.record.as_ref().map_or(-1, |record| record.revision),
+        }
+    }
+
+    /// All folder I/O, including private staging, belongs to the isolated probe.
+    pub(super) fn plan(self) -> Planned {
+        let Some(record) = &self.record else {
+            return self.fallback();
+        };
+        let step = match folder::plan(
+            record.path.as_deref(),
+            &self.suggested,
+            self.mime.as_deref(),
+            |path| self.claimed.contains(path),
+        ) {
+            Plan::Silent(placeholder) => {
+                let mut reservation =
+                    Reservation::adopt(placeholder, &folder::sanitize_file_name(&self.suggested));
+                if !reservation.handoff() {
+                    reservation.discard();
+                    return self.fallback();
+                }
+                Step::Silent(reservation)
+            }
+            Plan::Ask {
+                file_name,
+                remember,
+                directory,
+            } => Step::Ask {
+                file_name,
+                remember,
+                directory,
+            },
+        };
+        Planned {
+            step,
+            revision: record.revision,
+        }
+    }
+}
+
+impl Planned {
+    pub(super) fn discard(self) {
+        if let Step::Silent(reservation) = self.step {
+            reservation.discard();
+        }
+    }
+}
+
+/// Snapshot durable settings and claimed paths without any folder I/O.
+pub(super) fn prepare_download(
+    app: &AppHandle,
+    suggested: String,
+    mime: Option<String>,
+) -> Request {
+    let record = app
         .state::<AppState>()
         .settings
         .browser_download_folder_record()
-    else {
-        return Planned {
-            step: Step::Ask {
-                file_name: folder::sanitize_file_name(suggested),
-                remember: false,
-                directory: None,
-            },
-            revision: -1,
-        };
-    };
+        .ok();
     let claimed = app
         .state::<BrowserState>()
         .downloads
         .lock()
         .map(|registry| registry.claimed())
         .unwrap_or_default();
-    let step = match folder::plan(record.path.as_deref(), suggested, mime, |path| {
-        claimed.contains(path)
-    }) {
-        Plan::Silent(placeholder) => Step::Silent(Reservation::adopt(
-            placeholder,
-            &folder::sanitize_file_name(suggested),
-        )),
-        Plan::Ask {
-            file_name,
-            remember,
-            directory,
-        } => Step::Ask {
-            file_name,
-            remember,
-            directory,
-        },
-    };
-    Planned {
-        step,
-        revision: record.revision,
-    }
+    Request::new(record, claimed, suggested, mime)
 }
 
 /// The first download's folder becomes the saved download folder, unless
 /// the folder changed (Settings) since the download read it. The folder
-/// checks and the store write run on the download worker.
+/// admission uses the bounded settings probe, away from publication.
 pub(super) fn remember_choice(app: &AppHandle, revision: i64, chosen: &Path) {
     let app = app.clone();
     let chosen = chosen.to_owned();
-    worker::submit(move || {
-        let settings = &app.state::<AppState>().settings;
-        if remember_first_choice(settings, revision, &chosen) {
-            emit_folder_changed(&app, settings);
+    tauri::async_runtime::spawn(async move {
+        let settings = app.state::<AppState>().settings.clone();
+        if remember_first_choice(&settings, revision, &chosen).await {
+            emit_folder_changed(&app, &settings);
         }
     });
 }

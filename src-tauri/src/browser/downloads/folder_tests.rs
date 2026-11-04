@@ -218,8 +218,8 @@ async fn dangerous_types_always_ask_and_keep_the_saved_folder() {
     );
 }
 
-#[test]
-fn dangerous_downloads_keep_an_unavailable_remembered_folder() {
+#[tokio::test]
+async fn dangerous_downloads_keep_an_unavailable_remembered_folder() {
     let store = SettingsStore::in_memory().unwrap();
     let saved = Scratch::new("dangerous-unavailable");
     store.set_browser_download_folder(&saved.0).unwrap();
@@ -241,11 +241,9 @@ fn dangerous_downloads_keep_an_unavailable_remembered_folder() {
         };
         assert_eq!(directory, None);
         if remember {
-            assert!(remember_first_choice(
-                &store,
-                record.revision,
-                &chosen.0.join(file_name),
-            ));
+            assert!(
+                remember_first_choice(&store, record.revision, &chosen.0.join(file_name),).await
+            );
         }
         assert_eq!(
             store.browser_download_folder_record().unwrap().path,

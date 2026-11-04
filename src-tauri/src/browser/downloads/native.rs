@@ -22,6 +22,7 @@ use super::{BrowserState, DownloadView, reservation::Reservation};
 
 mod ask;
 mod choice;
+mod planning;
 mod settlement;
 mod watchdog;
 

@@ -1,5 +1,6 @@
-//! One background thread for download file-system work: planning a silent
-//! save, remembering the first folder, and releasing placeholders. That work
+//! One background thread for download publication and releasing placeholders.
+//! Folder probes use isolated deadline-limited
+//! probes so an unavailable remembered folder cannot block this queue. This work
 //! can block (an offline network share), so it never runs on the WebView2
 //! UI thread. The queue is bounded; when it is full the caller falls back
 //! (a download is canceled, private leftovers remain untouched).

@@ -100,8 +100,19 @@ pub(crate) async fn remember_folder(store: &SettingsStore, chosen: &Path) -> Res
 /// chose or reset one while the dialog was open). Returns whether it saved.
 // Called by the WebView2 download handler, which only Windows builds.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn remember_first_choice(store: &SettingsStore, revision: i64, chosen: &Path) -> bool {
-    folder_of_choice(chosen).is_some_and(|folder| {
+pub(crate) async fn remember_first_choice(
+    store: &SettingsStore,
+    revision: i64,
+    chosen: &Path,
+) -> bool {
+    bounded_probe(
+        chosen.to_owned(),
+        PROBE_TIMEOUT,
+        probe_slots(),
+        folder_of_choice,
+    )
+    .await
+    .is_some_and(|folder| {
         store
             .set_browser_download_folder_if(revision, &folder)
             .unwrap_or(false)
@@ -367,19 +378,11 @@ mod tests {
         let read = store.browser_download_folder_record().unwrap();
         remember_folder(&store, &settings).await.unwrap();
         store.clear_browser_download_folder().unwrap();
-        assert!(!remember_first_choice(
-            &store,
-            read.revision,
-            &dialog.join("file.zip")
-        ));
+        assert!(!remember_first_choice(&store, read.revision, &dialog.join("file.zip")).await);
         assert_eq!(store.browser_download_folder_record().unwrap().path, None);
         // With nothing in between, the dialog's folder is saved.
         let read = store.browser_download_folder_record().unwrap();
-        assert!(remember_first_choice(
-            &store,
-            read.revision,
-            &dialog.join("file.zip")
-        ));
+        assert!(remember_first_choice(&store, read.revision, &dialog.join("file.zip")).await);
         assert_eq!(
             store.browser_download_folder_record().unwrap().path,
             admit_folder(&dialog)

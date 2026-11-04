@@ -85,6 +85,18 @@ impl Reservation {
     pub(crate) fn keep(mut self) {
         self.placeholder.take();
     }
+
+    /// Dispose a late plan on its isolated probe thread. A stalled remote
+    /// cleanup must never enter the publication queue.
+    #[cfg(windows)]
+    pub(crate) fn discard(mut self) {
+        if let Some(placeholder) = self.placeholder.take() {
+            placeholder.delete_if_empty();
+        }
+        if let Some(staging) = self.staging.take() {
+            staging.cleanup();
+        }
+    }
 }
 
 impl Drop for Reservation {

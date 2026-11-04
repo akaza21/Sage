@@ -1,4 +1,4 @@
-//! The second half of a download start: plan on the download worker, then
+//! The second half of a download start: plan on an isolated probe, then
 //! save silently or show the Save dialog back on the WebView2 UI thread.
 
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use super::{
     super::{BrowserState, worker},
     PENDING, RESERVED,
     choice::{self, Step},
-    complete_choice, emit_views,
+    complete_choice, emit_views, planning,
 };
 
 pub(super) fn plan_off_thread(
@@ -25,20 +25,40 @@ pub(super) fn plan_off_thread(
     let worker_webview = webview.clone();
     let worker_tab = tab_id.to_owned();
     let queued = worker::submit(move || {
-        // A reserved placeholder is owned by `planned` from here on: if the
-        // hand-back below never runs, dropping it releases the file.
-        let planned = choice::plan_download(&worker_app, &file_name, mime.as_deref());
+        let request = choice::prepare_download(&worker_app, file_name, mime);
+        let fallback = request.fallback();
+        let saturated = request.fallback();
         let ui_app = worker_app.clone();
         let ui_webview = worker_webview.clone();
         let ui_tab = worker_tab.clone();
-        on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
-            proceed(&ui_app, &ui_webview, &ui_tab, id, planned);
-        });
+        if !planning::submit(
+            move || request.plan(),
+            move |planned| {
+                deliver(
+                    &ui_app,
+                    &ui_webview,
+                    &ui_tab,
+                    id,
+                    planned.unwrap_or(fallback),
+                );
+            },
+        ) {
+            deliver(&worker_app, &worker_webview, &worker_tab, id, saturated);
+        }
     });
     if !queued {
         // The worker is busy with as many downloads as it queues: cancel.
         complete_choice(app, tab_id, id, None);
     }
+}
+
+fn deliver(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: choice::Planned) {
+    let ui_app = app.clone();
+    let ui_webview = webview.clone();
+    let ui_tab = tab_id.to_owned();
+    on_ui(app, webview, tab_id, id, move || {
+        proceed(&ui_app, &ui_webview, &ui_tab, id, planned);
+    });
 }
 
 /// Runs `work` on the WebView2 UI thread, where `PENDING` lives. If the
@@ -83,7 +103,7 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         return;
     }
     match step {
-        Step::Silent(mut reservation) => {
+        Step::Silent(reservation) => {
             let path = reservation.path().to_owned();
             // Keep the public name claimed while WebView2 writes privately.
             let claimed = app
@@ -95,24 +115,9 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
                 complete_choice(app, tab_id, id, None);
                 return;
             }
-            let worker_app = app.clone();
-            let worker_webview = webview.clone();
-            let worker_tab = tab_id.to_owned();
-            let queued = worker::submit(move || {
-                let ready = reservation.handoff();
-                let writer_path = ready.then(|| reservation.writer_path().to_owned());
-                let ui_app = worker_app.clone();
-                let ui_tab = worker_tab.clone();
-                on_ui(&worker_app, &worker_webview, &worker_tab, id, move || {
-                    RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
-                    // complete_choice rechecks the pending id and watchdog:
-                    // cancellation while queued must never restart a download.
-                    complete_choice(&ui_app, &ui_tab, id, writer_path);
-                });
-            });
-            if !queued {
-                complete_choice(app, tab_id, id, None);
-            }
+            let writer_path = reservation.writer_path().to_owned();
+            RESERVED.with_borrow_mut(|reserved| reserved.insert(id, reservation));
+            complete_choice(app, tab_id, id, Some(writer_path));
         }
         Step::Ask {
             file_name,
