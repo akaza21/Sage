@@ -1,9 +1,20 @@
 import { MAX_MARKDOWN_LIST_DEPTH } from "./markdownLimits";
+import {
+  columnAfter,
+  indentation,
+  isMarkdownRule,
+  startsLeafBlock,
+  stripIndent,
+} from "./markdownSyntax";
 
 export interface ListItemShape {
   depth: number;
   ordered: boolean;
   checked?: boolean;
+  /** Non-default start of a nested ordered list. */
+  start?: number;
+  /** A different bullet or ordered delimiter starts another list. */
+  newList?: true;
 }
 
 export interface MarkdownListBlock {
@@ -18,43 +29,29 @@ export interface MarkdownListBlock {
 interface ListItem {
   indent: number;
   content: number;
-  hasSeparator: boolean;
+  marker: string;
   ordered: boolean;
   start: number;
   checked?: boolean;
   text: string;
 }
 
-/** A thematic break takes precedence over a list marker. */
-export function isMarkdownRule(line: string): boolean {
-  return /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(
-    line,
-  );
-}
-
-/** Markdown tabs advance to the next four-column stop. */
-function columnAfter(text: string, column = 0): number {
-  for (const character of text)
-    column += character === "\t" ? 4 - (column % 4) : 1;
-  return column;
-}
-
-export function listItem(line: string): ListItem | null {
+export function listItem(line: string, initialColumn = 0): ListItem | null {
   if (isMarkdownRule(line)) return null;
-  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})[.)])(?:([ \t]+)(.*))?$/u.exec(
+  const match = /^([ \t]*)(?:([-*+])|(\d{1,9})([.)]))(?:([ \t]+)(.*))?$/u.exec(
     line,
   );
   if (!match) return null;
-  const indent = columnAfter(match[1]);
+  const indent = columnAfter(match[1], initialColumn);
   const markerEnd = indent + (match[2] ? 1 : match[3].length + 1);
-  const separatorWidth = columnAfter(match[4] ?? "", markerEnd) - markerEnd;
-  const text = match[5] ?? "";
+  const separatorWidth = columnAfter(match[5] ?? "", markerEnd) - markerEnd;
+  const text = match[6] ?? "";
   const task = /^\[([ xX])\][ \t]+(\S.*)$/u.exec(text);
   return {
     indent,
     // Blank items and over-wide separators use one column of list padding.
     content: markerEnd + (text && separatorWidth <= 4 ? separatorWidth : 1),
-    hasSeparator: match[4] !== undefined,
+    marker: match[2] ?? match[4],
     ordered: !match[2],
     start: Number(match[3] ?? 1),
     ...(task ? { checked: task[1] !== " " } : {}),
@@ -62,57 +59,104 @@ export function listItem(line: string): ListItem | null {
   };
 }
 
-/** Keep paragraph interruption limited to unindented, separator-bearing markers. */
+/** Empty items and ordered starts other than 1 cannot interrupt paragraphs. */
 export function interruptsParagraph(line: string): boolean {
   const item = listItem(line);
-  return !!item && item.indent < 4 && item.hasSeparator;
+  return (
+    !!item &&
+    item.indent < 4 &&
+    !!item.text.trim() &&
+    (!item.ordered || item.start === 1)
+  );
 }
 
 /**
- * Reads the list that starts at `lines[cursor]`. An item indented to the
- * content column of the item above it at its level nests one level deeper,
- * up to the depth limit. `read` returns null when its budget is exhausted.
- * Empty source items are retained; other items whose rendered text is empty
- * are dropped. A kept item is never more than one level below the kept item
- * before it, so the flat list always rebuilds into a well-formed tree.
+ * The stack stores each level's latest item, so both admission and nesting
+ * use the current content column even when marker widths or padding change.
+ * Only paragraph text and nested lists belong to this bounded flat subset.
+ * Other child blocks are left for the preview's leaf-block reader.
  */
 export function readMarkdownList(
   lines: readonly string[],
   cursor: number,
   read: (text: string, itemIndex: number) => string | null,
-): { block: MarkdownListBlock; cursor: number } | null {
-  const first = listItem(lines[cursor].trimEnd());
+): { block: MarkdownListBlock; cursor: number; contentIndent: number } | null {
+  const first = listItem(lines[cursor]);
   if (!first || first.indent >= 4) return null;
   const items: string[] = [];
   const shape: ListItemShape[] = [];
-  // Each level's indent and the content column of its latest item.
-  const levels = [{ indent: first.indent, content: first.content }];
+  const levels: ListItem[] = [];
   let next: ListItem | null = first;
-  do {
-    while (levels.length > 1 && next.indent < levels.at(-1)!.indent)
+  let contentIndent = first.content;
+  while (next) {
+    while (levels.length > 1 && next.indent < levels.at(-2)!.content)
       levels.pop();
-    if (
-      next !== first &&
-      next.indent >= levels.at(-1)!.content &&
+    const parent = levels.at(-1);
+    const nested = parent && next.indent >= parent.content;
+    if (nested && levels.length < MAX_MARKDOWN_LIST_DEPTH) levels.push(next);
+    else {
+      if (levels.length === 1 && next.marker !== first.marker) break;
+      levels[levels.length ? levels.length - 1 : 0] = next;
+    }
+    const newList = !nested && parent && parent.marker !== next.marker;
+    contentIndent = next.content;
+    // Bound same-line descent as well as the retained tree. Tab stops stay
+    // anchored to the original line, including preceding container markers.
+    const inner: ListItem | null =
       levels.length < MAX_MARKDOWN_LIST_DEPTH
-    )
-      levels.push({ indent: next.indent, content: next.content });
-    else levels.at(-1)!.content = next.content;
-    const text = read(next.text, items.length);
-    if (text || (text === "" && !next.text.trim())) {
+        ? listItem(next.text, next.content)
+        : null;
+    const parts = [inner ? "" : next.text];
+    if (!inner) {
+      cursor++;
+      // A lazy paragraph continuation need not carry container indentation.
+      // Indented markers still need to be within three columns of their
+      // containing level; otherwise they are paragraph text (spec 312).
+      while (cursor < lines.length && lines[cursor].trim()) {
+        const line = lines[cursor];
+        const candidate = listItem(line);
+        const base = levels.length > 1 ? levels.at(-2)!.content : 0;
+        if (
+          candidate &&
+          (candidate.indent < base + 4 || candidate.indent >= next.content)
+        )
+          break;
+        const relative =
+          indentation(line) >= next.content
+            ? stripIndent(line, next.content)
+            : line;
+        if (startsLeafBlock(relative) || interruptsParagraph(relative)) break;
+        if (!parts[0] && indentation(line) < next.content) break;
+        parts.push(relative);
+        cursor++;
+      }
+    }
+    const raw = parts.join(" ");
+    const text = read(raw, items.length);
+    if (text || (text === "" && !raw.trim())) {
       const depth = Math.min(
         levels.length - 1,
         items.length ? shape.at(-1)!.depth + 1 : 0,
       );
       items.push(text);
-      shape.push({ depth, ordered: next.ordered });
-      if (next.checked !== undefined) shape.at(-1)!.checked = next.checked;
+      const entry: ListItemShape = { depth, ordered: next.ordered };
+      if (next.checked !== undefined) entry.checked = next.checked;
+      if (depth && next.ordered && next.start !== 1) entry.start = next.start;
+      if (newList) entry.newList = true;
+      shape.push(entry);
     }
-    next = listItem(lines[++cursor] ?? "");
-  } while (
-    next &&
-    (next.indent >= first.content || next.ordered === first.ordered)
-  );
+    if (inner) {
+      next = inner;
+      continue;
+    }
+    let following = cursor;
+    while (following < lines.length && !lines[following].trim()) following++;
+    next = listItem(lines[following] ?? "");
+    if (!next) break;
+    const base = levels.length > 1 ? levels.at(-2)!.content : 0;
+    if (next.indent >= base + 4 && next.indent < contentIndent) break;
+    cursor = following;
+  }
   return {
     block: {
       kind: "list",
@@ -123,5 +167,6 @@ export function readMarkdownList(
         : {}),
     },
     cursor,
+    contentIndent,
   };
 }

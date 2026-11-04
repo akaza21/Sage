@@ -32,7 +32,7 @@ import {
   FileSurfaceContent,
   FileSurfaceResourceState,
 } from "./FileSurfaceContent";
-import { canPreviewMarkdown } from "./markdownPreview";
+import { canPreviewMarkdown } from "./filePreviewKind";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
 

@@ -365,7 +365,7 @@ it.each([
 );
 
 it.each(["-", "+", "*", "1.", "2)"])(
-  "classifies a streaming tab-separated %s list before a rule",
+  "classifies a streaming tab-separated %s marker before an underline",
   (marker) => {
     const source = `Intro\n${marker}\titem`;
     const list = /^\d/u.test(marker)
@@ -377,9 +377,15 @@ it.each(["-", "+", "*", "1.", "2)"])(
     const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
     expect(surface()).toBe("<p>Intro</p>");
     rerender(<ChatMarkdown text={source} streaming />);
-    expect(surface()).toBe(`<p>Intro</p>${list}`);
+    expect(surface()).toBe(
+      marker === "2)"
+        ? '<p>Intro<span class="acp-stream-new"> 2) item</span></p>'
+        : `<p>Intro</p>${list}`,
+    );
     rerender(<ChatMarkdown text={`${source}\n---`} streaming />);
-    expect(surface()).toBe(`<p>Intro</p>${list}<hr>`);
+    expect(surface()).toBe(
+      marker === "2)" ? "<h2>Intro 2) item</h2>" : `<p>Intro</p>${list}<hr>`,
+    );
     expect(tails(container)).toEqual([]);
   },
 );

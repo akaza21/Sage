@@ -7,10 +7,9 @@ import {
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
   MAX_MARKDOWN_LIST_DEPTH,
-  canPreviewDiagram,
-  canPreviewMarkdown,
   renderMarkdownPreview,
 } from "./markdownPreview";
+import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
 
 describe("canPreviewMarkdown", () => {
   it("accepts only markdown path languages", () => {
@@ -372,6 +371,35 @@ describe("renderMarkdownPreview", () => {
     );
   });
 
+  it("keeps excess same-line nesting literal at the container depth limit", () => {
+    const document = renderMarkdownPreview("- ".repeat(10000) + "leaf");
+    expect(document.truncated).toBe(true);
+    const block = document.blocks[0];
+    expect(block.kind).toBe("list");
+    if (block.kind !== "list") throw new Error("Expected a list");
+    expect(block.items).toEqual([
+      ...Array(MAX_MARKDOWN_LIST_DEPTH - 1).fill(""),
+      "- ".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS / 2),
+    ]);
+    expect(block.shape?.at(-1)?.depth).toBe(MAX_MARKDOWN_LIST_DEPTH - 1);
+  });
+
+  it("uses absolute tab stops for same-line nested list markers", () => {
+    expect(
+      renderMarkdownPreview("- -\tchild\n    1. grandchild").blocks,
+    ).toEqual([
+      {
+        kind: "list",
+        items: ["", "child", "grandchild"],
+        shape: [
+          { depth: 0, ordered: false },
+          { depth: 1, ordered: false },
+          { depth: 2, ordered: true },
+        ],
+      },
+    ]);
+  });
+
   it("reads task list items as checked or unchecked", () => {
     const document = renderMarkdownPreview(
       ["- [ ] todo", "- [x] done", "- [X] also done", "- [] not a task"].join(
@@ -714,12 +742,55 @@ describe("ATX classification before setext", () => {
 });
 
 describe("shared list interruption classification", () => {
+  it.each(["-    ", "-\t"])(
+    "uses the current sibling's content column after %j",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n- sibling\n  1. child`).blocks,
+      ).toEqual([
+        {
+          kind: "list",
+          items: ["parent", "sibling", "child"],
+          shape: [
+            { depth: 0, ordered: false },
+            { depth: 0, ordered: false },
+            { depth: 1, ordered: true },
+          ],
+        },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "reads %s indentation relative to a two-digit list item's content",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(
+          `10. example\n    ${fence}js\n    const x = 1;\n    ${fence}`,
+        ).blocks,
+      ).toEqual([
+        { kind: "list", ordered: true, start: 10, items: ["example"] },
+        {
+          kind: "code",
+          language: "js",
+          text: "const x = 1;",
+          fenceClosed: true,
+        },
+      ]);
+    },
+  );
   it.each(["-\t", "+\t", "*\t", " -\t", "  -\t", "- \t", "-   "])(
     "keeps a two-space item beside a parent separated by %j",
     (prefix) => {
       expect(
         renderMarkdownPreview(`${prefix}parent\n  - sibling`).blocks,
-      ).toEqual([{ kind: "list", items: ["parent", "sibling"] }]);
+      ).toEqual(
+        prefix.trim() === "+" || prefix.trim() === "*"
+          ? [
+              { kind: "list", items: ["parent"] },
+              { kind: "list", items: ["sibling"] },
+            ]
+          : [{ kind: "list", items: ["parent", "sibling"] }],
+      );
     },
   );
 
@@ -741,17 +812,23 @@ describe("shared list interruption classification", () => {
         `${" ".repeat(column)}- child`,
         `${" ".repeat(column - 1)}${ordered ? "2." : "-"} sibling`,
       ].join("\n");
+      const changesDelimiter = prefix.includes(")");
       expect(renderMarkdownPreview(source).blocks).toEqual([
         {
           kind: "list",
-          items: ["parent", "child", "sibling"],
+          items: changesDelimiter
+            ? ["parent", "child"]
+            : ["parent", "child", "sibling"],
           ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
           shape: [
             { depth: 0, ordered },
             { depth: 1, ordered: false },
-            { depth: 0, ordered },
+            ...(!changesDelimiter ? [{ depth: 0, ordered }] : []),
           ],
         },
+        ...(changesDelimiter
+          ? [{ kind: "list", items: ["sibling"], ordered: true, start: 2 }]
+          : []),
       ]);
     },
   );
@@ -814,7 +891,7 @@ describe("shared list interruption classification", () => {
     },
   );
 
-  it.each(["-", "+", "*", "1.", "2)"])(
+  it.each(["-", "+", "*", "1."])(
     "interrupts a paragraph at a tab-separated %s item",
     (marker) => {
       const ordered = /^\d/u.test(marker);
@@ -831,7 +908,7 @@ describe("shared list interruption classification", () => {
       ]);
     },
   );
-  it.each(["- item", "   -\titem", "2. item"])(
+  it.each(["- item", "   -\titem", "1. item"])(
     "preserves admitted indentation and ordered starts for %s",
     (line) => {
       expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
@@ -839,31 +916,35 @@ describe("shared list interruption classification", () => {
         {
           kind: "list",
           items: ["item"],
-          ...(line.startsWith("2") ? { ordered: true, start: 2 } : {}),
+          ...(line.startsWith("1") ? { ordered: true, start: 1 } : {}),
         },
         { kind: "rule" },
       ]);
     },
   );
-  it.each(["+", "2.", "    -\titem", "\t- item", "1234567890. item", "-item"])(
-    "keeps %s inside the paragraph",
+  it.each([
+    "+",
+    "2.",
+    "2)\titem",
+    "2. item",
+    "    -\titem",
+    "\t- item",
+    "1234567890. item",
+    "-item",
+  ])("keeps %s inside the paragraph", (line) => {
+    expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+      {
+        kind: "heading",
+        level: 2,
+        text: `Intro ${line.trim().replace(/\s+/gu, " ")}`,
+      },
+    ]);
+  });
+  it.each(["+ ", "+\t", "* \t"])(
+    "keeps separator-bearing empty markers inside a setext heading: %s",
     (line) => {
       expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
-        {
-          kind: "heading",
-          level: 2,
-          text: `Intro ${line.trim().replace(/\s+/gu, " ")}`,
-        },
-      ]);
-    },
-  );
-  it.each(["+ ", "+\t"])(
-    "preserves separator-bearing empty item interruption: %s",
-    (line) => {
-      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
-        { kind: "paragraph", text: "Intro" },
-        { kind: "list", items: [""] },
-        { kind: "rule" },
+        { kind: "heading", level: 2, text: `Intro ${line.trim()}` },
       ]);
     },
   );

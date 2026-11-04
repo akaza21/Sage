@@ -141,6 +141,8 @@ export function MarkdownBlocks({
             at = next;
             continue;
           }
+          if (at > from && (shape(at).ordered !== ordered || shape(at).newList))
+            break;
           const checked = shape(at).checked;
           items.push({
             task: checked !== undefined,
@@ -164,7 +166,7 @@ export function MarkdownBlocks({
         return [
           createElement(
             ordered ? "ol" : "ul",
-            { key, start: depth ? undefined : block.start },
+            { key, start: depth ? shape(from).start : block.start },
             items.map((item, itemIndex) => (
               <li
                 key={itemIndex}

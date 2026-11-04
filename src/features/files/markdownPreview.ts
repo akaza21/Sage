@@ -1,6 +1,13 @@
-import { editorLanguageForPath } from "./editorLanguage";
 import { utf8Bytes } from "../../domain/text";
 import * as lists from "./markdownList";
+import {
+  atxHeading,
+  isMarkdownRule,
+  quoteMarker,
+  setextUnderline,
+  startsLeafBlock,
+  readFencedCode,
+} from "./markdownSyntax";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
@@ -60,17 +67,6 @@ export interface MarkdownPreviewDocument {
   truncated: boolean;
   sourceLimitExceeded: boolean;
 }
-
-export function canPreviewMarkdown(path: string): boolean {
-  return editorLanguageForPath(path) === "markdown";
-}
-
-export function canPreviewDiagram(path: string): boolean {
-  return /\.(?:mmd|mermaid)$/iu.test(path);
-}
-
-const setextUnderline = /^ {0,3}(=+|-+)[ \t]*$/u;
-const quoteMarker = /^ {0,3}>[ \t]?/u;
 
 const inlinePattern =
   /`([^`]+)`|(!?)\[([^\]\n]{1,128})\]\(([^)\n]+)\)|(\*{1,2}|_{1,2})/gu;
@@ -221,6 +217,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     return text;
   };
 
+  let contentIndent = 0;
   for (let cursor = 0; cursor < lines.length;) {
     const line = lines[cursor].trimEnd();
     if (!line) {
@@ -234,37 +231,24 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
     formatCount = 0;
     scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
-    const fence = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(line);
+    const fence = readFencedCode(lines, cursor, contentIndent);
+    contentIndent = 0;
     if (fence) {
-      const language = fence[3].trim().split(/\s/u)[0];
-      const closing = new RegExp(
-        `^ {0,3}${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
-        "u",
-      );
-      const start = ++cursor;
-      while (cursor < lines.length && !closing.test(lines[cursor])) cursor++;
-      const fenceClosed = cursor < lines.length;
-      const indentation = new RegExp(`^ {0,${fence[1].length}}`, "u");
-      const text = lines
-        .slice(start, cursor)
-        .map((part) => part.replace(indentation, ""))
-        .join("\n");
+      const { text } = fence.block;
       if (text.length > remaining) document.truncated = true;
       blocks.push({
-        kind: "code",
-        language,
+        ...fence.block,
         text: text.slice(0, remaining),
-        fenceClosed,
       });
-      if (fenceClosed) cursor++;
+      cursor = fence.cursor;
       continue;
     }
-    if (lists.isMarkdownRule(line)) {
+    if (isMarkdownRule(line)) {
       blocks.push({ kind: "rule" });
       cursor++;
       continue;
     }
-    const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/u.exec(line);
+    const heading = atxHeading.exec(line);
     if (heading) {
       blocks.push({
         kind: "heading",
@@ -322,6 +306,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     if (list) {
       blocks.push(list.block);
       cursor = list.cursor;
+      contentIndent = list.contentIndent;
       continue;
     }
     const quoted = quoteMarker.test(line);
@@ -331,13 +316,14 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
       cursor < lines.length &&
       lines[cursor].trim() &&
       (quoted
-        ? quoteMarker.test(lines[cursor])
+        ? quoteMarker.test(lines[cursor]) ||
+          (parts.at(-1)!.trim() &&
+            !startsLeafBlock(lines[cursor]) &&
+            !lists.interruptsParagraph(lines[cursor]))
         : !setextUnderline.test(lines[cursor]) &&
-          !lists.isMarkdownRule(lines[cursor]) &&
           !lists.interruptsParagraph(lines[cursor]) &&
-          !/^(?: {0,3}(?:`{3,}|~{3,})| {0,3}#{1,6}(?:[ \t]|$)| {0,3}>|\|)/u.test(
-            lines[cursor],
-          ))
+          !startsLeafBlock(lines[cursor]) &&
+          !lines[cursor].startsWith("|"))
     ) {
       parts.push(
         quoted ? lines[cursor].replace(quoteMarker, "") : lines[cursor],
@@ -353,7 +339,7 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
         text,
       });
       cursor++;
-    } else if (text)
+    } else if (text || quoted)
       blocks.push({ kind: quoted ? "quote" : "paragraph", text });
   }
   return document;

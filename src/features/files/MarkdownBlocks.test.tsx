@@ -10,6 +10,37 @@ afterEach(cleanup);
 
 describe("MarkdownBlocks lists", () => {
   it.each(["preview", "chat"])(
+    "renders current-item nesting, relative fences and empty-marker setext in %s",
+    (surface) => {
+      const source =
+        "-    parent\n- sibling\n  1. child\n\n10. example\n    ```js\n    const x = 1;\n    ```\n\nIntro\n+\t\n---";
+      const { container } = render(
+        surface === "preview" ? (
+          <FileMarkdownPreview source={source} />
+        ) : (
+          <ChatMarkdown text={source} />
+        ),
+      );
+      expect(container.querySelector("ul")!.outerHTML).toBe(
+        "<ul><li>parent</li><li>sibling<ol><li>child</li></ol></li></ul>",
+      );
+      expect(container.querySelector("pre")).toHaveTextContent("const x = 1;");
+      expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
+        "Intro +",
+      );
+      expect(container.querySelectorAll("hr")).toHaveLength(0);
+    },
+  );
+
+  it("keeps nested marker changes and ordered starts in distinct lists", () => {
+    const source =
+      "- parent\n  - dash\n  + plus\n  3. three\n  4. four\n  5) five";
+    const { container } = render(<FileMarkdownPreview source={source} />);
+    expect(container.querySelector("article > ul")!.outerHTML).toBe(
+      '<ul><li>parent<ul><li>dash</li></ul><ul><li>plus</li></ul><ol start="3"><li>three</li><li>four</li></ol><ol start="5"><li>five</li></ol></li></ul>',
+    );
+  });
+  it.each(["preview", "chat"])(
     "keeps a two-space item beside a tab-separated parent in %s",
     (surface) => {
       const source = "-\tparent\n  - sibling";
@@ -158,7 +189,8 @@ it.each(["-", "+", "*", "1.", "2)"])(
     const list = /^\d/u.test(marker)
       ? `<ol start="${marker[0]}"><li>item</li></ol>`
       : "<ul><li>item</li></ul>";
-    const expected = `<p>Intro</p>${list}<hr>`;
+    const expected =
+      marker === "2)" ? "<h2>Intro 2) item</h2>" : `<p>Intro</p>${list}<hr>`;
     const { container, rerender } = render(
       <MarkdownBlocks document={renderMarkdownPreview(source)} />,
     );

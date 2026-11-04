@@ -1,0 +1,3809 @@
+{
+  "source": "https://spec.commonmark.org/0.31.2/spec.json",
+  "version": "0.31.2",
+  "license": "CC-BY-SA-4.0; CommonMark specification, John MacFarlane and contributors",
+  "examples": [
+    {
+      "example": 1,
+      "section": "Tabs",
+      "markdown": "\tfoo\tbaz\t\tbim\n",
+      "html": "<pre><code>foo\tbaz\t\tbim\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 2,
+      "section": "Tabs",
+      "markdown": "  \tfoo\tbaz\t\tbim\n",
+      "html": "<pre><code>foo\tbaz\t\tbim\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 3,
+      "section": "Tabs",
+      "markdown": "    a\ta\n    ὐ\ta\n",
+      "html": "<pre><code>a\ta\nὐ\ta\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 4,
+      "section": "Tabs",
+      "markdown": "  - foo\n\n\tbar\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<p>bar</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 5,
+      "section": "Tabs",
+      "markdown": "- foo\n\n\t\tbar\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<pre><code>  bar\n</code></pre>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 6,
+      "section": "Tabs",
+      "markdown": ">\t\tfoo\n",
+      "html": "<blockquote>\n<pre><code>  foo\n</code></pre>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "code"
+            }
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 7,
+      "section": "Tabs",
+      "markdown": "-\t\tfoo\n",
+      "html": "<ul>\n<li>\n<pre><code>  foo\n</code></pre>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 8,
+      "section": "Tabs",
+      "markdown": "    foo\n\tbar\n",
+      "html": "<pre><code>foo\nbar\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 9,
+      "section": "Tabs",
+      "markdown": " - foo\n   - bar\n\t - baz\n",
+      "html": "<ul>\n<li>foo\n<ul>\n<li>bar\n<ul>\n<li>baz</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    },
+                    {
+                      "kind": "list",
+                      "ordered": false,
+                      "items": [
+                        [
+                          {
+                            "kind": "paragraph"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 10,
+      "section": "Tabs",
+      "markdown": "#\tFoo\n",
+      "html": "<h1>Foo</h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 11,
+      "section": "Tabs",
+      "markdown": "*\t*\t*\t\n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 43,
+      "section": "Thematic breaks",
+      "markdown": "***\n---\n___\n",
+      "html": "<hr />\n<hr />\n<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 44,
+      "section": "Thematic breaks",
+      "markdown": "+++\n",
+      "html": "<p>+++</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 45,
+      "section": "Thematic breaks",
+      "markdown": "===\n",
+      "html": "<p>===</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 46,
+      "section": "Thematic breaks",
+      "markdown": "--\n**\n__\n",
+      "html": "<p>--\n**\n__</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 47,
+      "section": "Thematic breaks",
+      "markdown": " ***\n  ***\n   ***\n",
+      "html": "<hr />\n<hr />\n<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 48,
+      "section": "Thematic breaks",
+      "markdown": "    ***\n",
+      "html": "<pre><code>***\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 49,
+      "section": "Thematic breaks",
+      "markdown": "Foo\n    ***\n",
+      "html": "<p>Foo\n***</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 50,
+      "section": "Thematic breaks",
+      "markdown": "_____________________________________\n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 51,
+      "section": "Thematic breaks",
+      "markdown": " - - -\n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 52,
+      "section": "Thematic breaks",
+      "markdown": " **  * ** * ** * **\n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 53,
+      "section": "Thematic breaks",
+      "markdown": "-     -      -      -\n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 54,
+      "section": "Thematic breaks",
+      "markdown": "- - - -    \n",
+      "html": "<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 55,
+      "section": "Thematic breaks",
+      "markdown": "_ _ _ _ a\n\na------\n\n---a---\n",
+      "html": "<p>_ _ _ _ a</p>\n<p>a------</p>\n<p>---a---</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 56,
+      "section": "Thematic breaks",
+      "markdown": " *-*\n",
+      "html": "<p><em>-</em></p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 57,
+      "section": "Thematic breaks",
+      "markdown": "- foo\n***\n- bar\n",
+      "html": "<ul>\n<li>foo</li>\n</ul>\n<hr />\n<ul>\n<li>bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 58,
+      "section": "Thematic breaks",
+      "markdown": "Foo\n***\nbar\n",
+      "html": "<p>Foo</p>\n<hr />\n<p>bar</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 59,
+      "section": "Thematic breaks",
+      "markdown": "Foo\n---\nbar\n",
+      "html": "<h2>Foo</h2>\n<p>bar</p>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 60,
+      "section": "Thematic breaks",
+      "markdown": "* Foo\n* * *\n* Bar\n",
+      "html": "<ul>\n<li>Foo</li>\n</ul>\n<hr />\n<ul>\n<li>Bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 61,
+      "section": "Thematic breaks",
+      "markdown": "- Foo\n- * * *\n",
+      "html": "<ul>\n<li>Foo</li>\n<li>\n<hr />\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "rule"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 80,
+      "section": "Setext headings",
+      "markdown": "Foo *bar*\n=========\n\nFoo *bar*\n---------\n",
+      "html": "<h1>Foo <em>bar</em></h1>\n<h2>Foo <em>bar</em></h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 1
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 81,
+      "section": "Setext headings",
+      "markdown": "Foo *bar\nbaz*\n====\n",
+      "html": "<h1>Foo <em>bar\nbaz</em></h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 82,
+      "section": "Setext headings",
+      "markdown": "  Foo *bar\nbaz*\t\n====\n",
+      "html": "<h1>Foo <em>bar\nbaz</em></h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 83,
+      "section": "Setext headings",
+      "markdown": "Foo\n-------------------------\n\nFoo\n=\n",
+      "html": "<h2>Foo</h2>\n<h1>Foo</h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 84,
+      "section": "Setext headings",
+      "markdown": "   Foo\n---\n\n  Foo\n-----\n\n  Foo\n  ===\n",
+      "html": "<h2>Foo</h2>\n<h2>Foo</h2>\n<h1>Foo</h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 85,
+      "section": "Setext headings",
+      "markdown": "    Foo\n    ---\n\n    Foo\n---\n",
+      "html": "<pre><code>Foo\n---\n\nFoo\n</code></pre>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "rule"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 86,
+      "section": "Setext headings",
+      "markdown": "Foo\n   ----      \n",
+      "html": "<h2>Foo</h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 87,
+      "section": "Setext headings",
+      "markdown": "Foo\n    ---\n",
+      "html": "<p>Foo\n---</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 88,
+      "section": "Setext headings",
+      "markdown": "Foo\n= =\n\nFoo\n--- -\n",
+      "html": "<p>Foo\n= =</p>\n<p>Foo</p>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 89,
+      "section": "Setext headings",
+      "markdown": "Foo  \n-----\n",
+      "html": "<h2>Foo</h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 90,
+      "section": "Setext headings",
+      "markdown": "Foo\\\n----\n",
+      "html": "<h2>Foo\\</h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 91,
+      "section": "Setext headings",
+      "markdown": "`Foo\n----\n`\n\n<a title=\"a lot\n---\nof dashes\"/>\n",
+      "html": "<h2>`Foo</h2>\n<p>`</p>\n<h2>&lt;a title=&quot;a lot</h2>\n<p>of dashes&quot;/&gt;</p>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 92,
+      "section": "Setext headings",
+      "markdown": "> Foo\n---\n",
+      "html": "<blockquote>\n<p>Foo</p>\n</blockquote>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 93,
+      "section": "Setext headings",
+      "markdown": "> foo\nbar\n===\n",
+      "html": "<blockquote>\n<p>foo\nbar\n===</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 94,
+      "section": "Setext headings",
+      "markdown": "- Foo\n---\n",
+      "html": "<ul>\n<li>Foo</li>\n</ul>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 95,
+      "section": "Setext headings",
+      "markdown": "Foo\nBar\n---\n",
+      "html": "<h2>Foo\nBar</h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 96,
+      "section": "Setext headings",
+      "markdown": "---\nFoo\n---\nBar\n---\nBaz\n",
+      "html": "<hr />\n<h2>Foo</h2>\n<h2>Bar</h2>\n<p>Baz</p>\n",
+      "expected": [
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 97,
+      "section": "Setext headings",
+      "markdown": "\n====\n",
+      "html": "<p>====</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 98,
+      "section": "Setext headings",
+      "markdown": "---\n---\n",
+      "html": "<hr />\n<hr />\n",
+      "expected": [
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 99,
+      "section": "Setext headings",
+      "markdown": "- foo\n-----\n",
+      "html": "<ul>\n<li>foo</li>\n</ul>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 100,
+      "section": "Setext headings",
+      "markdown": "    foo\n---\n",
+      "html": "<pre><code>foo\n</code></pre>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "rule"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 101,
+      "section": "Setext headings",
+      "markdown": "> foo\n-----\n",
+      "html": "<blockquote>\n<p>foo</p>\n</blockquote>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 102,
+      "section": "Setext headings",
+      "markdown": "\\> foo\n------\n",
+      "html": "<h2>&gt; foo</h2>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "example": 103,
+      "section": "Setext headings",
+      "markdown": "Foo\n\nbar\n---\nbaz\n",
+      "html": "<p>Foo</p>\n<h2>bar</h2>\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 104,
+      "section": "Setext headings",
+      "markdown": "Foo\nbar\n\n---\n\nbaz\n",
+      "html": "<p>Foo\nbar</p>\n<hr />\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 105,
+      "section": "Setext headings",
+      "markdown": "Foo\nbar\n* * *\nbaz\n",
+      "html": "<p>Foo\nbar</p>\n<hr />\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 106,
+      "section": "Setext headings",
+      "markdown": "Foo\nbar\n\\---\nbaz\n",
+      "html": "<p>Foo\nbar\n---\nbaz</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 119,
+      "section": "Fenced code blocks",
+      "markdown": "```\n<\n >\n```\n",
+      "html": "<pre><code>&lt;\n &gt;\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 120,
+      "section": "Fenced code blocks",
+      "markdown": "~~~\n<\n >\n~~~\n",
+      "html": "<pre><code>&lt;\n &gt;\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 121,
+      "section": "Fenced code blocks",
+      "markdown": "``\nfoo\n``\n",
+      "html": "<p><code>foo</code></p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 122,
+      "section": "Fenced code blocks",
+      "markdown": "```\naaa\n~~~\n```\n",
+      "html": "<pre><code>aaa\n~~~\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 123,
+      "section": "Fenced code blocks",
+      "markdown": "~~~\naaa\n```\n~~~\n",
+      "html": "<pre><code>aaa\n```\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 124,
+      "section": "Fenced code blocks",
+      "markdown": "````\naaa\n```\n``````\n",
+      "html": "<pre><code>aaa\n```\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 125,
+      "section": "Fenced code blocks",
+      "markdown": "~~~~\naaa\n~~~\n~~~~\n",
+      "html": "<pre><code>aaa\n~~~\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 126,
+      "section": "Fenced code blocks",
+      "markdown": "```\n",
+      "html": "<pre><code></code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 127,
+      "section": "Fenced code blocks",
+      "markdown": "`````\n\n```\naaa\n",
+      "html": "<pre><code>\n```\naaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 128,
+      "section": "Fenced code blocks",
+      "markdown": "> ```\n> aaa\n\nbbb\n",
+      "html": "<blockquote>\n<pre><code>aaa\n</code></pre>\n</blockquote>\n<p>bbb</p>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "code"
+            }
+          ]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 129,
+      "section": "Fenced code blocks",
+      "markdown": "```\n\n  \n```\n",
+      "html": "<pre><code>\n  \n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 130,
+      "section": "Fenced code blocks",
+      "markdown": "```\n```\n",
+      "html": "<pre><code></code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 131,
+      "section": "Fenced code blocks",
+      "markdown": " ```\n aaa\naaa\n```\n",
+      "html": "<pre><code>aaa\naaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 132,
+      "section": "Fenced code blocks",
+      "markdown": "  ```\naaa\n  aaa\naaa\n  ```\n",
+      "html": "<pre><code>aaa\naaa\naaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 133,
+      "section": "Fenced code blocks",
+      "markdown": "   ```\n   aaa\n    aaa\n  aaa\n   ```\n",
+      "html": "<pre><code>aaa\n aaa\naaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 134,
+      "section": "Fenced code blocks",
+      "markdown": "    ```\n    aaa\n    ```\n",
+      "html": "<pre><code>```\naaa\n```\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 135,
+      "section": "Fenced code blocks",
+      "markdown": "```\naaa\n  ```\n",
+      "html": "<pre><code>aaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 136,
+      "section": "Fenced code blocks",
+      "markdown": "   ```\naaa\n  ```\n",
+      "html": "<pre><code>aaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 137,
+      "section": "Fenced code blocks",
+      "markdown": "```\naaa\n    ```\n",
+      "html": "<pre><code>aaa\n    ```\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 138,
+      "section": "Fenced code blocks",
+      "markdown": "``` ```\naaa\n",
+      "html": "<p><code> </code>\naaa</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 139,
+      "section": "Fenced code blocks",
+      "markdown": "~~~~~~\naaa\n~~~ ~~\n",
+      "html": "<pre><code>aaa\n~~~ ~~\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 140,
+      "section": "Fenced code blocks",
+      "markdown": "foo\n```\nbar\n```\nbaz\n",
+      "html": "<p>foo</p>\n<pre><code>bar\n</code></pre>\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 141,
+      "section": "Fenced code blocks",
+      "markdown": "foo\n---\n~~~\nbar\n~~~\n# baz\n",
+      "html": "<h2>foo</h2>\n<pre><code>bar\n</code></pre>\n<h1>baz</h1>\n",
+      "expected": [
+        {
+          "kind": "heading",
+          "level": 2
+        },
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "heading",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "example": 142,
+      "section": "Fenced code blocks",
+      "markdown": "```ruby\ndef foo(x)\n  return 3\nend\n```\n",
+      "html": "<pre><code class=\"language-ruby\">def foo(x)\n  return 3\nend\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 143,
+      "section": "Fenced code blocks",
+      "markdown": "~~~~    ruby startline=3 $%@#$\ndef foo(x)\n  return 3\nend\n~~~~~~~\n",
+      "html": "<pre><code class=\"language-ruby\">def foo(x)\n  return 3\nend\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 144,
+      "section": "Fenced code blocks",
+      "markdown": "````;\n````\n",
+      "html": "<pre><code class=\"language-;\"></code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 145,
+      "section": "Fenced code blocks",
+      "markdown": "``` aa ```\nfoo\n",
+      "html": "<p><code>aa</code>\nfoo</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 146,
+      "section": "Fenced code blocks",
+      "markdown": "~~~ aa ``` ~~~\nfoo\n~~~\n",
+      "html": "<pre><code class=\"language-aa\">foo\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 147,
+      "section": "Fenced code blocks",
+      "markdown": "```\n``` aaa\n```\n",
+      "html": "<pre><code>``` aaa\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ]
+    },
+    {
+      "example": 228,
+      "section": "Block quotes",
+      "markdown": "> # Foo\n> bar\n> baz\n",
+      "html": "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "heading",
+              "level": 1
+            },
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 229,
+      "section": "Block quotes",
+      "markdown": "># Foo\n>bar\n> baz\n",
+      "html": "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "heading",
+              "level": 1
+            },
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 230,
+      "section": "Block quotes",
+      "markdown": "   > # Foo\n   > bar\n > baz\n",
+      "html": "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "heading",
+              "level": 1
+            },
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 231,
+      "section": "Block quotes",
+      "markdown": "    > # Foo\n    > bar\n    > baz\n",
+      "html": "<pre><code>&gt; # Foo\n&gt; bar\n&gt; baz\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 232,
+      "section": "Block quotes",
+      "markdown": "> # Foo\n> bar\nbaz\n",
+      "html": "<blockquote>\n<h1>Foo</h1>\n<p>bar\nbaz</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "heading",
+              "level": 1
+            },
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 233,
+      "section": "Block quotes",
+      "markdown": "> bar\nbaz\n> foo\n",
+      "html": "<blockquote>\n<p>bar\nbaz\nfoo</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 234,
+      "section": "Block quotes",
+      "markdown": "> foo\n---\n",
+      "html": "<blockquote>\n<p>foo</p>\n</blockquote>\n<hr />\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "rule"
+        }
+      ]
+    },
+    {
+      "example": 235,
+      "section": "Block quotes",
+      "markdown": "> - foo\n- bar\n",
+      "html": "<blockquote>\n<ul>\n<li>foo</li>\n</ul>\n</blockquote>\n<ul>\n<li>bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "list",
+              "ordered": false,
+              "items": [
+                [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 236,
+      "section": "Block quotes",
+      "markdown": ">     foo\n    bar\n",
+      "html": "<blockquote>\n<pre><code>foo\n</code></pre>\n</blockquote>\n<pre><code>bar\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "code"
+            }
+          ]
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 237,
+      "section": "Block quotes",
+      "markdown": "> ```\nfoo\n```\n",
+      "html": "<blockquote>\n<pre><code></code></pre>\n</blockquote>\n<p>foo</p>\n<pre><code></code></pre>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "code"
+            }
+          ]
+        },
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 238,
+      "section": "Block quotes",
+      "markdown": "> foo\n    - bar\n",
+      "html": "<blockquote>\n<p>foo\n- bar</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 239,
+      "section": "Block quotes",
+      "markdown": ">\n",
+      "html": "<blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": []
+        }
+      ]
+    },
+    {
+      "example": 240,
+      "section": "Block quotes",
+      "markdown": ">\n>  \n> \n",
+      "html": "<blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": []
+        }
+      ]
+    },
+    {
+      "example": 241,
+      "section": "Block quotes",
+      "markdown": ">\n> foo\n>  \n",
+      "html": "<blockquote>\n<p>foo</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 242,
+      "section": "Block quotes",
+      "markdown": "> foo\n\n> bar\n",
+      "html": "<blockquote>\n<p>foo</p>\n</blockquote>\n<blockquote>\n<p>bar</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 243,
+      "section": "Block quotes",
+      "markdown": "> foo\n> bar\n",
+      "html": "<blockquote>\n<p>foo\nbar</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 244,
+      "section": "Block quotes",
+      "markdown": "> foo\n>\n> bar\n",
+      "html": "<blockquote>\n<p>foo</p>\n<p>bar</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            },
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 245,
+      "section": "Block quotes",
+      "markdown": "foo\n> bar\n",
+      "html": "<p>foo</p>\n<blockquote>\n<p>bar</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 246,
+      "section": "Block quotes",
+      "markdown": "> aaa\n***\n> bbb\n",
+      "html": "<blockquote>\n<p>aaa</p>\n</blockquote>\n<hr />\n<blockquote>\n<p>bbb</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "rule"
+        },
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 247,
+      "section": "Block quotes",
+      "markdown": "> bar\nbaz\n",
+      "html": "<blockquote>\n<p>bar\nbaz</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 248,
+      "section": "Block quotes",
+      "markdown": "> bar\n\nbaz\n",
+      "html": "<blockquote>\n<p>bar</p>\n</blockquote>\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 249,
+      "section": "Block quotes",
+      "markdown": "> bar\n>\nbaz\n",
+      "html": "<blockquote>\n<p>bar</p>\n</blockquote>\n<p>baz</p>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 250,
+      "section": "Block quotes",
+      "markdown": "> > > foo\nbar\n",
+      "html": "<blockquote>\n<blockquote>\n<blockquote>\n<p>foo\nbar</p>\n</blockquote>\n</blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "quote",
+              "children": [
+                {
+                  "kind": "quote",
+                  "children": [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 251,
+      "section": "Block quotes",
+      "markdown": ">>> foo\n> bar\n>>baz\n",
+      "html": "<blockquote>\n<blockquote>\n<blockquote>\n<p>foo\nbar\nbaz</p>\n</blockquote>\n</blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "quote",
+              "children": [
+                {
+                  "kind": "quote",
+                  "children": [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 252,
+      "section": "Block quotes",
+      "markdown": ">     code\n\n>    not code\n",
+      "html": "<blockquote>\n<pre><code>code\n</code></pre>\n</blockquote>\n<blockquote>\n<p>not code</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "code"
+            }
+          ]
+        },
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 253,
+      "section": "List items",
+      "markdown": "A paragraph\nwith two lines.\n\n    indented code\n\n> A block quote.\n",
+      "html": "<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "paragraph"
+            }
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 254,
+      "section": "List items",
+      "markdown": "1.  A paragraph\n    with two lines.\n\n        indented code\n\n    > A block quote.\n",
+      "html": "<ol>\n<li>\n<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 255,
+      "section": "List items",
+      "markdown": "- one\n\n two\n",
+      "html": "<ul>\n<li>one</li>\n</ul>\n<p>two</p>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 256,
+      "section": "List items",
+      "markdown": "- one\n\n  two\n",
+      "html": "<ul>\n<li>\n<p>one</p>\n<p>two</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 257,
+      "section": "List items",
+      "markdown": " -    one\n\n     two\n",
+      "html": "<ul>\n<li>one</li>\n</ul>\n<pre><code> two\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 258,
+      "section": "List items",
+      "markdown": " -    one\n\n      two\n",
+      "html": "<ul>\n<li>\n<p>one</p>\n<p>two</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 259,
+      "section": "List items",
+      "markdown": "   > > 1.  one\n>>\n>>     two\n",
+      "html": "<blockquote>\n<blockquote>\n<ol>\n<li>\n<p>one</p>\n<p>two</p>\n</li>\n</ol>\n</blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "quote",
+              "children": [
+                {
+                  "kind": "list",
+                  "ordered": true,
+                  "start": 1,
+                  "items": [
+                    [
+                      {
+                        "kind": "paragraph"
+                      },
+                      {
+                        "kind": "paragraph"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 260,
+      "section": "List items",
+      "markdown": ">>- one\n>>\n  >  > two\n",
+      "html": "<blockquote>\n<blockquote>\n<ul>\n<li>one</li>\n</ul>\n<p>two</p>\n</blockquote>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "quote",
+              "children": [
+                {
+                  "kind": "list",
+                  "ordered": false,
+                  "items": [
+                    [
+                      {
+                        "kind": "paragraph"
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "kind": "paragraph"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 261,
+      "section": "List items",
+      "markdown": "-one\n\n2.two\n",
+      "html": "<p>-one</p>\n<p>2.two</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 262,
+      "section": "List items",
+      "markdown": "- foo\n\n\n  bar\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<p>bar</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 263,
+      "section": "List items",
+      "markdown": "1.  foo\n\n    ```\n    bar\n    ```\n\n    baz\n\n    > bam\n",
+      "html": "<ol>\n<li>\n<p>foo</p>\n<pre><code>bar\n</code></pre>\n<p>baz</p>\n<blockquote>\n<p>bam</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 264,
+      "section": "List items",
+      "markdown": "- Foo\n\n      bar\n\n\n      baz\n",
+      "html": "<ul>\n<li>\n<p>Foo</p>\n<pre><code>bar\n\n\nbaz\n</code></pre>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 265,
+      "section": "List items",
+      "markdown": "123456789. ok\n",
+      "html": "<ol start=\"123456789\">\n<li>ok</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 123456789,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 266,
+      "section": "List items",
+      "markdown": "1234567890. not ok\n",
+      "html": "<p>1234567890. not ok</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 267,
+      "section": "List items",
+      "markdown": "0. ok\n",
+      "html": "<ol start=\"0\">\n<li>ok</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 0,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 268,
+      "section": "List items",
+      "markdown": "003. ok\n",
+      "html": "<ol start=\"3\">\n<li>ok</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 3,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 269,
+      "section": "List items",
+      "markdown": "-1. not ok\n",
+      "html": "<p>-1. not ok</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 270,
+      "section": "List items",
+      "markdown": "- foo\n\n      bar\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<pre><code>bar\n</code></pre>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 271,
+      "section": "List items",
+      "markdown": "  10.  foo\n\n           bar\n",
+      "html": "<ol start=\"10\">\n<li>\n<p>foo</p>\n<pre><code>bar\n</code></pre>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 10,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 272,
+      "section": "List items",
+      "markdown": "    indented code\n\nparagraph\n\n    more code\n",
+      "html": "<pre><code>indented code\n</code></pre>\n<p>paragraph</p>\n<pre><code>more code\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        },
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 273,
+      "section": "List items",
+      "markdown": "1.     indented code\n\n   paragraph\n\n       more code\n",
+      "html": "<ol>\n<li>\n<pre><code>indented code\n</code></pre>\n<p>paragraph</p>\n<pre><code>more code\n</code></pre>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 274,
+      "section": "List items",
+      "markdown": "1.      indented code\n\n   paragraph\n\n       more code\n",
+      "html": "<ol>\n<li>\n<pre><code> indented code\n</code></pre>\n<p>paragraph</p>\n<pre><code>more code\n</code></pre>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 275,
+      "section": "List items",
+      "markdown": "   foo\n\nbar\n",
+      "html": "<p>foo</p>\n<p>bar</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 276,
+      "section": "List items",
+      "markdown": "-    foo\n\n  bar\n",
+      "html": "<ul>\n<li>foo</li>\n</ul>\n<p>bar</p>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 277,
+      "section": "List items",
+      "markdown": "-  foo\n\n   bar\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<p>bar</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 278,
+      "section": "List items",
+      "markdown": "-\n  foo\n-\n  ```\n  bar\n  ```\n-\n      baz\n",
+      "html": "<ul>\n<li>foo</li>\n<li>\n<pre><code>bar\n</code></pre>\n</li>\n<li>\n<pre><code>baz\n</code></pre>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "code"
+              }
+            ],
+            [
+              {
+                "kind": "code"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 279,
+      "section": "List items",
+      "markdown": "-   \n  foo\n",
+      "html": "<ul>\n<li>foo</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 280,
+      "section": "List items",
+      "markdown": "-\n\n  foo\n",
+      "html": "<ul>\n<li></li>\n</ul>\n<p>foo</p>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [[]]
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 281,
+      "section": "List items",
+      "markdown": "- foo\n-\n- bar\n",
+      "html": "<ul>\n<li>foo</li>\n<li></li>\n<li>bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 282,
+      "section": "List items",
+      "markdown": "- foo\n-   \n- bar\n",
+      "html": "<ul>\n<li>foo</li>\n<li></li>\n<li>bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 283,
+      "section": "List items",
+      "markdown": "1. foo\n2.\n3. bar\n",
+      "html": "<ol>\n<li>foo</li>\n<li></li>\n<li>bar</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 284,
+      "section": "List items",
+      "markdown": "*\n",
+      "html": "<ul>\n<li></li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [[]]
+        }
+      ]
+    },
+    {
+      "example": 285,
+      "section": "List items",
+      "markdown": "foo\n*\n\nfoo\n1.\n",
+      "html": "<p>foo\n*</p>\n<p>foo\n1.</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 286,
+      "section": "List items",
+      "markdown": " 1.  A paragraph\n     with two lines.\n\n         indented code\n\n     > A block quote.\n",
+      "html": "<ol>\n<li>\n<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 287,
+      "section": "List items",
+      "markdown": "  1.  A paragraph\n      with two lines.\n\n          indented code\n\n      > A block quote.\n",
+      "html": "<ol>\n<li>\n<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 288,
+      "section": "List items",
+      "markdown": "   1.  A paragraph\n       with two lines.\n\n           indented code\n\n       > A block quote.\n",
+      "html": "<ol>\n<li>\n<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 289,
+      "section": "List items",
+      "markdown": "    1.  A paragraph\n        with two lines.\n\n            indented code\n\n        > A block quote.\n",
+      "html": "<pre><code>1.  A paragraph\n    with two lines.\n\n        indented code\n\n    &gt; A block quote.\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 290,
+      "section": "List items",
+      "markdown": "  1.  A paragraph\nwith two lines.\n\n          indented code\n\n      > A block quote.\n",
+      "html": "<ol>\n<li>\n<p>A paragraph\nwith two lines.</p>\n<pre><code>indented code\n</code></pre>\n<blockquote>\n<p>A block quote.</p>\n</blockquote>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 291,
+      "section": "List items",
+      "markdown": "  1.  A paragraph\n    with two lines.\n",
+      "html": "<ol>\n<li>A paragraph\nwith two lines.</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 292,
+      "section": "List items",
+      "markdown": "> 1. > Blockquote\ncontinued here.\n",
+      "html": "<blockquote>\n<ol>\n<li>\n<blockquote>\n<p>Blockquote\ncontinued here.</p>\n</blockquote>\n</li>\n</ol>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "list",
+              "ordered": true,
+              "start": 1,
+              "items": [
+                [
+                  {
+                    "kind": "quote",
+                    "children": [
+                      {
+                        "kind": "paragraph"
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 293,
+      "section": "List items",
+      "markdown": "> 1. > Blockquote\n> continued here.\n",
+      "html": "<blockquote>\n<ol>\n<li>\n<blockquote>\n<p>Blockquote\ncontinued here.</p>\n</blockquote>\n</li>\n</ol>\n</blockquote>\n",
+      "expected": [
+        {
+          "kind": "quote",
+          "children": [
+            {
+              "kind": "list",
+              "ordered": true,
+              "start": 1,
+              "items": [
+                [
+                  {
+                    "kind": "quote",
+                    "children": [
+                      {
+                        "kind": "paragraph"
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        }
+      ],
+      "excluded": "Structured block quotes (multiple paragraphs, nested quotes, lists, headings or fenced code) are outside the flat quote subset."
+    },
+    {
+      "example": 294,
+      "section": "List items",
+      "markdown": "- foo\n  - bar\n    - baz\n      - boo\n",
+      "html": "<ul>\n<li>foo\n<ul>\n<li>bar\n<ul>\n<li>baz\n<ul>\n<li>boo</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    },
+                    {
+                      "kind": "list",
+                      "ordered": false,
+                      "items": [
+                        [
+                          {
+                            "kind": "paragraph"
+                          },
+                          {
+                            "kind": "list",
+                            "ordered": false,
+                            "items": [
+                              [
+                                {
+                                  "kind": "paragraph"
+                                }
+                              ]
+                            ]
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 295,
+      "section": "List items",
+      "markdown": "- foo\n - bar\n  - baz\n   - boo\n",
+      "html": "<ul>\n<li>foo</li>\n<li>bar</li>\n<li>baz</li>\n<li>boo</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 296,
+      "section": "List items",
+      "markdown": "10) foo\n    - bar\n",
+      "html": "<ol start=\"10\">\n<li>foo\n<ul>\n<li>bar</li>\n</ul>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 10,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 297,
+      "section": "List items",
+      "markdown": "10) foo\n   - bar\n",
+      "html": "<ol start=\"10\">\n<li>foo</li>\n</ol>\n<ul>\n<li>bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 10,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 298,
+      "section": "List items",
+      "markdown": "- - foo\n",
+      "html": "<ul>\n<li>\n<ul>\n<li>foo</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 299,
+      "section": "List items",
+      "markdown": "1. - 2. foo\n",
+      "html": "<ol>\n<li>\n<ul>\n<li>\n<ol start=\"2\">\n<li>foo</li>\n</ol>\n</li>\n</ul>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "list",
+                      "ordered": true,
+                      "start": 2,
+                      "items": [
+                        [
+                          {
+                            "kind": "paragraph"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 300,
+      "section": "List items",
+      "markdown": "- # Foo\n- Bar\n  ---\n  baz\n",
+      "html": "<ul>\n<li>\n<h1>Foo</h1>\n</li>\n<li>\n<h2>Bar</h2>\nbaz</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "heading",
+                "level": 1
+              }
+            ],
+            [
+              {
+                "kind": "heading",
+                "level": 2
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 301,
+      "section": "Lists",
+      "markdown": "- foo\n- bar\n+ baz\n",
+      "html": "<ul>\n<li>foo</li>\n<li>bar</li>\n</ul>\n<ul>\n<li>baz</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 302,
+      "section": "Lists",
+      "markdown": "1. foo\n2. bar\n3) baz\n",
+      "html": "<ol>\n<li>foo</li>\n<li>bar</li>\n</ol>\n<ol start=\"3\">\n<li>baz</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 3,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 303,
+      "section": "Lists",
+      "markdown": "Foo\n- bar\n- baz\n",
+      "html": "<p>Foo</p>\n<ul>\n<li>bar</li>\n<li>baz</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 304,
+      "section": "Lists",
+      "markdown": "The number of windows in my house is\n14.  The number of doors is 6.\n",
+      "html": "<p>The number of windows in my house is\n14.  The number of doors is 6.</p>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        }
+      ]
+    },
+    {
+      "example": 305,
+      "section": "Lists",
+      "markdown": "The number of windows in my house is\n1.  The number of doors is 6.\n",
+      "html": "<p>The number of windows in my house is</p>\n<ol>\n<li>The number of doors is 6.</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "paragraph"
+        },
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 306,
+      "section": "Lists",
+      "markdown": "- foo\n\n- bar\n\n\n- baz\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n</li>\n<li>\n<p>bar</p>\n</li>\n<li>\n<p>baz</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 307,
+      "section": "Lists",
+      "markdown": "- foo\n  - bar\n    - baz\n\n\n      bim\n",
+      "html": "<ul>\n<li>foo\n<ul>\n<li>bar\n<ul>\n<li>\n<p>baz</p>\n<p>bim</p>\n</li>\n</ul>\n</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    },
+                    {
+                      "kind": "list",
+                      "ordered": false,
+                      "items": [
+                        [
+                          {
+                            "kind": "paragraph"
+                          },
+                          {
+                            "kind": "paragraph"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 308,
+      "section": "Lists",
+      "markdown": "- foo\n- bar\n\n<!-- -->\n\n- baz\n- bim\n",
+      "html": "<ul>\n<li>foo</li>\n<li>bar</li>\n</ul>\n<!-- -->\n<ul>\n<li>baz</li>\n<li>bim</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Raw HTML block/comment boundaries are unsupported; preview strips HTML authority."
+    },
+    {
+      "example": 309,
+      "section": "Lists",
+      "markdown": "-   foo\n\n    notcode\n\n-   foo\n\n<!-- -->\n\n    code\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<p>notcode</p>\n</li>\n<li>\n<p>foo</p>\n</li>\n</ul>\n<!-- -->\n<pre><code>code\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Raw HTML block/comment boundaries are unsupported; preview strips HTML authority."
+    },
+    {
+      "example": 310,
+      "section": "Lists",
+      "markdown": "- a\n - b\n  - c\n   - d\n  - e\n - f\n- g\n",
+      "html": "<ul>\n<li>a</li>\n<li>b</li>\n<li>c</li>\n<li>d</li>\n<li>e</li>\n<li>f</li>\n<li>g</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 311,
+      "section": "Lists",
+      "markdown": "1. a\n\n  2. b\n\n   3. c\n",
+      "html": "<ol>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n<li>\n<p>c</p>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 312,
+      "section": "Lists",
+      "markdown": "- a\n - b\n  - c\n   - d\n    - e\n",
+      "html": "<ul>\n<li>a</li>\n<li>b</li>\n<li>c</li>\n<li>d\n- e</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 313,
+      "section": "Lists",
+      "markdown": "1. a\n\n  2. b\n\n    3. c\n",
+      "html": "<ol>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ol>\n<pre><code>3. c\n</code></pre>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "code"
+        }
+      ],
+      "excluded": "Indented code blocks are outside the preview block subset (including indented code inside containers)."
+    },
+    {
+      "example": 314,
+      "section": "Lists",
+      "markdown": "- a\n- b\n\n- c\n",
+      "html": "<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n<li>\n<p>c</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 315,
+      "section": "Lists",
+      "markdown": "* a\n*\n\n* c\n",
+      "html": "<ul>\n<li>\n<p>a</p>\n</li>\n<li></li>\n<li>\n<p>c</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 316,
+      "section": "Lists",
+      "markdown": "- a\n- b\n\n  c\n- d\n",
+      "html": "<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n<p>c</p>\n</li>\n<li>\n<p>d</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 317,
+      "section": "Lists",
+      "markdown": "- a\n- b\n\n  [ref]: /url\n- d\n",
+      "html": "<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n<li>\n<p>d</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Link reference definitions are unsupported block syntax."
+    },
+    {
+      "example": 318,
+      "section": "Lists",
+      "markdown": "- a\n- ```\n  b\n\n\n  ```\n- c\n",
+      "html": "<ul>\n<li>a</li>\n<li>\n<pre><code>b\n\n\n</code></pre>\n</li>\n<li>c</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ],
+            [
+              {
+                "kind": "code"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 319,
+      "section": "Lists",
+      "markdown": "- a\n  - b\n\n    c\n- d\n",
+      "html": "<ul>\n<li>a\n<ul>\n<li>\n<p>b</p>\n<p>c</p>\n</li>\n</ul>\n</li>\n<li>d</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    },
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 320,
+      "section": "Lists",
+      "markdown": "* a\n  > b\n  >\n* c\n",
+      "html": "<ul>\n<li>a\n<blockquote>\n<p>b</p>\n</blockquote>\n</li>\n<li>c</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 321,
+      "section": "Lists",
+      "markdown": "- a\n  > b\n  ```\n  c\n  ```\n- d\n",
+      "html": "<ul>\n<li>a\n<blockquote>\n<p>b</p>\n</blockquote>\n<pre><code>c\n</code></pre>\n</li>\n<li>d</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "quote",
+                "children": [
+                  {
+                    "kind": "paragraph"
+                  }
+                ]
+              },
+              {
+                "kind": "code"
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 322,
+      "section": "Lists",
+      "markdown": "- a\n",
+      "html": "<ul>\n<li>a</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 323,
+      "section": "Lists",
+      "markdown": "- a\n  - b\n",
+      "html": "<ul>\n<li>a\n<ul>\n<li>b</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "example": 324,
+      "section": "Lists",
+      "markdown": "1. ```\n   foo\n   ```\n\n   bar\n",
+      "html": "<ol>\n<li>\n<pre><code>foo\n</code></pre>\n<p>bar</p>\n</li>\n</ol>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": true,
+          "start": 1,
+          "items": [
+            [
+              {
+                "kind": "code"
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 325,
+      "section": "Lists",
+      "markdown": "* foo\n  * bar\n\n  baz\n",
+      "html": "<ul>\n<li>\n<p>foo</p>\n<ul>\n<li>bar</li>\n</ul>\n<p>baz</p>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              },
+              {
+                "kind": "paragraph"
+              }
+            ]
+          ]
+        }
+      ],
+      "excluded": "Multiple blocks or non-list block children inside a list item are outside the flat list subset."
+    },
+    {
+      "example": 326,
+      "section": "Lists",
+      "markdown": "- a\n  - b\n  - c\n\n- d\n  - e\n  - f\n",
+      "html": "<ul>\n<li>\n<p>a</p>\n<ul>\n<li>b</li>\n<li>c</li>\n</ul>\n</li>\n<li>\n<p>d</p>\n<ul>\n<li>e</li>\n<li>f</li>\n</ul>\n</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "ordered": false,
+          "items": [
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              {
+                "kind": "paragraph"
+              },
+              {
+                "kind": "list",
+                "ordered": false,
+                "items": [
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "paragraph"
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
