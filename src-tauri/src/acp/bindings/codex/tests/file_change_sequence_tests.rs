@@ -114,7 +114,7 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         json!({"method":method,"params":{
             "threadId":"thread-1","turnId":"turn-1","item":{
                 "type":"fileChange","id":"file-created","status":status,
-                "changes":[{"path":absolute,"kind":{"type":"add"},"diff":"opaque"}]
+                "changes":[{"path":absolute,"kind":{"type":"add"},"diff":"probe\n"}]
             }
         }})
     };
@@ -145,12 +145,15 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
             operation: crate::acp::intent::FileChangeOperation::Created,
-            pair_available: false,
+            pair_available: true,
+            additions: Some(1),
+            deletions: Some(0),
             ..
         },
         ..
-    }] if resource.root_id.as_str() == "root-created"
-        && resource.relative_path.as_str() == "cp8-pane-probe.md"));
+    }, IncomingEvent::FilePair { old_text, new_text, .. }] if resource.root_id.as_str() == "root-created"
+        && resource.relative_path.as_str() == "cp8-pane-probe.md"
+        && old_text.is_empty() && new_text == "probe\n"));
 }
 
 #[cfg(windows)]

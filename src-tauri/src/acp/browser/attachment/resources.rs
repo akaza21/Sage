@@ -2,8 +2,8 @@
 //! Sleeping drops listeners and history; revocation also cancels work and handles.
 use super::*;
 mod developer;
-pub(crate) use developer::DeveloperScope;
 use developer::DeveloperRelease;
+pub(crate) use developer::DeveloperScope;
 
 #[derive(Clone)]
 pub(crate) struct DiagnosticScope {

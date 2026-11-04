@@ -1,6 +1,9 @@
 //! Serialize switch reconfiguration and close admission across its entire
 //! revoke/write transition. Policies created during it cannot become live.
-use std::sync::{Mutex, MutexGuard, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Mutex, MutexGuard,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[derive(Default)]
 struct Switch {
@@ -13,9 +16,13 @@ static SWITCH: Switch = Switch {
     serial: Mutex::new(()),
 };
 
-pub(crate) fn switch_generation() -> u64 { SWITCH.generation.load(Ordering::SeqCst) }
+pub(crate) fn switch_generation() -> u64 {
+    SWITCH.generation.load(Ordering::SeqCst)
+}
 
-pub(crate) fn switch_is_current(generation: u64) -> bool { SWITCH.is_current(generation) }
+pub(crate) fn switch_is_current(generation: u64) -> bool {
+    SWITCH.is_current(generation)
+}
 
 pub(crate) fn with_switch_change<T>(change: impl FnOnce() -> T) -> T {
     let _transition = SWITCH.begin();
@@ -24,15 +31,20 @@ pub(crate) fn with_switch_change<T>(change: impl FnOnce() -> T) -> T {
 
 impl Switch {
     fn is_current(&self, generation: u64) -> bool {
-        generation.is_multiple_of(2)
-            && self.generation.load(Ordering::SeqCst) == generation
+        generation.is_multiple_of(2) && self.generation.load(Ordering::SeqCst) == generation
     }
 
     fn begin(&self) -> Transition<'_> {
-        let serial = self.serial.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let serial = self
+            .serial
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Odd epochs close admission; every completed transition is even.
         self.generation.fetch_add(1, Ordering::SeqCst);
-        Transition { switch: self, _serial: serial }
+        Transition {
+            switch: self,
+            _serial: serial,
+        }
     }
 }
 

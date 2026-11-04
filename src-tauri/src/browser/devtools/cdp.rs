@@ -7,11 +7,11 @@ use std::{
     time::Duration,
 };
 
+use super::developer_session::Session;
 use tauri::{Manager, Webview};
 use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-use windows_core::{Interface, PCWSTR};
 use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_11;
-use super::developer_session::Session;
+use windows_core::{Interface, PCWSTR};
 
 #[derive(Default)]
 pub(super) struct Dispatch {
@@ -127,10 +127,17 @@ pub(super) fn call_with_permit(
                         if let Some(core) = release_core {
                             if let Some(session) = release_session {
                                 let _ = session.with_id(|id| {
-                                    notify_session(&core, id, "Runtime.releaseObjectGroup", &crate::acp::browser::developer::release_params());
+                                    notify_session(
+                                        &core,
+                                        id,
+                                        "Runtime.releaseObjectGroup",
+                                        &crate::acp::browser::developer::release_params(),
+                                    );
                                     Ok(())
                                 });
-                            } else { release_developer_objects(&core); }
+                            } else {
+                                release_developer_objects(&core);
+                            }
                         }
                         Ok(())
                     },
@@ -139,8 +146,17 @@ pub(super) fn call_with_permit(
                     if let Some(session) = &dispatch.session {
                         return session.with_id(|id| {
                             let session = wide(id);
-                            unsafe { core.cast::<ICoreWebView2_11>().and_then(|core| core.CallDevToolsProtocolMethodForSession(PCWSTR(session.as_ptr()), PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &completed)) }
-                                .map_err(|_| BrowserFailure::Unavailable)
+                            unsafe {
+                                core.cast::<ICoreWebView2_11>().and_then(|core| {
+                                    core.CallDevToolsProtocolMethodForSession(
+                                        PCWSTR(session.as_ptr()),
+                                        PCWSTR(method.as_ptr()),
+                                        PCWSTR(params.as_ptr()),
+                                        &completed,
+                                    )
+                                })
+                            }
+                            .map_err(|_| BrowserFailure::Unavailable)
                         });
                     }
                     unsafe {
@@ -176,14 +192,17 @@ pub(super) fn call_with_permit(
             .is_some_and(|permit| !permit.is_live() && !permit.was_invalidated_by_navigation())
         {
             attempt.timeout();
-            if let Some(session) = &scoped_session { session.close(true); }
+            if let Some(session) = &scoped_session {
+                session.close(true);
+            }
             return Err(timeout_permit.as_ref().unwrap().revoked_failure());
         }
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
             let error = attempt.timeout();
-            if let Some(session) = &scoped_session { session.close(true); }
-            else if error == BrowserFailure::OutcomeUnknown
+            if let Some(session) = &scoped_session {
+                session.close(true);
+            } else if error == BrowserFailure::OutcomeUnknown
                 && let Some(permit) = timeout_permit
             {
                 permit.revoke();
@@ -194,7 +213,9 @@ pub(super) fn call_with_permit(
             Ok(result) => break result?,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                if let Some(session) = &scoped_session { session.close(true); }
+                if let Some(session) = &scoped_session {
+                    session.close(true);
+                }
                 return Err(attempt.disconnected_failure());
             }
         }
@@ -230,14 +251,28 @@ pub(super) fn notify(
     };
 }
 
-pub(super) fn notify_session(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, session: &str, method: &str, params: &str) {
-    if session.is_empty() { return; }
+pub(super) fn notify_session(
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    session: &str,
+    method: &str,
+    params: &str,
+) {
+    if session.is_empty() {
+        return;
+    }
     let session = wide(session);
     let method = wide(method);
     let params = wide(params);
     let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
     if let Ok(core) = core.cast::<ICoreWebView2_11>() {
-        let _ = unsafe { core.CallDevToolsProtocolMethodForSession(PCWSTR(session.as_ptr()), PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &done) };
+        let _ = unsafe {
+            core.CallDevToolsProtocolMethodForSession(
+                PCWSTR(session.as_ptr()),
+                PCWSTR(method.as_ptr()),
+                PCWSTR(params.as_ptr()),
+                &done,
+            )
+        };
     }
 }
 

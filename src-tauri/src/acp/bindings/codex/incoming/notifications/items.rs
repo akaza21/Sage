@@ -1,4 +1,5 @@
 use super::super::super::state::ExternalKind;
+use super::super::items::normalize_file_change;
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
     normalize_item, normalize_materialized_command,
@@ -39,9 +40,15 @@ pub(super) fn item_event<M: ResourceMapper>(
             )
         })
         .transpose()?;
-    let normalized = match command.as_ref() {
-        Some(command) => Some(normalize_materialized_command(command)?),
-        None => normalize_item(item, requested, mapper)?,
+    let (normalized, pair) = match command.as_ref() {
+        Some(command) => (Some(normalize_materialized_command(command)?), None),
+        None if item.get("type").and_then(Value::as_str) == Some("fileChange")
+            && requested.is_terminal() =>
+        {
+            let (normalized, pair) = normalize_file_change(item, mapper, true)?;
+            (Some(normalized), pair)
+        }
+        None => (normalize_item(item, requested, mapper)?, None),
     };
     let Some((mut payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::Events(vec![]));
@@ -73,21 +80,27 @@ pub(super) fn item_event<M: ResourceMapper>(
     let id = adapter
         .scoped_in_turn(ExternalKind::Item, turn, external)
         .map_err(identity)?;
-    Ok(match child_thread_id {
+    let pair_event = pair.map(|pair| IncomingEvent::FilePair {
+        id: id.clone(),
+        old_text: pair.old_text,
+        new_text: pair.new_text,
+    });
+    let event = match child_thread_id {
         Some(child_thread_id) => IncomingEvent::ChildThreadItem {
             id,
             lifecycle,
             payload,
             child_thread_id,
-        }
-        .into(),
+        },
         None => IncomingEvent::Item {
             id,
             lifecycle,
             tool_state,
             payload,
             update_mode: ItemUpdateMode::Replace,
-        }
-        .into(),
-    })
+        },
+    };
+    let mut events = vec![event];
+    events.extend(pair_event);
+    Ok(IngressDisposition::Events(events))
 }

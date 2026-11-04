@@ -247,6 +247,6 @@ mod subscription_tests;
 #[cfg(windows)]
 mod native;
 #[cfg(windows)]
-pub(crate) use native::detach;
-#[cfg(windows)]
 pub(super) use native::attach;
+#[cfg(windows)]
+pub(crate) use native::detach;

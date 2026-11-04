@@ -155,13 +155,33 @@ impl CdpTransport for NativeTransport {
             max_result_bytes,
             timeout,
             self.permit.clone(),
-            cdp::Dispatch { issued: Some(self.issued.clone()), session: None },
+            cdp::Dispatch {
+                issued: Some(self.issued.clone()),
+                session: None,
+            },
         )
     }
 
-    fn raw(&self, method: &str, params: &str, max_result_bytes: usize, timeout: Duration) -> Result<String, BrowserFailure> {
+    fn raw(
+        &self,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure> {
         let session = self.developer.clone().ok_or(BrowserFailure::Denied)?;
-        cdp::call_with_permit(&self.webview, method, params, max_result_bytes, timeout, self.permit.clone(), cdp::Dispatch { issued: Some(self.issued.clone()), session: Some(session) })
+        cdp::call_with_permit(
+            &self.webview,
+            method,
+            params,
+            max_result_bytes,
+            timeout,
+            self.permit.clone(),
+            cdp::Dispatch {
+                issued: Some(self.issued.clone()),
+                session: Some(session),
+            },
+        )
     }
 
     // Native evaluations release on completion, including late completions.

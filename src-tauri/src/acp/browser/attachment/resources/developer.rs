@@ -22,10 +22,16 @@ impl PartialEq for DeveloperScope {
 impl Eq for DeveloperScope {}
 
 impl DeveloperScope {
-    pub(crate) fn bind(&self, release: DeveloperRelease) -> Result<(), crate::acp::browser::BrowserFailure> {
+    pub(crate) fn bind(
+        &self,
+        release: DeveloperRelease,
+    ) -> Result<(), crate::acp::browser::BrowserFailure> {
         use crate::acp::browser::BrowserFailure;
         let resources = self.resources.upgrade().ok_or(BrowserFailure::Denied)?;
-        let mut state = resources.state.lock().map_err(|_| BrowserFailure::Unavailable)?;
+        let mut state = resources
+            .state
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?;
         if !self.identity.load(Ordering::Acquire)
             || resources.generation.load(Ordering::Acquire) != self.lane
             || resources.grant_generation.load(Ordering::Acquire) != self.grant
@@ -34,7 +40,9 @@ impl DeveloperScope {
         }
         let previous = state.developer.replace((self.lane, self.grant, release));
         drop(state);
-        if let Some((_, _, release)) = previous { release(true); }
+        if let Some((_, _, release)) = previous {
+            release(true);
+        }
         Ok(())
     }
 }
@@ -49,20 +57,35 @@ impl AttachmentLease {
         }
     }
 
-    pub(in crate::acp::browser::attachment) fn release_developer_resources(&self, lane: Option<u64>, grant: Option<u64>) {
+    pub(in crate::acp::browser::attachment) fn release_developer_resources(
+        &self,
+        lane: Option<u64>,
+        grant: Option<u64>,
+    ) {
         let release = self.resources.state.lock().ok().and_then(|mut state| {
             if state.developer.as_ref().is_some_and(|(l, g, _)| {
                 lane.is_none_or(|lane| lane == *l) && grant.is_none_or(|grant| grant == *g)
-            }) { state.developer.take() } else { None }
+            }) {
+                state.developer.take()
+            } else {
+                None
+            }
         });
-        if let Some((_, _, release)) = release { release(true); }
+        if let Some((_, _, release)) = release {
+            release(true);
+        }
     }
 
     pub(in crate::acp::browser::attachment) fn sleep_developer_resources(&self, lane: Option<u64>) {
         let release = self.resources.state.lock().ok().and_then(|state| {
-            state.developer.as_ref().filter(|(l, _, _)| lane.is_none_or(|lane| lane == *l))
+            state
+                .developer
+                .as_ref()
+                .filter(|(l, _, _)| lane.is_none_or(|lane| lane == *l))
                 .map(|(_, _, release)| release.clone())
         });
-        if let Some(release) = release { release(false); }
+        if let Some(release) = release {
+            release(false);
+        }
     }
 }

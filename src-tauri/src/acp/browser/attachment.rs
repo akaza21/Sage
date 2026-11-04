@@ -24,8 +24,8 @@ mod popup;
 mod resources;
 pub(crate) use control::AgentControl;
 pub(crate) use popup::AgentAction;
-pub(crate) use resources::DiagnosticScope;
 pub(crate) use resources::DeveloperScope;
+pub(crate) use resources::DiagnosticScope;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {

@@ -333,13 +333,24 @@ fn privileged_state_is_released_on_revocation_without_losing_ordinary_handles() 
     assert!(lease.grant_developer_mode(SESSION, ORIGIN));
     let ordinary = Arc::new(String::from("snapshot handle"));
     let ordinary_weak = Arc::downgrade(&ordinary);
-    lease.bind_resources(lease.resource_generation(), || true, Box::new(move || drop(ordinary))).unwrap();
+    lease
+        .bind_resources(
+            lease.resource_generation(),
+            || true,
+            Box::new(move || drop(ordinary)),
+        )
+        .unwrap();
     let privileged = Arc::new(String::from("privileged session"));
     let privileged_weak = Arc::downgrade(&privileged);
     let held = Mutex::new(Some(privileged));
-    lease.developer_scope().bind(Arc::new(move |force| {
-        if force { held.lock().unwrap().take(); }
-    })).unwrap();
+    lease
+        .developer_scope()
+        .bind(Arc::new(move |force| {
+            if force {
+                held.lock().unwrap().take();
+            }
+        }))
+        .unwrap();
     registry.end_developer_mode();
     assert!(privileged_weak.upgrade().is_none());
     assert_eq!(&**ordinary_weak.upgrade().unwrap(), "snapshot handle");
@@ -358,8 +369,16 @@ fn late_privileged_cleanup_cannot_end_a_reapproved_session() {
     let state = Arc::new(String::from("replacement session"));
     let weak = Arc::downgrade(&state);
     let held = Mutex::new(Some(state));
-    lease.developer_scope().bind(Arc::new(move |_| { held.lock().unwrap().take(); })).unwrap();
-    assert_eq!(old.bind(Arc::new(|_| {})), Err(crate::acp::browser::BrowserFailure::Denied));
+    lease
+        .developer_scope()
+        .bind(Arc::new(move |_| {
+            held.lock().unwrap().take();
+        }))
+        .unwrap();
+    assert_eq!(
+        old.bind(Arc::new(|_| {})),
+        Err(crate::acp::browser::BrowserFailure::Denied)
+    );
     lease.release_developer_resources(None, Some(old_generation));
     assert_eq!(&**weak.upgrade().unwrap(), "replacement session");
     registry.end_developer_mode();

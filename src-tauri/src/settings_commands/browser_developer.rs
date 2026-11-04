@@ -45,15 +45,17 @@ pub(crate) fn browser_set_developer_mode(
     }
     // Calls already in flight, and cards already open, belong to the old
     // setting: they are refused from here on.
-    let enabled = crate::acp::browser::developer::with_switch_change(|| persist_after_revocation(&state.settings, enabled, || {
-        for tab_id in state.acp.end_browser_developer_mode() {
-            let _ = app.emit_to(
-                "main",
-                "browser:agent-control",
-                serde_json::json!({ "tabId": tab_id }),
-            );
-        }
-    }))?;
+    let enabled = crate::acp::browser::developer::with_switch_change(|| {
+        persist_after_revocation(&state.settings, enabled, || {
+            for tab_id in state.acp.end_browser_developer_mode() {
+                let _ = app.emit_to(
+                    "main",
+                    "browser:agent-control",
+                    serde_json::json!({ "tabId": tab_id }),
+                );
+            }
+        })
+    })?;
     Ok(BrowserDeveloperMode {
         available: AVAILABLE,
         enabled,
@@ -69,7 +71,9 @@ fn persist_after_revocation(
     revoke: impl FnOnce(),
 ) -> Result<bool, String> {
     revoke();
-    settings.set_browser_developer_mode(enabled).map_err(|error| error.to_string())
+    settings
+        .set_browser_developer_mode(enabled)
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

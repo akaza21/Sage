@@ -22,20 +22,27 @@ impl BrowserCapabilityDispatch for &mut NativeDevtools {
             let deadline = Instant::now() + Duration::from_secs(35);
             loop {
                 if !timeout_permit.is_live() && !timeout_permit.was_invalidated_by_navigation() {
-                    if let Some(session) = &developer { session.close(true); }
+                    if let Some(session) = &developer {
+                        session.close(true);
+                    }
                     return Err(timeout_permit.revoked_failure());
                 }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
-                    if let Some(session) = &developer { session.close(true); }
-                    else { timeout_permit.revoke(); }
+                    if let Some(session) = &developer {
+                        session.close(true);
+                    } else {
+                        timeout_permit.revoke();
+                    }
                     return Err(dispatch_timeout_failure(issued.load(Ordering::Acquire)));
                 }
                 match receiver.recv_timeout(remaining.min(Duration::from_millis(25))) {
                     Ok(result) => return result,
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        if let Some(session) = &developer { session.close(true); }
+                        if let Some(session) = &developer {
+                            session.close(true);
+                        }
                         return Err(dispatch_disconnected_failure(
                             issued.load(Ordering::Acquire),
                         ));
@@ -54,12 +61,16 @@ impl DevtoolsCapability<NativePort> {
         scope: crate::acp::browser::attachment::DeveloperScope,
     ) -> Result<PendingBrowserResult, BrowserFailure> {
         let work = super::super::developer_session::Session::acquire(
-            &self.port_mut().transport.webview, scope, &permit,
+            &self.port_mut().transport.webview,
+            scope,
+            &permit,
         )?;
         let mut capability = self.clone();
         capability.port_mut().transport.developer = Some(work.0.clone());
         let pending = (&mut capability).dispatch(request, permit)?;
-        Ok(Box::new(move || { let _work = work; pending() }))
+        Ok(Box::new(move || {
+            let _work = work;
+            pending()
+        }))
     }
-
 }
