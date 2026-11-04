@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 
 import type {
   BootstrapSnapshot,
+  CreateProjectRequest,
   ProjectTransitionResult,
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
@@ -25,7 +26,8 @@ export interface ProjectSlice {
   initialize: () => Promise<void>;
   persistLayout: () => Promise<void>;
   closeWorkbench: () => Promise<void>;
-  createProject: () => Promise<void>;
+  /** Creates a named project from picked folders; true once committed. */
+  createProject: (request: CreateProjectRequest) => Promise<boolean>;
   ensureLocalProject: () => Promise<void>;
   addProjectRoot: () => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
@@ -225,8 +227,8 @@ export const createProjectSlice: StateCreator<
       await closeLiveWorkbench(get);
     },
 
-    createProject: async () => {
-      if (!beginProjectTransition()) return;
+    createProject: async (request) => {
+      if (!beginProjectTransition()) return false;
       const previousProjectId = get().project?.id ?? null;
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
       let committed = false;
@@ -235,11 +237,11 @@ export const createProjectSlice: StateCreator<
         await persistCurrentLayout();
         set({ phase: "booting" });
         mutationInvoked = true;
-        const result =
-          await getWorkbenchPorts().project.createProjectFromPicker(
-            previousProjectId,
-            expectedTransitionEpoch,
-          );
+        const result = await getWorkbenchPorts().project.createProject(
+          request,
+          previousProjectId,
+          expectedTransitionEpoch,
+        );
         validateTransitionIntent(result, expectedTransitionEpoch);
         if (result.committed) {
           committed = true;
@@ -278,6 +280,7 @@ export const createProjectSlice: StateCreator<
               false,
             );
             if (outcome === "unchanged") set({ error: errorMessage(error) });
+            committed = outcome === "committed";
           } catch (recoveryError) {
             blockCommittedTransition(recoveryError);
           }
@@ -285,6 +288,7 @@ export const createProjectSlice: StateCreator<
           failProjectTransition(error);
         }
       }
+      return committed;
     },
 
     ensureLocalProject: () =>

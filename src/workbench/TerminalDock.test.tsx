@@ -60,8 +60,11 @@ vi.mock("@xterm/xterm", () => ({
         },
       },
     };
+    // Like xterm, options stay settable after construction.
+    options: Record<string, unknown>;
     constructor(options: Record<string, unknown>) {
       xterm.options = options;
+      this.options = { ...options };
     }
     open(parent: HTMLElement) {
       // Like xterm, the screen is cols by rows cells of xterm.cell CSS px,

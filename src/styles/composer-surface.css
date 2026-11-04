@@ -23,7 +23,7 @@
 
 .chat-dock > .chat-edit-summary-zone {
   /* Expanded edits use spare room without squeezing the input and toolbar. */
-  flex: 1 1 0;
+  flex: 1 1 auto;
 }
 
 .chat-dock > .chat-edit-summary-zone:not(:empty) {
@@ -36,13 +36,43 @@
 }
 
 .composer {
+  --composer-slots-min-block-size: 0px;
+  --composer-toolbar-min-block-size: 40px;
   position: relative;
   container-name: composer;
   container-type: inline-size;
+  display: grid;
+  min-height: calc(
+    var(--composer-slots-min-block-size) +
+      var(--composer-input-min-block-size) +
+      var(--composer-toolbar-min-block-size)
+  );
+  flex: 0 1 auto;
+  grid-template-areas: "slots" "body" "toolbar";
+  grid-template-rows:
+    minmax(var(--composer-slots-min-block-size), auto)
+    minmax(var(--composer-input-min-block-size), 1fr)
+    auto;
+}
+
+.composer:has(> .composer__slots:not(:empty)) {
+  --composer-slots-min-block-size: var(--control-height-default);
+}
+
+.composer:has(> .composer__slots > .composer__queued) {
+  --composer-slots-min-block-size: var(--chrome-row-height);
+}
+
+.composer__slots {
   display: flex;
   min-height: 0;
-  flex: 0 1 auto;
+  grid-area: slots;
   flex-direction: column;
+  overflow-y: auto;
+}
+
+.composer__slots > * {
+  flex-shrink: 0;
 }
 
 /* An approval holds the slot; the form stays mounted so the draft survives. */
@@ -53,7 +83,7 @@
 .composer__body {
   display: block;
   min-height: 0;
-  flex: 0 1 auto;
+  grid-area: body;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -207,8 +237,9 @@
 }
 
 .composer__toolbar {
+  grid-area: toolbar;
   display: grid;
-  min-height: 40px;
+  min-height: var(--composer-toolbar-min-block-size);
   flex: none;
   grid-template-areas: "controls mic meter send";
   grid-template-columns: minmax(0, 1fr) auto auto auto;
