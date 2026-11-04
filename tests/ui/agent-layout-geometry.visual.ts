@@ -59,9 +59,10 @@ function bridgeState(page: Page) {
  */
 async function openTerminal(page: Page, mode: "agent" | "editor") {
   await openScenario(page, "agent-single", "agent");
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state: TerminalBridgeState = { created: [], closed: [], input: {} };
     const output = new Map<string, string>();
+    let dockOpen = false;
     Object.assign(window, { __terminals: state });
     type Request = {
       handle?: { sessionId: string };
@@ -103,13 +104,26 @@ async function openTerminal(page: Page, mode: "agent" | "editor") {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
-        invoke: (command: string, args?: { request?: Request }) =>
-          command in commands
+        invoke: (
+          command: string,
+          args?: { request?: Request; visible?: boolean },
+        ) => {
+          if (command === "get_terminal_dock_visible")
+            return Promise.resolve(dockOpen);
+          if (command === "set_terminal_dock_visible") {
+            dockOpen = args!.visible!;
+            return Promise.resolve(dockOpen);
+          }
+          return command in commands
             ? commands[command](args?.request ?? {})
-            : Promise.reject(new Error("visual fixture")),
+            : Promise.reject(new Error("visual fixture"));
+        },
         transformCallback: () => 0,
       },
     });
+    const { useTerminalDockStore } =
+      await import("/src/app/terminalDockStore.ts");
+    await useTerminalDockStore.getState().restore();
   });
   const modeSwitch = (name: string) =>
     page.getByRole("radio", { name, exact: true });
@@ -118,7 +132,9 @@ async function openTerminal(page: Page, mode: "agent" | "editor") {
   await expect(page.locator("main.workbench")).toHaveClass(
     new RegExp(`workbench--${mode}`),
   );
-  await page.getByRole("button", { name: "Open terminal" }).click();
+  await page
+    .getByRole("button", { name: "Toggle terminal", exact: true })
+    .click();
   const dock = page.getByRole("region", { name: "Terminal", exact: true });
   await expect(dock.getByRole("tab")).toHaveCount(1);
   return dock;
@@ -197,8 +213,12 @@ test("an open terminal keeps its session, input and output across Agent and Edit
   expect(kept.closed).toEqual([]);
 
   await dock.getByRole("button", { name: "Close terminal tab" }).click();
-  await expect(dock).toHaveCount(0);
-  await expect(page.locator(".center-region__dock")).toHaveCount(0);
+  await expect(dock).toBeHidden();
+  await expect(dock.getByRole("tab", { includeHidden: true })).toHaveCount(0);
+  await expect(dock.locator(".terminal-dock__viewport")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Toggle terminal", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
   expect((await bridgeState(page)).closed).toEqual([session]);
 });
 

@@ -51,19 +51,32 @@ test("gives single-line harness rows bounded scrolling and visible keyboard focu
   page,
 }) => {
   await openScenario(page, "agent-picker-harness-model", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    useWorkbenchStore.setState((state) => ({
+      harnesses: Array.from({ length: 24 }, (_, index) => ({
+        ...state.harnesses[0],
+        id: `harness-${index}`,
+        name: `Harness ${index + 1}`,
+      })),
+    }));
+  });
   const harness = page.getByRole("button", { name: "Harness", exact: true });
   await harness.focus();
   await page.keyboard.press("Enter");
   const list = page.getByRole("listbox", { name: "Harness", exact: true });
-  await expect(list).toHaveCSS("min-height", "0px");
-  await expect(list).toHaveCSS("flex", "1 1 auto");
-  await expect(list).toHaveCSS("overflow-y", "auto");
   const row = list.getByRole("option").first();
-  await expect(row).toHaveCSS("min-height", "32px");
-  await expect(row.locator(".searchable-picker__option-copy")).toHaveCSS(
-    "white-space",
-    "nowrap",
-  );
+  const rowBox = (await row.boundingBox())!;
+  expect(rowBox.height).toBeGreaterThanOrEqual(32);
+  expect(rowBox.height).toBeLessThanOrEqual(36);
+  const textHeight = await row
+    .locator(".searchable-picker__option-copy > span")
+    .evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().height;
+    });
+  expect(textHeight).toBeLessThanOrEqual(rowBox.height);
   await expect(row).toBeFocused();
   expect(
     await row.evaluate((element) => element.matches(":focus-visible")),
@@ -74,6 +87,21 @@ test("gives single-line harness rows bounded scrolling and visible keyboard focu
   }));
   expect(keyboard.fill).toBe("rgb(68, 68, 68)");
   expect(keyboard.shadow).not.toBe("none");
+  expect(
+    await list.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  await page.keyboard.press("End");
+  const last = list.getByRole("option").last();
+  await expect(last).toBeFocused();
+  const listBox = (await list.boundingBox())!;
+  const lastBox = (await last.boundingBox())!;
+  expect(lastBox.y).toBeGreaterThanOrEqual(listBox.y);
+  expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(
+    listBox.y + listBox.height,
+  );
+  await page.keyboard.press("Escape");
+  await expect(harness).toBeFocused();
+  await expect(list).toHaveCount(0);
 });
 
 for (const forcedColors of ["none", "active"] as const) {
@@ -240,6 +268,18 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
   expect(triggerBox).not.toBeNull();
+  const wrapperBox = (await composer
+    .locator(".composer__harness")
+    .boundingBox())!;
+  const promptBox = (await composer
+    .getByRole("textbox", { name: "Message agent", exact: true })
+    .boundingBox())!;
+  expect(triggerBox!.y).toBeGreaterThanOrEqual(promptBox.y + promptBox.height);
+  expect(triggerBox!.y).toBeGreaterThanOrEqual(wrapperBox.y);
+  expect(triggerBox!.y + triggerBox!.height).toBeLessThanOrEqual(
+    wrapperBox.y + wrapperBox.height,
+  );
+  await harness.click({ trial: true });
   // A plain mark-and-name control sized to its label, never a fixed pill.
   expect(triggerBox!.width).toBeLessThanOrEqual(160);
   expect(

@@ -194,6 +194,7 @@ it("delivers a zero-delay typing burst without losing characters", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -218,6 +219,7 @@ it("reports an ended shell and ignores later input", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -240,6 +242,7 @@ it("sends input again while the program is not reading it", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -264,6 +267,7 @@ it("drops input refused as busy for too long and says why", async () => {
     const onStatus = vi.fn();
     render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -300,6 +304,7 @@ it("sends no input after the dock is disposed during a busy backoff", async () =
   const onStatus = vi.fn();
   const { unmount } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -336,6 +341,7 @@ it("refuses typing past the native input limit while a write is pending", async 
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -364,6 +370,7 @@ it("retries a transient native reader conflict after remount", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -377,6 +384,7 @@ it("retries a transient native reader conflict after remount", async () => {
 it("resizes the active terminal after a pane or DPI change", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -406,6 +414,7 @@ it("applies the latest viewport size after an in-flight resize is refused", asyn
   );
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -428,6 +437,7 @@ it.each([1, 80])(
     setScreenSize(800, 160);
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -447,6 +457,7 @@ it.each([
     setScreenSize(width, height);
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -477,6 +488,7 @@ it.each([
 it("keeps a measured grid inside the native size limits", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -494,6 +506,7 @@ it("keeps a measured grid inside the native size limits", async () => {
 it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -514,6 +527,7 @@ it.each([1, 80])(
     xterm.initial = [columns, 24];
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -529,6 +543,7 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   xterm.measured = false;
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -553,6 +568,7 @@ it.each([
     setScreenSize(800, 160);
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -599,6 +615,8 @@ it("closes every owned session when the focused chat changes", async () => {
     const [open, setOpen] = useState(true);
     return open ? (
       <TerminalDockForWorkbench
+        visible
+        open
         container={document.body}
         setOpen={setOpen}
         pinnedChatId={null}
@@ -631,6 +649,8 @@ it("uses the native transition epoch for a valid project scope", async () => {
   });
   render(
     <TerminalDockForWorkbench
+      visible
+      open
       container={document.body}
       setOpen={() => undefined}
       pinnedChatId={null}

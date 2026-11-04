@@ -1,4 +1,5 @@
 import {
+  Activity,
   useCallback,
   useEffect,
   useMemo,
@@ -14,6 +15,7 @@ import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
+import { useDocumentVisible } from "../ui/useDocumentVisible";
 import { useRetainedElement } from "../ui/useRetainedElement";
 import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
 import "./harness-browser-mode.css";
@@ -91,7 +93,10 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
+  const documentVisible = useDocumentVisible();
   const [agentArtifactExpanded, changeAgentArtifact] = useState(false);
+  const [artifactMaximized, setArtifactMaximized] = useState(false);
+  if (!agentArtifactExpanded && artifactMaximized) setArtifactMaximized(false);
   const [navigation, setNavigation] = useState({
     narrow: narrowAgent,
     collapsed: narrowAgent,
@@ -115,6 +120,7 @@ export function Workbench() {
     narrowAgent,
   ]);
   const agentVisible = windowMode === "agent" && !agentSettingsPage;
+  const agentCenterVisible = !agentLayout.artifactOverlay && !artifactMaximized;
   const resourceModal = agentVisible && agentLayout.artifactModal;
   const terminal = useTerminalDock(resourceModal);
   const [terminalVisited, setTerminalVisited] = useState(false);
@@ -182,6 +188,9 @@ export function Workbench() {
             drawerOpen={agentLayout.artifactOverlay}
             navigationCollapsed={agentLayout.navigationCollapsed}
             onExpandNavigation={toggleAgentNavigation}
+            centerVisible={agentCenterVisible}
+            artifactMaximized={artifactMaximized}
+            onArtifactMaximizedChange={setArtifactMaximized}
             artifactExpanded={agentArtifactExpanded}
             onArtifactExpandedChange={changeAgentArtifact}
             onAgentLeftRailWidthChange={(width) =>
@@ -198,6 +207,8 @@ export function Workbench() {
     ),
     [
       agentArtifactExpanded,
+      artifactMaximized,
+      agentCenterVisible,
       agentLayout,
       changeAgentArtifact,
       changeAgentSidebarWidth,
@@ -209,6 +220,14 @@ export function Workbench() {
     ],
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  // The retained terminal session follows the region hosting its portal, not
+  // the persisted open preference. Agent overlays cover the entire center;
+  // Editor adopts the same dock unless its tool drawer covers that center.
+  const terminalVisible =
+    terminal.visible &&
+    documentVisible &&
+    !agentSettingsPage &&
+    (windowMode === "agent" ? agentCenterVisible : !drawerOpen);
   const bodyStyle = compact
     ? undefined
     : {
@@ -241,7 +260,9 @@ export function Workbench() {
       />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
-      <RetainedActivity visible={agentVisible}>{agentBody}</RetainedActivity>
+      <RetainedActivity visible={agentVisible && documentVisible}>
+        {agentBody}
+      </RetainedActivity>
       {agentSettingsPage ? (
         <LazyModuleBoundary
           label="Agent settings"
@@ -250,56 +271,60 @@ export function Workbench() {
         />
       ) : null}
       {windowMode === "editor" && !agentSettingsPage ? (
-        <div className="workbench__body" style={bodyStyle}>
-          <ExplorerReleasesOpenFiles.Provider value={true}>
-            <RightSidebar compact={compact} railFirst />
-          </ExplorerReleasesOpenFiles.Provider>
-          {!compact ? (
-            <WorkbenchSidebarSplitter
-              ariaLabel="Resize Editor tool rail"
-              side="leading"
-              value={editorToolRailWidth}
-              width={EDITOR_TOOL_RAIL_WIDTH}
-              pointerOffsetAdjustment={EDITOR_ACTIVITY_BAR_WIDTH}
-              onChange={setEditorToolRailWidth}
-            />
-          ) : null}
-          <div
-            className="center-region surface surface--card"
-            inert={drawerOpen}
-            aria-hidden={drawerOpen || undefined}
-          >
-            <div className="workbench__tabs">
-              <LazyModuleBoundary<TabStripProps>
-                label="tabs"
-                load={loadTabStrip}
-                fallback={null}
-                render={(TabStrip) => (
-                  <TabStrip
-                    kinds={[...EDITOR_CANVAS_KINDS]}
-                    showNewChat={false}
-                  />
-                )}
+        <Activity mode={documentVisible ? "visible" : "hidden"}>
+          <div className="workbench__body" style={bodyStyle}>
+            <ExplorerReleasesOpenFiles.Provider value={true}>
+              <RightSidebar compact={compact} railFirst />
+            </ExplorerReleasesOpenFiles.Provider>
+            {!compact ? (
+              <WorkbenchSidebarSplitter
+                ariaLabel="Resize Editor tool rail"
+                side="leading"
+                value={editorToolRailWidth}
+                width={EDITOR_TOOL_RAIL_WIDTH}
+                pointerOffsetAdjustment={EDITOR_ACTIVITY_BAR_WIDTH}
+                onChange={setEditorToolRailWidth}
               />
+            ) : null}
+            <div
+              className="center-region surface surface--card"
+              inert={drawerOpen}
+              aria-hidden={drawerOpen || undefined}
+            >
+              <Activity mode={drawerOpen ? "hidden" : "visible"}>
+                <div className="workbench__tabs">
+                  <LazyModuleBoundary<TabStripProps>
+                    label="tabs"
+                    load={loadTabStrip}
+                    fallback={null}
+                    render={(TabStrip) => (
+                      <TabStrip
+                        kinds={[...EDITOR_CANVAS_KINDS]}
+                        showNewChat={false}
+                      />
+                    )}
+                  />
+                </div>
+                <LazyModuleBoundary
+                  label="Editor"
+                  load={loadEditorCanvas}
+                  render={(ActiveEditorCanvas) => (
+                    <ActiveEditorCanvas
+                      onOpenAgent={() => setWindowMode("agent")}
+                    />
+                  )}
+                />
+                {terminalDockSlot}
+              </Activity>
             </div>
             <LazyModuleBoundary
-              label="Editor"
-              load={loadEditorCanvas}
-              render={(ActiveEditorCanvas) => (
-                <ActiveEditorCanvas
-                  onOpenAgent={() => setWindowMode("agent")}
-                />
-              )}
+              label="Quick Open controller"
+              load={loadQuickOpenHost}
+              fallback={null}
+              render={(QuickOpenHost) => <QuickOpenHost />}
             />
-            {terminalDockSlot}
           </div>
-          <LazyModuleBoundary
-            label="Quick Open controller"
-            load={loadQuickOpenHost}
-            fallback={null}
-            render={(QuickOpenHost) => <QuickOpenHost />}
-          />
-        </div>
+        </Activity>
       ) : null}
       {terminalVisited ? (
         <LazyModuleBoundary
@@ -309,7 +334,8 @@ export function Workbench() {
             <TerminalDock
               container={terminalContainer}
               setOpen={terminal.setOpen}
-              visible={terminal.visible && !agentSettingsPage}
+              visible={terminalVisible}
+              open={terminal.visible}
               inert={resourceModal}
               pinnedChatId={pinnedAgentChatOwner()}
             />

@@ -27,6 +27,7 @@ import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
+import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { useSideChatState } from "../../workbench/sideChatState";
@@ -3700,7 +3701,7 @@ describe("ChatSurface ACP resource integration", () => {
 
   it("requires consent before starting bounded browser sign-in", () => {
     const start = vi
-      .spyOn(acpDesktop, "startCodexAuth")
+      .spyOn(acpHarnessDesktop, "startCodexAuth")
       .mockReturnValue(new Promise(() => {}));
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Project A", roots: [] },

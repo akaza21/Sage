@@ -56,7 +56,8 @@ type WorkbenchDockProps = {
   inert?: boolean;
   setOpen: (open: boolean) => void;
   pinnedChatId: string | null;
-  visible?: boolean;
+  visible: boolean;
+  open: boolean;
 };
 
 /** Keep the session owner mounted while the visible center adopts its host. */
@@ -65,7 +66,8 @@ export default function TerminalDockForWorkbench({
   inert,
   setOpen,
   pinnedChatId,
-  visible = true,
+  visible,
+  open,
 }: WorkbenchDockProps & { container: HTMLElement | null }) {
   const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
@@ -104,6 +106,7 @@ export default function TerminalDockForWorkbench({
         onClose={onClose}
         inert={inert}
         visible={visible}
+        open={open}
       />
     ) : (
       <section
@@ -129,19 +132,21 @@ export function TerminalDockShell({
   inert,
   scope,
   onClose,
-  visible = true,
+  visible,
+  open,
 }: {
   inert?: boolean;
   scope: UserTerminalScope;
   onClose: () => void;
-  visible?: boolean;
+  visible: boolean;
+  open: boolean;
 }) {
   const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [closing, setClosing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  if (!visible && collapsed) setCollapsed(false);
+  if (!open && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
   const ownerRef = useRef({
     entries: [] as SessionEntry[],

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "bundle": {
     "webEntryJsGzipBytes": 130000,
-    "webInitialStaticClosureGzipBytes": 130000,
+    "webInitialStaticClosureGzipBytes": 97598,
     "webPathJsGzipBytes": {
-      "initial": 104423,
+      "initial": 97598,
       "agentOneChat": 208434,
       "editorShell": 188119,
       "editorDiff": 191294,
@@ -432,6 +432,13 @@
       "margin": "floor(measured lane-base gzip bytes * 1.005), a 0.5% allowance per path; the baseline is pinned, not a moving main reference",
       "metric": "Sum node:zlib.gzipSync defaults per unique JavaScript asset in the union of the named Vite manifest roots' static-import closures. CSS and optional dynamic children are excluded.",
       "roots": "initial: index.html; Editor shell: initial + Workbench; Agent + one chat: Editor shell + AgentWorkbenchBody + ChatSurface + AcpChatPresentation; Editor Diff/Search: Editor shell + the respective Surface; Editor File: Editor shell + FileSurface + CodeMirrorEditorRuntime (language parsers remain optional). Folded roots use named chunk ownership pinned by vite.config.test.ts.",
+      "initialHeadroom": {
+        "baselineCommit": "f5940ff9",
+        "beforeGzipBytes": 104326,
+        "measuredGzipBytes": 97113,
+        "margin": "floor(97113 * 1.005) = 97598 B: 485 B of margin, following the existing 0.5% path convention. Both initial-closure caps use this ceiling.",
+        "reason": "Harness discovery imports only harness validation and shared command guards. Transcript, permission and preview adapters remain behind the existing Chat and Preview lazy surfaces. No new dynamic imports or dependencies."
+      },
       "desktopOptimization": "Desktop builds derive React/JSX named exports from the installed runtime and verify the resolved production/development export surface, eliminating repeated CommonJS property-call indirection without a fixed export allowlist. Missing or undefined virtual exports fail the build, and ESLint bans React namespace imports. jsx/jsxs share a binding only when the resolved production runtime exports the identical function. Development/browser builds keep normal resolution. AcpChatPresentation and shared chat helpers coalesce with eager tool presentation, excluding saved-diff/Mermaid renderers; saved diffs remain explicit-click lazy. CodeMirrorEditorRuntime coalesces with the base it always loads before any language facade. No language parser or Lezer LR engine enters the plain File closure."
     },
     "excludeHarnessProcesses": true,

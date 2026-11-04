@@ -8,7 +8,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { useWorkbenchStore } from "../../../app/store";
-import { acpDesktop } from "../../../services/acpDesktop";
+import * as acpDesktop from "../../../services/acpDesktop";
 import { ChangesSurface } from "../../diff/ChangesSurface";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { resetTurnWorkspaceChangesForTest } from "./turnWorkspaceChanges";

@@ -45,6 +45,9 @@ function NavigationWorkbench() {
         drawerOpen={false}
         navigationCollapsed={collapsed}
         onExpandNavigation={() => setCollapsed(false)}
+        centerVisible
+        artifactMaximized={false}
+        onArtifactMaximizedChange={() => undefined}
         artifactExpanded={false}
         onArtifactExpandedChange={() => undefined}
         onAgentLeftRailWidthChange={() => undefined}

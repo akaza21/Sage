@@ -150,14 +150,160 @@ test.beforeEach(async ({ page }) => {
   await attachNativeTerminal(page);
 });
 
-test("Settings suspends terminal polling and rendering without shrinking or replacing its session", async ({
+for (const covering of [
+  "Settings",
+  "maximized resources",
+  "resource overlay",
+  "minimized window",
+  "Editor drawer",
+]) {
+  test(`${covering} suspends terminal polling and rendering without shrinking or replacing its session`, async ({
+    page,
+  }) => {
+    if (covering === "resource overlay")
+      await page.setViewportSize({ width: 500, height: 800 });
+    if (covering === "maximized resources")
+      await page
+        .getByRole("button", { name: /Show files and preview/ })
+        .click();
+    const composer = page.getByRole("textbox", {
+      name: "Message agent",
+      exact: true,
+      includeHidden: true,
+    });
+    await composer.fill("Draft survives suspension");
+    if (covering === "Editor drawer") {
+      await page.setViewportSize({ width: 500, height: 800 });
+      await page
+        .getByRole("radiogroup", { name: "Window mode" })
+        .locator("label")
+        .filter({ hasText: "Editor" })
+        .click();
+      const hideSidebar = page.getByRole("button", {
+        name: "Hide left sidebar",
+        exact: true,
+      });
+      if (await hideSidebar.isVisible()) await hideSidebar.click();
+    }
+    await page.evaluate(() => {
+      (
+        window as unknown as { terminalActivity: TerminalActivity }
+      ).terminalActivity.polling = true;
+    });
+    await page
+      .getByRole("button", { name: "Toggle terminal", exact: true })
+      .click();
+    const dock = page.getByRole("region", {
+      name: "Terminal",
+      exact: true,
+      includeHidden: true,
+    });
+    const rows = dock.locator(".xterm-rows");
+    await expect(rows).toContainText("Retained shell 1");
+    const original = await gridGeometry(page);
+    expect(original.columns).toBeGreaterThan(2);
+    expect(original.rows).toBeGreaterThan(1);
+    await page.clock.pauseAt(new Date("2026-08-31T09:31:00.000Z"));
+    const activity = () =>
+      page.evaluate(() => {
+        const { reads, resizes, minColumns, minRows } = (
+          window as unknown as { terminalActivity: TerminalActivity }
+        ).terminalActivity;
+        return { reads, resizes, minColumns, minRows };
+      });
+    const before = await activity();
+    if (covering === "Settings") {
+      await page.keyboard.press("Control+,");
+      await expect(
+        page.getByRole("dialog", { name: "Agent settings", exact: true }),
+      ).toBeVisible();
+    } else if (covering === "Editor drawer") {
+      await page
+        .getByRole("button", { name: "Show left sidebar", exact: true })
+        .click();
+    } else if (covering === "minimized window") {
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value: "hidden",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    } else {
+      if (covering === "resource overlay")
+        await page
+          .getByRole("button", { name: /Show files and preview/ })
+          .click();
+      if (covering === "maximized resources")
+        await page
+          .getByRole("button", { name: "Expand resource pane", exact: true })
+          .click();
+    }
+    await expect(dock).toBeHidden();
+    await expect(composer).toBeHidden();
+    await page.evaluate(() => {
+      (
+        window as unknown as { terminalActivity: TerminalActivity }
+      ).terminalActivity.output = "Output received while hidden\r\n";
+    });
+    // Finish the outstanding native read, then observe another polling interval.
+    await page.clock.runFor(250);
+    const hidden = await activity();
+    await page.clock.runFor(250);
+    expect(await activity()).toEqual(hidden);
+    expect(hidden.reads).toBe(before.reads);
+    expect(hidden.resizes).toBe(before.resizes);
+    expect(hidden.minColumns).toBeGreaterThanOrEqual(original.columns);
+    expect(hidden.minRows).toBeGreaterThanOrEqual(original.rows);
+    await expect(rows).not.toContainText("Output received while hidden");
+
+    if (covering === "Settings") {
+      await page
+        .getByRole("button", { name: "Close settings", exact: true })
+        .click();
+    } else if (covering === "Editor drawer") {
+      await page
+        .getByRole("button", { name: "Hide left sidebar", exact: true })
+        .click();
+    } else if (covering === "minimized window") {
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value: "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    } else {
+      if (covering === "maximized resources")
+        await page
+          .getByRole("button", { name: "Restore resource pane", exact: true })
+          .click();
+      if (covering === "resource overlay")
+        await page
+          .getByRole("button", {
+            name: "Collapse files, changes, and preview",
+            exact: true,
+          })
+          .click();
+    }
+    await expect(dock).toBeVisible();
+    await expect(dock.locator(".xterm-helper-textarea")).toBeFocused();
+    await page.clock.runFor(250);
+    if (covering !== "Editor drawer") await expect(composer).toBeVisible();
+    await expect(composer).toHaveValue("Draft survives suspension");
+    await expect(rows).toContainText("Output received while hidden");
+    await expect(rows).toContainText("Retained shell 1");
+    await expect(dock.getByRole("tab")).toHaveCount(1);
+    expect((await activity()).reads).toBeGreaterThan(hidden.reads);
+    await expect.poll(() => gridGeometry(page)).toEqual(original);
+    expect((await activity()).resizes).toBe(hidden.resizes + 1);
+  });
+}
+
+test("a collapsed terminal stays collapsed through resource maximization and Settings", async ({
   page,
 }) => {
-  await page.evaluate(() => {
-    (
-      window as unknown as { terminalActivity: TerminalActivity }
-    ).terminalActivity.polling = true;
-  });
+  await page.getByRole("button", { name: /Show files and preview/ }).click();
   await page
     .getByRole("button", { name: "Toggle terminal", exact: true })
     .click();
@@ -166,52 +312,36 @@ test("Settings suspends terminal polling and rendering without shrinking or repl
     exact: true,
     includeHidden: true,
   });
-  const rows = dock.locator(".xterm-rows");
-  await expect(rows).toContainText("Retained shell 1");
-  const original = await gridGeometry(page);
-  expect(original.columns).toBeGreaterThan(2);
-  expect(original.rows).toBeGreaterThan(1);
-  await page.clock.pauseAt(new Date("2026-08-31T09:31:00.000Z"));
-  const activity = () =>
-    page.evaluate(() => {
-      const { reads, resizes, minColumns, minRows } = (
-        window as unknown as { terminalActivity: TerminalActivity }
-      ).terminalActivity;
-      return { reads, resizes, minColumns, minRows };
-    });
-  const before = await activity();
-  await page.keyboard.press("Control+,");
+  await expect(dock.locator(".xterm-rows")).toContainText("Retained shell 1");
+  await dock
+    .getByRole("button", { name: "Collapse terminal", exact: true })
+    .click();
   await expect(
-    page.getByRole("dialog", { name: "Agent settings", exact: true }),
+    dock.getByRole("button", { name: "Expand terminal", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Expand resource pane", exact: true })
+    .click();
   await expect(dock).toBeHidden();
-  await page.evaluate(() => {
-    (
-      window as unknown as { terminalActivity: TerminalActivity }
-    ).terminalActivity.output = "Output received while hidden\r\n";
-  });
-  // Finish the outstanding native read, then observe another polling interval.
-  await page.clock.runFor(250);
-  const hidden = await activity();
-  await page.clock.runFor(250);
-  expect(await activity()).toEqual(hidden);
-  expect(hidden.reads).toBe(before.reads);
-  expect(hidden.resizes).toBe(before.resizes);
-  expect(hidden.minColumns).toBeGreaterThanOrEqual(original.columns);
-  expect(hidden.minRows).toBeGreaterThanOrEqual(original.rows);
-  await expect(rows).not.toContainText("Output received while hidden");
-
+  await page
+    .getByRole("button", { name: "Restore resource pane", exact: true })
+    .click();
+  await expect(
+    dock.getByRole("button", { name: "Expand terminal", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Control+,");
+  await expect(dock).toBeHidden();
   await page
     .getByRole("button", { name: "Close settings", exact: true })
     .click();
-  await page.clock.runFor(250);
-  await expect(dock).toBeVisible();
-  await expect(rows).toContainText("Output received while hidden");
-  await expect(rows).toContainText("Retained shell 1");
+  await expect(
+    dock.getByRole("button", { name: "Expand terminal", exact: true }),
+  ).toBeVisible();
+  await dock
+    .getByRole("button", { name: "Expand terminal", exact: true })
+    .click();
+  await expect(dock.locator(".xterm-rows")).toContainText("Retained shell 1");
   await expect(dock.getByRole("tab")).toHaveCount(1);
-  expect((await activity()).reads).toBeGreaterThan(hidden.reads);
-  await expect.poll(() => gridGeometry(page)).toEqual(original);
-  expect((await activity()).resizes).toBe(hidden.resizes + 1);
 });
 
 test("defaults closed; the labelled toggle persists open and closed across reload", async ({

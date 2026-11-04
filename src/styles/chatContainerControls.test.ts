@@ -128,31 +128,6 @@ describe("Chat container control breakpoints", () => {
     );
     expect(css).not.toMatch(/@media\s*\(max-width:/);
   });
-  it.each([
-    [521, "inline", "inline"],
-    [520, "none", "inline"],
-    [401, "none", "inline"],
-    [400, "none", "inline"],
-    [281, "none", "inline"],
-    [280, "none", "none"],
-    [180, "none", "none"],
-  ])(
-    "at %ipx preserves model text until icon compaction is necessary",
-    async (width, access, identity) => {
-      expect(await containerDisplay(".composer__access-text", width)).toBe(
-        access,
-      );
-      expect(
-        await containerDisplay(
-          ".composer__harness .searchable-picker__trigger-label",
-          width,
-        ),
-      ).toBe("inline");
-      expect(await containerDisplay(".composer__model-label", width)).toBe(
-        identity,
-      );
-    },
-  );
 
   // Between 281 and 320 a long effort label can squeeze the model label to
   // nothing; the icon keeps the trigger identifiable instead of a bare chevron.

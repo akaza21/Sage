@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HarnessDefinition } from "../domain/harness";
-import type * as AcpDesktopModule from "../services/acpDesktop";
+import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
 import { useWorkbenchStore } from "./store";
 
 const discoverCodex = vi.fn();
 
-vi.mock("../services/acpDesktop", async (importOriginal) => {
-  const actual = await importOriginal<typeof AcpDesktopModule>();
+vi.mock("../services/acpHarnessDesktop", async (importOriginal) => {
+  const actual = await importOriginal<typeof AcpHarnessDesktopModule>();
   return {
     ...actual,
-    acpDesktop: {
-      ...actual.acpDesktop,
+    acpHarnessDesktop: {
+      ...actual.acpHarnessDesktop,
       discoverCodex: (request: unknown) => discoverCodex(request),
     },
   };

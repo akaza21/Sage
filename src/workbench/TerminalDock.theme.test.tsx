@@ -122,6 +122,7 @@ function viewportBackground(container: HTMLElement): string {
 function renderDock() {
   return render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}

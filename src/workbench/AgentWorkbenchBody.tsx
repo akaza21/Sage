@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { PreviewTargetRef } from "../domain/previewProjection";
 
 import { AgentChatOwnerScopeContext } from "../app/agentChatOwner";
@@ -29,6 +23,9 @@ export default function AgentWorkbenchBody({
   navigationCollapsed = false,
   onExpandNavigation,
   artifactExpanded,
+  artifactMaximized,
+  centerVisible,
+  onArtifactMaximizedChange,
   onArtifactExpandedChange,
   onAgentLeftRailWidthChange,
   onAgentArtifactWidthChange,
@@ -43,6 +40,9 @@ export default function AgentWorkbenchBody({
   navigationCollapsed?: boolean;
   onExpandNavigation: () => void;
   artifactExpanded: boolean;
+  artifactMaximized: boolean;
+  centerVisible: boolean;
+  onArtifactMaximizedChange: (maximized: boolean) => void;
   onArtifactExpandedChange: (expanded: boolean) => void;
   onAgentLeftRailWidthChange: (width: number) => void;
   onAgentArtifactWidthChange: (width: number) => void;
@@ -51,8 +51,6 @@ export default function AgentWorkbenchBody({
   bottomPanel?: ReactNode;
   onPreviewTargetChange?: (target: PreviewTargetRef | null) => void;
 }) {
-  const [artifactMaximized, setArtifactMaximized] = useState(false);
-  if (!artifactExpanded && artifactMaximized) setArtifactMaximized(false);
   const backgroundInert =
     layout.artifactModal || (artifactExpanded && artifactMaximized);
   const openSettings = useAgentSettingsState((state) => state.open);
@@ -108,12 +106,11 @@ export default function AgentWorkbenchBody({
           ) : null}
           <div
             className="center-region"
-            inert={drawerOpen || (artifactExpanded && artifactMaximized)}
-            aria-hidden={
-              drawerOpen || (artifactExpanded && artifactMaximized) || undefined
-            }
+            inert={!centerVisible}
+            aria-hidden={!centerVisible || undefined}
           >
             <AgentChatPanes
+              visible={centerVisible}
               compact={layout.compact}
               navigationCollapsed={navigationCollapsed}
               onArtifactHeaderMount={setArtifactHeader}
@@ -141,7 +138,7 @@ export default function AgentWorkbenchBody({
           <AgentArtifactPane
             onPreviewTargetChange={onPreviewTargetChange}
             maximized={artifactMaximized}
-            onMaximizedChange={setArtifactMaximized}
+            onMaximizedChange={onArtifactMaximizedChange}
             expanded={artifactExpanded}
             focusOnExpand={layout.artifactOverlay}
             modal={layout.artifactModal}

@@ -47,7 +47,7 @@ export type TerminalDockProps = {
   scope: UserTerminalScope;
   session: UserTerminalSession;
   ended: boolean;
-  visible?: boolean;
+  visible: boolean;
   onStatus: (status: string, ended?: boolean) => void;
 };
 
@@ -56,7 +56,7 @@ export default function TerminalDock({
   session,
   ended,
   onStatus,
-  visible = true,
+  visible,
 }: TerminalDockProps) {
   const screenRef = useRef<HTMLDivElement>(null);
   const reportStatus = useEffectEvent(onStatus);
@@ -201,7 +201,8 @@ export default function TerminalDock({
       }
     }
 
-    const inputListener = terminal.onData((data) => {
+    // The terminal owns its event emitters and disposes their listeners with it.
+    terminal.onData((data) => {
       if (stopped || sessionEnded || !showing || !data) return;
       const byteLength = utf8ByteLength(data);
       if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
@@ -264,17 +265,20 @@ export default function TerminalDock({
       applyTheme();
       refreshDimensions();
     };
-    palette?.addEventListener("change", followTheme);
     const observer = new ResizeObserver(refreshDimensions);
-    observer.observe(element);
-    window.addEventListener("resize", refreshDimensions);
     displayRef.current = (show) => {
       showing = show;
       terminal.options.cursorBlink = show;
       if (!show) {
+        observer.disconnect();
+        palette?.removeEventListener("change", followTheme);
+        window.removeEventListener("resize", refreshDimensions);
         latestResize = null;
         return;
       }
+      observer.observe(element);
+      palette?.addEventListener("change", followTheme);
+      window.addEventListener("resize", refreshDimensions);
       fitRequired = true;
       resumeRead?.();
       resumeRead = null;
@@ -285,11 +289,8 @@ export default function TerminalDock({
     return () => {
       stopped = true;
       resumeRead?.();
+      displayRef.current?.(false);
       displayRef.current = null;
-      observer.disconnect();
-      palette?.removeEventListener("change", followTheme);
-      window.removeEventListener("resize", refreshDimensions);
-      inputListener.dispose();
       terminal.dispose();
     };
   }, [ended, scope, session]);

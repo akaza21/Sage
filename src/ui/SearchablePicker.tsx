@@ -95,6 +95,7 @@ export function SearchablePicker({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
+  const expanded = open && !disabled;
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -105,11 +106,12 @@ export function SearchablePicker({
   );
   const selectedLabel = selected?.triggerLabel ?? selected?.label;
   const visible = useMemo(() => {
+    if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
     return admittedCandidates.filter((candidate) =>
       candidate.label.toLocaleLowerCase().includes(normalized),
     );
-  }, [admittedCandidates, query]);
+  }, [admittedCandidates, query, expanded]);
   const rendered = useMemo(
     () => visible.slice(0, SEARCHABLE_PICKER_MAX_RENDERED),
     [visible],
@@ -211,7 +213,6 @@ export function SearchablePicker({
     }
   };
 
-  const expanded = open && !disabled;
   const listed = expanded ? rendered : EMPTY_CANDIDATES;
 
   if (invalid) {
