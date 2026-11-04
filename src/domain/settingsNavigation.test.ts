@@ -76,6 +76,13 @@ describe("settings navigation", () => {
   it("finds the save shortcut from the Keyboard page", () => {
     expect(matchingSettingsEntryIds("save", "keyboard")).toContain("save");
   });
+
+  it("keeps Agent shortcuts off the Editor's Keyboard page", () => {
+    const ids = matchingSettingsEntryIds("", "keyboard");
+    expect(ids).toContain("openSettings");
+    expect(ids).not.toContain("chat.findInChat");
+    expect(ids).not.toContain("sendMessage");
+  });
 });
 
 describe("Quick Open shortcut", () => {

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
 
 import { X } from "../../ui/leanIcons";
 
@@ -15,6 +15,7 @@ export function BrowserFindControls({
   onFind: (action: "start" | "previous" | "next") => void;
   onClose: () => void;
 }) {
+  useLayoutEffect(() => findField.current?.focus(), [findField]);
   return (
     <form
       className="browser-surface__find"

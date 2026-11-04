@@ -936,22 +936,17 @@ fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_ru
 
 #[cfg(windows)]
 #[test]
-fn codex_discovery_refuses_an_uncached_admitted_catalog_while_a_live_session_holds_the_runtime() {
+fn codex_discovery_refuses_an_uncached_catalog_only_when_live_sessions_fill_every_lane() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, _chat, root) = state_with_admitted_codex_project();
         let project = SageProjectId::parse(project).unwrap();
-        let live = state.acp.hold_live_operation_for_test();
-        let request = GetCodexDiscoveryRequest {
-            project_id: project,
+        let request = || GetCodexDiscoveryRequest {
+            project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
                 .unwrap(),
         };
-        let started = std::time::Instant::now();
-
-        let result = get_codex_discovery_inner(&state, request).await;
-
-        assert!(
+        let is_capacity_refusal = |result: &Result<_, AcpIpcError>| {
             matches!(
                 result,
                 Err(AcpIpcError::Capacity {
@@ -959,14 +954,27 @@ fn codex_discovery_refuses_an_uncached_admitted_catalog_while_a_live_session_hol
                     limit: 1,
                     ..
                 })
-            ),
-            "{result:?}"
-        );
+            )
+        };
+        let mut live: Vec<_> = (0..crate::acp::service::LIVE_RUNTIME_LANES)
+            .map(|_| state.acp.hold_live_operation_for_test())
+            .collect();
+        let started = std::time::Instant::now();
+
+        let full = get_codex_discovery_inner(&state, request()).await;
+
+        assert!(is_capacity_refusal(&full), "{full:?}");
         assert!(
             started.elapsed()
                 < std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.spawn),
-            "a cache miss under a live session must refuse without launching a runtime"
+            "a cache miss with every lane live must refuse without launching a runtime"
         );
+
+        // One live session (Claude, Pi, or a retained completed one) leaves
+        // spare capacity, so discovery is admitted rather than refused.
+        live.truncate(1);
+        let spare = get_codex_discovery_inner(&state, request()).await;
+        assert!(!is_capacity_refusal(&spare), "{spare:?}");
         drop(live);
         drop(state);
         fs::remove_dir_all(root).unwrap();

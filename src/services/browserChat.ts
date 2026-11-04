@@ -68,12 +68,12 @@ export function assertBrowserChatCreation(
 
 export function createBrowserChatTab(
   tabs: WorkbenchTab[],
-  chatCount: number,
+  _chatCount: number,
 ): WorkbenchTab {
   return {
     id: crypto.randomUUID(),
     kind: "chat",
-    title: `Chat: New chat ${chatCount + 1}`,
+    title: "Chat: Chat",
     position: Math.max(-1, ...tabs.map((tab) => tab.position)) + 1,
     pinned: false,
     dirty: false,

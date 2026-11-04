@@ -367,10 +367,12 @@
   padding: 0 20px 0 0;
   overflow: hidden;
   appearance: none;
-  border: 0;
+  border: var(--select-control-trigger-border, 0);
   outline: 0;
   color: var(--color-text-primary);
-  background: transparent;
+  background: var(--select-control-trigger-fill, transparent);
+  backdrop-filter: var(--select-control-trigger-blur, none);
+  box-shadow: var(--select-control-trigger-shadow, none);
   font: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);

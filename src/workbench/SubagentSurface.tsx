@@ -381,7 +381,7 @@ function SubagentChild({
                   ))}
                 </div>
               )}
-              {/* Codex s4/f0485: a settled child's answer keeps Copy only. */}
+
               {answer ? <AnswerActions text={answer} /> : null}
             </>
           ) : null}

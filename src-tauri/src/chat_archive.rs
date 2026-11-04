@@ -22,7 +22,7 @@ pub(crate) fn archived_chats_in(
         "SELECT c.id,c.title
          FROM chats c
          WHERE c.project_id=?1
-           AND c.id NOT GLOB 'side-*'
+           AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
            AND NOT EXISTS(
              SELECT 1 FROM chat_tabs a
              WHERE a.project_id=c.project_id AND a.chat_id=c.id
@@ -66,7 +66,7 @@ pub(crate) fn archived_chats_in(
 
 impl Database {
     pub(crate) fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
-        crate::side_chat_storage::refuse_persistence(&request.chat_id)?;
+        crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;

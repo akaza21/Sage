@@ -43,7 +43,7 @@ it.each([
   ["workspaceWrite", "Workspace edits", ".lucide-shield-check"],
 ] as const)(
   "uses the %s icon on both the chip and its selected row",
-  (mode, label, icon) => {
+  async (mode, label, icon) => {
     useSessionAccessModeStore.setState({ modes: { fixture: mode } });
     render(
       <ComposerAccessControl
@@ -61,12 +61,14 @@ it.each([
         .querySelector(icon),
     ).not.toBeNull();
     expect(
-      screen.getByRole("menuitemradio", { name: label }).querySelector(icon),
+      (await screen.findByRole("menuitemradio", { name: label })).querySelector(
+        icon,
+      ),
     ).not.toBeNull();
   },
 );
 
-it("introduces the approval question and distinct icons only for admitted modes", () => {
+it("introduces the approval question and distinct icons only for admitted modes", async () => {
   render(
     <ComposerAccessControl
       bindingId="fixture"
@@ -85,7 +87,7 @@ it("introduces the approval question and distinct icons only for admitted modes"
     />,
   );
   expect(
-    screen.getByText("How should agent actions be approved?"),
+    await screen.findByText("How should agent actions be approved?"),
   ).toBeVisible();
   const menu = screen.getByRole("menu", { name: "Access mode" });
   expect(menu).toHaveAccessibleDescription(
@@ -133,7 +135,7 @@ it("shows admitted descriptions, checked selection, keyboard navigation and Esca
     );
   }
   render(<Control />);
-  const read = screen.getByRole("menuitemradio", { name: "Read-only" });
+  const read = await screen.findByRole("menuitemradio", { name: "Read-only" });
   const write = screen.getByRole("menuitemradio", { name: "Workspace edits" });
   expect(read).toHaveAttribute("aria-checked", "true");
   expect(read).toHaveAccessibleDescription(capabilities[0].description);
@@ -188,14 +190,93 @@ it("persists the selected policy and returns focus to access", async () => {
   }
   render(<Control />);
   fireEvent.click(
-    screen.getByRole("menuitemradio", { name: "Workspace edits" }),
+    await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
   );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Switch to Workspace edits?",
+  });
+  expect(save).not.toHaveBeenCalled();
+  expect(dialog).toHaveTextContent(capabilities[1].description);
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  const trigger = screen.getByRole("button", { name: "Access options" });
+  const focus = vi.spyOn(trigger, "focus").mockImplementation(() => {
+    expect(dialog).not.toHaveAttribute("open");
+    HTMLButtonElement.prototype.focus.call(trigger);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" }),
   );
   expect(dismiss).toHaveBeenCalled();
+  expect(focus).toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Access options" })).toHaveFocus();
 });
+
+it("cancels workspace-write escalation without persisting, and drops it on binding changes", async () => {
+  const save = vi.spyOn(getWorkbenchPorts().settings, "setSessionAccessModes");
+  const dismiss = vi.fn();
+  const props = {
+    bindingId: "fixture",
+    capabilities,
+    open: true,
+    onToggle: vi.fn(),
+    onDismiss: dismiss,
+    disabled: false,
+  };
+  const { rerender } = render(<ComposerAccessControl {...props} />);
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(save).not.toHaveBeenCalled();
+  expect(dismiss).toHaveBeenCalled();
+  rerender(<ComposerAccessControl {...props} open={false} />);
+  rerender(<ComposerAccessControl {...props} />);
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
+  );
+  await screen.findByRole("dialog");
+  rerender(<ComposerAccessControl {...props} bindingId="other" />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it.each(["disabled", "withdrawn"])(
+  "discards a pending escalation when capabilities become %s",
+  async (change) => {
+    const save = vi.spyOn(
+      getWorkbenchPorts().settings,
+      "setSessionAccessModes",
+    );
+    const props = {
+      bindingId: "fixture",
+      capabilities,
+      open: true,
+      disabled: false,
+      onToggle: vi.fn(),
+      onDismiss: vi.fn(),
+    };
+    const { rerender } = render(<ComposerAccessControl {...props} />);
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
+    );
+    await screen.findByRole("dialog");
+    rerender(
+      <ComposerAccessControl
+        {...props}
+        disabled={change === "disabled"}
+        capabilities={
+          change === "withdrawn" ? capabilities.slice(0, 1) : capabilities
+        }
+      />,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(<ComposerAccessControl {...props} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  },
+);
 
 it("does not relabel an unsupported saved policy as an admitted permission mode", () => {
   render(

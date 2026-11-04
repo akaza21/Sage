@@ -67,6 +67,15 @@ pub(super) fn append_turn(
         runtime_epoch,
         now,
     };
+    let user_payload: serde_json::Value = serde_json::from_str(&payloads[0])
+        .map_err(|error| AppError::InvalidRequest(error.to_string()))?;
+    crate::chat_lifecycle::auto_title_first_prompt_in(
+        transaction,
+        &owner.project,
+        &owner.chat,
+        user_payload["text"].as_str().unwrap_or_default(),
+        now,
+    )?;
     insert_completed_turn(transaction, &turn, usage.session_turns)?;
     insert_text_item(transaction, &turn, 0, &payloads[0])?;
     after_first_insert();

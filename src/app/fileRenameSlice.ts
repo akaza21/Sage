@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 
+import { boundedError } from "../domain/errors";
 import {
   parentResource,
   resourceKey,
@@ -10,18 +11,12 @@ import type {
   RenameProjectFolderResult,
   ResourceRef,
 } from "../domain/workbench";
-import {
-  renameTargetResource,
-  validateFileRenameResult,
-} from "../features/files/fileRenameContract";
-import {
-  renameFolderTargetResource,
-  validateFolderRenameResult,
-} from "../features/files/folderRenameContract";
-import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { renameTargetResource } from "../features/files/fileRenameContract";
+import { renameFolderTargetResource } from "../features/files/folderRenameContract";
 import type { ProjectPort } from "../ports/workbenchPorts";
-import { currentProjectLayout } from "./projectProjection";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
+import { currentProjectLayout } from "./projectProjection";
 import {
   remapExpandedResourceHierarchy,
   withoutResourceHierarchy,
@@ -240,6 +235,8 @@ export const createFileRenameSlice: StateCreator<
     });
     try {
       await get().flushActiveEditor();
+      const { validateFileRenameResult, validateFolderRenameResult } =
+        await import("../features/files/fileRenameResult");
       if (
         !intentMatches(
           get(),
@@ -394,4 +391,3 @@ export const createFileRenameSlice: StateCreator<
       renameProjectResource("folder", source, basename),
   };
 };
-import { boundedError } from "../domain/errors";

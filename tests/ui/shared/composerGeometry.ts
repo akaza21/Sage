@@ -9,6 +9,7 @@ export async function expectCompactComposerTargets(composer: Locator) {
         ".composer__harness button.searchable-picker__trigger",
         ".composer__model-trigger",
         ".composer__effort-picker",
+        ".project-scope button.searchable-picker__trigger",
         ".composer__mic",
         ".send-button",
       ].join(","),
