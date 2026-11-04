@@ -12,6 +12,7 @@ use super::{
     Cancellation, MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
     cipher::VaultKey,
     csv_import,
+    imported_file::ImportedFile,
     key_store::{KeyFile, KeyProtector, platform_protector},
     secret::Secret,
     store::{CredentialPage, MergeCounts, Source, Store},
@@ -40,7 +41,7 @@ struct Shared {
     protector: Option<Arc<dyn KeyProtector>>,
     vault: Mutex<Option<Vault>>,
     /// The CSV the last import read, kept so the page can offer to delete it.
-    imported_file: Mutex<Option<PathBuf>>,
+    imported_file: Mutex<Option<ImportedFile>>,
     /// The running import's own cancel flag, if one is running. Only one
     /// import runs at a time, so Cancel can never reach a later import.
     running_import: Mutex<Option<Arc<ImportStatus>>>,
@@ -67,7 +68,8 @@ impl ImportRun {
     /// Reads `file` and merges it into the vault in one transaction. Returns
     /// the merge counts and how many rows could not be used.
     pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
-        let parsed = csv_import::read_file(&file, self)?;
+        let (opened, imported) = ImportedFile::open(file)?;
+        let parsed = csv_import::read_file(opened, self)?;
         let counts = self.state.with_vault(|vault| {
             let Vault {
                 store,
@@ -77,7 +79,7 @@ impl ImportRun {
             let key = unlocked(key, key_file, store, true)?;
             store.merge(key, Source::Csv, &parsed.credentials, self)
         })?;
-        *lock(&self.state.0.imported_file) = Some(file);
+        *lock(&self.state.0.imported_file) = Some(imported);
         Ok((counts, parsed.skipped))
     }
 }
@@ -214,13 +216,14 @@ impl PasswordsState {
     }
 
     /// Deletes the CSV the last import read: it holds every password in
-    /// plain text. Only that one file can be deleted this way.
+    /// plain text. Only that one file can be deleted this way, and only while
+    /// it is still the file that import read.
     pub(crate) fn delete_imported_file(&self) -> VaultResult<()> {
         let mut imported = lock(&self.0.imported_file);
-        let file = imported
+        imported
             .as_ref()
-            .ok_or(VaultError::Invalid("There is no imported file to delete."))?;
-        std::fs::remove_file(file)?;
+            .ok_or(VaultError::Invalid("There is no imported file to delete."))?
+            .delete()?;
         *imported = None;
         Ok(())
     }

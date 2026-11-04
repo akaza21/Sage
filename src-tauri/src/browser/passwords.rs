@@ -14,6 +14,7 @@ mod csv_import;
 mod csv_tests;
 #[cfg(windows)]
 mod engine;
+mod imported_file;
 mod key_store;
 mod origin;
 mod secret;
@@ -49,6 +50,10 @@ pub(crate) enum VaultError {
     Invalid(&'static str),
     #[error("{0}")]
     Import(&'static str),
+    #[error(
+        "The imported file has been changed or replaced since the import, so Sage left it in place."
+    )]
+    ImportedFileChanged,
     #[error("The import was cancelled; nothing was saved.")]
     Cancelled,
     #[error("Set up Windows Hello to show or copy saved passwords.")]

@@ -92,6 +92,10 @@ const CHROME_CSV: &str = "name,url,username,password,note\n\
     example.com,https://example.com/login,ada,first-secret,\n\
     shop,https://shop.example:8443/,grace,second-secret,\n";
 
+/// A later export: other passwords, and a different length.
+const NEWER_CSV: &str = "name,url,username,password,note\n\
+    example.com,https://example.com/login,ada,a-much-newer-secret,\n";
+
 #[test]
 fn a_sealed_password_opens_only_under_its_own_row_site_and_username() {
     let key = VaultKey::generate().unwrap();
@@ -317,24 +321,41 @@ fn a_lost_or_foreign_key_is_reported_and_delete_all_starts_again() {
 }
 
 #[test]
-fn a_failed_csv_deletion_can_be_retried() {
+fn a_csv_saved_over_the_imported_one_is_not_deleted() {
     let scratch = Scratch::new();
     let state = state(&scratch.0.join("profile"), 1);
     let csv = scratch.csv("passwords.csv", CHROME_CSV);
     import(&state, csv.clone());
-    // A directory at the selected path makes remove_file fail on every OS.
+    // A later export saved under the same name replaces the imported file.
     let moved = scratch.0.join("held.csv");
     fs::rename(&csv, &moved).unwrap();
-    fs::create_dir(&csv).unwrap();
+    let newer = scratch.csv("newer.csv", NEWER_CSV);
+    fs::rename(&newer, &csv).unwrap();
     assert!(matches!(
         state.delete_imported_file(),
-        Err(VaultError::Io(_))
+        Err(VaultError::ImportedFileChanged)
     ));
-    fs::remove_dir(&csv).unwrap();
+    assert_eq!(fs::read_to_string(&csv).unwrap(), NEWER_CSV);
+    // The imported file itself, moved back under its name, is still deleted.
     fs::rename(&moved, &csv).unwrap();
     state.delete_imported_file().unwrap();
     assert!(!csv.exists());
     assert_eq!(ready(state.overview("").unwrap()).total, 2);
+}
+
+#[test]
+fn a_csv_rewritten_in_place_after_import_is_not_deleted() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    let csv = scratch.csv("passwords.csv", CHROME_CSV);
+    import(&state, csv.clone());
+    // The same file, truncated and written again with other passwords.
+    fs::write(&csv, NEWER_CSV).unwrap();
+    assert!(matches!(
+        state.delete_imported_file(),
+        Err(VaultError::ImportedFileChanged)
+    ));
+    assert_eq!(fs::read_to_string(&csv).unwrap(), NEWER_CSV);
 }
 
 #[test]

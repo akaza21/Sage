@@ -7,7 +7,6 @@
 use std::{
     fs::File,
     io::{self, Read},
-    path::Path,
 };
 
 use csv_core::{ReadRecordResult, Reader};
@@ -37,8 +36,8 @@ pub(super) struct ParsedCsv {
     pub(super) skipped: u32,
 }
 
-pub(super) fn read_file(path: &Path, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
-    let file = File::open(path)?;
+/// Reads the opened CSV `file`, refusing it before reading if it is too large.
+pub(super) fn read_file(file: File, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
     if file.metadata()?.len() > MAX_FILE_BYTES {
         return Err(too_large());
     }
