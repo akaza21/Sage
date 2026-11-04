@@ -7,7 +7,7 @@ import type {
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
 import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
-import { acpDesktop } from "../services/acpDesktop";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
 import {
   cachedHarnessModels,
@@ -164,7 +164,7 @@ export const createHarnessSlice: StateCreator<
         const nativeGeneration = String(
           get().nativeTransitionEpoch,
         ) as ProjectGeneration;
-        const response = await acpDesktop.discoverCodex({
+        const response = await acpHarnessDesktop.discoverCodex({
           projectId: projectId as SageProjectId,
           projectGeneration: nativeGeneration,
           bindingId: harness.bindingId as CuratedBindingId,
@@ -312,7 +312,7 @@ export const createHarnessSlice: StateCreator<
       const requestGeneration = get().harnessRequestGeneration;
       set({ harnessDiscoveryPhase: "waiting", harnessDiscoveryError: null });
       try {
-        const response = await acpDesktop.startCodexAuth(scope);
+        const response = await acpHarnessDesktop.startCodexAuth(scope);
         if (!authCurrent(get(), scope, requestGeneration)) return;
         if (response.phase !== "signedIn") {
           set({ harnessDiscoveryPhase: "signInRequired" });
@@ -334,7 +334,7 @@ export const createHarnessSlice: StateCreator<
       }
       const scope = authScope(get());
       if (!scope || get().harnessDiscoveryPhase !== "waiting") return;
-      await acpDesktop.cancelCodexAuth(scope);
+      await acpHarnessDesktop.cancelCodexAuth(scope);
     },
     logoutHarness: async () => {
       const scope = authScope(get());
@@ -346,7 +346,7 @@ export const createHarnessSlice: StateCreator<
         selectedModelId: null,
       });
       try {
-        const response = await acpDesktop.logoutCodexAuth(scope);
+        const response = await acpHarnessDesktop.logoutCodexAuth(scope);
         if (!authCurrent(get(), scope, requestGeneration)) return;
         set({
           harnessDiscoveryPhase:

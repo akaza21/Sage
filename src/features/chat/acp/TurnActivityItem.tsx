@@ -278,14 +278,20 @@ function ErrorActivity({
     >
       <header>
         <strong>
-          {item.payload.code === "browserMcpUnavailable"
-            ? "Browser tools unavailable"
-            : item.payload.code === "clientFileWriteRefused"
-              ? "File write unavailable"
-              : "Agent notice"}
+          {item.payload.kind === "attempt"
+            ? item.payload.code
+            : item.payload.code === "browserMcpUnavailable"
+              ? "Browser tools unavailable"
+              : item.payload.code === "clientFileWriteRefused"
+                ? "File write unavailable"
+                : "Agent notice"}
         </strong>
         <span className="acp-state">
-          {item.payload.recoverable ? "Retry available" : "Needs attention"}
+          {item.payload.kind === "attempt"
+            ? "Automatic retry"
+            : item.payload.recoverable
+              ? "Retry available"
+              : "Needs attention"}
         </span>
       </header>
       <p>{item.payload.message}</p>

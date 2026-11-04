@@ -91,12 +91,14 @@ impl PiTranslator {
         turn.retry_final_error = None;
         turn.settlement_message =
             failure_detail(value.get("errorMessage")).or_else(|| turn.settlement_message.take());
-        Ok(turn
-            .settlement_message
-            .clone()
-            .map(|message| AdapterOutput::AttemptFailed { message })
-            .into_iter()
-            .collect())
+        Ok(vec![AdapterOutput::AttemptFailed {
+            attempt,
+            max_attempts: value
+                .get("maxAttempts")
+                .and_then(Value::as_u64)
+                .filter(|maximum| *maximum >= attempt),
+            message: turn.settlement_message.clone().unwrap_or_default(),
+        }])
     }
 
     pub(super) fn retry_end(&mut self, value: &Value) -> Result<Vec<AdapterOutput>, AdapterError> {

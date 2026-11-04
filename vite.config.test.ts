@@ -445,6 +445,29 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
+  it("loads transcript decoders with Chat rather than harness discovery", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    for (const module of [
+      "/src/services/acpDesktopResponseTurns.ts",
+      "/src/services/acpDesktopResponseItems.ts",
+      "/src/services/acpDesktopResponsePayloads.ts",
+      "/src/services/acpDesktopPreview.ts",
+      "/src/services/acpDesktopPermission.ts",
+    ]) {
+      expect(
+        graph.initialModules.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        closureForModule(
+          graph,
+          "src/features/chat/acp/AcpChatPresentation.tsx",
+        ).some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+    }
+  }, 90_000);
+
   it("keeps Agent-only rail and composer logic out of Editor closures", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     for (const facade of [

@@ -107,6 +107,20 @@ pub(crate) fn finish_start(
             });
         }
     };
+    // The health probe speaks plain HTTP only, so an admitted https origin
+    // can never become healthy. Fail it now instead of waiting out the
+    // health deadline.
+    if !origin.starts_with("http://") {
+        fail_starting(
+            &target,
+            PreviewPhase::HealthFailed,
+            PreviewFailure::OriginUnsupported,
+            observer,
+        )?;
+        return Err(PreviewError::Unavailable {
+            message: "Preview supports http:// loopback origins only.".into(),
+        });
+    }
     if let Err(error) = transition_for_owner(
         PreviewProjectionOwner::from_target(&target),
         PreviewPhase::HealthChecking,

@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
-import { acpDesktop } from "../../../services/acpDesktop";
+import * as acpDesktop from "../../../services/acpDesktop";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import { resetTurnWorkspaceChangesForTest } from "./turnWorkspaceChanges";
 

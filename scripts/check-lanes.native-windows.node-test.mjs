@@ -711,6 +711,14 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
           memberImages: ["caf\u00e9.exe"],
           omittedMembers: 0,
         });
+        // The deadline diagnostic reports the Job's accounting: the root and
+        // its descendant were both created, and the descendant still runs.
+        const accounting = error.wrapperDiagnostic?.match(
+          /cargo-job deadline userMs=\d+ kernelMs=\d+ totalProcesses=(\d+) activeProcesses=(\d+) pageFaults=\d+/u,
+        );
+        assert.ok(accounting, error.wrapperDiagnostic);
+        assert.ok(Number(accounting[1]) >= 2);
+        assert.ok(Number(accounting[2]) >= 1);
         return true;
       },
     );

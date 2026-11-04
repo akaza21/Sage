@@ -162,6 +162,7 @@ function Invoke-CargoValidationJob {
       $reason = "command-timeout"
       # Record what was still running at the deadline before teardown.
       $stall = New-CargoJobStallReport ([bool]$job.RootRunning) @($job.MemberImageNames())
+      [Console]::Error.WriteLine("cargo-job deadline $($job.AccountingSummary())")
     }
     if ($null -ne $reason) {
       $graceDeadline = [DateTime]::UtcNow.AddMilliseconds($TerminationGraceMilliseconds)

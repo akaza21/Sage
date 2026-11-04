@@ -1,11 +1,26 @@
+import { memo, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
+import { Info, X } from "../../ui/leanIcons";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import {
   harnessUnavailableReason,
   type HarnessDefinition,
 } from "../../domain/harness";
+import "./build-notice.css";
 
-function BoundBuildNotice({ harness }: { harness: HarnessDefinition | null }) {
+const BoundBuildNotice = memo(function BoundBuildNotice({
+  harness,
+}: {
+  harness: HarnessDefinition | null;
+}) {
+  // Dismissal is disposable pane state. A remounted pane explains the build
+  // again; no durable preference or protocol admission decision is changed.
+  const [dismissedBuild, setDismissedBuild] = useState<string | null>(null);
+  const build = JSON.stringify([
+    harness?.id,
+    harness?.bindingId,
+    harness?.boundVersion,
+  ]);
   if (harness?.transport !== "acp") return null;
   if (harness.installState !== "available") {
     return (
@@ -14,18 +29,29 @@ function BoundBuildNotice({ harness }: { harness: HarnessDefinition | null }) {
       </div>
     );
   }
-  if (harness.characterisation !== "uncharacterised") return null;
+  if (
+    harness.characterisation !== "uncharacterised" ||
+    dismissedBuild === build
+  )
+    return null;
   return (
-    <div className="composer__notice" role="status">
-      {harness.boundVersion
-        ? `Running build ${harness.boundVersion}, which Sage has not characterised.`
-        : "Running a build Sage has not characterised."}{" "}
-      Optional features stay hidden until Sage verifies them for this build. The
-      core conversation still runs.
-      {harness.accountModelDiscovery ? " Sign-in status is unknown." : ""}
+    <div className="build-notice" role="status">
+      <Info aria-hidden="true" />
+      <span>
+        {harness.boundVersion ? `Build ${harness.boundVersion}` : "This build"}
+        {" hasn't been characterised. Some features are unavailable."}
+      </span>
+      <button
+        type="button"
+        aria-label="Dismiss build notice"
+        title="Dismiss"
+        onClick={() => setDismissedBuild(build)}
+      >
+        <X aria-hidden="true" />
+      </button>
     </div>
   );
-}
+});
 
 function AccountNotice({
   harness,

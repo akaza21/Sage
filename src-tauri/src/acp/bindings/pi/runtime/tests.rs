@@ -456,6 +456,22 @@ fn pi_tool_snapshot_cache_rejects_aggregate_overflow() {
 }
 
 #[test]
+fn retry_progress_preserves_reported_attempt_counts_even_without_error_text() {
+    let mut runtime = fixture_runtime(73);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"auto_retry_start","attempt":1,"maxAttempts":3})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Item {
+        payload: NormalizedPayload::Error { code, message, .. }, ..
+    }] if code.as_str() == "Attempt failed (attempt 1/3)" && message.as_str().is_empty()));
+}
+
+#[test]
 fn pi_retry_notices_are_sanitized_deduplicated_and_bounded_to_32_per_turn() {
     let mut runtime = fixture_runtime(73);
     ready(&mut runtime);
