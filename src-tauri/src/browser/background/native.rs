@@ -8,9 +8,10 @@ use windows_core::Interface;
 use super::{MemoryState, MemoryTarget};
 use crate::browser::BrowserState;
 
-/// Called on the main thread for creation, hide, reveal and window resize.
-/// Re-read placement inside the callback so queued work cannot restore a
-/// hidden page to NORMAL. No tasks, listeners or per-window target cache.
+/// Requested on creation, hide, reveal and window resize. The update runs on
+/// the WebView's thread and re-reads placement there, so a queued update
+/// cannot restore a page hidden since to NORMAL. No per-window cache: the
+/// current level is read back and only changed when it differs.
 pub(crate) fn refresh(webview: &Webview) {
     let app = webview.app_handle().clone();
     let label = webview.label().to_owned();
@@ -18,15 +19,12 @@ pub(crate) fn refresh(webview: &Webview) {
     if let Err(error) = webview.with_webview(move |platform| {
         let result = (|| {
             let minimized = window.is_minimized().map_err(|e| e.to_string())?;
-            let mut memory_state = MemoryState::for_visibility(true, minimized);
-            if let Some(browser) = app.try_state::<BrowserState>() {
-                let mut tabs = browser.tabs.lock().map_err(|_| "browser unavailable")?;
-                if let Some(tab) = tabs.entries.get_mut(&label) {
-                    tab.background =
-                        MemoryState::for_visibility(tab.visibility.is_placed(), minimized);
-                    memory_state = tab.background;
-                }
-            }
+            // Only browser tabs have a placement; every other webview counts as placed.
+            let placed = app
+                .try_state::<BrowserState>()
+                .and_then(|browser| browser.page_visibility_for_tab(&label))
+                .is_none_or(|visibility| visibility.is_placed());
+            let memory_state = MemoryState::for_visibility(placed, minimized);
             let core =
                 unsafe { platform.controller().CoreWebView2() }.map_err(|e| e.to_string())?;
             let Ok(memory) = core.cast::<ICoreWebView2_19>() else {

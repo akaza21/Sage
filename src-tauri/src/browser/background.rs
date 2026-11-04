@@ -1,10 +1,9 @@
 //! One per-WebView memory policy, driven by placement and window minimization.
 //! Placement comes exclusively from PageVisibility; hidden pages remain live.
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum MemoryState {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MemoryState {
     Active,
-    #[default]
     Hidden,
 }
 

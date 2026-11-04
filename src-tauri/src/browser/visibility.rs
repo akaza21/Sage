@@ -44,7 +44,7 @@ impl PageVisibility {
         if self.is_placed() { show() } else { Ok(()) }
     }
 
-    /// Called on the main thread; NORMAL is applied before the first visible frame.
+    /// Called on the main thread; requests the NORMAL memory target with the show.
     pub(super) fn reveal_page(
         &self,
         webview: &tauri::Webview,

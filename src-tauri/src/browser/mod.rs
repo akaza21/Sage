@@ -119,8 +119,6 @@ impl BrowserState {
 struct BrowserTab<T> {
     handle: T,
     visibility: Arc<visibility::PageVisibility>,
-    #[cfg_attr(not(windows), allow(dead_code))]
-    background: background::MemoryState,
     loading: bool,
     title: Option<String>,
     favicon: Option<String>,
@@ -212,7 +210,6 @@ impl<T> BrowserTabs<T> {
             BrowserTab {
                 handle,
                 visibility: Arc::default(),
-                background: background::MemoryState::default(),
                 loading,
                 title: None,
                 favicon: None,
