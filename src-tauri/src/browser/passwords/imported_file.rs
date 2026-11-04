@@ -1,8 +1,9 @@
 //! The CSV an import read holds every password in plain text, so the page
 //! offers to delete it afterwards. The file is pinned by the identity of the
-//! handle the import read it through, and deletion opens the name again and
-//! removes it only if that handle proves the same identity. A file saved
-//! over the same name since the import, or changed in place, is left alone.
+//! handle the import read it through, and deletion removes it only through a
+//! step that proves that identity and that nothing can redirect between the
+//! check and the removal. A file saved over the same name since the import,
+//! or changed in place, is left alone.
 
 use std::{fs::File, io, path::PathBuf, time::SystemTime};
 
@@ -60,12 +61,18 @@ impl ImportedFile {
     /// Deletes the file if its name still leads to the file the import read,
     /// unchanged. Otherwise refuses and leaves whatever is there in place.
     pub(super) fn delete(&self) -> VaultResult<()> {
-        delete_if_same(&self.path, |file| {
-            if FileIdentity::of(file)? == self.identity {
-                Ok(())
-            } else {
-                Err(VaultError::ImportedFileChanged)
-            }
-        })
+        delete_if_same(&self.path, |file| self.check(file))
+    }
+
+    /// Whether the open `file` is the file the import read, unchanged.
+    fn check(&self, file: &File) -> VaultResult<()> {
+        if FileIdentity::of(file)? == self.identity {
+            Ok(())
+        } else {
+            Err(VaultError::ImportedFileChanged)
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -148,17 +148,21 @@ unsafe fn still_holds(copied: &CopiedText) -> VaultResult<bool> {
 }
 
 /// Empties the clipboard if it still holds the text `copied` describes.
-pub(in crate::browser::passwords) fn clear_if_unchanged(
-    owner: &tauri::Window,
-    copied: &CopiedText,
-) -> VaultResult<()> {
-    let copied = copied.clone();
-    with_clipboard(owner, move || {
-        // SAFETY: the clipboard is open on this thread.
-        if unsafe { still_holds(&copied) }? {
+/// Emptying needs no owner window, so this runs on the calling thread and
+/// still works while Sage quits, after its window is gone.
+pub(in crate::browser::passwords) fn clear_if_unchanged(copied: &CopiedText) -> VaultResult<()> {
+    // SAFETY: opened with no owner on this thread; emptying it then leaves
+    // the clipboard with no owner, which is all a clear needs.
+    unsafe { OpenClipboard(None) }.map_err(io_error)?;
+    // SAFETY: the clipboard is open on this thread.
+    let result = unsafe { still_holds(copied) }.and_then(|held| {
+        if held {
             // SAFETY: as above.
             unsafe { EmptyClipboard() }.map_err(io_error)?;
         }
         Ok(())
-    })
+    });
+    // SAFETY: opened above on this thread.
+    let _ = unsafe { CloseClipboard() };
+    result
 }

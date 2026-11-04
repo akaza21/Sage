@@ -169,15 +169,17 @@ pub(crate) async fn browser_passwords_copy(
         clipboard::copy_concealed(&window, passwords.password(&id)?)
     })
     .await?;
+    // Tracked by the app, so quitting before the timer fires still clears it.
+    let passwords = state.inner().clone();
+    let copied = passwords.track_copy(copied);
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(clipboard::CLEAR_AFTER).await;
         let reporter = owner.clone();
         let cleared = tauri::async_runtime::spawn_blocking(move || {
-            clipboard::expire(
-                &copied,
-                |copied| clipboard::clear_if_unchanged(&owner, copied),
-                |message| clipboard_warning(&owner, message),
-            );
+            clipboard::expire(&copied, clipboard::clear_if_unchanged, |message| {
+                clipboard_warning(&owner, message);
+            });
+            passwords.settle_copy(&copied);
         })
         .await;
         if let Err(error) = cleared {

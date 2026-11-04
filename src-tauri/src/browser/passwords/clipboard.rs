@@ -3,7 +3,10 @@
 //! attempts to clear it after `CLEAR_AFTER` if it still holds that same text.
 //! Windows only for now, like the vault.
 
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex, PoisonError},
+    time::Duration,
+};
 
 use sha2::{Digest, Sha256};
 
@@ -27,6 +30,50 @@ pub(super) struct CopiedText {
     salt: [u8; SALT_LEN],
     digest: [u8; 32],
     len: usize,
+}
+
+/// The copy whose clear is still due. The app owns it, so a password copied
+/// shortly before Sage quits is cleared on the way out rather than left
+/// behind with the timer that would have cleared it.
+#[derive(Default)]
+pub(super) struct PendingClear(Mutex<Option<Arc<CopiedText>>>);
+
+impl PendingClear {
+    /// Records `copied` as the copy to clear; it replaces any earlier one,
+    /// whose text the new copy has already overwritten.
+    pub(super) fn track(&self, copied: CopiedText) -> Arc<CopiedText> {
+        let copied = Arc::new(copied);
+        *self.pending() = Some(Arc::clone(&copied));
+        copied
+    }
+
+    /// Forgets `copied` once its own clear has run, unless a later copy has
+    /// taken its place.
+    pub(super) fn settle(&self, copied: &Arc<CopiedText>) {
+        let mut pending = self.pending();
+        if pending
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, copied))
+        {
+            *pending = None;
+        }
+    }
+
+    /// Clears the copy whose clear is still due, if the clipboard still
+    /// holds it. Quitting Sage calls this.
+    pub(super) fn clear_now(
+        &self,
+        clipboard: impl FnMut(&CopiedText) -> VaultResult<()>,
+    ) -> VaultResult<()> {
+        let Some(copied) = self.pending().take() else {
+            return Ok(());
+        };
+        clear_with_retries(&copied, clipboard)
+    }
+
+    fn pending(&self) -> std::sync::MutexGuard<'_, Option<Arc<CopiedText>>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 /// The port must open, compare and conditionally clear atomically on every
@@ -121,7 +168,7 @@ pub(super) fn copy_concealed(
 }
 
 #[cfg(not(windows))]
-pub(super) fn clear_if_unchanged(_owner: &tauri::Window, _copied: &CopiedText) -> VaultResult<()> {
+pub(super) fn clear_if_unchanged(_copied: &CopiedText) -> VaultResult<()> {
     Ok(())
 }
 
@@ -134,7 +181,8 @@ mod tests {
     };
 
     use super::{
-        CopiedText, VaultError, clear_with_retries, expire, fingerprint_then_write, random_salt,
+        CopiedText, PendingClear, VaultError, clear_with_retries, expire, fingerprint_then_write,
+        random_salt,
     };
 
     struct Clipboard {
@@ -233,6 +281,38 @@ mod tests {
         })
         .unwrap();
         assert_eq!(clipboard.text, b"new copy");
+    }
+
+    #[test]
+    fn a_copy_whose_clear_is_still_due_is_cleared_when_sage_quits() {
+        let mut clipboard = Clipboard {
+            text: b"secret".to_vec(),
+            busy: 0,
+            replacement: None,
+        };
+        let pending = PendingClear::default();
+        pending.track(copied(b"secret"));
+        pending
+            .clear_now(|copy| clipboard.clear_if_unchanged(copy))
+            .unwrap();
+        assert!(clipboard.text.is_empty());
+    }
+
+    #[test]
+    fn an_earlier_copys_expiry_leaves_the_later_copy_due_for_quitting() {
+        let mut clipboard = Clipboard {
+            text: b"second".to_vec(),
+            busy: 0,
+            replacement: None,
+        };
+        let pending = PendingClear::default();
+        let first = pending.track(copied(b"first"));
+        pending.track(copied(b"second"));
+        pending.settle(&first);
+        pending
+            .clear_now(|copy| clipboard.clear_if_unchanged(copy))
+            .unwrap();
+        assert!(clipboard.text.is_empty());
     }
 
     fn copied(text: &[u8]) -> CopiedText {

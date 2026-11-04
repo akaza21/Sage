@@ -6,6 +6,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
+    time::Duration,
 };
 
 use uuid::Uuid;
@@ -16,7 +17,7 @@ use super::{
     cipher::{Binding, VaultKey},
     key_store::KeyProtector,
     secret::Secret,
-    state::{PasswordsOverview, PasswordsState},
+    state::{IDLE_AFTER, PasswordsOverview, PasswordsState},
     store::{MergeCounts, NewCredential, Source, Store},
 };
 
@@ -657,4 +658,20 @@ fn an_import_past_the_vault_cap_is_refused_whole() {
         .find(|entry| entry.username == "user0")
         .unwrap();
     assert_eq!(store.password(&key, &user0.id).unwrap().expose(), "pw");
+}
+
+#[test]
+fn an_idle_vault_closes_and_reopens_on_its_next_use() {
+    let scratch = Scratch::new();
+    let state = state(&scratch.0.join("profile"), 1);
+    import(&state, scratch.csv("passwords.csv", CHROME_CSV));
+    let ada = ready(state.overview("ada").unwrap()).entries.remove(0);
+    // Used a moment ago: the database and the unwrapped key stay open.
+    assert!(!state.close_if_idle_after(Duration::from_secs(1)));
+    assert!(state.is_open());
+    // Unused for the idle period: both are released.
+    assert!(state.close_if_idle_after(IDLE_AFTER));
+    assert!(!state.is_open());
+    assert_eq!(state.password(&ada.id).unwrap().expose(), "first-secret");
+    assert!(state.is_open());
 }

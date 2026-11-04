@@ -1,5 +1,6 @@
 //! Windows deletes through the handle that proved the identity, so the file
-//! removed is exactly the file checked, whatever happens to its name.
+//! removed is exactly the file checked, whatever happens to its name, and
+//! that handle keeps every writer out until the file is gone.
 
 use std::{
     fs::{File, Metadata, OpenOptions},
@@ -13,9 +14,9 @@ use windows_sys::Win32::{
     Storage::FileSystem::{
         DELETE, FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
         FILE_DISPOSITION_INFO, FILE_DISPOSITION_INFO_EX, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_ID_INFO, FILE_INFO_BY_HANDLE_CLASS, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, FileDispositionInfo, FileDispositionInfoEx, FileIdInfo,
-        GetFileInformationByHandleEx, SetFileInformationByHandle,
+        FILE_ID_INFO, FILE_INFO_BY_HANDLE_CLASS, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+        FileDispositionInfo, FileDispositionInfoEx, FileIdInfo, GetFileInformationByHandleEx,
+        SetFileInformationByHandle,
     },
 };
 
@@ -46,9 +47,13 @@ pub(super) fn delete_if_same(
     verify: impl FnOnce(&File) -> VaultResult<()>,
 ) -> VaultResult<()> {
     // A link is opened as the link itself, so it fails the identity check.
+    // Sharing only reading shuts writers out from the check to the delete:
+    // the open fails while another program has the file open for writing,
+    // and no program can open it for writing, rename or delete it until this
+    // handle closes.
     let file = OpenOptions::new()
         .access_mode(DELETE | FILE_READ_ATTRIBUTES)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)?;
     verify(&file)?;
