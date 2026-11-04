@@ -1,4 +1,4 @@
-/** Geometry shared by the annotation badge and its comment field (Codex s2/f0095). */
+/** Geometry shared by the annotation badge and its comment field. */
 
 type Box = { left: number; top: number; right: number; bottom: number };
 
@@ -10,7 +10,7 @@ const INSET = 8;
 
 /**
  * A 24 px badge sits above the range end, its bottom on the highlight top,
- * in both the open and saved states (Codex s2/f0095, f0113).
+ * in both the open and saved states.
  */
 export function annotationBadgeOrigin(last: Omit<Box, "left">) {
   return {

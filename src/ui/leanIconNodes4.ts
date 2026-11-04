@@ -127,3 +127,21 @@ export const WholeWord = leanIcon("whole-word", [
   "M22 17v1c0 .5-.5 1-1 1H3c-.5 0-1-.5-1-1v-1",
 ]);
 export const X = leanIcon("x", ["M18 6 6 18", "m6 6 12 12"]);
+export const PanelLeft = leanIcon("panel-left", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  "M9 3v18",
+]);
+export const ArrowDownUp = leanIcon("arrow-down-up", [
+  "m3 16 4 4 4-4",
+  "M7 20V4",
+  "m21 8-4-4-4 4",
+  "M17 4v16",
+]);
+export const List = leanIcon("list", [
+  "M3 5h.01",
+  "M3 12h.01",
+  "M3 19h.01",
+  "M8 5h13",
+  "M8 12h13",
+  "M8 19h13",
+]);

@@ -86,7 +86,7 @@ const requiredControls = [
   "Search files",
   "Open settings",
   "Agent",
-  "New task",
+  "New chat",
 ];
 
 function serveUnready(t) {
@@ -291,7 +291,7 @@ test(
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);
@@ -304,8 +304,8 @@ test(
   async (t) => {
     const site = await servePage(
       t,
-      `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New task")])}
-      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New task</button>
+      `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New chat")])}
+      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New chat</button>
       <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" aria-label="Message agent"></textarea></section>
       <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea aria-label="Message agent"></textarea></section>`,
     );
@@ -314,7 +314,7 @@ test(
     assert.equal(run.summary.fatal, null);
     assert.ok(!run.summary.misses.includes("composer"));
     assert.ok(
-      !run.summary.requiredMisses.some((entry) => entry.startsWith("New task")),
+      !run.summary.requiredMisses.some((entry) => entry.startsWith("New chat")),
     );
     assert.ok(run.summary.shots.includes("22-agent-composer-typed"));
   },
@@ -338,7 +338,7 @@ test(
     assert.equal(run.summary.fatal, null);
     assert.ok(
       run.summary.requiredMisses.some((entry) =>
-        entry.startsWith("New task -> "),
+        entry.startsWith("New chat -> "),
       ),
     );
     assert.equal(run.code, 1);

@@ -23,7 +23,7 @@ fn shutdown_running_codex_turn_converges_within_close_budget() {
             .send_codex_turn(setup.turn_command(&owner))
             .unwrap();
         setup.wait_for_running_turn(&owner);
-        let host = setup.service.runtime.active().unwrap();
+        let host = setup.service.lane_at(0).runtime.active().unwrap();
         assert_eq!(
             host.state().unwrap(),
             crate::acp::runtime::HostState::Running

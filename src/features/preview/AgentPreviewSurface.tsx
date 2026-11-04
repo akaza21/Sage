@@ -9,13 +9,8 @@ import { createPortal } from "react-dom";
 
 import type { PreviewProjectionOwner } from "../../domain/previewProjection";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
-import { applyBrowseIntent } from "./harnessBrowse";
 import type { HarnessBrowseOwner } from "./harnessBrowse";
-import {
-  previewOrigin,
-  previewOwnerKey,
-  samePreviewOwner,
-} from "./previewPresentation";
+import { applyBrowseIntent } from "./harnessBrowse";
 import {
   discoverPreviewTargets,
   getPreviewHealth,
@@ -24,6 +19,11 @@ import {
   stopPreviewTarget,
   type PreviewTargetRef,
 } from "./previewDesktop";
+import {
+  previewOrigin,
+  previewOwnerKey,
+  samePreviewOwner,
+} from "./previewPresentation";
 import { usePreviewProjection } from "./previewProjectionStore";
 
 const loadAgentPreviewPresentation = () =>
@@ -31,17 +31,21 @@ const loadAgentPreviewPresentation = () =>
     default: AgentPreviewPresentation,
   }));
 
-/** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; sleep only the canvas. */
+/** Keep the exact-owner controller mounted while Agent is hidden to preserve its native child; a selected preview keeps its canvas while the pane is collapsed. */
 export function AgentPreviewSurface({
   owner,
   browseOwner,
+  selected,
   visible,
   container,
+  onTargetChange,
 }: {
   owner: PreviewProjectionOwner | null;
   browseOwner: HarnessBrowseOwner | null;
+  selected: boolean;
   visible: boolean;
   container: HTMLElement | null;
+  onTargetChange?: (target: PreviewTargetRef | null) => void;
 }) {
   const {
     error: subscriptionError,
@@ -55,7 +59,6 @@ export function AgentPreviewSurface({
     string | null
   >(null);
   const ownerRef = useRef(owner);
-  const targetRef = useRef<PreviewTargetRef | null>(null);
   const discoveredFor = useRef<string | null>(null);
   const wasVisible = useRef(false);
   const healthInFlight = useRef<string | null>(null);
@@ -64,9 +67,6 @@ export function AgentPreviewSurface({
   useLayoutEffect(() => {
     ownerRef.current = owner;
   }, [owner]);
-  useEffect(() => {
-    targetRef.current = projection?.target ?? null;
-  }, [projection?.target]);
   useEffect(() => {
     if (
       !owner ||
@@ -144,12 +144,12 @@ export function AgentPreviewSurface({
       });
   }, [desktopAvailable, key, projection?.phase, projection?.target, visible]);
 
+  // Native ownership retires children on session termination or project close.
+  // Activity cleanup only suspends rendering and must not stop the server.
+
   useEffect(() => {
-    return () => {
-      const target = targetRef.current;
-      if (target) void stopPreviewTarget(target).catch(() => undefined);
-    };
-  }, []);
+    onTargetChange?.(projection?.target ?? null);
+  }, [onTargetChange, projection?.target]);
 
   const onStart = useCallback(
     (target: PreviewTargetRef) => {
@@ -170,7 +170,7 @@ export function AgentPreviewSurface({
     void stopPreviewTarget(target).catch(() => undefined);
   }, []);
 
-  if (!visible || !container) return null;
+  if (!selected || !container) return null;
 
   return createPortal(
     <LazyModuleBoundary

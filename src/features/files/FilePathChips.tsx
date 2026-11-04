@@ -1,11 +1,11 @@
 import { ChevronRight } from "../../ui/leanIcons";
-
 import { FileKindIcon } from "./FileKindIcon";
 
-export const MAX_BREADCRUMB_PATH_LENGTH = 4096;
-export const MAX_BREADCRUMB_SEGMENTS = 6;
+const MAX_BREADCRUMB_PATH_LENGTH = 4096;
 
-export function fileBreadcrumbSegments(path: string): string[] {
+const MAX_BREADCRUMB_SEGMENTS = 6;
+
+function fileBreadcrumbSegments(path: string): string[] {
   if (path.length === 0 || path.length > MAX_BREADCRUMB_PATH_LENGTH) {
     return [];
   }

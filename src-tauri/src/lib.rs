@@ -42,6 +42,7 @@ mod launch_profile;
 mod persistence;
 mod preview_lifecycle;
 mod project_commands;
+mod project_create_commands;
 mod project_migration;
 mod project_registry;
 mod repository;
@@ -96,6 +97,7 @@ mod state;
 mod test_paths;
 #[cfg(test)]
 mod test_wait;
+mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
 mod window_memory;
@@ -206,6 +208,7 @@ pub fn run() {
                 .attach_site_settings(settings.clone())
                 .map_err(std::io::Error::other)?;
             app.manage(browser_state);
+            app.manage(project_create_commands::ProjectSourcePicks::default());
             #[cfg(all(windows, feature = "acp-fixture"))]
             let state = match fixture_mode {
                 DesktopFixtureMode::GenericCharacterization(binding) => {

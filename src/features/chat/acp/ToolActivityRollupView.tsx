@@ -1,24 +1,23 @@
 import { useContext, useState } from "react";
+import { type AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import {
   BrainCircuit,
+  ChevronRight,
+  Command,
   FilePenLine,
   FileText,
   Image,
-  Command,
   Search,
   TerminalSquare,
   Workflow,
-  ChevronRight,
 } from "../../../ui/leanIcons";
-
-import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { ToolItem } from "./ToolItem";
 import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
 import { toolStateLabels } from "./statusSemantics";
 import {
   liveToolItem,
-  toolRollupLabel,
   toolRollupDurationLabel,
+  toolRollupLabel,
   toolRollupState,
   type ToolRollup,
 } from "./toolActivityRollup";

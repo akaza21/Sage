@@ -120,15 +120,7 @@
 }
 
 .workbench--editor .editor-welcome__mark {
-  display: grid;
-  width: clamp(104px, 14vw, 156px);
-  aspect-ratio: 1;
-  place-items: center;
-  color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-  font-size: clamp(76px, 11vw, 120px);
-  font-weight: var(--font-weight-semibold);
-  line-height: 1;
-  user-select: none;
+  color: var(--color-text-muted);
 }
 
 .workbench--editor .editor-welcome__actions {

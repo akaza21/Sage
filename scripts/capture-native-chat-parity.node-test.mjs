@@ -193,6 +193,14 @@ test("parity selectors stay anchored to the wave 6-8 product components", () => 
     ],
     [
       "workbench/AgentChatCenterHeader.tsx",
+      [
+        "className={`agent-chat-center__header",
+        '() => import("./AgentSideChatHeaders")',
+        'part="AgentSideChatHeaders"',
+      ],
+    ],
+    [
+      "workbench/AgentSideChatHeaders.tsx",
       ['className="agent-chat-center__side-tab"', 'part="SideChatHeader"'],
     ],
     [
@@ -782,7 +790,7 @@ async function observe(markup, outside = "", page = {}, sides = []) {
 test("observation sees body-portaled parity surfaces and center-header side chat chrome", async () => {
   const observation = await observe(
     '<div class="side-chat-home">Side chat</div><div class="composer__annotation-row"><div class="annotation-chip annotation-chip--draft"><button>1 selection</button></div></div><section class="chat-find" role="search"><div><span role="status">1 / 3 results</span></div></section>',
-    '<div class="agent-chat-center__side-tab"><div class="agent-chat-pane__identity side-chat-tab"><strong>Side chat</strong><button aria-label="Close side chat"></button></div></div><div class="chat-selection-popover" role="toolbar"><button>Add to chat</button><button>Ask in side chat</button></div><button class="transcript-annotation-badge">1</button><dialog class="close-side-chat-dialog" open></dialog>',
+    '<div class="agent-chat-center__header"><div class="agent-chat-center__side-tab"><div class="agent-chat-pane__identity side-chat-tab"><strong>Side chat</strong><button aria-label="Close side chat"></button></div></div></div><div class="chat-selection-popover" role="toolbar"><button>Add to chat</button><button>Ask in side chat</button></div><button class="transcript-annotation-badge">1</button><dialog class="close-side-chat-dialog" open></dialog>',
     { chatId: "side-1", turns: [] },
     [{ id: "side-1", parentChatId: "capture-chat" }],
   );
@@ -802,11 +810,16 @@ test("observation sees body-portaled parity surfaces and center-header side chat
     '<div class="agent-chat-pane__identity side-chat-tab">Side chat</div>',
   );
   assert.equal(stray.visible.sideChatTab, false);
+  const misplaced = await observe(
+    "",
+    '<div class="agent-chat-center__side-tab"><div class="side-chat-tab">Side chat</div></div>',
+  );
+  assert.equal(misplaced.visible.sideChatTab, false);
   const close = parityStepsFor("side-chat-close-confirm").at(-1);
   assert.equal(close.scope, "document");
   assert.equal(
     new JSDOM(
-      '<div class="agent-chat-center__side-tab"><div class="side-chat-tab"><button aria-label="Close side chat"></button></div></div>',
+      '<div class="agent-chat-center__header"><div class="agent-chat-center__side-tab"><div class="side-chat-tab"><button aria-label="Close side chat"></button></div></div></div>',
     ).window.document.querySelectorAll(close.selector).length,
     1,
   );
