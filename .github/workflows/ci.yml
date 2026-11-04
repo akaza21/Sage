@@ -206,7 +206,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.windows == 'true'
     runs-on: windows-latest
-    timeout-minutes: 30
+    # Leave room for Chromium provisioning and the full two-worker suite.
+    timeout-minutes: 45
     env:
       # Playwright forwards this fixed port to Vite with --strictPort and refuses
       # server reuse. Each hosted job has its own runner, including the budget lane.
