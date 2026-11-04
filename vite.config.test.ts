@@ -76,6 +76,7 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
@@ -160,6 +161,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/PreviewSurface.tsx",
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
+  "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
@@ -192,6 +194,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
   "src/workbench/TerminalDockShell.tsx",
+  // Terminal controls load outside the shared workbench.
+  "src/workbench/terminalDockCommands.tsx",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [
@@ -439,6 +443,29 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
+  it("loads transcript decoders with Chat rather than harness discovery", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    for (const module of [
+      "/src/services/acpDesktopResponseTurns.ts",
+      "/src/services/acpDesktopResponseItems.ts",
+      "/src/services/acpDesktopResponsePayloads.ts",
+      "/src/services/acpDesktopPreview.ts",
+      "/src/services/acpDesktopPermission.ts",
+    ]) {
+      expect(
+        graph.initialModules.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        closureForModule(
+          graph,
+          "src/features/chat/acp/AcpChatPresentation.tsx",
+        ).some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+    }
+  }, 90_000);
+
   it("keeps Agent-only rail and composer logic out of Editor closures", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     for (const facade of [
@@ -690,6 +717,9 @@ describe("desktop-native chunk topology", () => {
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);
     expect(groupedGraph.chunkNames.get(sharedFile!)).toBe("workbench-deps");
+    expect(groupedGraph.moduleFiles.get("src/ui/nativePageLayers.ts")).toBe(
+      sharedFile,
+    );
     const agentFile = groupedGraph.moduleFiles.get(agent);
     expect(groupedGraph.chunkNames.get(agentFile!)).toBe("agent-workbench");
     expect(agentFile).not.toBe(sharedFile);

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,7 +9,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
 import { useWorkbenchStore } from "../../../app/store";
-import { acpDesktop } from "../../../services/acpDesktop";
+import * as acpDesktop from "../../../services/acpDesktop";
 import { ChangesSurface } from "../../diff/ChangesSurface";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { resetTurnWorkspaceChangesForTest } from "./turnWorkspaceChanges";
@@ -47,6 +48,7 @@ it.each(["truncated"])(
         <ChangesSurface page={page} />
       </>,
     );
+    await act(() => vi.dynamicImportSettled());
     expect(
       await screen.findByRole("region", { name: "Edited files" }),
     ).toHaveTextContent("Workspace change tracking is incomplete");
@@ -109,6 +111,7 @@ it("keeps a shell deletion after five more terminal turns and across session sel
       editSummaryContainer={document.body}
     />,
   );
+  await act(() => vi.dynamicImportSettled());
   const summary = await screen.findByRole("region", {
     name: "Files edited in this chat",
   });
@@ -149,6 +152,7 @@ it("shows the same shell-only ledger file in the chat summary, Edited files and 
       <ChangesSurface page={page} />
     </>,
   );
+  await act(() => vi.dynamicImportSettled());
   const card = await screen.findByRole("region", { name: "Edited files" });
   expect(card).toHaveTextContent("Edited 1 file");
   expect(card).toHaveTextContent("shell.ts");

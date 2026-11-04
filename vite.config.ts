@@ -40,7 +40,15 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|app[\\/]snapshotProjection\.ts)$/,
+    // Shared page-layer state belongs to the shell, not Agent UI.
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
+  },
+  {
+    name: "modal-dialog",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Shared confirmations must not pull Agent UI into an Editor resource.
+    test: /src[\\/]ui[\\/]ModalDialog\.tsx$/,
   },
   {
     name: "file-kind-icons",

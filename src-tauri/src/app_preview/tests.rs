@@ -200,6 +200,56 @@ fn child_owning_failures_reap_before_terminal_projection() {
 }
 
 #[test]
+fn https_origin_fails_as_unsupported_before_the_health_deadline() {
+    let _serial = crate::test_wait::serial_process_guard();
+    let root = preview_package(
+        "https-origin",
+        "console.log('https://127.0.0.1:3443'); setInterval(() => {}, 1000);",
+    );
+    let target = preview_target(&format!("project-preview-{}", uuid::Uuid::new_v4()), 4, 4);
+    let request = request_for(&target);
+    lifecycle::replace_discovered(&request, vec![(target.clone(), root.clone())]);
+    let observed = Mutex::new(Vec::new());
+    let observer = |projection: &PreviewProjection| {
+        observed
+            .lock()
+            .unwrap()
+            .push((projection.phase, projection.failure));
+        Ok(())
+    };
+    lifecycle::begin_start(&target, &observer).unwrap();
+    let reservation = lifecycle::reserve_start(target.clone()).unwrap();
+    lifecycle::mark_waiting_for_origin(&target, &observer).unwrap();
+    let started = Instant::now();
+    let outcome = lifecycle::finish_start(reservation, &observer);
+    let elapsed = started.elapsed();
+    assert!(matches!(
+        outcome,
+        Err(super::error::PreviewError::Unavailable { .. })
+    ));
+    assert!(
+        elapsed < Duration::from_millis(crate::acp::limits::PREVIEW_LIMITS.health_deadline_ms),
+        "https origin waited {elapsed:?}, as long as the health deadline"
+    );
+    assert_eq!(lifecycle::test_owned_child_count(), 0);
+    let observed = observed.into_inner().unwrap();
+    assert!(
+        !observed
+            .iter()
+            .any(|(phase, _)| *phase == PreviewPhase::HealthChecking),
+        "an https origin must not enter health checking: {observed:?}"
+    );
+    assert_eq!(
+        observed.last().copied(),
+        Some((
+            PreviewPhase::HealthFailed,
+            Some(PreviewFailure::OriginUnsupported)
+        ))
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn explicit_and_duplicate_stop_preserve_foreign_owner_and_reap_before_stopped() {
     let root = std::env::temp_dir().join(format!("sage-preview-stop-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();

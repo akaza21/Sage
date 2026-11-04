@@ -13,6 +13,7 @@ mod browser_preferences;
 mod browser_site_permissions;
 mod editor_settings;
 mod side_chat;
+mod terminal_dock;
 pub use access::SessionAccessModes;
 pub use agent_rail_view::AgentRailView;
 pub use browser_preferences::BrowserPreferences;
@@ -113,6 +114,7 @@ impl SettingsStore {
             browser_preferences::migrate(&migration)?;
             agent_rail_view::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
+            terminal_dock::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

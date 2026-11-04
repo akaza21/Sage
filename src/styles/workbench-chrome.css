@@ -5,7 +5,7 @@
   --control-target: var(--control-height-compact);
   --control-gap: var(--space-1);
   --title-bar-fill: var(--agent-shell-rail);
-  --status-bar-height: 24px;
+  --status-bar-height: var(--space-6);
   --status-bar-fill: #1f1f1f;
   --agent-pane-deletions: #fa423e;
   grid-template-rows:
@@ -47,7 +47,7 @@
   min-width: 0;
   grid-area: start;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .title-bar__center {
@@ -74,8 +74,8 @@
   max-width: 280px;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 12px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-title-bar-search);
   color: var(--color-text-primary);
@@ -217,8 +217,8 @@
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 12px;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
   border: 0;
   color: inherit;
   background: transparent;
@@ -387,8 +387,8 @@
 @media (max-width: 640px) {
   .title-bar {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    column-gap: 8px;
-    padding-inline: 8px;
+    column-gap: var(--space-2);
+    padding-inline: var(--space-2);
   }
 
   .title-bar__center {
@@ -407,7 +407,7 @@
   }
 
   .title-bar__start {
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .title-bar__chat-search-label,

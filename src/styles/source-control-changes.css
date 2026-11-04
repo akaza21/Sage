@@ -150,9 +150,9 @@
   grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 4px;
-  padding: 8px;
+  gap: var(--space-2);
+  margin: 0 var(--space-1);
+  padding: var(--space-2);
   border: 1px solid
     color-mix(in srgb, var(--color-danger) 42%, var(--color-border-subtle));
   border-radius: var(--radius-sm);
@@ -164,11 +164,11 @@
 .source-change__confirmation-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .source-change__confirmation-button {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);

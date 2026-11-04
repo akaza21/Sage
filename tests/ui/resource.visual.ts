@@ -101,6 +101,14 @@ test.describe("AV-01 projection-fixture browser routes", () => {
         );
       }
       await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Toggle terminal", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        page.getByText("Terminal visibility could not be loaded.", {
+          exact: true,
+        }),
+      ).toHaveCount(0);
       // Projection-fixture proof only; native lifecycle proof is separate.
       await expectNoViewportOverflow(page);
       await settleTranscriptAtEnd(page);

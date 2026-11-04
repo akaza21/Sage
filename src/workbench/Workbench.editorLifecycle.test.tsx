@@ -14,7 +14,7 @@ vi.mock("../features/chat/ChatSurface", () => ({
 vi.mock("../features/diff/DiffSurface", () => ({
   DiffSurface: () => <section>Diff</section>,
 }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./LeftSidebar", () => ({ LeftSidebar: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
