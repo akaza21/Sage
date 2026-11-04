@@ -194,47 +194,21 @@ jobs:
       - run: npm ci
       - name: Provision the bundled Chromium the smoke CLI drives
         run: npx playwright install chromium
-      # The Windows Cargo Job tests give each cargo command 10 s. Install the
-      # rust-toolchain.toml toolchain first so no command waits on a download,
-      # then launch it once. The rustup proxy runs the toolchain binary as a
-      # child process, and a stalled run's Job held only the proxy cargo.exe,
-      # so the stall was before the freshly downloaded toolchain binary
-      # started. Each binary is timed on its first and second direct launch
-      # and then through the proxy, beside the Defender cloud settings that
-      # can hold the first launch of an unseen executable, so the log shows
-      # where any first-launch delay goes.
+      # The Windows Cargo Job tests give each cargo command 10 s; install the
+      # rust-toolchain.toml toolchain first so no command waits on a download.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
-      - name: Launch the pinned Rust toolchain once
-        shell: pwsh
-        run: |
-          try {
-            Get-MpPreference |
-              Select-Object MAPSReporting, CloudBlockLevel, CloudExtendedTimeout, DisableRealtimeMonitoring |
-              Format-List | Out-Host
-          } catch {
-            Write-Host "Defender preferences unavailable: $($_.Exception.Message)"
-          }
-          function Measure-Launch([string] $label, [string] $path) {
-            $elapsed = Measure-Command { & $path --version | Out-Host }
-            if ($LASTEXITCODE -ne 0) { throw "$label --version exited $LASTEXITCODE" }
-            Write-Host ("{0} took {1:N0} ms" -f $label, $elapsed.TotalMilliseconds)
-          }
-          foreach ($tool in 'cargo', 'rustc') {
-            $binary = (rustup which $tool).Trim()
-            if ($LASTEXITCODE -ne 0) { throw "rustup which $tool exited $LASTEXITCODE" }
-            Write-Host "$tool toolchain binary: $binary"
-            Measure-Launch "$tool toolchain binary first launch" $binary
-            Measure-Launch "$tool toolchain binary second launch" $binary
-            Measure-Launch "$tool through the rustup proxy" $tool
-          }
       - name: Run the Windows budget lane
         # Hosted TEMP can use an 8.3 short spelling, which
         # the native-IDE journey scripts refuse as non-canonical.
         # Point temp files at the runner's long-path temp directory instead.
+        # SAGE_CARGO_PROXY_TRACE is instrumentation for the Cargo proxy stall:
+        # the proxy semantics test runs Cargo with RUSTUP_LOG=trace and
+        # prints the trace. It is removed once the stall's cause is fixed.
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
+          SAGE_CARGO_PROXY_TRACE: "1"
         run: npm run test:budgets:windows
 
   rust:

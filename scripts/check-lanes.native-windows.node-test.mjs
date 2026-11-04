@@ -282,13 +282,19 @@ test("VCTIP retained-handle revalidation refuses a disappearing Job member", asy
 
 // origin: check-lanes.node-test.mjs:314 "Windows Cargo Job preserves Cargo proxy command semantics" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
+  // Instrumentation for the Cargo proxy stall, removed with its fix: with
+  // SAGE_CARGO_PROXY_TRACE set, rustup traces the proxy to stderr and the
+  // trace is printed with the elapsed time, so a run shows where the proxy's
+  // time goes. The trace needs larger output bounds than the command itself.
+  const trace = Boolean(process.env.SAGE_CARGO_PROXY_TRACE);
+  const stderrLimit = trace ? 262_144 : 4_096;
   const captured = { stdout: "", stderr: "" };
   const capture = (stream) =>
     new Writable({
       write(chunk, _encoding, callback) {
         captured[stream] = (captured[stream] + chunk.toString("utf8")).slice(
           0,
-          4_096,
+          stream === "stderr" ? stderrLimit : 4_096,
         );
         callback();
       },
@@ -301,11 +307,12 @@ test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
         command: "cargo.exe",
         args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
         cwd: path.resolve("."),
+        env: trace ? { RUSTUP_LOG: "trace" } : undefined,
         timeoutMs: 10_000,
         terminationGraceMs: 500,
         settlementTimeoutMs: 2_000,
-        maximumLineBytes: 1_024,
-        maximumOutputBytes: 4_096,
+        maximumLineBytes: trace ? 65_536 : 1_024,
+        maximumOutputBytes: trace ? stderrLimit + 4_096 : 4_096,
       },
       new AbortController().signal,
       { stdout: capture("stdout"), stderr: capture("stderr") },
@@ -315,6 +322,12 @@ test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
     error.cargoStderr = captured.stderr;
     error.elapsedMs = Math.round(performance.now() - started);
     throw error;
+  } finally {
+    if (trace) {
+      console.log(
+        `cargo proxy trace after ${Math.round(performance.now() - started)} ms:\n${captured.stderr}`,
+      );
+    }
   }
   assert.deepEqual(
     JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
