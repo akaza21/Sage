@@ -15,18 +15,37 @@ export function connectTerminalDock(
   blocked: () => boolean,
   onChange: (snapshot: TerminalDockProjection) => void,
 ) {
-  let returnFocus: HTMLElement | null = null;
+  let returnFocus: WeakRef<HTMLElement> | null = null;
+  let focusObserver: MutationObserver | null = null;
+  const clearReturnFocus = () => {
+    returnFocus = null;
+    focusObserver?.disconnect();
+    focusObserver = null;
+  };
   const setOpen = (open: boolean) => {
     const state = useTerminalDockStore.getState();
     if (!state.ready || state.visible === open) return;
-    if (open)
-      returnFocus =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
+    if (open) {
+      clearReturnFocus();
+      if (
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body &&
+        !document.activeElement.closest(".terminal-dock")
+      ) {
+        returnFocus = new WeakRef(document.activeElement);
+        focusObserver = new MutationObserver(() => {
+          if (!returnFocus?.deref()?.isConnected) clearReturnFocus();
+        });
+        focusObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+      }
+    }
+    const target = !open ? returnFocus?.deref() : null;
+    if (!open) clearReturnFocus();
     state.setVisible(open);
     if (!open) {
-      const target = returnFocus;
       const valid =
         target?.isConnected &&
         target !== document.body &&
@@ -80,11 +99,14 @@ export function connectTerminalDock(
     onChange({ visible, ...commands });
   };
   const unsubscribe = useTerminalDockStore.subscribe((state, previous) => {
+    if (!state.visible || !returnFocus?.deref()?.isConnected)
+      clearReturnFocus();
     if (state.visible !== previous.visible) publish();
   });
   publish();
   void useTerminalDockStore.getState().restore();
   return () => {
+    clearReturnFocus();
     window.removeEventListener("keydown", keyDown, true);
     unsubscribe();
     onChange(DISCONNECTED_TERMINAL);

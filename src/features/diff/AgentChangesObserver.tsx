@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AcpChatPage } from "../../domain/acp";
 import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
 import { terminalTurnStates } from "../chat/acp/statusSemantics";
 import { useAgentChangesState } from "../../workbench/agentChangesState";
-import { projectChanges } from "./agentChanges";
+import { changesSnapshot, snapshotChanges } from "./changesSnapshot";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { agentArtifactOwnerIsCurrent } from "../../app/openAgentArtifact";
 import {
@@ -15,31 +15,35 @@ import {
 /** Follows completed edits once per Turn; explicit selections stay put. */
 export function AgentChangesObserver({
   page: currentPage,
-  initialPage,
+  initialTurnKey,
   generation,
 }: {
   page: AcpChatPage;
-  initialPage: AcpChatPage;
+  initialTurnKey: string;
   generation: number;
 }) {
   const currentTurn = currentPage.turns.at(-1);
   const key = `${currentTurn?.id}:${currentTurn?.state}`;
-  const [completion, setCompletion] = useState<{
-    key: string;
-    page: AcpChatPage | null;
-  }>(() => {
-    const initial = initialPage.turns.at(-1);
-    return { key: `${initial?.id}:${initial?.state}`, page: null };
+  const [transition, setTransition] = useState({
+    key: initialTurnKey,
+    completed: false,
   });
-  if (completion.key !== key)
-    setCompletion({
+  if (transition.key !== key)
+    setTransition({
       key,
-      page:
-        currentTurn && terminalTurnStates.has(currentTurn.state)
+      completed: !!currentTurn && terminalTurnStates.has(currentTurn.state),
+    });
+  const snapshot = useMemo(
+    () =>
+      changesSnapshot(
+        transition.completed &&
+          currentTurn?.sessionId === currentPage.currentSessionId
           ? currentPage
           : null,
-    });
-  const page = completion.page;
+      ),
+    [currentPage, currentTurn?.sessionId, transition.completed],
+  );
+  const page = snapshot?.page ?? null;
   const ledger = useTurnWorkspaceChanges(page, isTauriRuntime());
   const handled = useRef("");
   const turn = page?.turns.at(-1);
@@ -53,13 +57,7 @@ export function AgentChangesObserver({
       return;
     const key = turn.id;
     if (handled.current === key) return;
-    const result = projectChanges(
-      "lastTurn",
-      page,
-      null,
-      ledger.changes,
-      ledger.incompleteTurnIds,
-    );
+    const result = snapshotChanges(snapshot, ledger);
     if (!result.entries.length) return;
     handled.current = key;
     const owner = {
@@ -84,6 +82,6 @@ export function AgentChangesObserver({
     )
       return;
     useAgentChangesState.getState().show(owner, generation);
-  }, [generation, ledger, page, turn]);
+  }, [generation, ledger, page, snapshot, turn]);
   return null;
 }

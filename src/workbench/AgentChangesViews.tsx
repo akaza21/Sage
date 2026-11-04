@@ -10,13 +10,17 @@ export function AgentChangesObserver(props: {
   page: AcpChatPage | null;
   generation: number;
 }) {
-  const [initialPage] = useState(props.page);
-  return initialPage && props.page && props.page !== initialPage ? (
+  const turn = props.page?.turns.at(-1);
+  const turnKey = `${turn?.id}:${turn?.state}`;
+  const [initialTurnKey] = useState(turnKey);
+  const [observing, setObserving] = useState(false);
+  if (!observing && turnKey !== initialTurnKey) setObserving(true);
+  return observing && props.page ? (
     <ObserverPart
       part="AgentChangesObserver"
       {...props}
       page={props.page}
-      initialPage={initialPage}
+      initialTurnKey={initialTurnKey}
     />
   ) : null;
 }
