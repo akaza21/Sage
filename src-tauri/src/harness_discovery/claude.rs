@@ -121,7 +121,7 @@ fn adapter_package_root_from(npm_roots: Vec<PathBuf>) -> Option<(PathBuf, PathBu
         })
 }
 
-fn npm_global_roots() -> Vec<PathBuf> {
+pub(super) fn npm_global_roots() -> Vec<PathBuf> {
     #[cfg(windows)]
     {
         super::candidates::known_install_roots_from_app_data(std::env::var_os("APPDATA").as_deref())
@@ -173,7 +173,10 @@ fn read_adapter(npm_root: &Path, root: &Path) -> Option<AdapterMetadata> {
     })
 }
 
-fn discover_node_from(paths: Vec<PathBuf>, limits: ProbeLimits) -> Option<(PathBuf, String)> {
+pub(super) fn discover_node_from(
+    paths: Vec<PathBuf>,
+    limits: ProbeLimits,
+) -> Option<(PathBuf, String)> {
     paths.into_iter().find_map(|path| {
         authentic_harness_file(&path, node_basename())
             .then_some(path)
@@ -192,7 +195,7 @@ fn node_candidate_exists(paths: &[PathBuf]) -> bool {
         .any(|path| authentic_harness_file(path, node_basename()))
 }
 
-fn node_candidates() -> Vec<PathBuf> {
+pub(super) fn node_candidates() -> Vec<PathBuf> {
     let mut candidates = path_candidates_for_basename(node_basename());
     #[cfg(windows)]
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
@@ -221,7 +224,7 @@ fn parse_node_version(output: &super::version_probe::StreamOutput) -> Option<Str
     valid_semver(version).then(|| version.to_owned())
 }
 
-fn read_json(path: &Path) -> Option<Value> {
+pub(super) fn read_json(path: &Path) -> Option<Value> {
     let metadata = path.metadata().ok()?;
     if metadata.len() > PACKAGE_JSON_BYTES_MAX {
         return None;
@@ -237,7 +240,7 @@ fn read_json(path: &Path) -> Option<Value> {
         .flatten()
 }
 
-fn required_package_text(value: &Value, key: &str) -> Option<String> {
+pub(super) fn required_package_text(value: &Value, key: &str) -> Option<String> {
     value
         .get(key)
         .and_then(Value::as_str)

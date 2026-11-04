@@ -3,6 +3,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { AGENT_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  dragAnswerPhrase,
+  openSelectionScenario,
+} from "./shared/transcriptSelection";
+import {
   expectNoViewportOverflow,
   openScenario,
   settleChatProjections,
@@ -130,7 +134,7 @@ async function expectComposerControlRow(page: Page) {
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
 }
 
-async function expectComposerToolbarLaidOut(form: Locator) {
+async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
   const geometry = await toolbar.evaluate((node) => {
@@ -176,7 +180,11 @@ async function expectComposerToolbarLaidOut(form: Locator) {
     };
   });
   // Wave 5: at 280px and below Project folds into the composer options menu.
-  expect(geometry.buttons).toHaveLength(geometry.composerWidth <= 280 ? 6 : 7);
+  // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
+  // rather than in the composer.
+  expect(geometry.buttons).toHaveLength(
+    !projectChip || geometry.composerWidth <= 280 ? 6 : 7,
+  );
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
     geometry.harnessContained,
@@ -435,9 +443,13 @@ test.describe("Tool activity rollup summary containment", () => {
     expect(geometry.summaryHeight).toBeLessThanOrEqual(geometry.lineHeight * 2);
     expect(geometry.cardOverflow).toBeLessThanOrEqual(1);
     expect(geometry.labelOverflow).toBeLessThanOrEqual(1);
+    // AP-E1: rows name the program Codex-style, without the shell wrapper.
     await expect(rollup).toContainText(
-      "powershell -NoProfile -Command 'Get-Content -Path alpha.txt -TotalCount 40'",
+      "Ran Get-Content -Path alpha.txt -TotalCount 40",
     );
+    await expect(
+      rollup.locator(":scope > .acp-tool-rollup__items"),
+    ).not.toContainText("powershell -NoProfile");
   });
 });
 
@@ -522,6 +534,7 @@ test.describe("ED02 picker visual states", () => {
 
   test("captures the modal-safe handoff target picker", async ({ page }) => {
     const workbench = await openScenario(page, "agent-picker-handoff", "agent");
+    await settleTranscriptAtEnd(page);
     const sourceChat = page.getByRole("region", {
       name: "Chat pane Source chat",
       exact: true,
@@ -693,7 +706,16 @@ test.describe("Artifact-constrained composer", () => {
 
     for (const width of [560, 589, 590, 630, 720, 721, 775] as const) {
       await page.locator(".workbench__body").evaluate((body, centerWidth) => {
-        body.style.gridTemplateColumns = `224px 8px ${centerWidth}px 8px minmax(0, 1fr)`;
+        const card = getComputedStyle(
+          body.querySelector(".agent-chat-center")!,
+        );
+        const frame = [
+          card.marginLeft,
+          card.marginRight,
+          card.borderLeftWidth,
+          card.borderRightWidth,
+        ].reduce((sum, value) => sum + Number.parseFloat(value), 0);
+        body.style.gridTemplateColumns = `224px 8px ${centerWidth + frame}px 8px minmax(0, 1fr)`;
       }, width);
       await expect(page.locator(".agent-chat-pane")).toHaveCSS(
         "width",
@@ -1066,189 +1088,227 @@ test.describe("V5c Agent child activity presentation", () => {
 });
 
 test.describe("Wave 2 accessibility and responsive states", () => {
-  test("keeps dual Chat header geometry stable when focus changes", async ({
+  for (const forcedColors of [false, true]) {
+    test(`explicit side split preserves keyboard traversal, narrow composers and focus rings (${forcedColors ? "forced colors" : "normal"})`, async ({
+      page,
+    }) => {
+      await openSelectionScenario(page);
+      await dragAnswerPhrase(page);
+      await page
+        .getByRole("button", { name: "Ask in side chat", exact: true })
+        .click();
+      const panes = page.locator(".agent-chat-pane");
+      await expect(panes).toHaveCount(2);
+      if (forcedColors) await page.emulateMedia({ forcedColors: "active" });
+      await expectFocusedChatIndicator(page, forcedColors, 2);
+      const splitter = page.getByRole("separator", {
+        name: "Resize chat panes",
+      });
+      await expect(splitter).toHaveAttribute("aria-valuenow", "43");
+      expect(
+        await splitter.evaluate(
+          (node) => getComputedStyle(node, "::after").width,
+        ),
+      ).toBe("2px");
+      const dictation = panes
+        .first()
+        .getByRole("button", { name: "Start dictation", exact: true });
+      await expect(dictation).toBeEnabled();
+      await dictation.focus();
+      await expectFocusedChatIndicator(page, forcedColors, 2);
+      await page.keyboard.press("Tab");
+      await expect(splitter).toBeFocused();
+      expect(
+        await splitter.evaluate((node) => node.matches(":focus-visible")),
+      ).toBe(true);
+      expect(
+        await splitter.evaluate(
+          (node) => getComputedStyle(node, "::after").width,
+        ),
+      ).toBe(forcedColors ? "2px" : "1px");
+      if (forcedColors) {
+        await expect(splitter).toHaveCSS("outline-style", "solid");
+        await expect(splitter).toHaveCSS("outline-width", "2px");
+        expect(
+          await splitter.evaluate(
+            (node) => getComputedStyle(node, "::after").boxShadow,
+          ),
+        ).toBe("none");
+      }
+      await page.keyboard.press("Shift+Tab");
+      await expect(dictation).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(splitter).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect
+        .poll(() =>
+          panes
+            .last()
+            .evaluate((node) => node.contains(document.activeElement)),
+        )
+        .toBe(true);
+      await expectFocusedChatIndicator(page, forcedColors, 2);
+      await page.keyboard.press("Shift+Tab");
+      await expect(splitter).toBeFocused();
+      await page.keyboard.press("ArrowRight");
+      await expect(splitter).toHaveAttribute("aria-valuenow", "48");
+      await page.keyboard.press("Shift+ArrowLeft");
+      await expect(splitter).toHaveAttribute("aria-valuenow", "38");
+
+      await page.evaluate(async () => {
+        const { acpProjectionStoreFor } =
+          await import("/src/app/acpProjectionRegistry.ts");
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const ids = Array.from(
+          document.querySelectorAll<HTMLElement>(".agent-chat-pane"),
+          (node) => node.dataset.chatId!,
+        );
+        for (const id of ids) {
+          const current = acpProjectionStoreFor(id).getState();
+          if (!current.page?.currentSessionId || !current.scope)
+            throw new Error("Missing Chat");
+          current.applyAuthoritativePage(current.scope, {
+            ...current.page,
+            sessionConfig: {
+              sageAgentSessionId: current.page.currentSessionId,
+              runtimeEpoch: "7" as never,
+              configRevision: "1" as never,
+              modes: {
+                currentModeId: "review",
+                availableModes: [
+                  {
+                    id: "review",
+                    name: "Review changes",
+                    description: "Analyze changes without applying them.",
+                  },
+                ],
+              },
+              configOptions: [],
+            },
+          });
+        }
+        const primaryId = ids[0];
+        const sessionId =
+          acpProjectionStoreFor(primaryId).getState().page!.currentSessionId!;
+        const state = useWorkbenchStore.getState();
+        useWorkbenchStore.setState({
+          chatUiById: {
+            ...state.chatUiById,
+            [primaryId]: {
+              ...state.chatUiById[primaryId],
+              modeError: "Mode update conflicted",
+              modeErrorOwner: { sessionId, runtimeEpoch: "7" as never },
+            },
+          },
+        });
+      });
+      const centerWidth = await page
+        .locator(".agent-chat-panes")
+        .evaluate((node) => node.clientWidth);
+      const viewport = page.viewportSize()!;
+      await page.setViewportSize({
+        width: viewport.width + 900 - centerWidth,
+        height: viewport.height,
+      });
+      await expect(panes).toHaveCount(2);
+      for (const [key, percent, narrowIndex] of [
+        ["End", "70", 1],
+        ["Home", "30", 0],
+      ] as const) {
+        await splitter.focus();
+        await page.keyboard.press(key);
+        await expect(splitter).toHaveAttribute("aria-valuenow", percent);
+        await expect
+          .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
+          .toBeLessThanOrEqual(280);
+        for (const [index, pane] of (await panes.all()).entries()) {
+          // The second pane is the new, turnless side chat.
+          await expectComposerToolbarLaidOut(
+            pane.locator("form.composer"),
+            index === 0,
+          );
+          await expect(
+            pane.getByRole("textbox", { name: "Message agent" }),
+          ).toBeVisible();
+        }
+      }
+      const optionsTrigger = panes
+        .first()
+        .getByRole("button", { name: "Composer options", exact: true });
+      await optionsTrigger.click();
+      const optionsId = await optionsTrigger.getAttribute("aria-controls");
+      await expect(page.locator(`[id="${optionsId}"]`)).toHaveAttribute(
+        "role",
+        "menu",
+      );
+      await expect(
+        page
+          .locator(`[id="${optionsId}"]`)
+          .getByRole("menuitemradio", { name: "Review changes" }),
+      ).toHaveAttribute("aria-checked", "true");
+      const modeAlert = panes
+        .first()
+        .locator("form.composer .composer__controls")
+        .getByRole("alert");
+      await expect(modeAlert).toHaveText("Mode update conflicted");
+      await expect(modeAlert).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(`[id="${optionsId}"]`)).toHaveCount(0);
+      await expect(optionsTrigger).toBeFocused();
+      const measurePanes = () =>
+        panes.evaluateAll((items) =>
+          items.map((node) => {
+            const box = node.getBoundingClientRect();
+            return [box.x, box.y, box.width, box.height];
+          }),
+        );
+      const before = await measurePanes();
+      await panes
+        .last()
+        .getByRole("textbox", { name: "Message agent" })
+        .focus();
+      await expectFocusedChatIndicator(page, forcedColors, 2);
+      expect(await measurePanes()).toEqual(before);
+      await expectNoViewportOverflow(page);
+    });
+  }
+
+  test("keeps one Chat and its own header when switching between open chats", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "agent-dual", "agent");
     const panes = page.locator(".agent-chat-pane");
     const header = page.locator(".agent-task-header");
-    await expect(panes).toHaveCount(2);
-    await expectFocusedChatIndicator(page);
+    await expect(panes).toHaveCount(1);
     await expect(header).toHaveCount(1);
-    await expect(panes.locator(".surface-header")).toHaveCount(0);
     await expect(header.locator(".agent-task-header__title")).toHaveText(
       "Agent navigation polish",
     );
-    const chatSplitter = page.getByRole("separator", {
-      name: "Resize chat panes",
-    });
-    await expect(chatSplitter).toHaveCount(1);
-    const sidebarSplitter = page.locator(".workbench-sidebar-splitter");
-    await expect(sidebarSplitter).toHaveCount(1);
-    expect(
-      await sidebarSplitter.evaluate(
-        (node) => getComputedStyle(node, "::after").width,
-      ),
-    ).toBe("2px");
-    expect(
-      await chatSplitter.evaluate(
-        (node) => getComputedStyle(node, "::after").width,
-      ),
-    ).toBe("2px");
-    const primaryDictation = panes.nth(0).getByRole("button", {
-      name: "Start dictation",
-      exact: true,
-    });
-    await expect(primaryDictation).toBeEnabled();
     await expect(
-      panes.nth(0).getByRole("button", { name: "Send message" }),
-    ).toBeDisabled();
-    const waitingActivity = panes.nth(1).locator(".acp-tool-rollup > summary");
-    await expect(waitingActivity).toBeVisible();
-    await primaryDictation.focus();
-    await page.keyboard.press("Tab");
-    await expect(chatSplitter).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
-    await expect(primaryDictation).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(chatSplitter).toBeFocused();
-    expect(
-      await chatSplitter.evaluate((node) => ({
-        focusVisible: node.matches(":focus-visible"),
-        lineWidth: getComputedStyle(node, "::after").width,
-      })),
-    ).toEqual({ focusVisible: true, lineWidth: "1px" });
-    const waitingGoal = panes.nth(1).locator(".chat-goal-entry > summary");
-    const waitingCancel = panes
-      .nth(1)
-      .getByRole("button", { name: "Cancel turn", exact: true });
-    // Wave 5: the Goal row renders only for an existing goal, so the waiting
-    // pane tabs from its activity straight to Cancel.
-    await expect(waitingGoal).toHaveCount(0);
-    await expect(waitingCancel).toBeEnabled();
-    await page.keyboard.press("Tab");
-    await expect(panes.nth(1)).toHaveClass(/agent-chat-pane--focused/);
-    expect(
-      await panes
-        .nth(1)
-        .evaluate((node) => node.contains(document.activeElement)),
-    ).toBe(true);
-    await expect(waitingActivity).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(waitingCancel).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
-    await expect(waitingActivity).toBeFocused();
-    await chatSplitter.focus();
-    await expect(chatSplitter).toBeFocused();
-    await chatSplitter.evaluate((node) => (node as HTMLElement).blur());
+      page.getByRole("separator", { name: "Resize chat panes" }),
+    ).toHaveCount(0);
+    const before = await panes.first().boundingBox();
     await page
-      .getByRole("button", { name: /^Open chat Agent navigation polish/ })
+      .getByRole("button", { name: /^Open chat Editor consistency pass/ })
       .click();
-    await page.evaluate(async () => {
-      const { acpProjectionStoreFor } =
-        await import("/src/app/acpProjectionRegistry.ts");
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
-      for (const chatId of ["visual-chat-primary", "visual-chat-secondary"]) {
-        const store = acpProjectionStoreFor(chatId as never);
-        const current = store.getState();
-        if (!current.page || !current.scope) throw new Error("Missing Chat");
-        current.applyAuthoritativePage(current.scope, {
-          ...current.page,
-          sessionConfig: {
-            sageAgentSessionId: "visual-session",
-            runtimeEpoch: "7",
-            configRevision: "1",
-            modes: {
-              currentModeId: "review",
-              availableModes: [
-                {
-                  id: "review",
-                  name: "Review changes",
-                  description: "Analyze changes without applying them.",
-                },
-              ],
-            },
-            configOptions: [],
-          },
-        });
-      }
-      const workbench = useWorkbenchStore.getState();
-      const primary = workbench.chatUiById["visual-chat-primary"];
-      useWorkbenchStore.setState({
-        chatUiById: {
-          ...workbench.chatUiById,
-          "visual-chat-primary": {
-            ...primary,
-            modeError: "Mode update conflicted",
-            modeErrorOwner: {
-              sessionId: "visual-session",
-              runtimeEpoch: "7",
-            },
-          },
-        },
-      });
-    });
-    await chatSplitter.focus();
-    await page.keyboard.press("End");
-    await expect(chatSplitter).toHaveAttribute("aria-valuenow", "70");
-    await page.keyboard.press("Home");
-    await expect(chatSplitter).toHaveAttribute("aria-valuenow", "30");
-    for (const owner of await panes.all()) {
-      await expectComposerToolbarLaidOut(owner.locator("form.composer"));
-    }
-    const narrowPane = panes.nth(0);
-    const optionsTrigger = narrowPane.getByRole("button", {
-      name: "Composer options",
-      exact: true,
-    });
-    await optionsTrigger.click();
-    const panelId = await optionsTrigger.getAttribute("aria-controls");
-    const options = page.locator(`[id="${panelId}"]`);
-    await expect(options).toHaveAttribute("role", "menu");
-    await expect(options).toHaveAttribute(
-      "aria-label",
-      "Composer options menu",
-    );
-    await expect(
-      options.getByRole("menuitemradio", { name: "Review changes" }),
-    ).toHaveAttribute("aria-checked", "true");
-    // Session-setting errors stay in the toolbar, outside the Add menu.
-    const modeAlert = narrowPane
-      .locator("form.composer .composer__controls")
-      .getByRole("alert");
-    await expect(modeAlert).toHaveText("Mode update conflicted");
-    await expect(modeAlert).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(options).toHaveCount(0);
-    await expect(optionsTrigger).toBeFocused();
-    const measurePanes = () =>
-      panes.evaluateAll((items) =>
-        items.map((item) => {
-          const box = item.getBoundingClientRect();
-          return [box.x, box.y, box.width, box.height];
-        }),
-      );
-    await page
-      .getByRole("button", { name: /^Open chat Agent navigation polish/ })
-      .click();
-    const before = await measurePanes();
-    const waitingPane = panes.nth(1);
-    await expect(
-      waitingPane.getByRole("textbox", { name: "Message agent" }),
-    ).toBeDisabled();
-    await waitingCancel.focus();
-    await expect(waitingCancel).toBeFocused();
-    await expect(waitingPane).toHaveClass(/agent-chat-pane--focused/);
-    await expectFocusedChatIndicator(page);
+    await expect(panes).toHaveCount(1);
     await expect(header.locator(".agent-task-header__title")).toHaveText(
       "Editor consistency pass",
     );
-    await page.keyboard.press("Shift+Tab");
-    await expect(waitingActivity).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(waitingCancel).toBeFocused();
-    expect(await measurePanes()).toEqual(before);
+    await expect(
+      panes.first().getByRole("textbox", { name: "Message agent" }),
+    ).toBeEnabled();
+    await expect(
+      panes.first().getByRole("button", { name: "Cancel turn", exact: true }),
+    ).toBeEnabled();
+    expect(await panes.first().boundingBox()).toEqual(before);
+    await page
+      .getByRole("button", { name: /^Open chat Agent navigation polish/ })
+      .click();
+    await expect(header.locator(".agent-task-header__title")).toHaveText(
+      "Agent navigation polish",
+    );
     await expectNoViewportOverflow(page);
   });
 
@@ -1349,7 +1409,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .poll(
         () =>
           focusVisible.evaluate((trigger) => {
-            const owner = trigger.closest<HTMLElement>(".composer");
+            const owner = trigger.closest<HTMLElement>(".chat-dock");
             if (!owner) return false;
             const edgeProbe = document.createElement("span");
             edgeProbe.style.border = "1px solid var(--composer-border)";
@@ -1377,7 +1437,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         getComputedStyle(transparentProbe).borderTopColor;
       transparentProbe.remove();
 
-      const owner = trigger.closest<HTMLElement>(".composer");
+      const owner = trigger.closest<HTMLElement>(".chat-dock");
       const ownerStyle = owner ? getComputedStyle(owner) : null;
       const workbench = trigger.closest<HTMLElement>(".workbench");
       const workbenchStyle = workbench ? getComputedStyle(workbench) : null;
@@ -1469,7 +1529,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       .poll(
         () =>
           keyboardFocus.evaluate((trigger) => {
-            const owner = trigger.closest<HTMLElement>(".composer");
+            const owner = trigger.closest<HTMLElement>(".chat-dock");
             if (!owner) return false;
             const borderProbe = document.createElement("span");
             borderProbe.style.border = "1px solid Highlight";
@@ -1490,7 +1550,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           .join("");
         return `${element.tagName.toLowerCase()}${id}${classes}`;
       };
-      const owner = trigger.closest<HTMLElement>(".composer");
+      const owner = trigger.closest<HTMLElement>(".chat-dock");
       const ownerStyle = owner ? getComputedStyle(owner) : null;
       const systemProbe = document.createElement("span");
       systemProbe.style.border = "1px solid Highlight";
@@ -1555,11 +1615,14 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await openScenario(page, "agent-dual", "agent");
     await expectFocusedChatIndicator(page, true);
     await page
+      .getByRole("button", { name: /^Open chat Editor consistency pass/ })
+      .click();
+    await page
       .locator(".agent-chat-pane")
-      .nth(1)
+      .first()
       .getByRole("button", { name: "Cancel turn", exact: true })
       .focus();
-    await expect(page.locator(".agent-chat-pane").nth(1)).toHaveClass(
+    await expect(page.locator(".agent-chat-pane").first()).toHaveClass(
       /agent-chat-pane--focused/,
     );
     await expectFocusedChatIndicator(page, true);

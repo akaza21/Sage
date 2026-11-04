@@ -3,6 +3,7 @@ import { forwardRef, memo, type CSSProperties } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import type { PopoverPoint } from "../../ui/pointerPopoverPosition";
 import type { GitDecorationBadge } from "../git/GitDecorationBadge";
 import type { GitDecoration } from "../git/gitDecorations";
 import { isContextMenuKey } from "./explorerContextMenu";
@@ -21,7 +22,11 @@ interface ExplorerRowProps {
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
   /** A right-click, or the context-menu key, on the row (ED-18). */
-  onContextMenu?: (resource: ResourceRef, row: HTMLButtonElement) => void;
+  onContextMenu?: (
+    resource: ResourceRef,
+    row: HTMLButtonElement,
+    point?: PopoverPoint,
+  ) => void;
 }
 
 export const ExplorerRow = memo(
@@ -81,7 +86,10 @@ export const ExplorerRow = memo(
           if (!onContextMenu) return;
           // Never the webview's own menu (Reload, Inspect) over the tree.
           event.preventDefault();
-          onContextMenu(entry.resource, event.currentTarget);
+          onContextMenu(entry.resource, event.currentTarget, {
+            x: event.clientX,
+            y: event.clientY,
+          });
         }}
         onKeyDown={(event) => {
           if (!onContextMenu || !isContextMenuKey(event)) return;

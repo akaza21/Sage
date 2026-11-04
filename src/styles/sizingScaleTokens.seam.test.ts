@@ -8,7 +8,7 @@ const globalSource = readFileSync(
   "utf8",
 );
 const composerSource = readFileSync(
-  resolve(process.cwd(), "src/styles/composer-surface.css"),
+  resolve(process.cwd(), "src/styles/surface.css"),
   "utf8",
 );
 const rootBlock = globalSource.match(/:root\s*\{(?<declarations>[\s\S]*?)\n\}/)
@@ -18,7 +18,7 @@ describe("sizing scale tokens", () => {
   it("keeps the composer card at the sixteen-pixel radius token", () => {
     expect(rootBlock).toMatch(/--radius-xl:\s*16px;/);
     expect(composerSource).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
+      /\.surface--dock\s*\{[^}]*--surface-radius:\s*var\(--radius-xl\);/s,
     );
   });
 

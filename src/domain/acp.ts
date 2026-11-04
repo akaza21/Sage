@@ -301,3 +301,16 @@ type AcpCommandFailureDetail =
 export type AcpCommandFailure = AcpCommandFailureDetail & {
   promptDispatch?: "notStarted" | "unknown";
 };
+
+/** A rail read contains no transcript items, activities or session pages. */
+export interface AcpChatStatus {
+  projectId: SageProjectId;
+  chatId: SageChatId;
+  title: string;
+  latestTurn: {
+    state: TurnState;
+    updatedAt: number;
+    createdAt: number;
+    terminalAt: number | null;
+  } | null;
+}

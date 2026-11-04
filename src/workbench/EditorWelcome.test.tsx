@@ -8,8 +8,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
+import { ActiveEditorCanvas } from "./ActiveEditorCanvas";
 import { useQuickOpenStore } from "../features/quickOpen/quickOpenState";
-import { EditorWelcome } from "./EditorWelcome";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -19,12 +19,21 @@ afterEach(() => {
 });
 
 describe("EditorWelcome", () => {
-  it("offers only working Editor and Agent destinations", () => {
+  it("offers only working Editor and Agent destinations", async () => {
     const onOpenAgent = vi.fn();
     useWorkbenchStore.setState({ sidebarOpen: false, sidebarView: "outline" });
-    render(<EditorWelcome onOpenAgent={onOpenAgent} />);
+    render(<ActiveEditorCanvas onOpenAgent={onOpenAgent} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
+    const mark = (
+      await screen.findByRole("region", { name: "Editor welcome" })
+    ).querySelector(".editor-welcome__mark");
+    expect(mark?.tagName.toLowerCase()).toBe("svg");
+    expect(mark).toHaveAttribute("fill", "none");
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Browse files" }),
+    );
     expect(useWorkbenchStore.getState()).toMatchObject({
       sidebarOpen: true,
       sidebarView: "explorer",
@@ -48,18 +57,22 @@ describe("EditorWelcome", () => {
             src
           </button>
         </div>
-        <EditorWelcome onOpenAgent={vi.fn()} />
+        <ActiveEditorCanvas onOpenAgent={vi.fn()} />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Browse files" }),
+    );
     await waitFor(() =>
       expect(screen.getByRole("treeitem", { name: "src" })).toHaveFocus(),
     );
   });
 
   it("waits for an Explorer that mounts after the click", async () => {
-    render(<EditorWelcome onOpenAgent={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
+    render(<ActiveEditorCanvas onOpenAgent={vi.fn()} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Browse files" }),
+    );
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const tree = document.createElement("div");
     tree.setAttribute("role", "tree");
@@ -80,10 +93,12 @@ describe("EditorWelcome", () => {
     render(
       <>
         <input aria-label="Elsewhere" />
-        <EditorWelcome onOpenAgent={vi.fn()} />
+        <ActiveEditorCanvas onOpenAgent={vi.fn()} />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Browse files" }),
+    );
     const elsewhere = screen.getByRole("textbox", { name: "Elsewhere" });
     elsewhere.focus();
     const tree = document.createElement("div");
@@ -112,10 +127,12 @@ describe("EditorWelcome", () => {
             </button>
           </div>
         </section>
-        <EditorWelcome onOpenAgent={vi.fn()} />
+        <ActiveEditorCanvas onOpenAgent={vi.fn()} />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Browse files" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Browse files" }),
+    );
     // The compact drawer focuses its panel when it opens.
     document.querySelector<HTMLElement>(".sidebar")!.focus();
     await new Promise((resolve) => requestAnimationFrame(resolve));

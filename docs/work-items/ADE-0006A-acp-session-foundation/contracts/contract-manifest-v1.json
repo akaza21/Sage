@@ -5,7 +5,7 @@
   "selfIncluded": false,
   "ordering": "relativePath ascending by UTF-8 byte order",
   "fileCount": 16,
-  "logicalBytes": 238280,
+  "logicalBytes": 238463,
   "files": [
     {
       "relativePath": "README.md",
@@ -39,8 +39,8 @@
     },
     {
       "relativePath": "limits-v1.json",
-      "bytes": 5862,
-      "sha256": "993320cc797c58d2a39900300ce24d7b075b0a3e04ab87407014ea60739178a9"
+      "bytes": 5863,
+      "sha256": "f3b92a78d26a3dc3458501853f2b35df1ae73540b1d61b896b2062a41f554b59"
     },
     {
       "relativePath": "migration-recovery-v1.json",
@@ -49,8 +49,8 @@
     },
     {
       "relativePath": "ownership-manifest-v1.json",
-      "bytes": 22381,
-      "sha256": "8ea772f2006d47455bf1bc4cfcab9b1fcaa3769c13f883ac267140ad1e9126cf"
+      "bytes": 22563,
+      "sha256": "f28c76b8a86d56d94bd78d087ec16ea9f03c10d555a75f53927195064d98d7f1"
     },
     {
       "relativePath": "package-contract-v1.json",

@@ -76,42 +76,6 @@ export function useGitGutter(
 
   useEffect(() => {
     if (!gutter || !resource) return;
-    let current = true;
-    let loading = false;
-    let again = false;
-    const load = () => {
-      if (loading) {
-        again = true;
-        return;
-      }
-      loading = true;
-      again = false;
-      void gutter.module
-        .gutterBases()
-        .load(resource)
-        .then(
-          (base) => current && gutter.handle.setBase(base),
-          () => current && gutter.handle.setBase(null),
-        )
-        .finally(() => {
-          loading = false;
-          if (current && again) load();
-        });
-    };
-    load();
-    // Store subscription, not a selector: refreshes re-render nothing here.
-    const unsubscribe = useWorkbenchStore.subscribe((state, previous) => {
-      const refreshed =
-        previous.repositoryRefreshing && !state.repositoryRefreshing;
-      if (
-        refreshed ||
-        rootOf(state, resource.rootId) !== rootOf(previous, resource.rootId)
-      )
-        load();
-    });
-    return () => {
-      current = false;
-      unsubscribe();
-    };
+    return gutter.module.watchGitGutterBase(gutter.handle, resource);
   }, [gutter, resource]);
 }

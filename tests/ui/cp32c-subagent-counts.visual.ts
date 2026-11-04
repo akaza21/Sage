@@ -10,6 +10,7 @@ async function installSubagents(
   kind: "children" | "tasks" | "pi" | "opencode" | "omp",
 ) {
   await openScenario(page, "waiting", "agent");
+  await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async (mode) => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
@@ -143,7 +144,9 @@ for (const width of [1888, 720, 480]) {
     await expect(region.getByLabel("Recent subagents done: 64")).toBeVisible();
     const rows = region.getByRole("button");
     await expect(rows).toHaveCount(128);
-    await expect(rows.first()).toBeFocused();
+    // AP-F4: the panel opens on its first entry, Changes, above Subagents.
+    const first = panel.getByRole("button", { name: "Changes", exact: true });
+    await expect(first).toBeFocused();
     await expect(page.locator(".subagent-surface")).toHaveCount(0);
     const geometry = await panel.evaluate((popover) => {
       const box = popover.getBoundingClientRect();
@@ -170,11 +173,12 @@ for (const width of [1888, 720, 480]) {
     expect(geometry.scrollHeight).toBeGreaterThan(geometry.listHeight);
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.listWidth);
     await expect(region).not.toContainText("private-child");
+    await rows.first().focus();
     await rows.first().press("Escape");
     await expect(panel).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await trigger.press("Enter");
-    await rows.first().press("Shift+Tab");
+    await first.press("Shift+Tab");
     await expect(panel).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await trigger.press("Enter");

@@ -54,7 +54,8 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
     .click();
   await expect(sideTab.locator(".agent-chat-pane__title")).toHaveText(prompt);
   await expect(sideTab.locator(".spinner")).toBeVisible();
-  await expect(page.locator(".project-chat__working")).toBeVisible();
+  // AP-C4: the running chat shows a spinner in its project group and Recents.
+  await expect(page.locator(".project-chat__working").first()).toBeVisible();
   await expect(workbench).toHaveScreenshot("side-chat-running.png");
   await page.evaluate(async () => {
     const fixture =

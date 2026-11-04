@@ -8,6 +8,8 @@ import type {
   PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
+  ResolveResourceRepositoryRequest,
+  ResolveResourceRepositoryResult,
   EditorWatchSubscription,
   NestedRepositoryFileDiffRequest,
   NestedRepositoryFileDiffResult,
@@ -44,6 +46,8 @@ import type {
   ProjectLayoutRequest,
   ProjectRepositoryStatus,
   ProjectSwitchRequest,
+  CreateProjectRequest,
+  ProjectSourceFolder,
   ProjectTransitionResult,
   RenameChatRequest,
   RenameProjectFileRequest,
@@ -78,7 +82,9 @@ export interface ProjectPort {
     chatId: string,
     prompts: readonly QueuedChatPrompt[],
   ): Promise<void>;
-  createProjectFromPicker(
+  pickProjectSourceFolder(): Promise<ProjectSourceFolder | null>;
+  createProject(
+    request: CreateProjectRequest,
     expectedActiveProjectId: string | null,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
@@ -140,10 +146,16 @@ export interface EditorPort {
 }
 
 export interface RepositoryPort {
+  resolveResourceRepository(
+    request: ResolveResourceRepositoryRequest,
+  ): Promise<ResolveResourceRepositoryResult>;
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
   /** Changes when Git state may have changed outside Sage (EP-12). */
   getRepositoryChangeStamp(): Promise<string>;
-  getFileDiff(resource: ResourceRef): Promise<FileDiff>;
+  getFileDiff(
+    resource: ResourceRef,
+    scope?: "staged" | "unstaged",
+  ): Promise<FileDiff>;
   /** The staged text the gutter compares against (EP-14). */
   getFileGitBase(
     resource: ResourceRef,
@@ -284,13 +296,14 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
   project: [
     "addProjectRootFromPicker",
     "createProjectFile",
+    "createProject",
     "createProjectFolder",
-    "createProjectFromPicker",
     "ensureLocalProject",
     "getBootstrapSnapshot",
     "listDirectory",
     "persistProjectLayout",
     "persistProjectLayoutAndClose",
+    "pickProjectSourceFolder",
     "renameProjectFile",
     "renameProjectFolder",
     "switchProject",
@@ -316,6 +329,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "createGitLocalBranch",
     "deleteGitLocalBranch",
     "discoverProjectRepositories",
+    "resolveResourceRepository",
     "fetchGitRemote",
     "getFileDiff",
     "getFileGitBase",

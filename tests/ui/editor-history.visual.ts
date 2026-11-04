@@ -68,9 +68,10 @@ test.describe("Editor history", () => {
     await box.fill(">go forward");
     const options = dialog.getByRole("option");
     await expect(options).toHaveCount(1);
-    await expect(options.first().locator("kbd")).toHaveText(
-      apple ? "Ctrl+Shift+-" : "Alt+Right",
-    );
+    const shortcut = options.first().locator(".quick-open__shortcut");
+    const chord = apple ? "Ctrl+Shift+-" : "Alt+Right";
+    await expect(shortcut).toHaveText(chord);
+    await expect(shortcut).toHaveAccessibleName(chord);
     await box.press("Enter");
     await expect(dialog).toBeHidden();
     await expect.poll(() => activeFile(page)).toBe("src/apple/core.ts");

@@ -1,60 +1,55 @@
 import {
   useCallback,
   useEffect,
-  useRef,
+  useMemo,
   useState,
   type CSSProperties,
 } from "react";
-import { useWorkbenchStore } from "../app/store";
-import { useSettingsPageRequest } from "../app/settingsPageRequest";
-import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
-import { usesMetaModifier } from "../ui/shortcutLabel";
+import { pinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSessionAccessModeStore } from "../app/sessionAccessModeStore";
+import { useWorkbenchStore } from "../app/store";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
-import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
-import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
-import { ActiveEditorCanvas } from "./ActiveEditorCanvas";
+import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
+import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
+import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
+import { isTauriRuntime } from "../ports/nativeInvoke";
+import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
 import { DirtyTabDialog } from "./DirtyTabDialog";
+import "./harness-browser-mode.css";
+import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
-import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import type { TabStripProps } from "./TabStrip";
-import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
-import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { TitleBar } from "./TitleBar";
-import {
-  type AgentCenterDecision,
-  agentCenterChatAction,
-  DEFAULT_WORKBENCH_WINDOW_MODE,
-  EDITOR_CANVAS_KINDS,
-  isAgentArtifactTabKind,
-  isCompactDrawerOpen,
-  lastArtifactTabId,
-  type WorkbenchWindowMode,
-} from "./workbenchWindowMode";
-import {
-  EDITOR_ACTIVITY_BAR_WIDTH,
-  EDITOR_TOOL_RAIL_WIDTH,
-} from "./workbenchSidebarResize";
-import {
-  readWorkbenchLayout,
-  writeWorkbenchLayout,
-} from "./workbenchLayoutStorage";
-import "./workbench-window-mode.css";
-import "./harness-browser-mode.css";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
-import { isTauriRuntime } from "../ports/nativeInvoke";
-import { pinnedAgentChatOwner } from "../app/agentChatOwner";
-import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
-import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
+import { useWorkbenchKeys } from "./useWorkbenchKeys";
+import "./workbench-window-mode.css";
 import {
-  openCommandPalette,
-  openQuickOpen,
-} from "../features/quickOpen/quickOpenState";
+  AgentCenterKeeper,
+  EditorContinuityKeeper,
+  RendererRecreationPacketCollector,
+} from "./WorkbenchContinuity";
+import {
+  readWorkbenchLayout,
+  writeWorkbenchLayout,
+} from "./workbenchLayoutStorage";
+import {
+  EDITOR_ACTIVITY_BAR_WIDTH,
+  EDITOR_TOOL_RAIL_WIDTH,
+} from "./workbenchSidebarResize";
+import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
+import {
+  DEFAULT_WORKBENCH_WINDOW_MODE,
+  EDITOR_CANVAS_KINDS,
+  isAgentArtifactTabKind,
+  isCompactDrawerOpen,
+  type WorkbenchWindowMode,
+} from "./workbenchWindowMode";
 
 registerWorkbenchSurfaces();
 
@@ -62,6 +57,13 @@ const loadAgentWorkbenchBody = () =>
   import("./AgentWorkbenchBody").then(({ AgentWorkbenchBody }) => ({
     default: AgentWorkbenchBody,
   }));
+
+const loadRailStatus = () =>
+  import("./useAgentRailStatus").then(({ AgentRailStatusObserver }) => ({
+    default: AgentRailStatusObserver,
+  }));
+
+const loadEditorCanvas = () => import("./ActiveEditorCanvas");
 
 // The Editor's tab strip stays off the Agent startup path.
 const loadTabStrip = () =>
@@ -72,141 +74,52 @@ const loadTerminalDock = () =>
     default: TerminalDockForWorkbench,
   }));
 
+const loadAgentSettings = () =>
+  import("../features/settings/AgentSettingsSurface");
+
 const workbenchGeometryStyle = {
   "--editor-activity-width": `${EDITOR_ACTIVITY_BAR_WIDTH}px`,
 } as CSSProperties;
 
-function EditorContinuityKeeper({
-  windowMode,
-}: {
-  windowMode: WorkbenchWindowMode;
-}) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const lastArtifactId = useRef<string | null>(null);
-  const previousMode = useRef<WorkbenchWindowMode | null>(null);
-
-  useEffect(() => {
-    const active = tabs.find((tab) => tab.id === activeTabId);
-    if (active && isAgentArtifactTabKind(active.kind)) {
-      lastArtifactId.current = active.id;
-    }
-  }, [activeTabId, tabs]);
-
-  useEffect(() => {
-    const enteredEditor =
-      windowMode === "editor" && previousMode.current !== "editor";
-    previousMode.current = windowMode;
-    if (!enteredEditor) return;
-    const state = useWorkbenchStore.getState();
-    const active =
-      state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
-    if (
-      active &&
-      (isAgentArtifactTabKind(active.kind) || active.kind === "settings")
-    )
-      return;
-    const continuity = lastArtifactTabId(state.tabs, lastArtifactId.current);
-    if (continuity && continuity !== state.activeTabId) {
-      void state.activateTab(continuity);
-    }
-  }, [windowMode]);
-
-  return null;
-}
-
-function agentCenterAttemptKey(
-  decision: AgentCenterDecision,
-  projectId: string | null,
-): string | null {
-  const scope = projectId ?? "";
-  if (decision.action === "create") return `create:${scope}`;
-  return null;
-}
-
-function AgentCenterKeeper({
-  windowMode,
-}: {
-  windowMode: WorkbenchWindowMode;
-}) {
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const projectTransitioning = useWorkbenchStore(
-    (state) => state.projectTransitioning,
-  );
-  const projectGeneration = useWorkbenchStore(
-    (state) => state.projectGeneration,
-  );
-  const attemptedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (windowMode !== "agent") {
-      attemptedRef.current = null;
-      return;
-    }
-    if (projectTransitioning) return;
-    const state = useWorkbenchStore.getState();
-    const decision = agentCenterChatAction(state.tabs, activeTabId);
-    if (decision.action === "none") {
-      attemptedRef.current = null;
-      return;
-    }
-    const attemptKey = agentCenterAttemptKey(
-      decision,
-      state.project?.id ?? null,
-    );
-    if (attemptKey === null || attemptedRef.current === attemptKey) return;
-    attemptedRef.current = attemptKey;
-    void state.createChat();
-  }, [windowMode, activeTabId, projectTransitioning, projectGeneration]);
-
-  return null;
-}
-
-function RendererRecreationPacketCollector({
-  windowMode,
-}: {
-  windowMode: WorkbenchWindowMode;
-}) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const selectedHarnessId = useWorkbenchStore(
-    (state) => state.selectedHarnessId,
-  );
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const admitted = admitsFocusedCodexRendererRecreation({
-    windowMode,
-    activeTabId,
-    focusedChatId: activeTab?.kind === "chat" ? activeTab.id : null,
-    harness: harnesses.find((harness) => harness.id === selectedHarnessId),
-  });
-
-  useEffect(() => {
-    if (!admitted) return;
-    return mountRendererRecreationPacketCollector();
-  }, [admitted]);
-
-  return null;
-}
-
 export function Workbench() {
+  const onPreviewTargetChange = usePreviewTargetLifetime();
+  const agentSettingsPage = useAgentSettingsState(
+    (state) => state.page !== null,
+  );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const compact = useCompactWorkbenchLayout();
+  const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
-  useEffect(() => {
-    // A resource menu may open Settings while the Agent canvas is visible.
-    return useSettingsPageRequest.subscribe(({ page }) => {
-      if (page) setWindowMode("editor");
-    });
-  }, []);
   const [agentArtifactExpanded, setAgentArtifactExpanded] = useState(false);
+  const [navigation, setNavigation] = useState({
+    narrow: narrowAgent,
+    collapsed: narrowAgent,
+  });
+  const agentNavigationCollapsed =
+    navigation.narrow === narrowAgent ? navigation.collapsed : narrowAgent;
+  if (navigation.narrow !== narrowAgent)
+    setNavigation({ narrow: narrowAgent, collapsed: narrowAgent });
   const { changeWidth: changeAgentSidebarWidth, layout: agentLayout } =
-    useAgentDesktopSidebarWidths(agentArtifactExpanded);
-  const resourceModal = windowMode === "agent" && agentLayout.artifactModal;
+    useAgentDesktopSidebarWidths(
+      agentArtifactExpanded,
+      agentNavigationCollapsed,
+    );
+  const toggleAgentNavigation = useCallback(() => {
+    const collapsed = !agentLayout.navigationCollapsed;
+    if (!collapsed && !agentLayout.navigationFits)
+      setAgentArtifactExpanded(false);
+    setNavigation({ narrow: narrowAgent, collapsed });
+  }, [
+    agentLayout.navigationCollapsed,
+    agentLayout.navigationFits,
+    narrowAgent,
+  ]);
+  const resourceModal =
+    windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -215,40 +128,12 @@ export function Workbench() {
     void useSessionAccessModeStore.getState().restore();
     void useUiAppearanceStore.getState().restore();
   }, []);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (resourceModal) return;
-      // Platform modifier only: Control+N on macOS is the editor's next line.
-      const apple = usesMetaModifier();
-      if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
-        event.preventDefault();
-        setWindowMode("editor");
-        void useWorkbenchStore.getState().openSettings();
-      }
-      // In Agent mode the same chord opens the Chat's Files picker (CP-48).
-      if (
-        windowMode === "editor" &&
-        matchesPlatformChord(keymapBinding("quickOpen"), event, apple)
-      ) {
-        event.preventDefault();
-        openQuickOpen();
-      }
-      if (
-        windowMode === "editor" &&
-        matchesPlatformChord(keymapBinding("commandPalette"), event, apple)
-      ) {
-        event.preventDefault();
-        openCommandPalette();
-      }
-      if (matchesPlatformChord(keymapBinding("newTask"), event, apple)) {
-        event.preventDefault();
-        setWindowMode("agent");
-        void useWorkbenchStore.getState().createChat();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resourceModal, windowMode]);
+  useWorkbenchKeys({
+    resourceModal,
+    windowMode,
+    toggleAgentNavigation,
+    setWindowMode,
+  });
   useEditorHistoryKeys(windowMode === "editor");
   useRepositoryAutoRefresh();
   useEffect(() => {
@@ -281,58 +166,94 @@ export function Workbench() {
       setWindowMode("editor");
     })();
   }, []);
-  const revealSettings = useCallback(() => {
-    setWindowMode("editor");
-    void useWorkbenchStore.getState().openSettings();
-  }, []);
-  const drawerOpen =
-    isCompactDrawerOpen(compact, sidebarOpen, windowMode) ||
-    (windowMode === "agent" && agentLayout.artifactOverlay);
-  const bodyStyle =
-    windowMode === "agent"
-      ? { gridTemplateColumns: agentLayout.gridTemplateColumns }
-      : compact
-        ? undefined
-        : {
-            gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
-          };
+  // Memoized so a sleeping Agent body is not re-rendered by Workbench updates.
+  const agentBody = useMemo(
+    () => (
+      <LazyModuleBoundary
+        label="Agent workspace"
+        load={loadAgentWorkbenchBody}
+        render={(AgentWorkbenchBody) => (
+          <AgentWorkbenchBody
+            onPreviewTargetChange={onPreviewTargetChange}
+            layout={agentLayout}
+            style={{ gridTemplateColumns: agentLayout.gridTemplateColumns }}
+            drawerOpen={agentLayout.artifactOverlay}
+            navigationCollapsed={agentLayout.navigationCollapsed}
+            onExpandNavigation={toggleAgentNavigation}
+            artifactExpanded={agentArtifactExpanded}
+            onArtifactExpandedChange={changeAgentArtifact}
+            onAgentLeftRailWidthChange={(width) =>
+              changeAgentSidebarWidth("left", width)
+            }
+            onOpenTerminal={() => setTerminalOpen(true)}
+            onAgentArtifactWidthChange={(width) =>
+              changeAgentSidebarWidth("artifact", width)
+            }
+            onOpenArtifactInEditor={openArtifactInEditor}
+          />
+        )}
+      />
+    ),
+    [
+      agentArtifactExpanded,
+      agentLayout,
+      changeAgentArtifact,
+      changeAgentSidebarWidth,
+      openArtifactInEditor,
+      onPreviewTargetChange,
+      toggleAgentNavigation,
+    ],
+  );
+  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  const bodyStyle = compact
+    ? undefined
+    : {
+        gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
+      };
   return (
     <main
-      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}`}
+      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentLayout.navigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
       style={workbenchGeometryStyle}
     >
       <TitleBar
         mode={windowMode}
         onModeChange={setWindowMode}
         inert={resourceModal}
+        agentNavigationCollapsed={agentLayout.navigationCollapsed}
+        onToggleAgentNavigation={toggleAgentNavigation}
       />
-      <AgentCenterKeeper windowMode={windowMode} />
-      <EditorContinuityKeeper windowMode={windowMode} />
-      <RendererRecreationPacketCollector windowMode={windowMode} />
-      {windowMode === "agent" ? (
+      {isTauriRuntime() ? (
         <LazyModuleBoundary
-          label="Agent workspace"
-          load={loadAgentWorkbenchBody}
-          render={(AgentWorkbenchBody) => (
-            <AgentWorkbenchBody
-              layout={agentLayout}
-              style={bodyStyle}
-              drawerOpen={drawerOpen}
-              artifactExpanded={agentArtifactExpanded}
-              onArtifactExpandedChange={changeAgentArtifact}
-              onAgentLeftRailWidthChange={(width) =>
-                changeAgentSidebarWidth("left", width)
+          label="Chat status"
+          load={loadRailStatus}
+          fallback={null}
+          render={(Observer) => (
+            <Observer
+              visible={
+                windowMode === "agent" &&
+                !agentSettingsPage &&
+                !agentNavigationCollapsed
               }
-              onOpenTerminal={() => setTerminalOpen(true)}
-              onAgentArtifactWidthChange={(width) =>
-                changeAgentSidebarWidth("artifact", width)
-              }
-              onOpenArtifactInEditor={openArtifactInEditor}
-              onOpenSettings={revealSettings}
             />
           )}
         />
-      ) : (
+      ) : null}
+      <AgentCenterKeeper
+        windowMode={agentSettingsPage ? "editor" : windowMode}
+      />
+      <EditorContinuityKeeper windowMode={windowMode} />
+      <RendererRecreationPacketCollector windowMode={windowMode} />
+      <RetainedActivity visible={windowMode === "agent" && !agentSettingsPage}>
+        {agentBody}
+      </RetainedActivity>
+      {agentSettingsPage ? (
+        <LazyModuleBoundary
+          label="Agent settings"
+          load={loadAgentSettings}
+          render={(AgentSettingsSurface) => <AgentSettingsSurface />}
+        />
+      ) : null}
+      {windowMode === "editor" && !agentSettingsPage ? (
         <div className="workbench__body" style={bodyStyle}>
           <ExplorerReleasesOpenFiles.Provider value={true}>
             <RightSidebar compact={compact} railFirst />
@@ -348,7 +269,7 @@ export function Workbench() {
             />
           ) : null}
           <div
-            className="center-region"
+            className="center-region surface surface--card"
             inert={drawerOpen}
             aria-hidden={drawerOpen || undefined}
           >
@@ -365,11 +286,19 @@ export function Workbench() {
                 )}
               />
             </div>
-            <ActiveEditorCanvas onOpenAgent={() => setWindowMode("agent")} />
+            <LazyModuleBoundary
+              label="Editor"
+              load={loadEditorCanvas}
+              render={(ActiveEditorCanvas) => (
+                <ActiveEditorCanvas
+                  onOpenAgent={() => setWindowMode("agent")}
+                />
+              )}
+            />
           </div>
           <QuickOpenHost />
         </div>
-      )}
+      ) : null}
       {terminalOpen ? (
         <LazyModuleBoundary
           label="Terminal"

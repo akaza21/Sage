@@ -1,0 +1,102 @@
+.acp-edited-files {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+}
+
+.acp-edited-files__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.acp-edited-files__header > svg {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.acp-edited-files__heading {
+  display: grid;
+  flex: 1;
+  min-width: 80px;
+  gap: var(--space-1);
+}
+
+.acp-edited-files__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.acp-edited-files button {
+  display: inline-flex;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.acp-edited-files button:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.acp-edited-files button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.acp-edited-files button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.acp-edited-files ul {
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.acp-edited-files li > button {
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-none);
+  text-align: left;
+}
+
+.acp-edited-files__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acp-edited-files .acp-edited-files__more {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-none);
+  padding: var(--space-2) var(--space-3);
+}
+
+.acp-edited-files > p {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+}
