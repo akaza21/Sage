@@ -56,9 +56,38 @@ pub(super) fn listed_shell(listed: &str, declared: &Path, executable: &Path) -> 
         })
 }
 
+/// The host variables passed through on every platform.
+const HOST_VARIABLES: [&str; 9] = [
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "PATH",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "SSH_AUTH_SOCK",
+];
+
+/// The Linux desktop session's variables. Only the session sets them, so a
+/// login shell's profile files cannot restore them, and without them
+/// `xdg-open`, GUI editors, keyring credential helpers and pinentry prompts
+/// cannot reach the display or the session bus. They are socket and file
+/// paths or plain names, not credentials.
+pub(super) const SESSION_VARIABLES: [&str; 7] = [
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_RUNTIME_DIR",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+];
+
 /// A bounded allowlist of the host environment, plus the terminal type the
 /// renderer emulates. SSH_AUTH_SOCK is kept so `git` over SSH works as it does
-/// in the user's own terminal.
+/// in the user's own terminal, and on Linux the desktop session's variables
+/// are kept so programs started there can reach the display and session bus.
 pub(super) fn environment(shell: &Path) -> Result<Vec<(&'static str, OsString)>, TerminalError> {
     environment_from(shell, |name| std::env::var_os(name))
 }
@@ -72,17 +101,12 @@ pub(super) fn environment_from(
         ("COLORTERM", OsString::from("truecolor")),
         ("SHELL", shell.as_os_str().to_owned()),
     ];
-    for name in [
-        "HOME",
-        "USER",
-        "LOGNAME",
-        "PATH",
-        "TMPDIR",
-        "LANG",
-        "LC_ALL",
-        "LC_CTYPE",
-        "SSH_AUTH_SOCK",
-    ] {
+    let session: &[&'static str] = if cfg!(target_os = "linux") {
+        &SESSION_VARIABLES
+    } else {
+        &[]
+    };
+    for &name in HOST_VARIABLES.iter().chain(session) {
         if let Some(value) = host(name) {
             if value.as_bytes().contains(&0) || value.len() > ENV_VALUE_BYTES {
                 return Err(TerminalError::Backend);

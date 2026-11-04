@@ -205,7 +205,7 @@ impl Fixture {
                 .execute_batch(
                     "INSERT INTO projects VALUES('project-pump-pi','Pi',0,0,0);
                  INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-pi','project-pump-pi','C:/repo','c:/repo',0);
-                 INSERT INTO chats VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);",
+                 INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);",
                 )
                 .unwrap();
         }

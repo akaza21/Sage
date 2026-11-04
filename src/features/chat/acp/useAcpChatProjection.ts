@@ -70,7 +70,6 @@ export function useAcpChatProjection(
     store,
     (state) => state.takeProjectionChange,
   );
-
   useEffect(() => {
     if (!boundChatId) return;
     return () => releaseAcpProjectionStore(boundChatId);

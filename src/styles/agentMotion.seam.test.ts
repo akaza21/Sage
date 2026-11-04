@@ -307,12 +307,10 @@ describe("Codex live motion (parity spec section 10)", () => {
       /margin:\s*0 var\(--chat-column-trailing\) var\(--space-6\) 0;/,
     );
     expect(surface).toMatch(
-      /--chat-column-trailing:\s*calc\(var\(--scrollbar-size\) \+ var\(--space-3\)\);/,
+      /--chat-column-trailing:\s*var\(--scrollbar-size\);/,
     );
     const compact = await css("src/workbench/workbench-window-mode.css");
-    expect(compact).toMatch(
-      /\.workbench--agent \.chat-follow-end,[^{]*\{\s*--chat-column-trailing:\s*0px;/,
-    );
+    expect(compact).not.toMatch(/--chat-column-trailing:/);
     // A white, thin 14 px arrow (s2/f0046); the activity dots keep theirs.
     expect(follow).toMatch(
       /\.chat-follow-end:not\(\[data-mode="activity"\]\) > svg\s*\{\s*color:\s*var\(--color-text-emphasis\);\s*stroke-width:\s*1;\s*\}/,

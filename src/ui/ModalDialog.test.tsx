@@ -3,10 +3,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { StrictMode } from "react";
 
 import { ModalDialog } from "./ModalDialog";
+import { nativePageOverlapped } from "./nativePageLayers";
 
 afterEach(cleanup);
 
 describe("ModalDialog", () => {
+  it("blocks a distant native Preview for the full modal lifetime", () => {
+    const preview = new DOMRect(1400, 100, 500, 700);
+    const view = render(
+      <ModalDialog labelledBy="confirm-title" onDismiss={() => {}}>
+        <h2 id="confirm-title">Confirm</h2>
+      </ModalDialog>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Confirm" });
+    dialog.getBoundingClientRect = () => new DOMRect(600, 300, 400, 200);
+    expect(nativePageOverlapped(preview)).toBe(true);
+    view.unmount();
+    expect(nativePageOverlapped(preview)).toBe(false);
+  });
+
   it("preserves explicit autofocus and caller focus-return policies in StrictMode", () => {
     render(<button type="button">Open modal</button>);
     const opener = screen.getByRole("button", { name: "Open modal" });

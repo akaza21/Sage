@@ -23,7 +23,13 @@ it.each([
   [800000, 800000, "+1600000-5", "+999+", "+999+"],
 ] as const)(
   "sums latest-revision row totals (%s, %s) in the pill and opens those same diffs",
-  (firstAdditions, secondAdditions, totalLabel, firstLabel, secondLabel) => {
+  async (
+    firstAdditions,
+    secondAdditions,
+    totalLabel,
+    firstLabel,
+    secondLabel,
+  ) => {
     const page = snapshotPage();
     const original = page.turns[0];
     const saved = original.items[0];
@@ -83,7 +89,7 @@ it.each([
         onOpenResource={open}
       />,
     );
-    const pill = screen.getByRole("button", { name: /2 files changed/ });
+    const pill = await screen.findByRole("button", { name: /2 files changed/ });
     expect(within(pill).getByLabelText("Line changes")).toHaveTextContent(
       totalLabel,
     );
@@ -106,7 +112,7 @@ it.each([
   },
 );
 
-it("keeps the real expanded summary asleep on unrelated presentation renders", () => {
+it("keeps the real expanded summary asleep on unrelated presentation renders", async () => {
   const props = {
     page: snapshotPage(),
     hasEarlier: false,
@@ -118,7 +124,9 @@ it("keeps the real expanded summary asleep on unrelated presentation renders", (
     editSummaryContainer: document.body,
   };
   const { rerender } = render(<AcpChatPresentation {...props} />);
-  fireEvent.click(screen.getByRole("button", { name: /1 file changed/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /1 file changed/ }),
+  );
   const names = vi.spyOn(fileChip, "chatFileChipBasename");
   rerender(
     <AcpChatPresentation
@@ -139,7 +147,7 @@ it.each([
   [0, null],
 ] as const)(
   "renders unknown totals independently without placeholders (%s, %s)",
-  (additions, deletions) => {
+  async (additions, deletions) => {
     const page = snapshotPage();
     const edit = page.turns[0].items[0];
     if (edit.kind !== "fileChangeDiff") throw new Error("Expected edit");
@@ -158,7 +166,9 @@ it.each([
         editSummaryContainer={document.body}
       />,
     );
-    const header = screen.getByRole("button", { name: /1 file changed/ });
+    const header = await screen.findByRole("button", {
+      name: /1 file changed/,
+    });
     const totals = within(header).queryByLabelText("Line changes");
     if (additions === null && deletions === null) expect(totals).toBeNull();
     else {
@@ -168,7 +178,7 @@ it.each([
   },
 );
 
-it("keeps prior-session rows visible but entirely noninteractive", () => {
+it("keeps prior-session rows visible but entirely noninteractive", async () => {
   const page = snapshotPage();
   const current = page.turns[0];
   const saved = current.items[0];
@@ -219,7 +229,9 @@ it("keeps prior-session rows visible but entirely noninteractive", () => {
       onOpenResource={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: /2 files changed/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /2 files changed/ }),
+  );
   const archived = screen.getByText("archived.ts").closest("li")!;
   expect(within(archived).queryAllByRole("button")).toHaveLength(0);
   const active = screen.getByText("a.ts").closest("li")!;
@@ -228,7 +240,7 @@ it("keeps prior-session rows visible but entirely noninteractive", () => {
   ).toBeEnabled();
 });
 
-it("renders no file summary until its portal container exists", () => {
+it("renders no file summary until its portal container exists", async () => {
   const props = {
     page: snapshotPage(),
     hasEarlier: false,
@@ -245,7 +257,9 @@ it("renders no file summary until its portal container exists", () => {
   container.append(anchor);
   rerender(<AcpChatPresentation {...props} editSummaryContainer={anchor} />);
   expect(
-    within(anchor).getByRole("region", { name: "Files edited in this chat" }),
+    await within(anchor).findByRole("region", {
+      name: "Files edited in this chat",
+    }),
   ).toBeVisible();
   rerender(<AcpChatPresentation {...props} />);
   expect(anchor).toBeEmptyDOMElement();
@@ -300,7 +314,9 @@ it("opens the originating saved Diff and records only the chosen retained Turn r
       retentionIncomplete={false}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: /2 files changed/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /2 files changed/ }),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Open diff Root / src/a.ts" }),
   );

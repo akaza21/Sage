@@ -1,4 +1,12 @@
-import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
+import { type BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
+
+export function sourceHost(source: string): string {
+  try {
+    return new URL(source).host || source;
+  } catch {
+    return source;
+  }
+}
 
 export function progressLabel(download: BrowserDownload): string {
   switch (download.state) {

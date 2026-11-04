@@ -12,6 +12,19 @@ export interface DiscoverProjectRepositoriesRequest {
   expectedTransitionEpoch: number;
 }
 
+export interface ResolveResourceRepositoryRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  resource: ResourceRef;
+}
+
+export interface ResolveResourceRepositoryResult {
+  projectId: string;
+  transitionEpoch: number;
+  repository: RepositoryRef | null;
+}
+
 export interface DiscoverProjectRepositoriesResult {
   projectId: string;
   transitionEpoch: number;

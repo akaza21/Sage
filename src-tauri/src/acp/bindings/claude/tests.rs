@@ -1375,9 +1375,9 @@ fn thought_chunks_stream_and_nested_transcript_updates_are_bounded_fallbacks() {
         &thought[0],
         AdapterEvent::Item {
             lifecycle: ItemLifecycle::Streaming,
-            payload: NormalizedPayload::ThoughtSummary { .. },
+            payload: NormalizedPayload::ThoughtSummary { summary },
             ..
-        }
+        } if summary.as_str() == "unproven thought"
     ));
     let nested = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)

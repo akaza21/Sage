@@ -34,18 +34,17 @@
 .acp-turn {
   display: grid;
   min-width: 0;
-  grid-template-columns: 2px minmax(0, 1fr);
-  column-gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .acp-turn::before {
+  display: none;
   grid-row: 1 / span 2;
   border-radius: var(--radius-pill);
   background: var(--color-border-strong);
   content: "";
 }
 
-/* Codex draws no rule between turns (s2/f0149, s6/f0651, f0676). */
 .acp-turn + .acp-turn {
   padding-top: var(--space-4);
 }
@@ -60,10 +59,10 @@
 }
 
 .acp-turn__header {
-  min-height: 20px;
-  grid-column: 2;
+  min-height: 0;
+  grid-column: 1;
   justify-content: flex-start;
-  margin-bottom: var(--space-1);
+  margin-block: 0;
   flex-wrap: wrap;
   row-gap: var(--space-1);
 }
@@ -90,7 +89,7 @@
 }
 
 .acp-turn__state {
-  display: inline-flex;
+  display: none;
   min-height: 20px;
   align-items: center;
   gap: 4px;
@@ -167,8 +166,8 @@
   display: grid;
   min-width: 0;
   max-width: 100%;
-  grid-column: 2;
-  gap: var(--space-3);
+  grid-column: 1;
+  gap: var(--transcript-item-gap);
 }
 
 /* A stopped turn renders its header after the partial answer, inside the
@@ -241,12 +240,13 @@
 
 .acp-message--user {
   width: fit-content;
-  max-width: min(82%, var(--reading-measure-compact));
+  max-width: min(100%, var(--reading-measure-compact));
+  min-height: var(--chrome-row-height);
   margin-left: auto;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-selected);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--agent-shell-user-bubble);
 }
 
 .acp-message__meta {
@@ -421,6 +421,7 @@
 
 @media (forced-colors: active) {
   .acp-turn::before {
+    display: none;
     background: CanvasText;
   }
 

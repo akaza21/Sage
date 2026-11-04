@@ -8,6 +8,8 @@ import {
 test.use({ deviceScaleFactor: 1 });
 
 async function installAnswers(page: Page, text: string, queued = false) {
+  await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
+  await settleChatProjections(page);
   await page.evaluate(
     async ({ text, queued }) => {
       const [
@@ -144,9 +146,12 @@ async function expectColumnAlignment(pane: Locator) {
     .last()
     .boundingBox();
   const composer = await pane.locator(".composer").boundingBox();
-  expect(answer && composer).toBeTruthy();
-  expect(composer!.x).toBeCloseTo(answer!.x, 0);
-  expect(composer!.width).toBeCloseTo(answer!.width, 0);
+  const dock = await pane.locator(".chat-dock").boundingBox();
+  expect(answer && composer && dock).toBeTruthy();
+  expect(dock!.x).toBeCloseTo(answer!.x, 0);
+  expect(dock!.width).toBeCloseTo(answer!.width, 0);
+  expect(composer!.x).toBe(dock!.x + 1);
+  expect(composer!.width).toBe(dock!.width - 2);
   expect(
     await pane.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -213,9 +218,7 @@ for (const width of [1888, 720, 480]) {
       await openScenario(page, scenario, "agent");
       await settleChatProjections(page);
       const panes = page.locator(".agent-chat-pane");
-      await expect(panes).toHaveCount(
-        scenario === "agent-dual" && width === 1888 ? 2 : 1,
-      );
+      await expect(panes).toHaveCount(1);
       await installAnswers(page, "Short completed answer.");
       for (const pane of await panes.all()) {
         expect(
@@ -359,6 +362,7 @@ test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, 
     ].join("\n"),
   );
   const markdown = page.locator(".acp-message--assistant .acp-markdown");
+  await expect(markdown.locator("th").first()).toHaveText("Database");
   const geometry = await markdown.evaluate((element) => {
     const textRects = (node: Element) => {
       const range = document.createRange();

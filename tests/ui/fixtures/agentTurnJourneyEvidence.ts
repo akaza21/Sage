@@ -77,10 +77,13 @@ function accepted(
 }
 
 export function expectActionIdentityEvidence(result: JourneyAudit): void {
-  const alphaIntents = expectIntentSequence([
-    result.sendRequests[0].clientIntentId,
-    result.cancelRequests[0].clientIntentId,
-  ]);
+  // AP-A1: Alpha is unmounted while Beta is shown, so its cancel comes from
+  // the remounted pane's fresh intent sequence, never a reused identifier.
+  const alphaIntents = [
+    ...expectIntentSequence([result.sendRequests[0].clientIntentId]),
+    ...expectIntentSequence([result.cancelRequests[0].clientIntentId]),
+  ];
+  expect(new Set(alphaIntents).size).toBe(2);
   const betaIntents = expectIntentSequence([
     result.sendRequests[1].clientIntentId,
   ]);
@@ -147,7 +150,16 @@ export function expectContinuityIdentityEvidence(result: JourneyAudit): void {
     accepted("alpha", "22", 11, "1", "sending"),
     accepted("beta", "2", 1, "1", "sending", "8"),
     accepted("beta", "3", 1, "2", "running", "8"),
-    accepted("beta", "4", 1, "3", "completed", "9"),
+    // AP-A1: Beta is not displayed while Alpha is focused, so its live
+    // publication is not applied to any projection; the authoritative page
+    // supplies the completed result when Beta is selected again.
+    {
+      ...accepted("beta", "4", 1, "3", "completed", "9"),
+      disposition: "ignoredStaleIntent",
+      projectGeneration: null,
+      targetProjectId: null,
+      targetChatId: null,
+    },
   ]);
 }
 

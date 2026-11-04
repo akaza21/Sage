@@ -11,11 +11,13 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useNativePageLayer } from "./nativePageLayers";
 import {
   exitPopoverDialogOnTab,
   focusPopoverDialog,
 } from "./menuPopoverDialogFocus";
 import {
+  inFixedContainingBlock,
   type MenuPlacement,
   menuPopoverPosition,
   PopoverPlacementContext,
@@ -28,6 +30,7 @@ const ITEM_SELECTOR = [
   '[role="option"]',
 ].join(",");
 const POPOVER_GAP = 4;
+const MAX_POSITION_UPDATES_PER_FRAME = 4;
 
 type InitialFocus = "first" | "last" | "selected";
 type PopoverRole = "menu" | "listbox" | "dialog" | "none";
@@ -122,10 +125,12 @@ export function MenuPopover({
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
     () => document.body,
   );
+  useNativePageLayer(popoverRef, { open, portalRoot });
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
   const positionRef = useRef(position);
+  const settleRef = useRef({ frame: 0, count: 0 });
   const measureRef = useRef<() => void>(() => {});
   const hiddenTriggerRef = useRef<() => void>(() => {});
   const placement = useMemo(
@@ -140,13 +145,16 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const next = menuPopoverPosition(
-        trigger,
+      const next = inFixedContainingBlock(
+        menuPopoverPosition(
+          trigger,
+          popover,
+          originRef.current ?? trigger,
+          gap,
+          matchTriggerWidth,
+          preferredPlacement,
+        ),
         popover,
-        originRef.current ?? trigger,
-        gap,
-        matchTriggerWidth,
-        preferredPlacement,
       );
       const current = positionRef.current;
       if (
@@ -158,6 +166,16 @@ export function MenuPopover({
         current.visibility === next.visibility
       )
         return;
+      // Two placements can each make the other the better fit (a flip that
+      // changes the room left for the list), so bound synchronous
+      // re-measures per frame instead of looping until React gives up.
+      const guard = settleRef.current;
+      if (guard.count >= MAX_POSITION_UPDATES_PER_FRAME) return;
+      guard.count += 1;
+      guard.frame ||= requestAnimationFrame(() => {
+        guard.frame = 0;
+        guard.count = 0;
+      });
       positionRef.current = next;
       setPosition(next);
     };

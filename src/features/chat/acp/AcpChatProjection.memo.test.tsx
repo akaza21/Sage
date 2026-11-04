@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
@@ -85,7 +91,11 @@ describe("AcpChatProjection", () => {
         editSummaryContainer={document.body}
       />,
     );
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await screen.findByText("Unchanged sibling 14");
+    expect(screen.queryByText(/Loading Chat history/)).not.toBeInTheDocument();
     for (const work of container.querySelectorAll<HTMLDetailsElement>(
       "details.chat-transcript-work",
     )) {
@@ -100,6 +110,7 @@ describe("AcpChatProjection", () => {
     const before = Array.from(
       container.querySelectorAll<HTMLElement>(".acp-turn"),
     );
+    expect(before).toHaveLength(14);
     const revised = structuredClone(initial);
     const changed = revised.turns[6]!;
     changed.revision = "2" as never;
@@ -129,6 +140,7 @@ describe("AcpChatProjection", () => {
     const after = Array.from(
       container.querySelectorAll<HTMLElement>(".acp-turn"),
     );
+    expect(after).toHaveLength(14);
     expect(chatMarkdown).toHaveBeenCalledOnce();
     expect(turnHeader).toHaveBeenCalledOnce();
     expect(turnEditSummary).toHaveBeenCalledOnce();

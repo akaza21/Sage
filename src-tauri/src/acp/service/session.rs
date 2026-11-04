@@ -86,7 +86,7 @@ impl AcpService {
             SafeText::new("harnessVersion", identity.harness_version)
                 .map_err(|_| CodexSessionError::Intent)?,
         );
-        self.sessions
+        self.session_starts
             .start_session(command)
             .await
             .map_err(Into::into)

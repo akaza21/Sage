@@ -6,8 +6,8 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AcpChatPage,
@@ -15,20 +15,20 @@ import type {
   HarnessActivityProjection,
   SagePermissionRequestId,
 } from "../../../domain/acp";
+import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
+import { settleLazyModules } from "../../../test/settleLazyModules";
+import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
 import {
   browseSessionForOwner,
   clearBrowseSessions,
   setHarnessBrowseOwner,
 } from "../../preview/harnessBrowse";
-import type { HarnessBrowseOwner } from "../../preview/harnessBrowse";
-import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
-import { AcpChatProjection as Projection } from "./AcpChatProjection";
-import { AcpChatPresentation } from "./AcpChatPresentation";
-import { page, textItem } from "./acpProjection.fixture";
-import { settleLazyModules } from "../../../test/settleLazyModules";
-import createdFileEvent from "./createdFileEvent.fixture.json";
-import { browserOperationFixture } from "../../../domain/browserOperation.fixture";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { AcpChatPresentation } from "./AcpChatPresentation";
+import { AcpChatProjection as Projection } from "./AcpChatProjection";
+import { page, textItem } from "./acpProjection.fixture";
+import { MAX_AGENT_EDIT_SUMMARY_FILES } from "./agentEditSummary";
+import createdFileEvent from "./createdFileEvent.fixture.json";
 
 function AcpChatProjection(props: ComponentProps<typeof Projection>) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
@@ -304,12 +304,13 @@ describe("AcpChatProjection", () => {
     fireEvent.click(screen.getByRole("button", { name: /file changed/ }));
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Open file Project / src/new.ts" }),
+      screen.getByRole("button", { name: "Open diff Project / src/new.ts" }),
     );
     expect(openResource).toHaveBeenCalledWith(
       createdFileEvent.resource,
-      "file",
+      "workingTreeDiff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      undefined,
     );
   });
   it("badges an assistant message with the Sage avatar beside its role label", async () => {
@@ -380,10 +381,15 @@ describe("AcpChatProjection", () => {
       screen.getByRole("status", { name: "Waiting for model" }),
     ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
-    expect(screen.getByText("09:05", { selector: "time" })).toHaveAttribute(
-      "dateTime",
-      "2026-08-31T09:05:00.000Z",
-    );
+    expect(
+      screen.getByText(
+        new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(Date.UTC(2026, 7, 31, 9, 5)),
+        { selector: "time" },
+      ),
+    ).toHaveAttribute("dateTime", "2026-08-31T09:05:00.000Z");
     expect(container.querySelector(".acp-chat-projection")).toMatchObject({
       dataset: {
         projectId: "project-1",
@@ -843,7 +849,7 @@ describe("AcpChatProjection", () => {
       ].map((row) => row.textContent?.trim()),
     ).toEqual([
       "Ran gh --version",
-      "TOOL_RETRYRetry availableRetrying command",
+      "Agent noticeRetry availableRetrying command",
       "Ran gh --version",
     ]);
   });
@@ -1556,7 +1562,7 @@ describe("AcpChatProjection", () => {
     expect(within(summary).queryByLabelText("Line changes")).toBeNull();
     expect(within(summary).getAllByText("+2")).toHaveLength(1);
     expect(within(summary).getAllByText("-1")).toHaveLength(1);
-    expect(within(summary).getAllByText("—")).toHaveLength(2);
+    expect(within(summary).queryByText("—")).toBeNull();
     expect(
       within(summary).getByRole("button", { name: "Mark reviewed" }),
     ).toBeEnabled();
@@ -1852,7 +1858,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={edited} active onOpenResource={openResource} />,
     );
 
-    let summary = screen.getByRole("region", {
+    const summary = screen.getByRole("region", {
       name: "Files edited in this chat",
     });
     const disclosure = within(summary).getByRole("button", {
@@ -1876,17 +1882,13 @@ describe("AcpChatProjection", () => {
         onOpenResource={openResource}
       />,
     );
-    summary = screen.getByRole("region", { name: "Files edited in this chat" });
-    expect(within(summary).queryByRole("list")).toBeNull();
     expect(
-      within(summary).getByText(
-        /unsafe or stale change records were not shown/i,
-      ),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: "Files edited in this chat" }),
+    ).toBeNull();
     expect(openResource).not.toHaveBeenCalled();
   });
 
-  it("names a deleted unavailable file without offering an open action", async () => {
+  it("opens the known deleted file as a working diff while leaving unidentified deletions unavailable", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     const deleted = editItem("deleted", 1, "root-a", "deleted");
@@ -1952,8 +1954,10 @@ describe("AcpChatProjection", () => {
       within(summary).getByText("Path does not exist · unavailable"),
     ).toBeInTheDocument();
     expect(
-      within(summary).queryByRole("button", { name: /^Open / }),
-    ).toBeNull();
+      within(summary).getByRole("button", {
+        name: "Open diff cp8-pane-probe.md",
+      }),
+    ).toHaveAttribute("title", "Open current working-tree changes against Git");
     expect(openResource).not.toHaveBeenCalled();
   });
 
@@ -2181,7 +2185,8 @@ describe("AcpChatProjection", () => {
     const { container } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
-    expect(screen.getByText("Current thinking")).toBeVisible();
+    expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+    expect(screen.queryByText("Current thinking")).toBeNull();
     expect(screen.queryByText("Earlier thinking")).toBeNull();
     expect(container.querySelectorAll(".acp-thought")).toHaveLength(1);
   });
@@ -2202,9 +2207,7 @@ describe("AcpChatProjection", () => {
     const { rerender } = await renderProjection(
       <AcpChatProjection page={next} active />,
     );
-    const live = screen.getAllByText(
-      "Checking the workspace before editing.",
-    )[0];
+    const live = screen.getByText("Thinking");
     expect(live).toBeVisible();
     expect(live).toHaveClass("acp-thought");
 
