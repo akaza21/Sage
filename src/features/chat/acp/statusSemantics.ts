@@ -55,6 +55,27 @@ export function getTurnStatusLabel(turn: TurnProjection): string {
     : turnStateLabels[turn.state];
 }
 
+/** A stopped turn may carry its denial on a tool rather than its terminal event. */
+export function turnReasonMessage(turn: TurnProjection): string | undefined {
+  if (turn.terminalReason?.message?.trim()) return turn.terminalReason.message;
+  if (turn.state !== "interrupted" && turn.state !== "cancelled") return;
+  for (let index = turn.items.length; index--;) {
+    const item = turn.items[index];
+    if (
+      item.kind === "error" &&
+      item.payload.kind !== "attempt" &&
+      item.payload.message.trim()
+    )
+      return item.payload.message;
+    if (
+      item.kind === "toolCall" &&
+      item.toolState === "declined" &&
+      item.payload.outputSummary?.trim()
+    )
+      return item.payload.outputSummary;
+  }
+}
+
 export const terminalToolStates: ReadonlySet<ToolState> = new Set([
   "completed",
   "failed",

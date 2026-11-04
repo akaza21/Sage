@@ -1,5 +1,9 @@
 import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
-import { getTurnStatusLabel, terminalTurnStates } from "./statusSemantics";
+import {
+  awaitingPermission,
+  getTurnStatusLabel,
+  terminalTurnStates,
+} from "./statusSemantics";
 
 export const MAX_LIVE_SNAPSHOT_TEXT = 280;
 
@@ -91,19 +95,22 @@ export function projectChatLiveSnapshot(
       working: false,
     };
   }
+  const approval =
+    !terminalTurnStates.has(turn.state) &&
+    (turn.state === "waitingApproval" || turn.items.some(awaitingPermission));
   return {
     chatId,
-    statusLabel: getTurnStatusLabel(turn),
+    statusLabel: approval ? "Awaiting approval" : getTurnStatusLabel(turn),
     statusTone: failedStates.has(turn.state)
       ? "failed"
-      : waitingStates.has(turn.state)
+      : approval || waitingStates.has(turn.state)
         ? "waiting"
         : workingStates.has(turn.state)
           ? "working"
           : "idle",
     latestText: capLiveText(latestTextItem(turn)),
     streaming: isStreaming(turn, turn.items),
-    waiting: waitingStates.has(turn.state),
-    working: workingStates.has(turn.state),
+    waiting: approval || waitingStates.has(turn.state),
+    working: !approval && workingStates.has(turn.state),
   };
 }

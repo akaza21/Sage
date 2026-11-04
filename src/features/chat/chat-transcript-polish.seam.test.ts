@@ -18,7 +18,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
     expect(acpCss).toMatch(/\.acp-turn__header\s*\{[^}]*grid-column:\s*1;/s);
     expect(transcriptCss).toMatch(
-      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
+      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--chat-column-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
   });
 
@@ -28,7 +28,7 @@ describe("Chat transcript polish stylesheet seam", () => {
       readFile(resolve("src/styles/changed-files-summary.css"), "utf8"),
     ]);
     expect(transcriptCss).toMatch(
-      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
+      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--chat-column-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
     expect(diffCss).toMatch(
       /\.acp-file-changes\s*\{[^}]*width:\s*var\(--edit-summary-width, min\(100%, var\(--reading-measure\)\)\);[^}]*margin:\s*var\(--edit-summary-margin, var\(--space-3\) auto 0\);/s,
@@ -90,7 +90,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     expect(tokens).toMatch(/--agent-shell-user-bubble:\s*#2f2f2f;/);
   });
 
-  it("declares hidden turn decorations and borderless tool/browser detail", async () => {
+  it("omits gutter decorations and declares borderless tool/browser detail", async () => {
     const css = (
       await Promise.all([
         readFile(
@@ -100,7 +100,7 @@ describe("Chat transcript polish stylesheet seam", () => {
         readFile(resolve("src/features/chat/acp/acp-chat.css"), "utf8"),
       ])
     ).join("\n");
-    expect(css).toMatch(/\.acp-turn::before\s*\{[^}]*display:\s*none;/s);
+    expect(css).not.toMatch(/\.acp-turn(?::|\[[^\]]+\]::)before/);
     expect(css).toMatch(/\.acp-turn__state\s*\{[^}]*display:\s*none;/s);
     expect(css).toMatch(
       /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*var\(--border-width\) solid var\(--agent-shell-divider\);/s,

@@ -2,6 +2,7 @@ import type { TurnProjection } from "../../../domain/acp";
 import {
   getTurnStatusLabel,
   turnTerminalReasonLabels,
+  turnReasonMessage,
 } from "./statusSemantics";
 
 export function TurnHeader({ turn }: { turn: TurnProjection }) {
@@ -9,7 +10,7 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
   const stopped = turn.state === "interrupted" || turn.state === "cancelled";
   const userStopped = stopped && reason?.kind === "cancelledByUser";
   const label = getTurnStatusLabel(turn);
-  const message = reason?.message;
+  const message = turnReasonMessage(turn);
   const remediation = reason?.remediation;
   return (
     <header className="acp-turn__header">

@@ -21,9 +21,9 @@ export function TurnFailure({
   const message =
     turn.terminalReason?.message?.trim() ||
     error?.payload.message?.trim() ||
-    (turn.terminalReason
+    (turn.terminalReason && turn.terminalReason.kind !== "other"
       ? turnTerminalReasonLabels[turn.terminalReason.kind]
-      : "Reason unavailable");
+      : "The harness reported a failed turn without additional details.");
   return (
     <div className="acp-turn__failure" role="group" aria-labelledby={headingId}>
       <strong id={headingId}>Turn failed</strong>
@@ -32,7 +32,7 @@ export function TurnFailure({
         <p data-turn-reason-remediation="">{turn.terminalReason.remediation}</p>
       ) : null}
       {onRetry ? (
-        <button type="button" onClick={onRetry}>
+        <button className="acp-turn__retry" type="button" onClick={onRetry}>
           Retry
         </button>
       ) : null}

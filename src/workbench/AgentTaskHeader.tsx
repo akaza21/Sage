@@ -143,7 +143,9 @@ export function AgentTaskHeader({
         )}
       </div>
       <AgentTaskStatus
+        chatId={tab.id}
         snapshot={snapshot}
+        status={tab.status}
         harnessStatus={sessionChrome?.harnessStatus}
       />
       {isSideChatId(tab?.id) ? null : (

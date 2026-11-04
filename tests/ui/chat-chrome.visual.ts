@@ -289,11 +289,11 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
 for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
   for (const width of [1888, 720, 480]) {
     test(`${harness} compact status variants at ${width}`, async ({ page }) => {
-      for (const [status, tone, harnessStatus] of [
-        ["Running", "working", "Live"],
-        ["Waiting for approval", "waiting", "Live"],
-        ["Failed", "failed", "Live"],
-        ["Queued", "working", "Sign in required"],
+      for (const [status, tone, harnessStatus, label] of [
+        ["Running", "working", "Live", "Working…"],
+        ["Waiting for approval", "waiting", "Live", "Awaiting approval"],
+        ["Failed", "failed", "Live", "Failed"],
+        ["Queued", "working", "Sign in required", "Working…"],
       ]) {
         await openChrome(
           page,
@@ -306,11 +306,11 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
         );
         await expectSingleHeaderRow(page, width);
         const indicator = page.getByRole("status", {
-          name: `Chat status: ${status}`,
+          name: `Chat status: ${label}`,
           exact: true,
         });
-        await expect(indicator).toHaveAttribute("title", status);
-        await expect(indicator).toHaveText(status);
+        await expect(indicator).toHaveAttribute("title", label);
+        await expect(indicator).toHaveText(label);
         const announcementBounds = await indicator.boundingBox();
         expect(announcementBounds!.width).toBeLessThanOrEqual(1);
         expect(announcementBounds!.height).toBeLessThanOrEqual(1);

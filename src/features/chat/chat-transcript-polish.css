@@ -1,5 +1,5 @@
 .message-list__content {
-  width: min(100%, var(--reading-measure));
+  width: min(100%, var(--chat-column-measure));
   margin-inline: auto;
 }
 

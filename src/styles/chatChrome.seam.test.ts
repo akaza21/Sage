@@ -12,6 +12,7 @@ it("keeps status announcements compact and full harness errors expandable", asyn
   expect(compact).not.toMatch(/flex-wrap:\s*wrap|flex-basis:\s*100%/);
   render(
     createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
       snapshot: null,
       harnessStatus: "Disconnected",
     }),
@@ -34,11 +35,19 @@ it("omits neutral harness controls while keeping compact titles readable", async
     css.indexOf("@container chat-center (max-width: 400px)"),
   );
   const notice = render(
-    createElement(AgentTaskStatus, { snapshot: null, harnessStatus: "Ready" }),
+    createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
+      snapshot: null,
+      harnessStatus: "Ready",
+    }),
   );
   expect(screen.queryByLabelText("Harness status: Ready")).toBeNull();
   notice.rerender(
-    createElement(AgentTaskStatus, { snapshot: null, harnessStatus: "Live" }),
+    createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
+      snapshot: null,
+      harnessStatus: "Live",
+    }),
   );
   expect(screen.queryByLabelText("Harness status: Live")).toBeNull();
   expect(compact).toMatch(

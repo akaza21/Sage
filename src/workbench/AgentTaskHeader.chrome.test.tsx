@@ -11,6 +11,7 @@ it.each(["waiting", "failed", "working", "idle"] as const)(
   (tone) => {
     render(
       <AgentTaskStatus
+        chatId="chat:chrome"
         snapshot={{
           chatId: "chat:chrome",
           statusLabel: tone,

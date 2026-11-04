@@ -91,7 +91,7 @@ describe("bounded Agent chat live snapshot", () => {
       waiting: true,
       working: false,
       statusTone: "waiting",
-      statusLabel: "Waiting for approval",
+      statusLabel: "Awaiting approval",
       latestText: "Need a decision",
     });
     expect(

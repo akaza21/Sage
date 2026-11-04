@@ -1,6 +1,7 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
+  --chat-column-measure: 42rem;
   --chat-column-gutter: var(--space-1);
   --chat-column-trailing: var(--scrollbar-size);
   position: relative;

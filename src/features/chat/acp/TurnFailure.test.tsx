@@ -20,7 +20,7 @@ describe("TurnFailure", () => {
     ["protocolError", "Protocol error"],
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
-    ["other", "Reason unavailable"],
+    ["other", "The harness reported a failed turn without additional details."],
   ] as const)(
     "states a message-free %s failure cause only once in the turn",
     (kind, label) => {
@@ -63,12 +63,16 @@ describe("TurnFailure", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("states that the reason is unavailable when no cause was supplied", () => {
+  it("states explicitly when the harness supplied no failure detail", () => {
     render(<TurnFailure turn={page("failed").turns[0]} />);
     expect(
       screen.getByRole("group", { name: "Turn failed" }),
     ).toHaveTextContent("Turn failed");
-    expect(screen.getByText("Reason unavailable")).toBeVisible();
+    expect(
+      screen.getByText(
+        "The harness reported a failed turn without additional details.",
+      ),
+    ).toBeVisible();
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -78,7 +82,7 @@ describe("TurnFailure", () => {
     ["protocolError", "Protocol error"],
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
-    ["other", "Reason unavailable"],
+    ["other", "The harness reported a failed turn without additional details."],
   ] as const)(
     "uses the %s reason as the cause when no text was supplied",
     (kind, label) => {
@@ -215,10 +219,14 @@ describe("TurnFailure", () => {
     expect(failure).not.toHaveTextContent("Earlier error");
   });
 
-  it("treats whitespace-only terminal and error messages as an unavailable cause", () => {
+  it("treats whitespace-only terminal and error messages as missing failure detail", () => {
     const turn = page("failed", { kind: "other", message: " \n\t " }).turns[0];
     turn.items = [{ kind: "error", payload: { message: "  " } } as never];
     render(<TurnFailure turn={turn} />);
-    expect(screen.getByText("Reason unavailable")).toBeVisible();
+    expect(
+      screen.getByText(
+        "The harness reported a failed turn without additional details.",
+      ),
+    ).toBeVisible();
   });
 });

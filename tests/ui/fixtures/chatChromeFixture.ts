@@ -4,6 +4,7 @@ import { useSessionAccessModeStore } from "../../../src/app/sessionAccessModeSto
 import type { TurnState } from "../../../src/domain/acp";
 import { capabilitySetFixture } from "../../../src/domain/acpProjection.fixture";
 import { acpDesktop } from "../../../src/services/acpDesktop";
+import { mirrorAgentRailStatus } from "../../../src/workbench/useAgentRailProjection";
 import { popoverProfiles } from "./popoverProfiles";
 
 export function installChatChromeFixture(
@@ -136,7 +137,7 @@ export function installChatChromeFixture(
                 lifecycle: "completed" as const,
                 payload: {
                   role: "user" as const,
-                  text: "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.",
+                  text: "Please inspect the chat chrome carefully and explain how its controls behave in a detailed response.\nKeep every wrapped user prompt rectangular as the reading column and composer adapt together.\nCheck all supported harnesses at narrow and wide widths before finishing the review.",
                 },
               },
               {
@@ -163,6 +164,7 @@ export function installChatChromeFixture(
       BigInt(page.projectionRevision) + 1n,
     ) as typeof page.projectionRevision;
     projection.applyAuthoritativePage(projection.scope, page);
+    mirrorAgentRailStatus({ ...page, latestTurn: page.turns.at(-1) ?? null });
     return page;
   });
   acpDesktop.getChatPage = async (request) => {

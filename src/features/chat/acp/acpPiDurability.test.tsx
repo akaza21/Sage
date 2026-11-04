@@ -231,6 +231,10 @@ it("keeps an earlier automatic attempt cause under Worked when the final cause i
   openWorked(screen.getByText("Worked for 5s"));
   expect(screen.getByText("Server unavailable")).toBeVisible();
   const failure = screen.getByRole("group", { name: "Turn failed" });
-  expect(within(failure).getByText("Reason unavailable")).toBeVisible();
+  expect(
+    within(failure).getByText(
+      "The harness reported a failed turn without additional details.",
+    ),
+  ).toBeVisible();
   expect(within(failure).queryByText("Server unavailable")).toBeNull();
 });

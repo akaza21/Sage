@@ -48,7 +48,7 @@ it.each(["truncated"])(
       </>,
     );
     expect(
-      await screen.findByRole("region", { name: "Edited files" }),
+      await screen.findByRole("status", { name: "Workspace tracking" }),
     ).toHaveTextContent("Workspace change tracking is incomplete");
     expect(
       await screen.findByRole("region", { name: "Files edited in this chat" }),
@@ -112,12 +112,7 @@ it("keeps a shell deletion after five more terminal turns and across session sel
   const summary = await screen.findByRole("region", {
     name: "Files edited in this chat",
   });
-  expect(
-    await within(screen.getByRole("region", { name: "Turn 2" })).findByRole(
-      "region",
-      { name: "Edited files" },
-    ),
-  ).toHaveTextContent("Edited 1 file");
+  expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
   expect(summary).toHaveTextContent("1 file changed");
   fireEvent.click(within(summary).getByRole("button"));
   expect(summary).toHaveTextContent("deleted");
@@ -149,15 +144,13 @@ it("shows the same shell-only ledger file in the chat summary, Edited files and 
       <ChangesSurface page={page} />
     </>,
   );
-  const card = await screen.findByRole("region", { name: "Edited files" });
-  expect(card).toHaveTextContent("Edited 1 file");
-  expect(card).toHaveTextContent("shell.ts");
-  expect(
-    within(card).getByRole("button", { name: "View changes" }),
-  ).toBeDisabled();
-  expect(
-    await screen.findByRole("region", { name: "Files edited in this chat" }),
-  ).toHaveTextContent("1 file changed");
+  const summary = await screen.findByRole("region", {
+    name: "Files edited in this chat",
+  });
+  expect(summary).toHaveTextContent("1 file changed");
+  expect(screen.queryByRole("region", { name: "Edited files" })).toBeNull();
+  fireEvent.click(within(summary).getByRole("button"));
+  expect(summary).toHaveTextContent("shell.ts");
   const changes = await screen.findByRole("region", {
     name: "Changes shell.ts",
   });

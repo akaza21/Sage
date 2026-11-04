@@ -3,8 +3,8 @@ import { useWorkbenchStore } from "../../../src/app/store";
 import type { AcpItem } from "../../../src/domain/acp";
 import { installChatChromeFixture } from "./chatChromeFixture";
 
-export function installChatSurfaceFixture(notice = false) {
-  installChatChromeFixture("codex", false);
+export function installChatSurfaceFixture(notice = false, harnessId = "codex") {
+  installChatChromeFixture(harnessId, false);
   const state = useWorkbenchStore.getState();
   const title = "Inspect repo files and math.js";
   useWorkbenchStore.setState({
@@ -83,5 +83,136 @@ export function installChatSurfaceFixture(notice = false) {
       BigInt(page.projectionRevision) + 1n,
     ) as typeof page.projectionRevision;
     projection.applyAuthoritativePage(projection.scope, page);
+  }
+}
+
+export function installChatSurfaceQaFixture(
+  mode: "approval" | "retry" | "failed" | "denied" | "cancelled" | "edits",
+  harnessId: string,
+) {
+  installChatSurfaceFixture(false, harnessId);
+  const state = useWorkbenchStore.getState();
+  for (const tab of state.tabs.filter((entry) => entry.kind === "chat")) {
+    const projection = acpProjectionStoreFor(tab.id).getState();
+    if (!projection.page || !projection.scope) continue;
+    const page = structuredClone(projection.page);
+    const turn = page.turns[0];
+    const basis = turn.items[0];
+    turn.state =
+      mode === "approval" || mode === "retry"
+        ? "running"
+        : mode === "edits"
+          ? "completed"
+          : mode === "denied"
+            ? "interrupted"
+            : mode;
+    turn.terminalAt = turn.state === "running" ? null : turn.createdAt + 5000;
+    turn.terminalReason =
+      mode === "failed"
+        ? { kind: "other", message: "Rate limited by provider" }
+        : undefined;
+    turn.items = turn.items.filter(
+      (item) =>
+        mode !== "cancelled" ||
+        (item.kind === "text" && item.payload.role === "user"),
+    );
+    const item = {
+      ...basis,
+      id: "qa-detail",
+      ordinal: 5,
+      origin: "primary",
+      lifecycle: "failed",
+      toolState: null,
+    };
+    if (mode === "retry")
+      turn.items.push({
+        ...item,
+        kind: "error",
+        payload: {
+          kind: "attempt",
+          code: "Attempt failed (attempt 1/3)",
+          message: "Server unavailable",
+          recoverable: false,
+        },
+      } as AcpItem);
+    if (mode === "approval")
+      turn.items.push({
+        ...item,
+        kind: "permissionRequest",
+        lifecycle: "started",
+        toolState: "waitingForApproval",
+        payload: {
+          requestId: "qa-permission",
+          state: "received",
+          label: "Write file",
+          summary: "Approval required",
+          offeredOptionKinds: ["allow_once", "reject_once"],
+        },
+      } as AcpItem);
+    if (mode === "denied")
+      turn.items.push({
+        ...item,
+        kind: "toolCall",
+        toolState: "declined",
+        payload: {
+          inputSummary: "Write file",
+          outputSummary: "Write blocked: read-only access",
+          presentation: {
+            kind: "other",
+            label: "Write file",
+            summary: "Write file",
+            resources: [],
+          },
+        },
+      } as AcpItem);
+    if (mode === "edits")
+      turn.items.push({
+        ...item,
+        kind: "fileChangeDiff",
+        lifecycle: "completed",
+        payload: {
+          truncated: false,
+          changes: [
+            {
+              resource: {
+                kind: "resource",
+                resource: {
+                  rootId: state.project!.roots[0].id,
+                  relativePath: "src/example.ts",
+                },
+              },
+              originalResource: null,
+              operation: "updated",
+              summary: "Updated example",
+              additions: 7,
+              deletions: 2,
+              pairState: "summaryOnly",
+            },
+          ],
+        },
+      } as AcpItem);
+    page.projectionRevision = String(
+      BigInt(page.projectionRevision) + 1n,
+    ) as typeof page.projectionRevision;
+    projection.applyAuthoritativePage(projection.scope, page);
+    useWorkbenchStore.setState((current) => ({
+      tabs: current.tabs.map((entry) =>
+        entry.id === page.chatId
+          ? {
+              ...entry,
+              status:
+                mode === "approval"
+                  ? "waiting"
+                  : mode === "retry"
+                    ? "working"
+                    : mode === "failed"
+                      ? "failed"
+                      : mode === "edits"
+                        ? "complete"
+                        : "idle",
+            }
+          : entry,
+      ),
+    }));
   }
 }
