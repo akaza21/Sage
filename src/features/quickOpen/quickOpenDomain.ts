@@ -141,3 +141,11 @@ export function highlightRuns(
   }
   return runs;
 }
+
+/**
+ * The keys of a shortcut label such as "Ctrl+Shift+P", one per keycap. A
+ * literal "+" key ("Ctrl++") stays a key of its own.
+ */
+export function shortcutKeys(label: string): string[] {
+  return label.split(/\+(?=.)/).filter(Boolean);
+}
