@@ -283,56 +283,57 @@ test("VCTIP retained-handle revalidation refuses a disappearing Job member", asy
 // origin: check-lanes.node-test.mjs:314 "Windows Cargo Job preserves Cargo proxy command semantics" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
   // Instrumentation for the Cargo proxy stall, removed with its fix: with
-  // SAGE_CARGO_PROXY_TRACE set, rustup traces the proxy to stderr and the
-  // trace is printed with the elapsed time, so a run shows where the proxy's
-  // time goes. The trace needs larger output bounds than the command itself.
-  const trace = Boolean(process.env.SAGE_CARGO_PROXY_TRACE);
-  const stderrLimit = trace ? 262_144 : 4_096;
-  const captured = { stdout: "", stderr: "" };
-  const capture = (stream) =>
-    new Writable({
-      write(chunk, _encoding, callback) {
-        captured[stream] = (captured[stream] + chunk.toString("utf8")).slice(
-          0,
-          stream === "stderr" ? stderrLimit : 4_096,
-        );
-        callback();
-      },
-    });
-  const started = performance.now();
+  // SAGE_CARGO_PROXY_TRACE set, the same bounded command runs 20 more times
+  // and each call's elapsed time is printed, so one run shows the
+  // distribution and is more likely to catch a stall with its diagnostics.
+  const runs = process.env.SAGE_CARGO_PROXY_TRACE ? 21 : 1;
+  const elapsed = [];
   try {
-    await executeWindowsCargoJobCommand(
-      {
-        label: "cargo-locate-project",
-        command: "cargo.exe",
-        args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
-        cwd: path.resolve("."),
-        env: trace ? { RUSTUP_LOG: "trace" } : undefined,
-        timeoutMs: 10_000,
-        terminationGraceMs: 500,
-        settlementTimeoutMs: 2_000,
-        maximumLineBytes: trace ? 65_536 : 1_024,
-        maximumOutputBytes: trace ? stderrLimit + 4_096 : 4_096,
-      },
-      new AbortController().signal,
-      { stdout: capture("stdout"), stderr: capture("stderr") },
-    );
-  } catch (error) {
-    error.cargoStdout = captured.stdout;
-    error.cargoStderr = captured.stderr;
-    error.elapsedMs = Math.round(performance.now() - started);
-    throw error;
-  } finally {
-    if (trace) {
-      console.log(
-        `cargo proxy trace after ${Math.round(performance.now() - started)} ms:\n${captured.stderr}`,
+    for (let run = 0; run < runs; run += 1) {
+      const captured = { stdout: "", stderr: "" };
+      const capture = (stream) =>
+        new Writable({
+          write(chunk, _encoding, callback) {
+            captured[stream] = (
+              captured[stream] + chunk.toString("utf8")
+            ).slice(0, 4_096);
+            callback();
+          },
+        });
+      const started = performance.now();
+      try {
+        await executeWindowsCargoJobCommand(
+          {
+            label: "cargo-locate-project",
+            command: "cargo.exe",
+            args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
+            cwd: path.resolve("."),
+            timeoutMs: 10_000,
+            terminationGraceMs: 500,
+            settlementTimeoutMs: 2_000,
+            maximumLineBytes: 1_024,
+            maximumOutputBytes: 4_096,
+          },
+          new AbortController().signal,
+          { stdout: capture("stdout"), stderr: capture("stderr") },
+        );
+      } catch (error) {
+        error.cargoStdout = captured.stdout;
+        error.cargoStderr = captured.stderr;
+        error.elapsedMs = Math.round(performance.now() - started);
+        error.run = run;
+        throw error;
+      } finally {
+        elapsed.push(Math.round(performance.now() - started));
+      }
+      assert.deepEqual(
+        JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
+        { root: path.resolve("src-tauri/Cargo.toml") },
       );
     }
+  } finally {
+    if (runs > 1) console.log(`cargo proxy call ms: ${elapsed.join(", ")}`);
   }
-  assert.deepEqual(
-    JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
-    { root: path.resolve("src-tauri/Cargo.toml") },
-  );
 });
 
 // Regression justification: catches an unintentional change to the current behavior
