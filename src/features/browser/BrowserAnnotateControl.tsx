@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   browserControl,
@@ -9,7 +9,7 @@ import {
 } from "../../ports/nativeBrowserPort";
 import { registerBrowserElementSink } from "../../app/browserAnnotations";
 import { browserElementChatSink } from "../../app/browserElementChatSink";
-import BrowserAnnotateComment from "./BrowserAnnotatePopover";
+const BrowserAnnotateComment = lazy(() => import("./BrowserAnnotatePopover"));
 
 // Stateless: it reads the pinned Agent Chat at each pick, so one
 // registration serves every browser tab.
@@ -93,7 +93,9 @@ export function BrowserAnnotateControl({
       </button>
       {tabId && selection && frame
         ? createPortal(
-            <BrowserAnnotateComment tabId={tabId} selection={selection} />,
+            <Suspense fallback={null}>
+              <BrowserAnnotateComment tabId={tabId} selection={selection} />
+            </Suspense>,
             frame,
           )
         : null}

@@ -175,3 +175,23 @@ function groupWorkspaceChanges(changes: readonly TurnWorkspaceChange[]) {
   }
   return grouped;
 }
+
+export function editDiffAction(change: AgentEditSummaryChange) {
+  const location = change.resource;
+  const resource =
+    location.kind === "resource"
+      ? location.resource
+      : location.reason === "missing" && change.operation === "deleted"
+        ? location.displayResource
+        : undefined;
+  return {
+    resource,
+    title: change.diffRef
+      ? "Open the saved file diff"
+      : "Open current working-tree changes against Git",
+    unavailable:
+      location.kind === "unavailable"
+        ? `${location.label}: ${location.reason}`
+        : "No file baseline is available.",
+  };
+}

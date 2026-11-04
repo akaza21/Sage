@@ -8,9 +8,9 @@ import type {
   AgentEditDispositionState,
   TurnProjection,
 } from "../../../domain/acp";
-import { agentDiffKey, type AgentDiffRef } from "../../../domain/agentDiff";
+import { agentDiffKey } from "../../../domain/agentDiff";
+import type { AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { resourceKey } from "../../../domain/resourceIdentity";
-import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { projectChatEditSummary } from "./chatEditSummary";
 import { chatFileChipBasename } from "./chatFileChip";
@@ -20,6 +20,7 @@ import { ChatFileChip } from "./FileChip";
 import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { editDiffAction } from "./chatEditSummary";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -27,8 +28,7 @@ interface TurnEditSummaryProps {
   countIncomplete: boolean;
   workspaceChanges?: readonly TurnWorkspaceChange[];
   workspaceIncomplete?: boolean;
-  onOpenFile?: (resource: ResourceRef, turn: TurnProjection) => void;
-  onOpenDiff?: (resource: ResourceRef, snapshot: AgentDiffRef) => void;
+  onOpenResource?: AgentArtifactOpenHandler;
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
@@ -40,8 +40,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   countIncomplete,
   workspaceChanges,
   workspaceIncomplete = false,
-  onOpenFile,
-  onOpenDiff,
+  onOpenResource,
   onRecordDisposition,
 }: TurnEditSummaryProps) {
   const fetchedWorkspaceChanges = useTurnWorkspaceChanges(
@@ -95,6 +94,20 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   }
 
   const noun = summary.changes.length === 1 ? "file" : "files";
+  function open(change: (typeof summary.changes)[number]) {
+    const { resource } = editDiffAction(change);
+    if (resource && change.turn.sessionId === page.currentSessionId)
+      onOpenResource?.(
+        resource,
+        change.diffRef ? "diff" : "workingTreeDiff",
+        {
+          projectId: page.projectId,
+          chatId: page.chatId,
+          sessionId: change.turn.sessionId,
+        },
+        change.diffRef,
+      );
+  }
   const fileLabel = summaryIncomplete
     ? `Showing ${summary.changes.length} changed ${noun}`
     : `${summary.changes.length} ${noun} changed`;
@@ -135,6 +148,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
         <ul>
           {summary.changes.map((change, index) => {
             const location = change.resource;
+            const action = editDiffAction(change);
             if (location.kind === "unavailable") {
               const deletedDisplay =
                 change.operation === "deleted" && location.reason === "missing"
@@ -142,11 +156,24 @@ export const TurnEditSummary = memo(function TurnEditSummary({
                   : null;
               return (
                 <li key={`unavailable:${location.reason}:${index}`}>
-                  <span className="acp-resource-unavailable">
-                    {deletedDisplay
-                      ? `${deletedDisplay} · Deleted`
-                      : `${location.label} · unavailable`}
-                  </span>
+                  {action.resource &&
+                  onOpenResource &&
+                  change.turn.sessionId === page.currentSessionId ? (
+                    <button
+                      type="button"
+                      aria-label={`Open diff ${action.resource.relativePath}`}
+                      title={action.title}
+                      onClick={() => open(change)}
+                    >
+                      {action.resource.relativePath} · Deleted
+                    </button>
+                  ) : (
+                    <span className="acp-resource-unavailable">
+                      {deletedDisplay
+                        ? `${deletedDisplay} · Deleted`
+                        : `${location.label} · unavailable`}
+                    </span>
+                  )}
                   {deletedDisplay ? null : (
                     <span className="acp-change-operation">
                       {change.operation}
@@ -179,19 +206,13 @@ export const TurnEditSummary = memo(function TurnEditSummary({
               <li key={resourceKey(resource)}>
                 {admitted &&
                 change.turn.sessionId === page.currentSessionId &&
-                ((onOpenDiff && change.diffRef) ||
-                  (onOpenFile &&
-                    !change.diffRef &&
-                    change.operation !== "deleted")) ? (
+                onOpenResource ? (
                   <button
                     type="button"
                     className="acp-resource-action"
-                    aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}
-                    onClick={() => {
-                      if (change.diffRef)
-                        onOpenDiff?.(resource, change.diffRef);
-                      else onOpenFile?.(resource, change.turn);
-                    }}
+                    aria-label={`Open diff ${qualifiedLabel}`}
+                    title={action.title}
+                    onClick={() => open(change)}
                   >
                     {chip}
                     <ChevronRight size={14} aria-hidden="true" />
