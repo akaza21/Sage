@@ -18,7 +18,8 @@
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
         "maxGzipBytes": 1083,
-        "reason": "Conditional harness build/account notices, deferred unless a harness needs attention; keeps their sign-in actions and copy off the ready first-Chat path."
+        "maxCssGzipBytes": 490,
+        "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",

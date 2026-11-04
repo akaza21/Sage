@@ -28,6 +28,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenMock }));
 
 import { AcpDesktopError, acpDesktop, safeFailure } from "./acpDesktop";
+import { safePreviewProjectionChanged } from "./acpDesktopPreview";
 import { acknowledgeReadTextFileFlush } from "./acpDesktopReadText";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
@@ -812,6 +813,47 @@ describe("ACP desktop bridge", () => {
     expect(onPreview).toHaveBeenCalledWith({ kind: "preview", preview });
     dispose();
     expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("admits an unsupported https origin failure and still rejects unknown failures", () => {
+    const failed = {
+      projectId: "project-a",
+      projectGeneration: "7",
+      transitionEpoch: 7,
+      chatId: "chat-a",
+      sessionId: "session-a",
+      runtimeEpoch: "3",
+      previewRevision: "4",
+      phase: "healthFailed",
+      failure: "originUnsupported",
+      target: {
+        projectId: "project-a",
+        projectGeneration: "7",
+        expectedTransitionEpoch: 7,
+        chatId: "chat-a",
+        sessionId: "session-a",
+        runtimeEpoch: "3",
+        rootId: "root-a",
+        scriptName: "dev",
+      },
+      origin: null,
+    };
+
+    expect(
+      safePreviewProjectionChanged({ kind: "preview", preview: failed }),
+    ).toEqual({ kind: "preview", preview: failed });
+    expect(
+      safePreviewProjectionChanged({
+        kind: "preview",
+        preview: { ...failed, failure: "tlsUnsupported" },
+      }),
+    ).toBeNull();
+    expect(
+      safePreviewProjectionChanged({
+        kind: "preview",
+        preview: { ...failed, phase: "exited" },
+      }),
+    ).toBeNull();
   });
 
   it("invokes the exact native P-02 acknowledgement envelope", async () => {

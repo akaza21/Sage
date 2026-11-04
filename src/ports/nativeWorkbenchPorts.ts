@@ -114,7 +114,7 @@ const repository: RepositoryPort = {
   getFileDiff(resource, scope) {
     return invokeNative("get_file_diff", {
       resource,
-      scope,
+      ...(scope ? { scope } : {}),
     });
   },
   getFileGitBase(resource, knownOid) {

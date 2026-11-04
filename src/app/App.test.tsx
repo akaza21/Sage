@@ -41,7 +41,7 @@ const invoke = vi.fn(
 );
 
 vi.mock("../workbench/Workbench", () => ({
-  Workbench: () => <main>Workbench</main>,
+  default: () => <main>Workbench</main>,
 }));
 
 vi.mock("../services/desktop", () => ({

@@ -31,7 +31,6 @@ import {
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
-  AgentArtifactEmptyState,
   AgentBrowserPaneControls,
   AgentBrowserPaneStatus,
 } from "./AgentArtifactPaneControls";
@@ -392,7 +391,7 @@ export function AgentArtifactPane({
             !subagentSelected &&
             !previewSelected &&
             !activeArtifact ? (
-              <AgentArtifactEmptyState titleId={emptyTitleId} />
+              <TabsPart part="AgentArtifactEmptyState" titleId={emptyTitleId} />
             ) : null}
           </div>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />

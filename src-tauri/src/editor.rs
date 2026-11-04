@@ -1,8 +1,8 @@
 mod filesystem;
 
 use self::filesystem::{
-    DiskDocument, atomic_replace, cleanup_failed_save, cleanup_recorded_temp, read_disk_document,
-    sync_parent_directory, temporary_contract_path, write_temporary_file,
+    DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, ensure_path_names,
+    read_disk_document, split_contract_path, temporary_contract_path,
 };
 use crate::{
     domain::{
@@ -83,6 +83,33 @@ pub fn save_document(
     workspace: &Workspace,
     resource: &ResourceRef,
 ) -> AppResult<EditorSaveResult> {
+    save_document_with(database, workspace, resource, |_| Ok(()))
+}
+
+/// The points in a save at which `save_document_with` calls its observer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SaveStage {
+    /// The parent directory is held and nothing is written yet.
+    ParentHeld,
+    /// The temporary file holds the content but is not yet durable.
+    TempWritten,
+    /// The conflict read has passed and the replace is next.
+    BeforeReplace,
+    /// The temporary file has replaced the target; nothing is verified yet.
+    AfterReplace,
+    /// The saved file is verified through the held directory and by its
+    /// path; only the recovery buffer delete is left.
+    BeforeRecoveryClear,
+}
+
+/// Saves through the document's held parent directory. An error from
+/// `observe` fails the save at that stage, as the step there would.
+fn save_document_with(
+    database: &Database,
+    workspace: &Workspace,
+    resource: &ResourceRef,
+    mut observe: impl FnMut(SaveStage) -> std::io::Result<()>,
+) -> AppResult<EditorSaveResult> {
     let resource = normalized_resource(workspace, resource)?;
     let path = resource.relative_path.clone();
     let Some(buffer) = database.editor_buffer(workspace.project_id(), &resource)? else {
@@ -113,38 +140,99 @@ pub fn save_document(
         });
     }
 
-    let target = workspace.resolve_existing_file(&path)?;
+    let (parent_path, file_name) = split_contract_path(&path);
+    let parent = HeldParent::open(workspace, parent_path)?;
+    observe(SaveStage::ParentHeld)?;
+    // The target handle closes here, so none is open across the replace.
+    let permissions = parent.open_file(file_name)?.metadata()?.permissions();
     let temp_path = temporary_contract_path(&path)?;
-    let temp = workspace.resolve_for_write(&temp_path)?;
+    let (_, temp_name) = split_contract_path(&temp_path);
     database.set_editor_pending_temp(workspace.project_id(), &resource, &temp_path)?;
+    let abandon = || {
+        cleanup_failed_save(
+            database,
+            workspace.project_id(),
+            &resource,
+            &parent,
+            temp_name,
+        )
+    };
 
-    if let Err(error) = write_temporary_file(&target, &temp, materialized.as_bytes()) {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
-        return Err(error);
-    }
+    let installed =
+        match parent.write_temporary_file(temp_name, permissions, materialized.as_bytes(), || {
+            observe(SaveStage::TempWritten)
+        }) {
+            Ok(identity) => identity,
+            Err(error) => {
+                abandon();
+                return Err(error);
+            }
+        };
 
-    let latest_disk = match read_disk_document(workspace, &path) {
-        Ok(document) => document,
+    let (latest_disk, target_identity, target) = match parent.read_document_with_identity(file_name)
+    {
+        Ok(read) => read,
         Err(error) => {
-            cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+            abandon();
             return Err(error);
         }
     };
+    // Windows cannot replace a file while this handle is open.
+    drop(target);
     if latest_disk.version.fingerprint != buffer.base_fingerprint {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+        abandon();
         return Ok(conflict_result(resource, latest_disk, buffer));
     }
 
-    if let Err(error) = atomic_replace(&target, &temp) {
-        cleanup_failed_save(database, workspace.project_id(), &resource, &temp);
+    let replaced = observe(SaveStage::BeforeReplace)
+        .map_err(AppError::from)
+        .and_then(|()| parent.ensure_entry_is(file_name, target_identity))
+        .and_then(|()| parent.ensure_named_by(workspace, parent_path))
+        .and_then(|()| parent.replace(temp_name, file_name));
+    if let Err(error) = replaced {
+        abandon();
         return Err(error);
     }
-    sync_parent_directory(&target)?;
+    // The temporary file is now the target, so nothing is left to remove.
+    database.clear_editor_pending_temp(workspace.project_id(), &resource)?;
+    parent.sync()?;
+
+    // The recovery buffer is cleared only once the installed file is proven:
+    // first through the held directory (its identity and bytes), then by
+    // path from the verified root (the parent and the target). Until then a
+    // replaced or deleted target, or a moved parent, keeps the buffer.
+    let verified = observe(SaveStage::AfterReplace)
+        .map_err(AppError::from)
+        .and_then(|()| parent.read_document_with_identity(file_name))
+        .and_then(|(saved, identity, handle)| {
+            if identity != installed || saved.version.fingerprint != buffer.buffer_fingerprint {
+                return Err(AppError::InvalidRequest(
+                    "the saved file was replaced".into(),
+                ));
+            }
+            parent.ensure_named_by(workspace, parent_path)?;
+            ensure_path_names(workspace, &path, installed)?;
+            Ok((saved, handle))
+        });
+    let Ok((saved, _verified_target)) = verified else {
+        return Err(AppError::InvalidRequest(
+            "the content was written, but the file's location changed during the save or \
+             could not be verified; the unsaved buffer is kept"
+                .into(),
+        ));
+    };
+    // The verified target handle and, on Windows, the parent guards stay open
+    // until the recovery delete commits, so on Windows nothing can delete,
+    // replace or rename the saved file or its folders in between. Unix
+    // descriptors cannot prevent that; the bytes were verified at this path,
+    // so a rename or delete from here on is the user moving the file after a
+    // successful save and does not undo the save.
+    observe(SaveStage::BeforeRecoveryClear)?;
     database.delete_editor_buffer(workspace.project_id(), &resource)?;
 
     Ok(EditorSaveResult {
         outcome: "saved".into(),
-        document: clean_document(resource, read_disk_document(workspace, &path)?),
+        document: clean_document(resource, saved),
     })
 }
 

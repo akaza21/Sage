@@ -42,7 +42,10 @@ for (const width of [480, 1280]) {
       await control.click({ trial: true });
     }
     await summary
-      .getByRole("button", { name: /Open diff .*disclosure-15.tsx/ })
+      .getByRole("button", {
+        name: "Open diff Sage / src/disclosure-15.tsx",
+        exact: true,
+      })
       .click({ trial: true });
     await page.evaluate(async () => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
@@ -235,7 +238,17 @@ for (const viewport of [
         })
         .map((element) => element.className || element.tagName);
     });
-    expect(rules).toEqual([]);
+    // The window status bar owns the single full-width divider below the
+    // inset cards; the composer must not introduce another separator.
+    expect(rules).toEqual(["status-bar"]);
+    const status = page.locator(".status-bar");
+    await expect(status).toHaveCSS(
+      "border-top-width",
+      await status.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--border-width").trim(),
+      ),
+    );
+    await expect(status).toHaveCSS("border-top-style", "solid");
 
     if (!(await page.locator(".agent-artifact-pane").isVisible()))
       await page

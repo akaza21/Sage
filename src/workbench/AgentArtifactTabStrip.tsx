@@ -19,6 +19,9 @@ import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
+import "./AgentArtifactPaneTabs.css";
+
+export { AgentArtifactEmptyState } from "./AgentArtifactPaneEmptyState";
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
