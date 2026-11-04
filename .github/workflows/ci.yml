@@ -154,7 +154,7 @@ jobs:
             echo "### Lanes"
             echo "- Frontend and policy: $frontend"
             echo "- Rust: $rust on $rust_os"
-            echo "- Windows budget lane: $windows"
+            echo "- Windows budget and Playwright lanes: $windows"
           } >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
@@ -165,6 +165,8 @@ jobs:
     # Measured on ubuntu-latest: Vitest alone takes about 12 minutes (425
     # files), before the budget lanes, build and policy checks.
     timeout-minutes: 30
+    env:
+      SAGE_UI_PORT: "15471"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -178,6 +180,58 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Provision Chromium for portable browser checks
+        run: npx playwright install --with-deps chromium
+      # Keep this allowlist baseline-free; screenshot comparisons run on Windows.
+      - name: Run portable browser checks
+        run: >-
+          npm run test:ui --
+          tests/ui/browser-confirm.visual.ts
+          tests/ui/browser-annotate-keyboard.visual.ts
+          tests/ui/browser-site-permissions.visual.ts
+          --workers=2 --retries=0 --trace=retain-on-failure
+      - name: Upload portable Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-linux-failure
+          path: |
+            playwright-report/
+            output/playwright/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  playwright:
+    name: Windows Playwright
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # Playwright forwards this fixed port to Vite with --strictPort and refuses
+      # server reuse. Each hosted job has its own runner, including the budget lane.
+      SAGE_UI_PORT: "15471"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Provision Chromium for the win32 baselines
+        run: npx playwright install chromium
+      - name: Run the full Playwright suite
+        run: npm run test:ui -- --workers=2 --retries=0 --trace=retain-on-failure
+      - name: Upload Windows Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-windows-failure
+          path: |
+            playwright-report/
+            output/playwright/
+          retention-days: 3
+          if-no-files-found: ignore
 
   smoke-cli:
     name: Windows budget lane (browser)
@@ -271,6 +325,7 @@ jobs:
       - plan
       - frontend
       - smoke-cli
+      - playwright
       - rust
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -283,6 +338,8 @@ jobs:
           FRONTEND_PLANNED: ${{ needs.plan.outputs.frontend }}
           SMOKE_CLI: ${{ needs.smoke-cli.result }}
           SMOKE_CLI_PLANNED: ${{ needs.plan.outputs.windows }}
+          PLAYWRIGHT: ${{ needs.playwright.result }}
+          PLAYWRIGHT_PLANNED: ${{ needs.plan.outputs.windows }}
           RUST: ${{ needs.rust.result }}
           RUST_PLANNED: ${{ needs.plan.outputs.rust }}
           RUST_OS: ${{ needs.plan.outputs.rust-os }}
@@ -301,6 +358,7 @@ jobs:
           test "$PLAN" = "success"
           require "Frontend and policy" "$FRONTEND_PLANNED" "$FRONTEND"
           require "Windows budget lane" "$SMOKE_CLI_PLANNED" "$SMOKE_CLI"
+          require "Windows Playwright" "$PLAYWRIGHT_PLANNED" "$PLAYWRIGHT"
           require "Rust" "$RUST_PLANNED" "$RUST"
           {
             echo "### Verified in this run"
@@ -308,6 +366,7 @@ jobs:
             echo "- Frontend and policy: $FRONTEND"
             echo "- Rust on $RUST_OS: $RUST"
             echo "- Windows budget lane: $SMOKE_CLI"
+            echo "- Windows Playwright: $PLAYWRIGHT"
             for platform in windows macos; do
               case "$RUST_OS" in
                 *"$platform-latest"*) ;;

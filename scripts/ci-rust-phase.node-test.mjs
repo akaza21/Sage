@@ -146,10 +146,16 @@ test("CI keeps hosted-runner spend bounded", async () => {
   }
 
   // Windows and macOS run only when requested through workflow_dispatch.
-  const smokeCli = jobBlock(workflow, "smoke-cli");
-  assert.match(smokeCli, /if: needs\.plan\.outputs\.windows == 'true'/);
-  const workflowOutsideSmokeCli = workflow.replace(smokeCli, "");
-  for (const line of workflowOutsideSmokeCli.split("\n")) {
+  let workflowOutsideWindowsLanes = workflow;
+  for (const jobId of ["smoke-cli", "playwright"]) {
+    const windowsLane = jobBlock(workflow, jobId);
+    assert.match(windowsLane, /if: needs\.plan\.outputs\.windows == 'true'/);
+    workflowOutsideWindowsLanes = workflowOutsideWindowsLanes.replace(
+      windowsLane,
+      "",
+    );
+  }
+  for (const line of workflowOutsideWindowsLanes.split("\n")) {
     if (/windows-latest|macos-latest/.test(line)) {
       assert.match(
         line,
