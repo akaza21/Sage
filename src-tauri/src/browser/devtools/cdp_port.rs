@@ -18,6 +18,7 @@ pub(super) mod highlight;
 pub(super) mod inspect;
 pub(super) mod outcome;
 pub(super) mod page_context;
+mod screenshot;
 pub(super) mod select;
 mod world;
 use outcome::{navigation_failure, navigation_matches};
@@ -119,12 +120,10 @@ impl<T: CdpTransport> CdpPort<T> {
         };
         // The limits bound the picture, so a smaller scale lets a tall page,
         // such as a phone emulation laid out about 980 px wide, fit.
-        let scaled = |side: u32| (f64::from(side) * scale).ceil() as u64;
-        if width == 0
-            || height == 0
-            || scaled(width) > u64::from(BROWSER_LIMITS.screenshot_width)
-            || scaled(height) > u64::from(BROWSER_LIMITS.screenshot_height)
-            || scaled(width) * scaled(height) > BROWSER_LIMITS.screenshot_pixels
+        let (scaled_width, scaled_height) =
+            crate::acp::browser::admit_capture_pixels(f64::from(width), f64::from(height), scale)?;
+        if scaled_width > f64::from(BROWSER_LIMITS.screenshot_width)
+            || scaled_height > f64::from(BROWSER_LIMITS.screenshot_height)
         {
             return Err(BrowserFailure::Capacity);
         }
@@ -187,11 +186,19 @@ pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(t
 
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
     fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let bounded;
+        let params = if method == "Page.captureScreenshot" {
+            bounded = self.bounded_screenshot(params, deadline)?;
+            bounded.as_str()
+        } else {
+            params
+        };
         self.transport.raw(
             method,
             params,
             BROWSER_LIMITS.cdp_result_bytes,
-            Duration::from_secs(30),
+            world::left(deadline)?,
         )
     }
 

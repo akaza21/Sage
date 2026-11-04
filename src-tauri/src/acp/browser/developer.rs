@@ -18,6 +18,8 @@
 use serde_json::{Map, Value};
 
 use super::BrowserFailure;
+mod screenshot;
+pub(crate) use screenshot::ScreenshotCapture;
 mod switch;
 pub(crate) use switch::{switch_generation, switch_is_current, with_switch_change};
 
@@ -116,11 +118,13 @@ pub fn admit_command(
     let Some((_, keys)) = ALLOWED.iter().find(|(allowed, _)| *allowed == method) else {
         return Err(BrowserFailure::Denied);
     };
-    if params.keys().all(|key| keys.contains(&key.as_str())) {
-        Ok(())
-    } else {
-        Err(BrowserFailure::Denied)
+    if !params.keys().all(|key| keys.contains(&key.as_str())) {
+        return Err(BrowserFailure::Denied);
     }
+    if method == "Page.captureScreenshot" {
+        ScreenshotCapture::parse(params)?;
+    }
+    Ok(())
 }
 
 /// How one developer-mode call ended, as the audit log records it.

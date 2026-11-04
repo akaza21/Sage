@@ -213,3 +213,129 @@ fn only_an_evaluation_in_sages_group_releases_when_it_completes() {
     let release: Value = serde_json::from_str(&release_params()).unwrap();
     assert_eq!(release, json!({"objectGroup": DEVELOPER_OBJECT_GROUP}));
 }
+
+#[test]
+fn screenshot_rejects_bitmap_allocations_above_the_pixel_budget() {
+    for (width, height, scale) in [
+        (16000.0, 16000.0, 1.0),
+        (1920.0, 1081.0, 1.0),
+        (3840.0, 2162.0, 0.5),
+        (1920.1, 1080.0, 1.0),
+    ] {
+        assert_eq!(
+            admit(
+                "Page.captureScreenshot",
+                json!({
+                    "clip": {"x": 0, "y": 0, "width": width, "height": height, "scale": scale},
+                    "captureBeyondViewport": true
+                })
+            ),
+            Err(BrowserFailure::Capacity),
+            "{width} x {height} at {scale}"
+        );
+    }
+}
+
+#[test]
+fn screenshot_accepts_bounded_clips_including_downscaling_and_portrait() {
+    for (width, height, scale) in [
+        (1920.0, 1080.0, 1.0),
+        (1080.0, 1920.0, 1.0),
+        (1440.0, 1440.0, 1.0),
+        (3840.0, 2160.0, 0.5),
+        (16000.0, 16000.0, 0.01),
+    ] {
+        for beyond in [false, true] {
+            assert_eq!(
+                admit(
+                    "Page.captureScreenshot",
+                    json!({
+                        "clip": {"x": 0, "y": 0, "width": width, "height": height, "scale": scale},
+                        "captureBeyondViewport": beyond, "fromSurface": true
+                    })
+                ),
+                Ok(()),
+                "{width} x {height} at {scale}, beyond={beyond}"
+            );
+        }
+    }
+}
+
+#[test]
+fn screenshot_rejects_invalid_geometry_scales_and_capture_flags() {
+    let valid_clip = json!({"x": 0, "y": 0, "width": 640, "height": 480, "scale": 1});
+    for (field, value, expected) in [
+        ("width", json!(0), BrowserFailure::InvalidRequest),
+        ("height", json!(-1), BrowserFailure::InvalidRequest),
+        ("width", json!("640"), BrowserFailure::InvalidRequest),
+        ("x", Value::Null, BrowserFailure::InvalidRequest),
+        ("scale", json!(0), BrowserFailure::InvalidRequest),
+        ("scale", json!(-1), BrowserFailure::InvalidRequest),
+        ("scale", json!(1e-300), BrowserFailure::Capacity),
+        ("scale", json!(0.00999), BrowserFailure::Capacity),
+        ("scale", json!(1.001), BrowserFailure::Capacity),
+        ("scale", json!(1e300), BrowserFailure::Capacity),
+        ("width", json!(1e300), BrowserFailure::Capacity),
+        ("extra", json!(1), BrowserFailure::InvalidRequest),
+    ] {
+        let mut clip = valid_clip.clone();
+        clip[field] = value;
+        assert_eq!(
+            admit("Page.captureScreenshot", json!({"clip": clip})),
+            Err(expected),
+            "{clip}"
+        );
+    }
+    for clip in [
+        Value::Null,
+        json!([]),
+        json!({}),
+        json!({"width": 640, "height": 480}),
+    ] {
+        assert_eq!(
+            admit("Page.captureScreenshot", json!({"clip": clip})),
+            Err(BrowserFailure::InvalidRequest)
+        );
+    }
+    for key in ["fromSurface", "captureBeyondViewport"] {
+        for value in [Value::Null, json!(0), json!("true")] {
+            assert_eq!(
+                admit("Page.captureScreenshot", json!({key: value})),
+                Err(BrowserFailure::InvalidRequest)
+            );
+        }
+    }
+    assert_eq!(
+        admit(
+            "Page.captureScreenshot",
+            json!({"fromSurface": false, "clip": valid_clip})
+        ),
+        Err(BrowserFailure::Denied)
+    );
+}
+
+#[test]
+fn unbounded_native_document_serializers_remain_denied() {
+    for (method, value) in [
+        (
+            "Page.printToPDF",
+            json!({"paperWidth": 16000, "paperHeight": 16000, "scale": 2}),
+        ),
+        ("Page.captureSnapshot", json!({"format": "mhtml"})),
+        (
+            "DOMSnapshot.captureSnapshot",
+            json!({"computedStyles": ["display"], "includePaintOrder": true}),
+        ),
+        (
+            "DOMSnapshot.getSnapshot",
+            json!({"computedStyleWhitelist": ["display"]}),
+        ),
+        ("DOM.getDocument", json!({"depth": -1, "pierce": true})),
+    ] {
+        assert_eq!(
+            admit(method, value),
+            Err(BrowserFailure::Denied),
+            "{method}"
+        );
+    }
+}
