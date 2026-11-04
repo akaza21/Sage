@@ -23,7 +23,7 @@
   /* Size each tab to its own title so a filename gets room before the strip
      shrinks; when space runs out, tabs shrink in proportion to that width. */
   flex: 0 1 auto;
-  border: 1px solid transparent;
+  border: var(--border-width) solid transparent;
   border-radius: var(--radius-agent-pane-tab);
   background: transparent;
 }
@@ -49,7 +49,7 @@
 .workbench--agent .agent-artifact-pane .tab--active {
   min-width: var(--agent-pane-tab-min-width);
   background: var(--color-plane-raised);
-  border: 1px solid var(--agent-shell-tab-border);
+  border: var(--border-width) solid var(--agent-shell-tab-border);
   box-shadow: none;
 }
 .agent-artifact-pane .tab[data-resource-kind="changes"] {

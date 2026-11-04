@@ -30,6 +30,10 @@ import {
 } from "./agentArtifactAdmission";
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
+import {
+  AgentBrowserPaneControls,
+  AgentBrowserPaneStatus,
+} from "./AgentArtifactPaneControls";
 import { lazyParts } from "../features/chat/lazyParts";
 import { activeArtifactForTarget } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
@@ -56,7 +60,6 @@ const SubagentSurface = lazy(() =>
   })),
 );
 const TabsPart = lazyParts(() => import("./AgentArtifactTabStrip"));
-const ControlsPart = lazyParts(() => import("./AgentArtifactPaneControls"));
 const AgentArtifactHeader = lazy(() =>
   import("./AgentArtifactHeader").then((module) => ({
     default: module.AgentArtifactHeader,
@@ -343,8 +346,7 @@ export function AgentArtifactPane({
             ) : (
               <strong>Files, changes, and preview</strong>
             )}
-            <ControlsPart
-              part="AgentBrowserPaneControls"
+            <AgentBrowserPaneControls
               maximized={maximized}
               onMaximizedChange={setMaximized}
               onCollapse={() => {
@@ -368,7 +370,7 @@ export function AgentArtifactPane({
             </Suspense>
           ) : null}
           <div ref={setCanvasNode} className="agent-artifact-pane__canvas">
-            <ControlsPart part="AgentBrowserPaneStatus" />
+            <AgentBrowserPaneStatus />
             {changes.surface}
             {subagentSelected && focusedPage && subagentTarget ? (
               <Suspense fallback={<p role="status">Loading subagent view…</p>}>
@@ -389,10 +391,7 @@ export function AgentArtifactPane({
             !subagentSelected &&
             !previewSelected &&
             !activeArtifact ? (
-              <ControlsPart
-                part="AgentArtifactEmptyState"
-                titleId={emptyTitleId}
-              />
+              <TabsPart part="AgentArtifactEmptyState" titleId={emptyTitleId} />
             ) : null}
           </div>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />

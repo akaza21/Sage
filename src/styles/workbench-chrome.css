@@ -24,7 +24,7 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--agent-shell-title-divider);
+  border-bottom: var(--border-width) solid var(--agent-shell-title-divider);
   background: var(--title-bar-fill);
   user-select: none;
 }
@@ -147,7 +147,7 @@
 .workbench--agent .agent-artifact-pane__header {
   height: var(--agent-pane-header-height);
   padding-inline: var(--agent-pane-summary-inset);
-  border-bottom: 1px solid var(--agent-shell-divider);
+  border-bottom: var(--border-width) solid var(--agent-shell-divider);
 }
 /* Window modes recolour tabs through --tab-strip-fill, --tab-fill and
    --tab-active-fill, and opt into motion through --tab-motion-duration. */

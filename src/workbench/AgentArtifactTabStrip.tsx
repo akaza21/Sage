@@ -21,6 +21,8 @@ import { artifactTabParts } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
 import "./AgentArtifactPaneTabs.css";
 
+export { AgentArtifactEmptyState } from "./AgentArtifactPaneEmptyState";
+
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
   selectedTarget: AgentArtifactTarget | null;

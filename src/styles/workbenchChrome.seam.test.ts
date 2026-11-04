@@ -40,10 +40,10 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.workbench--agent\s*\{[^}]*--workbench-card-fill:\s*var\(--agent-shell-center\);/s,
     );
     expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*var\(--agent-pane-header-height\);[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
+      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*var\(--agent-pane-header-height\);[^}]*border-bottom:\s*var\(--border-width\) solid var\(--agent-shell-divider\);/s,
     );
     expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*1px solid var\(--agent-shell-tab-border\);/s,
+      /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*var\(--border-width\) solid var\(--agent-shell-tab-border\);/s,
     );
   });
   it("keeps the selected chat as the sole filled sidebar row and section labels left aligned", async () => {
