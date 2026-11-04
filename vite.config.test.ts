@@ -694,6 +694,9 @@ describe("desktop-native chunk topology", () => {
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);
     expect(groupedGraph.chunkNames.get(sharedFile!)).toBe("workbench-deps");
+    expect(groupedGraph.moduleFiles.get("src/ui/nativePageLayers.ts")).toBe(
+      sharedFile,
+    );
     const agentFile = groupedGraph.moduleFiles.get(agent);
     expect(groupedGraph.chunkNames.get(agentFile!)).toBe("agent-workbench");
     expect(agentFile).not.toBe(sharedFile);

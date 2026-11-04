@@ -63,15 +63,9 @@ const loadRailStatus = () =>
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
 
-const loadQuickOpenHost = () =>
-  import("../features/quickOpen/QuickOpenHost").then(({ QuickOpenHost }) => ({
-    default: QuickOpenHost,
-  }));
+const loadQuickOpenHost = () => import("../features/quickOpen/QuickOpenHost");
 
-const loadDirtyTabDialog = () =>
-  import("./DirtyTabDialog").then(({ DirtyTabDialog }) => ({
-    default: DirtyTabDialog,
-  }));
+const loadDirtyTabDialog = () => import("./DirtyTabDialog");
 
 // The Editor's tab strip stays off the Agent startup path.
 const loadTabStrip = () =>

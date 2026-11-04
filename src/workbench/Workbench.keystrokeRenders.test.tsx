@@ -56,7 +56,8 @@ vi.mock("./RightSidebar", async (original) => {
 });
 vi.mock("./DirtyTabDialog", async (original) => {
   const module = await original<typeof DirtyTabDialogModule>();
-  return { DirtyTabDialog: profiled("DirtyTabDialog", module.DirtyTabDialog) };
+  const Dialog = profiled("DirtyTabDialog", module.DirtyTabDialog);
+  return { DirtyTabDialog: Dialog, default: Dialog };
 });
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <section>Active chat</section>,

@@ -14,7 +14,7 @@ vi.mock("../features/diff/DiffSurface", () => ({
 vi.mock("../features/files/FileSurface", () => ({
   FileSurface: () => <div>File surface</div>,
 }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./LeftSidebar", () => ({ LeftSidebar: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));

@@ -94,3 +94,5 @@ export function DirtyTabDialog() {
 
   return <DirtyTabConfirmation key={tab.id} tabId={tab.id} title={tab.title} />;
 }
+
+export default DirtyTabDialog;

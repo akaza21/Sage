@@ -68,6 +68,7 @@ export function TerminalDock({
     let showing = false;
     let sessionEnded = ended;
     let pendingInput = "";
+    let pendingInputBytes = 0;
     let inputSending = false;
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
@@ -160,6 +161,7 @@ export function TerminalDock({
         while (pendingInput && !stopped && !sessionEnded) {
           const chunk = pendingInput;
           pendingInput = "";
+          pendingInputBytes = 0;
           try {
             const started = Date.now();
             for (
@@ -182,6 +184,7 @@ export function TerminalDock({
             }
           } catch (error) {
             pendingInput = "";
+            pendingInputBytes = 0;
             sessionEnded = terminalErrorCode(error) === "ended";
             if (!stopped) reportStatus(terminalErrorLabel(error), sessionEnded);
             break;
@@ -194,14 +197,15 @@ export function TerminalDock({
 
     const inputListener = terminal.onData((data) => {
       if (stopped || sessionEnded || !data) return;
-      const nextInput = pendingInput + data;
-      if (utf8ByteLength(nextInput) > TERMINAL_INPUT_BYTES) {
+      const byteLength = utf8ByteLength(data);
+      if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
         reportStatus(
           "Input was not sent: terminal input buffer limit reached.",
         );
         return;
       }
-      pendingInput = nextInput;
+      pendingInput += data;
+      pendingInputBytes += byteLength;
       if (!inputSending) void drainInput();
     });
     const refreshDimensions = () => {
