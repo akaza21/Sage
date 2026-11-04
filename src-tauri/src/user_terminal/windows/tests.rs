@@ -571,24 +571,34 @@ fn a_process_on_the_conpty_receives_exactly_the_allowlisted_environment() {
             (name.to_owned(), value.to_owned())
         })
         .collect::<Vec<_>>();
-    let expected = [
+    // The rerun's process can hold listed variables it was not given, since
+    // Windows may add some at process start, so the terminal must pass every
+    // listed variable this process has, and nothing else.
+    let expected = PASSED_IN_ORDER
+        .iter()
+        .filter_map(|&name| {
+            let value = match name {
+                SEARCH => "1".to_owned(),
+                _ => std::env::var_os(name)?.display().to_string(),
+            };
+            Some((name.to_owned(), value))
+        })
+        .collect::<Vec<_>>();
+    for given in [
         "APPDATA",
         "ComSpec",
         "LOCALAPPDATA",
-        SEARCH,
         "PATH",
         "ProgramFiles(x86)",
         "SystemRoot",
         "TEMP",
         "USERDOMAIN",
-    ]
-    .map(|name| {
-        let value = match name {
-            SEARCH => "1".to_owned(),
-            _ => std::env::var(name).unwrap(),
-        };
-        (name.to_owned(), value)
-    });
+    ] {
+        assert!(
+            expected.iter().any(|(name, _)| name == given),
+            "{given} is missing from {expected:?}"
+        );
+    }
     assert_eq!(received, expected);
 
     let project = temp.join("project");
