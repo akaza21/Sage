@@ -279,8 +279,7 @@ export function acceptModeASnapshot(state, value) {
     snapshot.chatId !== state.chatId ||
     snapshot.harness.id !== state.harness.id ||
     snapshot.harness.text !== state.harness.text ||
-    snapshot.model.id !== state.model.id ||
-    snapshot.model.text !== state.model.text
+    snapshot.model.id !== state.model.id
   )
     fail("identity-churn");
   const revision = BigInt(snapshot.projectionRevision);
@@ -332,6 +331,9 @@ export function acceptModeASnapshot(state, value) {
     sessionId: turn.sessionId,
     runtimeEpoch: turn.runtimeEpoch,
     projectionRevision: snapshot.projectionRevision,
+    // The Model control reads "Model" until the session confirms the model,
+    // then shows its name; the id alone is the identity, the name is recorded.
+    model: { ...snapshot.model },
     turnIds: [...state.turnIds, turn.id],
     turnOrdinals: [...state.turnOrdinals, turn.ordinal],
     itemIds: [...state.itemIds, ...turn.items.map((item) => item.id)],
