@@ -38,6 +38,52 @@ impl ResourceMapper for ContextResource {
 }
 
 #[test]
+fn large_blank_line_context_reconstructs_disjoint_hunks_in_both_directions() {
+    let gap = "\n".repeat(260_000);
+    let old_text = format!("\nold\n{gap}tail\nend");
+    let new_text = format!("\nnew\nextra\n{gap}last\nend");
+    let diff = concat!(
+        "@@ -2 +2,2 @@\n-old\n+new\n+extra\n",
+        "@@ -260003 +260004 @@\n-tail\n+last\n",
+    );
+    for context in [&old_text, &new_text] {
+        let (payload, pair) = project_with_mapper(diff, &ContextResource(context.clone()));
+        assert!(matches!(
+            payload,
+            NormalizedPayload::FileChangeDiff {
+                additions: Some(3),
+                deletions: Some(2),
+                pair_available: true,
+                truncated: false,
+                ..
+            }
+        ));
+        let pair = pair.unwrap();
+        assert_eq!(pair.old_text, old_text);
+        assert_eq!(pair.new_text, new_text);
+    }
+}
+
+#[test]
+fn out_of_range_hunk_is_invalid_even_when_its_partial_gap_would_exceed_the_cap() {
+    let (payload, pair) = project_with_mapper(
+        "@@ -0,0 +1 @@\n+x\n@@ -262146 +262147 @@\n-a\n+b\n",
+        &ContextResource("\n".repeat(DIFF_SIDE_BYTES_MAX)),
+    );
+    assert!(pair.is_none());
+    assert!(matches!(
+        payload,
+        NormalizedPayload::FileChangeDiff {
+            pair_available: false,
+            truncated: false,
+            additions: Some(2),
+            deletions: Some(1),
+            ..
+        }
+    ));
+}
+
+#[test]
 fn reconstructed_pairs_retain_eof_and_fail_closed_at_the_shared_side_cap() {
     let (_, pair) = project_with_mapper(
         concat!(

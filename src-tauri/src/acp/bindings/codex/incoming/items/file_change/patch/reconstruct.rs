@@ -35,8 +35,9 @@ impl Patch {
     }
 
     fn apply(&self, context: &str, reverse: bool) -> Result<String, PatchError> {
-        let lines: Vec<_> = context.split_inclusive('\n').collect();
+        let mut lines = context.split_inclusive('\n').peekable();
         let mut cursor = 0;
+        let mut offset = 0;
         let mut result = String::new();
         for hunk in &self.hunks {
             let (start, source, replacement) = if reverse {
@@ -52,31 +53,32 @@ impl Patch {
                     &self.new_text[hunk.new_bytes.clone()],
                 )
             };
-            for line in lines.get(cursor..start).ok_or(Invalid)? {
-                append(&mut result, line)?;
+            let gap_start = offset;
+            for _ in 0..start.checked_sub(cursor).ok_or(Invalid)? {
+                offset += lines.next().ok_or(Invalid)?.len();
             }
+            // Validate the whole gap before appending, so out-of-range hunks
+            // remain Invalid even if a partial gap would exceed the side cap.
+            append(&mut result, &context[gap_start..offset])?;
             let consumed = source.split_inclusive('\n').count();
             let end = start.checked_add(consumed).ok_or(Invalid)?;
-            if !lines
-                .get(start..end)
-                .ok_or(Invalid)?
-                .iter()
-                .copied()
-                .eq(source.split_inclusive('\n'))
-            {
-                return Err(Invalid);
+            for expected in source.split_inclusive('\n') {
+                if lines.next() != Some(expected) {
+                    return Err(Invalid);
+                }
             }
+            offset += source.len();
             if (!replacement.is_empty() && !result.is_empty() && !result.ends_with('\n'))
-                || (!replacement.is_empty() && !replacement.ends_with('\n') && end < lines.len())
+                || (!replacement.is_empty()
+                    && !replacement.ends_with('\n')
+                    && lines.peek().is_some())
             {
                 return Err(Invalid);
             }
             append(&mut result, replacement)?;
             cursor = end;
         }
-        for line in lines.get(cursor..).ok_or(Invalid)? {
-            append(&mut result, line)?;
-        }
+        append(&mut result, &context[offset..])?;
         Ok(result)
     }
 }
