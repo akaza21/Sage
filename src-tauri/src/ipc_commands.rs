@@ -22,6 +22,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         return true;
     }
     let handle: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        #[cfg(windows)]
+        crate::window_frame::set_window_caption_controls,
         user_terminal::ipc::terminal_create,
         user_terminal::ipc::terminal_write,
         user_terminal::ipc::terminal_resize,
