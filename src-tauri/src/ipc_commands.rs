@@ -35,6 +35,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         resource_commands::get_file_diff,
         repository_git_base::get_file_git_base,
         repository_ref_commands::discover_project_repositories,
+        repository_ref_commands::resolve_resource_repository,
         repository_ref_commands::get_repository_ref_status,
         repository_ref_commands::get_repository_ref_file_diff,
         editor_watch::watch_editor_document,

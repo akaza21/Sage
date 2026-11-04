@@ -7,6 +7,7 @@ import "./edited-files-card.css";
 import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
+import { editDiffAction } from "./chatEditSummary";
 
 export function TurnFileActivity({
   page,
@@ -48,14 +49,19 @@ export function TurnFileActivity({
   const count = changeKeys.size;
   const open =
     turn.sessionId === page.currentSessionId ? onOpenResource : undefined;
-  const firstDiff = changes.find((change) => change.diffRef);
+  const firstDiff =
+    changes.find((change) => change.diffRef) ??
+    changes.find((change) => editDiffAction(change).resource);
   const visible = expanded ? changes : changes.slice(0, 3);
-  const unavailable = "Saved changes are unavailable for this file.";
+  const unavailable = !open
+    ? "Changes cannot be opened from this Chat session."
+    : "No file baseline is available.";
   function view(change: (typeof changes)[number]) {
-    if (!open || !change.diffRef || change.resource.kind !== "resource") return;
+    const { resource } = editDiffAction(change);
+    if (!open || !resource) return;
     open(
-      change.resource.resource,
-      "diff",
+      resource,
+      change.diffRef ? "diff" : "workingTreeDiff",
       {
         projectId: page.projectId,
         chatId: page.chatId,
@@ -90,7 +96,7 @@ export function TurnFileActivity({
             title={
               !open || !firstDiff
                 ? unavailable
-                : "Open the first saved file diff"
+                : editDiffAction(firstDiff).title
             }
             onClick={() => firstDiff && view(firstDiff)}
           >
@@ -100,6 +106,7 @@ export function TurnFileActivity({
       </header>
       <ul>
         {visible.map((change, index) => {
+          const action = editDiffAction(change);
           const location = change.resource;
           const label =
             location.kind === "resource"
@@ -109,9 +116,15 @@ export function TurnFileActivity({
             <li key={index}>
               <button
                 type="button"
-                disabled={!open || !change.diffRef}
+                disabled={!open || !action.resource}
                 title={
-                  !open || !change.diffRef ? `${label}: ${unavailable}` : label
+                  !open
+                    ? unavailable
+                    : !action.resource
+                      ? action.unavailable
+                      : change.diffRef
+                        ? label
+                        : `${label}: ${action.title}`
                 }
                 onClick={() => view(change)}
               >

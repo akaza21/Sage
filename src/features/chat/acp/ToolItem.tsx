@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { type AcpItem } from "../../../domain/acp";
 import { type ResourceRef } from "../../../domain/workbench";
+import type { AgentArtifactOpenIntent } from "../../../domain/agentArtifact";
 import {
   ArrowRightLeft,
   Bot,
@@ -27,7 +28,7 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
 
-export type OpenResourceTarget = "file" | "diff";
+export type OpenResourceTarget = AgentArtifactOpenIntent["target"];
 
 type ToolKind = ToolProjectionItem["payload"]["presentation"]["kind"];
 

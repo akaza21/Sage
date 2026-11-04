@@ -6,7 +6,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { registerModalDialog } from "./modalDialogState";
+import { useNativePageLayer } from "./nativePageLayers";
 
 const FOCUSABLE_SELECTOR = [
   'a[href]:not([tabindex="-1"])',
@@ -48,6 +48,7 @@ export function ModalDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousFocusRef = useRef(document.activeElement);
+  useNativePageLayer(dialogRef, { coverage: "window" });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -59,11 +60,9 @@ export function ModalDialog({
       dialog.setAttribute("open", "");
     }
     initialFocusRef?.current?.focus();
-    const unregister = registerModalDialog();
     return () => {
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
-      unregister();
       if (
         restoreFocus &&
         previousFocus instanceof HTMLElement &&

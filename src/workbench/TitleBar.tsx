@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
+import { useAgentChatFocus } from "../app/agentChatOwner";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
@@ -13,9 +14,10 @@ import {
 } from "../ui/leanIcons";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
 import { useRailChatId } from "./sideChatState";
-import { titleBarFocusedChatId, titleBarSessionTitle } from "./titleBarCenter";
+import { titleBarSessionTitle } from "./titleBarCenter";
 import {
   collectChatTabIds,
+  focusedAgentChatId,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -74,6 +76,7 @@ export function TitleBar({
 }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const agentChatId = useAgentChatFocus();
   const project = useWorkbenchStore((state) => state.project);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -112,7 +115,7 @@ export function TitleBar({
   }, [inert, chatSearchDisabled, mode, openChatSearch]);
   // A side chat keeps its parent's window title.
   const focusedId = useRailChatId(
-    titleBarFocusedChatId(collectChatTabIds(tabs), activeTabId),
+    focusedAgentChatId(collectChatTabIds(tabs), activeTabId, agentChatId),
   );
   const sessionTitle =
     mode === "agent"

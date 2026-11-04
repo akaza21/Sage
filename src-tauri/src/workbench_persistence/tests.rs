@@ -8,6 +8,7 @@ use super::*;
 use crate::acp::limits::LIMITS;
 
 mod rollback;
+mod unavailable_binding;
 
 fn database_with_project() -> (Database, String, String) {
     let database = Database::open(Path::new(":memory:")).unwrap();

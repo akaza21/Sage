@@ -8,6 +8,8 @@ import type {
   PinChatRequest,
   DiscoverProjectRepositoriesRequest,
   DiscoverProjectRepositoriesResult,
+  ResolveResourceRepositoryRequest,
+  ResolveResourceRepositoryResult,
   EditorWatchSubscription,
   NestedRepositoryFileDiffRequest,
   NestedRepositoryFileDiffResult,
@@ -144,6 +146,9 @@ export interface EditorPort {
 }
 
 export interface RepositoryPort {
+  resolveResourceRepository(
+    request: ResolveResourceRepositoryRequest,
+  ): Promise<ResolveResourceRepositoryResult>;
   getRepositoryStatus(): Promise<ProjectRepositoryStatus>;
   /** Changes when Git state may have changed outside Sage (EP-12). */
   getRepositoryChangeStamp(): Promise<string>;
@@ -324,6 +329,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "createGitLocalBranch",
     "deleteGitLocalBranch",
     "discoverProjectRepositories",
+    "resolveResourceRepository",
     "fetchGitRemote",
     "getFileDiff",
     "getFileGitBase",
