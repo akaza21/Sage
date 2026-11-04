@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import {
   openAgentScenario,
   openAgentSnapshotDiff,
@@ -10,6 +10,28 @@ test.use({
   launchOptions: { args: ["--disable-gpu"] },
 });
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
+
+async function expectActiveTabStyle(tab: Locator) {
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  const appearance = await tab.evaluate((node) => {
+    const frame = node.closest(".tab")!;
+    const style = getComputedStyle(frame);
+    return {
+      height: frame.getBoundingClientRect().height,
+      background: style.backgroundColor,
+      border: style.border,
+      radius: style.borderRadius,
+      shadow: style.boxShadow,
+    };
+  });
+  expect(appearance).toEqual({
+    height: 28,
+    background: "rgb(42, 42, 42)",
+    border: "1px solid rgb(76, 76, 76)",
+    radius: "6px",
+    shadow: "none",
+  });
+}
 
 for (const scenario of ["agent-single", "preview", "file"] as const) {
   test(`artifact header and canvas do not overlap in ${scenario}`, async ({
@@ -107,6 +129,7 @@ for (const viewport of [
       `team-pane-${viewport.width}-status.png`,
       pixelExact,
     );
+    await expectActiveTabStyle(changesTab);
 
     await pane
       .getByRole("tab", {
@@ -129,12 +152,13 @@ for (const viewport of [
     await expect(changes).toBeVisible();
     await openAgentSnapshotDiff(page);
     await expect(changes).toHaveCount(0);
-    await expect(
+    await expectActiveTabStyle(
       pane.getByRole("tab", {
         name: "Diff src/workbench/AgentChatPanes.tsx",
         exact: true,
       }),
-    ).toHaveAttribute("aria-selected", "true");
+    );
+    await expect(changesTab).toHaveAttribute("aria-selected", "false");
 
     // Make the saved edit the latest turn, using the same real projection
     // shape as a chat whose last turn edited a file. The saved diff remains
@@ -165,6 +189,49 @@ for (const viewport of [
       `team-pane-${viewport.width}-last-turn.png`,
       pixelExact,
     );
+    const scope = changes.getByRole("combobox", { name: "Changes scope" });
+    await expect(scope).toHaveValue("lastTurn");
+    await expect(scope).toHaveCSS("background-color", "rgb(45, 45, 45)");
+    await expect(totals).toHaveCSS("background-color", "rgb(45, 45, 45)");
+    const bar = await changes.evaluate((node) => {
+      const toolbar = node.querySelector(".changes-surface__toolbar")!;
+      const bounds = toolbar.getBoundingClientRect();
+      const scopeBounds = toolbar
+        .querySelector("select")!
+        .getBoundingClientRect();
+      const countBounds = toolbar
+        .querySelector(".diff-header__counts")!
+        .getBoundingClientRect();
+      const refreshBounds = toolbar
+        .querySelector("button")!
+        .getBoundingClientRect();
+      const header = node
+        .closest(".agent-artifact-pane")!
+        .querySelector(".agent-artifact-pane__header")!
+        .getBoundingClientRect();
+      return {
+        height: bounds.height,
+        headerGap: bounds.top - header.bottom,
+        scopeInset: scopeBounds.top - bounds.top,
+        scopeHeight: scopeBounds.height,
+        countHeight: countBounds.height,
+        countGap: countBounds.left - scopeBounds.right,
+        countOffset: countBounds.top - scopeBounds.top,
+        refreshHeight: refreshBounds.height,
+        refreshOffset: refreshBounds.top - scopeBounds.top,
+      };
+    });
+    expect(bar).toEqual({
+      height: 44,
+      headerGap: 0,
+      scopeInset: 6,
+      scopeHeight: 31,
+      countHeight: 31,
+      countGap: 0,
+      countOffset: 0,
+      refreshHeight: 31,
+      refreshOffset: 0,
+    });
     await page
       .getByRole("radiogroup", { name: "Window mode" })
       .getByText("Editor", { exact: true })

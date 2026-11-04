@@ -25,27 +25,6 @@ function mediaBlock(css: string, query: string) {
 }
 
 describe("Workbench chrome stylesheet seam", () => {
-  it("uses the measured Agent centre and right-panel chrome", async () => {
-    const css = (
-      await Promise.all([
-        readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-        readFile(resolve("src/workbench/AgentArtifactPaneTabs.css"), "utf8"),
-      ])
-    ).join("\n");
-    expect(css).toMatch(
-      /\.workbench\s*\{[^}]*--title-bar-fill:\s*var\(--agent-shell-rail\);/s,
-    );
-    expect(css).not.toMatch(/--chrome-row-height:/);
-    expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--workbench-card-fill:\s*var\(--agent-shell-center\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*var\(--agent-pane-header-height\);[^}]*border-bottom:\s*var\(--border-width\) solid var\(--agent-shell-divider\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*var\(--border-width\) solid var\(--agent-shell-tab-border\);/s,
-    );
-  });
   it("keeps the selected chat as the sole filled sidebar row and section labels left aligned", async () => {
     const css = await readFile(
       resolve("src/styles/agent-rail-surface.css"),
