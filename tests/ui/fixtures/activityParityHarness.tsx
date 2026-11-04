@@ -7,7 +7,9 @@ import {
   textItem,
 } from "../../../src/features/chat/acp/acpProjection.fixture";
 import { parityTool } from "../../../src/features/chat/acp/activityParity.fixture";
+import { snapshotPage } from "../../../src/app/agentDiff.fixture";
 import "../../../src/styles/global.css";
+import "../../../src/styles/changed-files-summary.css";
 import "../../../src/features/chat/acp/acp-chat.css";
 import "../../../src/features/chat/acp/acp-chat-activities.css";
 import "../../../src/features/chat/acp/acp-activity-cards.css";
@@ -18,10 +20,13 @@ import "../../../src/features/chat/chat-transcript-polish.css";
 const scenario = new URLSearchParams(location.search).get("scenario");
 const stopped = scenario === "stopped";
 const running = scenario === "running" || scenario === "thinking";
-const projection = page(
-  stopped ? "cancelled" : running ? "running" : "completed",
-  stopped ? { kind: "cancelledByUser" } : undefined,
-);
+const projection =
+  scenario === "edits"
+    ? snapshotPage()
+    : page(
+        stopped ? "cancelled" : running ? "running" : "completed",
+        stopped ? { kind: "cancelledByUser" } : undefined,
+      );
 projection.turns[0].createdAt = 1_000;
 projection.turns[0].terminalAt = running ? null : 6_000;
 const answer = {
@@ -44,9 +49,19 @@ const prompt = {
   payload: { role: "user", text: "Inspect this project" },
 } as AcpItem;
 const command = parityTool("execute", 1, running ? "inProgress" : "completed");
+if (
+  scenario === "wrapped-command" &&
+  command.payload.presentation.kind === "execute"
+) {
+  command.payload.presentation.summary =
+    '[path] -NoProfile -Command "Get-Content -LiteralPath README.md --token [redacted]"';
+  command.payload.inputSummary = command.payload.presentation.summary;
+  command.payload.outputSummary =
+    "PowerShell profile could not be loaded.\n# README";
+}
 if (running && command.payload.presentation.kind === "execute") {
   command.payload.presentation.summary =
-    "git diff --stat -- src/features/chat/acp/ToolActivityRollupView.tsx";
+    "git diff --stat -- src/features/chat/acp/PrimaryActivities.tsx";
 }
 const notice = {
   ...textItem(),
@@ -80,37 +95,85 @@ const children = ["Reviewer", "Builder"].map((label, index) => ({
   },
 })) as AcpItem[];
 const activities =
-  scenario === "thinking"
+  scenario === "notice"
     ? [
         {
           ...textItem(),
-          id: "prose",
+          id: "browser-notice",
           ordinal: 1,
-          lifecycle: "streaming",
-          payload: { role: "assistant", text: "Checking the project now." },
-        } as AcpItem,
-        {
-          ...textItem(),
-          id: "thought",
-          ordinal: 2,
-          kind: "thoughtSummary",
-          lifecycle: "streaming",
-          payload: { summary: "Inspecting the dependencies." },
+          kind: "error",
+          lifecycle: "completed",
+          payload: {
+            code: "browserMcpUnavailable",
+            message:
+              "Browser tools are unavailable. You can continue chatting.",
+            recoverable: false,
+          },
         } as AcpItem,
       ]
-    : scenario === "mermaid"
-      ? []
-      : scenario === "reads"
-        ? [parityTool("read"), parityTool("read", 2), parityTool("read", 3)]
-        : scenario === "compaction"
-          ? [notice]
-          : scenario === "subagents"
-            ? children
-            : scenario === "commands"
-              ? [command, parityTool("execute", 2), parityTool("execute", 3)]
-              : scenario === "simple" || stopped
-                ? []
-                : [command];
+    : scenario === "edits"
+      ? Array.from({ length: 5 }, (_, index) => {
+          const saved = snapshotPage().turns[0].items[0];
+          if (saved.kind !== "fileChangeDiff")
+            throw new Error("Expected edit fixture");
+          return {
+            ...saved,
+            id: `edit-${index}`,
+            ordinal: index + 1,
+            payload: {
+              ...saved.payload,
+              changes: [
+                {
+                  ...saved.payload.changes[0],
+                  resource: {
+                    kind: "resource",
+                    resource: {
+                      rootId: "root-a",
+                      relativePath: `src/file-${index}.ts`,
+                    },
+                  },
+                  additions: index + 1,
+                  deletions: index,
+                },
+              ],
+            },
+          } as AcpItem;
+        })
+      : scenario === "thinking"
+        ? [
+            {
+              ...textItem(),
+              id: "prose",
+              ordinal: 1,
+              lifecycle: "streaming",
+              payload: { role: "assistant", text: "Checking the project now." },
+            } as AcpItem,
+            {
+              ...textItem(),
+              id: "thought",
+              ordinal: 2,
+              kind: "thoughtSummary",
+              lifecycle: "streaming",
+              payload: { summary: "Inspecting the dependencies." },
+            } as AcpItem,
+          ]
+        : scenario === "mermaid"
+          ? []
+          : scenario === "reads"
+            ? [parityTool("read"), parityTool("read", 2), parityTool("read", 3)]
+            : scenario === "compaction"
+              ? [notice]
+              : scenario === "subagents"
+                ? children
+                : scenario === "commands"
+                  ? [
+                      command,
+                      parityTool("execute", 2),
+                      parityTool("execute", 3),
+                    ]
+                  : scenario === "simple" || stopped
+                    ? []
+                    : [command];
 projection.turns[0].items = [
   prompt,
   ...activities,
@@ -135,6 +198,10 @@ createRoot(document.getElementById("root")!).render(
       historyError={null}
       projectRoots={[]}
       retentionIncomplete={false}
+      onOpenResource={(resource, target) => {
+        document.getElementById("opened-diff")!.textContent =
+          `${target}:${resource.relativePath}`;
+      }}
     />
     <ChatTranscriptFooter
       useNativeAcp
@@ -142,5 +209,6 @@ createRoot(document.getElementById("root")!).render(
       messages={[]}
       onRetry={() => undefined}
     />
+    <output id="opened-diff" aria-label="Opened diff" />
   </div>,
 );

@@ -12,7 +12,6 @@ use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
 
-#[cfg(test)]
 use super::types::HostState;
 use super::{
     actor::Actor,
@@ -211,9 +210,30 @@ impl RuntimeHost {
     }
 
     pub(crate) fn send(&self, intent: HostPromptIntent) -> Result<HostOutcome, HostError> {
+        let started = Instant::now();
         let owner = intent.owner();
-        let turn_id = self.prepare_prompt(intent)?;
-        self.dispatch_prepared(owner, turn_id)
+        let turn_id = self.prepare_prompt(intent).inspect_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "host.prepare",
+                started,
+                error,
+                self.lifecycle.load(Ordering::Acquire),
+            );
+        })?;
+        let prepared_ms = started.elapsed().as_millis();
+        self.dispatch_prepared(owner, turn_id).inspect_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "host.dispatch",
+                started,
+                error,
+                (
+                    "prepared_ms",
+                    prepared_ms,
+                    "lifecycle",
+                    self.lifecycle.load(Ordering::Acquire),
+                ),
+            );
+        })
     }
 
     pub(crate) fn cancel(&self, intent: HostCancelIntent) -> Result<HostOutcome, HostError> {
@@ -255,7 +275,6 @@ impl RuntimeHost {
         self.outcome_until(HostCommand::ProjectSwitched(project), deadline)
     }
 
-    #[cfg(test)]
     pub(crate) fn state(&self) -> Result<HostState, HostError> {
         match self.submit(HostCommand::State)? {
             HostReply::State(state) => Ok(state),

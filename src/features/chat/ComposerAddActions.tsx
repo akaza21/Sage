@@ -1,11 +1,39 @@
 import { Check, Sparkles, Target } from "../../ui/leanIcons";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode, RefObject } from "react";
+import { MenuPopover } from "../../ui/MenuPopover";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { sessionModeActions } from "../../domain/acpSessionConfigControls";
+
+export function ComposerOptionsMenu({
+  id,
+  triggerRef,
+  onDismiss,
+  ...actions
+}: ComponentProps<typeof ComposerAddActions> & {
+  id: string;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onDismiss: () => void;
+}) {
+  return (
+    <MenuPopover
+      id={id}
+      className="composer__popover composer__options"
+      ariaLabel="Composer options menu"
+      focusKey="options"
+      restoreFocusOnTab
+      open
+      triggerRef={triggerRef}
+      onDismiss={onDismiss}
+      gap={8}
+    >
+      <ComposerAddActions {...actions} />
+    </MenuPopover>
+  );
+}
 
 export function ComposerAddActions({
   sessionConfig,

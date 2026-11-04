@@ -1,7 +1,6 @@
 import { FileCode2 } from "../ui/leanIcons";
-
 import { useWorkbenchStore } from "../app/store";
-import type { WorkbenchTab } from "../domain/workbench";
+import { type WorkbenchTab } from "../domain/workbench";
 import { sameResource } from "../domain/resourceIdentity";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import { EditorWelcome } from "./EditorWelcome";
@@ -12,6 +11,8 @@ const loadSettingsSurface = () =>
   import("./SettingsSurface").then(({ SettingsSurface }) => ({
     default: SettingsSurface,
   }));
+
+export default ActiveEditorCanvas;
 
 function repositoryMutationTitle(
   error: NonNullable<

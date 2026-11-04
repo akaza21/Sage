@@ -23,7 +23,7 @@ fn pi_consecutive_turn_items_and_images_ingest_without_identity_conflicts() {
     connection
         .execute_batch(
             "INSERT INTO projects VALUES('project-pi','Pi',0,0,0);
-         INSERT INTO chats VALUES('chat-pi','project-pi',0,'Pi',0,0,0);
+         INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-pi','project-pi',0,'Pi',0,0,0);
          INSERT INTO acp_project_usage VALUES('project-pi',1,1,2,0,0,0,0);
          UPDATE acp_store_usage SET chat_count=1,session_count=1,turn_count=2;",
         )

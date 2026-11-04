@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { CompactToolItem } from "./CompactToolItem";
+
 import { ToolItem } from "./ToolItem";
 
 afterEach(cleanup);
@@ -211,7 +211,8 @@ describe("Shell outcome", () => {
     "reads exit %s in state %s as %s",
     (exitCode, state, outcome, danger) => {
       const { container } = render(
-        <CompactToolItem
+        <ToolItem
+          compact
           item={tool(execute(exitCode), state, "ok", "npm test")}
         />,
       );

@@ -1,13 +1,18 @@
+import { PickerLogo } from "../ui/PickerOption";
+import { harnessIconKind } from "../domain/harness";
 import { AlertTriangle, CircleAlert, Info } from "../ui/leanIcons";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 
 export function AgentTaskStatus({
   snapshot,
   harnessStatus,
+  harnessName,
 }: {
   snapshot: ChatLiveSnapshot | null;
   harnessStatus?: string;
+  harnessName?: string;
 }) {
+  const icon = harnessIconKind(harnessName);
   const label = snapshot?.statusLabel ?? "Idle";
   const tone = snapshot?.statusTone ?? "idle";
   const StatusIcon =
@@ -37,14 +42,16 @@ export function AgentTaskStatus({
         <details className="agent-task-header__harness-status">
           <summary
             aria-label={`Harness status: ${harnessStatus}`}
+            aria-description={harnessName}
             title={harnessStatus}
             tabIndex={0}
           >
-            <Info
+            <span
               className="agent-task-header__harness-icon"
-              size={14}
               aria-hidden="true"
-            />
+            >
+              {icon ? <PickerLogo icon={icon} /> : <Info size={14} />}
+            </span>
             <span>{harnessStatus}</span>
           </summary>
           <p>{harnessStatus}</p>
@@ -53,5 +60,3 @@ export function AgentTaskStatus({
     </>
   );
 }
-
-// The header's inline rename, opened by its pencil or the chat actions.

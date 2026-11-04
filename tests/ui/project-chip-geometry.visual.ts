@@ -284,7 +284,9 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     const toolbar = (await composer
       .locator(".composer__toolbar")
       .boundingBox())!;
-    expect(field.height).toBeGreaterThanOrEqual(44);
+    // The 360 px viewport uses the compact 40–56 px textarea range.
+    expect(field.height).toBeGreaterThanOrEqual(40);
+    expect(field.height).toBeLessThanOrEqual(56);
     expect(field.y).toBeGreaterThanOrEqual(form.y);
     expect(field.y + field.height).toBeLessThanOrEqual(toolbar.y);
     expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(

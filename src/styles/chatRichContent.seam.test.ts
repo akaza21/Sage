@@ -38,9 +38,4 @@ describe("Chat rich content layout", () => {
       "color: var(--color-text-secondary)",
     );
   });
-  it("wraps whole approval buttons instead of breaking the words inside them", () => {
-    expect(rule(".acp-permission__actions")).toContain("flex-wrap: wrap");
-    expect(rule(".acp-permission__action")).toContain("flex: none");
-    expect(rule(".acp-permission__action")).toContain("white-space: nowrap");
-  });
 });

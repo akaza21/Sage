@@ -1,8 +1,26 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { win32 } from "node:path";
 
 import type { AcpItem, SafeResourceLocation } from "../../../domain/acp";
-import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { PrimaryActivities } from "./PrimaryActivities";
+import type { ComponentProps } from "react";
+import type { ToolRollup } from "./toolActivityRollup";
+function ToolActivityRollup({
+  rollup,
+  ...props
+}: Pick<
+  ComponentProps<typeof PrimaryActivities>,
+  "interactive" | "onOpenResource"
+> & { rollup: ToolRollup }) {
+  return (
+    <PrimaryActivities
+      {...props}
+      items={rollup.items}
+      renderItem={() => null}
+    />
+  );
+}
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
 import type { TurnProjection } from "../../../domain/acp";
 import {
@@ -14,12 +32,78 @@ import {
 
 afterEach(cleanup);
 
+it.each([
+  [
+    '[path] -NoProfile -Command "Get-Content -LiteralPath README.md"',
+    "Get-Content -LiteralPath README.md",
+  ],
+  [
+    `"${win32.resolve("/Program Files/PowerShell/7/pwsh.exe").replaceAll("\\", "\\\\")}" -NoLogo -NonInteractive -Command "Add-Content README.md [redacted]"`,
+    "Add-Content README.md [redacted]",
+  ],
+  [
+    "/bin/bash -lc 'npm test -- --token [redacted]'",
+    "npm test -- --token [redacted]",
+  ],
+  ["Get-Content README.md", "Get-Content README.md"],
+])(
+  "names the actual command, not its shell wrapper: %s",
+  (command, expected) => {
+    const item = tool("shell-label", "execute");
+    if (item.payload.presentation.kind !== "execute")
+      throw new Error("Expected command");
+    item.payload.presentation.summary = command;
+    item.payload.outputSummary = "PowerShell profile failed to load";
+    const { container } = render(
+      <ToolActivityRollup
+        rollup={{ kind: "execute", commandActivity: "ordinary", items: [item] }}
+        interactive
+      />,
+    );
+    expect(container.querySelector("summary")).toHaveTextContent(
+      `Ran ${expected}`,
+    );
+    expect(container.querySelector("summary")).not.toHaveTextContent(
+      /NoProfile|NoLogo|NonInteractive|profile failed/,
+    );
+  },
+);
+
 type ToolItem = Extract<AcpItem, { kind: "toolCall" }>;
+
+it("keeps redacted command labels stable across output-only item replacements and updates changed commands", () => {
+  const item = tool("replacement", "execute");
+  if (item.payload.presentation.kind !== "execute")
+    throw new Error("Expected command");
+  item.payload.presentation.summary =
+    '[path] -NoProfile -Command "Get-Content [redacted]"';
+  expect(toolRollupLabel("execute", [item])).toBe("Ran Get-Content [redacted]");
+  const refreshed = {
+    ...item,
+    revision: "2" as never,
+    payload: { ...item.payload, outputSummary: "new output" },
+  };
+  expect(toolRollupLabel("execute", [refreshed])).toBe(
+    "Ran Get-Content [redacted]",
+  );
+  const changed = {
+    ...refreshed,
+    payload: {
+      ...refreshed.payload,
+      presentation: {
+        ...item.payload.presentation,
+        summary: '[path] -NoProfile -Command "npm test"',
+      },
+    },
+  };
+  expect(toolRollupLabel("execute", [changed])).toBe("Ran npm test");
+});
 
 function tool(
   id: string,
   kind: ToolItem["payload"]["presentation"]["kind"],
   resources: readonly SafeResourceLocation[] = [],
+  commandActivity: ToolRollup["commandActivity"] = "ordinary",
 ): ToolItem {
   const presentation =
     kind === "read" || kind === "edit" || kind === "delete"
@@ -41,7 +125,7 @@ function tool(
               outputTail: null,
               outputTruncated: false,
               resources: [],
-              activity: "ordinary" as const,
+              activity: commandActivity,
             }
           : kind === "search"
             ? {
@@ -594,8 +678,11 @@ describe("ToolActivityRollup", () => {
               ? "Running tests"
               : "Running a command"
             : settled;
-        const completed = tool("completed", "execute");
-        const unsettled = { ...tool("unsettled", "execute"), toolState };
+        const completed = tool("completed", "execute", [], commandActivity);
+        const unsettled = {
+          ...tool("unsettled", "execute", [], commandActivity),
+          toolState,
+        };
         const { rerender } = render(
           <ToolActivityRollup
             rollup={{
@@ -626,6 +713,10 @@ describe("ToolActivityRollup", () => {
         expect(
           document.querySelector(".acp-tool-rollup__label")?.textContent,
         ).toBe(count);
+        expect(document.querySelector(".acp-tool-rollup")).toHaveAttribute(
+          "data-activity-state",
+          rowState,
+        );
       },
     );
   });
@@ -901,7 +992,7 @@ describe("ToolActivityRollup", () => {
     render(
       <ToolActivityRollup
         rollup={{
-          kind: "search",
+          kind: "mixed",
           commandActivity: "ordinary",
           items: [live(tool("live-search", "search")), command],
         }}

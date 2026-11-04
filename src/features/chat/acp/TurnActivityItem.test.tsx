@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AcpChatPage, AcpItem } from "../../../domain/acp";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
+import { page as chatPage } from "./acpProjection.fixture";
 
 afterEach(() => {
   cleanup();
@@ -77,7 +78,31 @@ it("does not invent compaction outcome copy for an unsupported lifecycle", () =>
 });
 
 describe("TurnActivityItem", () => {
-  it("shows live thinking as one bounded line with a placeholder only before content", () => {
+  it.each([
+    ["browserMcpUnavailable", "Browser tools unavailable"],
+    ["clientFileWriteRefused", "File write unavailable"],
+    ["pi_retry", "Agent notice"],
+    ["futureUnknownNotice42", "Agent notice"],
+  ])(
+    "gives notice %s a human heading without losing its message",
+    (code, heading) => {
+      render(
+        <TurnActivityItem
+          item={item("error", {
+            code,
+            message: "You can continue chatting.",
+            recoverable: false,
+          })}
+        />,
+      );
+      const notice = screen.getByRole("alert");
+      expect(within(notice).getByText(heading)).toBeVisible();
+      expect(notice).toHaveTextContent("You can continue chatting.");
+      expect(notice).not.toHaveTextContent(code);
+    },
+  );
+
+  it("shows a live Thinking shimmer without rendering reasoning text", () => {
     const thought = item("thoughtSummary", { summary: "" });
     thought.lifecycle = "streaming";
     thought.terminalAt = null;
@@ -93,10 +118,8 @@ describe("TurnActivityItem", () => {
         }}
       />,
     );
-    const preview = screen.getByText("x".repeat(256));
-    expect(preview).toBeVisible();
-    expect(preview).toHaveClass("acp-thought");
-    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+    expect(screen.queryByText("x".repeat(256))).toBeNull();
     expect(screen.queryByText("Earlier line")).toBeNull();
     expect(container.querySelector(".acp-markdown")).toBeNull();
     expect(
@@ -113,7 +136,8 @@ describe("TurnActivityItem", () => {
         }}
       />,
     );
-    expect(screen.getByText("Review src/main.ts and tests")).toBeVisible();
+    expect(screen.getByText("Thinking")).toBeVisible();
+    expect(screen.queryByText("Review src/main.ts and tests")).toBeNull();
     expect(screen.queryByText("x".repeat(256))).toBeNull();
   });
 
@@ -126,12 +150,15 @@ describe("TurnActivityItem", () => {
     ["### Plan\n```ts\n\n", "Plan"],
     ["```ts\nconst value = 1;\n```", "const value = 1;"],
     ["```ts\n```\n\n", "Thinking"],
-  ])("shows the latest visible thinking line from %j", (summary, expected) => {
+  ])("keeps the live thinking label stable for %j", (summary) => {
     const thought = item("thoughtSummary", { summary });
     thought.lifecycle = "streaming";
     thought.terminalAt = null;
     render(<TurnActivityItem item={thought} />);
-    expect(screen.getByText(expected)).toHaveClass("acp-thought");
+    expect(screen.getByText("Thinking")).toHaveClass(
+      "acp-thought",
+      "acp-live-shimmer",
+    );
   });
 
   it.each(["completed", "failed", "cancelled", "unsupported"] as const)(
@@ -144,9 +171,51 @@ describe("TurnActivityItem", () => {
       const { container, rerender } = render(
         <TurnActivityItem item={thought} />,
       );
-      expect(screen.getByText("Checking the files.")).toBeVisible();
+      expect(screen.getByText("Thinking")).toBeVisible();
       rerender(<TurnActivityItem item={{ ...thought, lifecycle }} />);
       expect(container).toBeEmptyDOMElement();
+    },
+  );
+
+  it.each(["codex", "claude-code", "pi"])(
+    "renders normalized reasoning for %s session metadata only while the turn is live (renderer contract)",
+    (bindingId) => {
+      const page = chatPage("running");
+      page.sessions = page.sessions.map((session) => ({
+        ...session,
+        bindingId: bindingId as never,
+      }));
+      page.turns[0].items = [
+        {
+          ...item("thoughtSummary", { summary: "Reasoning in progress" }),
+          lifecycle: "streaming",
+          terminalAt: null,
+        },
+      ];
+      const props = {
+        hasEarlier: false,
+        loadingEarlier: false,
+        historyError: null,
+        projectRoots: [],
+        retentionIncomplete: false,
+      };
+      const { rerender } = render(
+        <AcpChatPresentation page={page} {...props} />,
+      );
+      expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
+      const completed = {
+        ...page,
+        turns: [
+          { ...page.turns[0], state: "completed" as const, terminalAt: 20 },
+        ],
+      };
+      rerender(<AcpChatPresentation page={completed} {...props} />);
+      const disclosure = document.querySelector(
+        ".chat-transcript-work > summary",
+      );
+      if (disclosure) fireEvent.click(disclosure);
+      expect(screen.queryByText("Thinking")).toBeNull();
+      expect(screen.queryByText("Reasoning in progress")).toBeNull();
     },
   );
 
@@ -409,7 +478,7 @@ describe("TurnActivityItem", () => {
       <TurnActivityItem item={thought} workingItems={[working]} />,
     );
 
-    expect(screen.getByText("Checking the files.")).toBeVisible();
+    expect(screen.getByText("Thinking")).toBeVisible();
     expect(screen.queryByText("In progress")).toBeNull();
     expect(screen.queryByText("Search workspace")).toBeNull();
     expect(container.querySelector("details")).toBeNull();

@@ -1,13 +1,17 @@
-import type { AcpItem } from "../../../domain/acp";
+import { type AcpItem } from "../../../domain/acp";
 
 export type CollaborationProjectionItem = Extract<
   AcpItem,
   { kind: "collaboration" }
 >;
+
 export const MAX_SUBAGENT_GROUP_ITEMS = 300;
+
 export type SubagentRowState =
   "started working" | "finished" | "failed to start" | "failed" | "stopped";
+
 export type SubagentEntry = { key: string; label: string };
+
 export type SubagentActivityRow = {
   state: SubagentRowState;
   entries: SubagentEntry[];
@@ -134,10 +138,6 @@ const runOwner = (item: AcpItem) =>
     item.activityId,
   ].join("\0");
 
-/**
- * One adjacent run of child observations in one Turn. Starts and finishes
- * share it: Codex keeps a single row per run (s4/f0244, f0485).
- */
 export function collaborationRun(
   items: readonly AcpItem[],
   start: number,

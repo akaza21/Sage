@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-
 import { useWorkbenchStore } from "../../app/store";
-import type { ResourceRef } from "../../domain/resource";
+import { type ResourceRef } from "../../domain/resource";
 import { sameResource } from "../../domain/resourceIdentity";
 import { contentText, type EditorContent } from "../files/editorContent";
 import { outlineAvailability } from "./outlineAvailability";
-import type { SyntaxOutline } from "./syntaxOutline";
+import { type SyntaxOutline } from "./syntaxOutline";
 
 /** Typing settles before the document is reparsed for the Outline. */
-export const OUTLINE_SETTLE_MS = 200;
+const OUTLINE_SETTLE_MS = 200;
 
 export type ActiveOutline =
   | { resource: ResourceRef; status: "ready"; outline: SyntaxOutline }

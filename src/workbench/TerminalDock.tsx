@@ -25,6 +25,8 @@ const INPUT_RETRY_MAX_DELAY_MS = 500;
 /** Pause before reading again after another reader held the output. */
 const READ_RETRY_DELAY_MS = 100;
 const SCROLLBACK_LINES = 1_000;
+/** The only system setting that redefines the theme tokens. */
+const FORCED_COLORS_QUERY = "(forced-colors: active)";
 // xterm requires two columns for wide characters and at least one row.
 const MIN_COLUMNS = 2;
 const MIN_ROWS = 1;
@@ -114,17 +116,26 @@ export function TerminalDock({
     const terminal = new Terminal({
       cursorBlink: true,
       scrollback: SCROLLBACK_LINES,
-      // xterm measures a concrete face; Menlo keeps macOS off Courier.
-      fontFamily: '"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace',
       fontSize: 12,
       lineHeight: 1.3,
-      theme: {
-        background: "#141414",
-        foreground: "#dedede",
-        cursor: "#dedede",
-        selectionBackground: "#444444",
-      },
     });
+    // Theme tokens are read again whenever the system palette changes, so an
+    // open terminal follows it. An unset token leaves xterm's own default.
+    const applyTheme = () => {
+      const tokens = getComputedStyle(document.documentElement);
+      const token = (name: string) =>
+        tokens.getPropertyValue(name).trim() || undefined;
+      const text = token("--color-text-primary");
+      const font = token("--font-family-mono");
+      if (font) terminal.options.fontFamily = font;
+      terminal.options.theme = {
+        background: token("--color-canvas"),
+        foreground: text,
+        cursor: text,
+        selectionBackground: token("--color-selection"),
+      };
+    };
+    applyTheme();
     // xterm has no nonce option; its renderer and viewport create their
     // <style> elements inside open().
     withStyleNonce(element.ownerDocument, () => terminal.open(element));
@@ -258,6 +269,13 @@ export function TerminalDock({
       latestResize = next;
       void drainResizes();
     };
+    const palette = window.matchMedia?.(FORCED_COLORS_QUERY);
+    // A new font face can change the cell size, so the grid is refitted.
+    const followTheme = () => {
+      applyTheme();
+      refreshDimensions();
+    };
+    palette?.addEventListener("change", followTheme);
     const observer = new ResizeObserver(refreshDimensions);
     observer.observe(element);
     window.addEventListener("resize", refreshDimensions);
@@ -268,6 +286,7 @@ export function TerminalDock({
     return () => {
       stopped = true;
       observer.disconnect();
+      palette?.removeEventListener("change", followTheme);
       window.removeEventListener("resize", refreshDimensions);
       inputListener.dispose();
       terminal.dispose();

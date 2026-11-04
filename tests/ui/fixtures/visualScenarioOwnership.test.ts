@@ -161,9 +161,8 @@ describe("visual scenario surface ownership", () => {
     );
     const thoughts = container.querySelectorAll(".acp-thought");
     expect(thoughts).toHaveLength(1);
-    expect(thoughts[0].textContent).toBe(
-      `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
-    );
+    expect(thoughts[0].textContent).toBe("Thinking");
+    expect(thoughts[0]).toHaveClass("acp-live-shimmer");
     expect(thoughts[0].querySelector("summary")).toBeNull();
     expect(container.querySelectorAll(".acp-activity-card")).toHaveLength(0);
   });
@@ -519,6 +518,9 @@ describe("visual scenario surface ownership", () => {
         "true",
       ),
     );
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     await waitFor(() =>
       expect(view.getByTitle("Sage browser")).toBeInTheDocument(),
     );
