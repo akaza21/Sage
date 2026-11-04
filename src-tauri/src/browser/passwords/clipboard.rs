@@ -41,7 +41,7 @@ pub(super) struct PendingClear(Mutex<Option<Arc<CopiedText>>>);
 impl PendingClear {
     /// Records `copied` as the copy to clear; it replaces any earlier one,
     /// whose text the new copy has already overwritten.
-    pub(super) fn track(&self, copied: CopiedText) -> Arc<CopiedText> {
+    fn track(&self, copied: CopiedText) -> Arc<CopiedText> {
         let copied = Arc::new(copied);
         *self.pending() = Some(Arc::clone(&copied));
         copied
@@ -138,6 +138,19 @@ fn fingerprint_then_write(
     Ok(copied)
 }
 
+/// Writes `text` and registers its pending clear in the same step, on the
+/// thread that owns the clipboard. App shutdown runs on that thread too, so
+/// it can never find the password written without its clear registered.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn write_and_track(
+    pending: &PendingClear,
+    text: &[u8],
+    draw_salt: impl FnOnce(&mut [u8; SALT_LEN]) -> VaultResult<()>,
+    write: impl FnOnce(&[u8]) -> VaultResult<()>,
+) -> VaultResult<Arc<CopiedText>> {
+    fingerprint_then_write(text, draw_salt, write).map(|copied| pending.track(copied))
+}
+
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn random_salt(salt: &mut [u8; SALT_LEN]) -> VaultResult<()> {
     getrandom::fill(salt).map_err(|_| VaultError::Random)
@@ -163,7 +176,8 @@ impl CopiedText {
 pub(super) fn copy_concealed(
     _owner: &tauri::Window,
     _password: super::secret::Secret,
-) -> VaultResult<CopiedText> {
+    _pending: Arc<PendingClear>,
+) -> VaultResult<Arc<CopiedText>> {
     Err(VaultError::Unsupported)
 }
 
@@ -175,14 +189,14 @@ pub(super) fn clear_if_unchanged(_copied: &CopiedText) -> VaultResult<()> {
 #[cfg(test)]
 mod tests {
     use std::{
-        cell::Cell,
+        cell::{Cell, RefCell},
         io::Write,
         sync::{Arc, Mutex},
     };
 
     use super::{
         CopiedText, PendingClear, VaultError, clear_with_retries, expire, fingerprint_then_write,
-        random_salt,
+        random_salt, write_and_track,
     };
 
     struct Clipboard {
@@ -281,6 +295,27 @@ mod tests {
         })
         .unwrap();
         assert_eq!(clipboard.text, b"new copy");
+    }
+
+    /// Shutdown runs on the clipboard's thread as soon as the copy's step
+    /// ends, before the copy command hears back: the clear is already due.
+    #[test]
+    fn quitting_right_after_the_write_clears_the_copied_password() {
+        let clipboard = RefCell::new(Clipboard {
+            text: b"older".to_vec(),
+            busy: 0,
+            replacement: None,
+        });
+        let pending = PendingClear::default();
+        write_and_track(&pending, b"secret", random_salt, |text| {
+            clipboard.borrow_mut().text = text.to_vec();
+            Ok(())
+        })
+        .unwrap();
+        pending
+            .clear_now(|copy| clipboard.borrow_mut().clear_if_unchanged(copy))
+            .unwrap();
+        assert!(clipboard.borrow().text.is_empty());
     }
 
     #[test]

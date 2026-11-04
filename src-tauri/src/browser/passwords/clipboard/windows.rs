@@ -1,4 +1,7 @@
-use std::{iter, ptr, slice, sync::mpsc};
+use std::{
+    iter, ptr, slice,
+    sync::{Arc, mpsc},
+};
 
 use windows::Win32::{
     Foundation::{GlobalFree, HANDLE, HGLOBAL},
@@ -14,7 +17,7 @@ use windows::Win32::{
 use windows_core::PCWSTR;
 use zeroize::Zeroizing;
 
-use super::{CopiedText, fingerprint_then_write, random_salt};
+use super::{CopiedText, PendingClear, random_salt, write_and_track};
 use crate::browser::passwords::{VaultError, VaultResult, secret::Secret};
 
 /// Formats whose presence asks Windows to keep the copy out of clipboard
@@ -100,15 +103,18 @@ fn write_concealed(text: &[u8]) -> VaultResult<()> {
     set_data(u32::from(CF_UNICODETEXT.0), text)
 }
 
+/// Writes the password and registers its pending clear in one step on the
+/// window's thread, before any lifecycle event there can run.
 pub(in crate::browser::passwords) fn copy_concealed(
     owner: &tauri::Window,
     password: Secret,
-) -> VaultResult<CopiedText> {
+    pending: Arc<PendingClear>,
+) -> VaultResult<Arc<CopiedText>> {
     with_clipboard(owner, move || {
         let text = Zeroizing::new(wide(password.expose()));
         let bytes: Zeroizing<Vec<u8>> =
             Zeroizing::new(text.iter().flat_map(|unit| unit.to_ne_bytes()).collect());
-        fingerprint_then_write(&bytes, random_salt, |bytes| {
+        write_and_track(&pending, &bytes, random_salt, |bytes| {
             // SAFETY: the clipboard is open on this thread.
             unsafe { EmptyClipboard() }.map_err(io_error)?;
             write_concealed(bytes).inspect_err(|_| {

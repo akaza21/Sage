@@ -163,15 +163,15 @@ pub(crate) async fn browser_passwords_copy(
     let id = credential_id(&id)?;
     let passwords = state.inner().clone();
     let owner = window.clone();
+    // The write registers its clear with the app, so quitting before the
+    // timer below fires still clears the password.
     let copied = blocking(move || {
         passwords.check_readable(&id)?;
         confirm_user(&window, "Sage wants to copy a saved password.")?;
-        clipboard::copy_concealed(&window, passwords.password(&id)?)
+        clipboard::copy_concealed(&window, passwords.password(&id)?, passwords.pending_clear())
     })
     .await?;
-    // Tracked by the app, so quitting before the timer fires still clears it.
     let passwords = state.inner().clone();
-    let copied = passwords.track_copy(copied);
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(clipboard::CLEAR_AFTER).await;
         let reporter = owner.clone();

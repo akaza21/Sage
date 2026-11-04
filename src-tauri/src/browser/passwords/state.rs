@@ -49,7 +49,7 @@ struct Shared {
     /// Changed only while `vault` is locked.
     idle_watch: AtomicBool,
     /// The copied password whose clipboard clear is still due.
-    clipboard: PendingClear,
+    clipboard: Arc<PendingClear>,
     /// The CSV the last import read, kept so the page can offer to delete it.
     imported_file: Mutex<Option<ImportedFile>>,
     /// The running import's own cancel flag, if one is running. Only one
@@ -139,7 +139,7 @@ impl PasswordsState {
             protector,
             vault: Mutex::new(None),
             idle_watch: AtomicBool::new(false),
-            clipboard: PendingClear::default(),
+            clipboard: Arc::default(),
             imported_file: Mutex::new(None),
             running_import: Mutex::new(None),
         }))
@@ -227,9 +227,9 @@ impl PasswordsState {
         lock(&self.0.vault).is_some()
     }
 
-    /// Records `copied` as the clipboard copy to clear, replacing any earlier.
-    pub(super) fn track_copy(&self, copied: clipboard::CopiedText) -> Arc<clipboard::CopiedText> {
-        self.0.clipboard.track(copied)
+    /// Where Copy registers the clear its clipboard write leaves due.
+    pub(super) fn pending_clear(&self) -> Arc<PendingClear> {
+        Arc::clone(&self.0.clipboard)
     }
 
     /// Forgets `copied` once its own timed clear has run.
