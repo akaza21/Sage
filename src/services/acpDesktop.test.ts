@@ -1,3 +1,4 @@
+import { acpHarnessDesktop } from "./acpHarnessDesktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -275,7 +276,7 @@ describe("ACP desktop bridge", () => {
       email: "never-forward@example.test",
     });
 
-    const response = await acpDesktop.startCodexAuth(authRequest);
+    const response = await acpHarnessDesktop.startCodexAuth(authRequest);
 
     expect(invokeMock).toHaveBeenCalledWith("start_codex_auth", {
       request: { ...authRequest, consent: true },
@@ -308,11 +309,11 @@ describe("ACP desktop bridge", () => {
       phase: "consent",
       revision: "0",
     });
-    await expect(acpDesktop.cancelCodexAuth(authRequest)).rejects.toMatchObject(
-      {
-        failure: { kind: "internal" },
-      },
-    );
+    await expect(
+      acpHarnessDesktop.cancelCodexAuth(authRequest),
+    ).rejects.toMatchObject({
+      failure: { kind: "internal" },
+    });
   });
 
   it("accepts only the sanitized auth recovery projection", async () => {
@@ -324,7 +325,9 @@ describe("ACP desktop bridge", () => {
       error: "never-forward",
     });
 
-    await expect(acpDesktop.cancelCodexAuth(authRequest)).resolves.toEqual({
+    await expect(
+      acpHarnessDesktop.cancelCodexAuth(authRequest),
+    ).resolves.toEqual({
       ...authRequest,
       phase: "recovery",
       revision: "4",
@@ -348,7 +351,7 @@ describe("ACP desktop bridge", () => {
       rawFrame: "never-retain",
     });
 
-    const response = await acpDesktop.discoverCodex(discoveryRequest);
+    const response = await acpHarnessDesktop.discoverCodex(discoveryRequest);
 
     expect(invokeMock).toHaveBeenCalledWith("get_codex_discovery", {
       request: discoveryRequest,
@@ -374,7 +377,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
@@ -394,7 +397,7 @@ describe("ACP desktop bridge", () => {
       email: "never-retain@example.test",
     });
 
-    const response = await acpDesktop.discoverCodex(discoveryRequest);
+    const response = await acpHarnessDesktop.discoverCodex(discoveryRequest);
     expect(response).toEqual({
       projectId: "project-a",
       projectGeneration: "7",
@@ -423,7 +426,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).resolves.toMatchObject({
       account: "providerManaged",
       defaultModelId: "provider-model",
@@ -444,7 +447,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
@@ -464,7 +467,7 @@ describe("ACP desktop bridge", () => {
     });
 
     await expect(
-      acpDesktop.discoverCodex(discoveryRequest),
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
     ).rejects.toMatchObject({
       failure: { kind: "internal" },
     });
