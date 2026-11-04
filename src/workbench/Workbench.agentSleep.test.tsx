@@ -10,7 +10,7 @@ import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 const body = vi.hoisted(() => ({ renders: 0, liveTimers: 0 }));
 
-vi.mock("./AgentWorkbenchBody", () => ({
+vi.mock("./AgentWorkbenchBodyView", () => ({
   default: function AgentWorkbenchBodyProbe() {
     body.renders += 1;
     useEffect(() => {

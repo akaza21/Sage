@@ -88,6 +88,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/BrowserFindControls.tsx",
   "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
 ];
@@ -114,6 +115,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
+  "src/features/chat/ChatQueueRuntime.tsx",
   // Recovery notices and sign-in actions stay off the ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",

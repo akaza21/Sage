@@ -17,7 +17,7 @@ import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useDocumentVisible } from "../ui/useDocumentVisible";
 import { useRetainedElement } from "../ui/useRetainedElement";
-import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
+import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
@@ -47,7 +47,6 @@ import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import {
   DEFAULT_WORKBENCH_WINDOW_MODE,
   EDITOR_CANVAS_KINDS,
-  isAgentArtifactTabKind,
   isCompactDrawerOpen,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -93,6 +92,8 @@ export function Workbench() {
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
   );
+  const [agentVisited, setAgentVisited] = useState(windowMode === "agent");
+  if (windowMode === "agent" && !agentVisited) setAgentVisited(true);
   const documentVisible = useDocumentVisible();
   const [agentArtifactExpanded, changeAgentArtifact] = useState(false);
   const [artifactMaximized, setArtifactMaximized] = useState(false);
@@ -147,25 +148,7 @@ export function Workbench() {
       windowMode,
     });
   }, [editorToolRailWidth, windowMode]);
-  const openArtifactInEditor = useCallback(async (tabId: string) => {
-    const before = useWorkbenchStore.getState();
-    if (
-      before.projectTransitioning ||
-      !before.tabs.some(
-        (tab) => tab.id === tabId && isAgentArtifactTabKind(tab.kind),
-      )
-    )
-      return;
-    await before.activateTab(tabId);
-    const after = useWorkbenchStore.getState();
-    if (
-      after.projectTransitioning ||
-      after.projectGeneration !== before.projectGeneration ||
-      after.activeTabId !== tabId
-    )
-      return;
-    setWindowMode("editor");
-  }, []);
+  const enterEditor = useCallback(() => setWindowMode("editor"), []);
   const [terminalContainer, terminalSlotRef] =
     useRetainedElement<HTMLDivElement>();
   const dockSlot = useMemo(
@@ -173,38 +156,28 @@ export function Workbench() {
     [terminalSlotRef],
   );
   const terminalDockSlot = terminalVisited ? dockSlot : null;
-  // Memoized so a sleeping Agent body is not re-rendered by Workbench updates.
-  const agentBody = useMemo(
-    () => (
-      <LazyModuleBoundary
-        label="Agent workspace"
-        load={loadAgentWorkbenchBody}
-        render={(AgentWorkbenchBody) => (
-          <AgentWorkbenchBody
-            bottomPanel={terminalDockSlot}
-            onPreviewTargetChange={onPreviewTargetChange}
-            layout={agentLayout}
-            style={{ gridTemplateColumns: agentLayout.gridTemplateColumns }}
-            drawerOpen={agentLayout.artifactOverlay}
-            navigationCollapsed={agentLayout.navigationCollapsed}
-            onExpandNavigation={toggleAgentNavigation}
-            centerVisible={agentCenterVisible}
-            artifactMaximized={artifactMaximized}
-            onArtifactMaximizedChange={setArtifactMaximized}
-            artifactExpanded={agentArtifactExpanded}
-            onArtifactExpandedChange={changeAgentArtifact}
-            onAgentLeftRailWidthChange={(width) =>
-              changeAgentSidebarWidth("left", width)
-            }
-            onOpenTerminal={terminal.open}
-            onAgentArtifactWidthChange={(width) =>
-              changeAgentSidebarWidth("artifact", width)
-            }
-            onOpenArtifactInEditor={openArtifactInEditor}
-          />
-        )}
-      />
-    ),
+  // Keep the sleeping presentation's props stable across visibility changes.
+  const agentBodyProps = useMemo(
+    () => ({
+      bottomPanel: terminalDockSlot,
+      onPreviewTargetChange,
+      layout: agentLayout,
+      style: { gridTemplateColumns: agentLayout.gridTemplateColumns },
+      drawerOpen: agentLayout.artifactOverlay,
+      navigationCollapsed: agentLayout.navigationCollapsed,
+      onExpandNavigation: toggleAgentNavigation,
+      centerVisible: agentCenterVisible,
+      artifactMaximized,
+      onArtifactMaximizedChange: setArtifactMaximized,
+      artifactExpanded: agentArtifactExpanded,
+      onArtifactExpandedChange: changeAgentArtifact,
+      onAgentLeftRailWidthChange: (width: number) =>
+        changeAgentSidebarWidth("left", width),
+      onOpenTerminal: terminal.open,
+      onAgentArtifactWidthChange: (width: number) =>
+        changeAgentSidebarWidth("artifact", width),
+      onEnterEditor: enterEditor,
+    }),
     [
       agentArtifactExpanded,
       artifactMaximized,
@@ -212,7 +185,7 @@ export function Workbench() {
       agentLayout,
       changeAgentArtifact,
       changeAgentSidebarWidth,
-      openArtifactInEditor,
+      enterEditor,
       onPreviewTargetChange,
       terminal.open,
       toggleAgentNavigation,
@@ -260,14 +233,25 @@ export function Workbench() {
       />
       <EditorContinuityKeeper windowMode={windowMode} />
       <RendererRecreationPacketCollector windowMode={windowMode} />
-      <RetainedActivity visible={agentVisible && documentVisible}>
-        {agentBody}
-      </RetainedActivity>
+      {agentVisited ? (
+        <LazyModuleBoundary
+          label="Agent workspace"
+          load={loadAgentWorkbenchBody}
+          render={(Host) => (
+            <Host
+              {...agentBodyProps}
+              visible={agentVisible && documentVisible}
+            />
+          )}
+        />
+      ) : null}
       {agentSettingsPage ? (
         <LazyModuleBoundary
           label="Agent settings"
           load={loadAgentSettings}
-          render={(AgentSettingsSurface) => <AgentSettingsSurface />}
+          render={(AgentSettingsSurface) => (
+            <AgentSettingsSurface chatRuntimeOwned={agentVisited} />
+          )}
         />
       ) : null}
       {windowMode === "editor" && !agentSettingsPage ? (

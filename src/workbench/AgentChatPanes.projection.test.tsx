@@ -19,6 +19,7 @@ import { agentSessionFixture } from "../domain/acpProjection.fixture";
 import type { AcpChatPage, AcpProjectionChangedEvent } from "../domain/acp";
 import { acpDesktop } from "../services/acpDesktop";
 import { useAcpChatProjection } from "../features/chat/acp/useAcpChatProjection";
+import { AgentChatRuntimeHarness } from "../test/AgentChatRuntimeHarness";
 import { AgentChatPanes } from "./AgentChatPanes";
 
 vi.mock("./AgentChatCenterHeader", () => ({
@@ -113,10 +114,10 @@ it("updates visible artifacts from native revisions while Chat sleeps, then rest
   );
   vi.spyOn(acpDesktop, "getChatPage").mockImplementation(async () => page);
   const tree = (visible: boolean) => (
-    <>
+    <AgentChatRuntimeHarness>
       <AgentChatPanes visible={visible} />
       <Artifacts />
-    </>
+    </AgentChatRuntimeHarness>
   );
   const view = render(tree(true));
   const artifacts = screen.getByRole("complementary", {

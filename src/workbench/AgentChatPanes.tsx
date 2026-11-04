@@ -1,5 +1,6 @@
 import {
   Activity,
+  useContext,
   Fragment,
   memo,
   useCallback,
@@ -25,11 +26,11 @@ import { ChatSurface } from "../features/chat/ChatSurface";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { AcpProjectionOwnerContext } from "../features/chat/acp/AcpProjectionOwnerContext";
 import { projectChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
-import { useAcpChatProjection } from "../features/chat/acp/useAcpChatProjection";
 import { lazyParts } from "../features/chat/lazyParts";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
 import { type HarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import { AgentChatCenterHeader as ChatCenterHeader } from "./AgentChatCenterHeader";
+import { AgentChatRuntimeContext } from "./AgentChatRuntimeContext";
 import { AgentChatPane } from "./AgentChatPane";
 import type * as SplitterChunk from "./AgentChatSplitter";
 import { canShowAgentChatSplit } from "./agentChatSplit";
@@ -43,11 +44,6 @@ const SplitterPart = lazyParts<typeof SplitterChunk>(
 
 const AgentChatCenterHeader = memo(ChatCenterHeader);
 
-function ChatProjectionOwner({ chatId }: { chatId: string }) {
-  useAcpChatProjection(true, chatId);
-  return null;
-}
-
 export function AgentChatPanes({
   visible = true,
   compact = false,
@@ -59,6 +55,7 @@ export function AgentChatPanes({
   navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
 }) {
+  const runtime = useContext(AgentChatRuntimeContext);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const activateTab = useWorkbenchStore((state) => state.activateTab);
@@ -186,13 +183,10 @@ export function AgentChatPanes({
 
   // Visible artifacts still consume the focused Chat while its transcript
   // sleeps. One owner per displayed slot also avoids duplicate native readers.
-  const projection = useMemo(() => {
-    const ids = visible ? displayedIds : focusedId ? [focusedId] : [];
-    return {
-      ids: new Set(ids),
-      owners: ids.map((id) => <ChatProjectionOwner key={id} chatId={id} />),
-    };
-  }, [displayedIds, focusedId, visible]);
+  const projectionIds = useMemo(() => new Set(displayedIds), [displayedIds]);
+  useLayoutEffect(() => {
+    runtime?.(displayedIds);
+  }, [runtime, displayedIds]);
   const presentedPage = visible ? focusedPage : null;
   const focusedSnapshot = useMemo(
     () => projectChatLiveSnapshot(focusedId ?? "", presentedPage),
@@ -228,8 +222,7 @@ export function AgentChatPanes({
   const split = displayedIds.length > 1;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
-      {projection.owners}
-      <AcpProjectionOwnerContext value={projection.ids}>
+      <AcpProjectionOwnerContext value={projectionIds}>
         <Activity mode={visible ? "visible" : "hidden"}>
           <div className="agent-chat-center surface surface--card">
             <AgentChatCenterHeader

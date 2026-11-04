@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import AgentWorkbenchBody from "./AgentWorkbenchBody";
+import AgentWorkbenchBody from "./AgentWorkbenchBodyView";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 vi.mock("./LeftSidebar", () => ({
   LeftSidebar: ({ inert }: { inert: boolean }) => (

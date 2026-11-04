@@ -1,4 +1,10 @@
-import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePortalHost } from "../../ui/usePortalHost";
 
 /**
@@ -14,9 +20,23 @@ const STEPS = [
 ] as const;
 const LAST = STEPS.length;
 /** Layers that hang from the toolbar row without taking part in its width. */
-const POPOVERS = ".browser-downloads__popover, .browser-surface__menu";
+const POPOVERS = ".browser-downloads__popover";
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;
+
+/** Reparenting must preserve keyboard interaction with a moved control. */
+function moveActions(
+  host: HTMLElement,
+  target: HTMLElement,
+  focused = host.contains(document.activeElement)
+    ? (document.activeElement as HTMLElement)
+    : null,
+) {
+  if (host.parentElement !== target) target.append(host);
+  if (!focused || !host.contains(focused)) return null;
+  focused.focus({ preventScroll: true });
+  return document.activeElement === focused ? null : focused;
+}
 
 /**
  * Compacts secondary toolbar actions, and moves them into the More menu,
@@ -26,55 +46,70 @@ const SUBPIXEL = 0.5;
  * measured before paint, and a fit always starts again from the full row,
  * so actions that appear later (an Agent attaching) never count twice.
  *
- * The page actions render once into a host that moves between the toolbar
- * and the menu, so they keep their state (the chosen chat, a pending attach)
- * and behave identically wherever they are shown.
+ * The page-action state owner stays in one portal host. Its presentation
+ * and reads sleep at the final tier until More opens; moving the host
+ * preserves the chosen chat and pending operations.
  */
-export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
-  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+export function useToolbarOverflow(
+  menuOpen: boolean,
+  pageControls?: (visible: boolean) => ReactNode,
+) {
+  const slot = useRef<HTMLDivElement | null>(null);
   const { host, portal } = usePortalHost(
     slot,
     "browser-surface__page-actions-host",
   );
   const [tier, setTier] = useState(0);
+  const actionWidths = useRef<number[]>([]);
+  const presentationVisible = useRef(true);
+  const pendingFocus = useRef<HTMLElement | null>(null);
+  const visible = menuOpen || tier < LAST;
   useLayoutEffect(() => {
-    const group = slot?.parentElement;
-    const toolbar = group?.closest<HTMLElement>(".browser-surface__toolbar");
-    if (!group || !toolbar) return;
-    return () => {
-      for (const step of STEPS) toolbar.removeAttribute(step);
-    };
-  }, [slot]);
+    presentationVisible.current = visible;
+    if (!visible) pendingFocus.current = null;
+  }, [visible]);
   useLayoutEffect(() => {
-    const group = slot?.parentElement;
+    const rowSlot = slot.current;
+    const group = rowSlot?.parentElement;
     const toolbar = group?.closest<HTMLElement>(".browser-surface__toolbar");
-    // While the menu is open it holds the moved actions, so the row would
-    // measure without them: keep the tier and refit once it closes.
-    if (!group || !toolbar || menuOpen || typeof ResizeObserver === "undefined")
+    if (!rowSlot || !group || !toolbar || typeof ResizeObserver === "undefined")
       return;
     const apply = (taken: number) =>
       STEPS.forEach((step, index) =>
         toolbar.toggleAttribute(step, index < taken),
       );
-    // The right group ends the row, so the row overflows when the group ends
-    // past the toolbar's content edge.
-    const overflows = () =>
-      group.getBoundingClientRect().right >
-      toolbar.getBoundingClientRect().right -
+    // One width per compaction tier lets the row refit while the controls
+    // sleep. No hidden control DOM or native reads are needed for measurement.
+    const widths = actionWidths.current;
+    const fit = () => {
+      const edge =
+        toolbar.getBoundingClientRect().right -
         parseFloat(getComputedStyle(toolbar).paddingRight) +
         SUBPIXEL;
-    const fit = () => {
+      const parent = host.parentElement;
+      const focused = host.contains(document.activeElement)
+        ? (document.activeElement as HTMLElement)
+        : pendingFocus.current;
+      const live = presentationVisible.current && host.hasChildNodes();
+      moveActions(host, rowSlot);
+      const measure = (taken: number) => {
+        apply(taken);
+        rowSlot.style.width = live ? "" : `${widths[taken] ?? 0}px`;
+        if (live && taken < LAST)
+          widths[taken] = rowSlot.getBoundingClientRect().width;
+      };
       let next = 0;
-      apply(next);
-      while (next < LAST && overflows()) apply(++next);
+      measure(next);
+      while (next < LAST && group.getBoundingClientRect().right > edge)
+        measure(++next);
+      if (parent) pendingFocus.current = moveActions(host, parent, focused);
+      content.takeRecords();
       setTier(next);
     };
-    fit();
     // The toolbar's own size never depends on the steps, so observing it
     // cannot loop; the actions' content changes arrive as mutations. Changes
-    // inside a popover hanging from the row (the Downloads list ticking its
-    // progress, the More menu) cannot change the row's width, so they never
-    // refit it.
+    // inside the Downloads popover cannot change the row's width. More
+    // contains relocated page controls, so its content changes still refit.
     const resize = new ResizeObserver(fit);
     resize.observe(toolbar);
     const inRow = (record: MutationRecord) => {
@@ -92,36 +127,45 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
       childList: true,
       characterData: true,
     });
+    fit();
     return () => {
       resize.disconnect();
       content.disconnect();
+      for (const step of STEPS) toolbar.removeAttribute(step);
     };
-  }, [slot, menuOpen]);
+  }, [host, menuOpen]);
   const menuSlot = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
-      node.append(host);
-      return () => slot?.append(host);
+      const relocate = (target: HTMLElement) => {
+        pendingFocus.current = moveActions(
+          host,
+          target,
+          pendingFocus.current ?? undefined,
+        );
+      };
+      relocate(node);
+      return () => {
+        if (slot.current) relocate(slot.current);
+      };
     },
-    [host, slot],
+    [host],
   );
   return {
     toolbarActions: (
       <>
-        <div ref={setSlot} className="browser-surface__page-actions-slot" />
-        {pageControls ? portal(pageControls) : null}
+        <div ref={slot} className="browser-surface__page-actions-slot" />
+        {pageControls && portal(pageControls(visible))}
       </>
     ),
-    // Only an open menu holds the actions, so the closed row always fits
-    // with them in place.
-    menuActions:
-      menuOpen && pageControls && tier >= LAST ? (
-        <div
-          ref={menuSlot}
-          role="group"
-          aria-label="Page actions"
-          className="browser-surface__menu-group browser-surface__menu-page-actions"
-        />
-      ) : null,
+    // The live controls move as one host; sleeping controls use cached widths.
+    menuActions: menuOpen && pageControls && tier >= LAST && (
+      <div
+        ref={menuSlot}
+        role="group"
+        aria-label="Page actions"
+        className="browser-surface__menu-group browser-surface__menu-page-actions"
+      />
+    ),
   };
 }

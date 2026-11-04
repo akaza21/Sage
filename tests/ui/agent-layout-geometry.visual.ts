@@ -489,6 +489,66 @@ async function expectHitTestable(page: Page, control: Locator) {
   expect(hit).toBe(true);
 }
 
+test("the open More menu keeps fitting the toolbar as its window narrows and widens", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await page.goto(
+    "/tests/ui/fixtures/browser-address.html?chat=First&also=Second&width=740&agent",
+  );
+  const toolbar = page.locator(".browser-surface__toolbar");
+  await page.getByRole("button", { name: "More options" }).click();
+  const menu = page.getByRole("menu", { name: "Browser menu" });
+  await expect(menu).toBeVisible();
+  const picker = page.getByRole("combobox", { name: "Chat for browser tab" });
+  await picker.focus();
+  for (const width of [560, 420, 339, 740]) {
+    await page.locator(".browser-surface").evaluate((node, width) => {
+      (node as HTMLElement).style.width = `${width}px`;
+    }, width);
+    await expect
+      .poll(() =>
+        toolbar.evaluate((node) => node.scrollWidth - node.clientWidth),
+      )
+      .toBeLessThanOrEqual(1);
+    const edge = await bounds(toolbar);
+    for (const control of await toolbar
+      .locator("button, select, input")
+      .filter({ visible: true })
+      .all()) {
+      if (
+        await control.evaluate((node) => Boolean(node.closest('[role="menu"]')))
+      )
+        continue;
+      expectInside(await bounds(control), edge);
+    }
+    await expect(menu).toBeVisible();
+    await expect(picker).toBeFocused();
+  }
+  await expect(
+    toolbar.getByRole("combobox", { name: "Chat for browser tab" }),
+  ).toBeVisible();
+  // A newly available page action must refit the open menu too.
+  await page.locator(".browser-surface__page-actions").evaluate((node) => {
+    const action = document.createElement("button");
+    action.textContent = "New page action";
+    action.style.width = "480px";
+    action.style.maxWidth = "100%";
+    node.append(action);
+  });
+  const added = menu.getByRole("button", { name: "New page action" });
+  await expect(added).toBeVisible();
+  await expect
+    .poll(() => toolbar.evaluate((node) => node.scrollWidth - node.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await expect(picker).toBeFocused();
+  await added.evaluate((node) => node.remove());
+  await expect(
+    toolbar.getByRole("combobox", { name: "Chat for browser tab" }),
+  ).toBeVisible();
+  await expect(picker).toBeFocused();
+});
+
 test("the chat picker in the More menu changes chat by keyboard", async ({
   page,
 }) => {

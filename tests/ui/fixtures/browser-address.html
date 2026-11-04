@@ -82,43 +82,47 @@
           clearDataControl: React.createElement(BrowserClearData, {
             menuItem: true,
           }),
-          pageControls: chatTitle
-            ? React.createElement(
-                "div",
-                { className: "browser-surface__page-actions" },
-                React.createElement(BrowserAttachmentControls, {
-                  projectId: "project-visual",
-                  tabId: "browser-visual",
-                  ready: true,
-                  onError: (message) => {
-                    const row = document.getElementById("error");
-                    row.textContent = message ?? "";
-                    row.hidden = !message;
-                  },
-                  chats: [
-                    { id: "chat-visual", title: chatTitle },
-                    ...params.getAll("also").map((title, index) => ({
-                      id: `chat-also-${index}`,
-                      title,
-                    })),
-                  ],
-                }),
-                params.has("agent")
-                  ? React.createElement(BrowserAgentPresence, {
-                      pending: false,
-                      userControl: false,
-                      chatTitle,
-                      onStop: () => {},
-                      onTakeOver: () => {},
-                      onHandBack: () => {},
-                    })
-                  : null,
-              )
-            : React.createElement(
-                "button",
-                { "aria-label": "Attach page" },
-                "▣",
-              ),
+          pageControls: (visible) =>
+            chatTitle
+              ? React.createElement(
+                  "div",
+                  { className: "browser-surface__page-actions" },
+                  React.createElement(BrowserAttachmentControls, {
+                    visible,
+                    projectId: "project-visual",
+                    tabId: "browser-visual",
+                    ready: true,
+                    onError: (message) => {
+                      const row = document.getElementById("error");
+                      row.textContent = message ?? "";
+                      row.hidden = !message;
+                    },
+                    chats: [
+                      { id: "chat-visual", title: chatTitle },
+                      ...params.getAll("also").map((title, index) => ({
+                        id: `chat-also-${index}`,
+                        title,
+                      })),
+                    ],
+                  }),
+                  visible && params.has("agent")
+                    ? React.createElement(BrowserAgentPresence, {
+                        pending: false,
+                        userControl: false,
+                        chatTitle,
+                        onStop: () => {},
+                        onTakeOver: () => {},
+                        onHandBack: () => {},
+                      })
+                    : null,
+                )
+              : visible
+                ? React.createElement(
+                    "button",
+                    { "aria-label": "Attach page" },
+                    "▣",
+                  )
+                : null,
           downloadsControl: chatTitle
             ? React.createElement(BrowserDownloadsControl, {
                 tabId: "browser-visual",

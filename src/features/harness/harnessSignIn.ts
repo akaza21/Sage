@@ -183,12 +183,8 @@ export function harnessSignInAction(
 export function ensureHarnessSignInChecked(harnessIds: readonly string[]) {
   for (const harnessId of harnessIds) {
     if (!harnessSupportsSignIn(harnessId) || refreshes.has(harnessId)) continue;
-    const current = statuses.get(harnessId);
-    if (
-      !current ||
-      current.checkedAt === null ||
-      Date.now() - current.checkedAt > STATUS_TTL_MS
-    )
+    const checkedAt = statuses.get(harnessId)?.checkedAt;
+    if (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS)
       void refreshHarnessSignIn(harnessId);
   }
 }

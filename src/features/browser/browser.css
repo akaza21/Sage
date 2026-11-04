@@ -100,7 +100,10 @@
   /* Keep the live status in the accessibility tree while its text yields. */
   width: 0;
 }
-.browser-surface__page-actions-slot,
+.browser-surface__page-actions-slot {
+  display: flex;
+  flex: none;
+}
 .browser-surface__page-actions-host {
   display: contents;
 }

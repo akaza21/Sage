@@ -32,6 +32,8 @@ import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { useSideChatState } from "../../workbench/sideChatState";
 import { Workbench } from "../../workbench/Workbench";
+import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
+import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
 
@@ -62,7 +64,22 @@ vi.mock("./acp", async () => {
   };
 });
 
-import { ChatSurface } from "./ChatSurface";
+import { ChatSurface as ChatPresentation } from "./ChatSurface";
+import { ChatQueueOwner } from "./ChatQueueOwner";
+
+// Exercise the same runtime/presentation boundary as the Agent host.
+function ChatSurface(props: { chatId?: string }) {
+  const pending = useWorkbenchStore((state) => {
+    const chat = state.chatUiById[props.chatId ?? state.activeTabId ?? ""];
+    return Boolean(chat?.queuedPrompts?.length || chat?.queuedTurnBarrier);
+  });
+  return (
+    <>
+      {pending ? <ChatQueueOwner chatId={props.chatId} /> : null}
+      <ChatPresentation {...props} />
+    </>
+  );
+}
 
 const initialState = useWorkbenchStore.getState();
 const nativeReadOnly = [
@@ -745,16 +762,7 @@ describe("ChatSurface ACP resource integration", () => {
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
   });
 
-  it("drains a queued follow-up while Settings sleeps the real Chat surface", async () => {
-    localStorage.clear();
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn(() => ({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
+  it("starts a queued prompt after the active turn finishes with Chat hidden by a maximized artifact", async () => {
     hooks.actions.submit.mockResolvedValue("applied");
     matchConfiguredSession();
     useWorkbenchStore.setState({
@@ -774,13 +782,15 @@ describe("ChatSurface ACP resource integration", () => {
     vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
       async () => hooks.page!,
     );
-    const view = render(<Workbench />);
-    fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
-    await settleLazyModules();
+    const view = render(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes />
+      </AgentChatRuntimeHarness>,
+    );
     fireEvent.change(
       await screen.findByRole("textbox", { name: "Message agent" }),
       {
-        target: { value: "Continue while settings is open" },
+        target: { value: "Continue behind the artifact" },
       },
     );
     fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
@@ -790,29 +800,133 @@ describe("ChatSurface ACP resource integration", () => {
           ?.status,
       ).toBe("queued"),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
-    await act(async () => {
-      await vi.dynamicImportSettled();
-    });
-    await screen.findByRole("dialog", { name: "Agent settings" });
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes visible={false} />
+      </AgentChatRuntimeHarness>,
+    );
     expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
     setTurnState("completed");
-    view.rerender(<Workbench />);
-    await waitFor(() =>
-      expect(hooks.actions.submit).toHaveBeenCalledWith(
-        "Continue while settings is open",
-        [],
-        "codex-app-server",
-        null,
-      ),
+    act(() => {
+      const store = acpProjectionStoreFor("chat-a");
+      store
+        .getState()
+        .applyAuthoritativePage(store.getState().scope!, hooks.page!);
+    });
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes visible={false} />
+      </AgentChatRuntimeHarness>,
     );
-    expect(
-      screen.getByRole("dialog", { name: "Agent settings" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    await waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
+      ).toEqual([]),
+    );
+    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes />
+      </AgentChatRuntimeHarness>,
+    );
     await screen.findByRole("textbox", { name: "Message agent" });
-    expect(hooks.actions.submit).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Continue behind the artifact")).toBeNull();
   });
+
+  it.each(["Settings", "Editor", "hidden document"])(
+    "drains a queued follow-up while %s sleeps the real Chat surface",
+    async (hiddenBy) => {
+      localStorage.clear();
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: false,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        })),
+      );
+      hooks.actions.submit.mockResolvedValue("applied");
+      matchConfiguredSession();
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "A", roots: [] },
+        tabs: [
+          {
+            id: "chat-a",
+            kind: "chat",
+            title: "Chat",
+            position: 0,
+            pinned: false,
+            dirty: false,
+          },
+        ],
+        activeTabId: "chat-a",
+      });
+      vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
+        async () => hooks.page!,
+      );
+      const view = render(<Workbench />);
+      fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+      await settleLazyModules();
+      fireEvent.change(
+        await screen.findByRole("textbox", { name: "Message agent" }),
+        {
+          target: { value: "Continue while settings is open" },
+        },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() =>
+        expect(
+          useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts?.[0]
+            ?.status,
+        ).toBe("queued"),
+      );
+      if (hiddenBy === "Settings") {
+        fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+        await act(async () => {
+          await vi.dynamicImportSettled();
+        });
+        await screen.findByRole("dialog", { name: "Agent settings" });
+      } else if (hiddenBy === "Editor") {
+        fireEvent.click(screen.getByRole("radio", { name: "Editor" }));
+        await settleLazyModules();
+      } else {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+        fireEvent(document, new Event("visibilitychange"));
+      }
+      expect(
+        screen.queryByRole("textbox", { name: "Message agent" }),
+      ).toBeNull();
+      setTurnState("completed");
+      view.rerender(<Workbench />);
+      await waitFor(() =>
+        expect(hooks.actions.submit).toHaveBeenCalledWith(
+          "Continue while settings is open",
+          [],
+          "codex-app-server",
+          null,
+        ),
+      );
+      await waitFor(() =>
+        expect(
+          useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
+        ).toEqual([]),
+      );
+      if (hiddenBy === "Settings") {
+        expect(
+          screen.getByRole("dialog", { name: "Agent settings" }),
+        ).toBeVisible();
+        fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+      } else if (hiddenBy === "Editor") {
+        expect(screen.getByRole("radio", { name: "Editor" })).toBeChecked();
+        fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+      } else {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+        fireEvent(document, new Event("visibilitychange"));
+      }
+      await screen.findByRole("textbox", { name: "Message agent" });
+      expect(hooks.actions.submit).toHaveBeenCalledOnce();
+    },
+  );
 
   it("keeps one send-slot control while a cancellable Turn can queue by Enter", async () => {
     hooks.actions.cancellableTurnId = "turn-a";
