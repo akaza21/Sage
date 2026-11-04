@@ -17,7 +17,7 @@
 
 .acp-virtual-turn-row {
   min-width: 0;
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .acp-history-notice,
@@ -85,7 +85,7 @@
   display: none;
   min-height: 20px;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .acp-turn__state::before {
@@ -239,7 +239,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .acp-message__role {

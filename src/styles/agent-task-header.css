@@ -63,15 +63,15 @@
      scrolls the menu sideways; pin the single column to the menu instead. */
   grid-template-columns: minmax(0, 1fr);
   margin-left: 36px;
-  padding: 8px;
+  padding: var(--space-2);
   gap: 0;
   border-radius: var(--radius-xl);
   background: var(--color-panel-raised);
 }
 .agent-header-more__menu .menu-item {
   min-height: 28px;
-  gap: 12px;
-  padding: 4px 12px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
   color: var(--color-text-primary);
 }
 .agent-header-more__project {
@@ -79,8 +79,8 @@
   min-height: 28px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 4px 0 12px;
+  gap: var(--space-3);
+  padding: 0 var(--space-1) 0 var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
@@ -157,7 +157,7 @@
   }
 
   .agent-task-header__breadcrumb {
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .agent-task-header__title {
