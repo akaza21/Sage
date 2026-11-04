@@ -39,9 +39,7 @@ pub(crate) fn capture_user_png(
         .handle(tab_id)
         .cloned()
         .ok_or("browser tab unavailable")?;
-    let _awake = crate::browser::background::ensure_awake(&webview)?;
     NativePort::new(NativeTransport {
-        _session: None,
         webview,
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -61,9 +59,7 @@ pub(crate) fn capture_page_context(
         .handle(tab_id)
         .cloned()
         .ok_or("browser tab unavailable")?;
-    let _awake = crate::browser::background::ensure_awake(&webview)?;
     let mut port = NativePort::new(NativeTransport {
-        _session: None,
         webview,
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -79,7 +75,6 @@ pub(crate) fn capture_page_context(
 /// and turns the overlay off again unless the tab annotates.
 pub(crate) fn clear_agent_highlight(webview: &Webview) {
     highlight::clear(&NativeTransport {
-        _session: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -97,7 +92,6 @@ pub(crate) fn clear_annotate_outline(webview: &Webview) -> Result<(), BrowserFai
 /// permit.
 pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFailure> {
     let port = NativePort::new(NativeTransport {
-        _session: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -112,7 +106,6 @@ pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFai
 /// Reads the element the user clicked in Annotate and freezes its frame.
 pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<PickedNode, String> {
     NativePort::new(NativeTransport {
-        _session: None,
         webview: webview.clone(),
         permit: None,
         issued: Arc::new(AtomicBool::new(false)),
@@ -172,8 +165,6 @@ impl BrowserCapabilityDispatch for &mut NativeDevtools {
 #[derive(Clone)]
 pub(crate) struct NativeTransport {
     webview: Webview,
-    // Shared by capability clones; attachment liveness also bounds the pin.
-    _session: Option<Arc<crate::browser::background::SessionPin>>,
     permit: Option<BrowserDispatchPermit>,
     issued: Arc<AtomicBool>,
 }
@@ -279,7 +270,6 @@ impl DevtoolsCapability<NativePort> {
     pub(crate) fn for_tab(
         state: &BrowserState,
         scope: BrowserScope,
-        lease: Option<crate::acp::browser::attachment::AttachmentLease>,
     ) -> Result<Self, BrowserFailure> {
         let label = format!("browser-{}", scope.tab_id);
         let webview = state
@@ -289,26 +279,17 @@ impl DevtoolsCapability<NativePort> {
             .handle(&label)
             .cloned()
             .ok_or(BrowserFailure::Unavailable)?;
-        Self::from_webview(scope, webview, lease)
+        Self::from_webview(scope, webview)
     }
 
-    fn from_webview(
-        scope: BrowserScope,
-        webview: Webview,
-        lease: Option<crate::acp::browser::attachment::AttachmentLease>,
-    ) -> Result<Self, BrowserFailure> {
+    fn from_webview(scope: BrowserScope, webview: Webview) -> Result<Self, BrowserFailure> {
         if webview.label() != format!("browser-{}", scope.tab_id) {
             return Err(BrowserFailure::Denied);
         }
-        let _awake = crate::browser::background::ensure_awake(&webview)
-            .map_err(|_| BrowserFailure::Unavailable)?;
-        let session = crate::browser::background::pin_session(&webview, lease)
-            .map_err(|_| BrowserFailure::Unavailable)?;
         let diagnostics = events::attach(&webview)?;
         Ok(Self::with_diagnostics(
             scope,
             NativePort::new(NativeTransport {
-                _session: Some(session),
                 webview,
                 permit: None,
                 issued: Arc::new(AtomicBool::new(false)),

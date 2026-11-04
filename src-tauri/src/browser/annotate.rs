@@ -395,9 +395,6 @@ fn value(result: Result<impl Serialize, String>) -> Result<serde_json::Value, St
 }
 
 fn emit(app: &AppHandle, change: AnnotateChange) {
-    if let Some(webview) = app.state::<BrowserState>().webview_for_tab(&change.tab_id) {
-        super::background::refresh(&webview);
-    }
     let _ = app.emit_to("main", "browser:annotate", change);
 }
 

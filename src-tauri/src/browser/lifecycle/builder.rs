@@ -86,7 +86,7 @@ pub(in crate::browser) async fn register_tab_hooks(
         .map_err(|error| format!("browser shortcuts setup failed: {error}"))?;
     #[cfg(windows)]
     {
-        super::background::register(webview).await?;
+        super::background::refresh(webview);
         downloads::register_native(app.clone(), webview.clone())
             .await
             .map_err(|error| format!("browser downloads setup failed: {error}"))?;

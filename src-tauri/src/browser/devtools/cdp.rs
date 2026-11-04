@@ -84,10 +84,6 @@ pub(super) fn call_with_permit(
     if method.len() > 128 || params.len() > 8192 {
         return Err(BrowserFailure::Capacity);
     }
-    let awake = Arc::new(
-        crate::browser::background::ensure_awake(webview)
-            .map_err(|_| BrowserFailure::Unavailable)?,
-    );
     let method = wide(method);
     let params = wide(params);
     let attempt = IssueAttempt::new();
@@ -96,7 +92,6 @@ pub(super) fn call_with_permit(
     let app = webview.app_handle().clone();
     let tab_id = webview.label().to_owned();
     let (sender, receiver) = mpsc::sync_channel(1);
-    let completion_awake = awake.clone();
     webview
         .with_webview(move |platform| {
             let result = (|| {
@@ -105,7 +100,6 @@ pub(super) fn call_with_permit(
                 let completed_sender = sender.clone();
                 let completed = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
                     move |outcome, json| {
-                        let _pin = &completion_awake;
                         let _ = completed_sender.try_send(if json.len() > max_result_bytes {
                             Err(BrowserFailure::Capacity)
                         } else if outcome.is_ok() {

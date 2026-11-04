@@ -44,14 +44,14 @@ impl PageVisibility {
         if self.is_placed() { show() } else { Ok(()) }
     }
 
-    /// Called on the main thread; wake finishes before the first visible frame.
+    /// Called on the main thread; NORMAL is applied before the first visible frame.
     pub(super) fn reveal_page(
         &self,
         webview: &tauri::Webview,
         show: impl FnOnce() -> Result<(), String>,
     ) -> Result<(), String> {
         self.reveal(|| {
-            let _awake = super::background::ensure_awake(webview)?;
+            super::background::refresh(webview);
             show()
         })
     }

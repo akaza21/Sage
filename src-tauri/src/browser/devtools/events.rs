@@ -217,8 +217,6 @@ pub(super) fn attach(
 
     use crate::acp::browser::BrowserFailure;
 
-    let _awake = crate::browser::background::ensure_awake(webview)
-        .map_err(|_| BrowserFailure::Unavailable)?;
     let _attachment = NATIVE_ATTACHMENT_LOCK
         .lock()
         .map_err(|_| BrowserFailure::Unavailable)?;

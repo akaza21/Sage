@@ -25,9 +25,6 @@ pub(crate) use popup::AgentAction;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
-    /// Coalesced control/lifetime changes; no history or callback queue.
-    #[cfg(windows)]
-    changed: tokio::sync::watch::Sender<()>,
     pub(crate) tab_label: String,
     pub(crate) tab_number: u64,
     pub(crate) url: String,
@@ -60,11 +57,6 @@ impl Drop for AgentSweepClaim {
 }
 
 impl AttachmentLease {
-    #[cfg(windows)]
-    pub(crate) fn control_changes(&self) -> tokio::sync::watch::Receiver<()> {
-        self.changed.subscribe()
-    }
-
     pub(crate) fn is_live(&self) -> bool {
         self.active.load(Ordering::Acquire) && !self.retiring.load(Ordering::Acquire)
     }
@@ -101,13 +93,12 @@ impl AttachmentLease {
     }
 
     fn stop(&self) {
-        self.active.store(false, Ordering::Release);
-        #[cfg(windows)]
-        self.changed.send_replace(());
         self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
+            self.active.store(false, Ordering::Release);
             return;
         };
+        self.active.store(false, Ordering::Release);
         if let Some((_, authority)) = slot.as_ref() {
             authority.stop();
         }
@@ -140,8 +131,6 @@ impl AttachmentLease {
 
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
-        #[cfg(windows)]
-        self.changed.send_replace(());
         self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
@@ -221,8 +210,6 @@ impl BrowserAttachments {
         entries.insert(
             key,
             AttachmentLease {
-                #[cfg(windows)]
-                changed: tokio::sync::watch::channel(()).0,
                 tab_label: tab_label.to_owned(),
                 tab_number: number,
                 url: url.to_owned(),

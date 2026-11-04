@@ -133,7 +133,6 @@ pub(crate) async fn browser_navigate(
 ) -> Result<(), String> {
     let url = admit_url(&url).map_err(str::to_owned)?;
     let webview = active_webview(&state, &tab_id)?;
-    let _awake = super::background::ensure_awake(&webview)?;
     state
         .downloads
         .lock()

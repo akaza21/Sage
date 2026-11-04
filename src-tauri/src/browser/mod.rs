@@ -23,7 +23,7 @@ use crate::launch_profile::LaunchProfile;
 mod admission;
 pub(crate) mod annotate;
 #[cfg_attr(not(windows), allow(dead_code))]
-mod background;
+pub(crate) mod background;
 pub(crate) mod bounds;
 pub(crate) mod clear_data;
 pub(crate) mod device;
@@ -120,7 +120,7 @@ struct BrowserTab<T> {
     handle: T,
     visibility: Arc<visibility::PageVisibility>,
     #[cfg_attr(not(windows), allow(dead_code))]
-    background: background::Background,
+    background: background::MemoryState,
     loading: bool,
     title: Option<String>,
     favicon: Option<String>,
@@ -212,7 +212,7 @@ impl<T> BrowserTabs<T> {
             BrowserTab {
                 handle,
                 visibility: Arc::default(),
-                background: background::Background::default(),
+                background: background::MemoryState::default(),
                 loading,
                 title: None,
                 favicon: None,
