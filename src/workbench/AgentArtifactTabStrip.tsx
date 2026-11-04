@@ -1,6 +1,7 @@
 import { Eye, GitCompareArrows, Globe2, Pin, X } from "../ui/leanIcons";
 
 import { useRef, type ReactNode } from "react";
+import { useResourceTabStrip } from "./useResourceTabStrip";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 import {
@@ -53,6 +54,7 @@ export function AgentArtifactTabStrip({
   changesTab,
 }: AgentArtifactTabStripProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const onTabKeyDown = useResourceTabStrip(scrollRef);
   const pendingTargets = agentArtifactPendingTargets(record);
   const latestPendingTarget = pendingTargets.at(-1) ?? null;
   const following = record?.mode !== "pinned";
@@ -74,7 +76,13 @@ export function AgentArtifactTabStrip({
   return (
     <>
       <nav className="tab-strip" aria-label="Agent artifact tabs">
-        <div ref={scrollRef} className="tab-strip__scroll">
+        <div
+          ref={scrollRef}
+          className="tab-strip__scroll"
+          role="tablist"
+          aria-label="Resources"
+          onKeyDown={onTabKeyDown}
+        >
           {changesTab}
           {artifacts.map((tab, index) => {
             const selected =

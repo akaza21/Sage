@@ -307,9 +307,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workspace-search__preview {
   color: var(--color-text-secondary);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);

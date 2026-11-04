@@ -42,7 +42,7 @@ describe("browser chrome shortcuts", () => {
       [{ key: "w", ctrlKey: true }, "closeTab"],
       [{ key: "Escape" }, "stop"],
     ] as const) {
-      const event = press(root, address, init);
+      const event = press(root, init.key === "Escape" ? root : address, init);
       expect(event.defaultPrevented).toBe(true);
       expect(dispatch).toHaveBeenLastCalledWith(action);
     }
