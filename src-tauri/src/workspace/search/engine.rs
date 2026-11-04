@@ -1,4 +1,9 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    fs::{DirEntry, FileType},
+    io,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use crate::{
     error::{AppError, AppResult},
@@ -7,6 +12,8 @@ use crate::{
 
 use super::{
     engine_continue::ContinuationSeek,
+    file_scan::ScanQuery,
+    literal_match::LiteralQuery,
     types::{
         ContinuationCursor, SearchLimitReason, SearchLimits, SearchRoot, SearchRootSource,
         SearchRootState, WorkspaceSearchRequest, WorkspaceSearchResponse,
@@ -19,6 +26,70 @@ pub struct SearchEngine {
     pub(super) limits: SearchLimits,
     /// Git's global excludes file, which the helper cannot resolve itself.
     pub(super) global_excludes: Option<PathBuf>,
+    /// Threads a root's search may use, the walk's included.
+    pub(super) threads: usize,
+    /// Tests make time run out after this many checks, so a time limit
+    /// lands at the same place on every run.
+    #[cfg(test)]
+    pub(super) time_checks_left: Option<std::sync::atomic::AtomicU64>,
+    /// Tests read time from this clock instead, so a time limit lands at the
+    /// same place on every run.
+    #[cfg(test)]
+    pub(super) test_clock: Option<TestClock>,
+}
+
+/// Time advanced by filesystem operations, without wall-clock waits.
+#[cfg(test)]
+pub(super) struct TestClock {
+    started_at: Instant,
+    elapsed_nanos: std::sync::atomic::AtomicU64,
+    per_file_type: std::time::Duration,
+    slow_listing: Option<(PathBuf, std::time::Duration)>,
+}
+
+#[cfg(test)]
+impl TestClock {
+    pub(super) fn new(per_file_type: std::time::Duration) -> Self {
+        Self {
+            started_at: Instant::now(),
+            elapsed_nanos: std::sync::atomic::AtomicU64::new(0),
+            per_file_type,
+            slow_listing: None,
+        }
+    }
+
+    pub(super) fn with_slow_listing(
+        mut self,
+        directory: PathBuf,
+        per_entry: std::time::Duration,
+    ) -> Self {
+        self.slow_listing = Some((directory, per_entry));
+        self
+    }
+
+    fn now(&self) -> Instant {
+        use std::sync::atomic::Ordering;
+        self.started_at
+            + std::time::Duration::from_nanos(self.elapsed_nanos.load(Ordering::Relaxed))
+    }
+
+    fn read_file_type(&self) {
+        self.advance(self.per_file_type);
+    }
+
+    fn read_directory_entry(&self, directory: &Path) {
+        if let Some((slow, per_entry)) = &self.slow_listing
+            && slow == directory
+        {
+            self.advance(*per_entry);
+        }
+    }
+
+    fn advance(&self, duration: std::time::Duration) {
+        use std::sync::atomic::Ordering;
+        let step = u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX);
+        self.elapsed_nanos.fetch_add(step, Ordering::Relaxed);
+    }
 }
 
 pub(super) struct SearchBudget {
@@ -43,6 +114,11 @@ impl SearchEngine {
         Self {
             limits,
             global_excludes: None,
+            threads: super::file_prefetch::search_threads(),
+            #[cfg(test)]
+            time_checks_left: None,
+            #[cfg(test)]
+            test_clock: None,
         }
     }
 
@@ -58,6 +134,7 @@ impl SearchEngine {
     ) -> AppResult<WorkspaceSearchResponse> {
         validate_search_request(&request)?;
         let query = request.query.trim();
+        let literal = LiteralQuery::new(query, request.case_sensitive);
         let mut seek = request
             .continuation_token
             .as_deref()
@@ -65,7 +142,7 @@ impl SearchEngine {
             .transpose()?
             .map(|cursor| ContinuationSeek {
                 cursor,
-                started_at: Instant::now(),
+                started_at: self.now(),
                 entries_visited: 0,
             });
         if self.limits.max_results == 0
@@ -83,7 +160,7 @@ impl SearchEngine {
         let mut matches = Vec::new();
         let mut reports = Vec::with_capacity(roots.len());
         let mut budget = SearchBudget {
-            started_at: Instant::now(),
+            started_at: self.now(),
             files_seen: 0,
             bytes_scanned: 0,
             entries_visited: 0,
@@ -105,9 +182,10 @@ impl SearchEngine {
                     &root_id,
                     root_name,
                     &workspace,
-                    query,
-                    request.case_sensitive,
-                    request.whole_word,
+                    ScanQuery {
+                        literal: &literal,
+                        whole_word: request.whole_word,
+                    },
                     &request.include_patterns,
                     &request.exclude_patterns,
                     request.use_ignore_files,
@@ -173,11 +251,58 @@ impl SearchEngine {
             push_reason(&mut budget.reasons, SearchLimitReason::Entries);
             return true;
         }
-        if budget.started_at.elapsed() >= self.limits.max_duration {
+        if self.out_of_time(budget.started_at) {
             push_reason(&mut budget.reasons, SearchLimitReason::Time);
             return true;
         }
         false
+    }
+
+    pub(super) fn read_directory(
+        &self,
+        directory: &Path,
+    ) -> io::Result<impl Iterator<Item = io::Result<DirEntry>>> {
+        Ok(std::fs::read_dir(directory)?.inspect(move |_| {
+            #[cfg(test)]
+            if let Some(clock) = &self.test_clock {
+                clock.read_directory_entry(directory);
+            }
+        }))
+    }
+
+    /// The entry's file type, which costs a metadata read where the listing
+    /// left it out.
+    pub(super) fn entry_file_type(&self, entry: &DirEntry) -> io::Result<FileType> {
+        #[cfg(test)]
+        if let Some(clock) = &self.test_clock {
+            clock.read_file_type();
+        }
+        entry.file_type()
+    }
+
+    pub(super) fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(clock) = &self.test_clock {
+            return clock.now();
+        }
+        Instant::now()
+    }
+
+    pub(super) fn time_since(&self, started_at: Instant) -> std::time::Duration {
+        self.now().saturating_duration_since(started_at)
+    }
+
+    fn out_of_time(&self, started_at: Instant) -> bool {
+        #[cfg(test)]
+        if let Some(left) = &self.time_checks_left {
+            use std::sync::atomic::Ordering;
+            return left
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |left| {
+                    left.checked_sub(1)
+                })
+                .is_err();
+        }
+        self.time_since(started_at) >= self.limits.max_duration
     }
 }
 

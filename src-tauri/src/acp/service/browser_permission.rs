@@ -75,13 +75,15 @@ impl BrowserPermissionDecider for ServiceBrowserPermissionDecider<'_> {
 
 impl super::AcpService {
     pub(crate) fn browser_owner_witness_matches(&self, owner: &BrowserPermissionOwner) -> bool {
-        self.scheduler.active().is_some_and(|active| {
-            active.tree.project_id == owner.project_id
-                && active.tree.chat_id == owner.chat_id
-                && active.tree.session_id == owner.session_id
-                && active.tree.runtime_epoch == owner.runtime_epoch
-                && active.turn_id.as_ref() == Some(&owner.turn_id)
-                && self.runtime.for_owner(&active.tree).is_ok()
+        self.lanes().any(|lane| {
+            lane.scheduler.active().is_some_and(|active| {
+                active.tree.project_id == owner.project_id
+                    && active.tree.chat_id == owner.chat_id
+                    && active.tree.session_id == owner.session_id
+                    && active.tree.runtime_epoch == owner.runtime_epoch
+                    && active.turn_id.as_ref() == Some(&owner.turn_id)
+                    && lane.runtime.for_owner(&active.tree).is_ok()
+            })
         })
     }
 
@@ -101,11 +103,14 @@ impl super::AcpService {
         session_id: &SageAgentSessionId,
     ) -> Option<BrowserPermissionOwner> {
         use rusqlite::OptionalExtension;
-        let active = self.scheduler.active().filter(|active| {
-            &active.tree.project_id == project_id
-                && &active.tree.chat_id == chat_id
-                && &active.tree.session_id == session_id
-        });
+        let active = self
+            .lanes()
+            .filter_map(|lane| lane.scheduler.active())
+            .find(|active| {
+                &active.tree.project_id == project_id
+                    && &active.tree.chat_id == chat_id
+                    && &active.tree.session_id == session_id
+            });
         let turn_id = active.as_ref().and_then(|active| active.turn_id.as_ref());
         let (turn_id, epoch, digest): (String, i64, String) = self.database.connection().query_row(
             "SELECT t.id,t.runtime_epoch,s.binding_digest FROM turns t

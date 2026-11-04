@@ -52,6 +52,10 @@ where
 }
 
 impl super::AcpService {
+    pub(crate) fn suspend_browser_tab(&self, label: &str) {
+        self.browser_attachments.suspend_tab(label);
+    }
+
     fn clear_browser_highlight(&self, label: &str) {
         #[cfg(windows)]
         {

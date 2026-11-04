@@ -14,7 +14,7 @@ import {
   safeOrdinal,
   safeText,
   safeTimestamp,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 import { safeItem } from "./acpDesktopResponseItems";
 import { validateAttachedContexts } from "../domain/attachedContext";
 

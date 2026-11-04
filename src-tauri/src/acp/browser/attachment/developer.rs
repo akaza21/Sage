@@ -10,10 +10,16 @@
 use super::*;
 use crate::acp::browser::developer;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) type GrantAudit = Arc<dyn Fn(developer::CdpAuditOutcome) -> bool + Send + Sync>;
+
 pub(super) struct DeveloperGrant {
     session: String,
     origin: String,
+    audit: GrantAudit,
+}
+
+impl Drop for DeveloperGrant {
+    fn drop(&mut self) { (self.audit)(developer::CdpAuditOutcome::Revoked); }
 }
 
 fn origin_of(url: &str) -> Option<String> {
@@ -30,14 +36,21 @@ impl AttachmentLease {
         self.grant_developer_mode_at(session, origin, developer::switch_generation())
     }
 
+    #[cfg(test)]
+    pub(crate) fn grant_developer_mode_at(&self, session: &str, origin: &str, generation: u64) -> bool {
+        self.grant_developer_mode_audited_at(session, origin, generation, self.resource_generation(), Arc::new(|_| true))
+    }
+
     /// Records the grant unless the Settings switch changed since
     /// `generation` was read; checked under the grant's own lock, which the
     /// switch going off takes to end grants.
-    pub(crate) fn grant_developer_mode_at(
+    pub(crate) fn grant_developer_mode_audited_at(
         &self,
         session: &str,
         origin: &str,
         generation: u64,
+        resource_generation: u64,
+        audit: GrantAudit,
     ) -> bool {
         let Ok(slot) = self.authority.lock() else {
             return false;
@@ -52,12 +65,14 @@ impl AttachmentLease {
         let Ok(mut grant) = self.developer.lock() else {
             return false;
         };
-        if developer::switch_generation() != generation {
+        if developer::switch_generation() != generation || self.resource_generation() != resource_generation {
             return false;
         }
+        if !audit(developer::CdpAuditOutcome::Granted) { return false; }
         *grant = Some(DeveloperGrant {
             session: session.to_owned(),
             origin: origin.to_owned(),
+            audit,
         });
         true
     }
@@ -80,23 +95,29 @@ impl AttachmentLease {
     }
 
     pub(super) fn end_developer_mode(&self) -> bool {
-        self.developer
-            .lock()
-            .map(|mut grant| grant.take().is_some())
-            .unwrap_or(false)
+        let ended = self.developer.lock().ok().and_then(|mut grant| {
+            grant.take().map(|grant| (grant, self.invalidate_resources()))
+        });
+        if let Some((grant, generation)) = ended {
+            drop(grant);
+            self.release_invalidated_resources(generation);
+            true
+        } else { false }
     }
 
-    /// Keeps the grant across a same-origin commit (a reload, a link within
-    /// the site) and ends it on any other.
+    /// Keeps the grant across an in-site commit and ends it on any other.
     pub(super) fn end_developer_mode_unless_on(&self, url: &str) {
-        if let Ok(mut grant) = self.developer.lock()
-            && grant
-                .as_ref()
-                .is_some_and(|grant| origin_of(url).as_deref() != Some(grant.origin.as_str()))
-        {
-            *grant = None;
+        let ended = self.developer.lock().ok().and_then(|mut grant| {
+            if grant.as_ref().is_some_and(|grant| origin_of(url).as_deref() != Some(grant.origin.as_str())) {
+                grant.take().map(|grant| (grant, self.invalidate_resources()))
+            } else { None }
+        });
+        if let Some((grant, generation)) = ended {
+            drop(grant);
+            self.release_invalidated_resources(generation);
         }
     }
+
 }
 
 impl BrowserAttachments {

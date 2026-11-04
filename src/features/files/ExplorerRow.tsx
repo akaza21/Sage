@@ -1,8 +1,11 @@
 import { ChevronRight } from "../../ui/leanIcons";
-import { forwardRef, memo } from "react";
+import { forwardRef, memo, type CSSProperties } from "react";
 
 import { resourceKey } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
+import type { PopoverPoint } from "../../ui/pointerPopoverPosition";
+import type { GitDecorationBadge } from "../git/GitDecorationBadge";
+import type { GitDecoration } from "../git/gitDecorations";
 import { isContextMenuKey } from "./explorerContextMenu";
 import { FileKindIcon } from "./FileKindIcon";
 import type { VisibleWorkspaceEntry } from "./fileTree";
@@ -11,11 +14,19 @@ interface ExplorerRowProps {
   entry: VisibleWorkspaceEntry;
   selected: boolean;
   expanded: boolean;
+  /** Git status from the EP-12 store (EP-13); shared objects keep the memo. */
+  gitDecoration?: GitDecoration;
+  /** The badge from the lazy decoration chunk, present with `gitDecoration`. */
+  GitBadge?: typeof GitDecorationBadge;
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
   /** A right-click, or the context-menu key, on the row (ED-18). */
-  onContextMenu?: (resource: ResourceRef, row: HTMLButtonElement) => void;
+  onContextMenu?: (
+    resource: ResourceRef,
+    row: HTMLButtonElement,
+    point?: PopoverPoint,
+  ) => void;
 }
 
 export const ExplorerRow = memo(
@@ -24,6 +35,8 @@ export const ExplorerRow = memo(
       entry,
       selected,
       expanded,
+      gitDecoration,
+      GitBadge,
       onSelectDirectory,
       onToggleDirectory,
       onOpenFile,
@@ -35,27 +48,31 @@ export const ExplorerRow = memo(
     const directory = entry.kind === "directory";
     const file = entry.kind === "file";
     const entryKind = directory ? "directory" : file ? "file" : "symlink";
+    const gitStatus = gitDecoration ? `, ${gitDecoration.label}` : "";
 
     return (
       <button
         className={`tree__row ${directory ? "tree__row--folder" : ""} ${
           selected ? "tree__row--selected" : ""
-        } ${entry.ignored ? "tree__row--ignored" : ""}`}
+        } ${entry.ignored ? "tree__row--ignored" : ""}${
+          gitDecoration ? ` tree__row--git git-tone--${gitDecoration.tone}` : ""
+        }`}
         data-resource-key={key}
         ref={ref}
         type="button"
         role="treeitem"
         aria-label={
-          directory
+          (directory
             ? `Toggle folder ${entry.resource.relativePath}`
             : file
               ? `Open file ${entry.resource.relativePath}`
-              : `Unavailable resource ${entry.resource.relativePath}`
+              : `Unavailable resource ${entry.resource.relativePath}`) +
+          gitStatus
         }
         aria-current={selected ? "page" : undefined}
         aria-expanded={directory ? expanded : undefined}
-        title={entry.resource.relativePath}
-        style={{ paddingLeft: 8 + entry.depth * 16 }}
+        title={entry.resource.relativePath + gitStatus}
+        style={{ "--tree-depth": entry.depth } as CSSProperties}
         disabled={!directory && !file}
         onClick={() => {
           if (directory) {
@@ -69,7 +86,10 @@ export const ExplorerRow = memo(
           if (!onContextMenu) return;
           // Never the webview's own menu (Reload, Inspect) over the tree.
           event.preventDefault();
-          onContextMenu(entry.resource, event.currentTarget);
+          onContextMenu(entry.resource, event.currentTarget, {
+            x: event.clientX,
+            y: event.clientY,
+          });
         }}
         onKeyDown={(event) => {
           if (!onContextMenu || !isContextMenuKey(event)) return;
@@ -80,7 +100,6 @@ export const ExplorerRow = memo(
         {directory ? (
           <ChevronRight
             className={expanded ? "tree__chevron--expanded" : undefined}
-            size={14}
             aria-hidden="true"
           />
         ) : (
@@ -90,7 +109,10 @@ export const ExplorerRow = memo(
           path={entry.resource.relativePath}
           entryKind={entryKind}
         />
-        <span>{entry.name}</span>
+        <span className="tree__name">{entry.name}</span>
+        {gitDecoration && GitBadge ? (
+          <GitBadge decoration={gitDecoration} />
+        ) : null}
       </button>
     );
   }),

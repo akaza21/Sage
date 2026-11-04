@@ -57,6 +57,11 @@
 
 - Apply the implicit `engineering-workflow` skill to software work; the user
   does not need to invoke individual skills.
+- These skills are optional local tooling. When they are not installed (for
+  example in a cloud agent environment), follow the same stages using this
+  file and the issue as the spec, and do not stop to ask for the skills. An
+  agent-ready issue (status:ready, with Goal, Files to touch, Acceptance checks
+  and Gates) starts at `implement`.
 - Use the main flow as an index, entering at the earliest unresolved stage:
   `grill-with-docs` -> `to-spec` -> `to-tickets` -> `implement`, with `tdd`
   driving implementation and `code-review` closing it out.
@@ -78,3 +83,32 @@ Report:
 - performance or bundle impact;
 - known limitations;
 - suggested review hotspots.
+
+## Working from issues
+
+Agent work is tracked as GitHub issues and shown on the project board.
+Status labels are the source of truth for where a ticket stands:
+
+- `status:ready`: specified and free to pick up.
+- `status:in-progress`: an agent is working on it. Set this when you start.
+- `status:in-review`: a PR is open. Link it with `Closes #<issue>` in the
+  PR body.
+- `status:blocked`: waiting on another PR or ticket; say which in a comment.
+
+Owner labels say who does the work (`codex`, `claude`). `needs-owner` means
+the maintainer must decide or act. `needs-real-app-test` means the change
+must be checked in the running desktop app before merge.
+
+When you take a ticket:
+
+- Stay within the files the ticket lists. If the fix needs files outside
+  that list, comment on the issue before widening the change.
+- Open the PR as a draft, run the gates the ticket lists, and paste the
+  exact commands and results into the PR.
+- Mark the PR ready only when every acceptance check has evidence.
+- Comment on the issue with what you delivered, what you could not verify,
+  and any follow-up. Do not close the issue yourself; merging the PR does.
+- Tests must lock in real behaviour: an input and its expected output, or a
+  bug that stays fixed. Do not add tests that only check mocks, restate the
+  implementation or snapshot trivial markup. Never skip, delete or loosen a
+  test, or add retries, to make a gate pass.

@@ -1,29 +1,8 @@
-import {
-  Box,
-  Braces,
-  FileText,
-  Folder,
-  ListTree,
-  SquareFunction,
-  Target,
-} from "../../ui/leanIcons";
-
 import { useWorkbenchStore } from "../../app/store";
-import { resourceTitle } from "../../domain/resourceIdentity";
-import { outlineKindLabel, outlineSummaryTitle } from "./outlineCard";
-import type { OutlineSymbolKind } from "./syntaxOutline";
+import { resourceKey } from "../../domain/resourceIdentity";
+import { outlineSummaryTitle } from "./outlineCard";
+import { OutlineTree } from "./OutlineTree";
 import { useSyntaxOutline, type ActiveOutline } from "./useSyntaxOutline";
-
-const KIND_ICONS: Readonly<Record<OutlineSymbolKind, typeof Box>> = {
-  function: SquareFunction,
-  class: Box,
-  type: Braces,
-  variable: Target,
-  module: Folder,
-  heading: FileText,
-  property: ListTree,
-  rule: Braces,
-};
 
 export function OutlineSurface() {
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
@@ -42,49 +21,22 @@ export function OutlineSurface() {
         <span>{outlineSummaryTitle(symbols.length, outline?.truncated)}</span>
       </header>
       {resource && symbols.length ? (
-        <ul className="outline-surface__list">
-          {symbols.map((symbol) => {
-            const kind = outlineKindLabel(symbol.kind);
-            const Icon = KIND_ICONS[symbol.kind];
-            return (
-              <li key={`${symbol.offset}:${symbol.name}`}>
-                <button
-                  className="outline-card"
-                  type="button"
-                  aria-label={`${kind}: ${symbol.name}. ${resource.relativePath}, line ${symbol.line}, column ${symbol.column}`}
-                  title={`${symbol.name} — ${resource.relativePath}:${symbol.line}:${symbol.column}`}
-                  onClick={() => {
-                    if (!projectId) return;
-                    void useWorkbenchStore.getState().openFileLocation({
-                      projectId,
-                      transitionEpoch,
-                      resource,
-                      lineNumber: symbol.line,
-                      columnNumber: symbol.column,
-                      selection: { kind: "caret" },
-                    });
-                  }}
-                >
-                  <span className="outline-card__kind" aria-hidden="true">
-                    <Icon size={14} strokeWidth={2} />
-                  </span>
-                  <span className="outline-card__copy">
-                    <span className="outline-card__name">{symbol.name}</span>
-                    <small className="outline-card__location">
-                      <span className="outline-card__location-file">
-                        {resourceTitle(resource)}
-                      </span>
-                      <span className="outline-card__location-position">
-                        :{symbol.line}:{symbol.column}
-                      </span>
-                    </small>
-                  </span>
-                  <span className="sr-only">{kind}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <OutlineTree
+          key={resourceKey(resource)}
+          symbols={symbols}
+          onOpen={(symbol) => {
+            if (!projectId) return;
+            void useWorkbenchStore.getState().openFileLocation({
+              projectId,
+              transitionEpoch,
+              resource,
+              lineNumber: symbol.line,
+              columnNumber: symbol.column,
+              selection: { kind: "caret" },
+            });
+          }}
+          location={resource.relativePath}
+        />
       ) : (
         <p className="outline-surface__empty" role="status">
           {outlineEmptyMessage(active?.status)}

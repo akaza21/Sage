@@ -1,4 +1,3 @@
-/* Annotate's composer chips and their hover card (Codex ref 63). */
 .browser-element-chip {
   position: relative;
   display: inline-flex;
@@ -13,8 +12,8 @@
   min-width: 0;
   height: 28px;
   align-items: center;
-  gap: 4px;
-  padding: 0 12px 0 8px;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) 0 var(--space-2);
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-md);
   background: transparent;
@@ -69,9 +68,9 @@
 
 .browser-element-card {
   position: fixed;
-  z-index: 85;
+  z-index: var(--z-popover-card);
   max-height: 50vh;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   overflow: auto;
   border-radius: var(--radius-annotation-card);
   background: var(--color-panel-raised);
@@ -82,15 +81,15 @@
 }
 
 .browser-element-card__entry + .browser-element-card__entry {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-panel-raised-hover);
 }
 
 .browser-element-card__entry header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .browser-element-card__entry header span {
@@ -101,10 +100,9 @@
   white-space: nowrap;
 }
 
-/* The element's role in a tag, like Codex's `img` pill. */
 .browser-element-card code {
   flex: none;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-sm);
   color: var(--chat-annotation-muted);
@@ -138,7 +136,7 @@
 }
 
 .browser-element-card p {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   white-space: pre-wrap;
 }
 
@@ -157,7 +155,7 @@
   flex-wrap: wrap;
   justify-self: end;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0 0 calc(8px - var(--space-3));
   padding: 0;
   list-style: none;

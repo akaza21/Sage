@@ -1,5 +1,12 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
+import { useNativePageLayer } from "./nativePageLayers";
 
 const FOCUSABLE_SELECTOR = [
   'a[href]:not([tabindex="-1"])',
@@ -26,30 +33,48 @@ export function ModalDialog({
   children,
   className,
   labelledBy,
+  describedBy,
+  initialFocusRef,
+  restoreFocus = false,
   onDismiss,
 }: {
   children: ReactNode;
   className?: string;
   labelledBy: string;
+  describedBy?: string;
+  initialFocusRef?: RefObject<HTMLElement | null>;
+  restoreFocus?: boolean;
   onDismiss: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const previousFocusRef = useRef(document.activeElement);
+  useNativePageLayer(dialogRef, { coverage: "window" });
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const previousFocus = previousFocusRef.current;
     if (typeof dialog.showModal === "function") {
       if (!dialog.open) dialog.showModal();
     } else {
       dialog.setAttribute("open", "");
     }
+    initialFocusRef?.current?.focus();
     return () => {
       if (typeof dialog.close === "function" && dialog.open) dialog.close();
       else dialog.removeAttribute("open");
+      if (
+        restoreFocus &&
+        previousFocus instanceof HTMLElement &&
+        previousFocus.isConnected
+      ) {
+        previousFocus.focus();
+      }
     };
-  }, []);
+  }, [initialFocusRef, restoreFocus]);
 
   const containFocus = (event: KeyboardEvent<HTMLDialogElement>) => {
+    event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
       onDismiss();
@@ -83,6 +108,7 @@ export function ModalDialog({
       className={["dirty-dialog", className].filter(Boolean).join(" ")}
       aria-modal="true"
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onCancel={(event) => {
         event.preventDefault();
         onDismiss();

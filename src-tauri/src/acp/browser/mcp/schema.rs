@@ -25,7 +25,7 @@ pub(super) fn tools(developer: bool) -> Vec<Value> {
                 "waitFor" => (json!({"condition":condition_schema(),"timeoutMs":{"type":"integer","minimum":1,"maximum":BROWSER_LIMITS.wait_timeout_ms}}), vec!["condition","timeoutMs"]),
                 "screenshot" => (json!({"region":region_schema()}), vec![]),
                 "readConsole" | "readNetwork" => (json!({"cursor":{"type":["integer","null"],"minimum":0},"limit":{"type":"integer","minimum":1,"maximum":BROWSER_LIMITS.diagnostic_entries}}), vec!["limit"]),
-                "cdp" => (json!({"method":{"type":"string","maxLength":128,"pattern":"^[A-Za-z0-9]+\\.[A-Za-z0-9]+$"},"params":{"type":"object"}}), vec!["method"]),
+                "cdp" => (json!({"method":{"type":"string","enum":super::super::developer::allowed_methods()},"params":{"type":"object"}}), vec!["method"]),
                 _ => (json!({}), vec![]),
             };
             let mut properties = fields.as_object().cloned().expect("schema object");
@@ -35,7 +35,7 @@ pub(super) fn tools(developer: bool) -> Vec<Value> {
             let description = if name == "act" {
                 "Act on a handle from snapshotPage. Put kind and its fields directly in action; for filling, use action.kind=fill, action.handle, and action.value (not a nested action.fill object)."
             } else if name == "cdp" {
-                "Developer mode: send one Chrome DevTools Protocol command, such as Runtime.evaluate, to this session's browser tab and get its raw result. The user must approve developer mode for this tab and site first; Stop, Take over or leaving the site ends it. Commands that reach other tabs, the whole browser profile or another site are refused, and Network.getCookies needs urls on this site. Params are at most 12 KiB of JSON; results over 256 KiB fail."
+                "Developer mode: send one allowlisted Chrome DevTools Protocol command from the method enum to this session's browser tab. Only listed top-level params are admitted. Scripts run as the signed-in user and can access data available to the page. Approval is required for this tab and site; Stop, Take over or leaving the site ends it. Params are at most 12 KiB of JSON; results over 256 KiB fail."
             } else if name == "openTab" {
                 "Open a visible Sage browser tab for this session. Call openTab when no tab is attached, then use the returned tabId for snapshotPage and other browser tools. HTTP(S) URL only; Sage asks permission before opening."
             } else {

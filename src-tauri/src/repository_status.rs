@@ -6,7 +6,7 @@ use crate::{
     repository::{
         RepositoryBoundary, ensure_success, repository_boundary, repository_diff_base, run_git,
     },
-    repository_parse::{merge_numstat, parse_status},
+    repository_parse::{ParsedStatus, merge_numstat, parse_status},
     workspace::Workspace,
 };
 
@@ -45,7 +45,12 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     .await?;
     ensure_success(&status_output)?;
 
-    let (branch, mut changes, parser_truncated) = parse_status(
+    let ParsedStatus {
+        branch,
+        mut changes,
+        truncated: parser_truncated,
+        overflowed: changes_overflowed,
+    } = parse_status(
         workspace.root_id(),
         &status_output.stdout,
         status_output.stdout_truncated,
@@ -98,6 +103,7 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         revert_in_progress: in_progress.revert,
         changes,
         truncated: parser_truncated || numstat_truncated,
+        changes_overflowed,
         elapsed_ms: started.elapsed().as_millis() as u64,
         message: None,
     })
@@ -261,4 +267,61 @@ async fn numstat(workspace: &Workspace, needed: bool) -> AppResult<(NumstatByPat
     let mut stats = HashMap::new();
     let truncated = merge_numstat(&mut stats, &output.stdout, output.stdout_truncated)?;
     Ok((canonicalize_numstat_paths(workspace, stats)?, truncated))
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn status_keeps_working_with_non_utf8_tracked_and_untracked_paths() {
+        use super::*;
+        use std::{ffi::OsStr, fs, os::unix::ffi::OsStrExt, process::Command};
+
+        let root = std::env::temp_dir().join(format!("sage-status-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "-q", "-b", "main"]);
+        let tracked = root.join(OsStr::from_bytes(b"tracked-\xff.txt"));
+        fs::write(&tracked, "before\n").unwrap();
+        fs::write(root.join("ordinary.txt"), "before\n").unwrap();
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Sage Test",
+            "-c",
+            "user.email=test",
+            "commit",
+            "-qm",
+            "initial",
+        ]);
+        fs::write(&tracked, "after\n").unwrap();
+        fs::write(root.join(OsStr::from_bytes(b"untracked-\xff.txt")), "new\n").unwrap();
+        fs::write(root.join("ordinary.txt"), "after\n").unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+        let result = status(&workspace).await;
+        fs::remove_dir_all(&root).unwrap();
+        let result = result.unwrap();
+        assert_eq!(result.state, "repository");
+        assert_eq!(result.branch.as_deref(), Some("main"));
+        assert_eq!(result.recent_commits.len(), 1);
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.changes[0].resource.relative_path, "ordinary.txt");
+        assert_eq!(result.changes[0].worktree_status, "modified");
+        assert_eq!(result.changes[0].additions, Some(1));
+        assert_eq!(result.changes[0].deletions, Some(1));
+        assert!(!result.truncated);
+        assert!(!result.changes_overflowed);
+    }
 }

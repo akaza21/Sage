@@ -135,9 +135,23 @@ export interface BrowserNavigation {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  /** The device toolbar's emulation, as Rust holds it for the tab. */
+  device?: BrowserDevice | null;
+  /** A reset step failed, so some override may still be on the page. */
+  deviceUnconfirmed?: boolean;
   error?: string | null;
   printUnavailableReason?: string | null;
   annotateUnavailableReason?: string | null;
+  deviceUnavailableReason?: string | null;
+}
+
+/** A device toolbar emulation: a preset id, the CSS viewport size and the
+ * share of that size the page is drawn at to fit the pane. */
+export interface BrowserDevice {
+  preset: string;
+  width: number;
+  height: number;
+  scalePercent: number;
 }
 
 export function browserStatus(tabId: string): Promise<BrowserNavigation> {
@@ -271,6 +285,8 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
+  /** The page held an Allow that ended and has not reloaded since. */
+  staleAccess: boolean;
 }
 
 export function browserPermissionStatus(
@@ -287,10 +303,10 @@ export function browserPermissionResolve(
   return invokeNative("browser_permission_resolve", { tabId, id, allow });
 }
 
-export function browserPermissionRevoke(
-  tabId: string,
+/** Forgets one site's saved answer so it asks again (also Settings > Browser). */
+export function browserSiteSettingReset(
   origin: string,
   kind: BrowserPermissionKind,
-): Promise<void> {
-  return invokeNative("browser_permission_revoke", { tabId, origin, kind });
+): Promise<unknown> {
+  return invokeNative("browser_permission_reset", { origin, kind });
 }

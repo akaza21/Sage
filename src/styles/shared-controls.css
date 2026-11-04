@@ -1,3 +1,20 @@
+/* One key of a shortcut, drawn as a keycap. */
+.keycap {
+  display: inline-flex;
+  min-width: var(--keycap-height);
+  height: var(--keycap-height);
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-keycap);
+  color: var(--color-text-secondary);
+  background: var(--color-canvas);
+  box-shadow: inset 0 -1px 0 var(--color-border-strong);
+  font: inherit;
+  line-height: 1;
+}
+
 .button,
 .input,
 .select {
@@ -53,12 +70,6 @@
   color: var(--color-text-muted);
 }
 
-.input--compact,
-.select--compact {
-  min-height: var(--control-height-compact);
-  font-size: var(--font-size-xs);
-}
-
 .select {
   color-scheme: dark;
 }
@@ -73,7 +84,7 @@
   --menu-selected-fill: var(--color-accent-muted);
 
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-popover);
   display: grid;
   width: min(260px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
@@ -91,6 +102,62 @@
   transition:
     opacity var(--motion-duration-exit) ease-in,
     display var(--motion-duration-exit) allow-discrete;
+}
+
+/*
+ * The Editor's floating surfaces (Quick Open, its menus), after VS Code's
+ * modern UI (frostedGlass.css, contextview.ts, menu.ts): a frosted fill, a
+ * slower eased opening, and their row metrics. Agent menus keep their own
+ * Codex-derived finish.
+ */
+.popup-material {
+  --radius-popup: 8px;
+  --radius-keycap: 3px;
+  --popup-fill-opacity: 92%;
+  --popup-blur: 12px;
+  --popup-duration-open: 250ms;
+  --popup-duration-close: 150ms;
+  --popup-easing: cubic-bezier(0.22, 1, 0.36, 1);
+  --popup-row-height: 22px;
+  --popup-icon-slot: 16px;
+  --menu-row-height: 24px;
+  --keycap-height: 18px;
+  --keycap-gap: 2px;
+  --quick-open-width: 600px;
+  --quick-open-width-ratio: 62vw;
+  --quick-open-list-max-height: 40vh;
+  --popup-fill: color-mix(
+    in srgb,
+    var(--color-surface) var(--popup-fill-opacity),
+    transparent
+  );
+
+  border-radius: var(--radius-popup);
+  background: var(--popup-fill);
+  backdrop-filter: blur(var(--popup-blur));
+  animation: menu-popover-enter var(--popup-duration-open) var(--popup-easing);
+}
+
+/* Solid where transparency is unwanted or unsupported. */
+@supports not (backdrop-filter: blur(1px)) {
+  .popup-material {
+    --popup-fill-opacity: 100%;
+    --popup-blur: 0px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .popup-material {
+    --popup-fill-opacity: 100%;
+    --popup-blur: 0px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup-material {
+    --popup-duration-open: 0ms;
+    --popup-duration-close: 0ms;
+  }
 }
 
 .menu-popover[hidden] {
@@ -154,6 +221,37 @@
   opacity: var(--opacity-disabled);
 }
 
+/* Editor menus: VS Code's density, with an icon column beside the label. */
+.menu-popover.editor-menu {
+  gap: 0;
+  padding: var(--space-1) 0;
+  transition-duration: var(--popup-duration-close);
+}
+
+.editor-menu .menu-item {
+  width: auto;
+  min-height: var(--menu-row-height);
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+.editor-menu .menu-item:has(> svg) {
+  display: grid;
+  grid-template-columns: [icon] var(--popup-icon-slot) [label] minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.editor-menu .menu-item > svg {
+  grid-column: icon;
+  justify-self: center;
+}
+
+.editor-menu .menu-item > :not(svg) {
+  grid-column: label;
+}
+
 .menu-group-label {
   margin: 4px 4px 2px;
   color: var(--color-text-muted);
@@ -180,12 +278,15 @@
   min-width: 0;
 }
 
+/* Callers size the field through --picker-field-padding and
+   --picker-field-border-color instead of restyling it. */
 .searchable-picker__trigger,
 .searchable-picker__input {
   width: 100%;
   min-width: 0;
   min-height: var(--control-height-compact);
-  border: 1px solid var(--color-border-strong);
+  padding: var(--picker-field-padding, 0 var(--space-2));
+  border: 1px solid var(--picker-field-border-color, var(--color-border-strong));
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   background: var(--color-surface);
@@ -195,11 +296,9 @@
 
 .searchable-picker__trigger {
   display: flex;
-  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-1);
-  padding: 0 8px;
   overflow: hidden;
   text-align: left;
 }
@@ -220,10 +319,6 @@
   overflow: hidden;
 }
 
-.searchable-picker__input {
-  padding: 0 8px;
-}
-
 .searchable-picker__popover > [role="listbox"] {
   max-height: min(224px, calc(100vh - 148px));
   min-height: 0;
@@ -233,9 +328,14 @@
 
 .searchable-picker__current,
 .searchable-picker__footer,
-.searchable-picker__limit,
+.searchable-picker__limit {
+  margin: var(--space-1) var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .searchable-picker__reason {
-  margin: 4px 8px;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -274,10 +374,6 @@
   grid-column: 2;
 }
 
-.searchable-picker__reason {
-  margin: 0;
-}
-
 @keyframes menu-popover-enter {
   from {
     opacity: 0;
@@ -300,6 +396,16 @@
   .menu-item {
     color: CanvasText;
     forced-color-adjust: auto;
+  }
+
+  .keycap {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+
+  .popup-material {
+    background: Canvas;
+    backdrop-filter: none;
   }
 
   .searchable-picker__trigger,
@@ -375,10 +481,12 @@
   padding: 0 20px 0 0;
   overflow: hidden;
   appearance: none;
-  border: 0;
+  border: var(--select-control-trigger-border, 0);
   outline: 0;
   color: var(--color-text-primary);
-  background: transparent;
+  background: var(--select-control-trigger-fill, transparent);
+  backdrop-filter: var(--select-control-trigger-blur, none);
+  box-shadow: var(--select-control-trigger-shadow, none);
   font: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);

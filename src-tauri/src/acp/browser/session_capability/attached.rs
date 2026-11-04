@@ -6,6 +6,7 @@ use crate::acp::service::AcpService;
 pub(crate) trait BrowserSessionContext: Clone + Send + Sync + 'static {
     fn service(&self) -> &AcpService;
     fn settled_tab(&self, label: &str) -> Result<(String, u64), String>;
+    fn sleep_hidden_lane(&self, _lease: &AttachmentLease, _generation: u64) {}
     /// The store holding the developer-mode switch and audit log; without
     /// one, developer mode stays off.
     fn developer_settings(&self) -> Option<crate::settings_store::SettingsStore> {
@@ -14,6 +15,11 @@ pub(crate) trait BrowserSessionContext: Clone + Send + Sync + 'static {
 }
 
 impl BrowserSessionContext for AppHandle {
+    fn sleep_hidden_lane(&self, lease: &AttachmentLease, generation: u64) {
+        if self.state::<BrowserState>().tab_is_sleeping(&lease.tab_label) {
+            lease.sleep_diagnostics(Some(generation));
+        }
+    }
     fn service(&self) -> &AcpService {
         &self.state::<AppState>().inner().acp
     }
@@ -126,6 +132,7 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
                 BrowserFailure::Denied
             })?;
         let native = self.native.port(&self.context, lease.clone());
+        let _sleep = SleepHiddenLane { context: self.context.clone(), generation: lease.resource_generation(), lease: lease.clone() };
         let developer = self
             .context
             .developer_settings()
@@ -157,6 +164,12 @@ impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> AttachedSessionCapabili
         *reached_gate = true;
         with_session_owner_guards(gate, self.context.clone(), owner).perform(request)
     }
+}
+
+struct SleepHiddenLane<C: BrowserSessionContext> { context: C, lease: AttachmentLease, generation: u64 }
+
+impl<C: BrowserSessionContext> Drop for SleepHiddenLane<C> {
+    fn drop(&mut self) { self.context.sleep_hidden_lane(&self.lease, self.generation); }
 }
 
 impl<C: BrowserSessionContext, F: AttachedTabFactory<C>> BrowserCapability

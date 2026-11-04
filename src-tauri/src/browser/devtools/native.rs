@@ -271,10 +271,38 @@ impl CdpTransport for NativeTransport {
 }
 
 impl DevtoolsCapability<NativePort> {
+    pub(crate) fn for_attachment(
+        state: &BrowserState,
+        scope: BrowserScope,
+        lease: &crate::acp::browser::attachment::AttachmentLease,
+        generation: u64,
+        permit: &BrowserDispatchPermit,
+    ) -> Result<Self, BrowserFailure> {
+        let capability = Self::for_tab_with_diagnostics(state, scope, false)?;
+        let release = capability.release_buffers();
+        lease.bind_resources(generation, || permit.is_live(), Box::new(release)).map_err(|_| BrowserFailure::Denied)?;
+        Ok(capability)
+    }
+
+    pub(crate) fn wake_diagnostics(&mut self, lease: &crate::acp::browser::attachment::AttachmentLease, permit: &BrowserDispatchPermit) -> Result<(), BrowserFailure> {
+        if self.diagnostic_rings().lock().is_ok_and(|rings| !rings.is_suspended()) { return Ok(()); }
+        let scope = lease.diagnostic_scope().ok_or(BrowserFailure::Unavailable)?;
+        let webview = self.port_mut().transport.webview.clone();
+        let rings = events::attach(&webview, Some(scope.clone()), Some(permit.clone()))?;
+        self.set_diagnostic_rings(rings.clone());
+        // Setup registered its scoped cleanup before releasing the wake lock.
+        Ok(())
+    }
+
+    #[cfg(feature = "native-lane")]
     pub(crate) fn for_tab(
         state: &BrowserState,
         scope: BrowserScope,
     ) -> Result<Self, BrowserFailure> {
+        Self::for_tab_with_diagnostics(state, scope, true)
+    }
+
+    fn for_tab_with_diagnostics(state: &BrowserState, scope: BrowserScope, attach: bool) -> Result<Self, BrowserFailure> {
         let label = format!("browser-{}", scope.tab_id);
         let webview = state
             .tabs
@@ -283,14 +311,18 @@ impl DevtoolsCapability<NativePort> {
             .handle(&label)
             .cloned()
             .ok_or(BrowserFailure::Unavailable)?;
-        Self::from_webview(scope, webview)
+        Self::from_webview(scope, webview, attach)
     }
 
-    fn from_webview(scope: BrowserScope, webview: Webview) -> Result<Self, BrowserFailure> {
+    fn from_webview(scope: BrowserScope, webview: Webview, attach: bool) -> Result<Self, BrowserFailure> {
         if webview.label() != format!("browser-{}", scope.tab_id) {
             return Err(BrowserFailure::Denied);
         }
-        let diagnostics = events::attach(&webview)?;
+        let diagnostics = if attach { events::attach(&webview, None, None)? } else {
+            let mut rings = super::diagnostics::DiagnosticRings::default();
+            rings.suspend();
+            Arc::new(std::sync::Mutex::new(rings))
+        };
         Ok(Self::with_diagnostics(
             scope,
             NativePort::new(NativeTransport {

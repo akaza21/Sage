@@ -9,11 +9,16 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, AppResult};
 mod access;
 mod browser_developer;
+mod agent_rail_view;
 mod browser_preferences;
+mod browser_site_permissions;
 mod editor_settings;
 mod side_chat;
+mod terminal_dock;
 pub use access::SessionAccessModes;
+pub use agent_rail_view::AgentRailView;
 pub use browser_preferences::BrowserPreferences;
+pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +114,9 @@ impl SettingsStore {
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
             browser_developer::migrate(&migration)?;
+            agent_rail_view::migrate(&migration)?;
+            browser_site_permissions::migrate(&migration)?;
+            terminal_dock::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

@@ -152,9 +152,8 @@ fn load_project_roots(
         }
         roots.push(SageRootId::parse(row?).map_err(|_| StoreError::Corrupt("project root id"))?);
     }
-    if roots.is_empty() {
-        return Err(StoreError::Corrupt("project root membership"));
-    }
+    // Rootless Projects are valid. Item decoding still checks each referenced
+    // resource against this set, so an empty set admits no file resources.
     Ok(roots)
 }
 

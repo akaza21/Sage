@@ -1,4 +1,6 @@
 .browser-surface {
+  /* The device toolbar's row, divider included (Codex ref 41). */
+  --browser-device-toolbar-height: 36px;
   position: absolute;
   inset: 0;
   min-width: 0;
@@ -22,7 +24,7 @@
   padding: 4px 8px;
   border-bottom: 1px solid var(--browser-chrome-divider);
   background: var(--browser-start-fill);
-  z-index: 5;
+  z-index: var(--z-floating);
 }
 .browser-surface__toolbar button {
   display: grid;
@@ -97,8 +99,12 @@
   gap: 2px;
 }
 .browser-surface__nav-group {
+  overflow: clip;
   border-radius: var(--radius-pill);
   background: var(--browser-control-fill);
+}
+.browser-surface__nav-group button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .browser-surface__right-group {
   position: relative;
@@ -117,7 +123,7 @@
 
 .browser-surface__address-security {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
@@ -182,7 +188,7 @@
 }
 .browser-surface__menu {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -193,6 +199,10 @@
   padding: 8px;
   box-shadow: var(--browser-popover-shadow);
   font-size: 12px;
+}
+
+.browser-surface__menu[hidden] {
+  display: none;
 }
 
 .browser-surface__menu-group + .browser-surface__menu-group {
@@ -245,7 +255,7 @@
   padding: 0;
 }
 .browser-surface__drawer {
-  z-index: 2;
+  z-index: var(--z-sticky);
   max-height: 192px;
   overflow: auto;
   border-bottom: 1px solid var(--browser-control-hover);
@@ -303,32 +313,42 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-.browser-surface__find {
   flex-wrap: wrap;
   padding: 4px 8px;
 }
+
 .browser-surface__find input {
   flex: 1 1 120px;
   min-width: 0;
 }
 .browser-surface__error {
-  z-index: 1;
+  z-index: var(--z-raised);
   padding: 4px 8px;
   background: var(--bg);
 }
 .browser-surface__status {
-  z-index: 1;
+  z-index: var(--z-raised);
   margin: 0;
   padding: 4px 8px;
   color: var(--color-text-secondary);
   background: var(--bg);
 }
+/* The device toolbar's row; it holds its height while the toolbar loads. */
+.browser-surface__device-slot {
+  flex: 0 0 var(--browser-device-toolbar-height);
+  min-width: 0;
+  z-index: var(--z-floating);
+}
 .browser-surface__frame {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+/* The native page sits over this box: the whole frame, or a centred
+   device with a gutter for its resize handles (BF-7a, browser-device.css). */
+.browser-surface__viewport {
+  position: absolute;
+  inset: 0;
 }
 /* Annotate's comment box over the frozen page (Codex ref 60). */
 .browser-annotate {
@@ -466,6 +486,9 @@
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
   font-size: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 4px 8px;
 }
 .browser-site-permissions ul {
   display: grid;
@@ -474,9 +497,9 @@
   overflow-y: auto;
   margin: 0;
   list-style: none;
+  padding: 0;
 }
-/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
-   popover hangs from the right group like the … menu does. */
+
 .browser-downloads__trigger {
   position: relative;
 }
@@ -497,12 +520,7 @@
   pointer-events: none;
 }
 .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
-  animation: browser-download-spin 1s linear infinite;
-}
-@keyframes browser-download-spin {
-  to {
-    transform: rotate(1turn);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
@@ -511,7 +529,7 @@
 }
 .browser-downloads__popover {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -588,12 +606,6 @@
   height: 4px;
   accent-color: var(--color-accent);
 }
-.browser-site-permissions {
-  display: grid;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
 .browser-site-permissions__prompt,
 .browser-site-permissions li {
   display: flex;
@@ -605,9 +617,6 @@
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
-}
-.browser-site-permissions ul {
-  padding: 0;
 }
 .browser-site-permissions p {
   margin: 0;

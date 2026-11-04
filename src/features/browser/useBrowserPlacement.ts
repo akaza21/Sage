@@ -1,4 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
+import {
+  nativePageOverlapped,
+  subscribeNativePageLayers,
+} from "../../ui/nativePageLayers";
 import {
   coverBrowser,
   hideBrowser,
@@ -10,16 +14,7 @@ export function useBrowserPlacement(
   frame: RefObject<HTMLDivElement | null>,
   surface: RefObject<HTMLElement | null>,
   onError: (message: string) => void,
-  covered = false,
 ) {
-  // A popover opening or closing places the page again without the cleanup
-  // below, whose hide would end Annotate.
-  const coveredRef = useRef(covered);
-  const placeRef = useRef<() => void>(() => undefined);
-  useEffect(() => {
-    coveredRef.current = covered;
-    placeRef.current();
-  }, [covered]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -27,75 +22,108 @@ export function useBrowserPlacement(
     const agentCanvas = element.closest(".agent-artifact-pane__canvas");
     let active = true;
     let frameId = 0;
+    let lastPlacement: string | undefined;
     const reportError = (cause: unknown) => {
       if (active) onError(String(cause).slice(0, 512));
+    };
+    const update = (key: string, send: () => Promise<void>) => {
+      if (lastPlacement === key) return;
+      lastPlacement = key;
+      void send().catch((cause) => {
+        if (lastPlacement === key) lastPlacement = undefined;
+        reportError(cause);
+      });
     };
     const place = () => {
       cancelAnimationFrame(frameId);
       // The page is a native window above Sage's DOM, so it hides while the
       // centre pane is hidden, and a resize must not show it again.
       if (center?.getAttribute("aria-hidden") === "true") {
-        void hideBrowser(tabId).catch(reportError);
-        return;
-      }
-      // A toolbar popover covers it only for a moment, so Annotate stays on.
-      if (coveredRef.current) {
-        void coverBrowser(tabId).catch(reportError);
+        update("hidden", () => hideBrowser(tabId));
         return;
       }
       frameId = requestAnimationFrame(() => {
         const rect = element.getBoundingClientRect();
-        const canvasRect = agentCanvas?.getBoundingClientRect();
+        const canvasRect = agentCanvas?.getBoundingClientRect() ?? rect;
         const toolbarBottom = agentCanvas
           ? (surface.current
               ?.querySelector(".browser-surface__toolbar")
-              ?.getBoundingClientRect().bottom ??
-            canvasRect?.top ??
-            rect.top)
+              ?.getBoundingClientRect().bottom ?? canvasRect.top)
           : rect.top;
-        const left = canvasRect
-          ? Math.max(rect.left, canvasRect.left)
-          : rect.left;
-        const top = canvasRect
-          ? Math.max(rect.top, canvasRect.top, toolbarBottom)
-          : rect.top;
-        const right = canvasRect
-          ? Math.min(rect.right, canvasRect.right)
-          : rect.right;
-        const bottom = canvasRect
-          ? Math.min(rect.bottom, canvasRect.bottom)
-          : rect.bottom;
+        const left = Math.max(rect.left, canvasRect.left);
+        const top = Math.max(rect.top, canvasRect.top, toolbarBottom);
+        const right = Math.min(rect.right, canvasRect.right);
+        const bottom = Math.min(rect.bottom, canvasRect.bottom);
         if (right - left < 1 || bottom - top < 1) {
-          if (agentCanvas) void hideBrowser(tabId).catch(reportError);
+          update("hidden", () => hideBrowser(tabId));
           return;
         }
-        void positionBrowser(tabId, {
+        if (
+          nativePageOverlapped(
+            new DOMRect(left, top, right - left, bottom - top),
+          )
+        ) {
+          update("covered", () => coverBrowser(tabId));
+          return;
+        }
+        const bounds = {
           x: left,
           y: top,
           width: right - left,
           height: bottom - top,
-        }).catch(reportError);
+        };
+        update(JSON.stringify([bounds, window.devicePixelRatio]), () =>
+          positionBrowser(tabId, bounds),
+        );
       });
     };
-    placeRef.current = place;
+    // Another display scale moves the native pixel grid even when the CSS
+    // rectangle is unchanged, so the page is placed again on every change.
+    let resolution: MediaQueryList | null = null;
+    const watchResolution = () => {
+      resolution?.removeEventListener("change", onResolution);
+      resolution =
+        window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`) ??
+        null;
+      resolution?.addEventListener("change", onResolution);
+    };
+    const onResolution = () => {
+      watchResolution();
+      place();
+    };
+    watchResolution();
     const observer = new ResizeObserver(place);
     observer.observe(element);
+    // A centred device moves without resizing when its frame does.
+    if (element.parentElement) observer.observe(element.parentElement);
     const visibilityObserver = new MutationObserver(place);
-    if (center) {
+    if (center)
       visibilityObserver.observe(center, {
         attributes: true,
         attributeFilter: ["aria-hidden"],
       });
-    }
+    const unsubscribe = subscribeNativePageLayers(place);
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (
+        target === window ||
+        target === document ||
+        (target instanceof Element && target.contains(element))
+      )
+        place();
+    };
     window.addEventListener("resize", place);
+    window.addEventListener("scroll", onScroll, true);
     place();
     return () => {
       active = false;
-      placeRef.current = () => undefined;
       cancelAnimationFrame(frameId);
       observer.disconnect();
+      unsubscribe();
       visibilityObserver.disconnect();
+      resolution?.removeEventListener("change", onResolution);
       window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", onScroll, true);
       void hideBrowser(tabId).catch(() => undefined);
     };
   }, [tabId, frame, surface, onError]);

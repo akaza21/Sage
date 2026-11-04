@@ -86,6 +86,11 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// Capability text and schemas use the same source as command admission.
+pub fn allowed_methods() -> Vec<&'static str> {
+    ALLOWED.iter().map(|(method, _)| *method).collect()
+}
+
 /// Accepts `Domain.command`, both ASCII alphanumeric and non-empty.
 pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
     let valid_part =
@@ -122,6 +127,8 @@ pub fn admit_command(
 /// How one developer-mode call ended, as the audit log records it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CdpAuditOutcome {
+    Granted,
+    Revoked,
     /// Approved and about to be sent; written before the command leaves
     /// Sage, which refuses to send it if the row cannot be written.
     Sent,
@@ -136,6 +143,8 @@ pub enum CdpAuditOutcome {
 impl CdpAuditOutcome {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Granted => "granted",
+            Self::Revoked => "revoked",
             Self::Sent => "sent",
             Self::Ok => "ok",
             Self::Denied => "denied",
@@ -148,8 +157,8 @@ impl CdpAuditOutcome {
     }
 }
 
-/// One audit row. `params_preview` is redacted and truncated by the
-/// writer; `result_bytes` is set only when a result came back.
+/// One audit attempt. The writer persists only trusted metadata and byte
+/// counts; parameter values are never stored. No result content is stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CdpAuditEntry {
     pub session_id: String,

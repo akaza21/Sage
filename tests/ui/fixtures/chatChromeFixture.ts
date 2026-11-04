@@ -61,98 +61,110 @@ export function installChatChromeFixture(
     chatUiById,
     harnessDiscoveryPhase: signIn ? "signInRequired" : "ready",
   });
-  const pages = state.tabs
-    .filter((tab) => tab.kind === "chat")
-    .map((tab) => {
-      const projection = acpProjectionStoreFor(tab.id).getState();
-      if (!projection.page || !projection.scope)
-        throw new Error("Chrome fixture needs a settled projection");
-      const page = structuredClone(projection.page);
-      page.title = title;
-      page.sessions = page.sessions.map((session) => ({
-        ...session,
-        bindingId,
-        // A live matching session reports Ready/Live by design; sign-in
-        // discovery only surfaces when no session owns the selected model.
-        modelId: signIn ? `${modelId}-previous` : modelId,
-        state: "active" as const,
-        capabilities: capabilitySetFixture({
-          closeSession: false,
-          configCount: profile.effort ? 1 : 0,
-          childConversationProjection: profile.subagents === "children",
-          collaborationEventProjection: profile.subagents === "children",
-        }),
-      }));
-      const session = page.sessions.find(
-        (candidate) => candidate.id === page.currentSessionId,
-      )!;
-      page.sessionConfig = {
-        sageAgentSessionId: session.id,
-        runtimeEpoch: session.runtimeEpoch!,
-        configRevision: "1",
-        confirmedModel: { id: modelId, name: modelName },
-        modes: profile.modes.length
-          ? {
-              currentModeId: profile.modes[0].id,
-              availableModes: profile.modes,
-            }
-          : null,
-        configOptions: profile.effort
-          ? [
+  // AP-A1: only displayed chats keep a pinned projection; the others load
+  // their page when selected, so the fixture rewrites the settled ones.
+  const settled = state.tabs.filter((tab) => {
+    if (tab.kind !== "chat") return false;
+    const projection = acpProjectionStoreFor(tab.id).getState();
+    return Boolean(projection.page && projection.scope);
+  });
+  if (!settled.length)
+    throw new Error("Chrome fixture needs a settled projection");
+  const pages = settled.map((tab) => {
+    const projection = acpProjectionStoreFor(tab.id).getState();
+    if (!projection.page || !projection.scope)
+      throw new Error("Chrome fixture needs a settled projection");
+    const page = structuredClone(projection.page);
+    page.title = title;
+    page.sessions = page.sessions.map((session) => ({
+      ...session,
+      bindingId,
+      // A live matching session reports Ready/Live by design; sign-in
+      // discovery only surfaces when no session owns the selected model.
+      modelId: signIn ? `${modelId}-previous` : modelId,
+      state: "active" as const,
+      capabilities: capabilitySetFixture({
+        closeSession: false,
+        configCount: profile.effort ? 1 : 0,
+        childConversationProjection: profile.subagents === "children",
+        collaborationEventProjection: profile.subagents === "children",
+      }),
+    }));
+    const session = page.sessions.find(
+      (candidate) => candidate.id === page.currentSessionId,
+    )!;
+    page.sessionConfig = {
+      sageAgentSessionId: session.id,
+      runtimeEpoch: session.runtimeEpoch!,
+      configRevision: "1",
+      confirmedModel: { id: modelId, name: modelName },
+      modes: profile.modes.length
+        ? {
+            currentModeId: profile.modes[0].id,
+            availableModes: profile.modes,
+          }
+        : null,
+      configOptions: profile.effort
+        ? [
+            {
+              id: profile.effort.id,
+              category: "effort",
+              name: "Thinking level",
+              type: "select",
+              currentValue: profile.effort.currentValue,
+              options: profile.effort.levels.map((value) => ({
+                value,
+                name: value,
+              })),
+            },
+          ]
+        : [],
+    };
+    page.turns = home
+      ? []
+      : page.turns.slice(-1).map((turn) => {
+          const basis = turn.items[0];
+          return {
+            ...turn,
+            state: turnState,
+            items: [
               {
-                id: profile.effort.id,
-                category: "effort",
-                name: "Thinking level",
-                type: "select",
-                currentValue: profile.effort.currentValue,
-                options: profile.effort.levels.map((value) => ({
-                  value,
-                  name: value,
-                })),
+                ...basis,
+                id: `${turn.id}-user`,
+                kind: "text" as const,
+                toolState: null,
+                lifecycle: "completed" as const,
+                payload: {
+                  role: "user" as const,
+                  text: "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.",
+                },
               },
-            ]
-          : [],
-      };
-      page.turns = home
-        ? []
-        : page.turns.slice(-1).map((turn) => {
-            const basis = turn.items[0];
-            return {
-              ...turn,
-              state: turnState,
-              items: [
-                {
-                  ...basis,
-                  id: `${turn.id}-user`,
-                  kind: "text" as const,
-                  toolState: null,
-                  lifecycle: "completed" as const,
-                  payload: {
-                    role: "user" as const,
-                    text: "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.",
-                  },
+              {
+                ...basis,
+                id: `${turn.id}-answer`,
+                kind: "text" as const,
+                toolState: null,
+                lifecycle: "completed" as const,
+                payload: {
+                  role: "assistant" as const,
+                  text: Array.from(
+                    { length: 60 },
+                    (_, index) =>
+                      `Paragraph ${index + 1}: A bounded transcript exercises scrolling and the latest-turn control.`,
+                  ).join("\n\n"),
                 },
-                {
-                  ...basis,
-                  id: `${turn.id}-answer`,
-                  kind: "text" as const,
-                  toolState: null,
-                  lifecycle: "completed" as const,
-                  payload: {
-                    role: "assistant" as const,
-                    text: Array.from(
-                      { length: 60 },
-                      (_, index) =>
-                        `Paragraph ${index + 1}: A bounded transcript exercises scrolling and the latest-turn control.`,
-                    ).join("\n\n"),
-                  },
-                },
-              ],
-            };
-          });
-      projection.applyAuthoritativePage(projection.scope, page);
-      return page;
-    });
+              },
+            ],
+          };
+        });
+    // Replacement content must wake revision-driven transcript effects before
+    // a queued scroll event from the previous layout can pause following.
+    page.projectionRevision = String(
+      BigInt(page.projectionRevision) + 1n,
+    ) as typeof page.projectionRevision;
+    projection.applyAuthoritativePage(projection.scope, page);
+    return page;
+  });
   acpDesktop.getChatPage = async (request) => {
     const page = pages.find((candidate) => candidate.chatId === request.chatId);
     if (!page) throw new Error("Unknown fixture chat");

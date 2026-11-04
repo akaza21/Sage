@@ -4,8 +4,8 @@
   align-items: center;
   justify-content: space-between;
   min-height: 24px;
-  margin-top: 4px;
-  gap: 12px;
+  margin-top: var(--space-1);
+  gap: var(--space-3);
 }
 
 .agent-task-header__agent-list {
@@ -16,7 +16,7 @@
 
 .agent-task-header__agent-list .agent-task-header__agent {
   width: 100%;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .agent-task-header__agent span:last-child {
@@ -26,7 +26,7 @@
 .agent-task-header__agent-metric {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   white-space: nowrap;
 }
 
@@ -128,7 +128,6 @@ button.subagent-list__row:focus-visible {
   font-size: var(--font-size-xs);
 }
 
-/* Codex s4/f0244: the row's shape at 20 px (16 px in the child header, f0487). */
 .acp-subagent-row__glyph.subagent-avatar {
   width: 20px;
   height: 20px;

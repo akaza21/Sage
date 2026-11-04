@@ -1,4 +1,4 @@
-import type { BrowserOperationProjection } from "../../../domain/browserOperation";
+import { type BrowserOperationProjection } from "../../../domain/browserOperation";
 
 type ActionWords = { ongoing: string; completed: string; imperative: string };
 

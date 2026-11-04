@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::SettingsStore;
 use crate::{
-    acp::browser::{developer::CdpAuditEntry, redact_console, redact_json},
+    acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome},
     error::AppResult,
 };
 
@@ -14,23 +14,23 @@ use crate::{
 #[cfg_attr(not(windows), allow(dead_code))]
 pub const CDP_AUDIT_ROWS: i64 = 5_000;
 #[cfg_attr(not(windows), allow(dead_code))]
-const PARAMS_PREVIEW_BYTES: usize = 512;
+const OMITTED: &str = "[omitted]";
 
 const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS browser_cdp_audit (
            id INTEGER PRIMARY KEY,
            at_ms INTEGER NOT NULL CHECK (at_ms >= 0),
            session_id TEXT NOT NULL CHECK (length(session_id) BETWEEN 1 AND 128),
-           tab_id INTEGER NOT NULL CHECK (tab_id > 0),
+           tab_id INTEGER NOT NULL CHECK (tab_id >= 0),
            origin TEXT NOT NULL CHECK (length(origin) <= 2048),
            method TEXT NOT NULL CHECK (length(method) BETWEEN 1 AND 128),
            params_preview TEXT NOT NULL CHECK (length(CAST(params_preview AS BLOB)) <= 512),
            params_bytes INTEGER NOT NULL CHECK (params_bytes >= 0),
            result_bytes INTEGER CHECK (result_bytes IS NULL OR result_bytes >= 0),
            outcome TEXT NOT NULL CHECK (outcome IN
-             ('sent', 'ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
+             ('granted', 'revoked', 'sent', 'ok', 'denied', 'blocked', 'capacity', 'unavailable', 'outcomeUnknown'))
          ) STRICT;";
 
-const AUDIT_SCHEMA_VERSION: i64 = 2;
+const AUDIT_SCHEMA_VERSION: i64 = 3;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     connection.execute_batch(
@@ -43,7 +43,7 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     // database has no shared `user_version` scheme, and claiming the whole
     // file's pragma for one table would collide with other settings
     // migrations. Version 1 (dev builds only) lacked the `sent` outcome;
-    // version 2 is AUDIT_TABLE.
+    // version 2 added sent; version 3 adds grant events and omits untrusted text.
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -64,14 +64,8 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     )?;
     // A table with no recorded version predates versioning: version 1.
     let version = recorded.unwrap_or(if table_exists { 1 } else { 0 });
-    if version == 1 {
-        // Rebuild, keeping rows, inside the caller's migration transaction.
-        connection.execute_batch(&format!(
-            "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_v1;
-             {AUDIT_TABLE}
-             INSERT INTO browser_cdp_audit SELECT * FROM browser_cdp_audit_v1;
-             DROP TABLE browser_cdp_audit_v1;"
-        ))?;
+    if version == 1 || version == 2 {
+        rebuild_audit(connection)?;
     }
     connection.execute_batch(AUDIT_TABLE)?;
     connection.execute(
@@ -82,42 +76,52 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-/// The redacted parameters, cut at a character boundary within the cap.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn preview(params: &str) -> String {
-    // Secret-named fields go first and every string is redacted on its
-    // own; a cookie's or header's `value` beside its `name` is always
-    // dropped. Text that is not JSON is redacted as a whole.
-    let mut redacted = match serde_json::from_str::<serde_json::Value>(params) {
-        Ok(mut value) => {
-            redact_json(&mut value);
-            drop_named_values(&mut value);
-            value.to_string()
-        }
-        Err(_) => redact_console(params),
-    };
-    if redacted.len() > PARAMS_PREVIEW_BYTES {
-        let mut end = PARAMS_PREVIEW_BYTES;
-        while !redacted.is_char_boundary(end) {
-            end -= 1;
-        }
-        redacted.truncate(end);
-    }
-    redacted
+/// Store only trusted metadata. Arbitrary code, values, unknown method names
+/// and caller-supplied session identifiers may contain unrecognizable secrets.
+fn session_fingerprint(session: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(session.as_bytes()))
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
-fn drop_named_values(value: &mut serde_json::Value) {
-    match value {
-        serde_json::Value::Object(map) => {
-            if map.contains_key("name") && map.contains_key("value") {
-                map.insert("value".into(), "[redacted]".into());
-            }
-            map.values_mut().for_each(drop_named_values);
-        }
-        serde_json::Value::Array(items) => items.iter_mut().for_each(drop_named_values),
-        _ => {}
+fn safe_origin(origin: &str) -> String {
+    url::Url::parse(origin).ok()
+        .filter(|url| matches!(url.scheme(), "http" | "https"))
+        .map(|url| url.origin().ascii_serialization())
+        .filter(|origin| origin.len() <= 2048)
+        .unwrap_or_default()
+}
+
+fn safe_method(method: &str, grant_event: bool) -> &str {
+    if grant_event { return "Grant"; }
+    if crate::acp::browser::developer::allowed_methods().contains(&method) { method }
+    else { "[unrecognized]" }
+}
+
+/// Stream at most the newest 5,000 legacy rows through the same privacy
+/// boundary as new writes, inside the caller's migration transaction.
+fn rebuild_audit(connection: &Connection) -> AppResult<()> {
+    connection.execute_batch(&format!("ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_old; {AUDIT_TABLE}"))?;
+    let mut statement = connection.prepare(
+        "SELECT id, at_ms, session_id, tab_id, origin, method, params_bytes, result_bytes, outcome
+         FROM browser_cdp_audit_old ORDER BY id DESC LIMIT ?1"
+    )?;
+    let mut rows = statement.query(params![CDP_AUDIT_ROWS])?;
+    while let Some(row) = rows.next()? {
+        let session: String = row.get(2)?;
+        let origin: String = row.get(4)?;
+        let method: String = row.get(5)?;
+        connection.execute(
+            "INSERT INTO browser_cdp_audit(id, at_ms, session_id, tab_id, origin, method,
+              params_preview, params_bytes, result_bytes, outcome) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            params![row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, session_fingerprint(&session),
+                row.get::<_, i64>(3)?, safe_origin(&origin), safe_method(&method, false), OMITTED,
+                row.get::<_, i64>(6)?, row.get::<_, Option<i64>>(7)?, row.get::<_, String>(8)?],
+        )?;
     }
+    drop(rows);
+    drop(statement);
+    connection.execute_batch("DROP TABLE browser_cdp_audit_old;")?;
+    Ok(())
 }
 
 impl SettingsStore {
@@ -164,11 +168,11 @@ impl SettingsStore {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 at_ms,
-                entry.session_id,
+                session_fingerprint(&entry.session_id),
                 i64::try_from(entry.tab_id).unwrap_or(i64::MAX),
-                entry.origin,
-                entry.method,
-                preview(&entry.params),
+                safe_origin(&entry.origin),
+                safe_method(&entry.method, matches!(entry.outcome, CdpAuditOutcome::Granted | CdpAuditOutcome::Revoked)),
+                OMITTED,
                 i64::try_from(entry.params.len()).unwrap_or(i64::MAX),
                 entry
                     .result_bytes
@@ -308,8 +312,29 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert!(preview.contains("https://example.com/"), "{preview}");
+        assert_eq!(preview, "[omitted]");
         assert!(!preview.contains("s3cr3t-session-value"), "{preview}");
+    }
+
+    #[test]
+    fn audit_never_persists_untrusted_text_or_url_credentials() {
+        let store = SettingsStore::in_memory().unwrap();
+        let mut attempt = entry(r#"{"expression":"window.x='plain-secret'","unknown-secret":"value"}"#.into());
+        attempt.origin = "https://user:password@example.com/path?token=secret#secret".into();
+        attempt.method = "secret-in-invalid-method".into();
+        attempt.session_id = "secret-in-session".into();
+        attempt.tab_id = 0;
+        attempt.outcome = CdpAuditOutcome::Denied;
+        store.record_cdp_audit(&attempt, 1).unwrap();
+        let (session, origin, method, preview): (String, String, String, String) = store.0.lock().unwrap().query_row(
+            "SELECT session_id, origin, method, params_preview FROM browser_cdp_audit", [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).unwrap();
+        assert_eq!(origin, "https://example.com");
+        assert_eq!(method, "[unrecognized]");
+        assert_eq!(preview, "[omitted]");
+        assert!(!session.contains("secret"));
+        assert_eq!(session.len(), 64);
     }
 
     #[test]
@@ -328,5 +353,19 @@ mod tests {
             })
             .unwrap();
         assert_eq!(oldest, 3);
+    }
+
+    #[test]
+    fn legacy_audit_rows_are_scrubbed_during_migration() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(AUDIT_TABLE).unwrap();
+        connection.execute("INSERT INTO browser_cdp_audit(at_ms,session_id,tab_id,origin,method,params_preview,params_bytes,outcome) VALUES (1,'secret-session',7,'https://user:password@example.com/path?token=secret','secret-method','plain-secret',12,'denied')", []).unwrap();
+        migrate(&connection).unwrap();
+        let row: (String, String, String, String, String) = connection.query_row("SELECT session_id,origin,method,params_preview,outcome FROM browser_cdp_audit", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))).unwrap();
+        assert_eq!(row.0, session_fingerprint("secret-session"));
+        assert_eq!(row.1, "https://example.com");
+        assert_eq!(row.2, "[unrecognized]");
+        assert_eq!(row.3, "[omitted]");
+        assert_eq!(row.4, "denied");
     }
 }

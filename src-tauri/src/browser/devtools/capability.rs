@@ -107,6 +107,22 @@ impl<P: DevtoolsPort> DevtoolsCapability<P> {
         &mut self.port
     }
 
+    /// Small shared state may outlive the cache entry in an in-flight call;
+    /// release its allocations and stop waits without retaining the lane.
+    pub(super) fn release_buffers(&self) -> impl FnOnce() + Send + 'static {
+        let (cancelled, handles) = (self.cancelled.clone(), self.handles.clone());
+        move || {
+            cancelled.store(true, Ordering::SeqCst);
+            if let Ok(mut handles) = handles.lock() { *handles = HashMap::new(); }
+        }
+    }
+
+    #[cfg(windows)]
+    pub(super) fn diagnostic_rings(&self) -> Arc<Mutex<DiagnosticRings>> { self.diagnostics.clone() }
+
+    #[cfg(windows)]
+    pub(super) fn set_diagnostic_rings(&mut self, rings: Arc<Mutex<DiagnosticRings>>) { self.diagnostics = rings; }
+
     #[cfg(test)]
     pub(super) fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
@@ -170,6 +186,7 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                     .handles
                     .lock()
                     .map_err(|_| BrowserFailure::Unavailable)?;
+                if self.cancelled.load(Ordering::SeqCst) { return Err(BrowserFailure::Denied); }
                 handles.clear();
                 let (text, nodes) = project(native_nodes)?;
                 let nodes = nodes

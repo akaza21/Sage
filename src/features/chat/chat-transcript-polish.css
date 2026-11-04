@@ -1,100 +1,6 @@
 .message-list__content {
-  width: min(100%, 740px);
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items {
   width: min(100%, var(--reading-measure));
   margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items > .chat-transcript-actions {
-  margin-top: calc(var(--space-2) - var(--space-3));
-}
-
-.message-list__content > .chat-transcript-day,
-.message-list__content > .chat-transcript-work,
-.message-list__content > .chat-transcript-actions {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn__items > .chat-transcript-day,
-.message-list__content .acp-turn__items > .chat-transcript-work {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content > .message {
-  width: min(100%, 700px);
-  margin-inline: auto;
-}
-
-.message-list__content .acp-message {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-}
-
-.message-list__content .acp-turn {
-  grid-template-columns: minmax(0, 1fr) 0;
-}
-
-.message-list__content .acp-turn::before {
-  display: none;
-}
-
-.message-list__content .acp-turn__state {
-  display: none;
-}
-
-.message-list__content .acp-turn > .acp-turn__header,
-.message-list__content .acp-turn > .acp-turn__items {
-  grid-column: 1;
-}
-
-.message-list__content .acp-turn > .acp-turn__header {
-  width: min(100%, var(--reading-measure));
-  margin-inline: auto;
-  min-height: 0;
-  margin-block: 0;
-}
-
-/*
- * Rows on the reading column: the Turn's first grid track (its column gap
- * sits right of it). A fork's "Continued from chat" rules span it exactly
- * (s2/f0066), as do inherited answers' rows.
- */
-.message-list__content:has(> .acp-chat-projection) > .chat-transcript-actions,
-.message-list__content > .chat-fork-divider,
-.chat-fork-inherited > .chat-transcript-actions {
-  width: min(calc(100% - var(--space-3)), var(--reading-measure));
-  margin-inline-start: max(
-    0px,
-    calc((100% - var(--space-3) - var(--reading-measure)) / 2)
-  );
-}
-
-/* An inherited answer's row follows its inert Turn at the answer gap. */
-.chat-fork-inherited > .chat-transcript-actions {
-  margin-top: calc(var(--space-2) - var(--space-6));
-}
-
-.message-list__content > .message--user,
-.message-list__content .acp-message--user {
-  width: fit-content;
-  max-width: min(82%, 560px);
-  margin-right: max(calc((100% - 700px) / 2), 0px);
-  margin-left: auto;
-}
-
-.message-list__content .acp-message--user {
-  margin-right: 0;
-  max-width: min(100%, 440px);
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: var(--radius-xl);
-  background: var(--agent-shell-user-bubble);
 }
 
 .message-list__content .acp-turn__attachments {
@@ -204,10 +110,6 @@
   padding: var(--space-1) 0 0;
 }
 
-/*
- * Worked open (Codex s2/f0011-f0015): the rows, which mount on expand, fade
- * in top to bottom. Collapse is instant (s2/f0040).
- */
 .chat-transcript-work[open] + .chat-transcript-work__groups > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
@@ -215,12 +117,6 @@
 
 .chat-transcript-work__groups > .acp-message + .acp-thought {
   margin-top: var(--space-4);
-}
-
-.acp-edited-files {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .chat-transcript-work__groups .acp-tool-rollup {
@@ -281,7 +177,6 @@
     transform var(--motion-duration-chevron) ease-out;
 }
 
-/* Nested rows pitch 24 px (Codex s5/f0390: about 22 px). */
 .chat-transcript-work__groups
   .acp-tool-rollup__items
   .acp-tool-rollup
@@ -314,10 +209,9 @@
   display: flex;
   min-height: 28px;
   align-items: center;
-  /* Codex pitches its ~22 px buttons 24 px apart (s2/f0053); on the 4 px
-   * scale they are 24 px buttons with no gap. */
+
   gap: 0;
-  margin-top: var(--space-2);
+  margin-top: 0;
   animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
 }
 
@@ -394,7 +288,7 @@
 
 .chat-transcript-actions > button:focus-visible::after {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   bottom: calc(100% + var(--space-1));
   left: 0;
   display: block;
@@ -406,18 +300,6 @@
   white-space: nowrap;
   pointer-events: none;
   content: attr(aria-label);
-}
-
-@media (max-width: 640px) {
-  .message-list__content {
-    width: 100%;
-  }
-
-  .message-list__content > .message--user,
-  .message-list__content .acp-message--user {
-    max-width: 92%;
-    margin-right: 0;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

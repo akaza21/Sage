@@ -31,6 +31,7 @@ impl AttachmentLease {
             }
             self.stop_retired();
             self.end_developer_mode();
+            self.release_resources();
         }
     }
 }

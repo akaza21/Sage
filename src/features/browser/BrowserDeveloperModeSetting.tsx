@@ -54,9 +54,10 @@ export function BrowserDeveloperModeSetting() {
             <label htmlFor={TOGGLE}>Enable CDP access</label>
             <p id={`${TOGGLE}-description`}>
               Let agents use the Chrome DevTools Protocol on a browser tab after
-              you approve it for that tab and site. Full CDP access can run
-              scripts on the page and read the site&apos;s cookies and session
-              data. Stop or Take over ends it.
+              you approve it for that tab and site. Allowed commands:{" "}
+              {mode.allowedMethods?.join(", ")}. Scripts can access data
+              available to the page as the signed-in user. Stop or Take over
+              ends it.
             </p>
             <small id={`${TOGGLE}-default`}>Default: Off</small>
             {error ? (

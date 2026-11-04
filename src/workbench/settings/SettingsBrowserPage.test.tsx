@@ -1,14 +1,24 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const getPreferences = vi.fn();
 const setPreferences = vi.fn();
 const getDeveloperMode = vi.fn();
 const setDeveloperMode = vi.fn();
+const siteSettings = vi.fn();
 const runtime = vi.hoisted(() => ({ desktop: true }));
 
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: () => runtime.desktop,
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => undefined),
 }));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => getPreferences(),
@@ -19,6 +29,10 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
 vi.mock("../../ports/nativeBrowserPort", () => ({
   browserClearData: vi.fn(),
   closeBrowser: vi.fn(),
+  browserSiteSettingReset: vi.fn(),
+}));
+vi.mock("../../ports/nativeBrowserSiteSettingsPort", () => ({
+  browserSiteSettings: () => siteSettings(),
 }));
 
 import { resetBrowserPreferencesForTests } from "../../features/browser/browserPreferencesStore";
@@ -37,6 +51,12 @@ beforeEach(() => {
     available: true,
     enabled,
   }));
+  siteSettings.mockResolvedValue({
+    staleSites: [],
+    settings: [
+      { origin: "https://a.example", kind: "camera", decision: "allow" },
+    ],
+  });
   resetBrowserPreferencesForTests();
 });
 
@@ -101,6 +121,30 @@ it("hides entries the search filtered out", () => {
   ).toBeVisible();
 });
 
+it("lists saved site permissions in their own group", async () => {
+  render(<SettingsBrowserPage visible={all()} />);
+  const group = screen.getByRole("group", { name: "Site permissions" });
+  const table = await within(group).findByRole("table");
+  expect(table).toHaveAccessibleDescription(
+    /apply to every browser tab and stay after Clear browsing data/,
+  );
+  expect(
+    within(table).getByRole("combobox", {
+      name: "Camera for https://a.example",
+    }),
+  ).toHaveValue("allow");
+});
+
+it("finds site permissions by the kinds they cover", () => {
+  render(
+    <SettingsBrowserPage
+      visible={matchingSettingsEntryIds("microphone", "browser")}
+    />,
+  );
+  expect(screen.getByRole("group", { name: "Site permissions" })).toBeVisible();
+  expect(screen.queryByRole("checkbox", { name: "Show full URL" })).toBeNull();
+});
+
 it("explains that browser settings need the desktop app", () => {
   runtime.desktop = false;
   render(<SettingsBrowserPage visible={all()} />);
@@ -109,10 +153,21 @@ it("explains that browser settings need the desktop app", () => {
   );
   expect(screen.queryByRole("checkbox")).toBeNull();
   expect(getPreferences).not.toHaveBeenCalled();
+  expect(screen.queryByRole("group", { name: "Site permissions" })).toBeNull();
+  expect(siteSettings).not.toHaveBeenCalled();
 });
 
 it("offers developer mode off by default, names its risk, and saves through Rust", async () => {
-  getDeveloperMode.mockResolvedValue({ available: true, enabled: false });
+  const allowedMethods = [
+    "Runtime.evaluate",
+    "Page.reload",
+    "Page.getLayoutMetrics",
+  ];
+  getDeveloperMode.mockResolvedValue({
+    available: true,
+    enabled: false,
+    allowedMethods,
+  });
   render(<SettingsBrowserPage visible={all()} />);
   const group = await screen.findByRole("group", { name: "Developer mode" });
   const toggle = screen.getByRole("checkbox", {
@@ -122,8 +177,9 @@ it("offers developer mode off by default, names its risk, and saves through Rust
   expect(group).toHaveTextContent("Elevated risk");
   expect(toggle).not.toBeChecked();
   expect(toggle).toHaveAccessibleDescription(
-    /run scripts on the page and read the site's cookies and session data.*Default: Off$/,
+    /Runtime.evaluate, Page.reload, Page.getLayoutMetrics.*Scripts can access data available to the page.*Default: Off$/,
   );
+  expect(group).not.toHaveTextContent("Full CDP access");
   fireEvent.click(toggle);
   expect(setDeveloperMode).toHaveBeenCalledWith(true);
   await vi.waitFor(() => expect(toggle).toBeChecked());

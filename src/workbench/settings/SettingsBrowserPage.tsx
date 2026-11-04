@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { BrowserClearData } from "../../features/browser/BrowserClearData";
 import { BrowserDeveloperModeSetting } from "../../features/browser/BrowserDeveloperModeSetting";
+import { BrowserSiteSettings } from "../../features/browser/BrowserSiteSettings";
 import {
   DEFAULT_BROWSER_PREFERENCES,
   ensureBrowserPreferences,
@@ -11,11 +12,6 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 
 const SHOW_FULL_URL = "browser-show-full-url";
 
-/**
- * BF-7d Browser settings, after Codex refs 45 (General), 47 (clear browsing
- * data) and 65. Only settings Sage's browser backend supports are rendered;
- * the rest of the Codex page is listed in FEATURE-ROADMAP, not stubbed here.
- */
 export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
   const desktop = isTauriRuntime();
   const preferences = useBrowserPreferencesStore((state) => state.preferences);
@@ -110,6 +106,25 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
           ) : null}
         </>
       )}
+      {desktop && visible.has("browser.sitePermissions") ? (
+        <section
+          className="settings-surface__group"
+          role="group"
+          aria-labelledby="browser-site-permissions-heading"
+        >
+          <h3 id="browser-site-permissions-heading">Site permissions</h3>
+          <p
+            className="settings-surface__group-note"
+            id="browser-site-permissions-description"
+          >
+            Your answers to sites that asked for your camera, microphone,
+            location, notifications, or clipboard. They apply to every browser
+            tab and stay after Clear browsing data. Reset one to have the site
+            ask again.
+          </p>
+          <BrowserSiteSettings describedBy="browser-site-permissions-description" />
+        </section>
+      ) : null}
     </section>
   );
 }

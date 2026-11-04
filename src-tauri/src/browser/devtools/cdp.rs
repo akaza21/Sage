@@ -182,9 +182,13 @@ pub(super) fn call_with_permit(
 
 /// Fire-and-forget `Runtime.releaseObjectGroup` on developer mode's group,
 /// from the UI thread, outside any permit.
-fn release_developer_objects(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
-    let method = wide("Runtime.releaseObjectGroup");
-    let params = wide(&crate::acp::browser::developer::release_params());
+pub(super) fn release_developer_objects(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
+    notify(core, "Runtime.releaseObjectGroup", &crate::acp::browser::developer::release_params());
+}
+
+pub(super) fn notify(core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2, method: &str, params: &str) {
+    let method = wide(method);
+    let params = wide(params);
     let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
     let _ = unsafe {
         core.CallDevToolsProtocolMethod(PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &done)

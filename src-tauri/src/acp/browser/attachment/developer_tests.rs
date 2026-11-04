@@ -142,3 +142,51 @@ fn a_grant_made_after_the_switch_changed_is_refused() {
     let current = crate::acp::browser::developer::switch_generation();
     assert!(lease.grant_developer_mode_at(SESSION, ORIGIN, current));
 }
+
+#[test]
+fn hidden_or_revoked_attachments_release_buffers_and_reject_late_setup() {
+    for end in [
+        |registry: &BrowserAttachments| { registry.take_over("browser-7"); },
+        |registry: &BrowserAttachments| { registry.revoke_tab("browser-7"); },
+        |registry: &BrowserAttachments| { registry.end_developer_mode(); },
+    ] {
+        let (registry, lease) = attached();
+        assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+        let generation = lease.resource_generation();
+        let buffer = Arc::new(vec![0u8; 1024]);
+        let weak = Arc::downgrade(&buffer);
+        lease.bind_resources(generation, || true, Box::new(move || drop(buffer))).unwrap();
+        assert!(weak.upgrade().is_some());
+        end(&registry);
+        assert!(weak.upgrade().is_none(), "revocation must release native state immediately");
+        let late = Arc::new(vec![0u8; 1024]);
+        let weak = Arc::downgrade(&late);
+        assert!(lease.bind_resources(generation, || true, Box::new(move || drop(late))).is_err());
+        assert!(weak.upgrade().is_none(), "a stale setup must release its state too");
+    }
+}
+
+#[test]
+fn a_revocation_between_card_checks_and_grant_publication_refuses_the_stale_card() {
+    let (registry, lease) = attached();
+    assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+    let switch = crate::acp::browser::developer::switch_generation();
+    let resource = lease.resource_generation();
+    registry.end_developer_mode();
+    assert!(!lease.grant_developer_mode_audited_at(SESSION, ORIGIN, switch, resource, Arc::new(|_| true)));
+    assert!(!lease.developer_granted(SESSION, ORIGIN));
+    assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+}
+
+#[test]
+fn delayed_revocation_cleanup_cannot_release_a_replacement_lane() {
+    let (registry, lease) = attached();
+    let old = lease.invalidate_resources();
+    let buffer = Arc::new(vec![0u8; 1024]);
+    let weak = Arc::downgrade(&buffer);
+    lease.bind_resources(lease.resource_generation(), || true, Box::new(move || drop(buffer))).unwrap();
+    lease.release_invalidated_resources(old);
+    assert!(weak.upgrade().is_some());
+    registry.revoke_tab("browser-7");
+    assert!(weak.upgrade().is_none());
+}

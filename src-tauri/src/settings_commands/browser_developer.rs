@@ -11,11 +11,12 @@ use crate::state::AppState;
 /// Whether this platform's browser can offer developer mode at all.
 const AVAILABLE: bool = cfg!(windows);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BrowserDeveloperMode {
     available: bool,
     enabled: bool,
+    allowed_methods: Vec<&'static str>,
 }
 
 #[tauri::command]
@@ -29,6 +30,7 @@ pub(crate) fn browser_developer_mode(
     Ok(BrowserDeveloperMode {
         available: AVAILABLE,
         enabled: AVAILABLE && enabled,
+        allowed_methods: crate::acp::browser::developer::allowed_methods(),
     })
 }
 
@@ -60,5 +62,6 @@ pub(crate) fn browser_set_developer_mode(
     Ok(BrowserDeveloperMode {
         available: AVAILABLE,
         enabled,
+        allowed_methods: crate::acp::browser::developer::allowed_methods(),
     })
 }

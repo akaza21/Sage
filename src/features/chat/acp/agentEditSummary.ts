@@ -91,7 +91,7 @@ function canonicalCounter(value: unknown): value is string {
   );
 }
 
-function canonicalRelativePath(value: unknown): value is string {
+export function canonicalRelativePath(value: unknown): value is string {
   return (
     boundedText(value, MAX_PATH_BYTES) &&
     value.length > 0 &&
@@ -232,7 +232,7 @@ export function agentEditSummaryChangeKey(
   return change.resource.kind === "resource"
     ? `resource:${resourceKey(change.resource.resource)}`
     : change.resource.displayResource
-      ? `unavailable:${change.resource.reason}:${resourceKey(change.resource.displayResource)}`
+      ? `resource:${resourceKey(change.resource.displayResource)}`
       : `unavailable:${change.resource.reason}:${change.resource.label}`;
 }
 

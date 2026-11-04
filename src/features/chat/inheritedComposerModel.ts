@@ -8,7 +8,7 @@ import { sessionConfigControls } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
 import { composerOptionLabel } from "./composerChrome";
 
-/** Show only parent-harness-confirmed model/effort until the child reports its own config (s2/f0244, s2/f0066). */
+/** Show only parent-harness-confirmed model/effort until the child reports its own config. */
 export interface InheritedComposerModel {
   model: string;
   effort: string | null;

@@ -38,7 +38,20 @@ impl BrowserState {
             popups: Mutex::new(PopupRequests::default()),
             annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
+            device_updates: Mutex::new(()),
         })
+    }
+
+    /// Loads the saved site permissions and saves every later answer to
+    /// `settings`. Called once at startup, before any browser tab opens.
+    pub(crate) fn attach_site_settings(
+        &self,
+        settings: crate::settings_store::SettingsStore,
+    ) -> Result<(), String> {
+        self.permissions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .attach_store(settings)
     }
 
     pub(crate) fn validate_project_roots(&self, roots: &[PathBuf]) -> Result<(), String> {

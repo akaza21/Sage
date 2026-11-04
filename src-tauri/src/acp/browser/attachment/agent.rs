@@ -77,6 +77,7 @@ impl BrowserAttachments {
                 last_session: Arc::default(),
                 opener: opener.map(|(label, _)| label.to_owned()),
                 developer: Arc::default(),
+                resources: Arc::default(),
             },
         );
         Ok(())

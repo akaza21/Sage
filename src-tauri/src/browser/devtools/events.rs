@@ -9,6 +9,7 @@ use std::{
 use serde_json::Value;
 
 use super::diagnostics::DiagnosticRings;
+use crate::acp::browser::attachment::DiagnosticScope;
 
 pub(super) const EVENTS: [&str; 4] = [
     "Runtime.consoleAPICalled",
@@ -22,6 +23,7 @@ pub(super) trait Subscription {
 }
 
 struct TabSubscription<R> {
+    owner: Option<DiagnosticScope>,
     rings: Arc<Mutex<DiagnosticRings>>,
     registrations: Vec<R>,
     state: Arc<AtomicU8>,
@@ -37,6 +39,13 @@ struct AttachmentLease {
     existing: bool,
 }
 
+impl AttachmentLease {
+    fn activate(&self) -> Result<(), crate::acp::browser::BrowserFailure> {
+        if self.rings.lock().is_ok_and(|rings| rings.is_suspended()) { return Err(crate::acp::browser::BrowserFailure::Denied); }
+        self.state.compare_exchange(PENDING, ACTIVE, Ordering::AcqRel, Ordering::Acquire).map(|_| ()).map_err(|_| crate::acp::browser::BrowserFailure::Denied)
+    }
+}
+
 pub(super) struct SubscriptionTable<R: Subscription> {
     tabs: HashMap<String, TabSubscription<R>>,
 }
@@ -50,19 +59,27 @@ impl<R: Subscription> Default for SubscriptionTable<R> {
 }
 
 impl<R: Subscription> SubscriptionTable<R> {
+    #[cfg(test)]
     fn attach_once(
         &mut self,
         label: &str,
         cancelled: &AtomicBool,
-        mut register: impl FnMut(
+        register: impl FnMut(
             &'static str,
             Arc<Mutex<DiagnosticRings>>,
         ) -> Result<R, crate::acp::browser::BrowserFailure>,
     ) -> Result<AttachmentLease, crate::acp::browser::BrowserFailure> {
+        self.attach_scoped_once(label, None, cancelled, register)
+    }
+
+    fn attach_scoped_once(
+        &mut self, label: &str, owner: Option<DiagnosticScope>, cancelled: &AtomicBool,
+        mut register: impl FnMut(&'static str, Arc<Mutex<DiagnosticRings>>) -> Result<R, crate::acp::browser::BrowserFailure>,
+    ) -> Result<AttachmentLease, crate::acp::browser::BrowserFailure> {
         use crate::acp::browser::BrowserFailure;
         if let Some(tab) = self.tabs.get(label) {
             match tab.state.load(Ordering::Acquire) {
-                ACTIVE => {
+                ACTIVE if tab.owner == owner && tab.rings.lock().is_ok_and(|rings| !rings.is_suspended()) => {
                     return Ok(AttachmentLease {
                         rings: tab.rings.clone(),
                         state: tab.state.clone(),
@@ -102,6 +119,7 @@ impl<R: Subscription> SubscriptionTable<R> {
         self.tabs.insert(
             label.to_owned(),
             TabSubscription {
+                owner,
                 rings: rings.clone(),
                 registrations,
                 state: state.clone(),
@@ -114,6 +132,7 @@ impl<R: Subscription> SubscriptionTable<R> {
         })
     }
 
+    #[cfg(test)]
     fn detach_if(&mut self, label: &str, state: &Arc<AtomicU8>) {
         if self
             .tabs
@@ -126,6 +145,8 @@ impl<R: Subscription> SubscriptionTable<R> {
 
     pub(super) fn detach(&mut self, label: &str) {
         if let Some(tab) = self.tabs.remove(label) {
+            tab.state.store(FAILED, Ordering::Release);
+            if let Ok(mut rings) = tab.rings.lock() { rings.suspend(); }
             for registration in tab.registrations.iter().rev() {
                 registration.unregister();
             }
@@ -207,143 +228,8 @@ pub(super) fn ingest(rings: &Arc<Mutex<DiagnosticRings>>, event: &str, payload: 
 mod subscription_tests;
 
 #[cfg(windows)]
-pub(super) fn attach(
-    webview: &tauri::Webview,
-) -> Result<Arc<Mutex<DiagnosticRings>>, crate::acp::browser::BrowserFailure> {
-    use std::{sync::mpsc, time::Duration};
-
-    use webview2_com::{CoTaskMemPWSTR, DevToolsProtocolEventReceivedEventHandler};
-    use windows_core::{PCWSTR, PWSTR};
-
-    use crate::acp::browser::BrowserFailure;
-
-    let _attachment = NATIVE_ATTACHMENT_LOCK
-        .lock()
-        .map_err(|_| BrowserFailure::Unavailable)?;
-    let label = webview.label().to_owned();
-    let cancelled = Arc::new(AtomicBool::new(false));
-    let callback_cancelled = cancelled.clone();
-    let (sender, receiver) = mpsc::sync_channel(1);
-    webview
-        .with_webview(move |platform| {
-            let result = (|| {
-                let core = unsafe { platform.controller().CoreWebView2() }
-                    .map_err(|_| BrowserFailure::Unavailable)?;
-                NATIVE_SUBSCRIPTIONS.with(|table| {
-                    let mut table = table.borrow_mut();
-                    table.attach_once(&label, &callback_cancelled, |event, rings| {
-                        let wide = event.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-                        let source =
-                            unsafe { core.GetDevToolsProtocolEventReceiver(PCWSTR(wide.as_ptr())) }
-                                .map_err(|_| BrowserFailure::Unavailable)?;
-                        let event_rings = rings.clone();
-                        let handler = DevToolsProtocolEventReceivedEventHandler::create(Box::new(
-                            move |_core, args| {
-                                if let Some(args) = args {
-                                    let mut raw = PWSTR::null();
-                                    unsafe { args.ParameterObjectAsJson(&mut raw)? };
-                                    let payload = CoTaskMemPWSTR::from(raw).to_string();
-                                    ingest(&event_rings, event, &payload);
-                                }
-                                Ok(())
-                            },
-                        ));
-                        let mut token = 0;
-                        unsafe { source.add_DevToolsProtocolEventReceived(&handler, &mut token) }
-                            .map_err(|_| BrowserFailure::Unavailable)?;
-                        Ok(NativeSubscription { source, token })
-                    })
-                })
-            })();
-            if let Err(unsent) = sender.send(result)
-                && let Ok(lease) = unsent.0
-                && !lease.existing
-            {
-                NATIVE_SUBSCRIPTIONS
-                    .with(|table| table.borrow_mut().detach_if(&label, &lease.state));
-            }
-        })
-        .map_err(|_| BrowserFailure::Unavailable)?;
-    let lease = match receiver.recv_timeout(Duration::from_secs(5)) {
-        Ok(result) => result?,
-        Err(_) => {
-            cancelled.store(true, Ordering::Release);
-            return Err(BrowserFailure::Unavailable);
-        }
-    };
-    if lease.existing {
-        return Ok(lease.rings);
-    }
-    for domain in ["Runtime.enable", "Log.enable", "Network.enable"] {
-        if let Err(error) = super::cdp::call(webview, domain, "{}", 4096, Duration::from_secs(5)) {
-            lease.state.store(FAILED, Ordering::Release);
-            let _ = detach_failed(webview, lease.state);
-            return Err(error);
-        }
-    }
-    lease.state.store(ACTIVE, Ordering::Release);
-    Ok(lease.rings)
-}
-
+mod native;
 #[cfg(windows)]
-struct NativeSubscription {
-    source:
-        webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2DevToolsProtocolEventReceiver,
-    token: i64,
-}
-
+pub(super) use native::{attach, suspend};
 #[cfg(windows)]
-impl Subscription for NativeSubscription {
-    fn unregister(&self) {
-        let _ = unsafe { self.source.remove_DevToolsProtocolEventReceived(self.token) };
-    }
-}
-
-#[cfg(windows)]
-thread_local! {
-    static NATIVE_SUBSCRIPTIONS: std::cell::RefCell<SubscriptionTable<NativeSubscription>> =
-        std::cell::RefCell::new(SubscriptionTable::default());
-}
-
-#[cfg(windows)]
-static NATIVE_ATTACHMENT_LOCK: Mutex<()> = Mutex::new(());
-
-#[cfg(windows)]
-pub(crate) fn detach(webview: &tauri::Webview) -> Result<(), crate::acp::browser::BrowserFailure> {
-    let _attachment = NATIVE_ATTACHMENT_LOCK
-        .lock()
-        .map_err(|_| crate::acp::browser::BrowserFailure::Unavailable)?;
-    detach_inner(webview)
-}
-
-#[cfg(windows)]
-fn detach_inner(webview: &tauri::Webview) -> Result<(), crate::acp::browser::BrowserFailure> {
-    use crate::acp::browser::BrowserFailure;
-    use std::{sync::mpsc, time::Duration};
-
-    let label = webview.label().to_owned();
-    let (sender, receiver) = mpsc::sync_channel(1);
-    webview
-        .with_webview(move |_| {
-            NATIVE_SUBSCRIPTIONS.with(|table| table.borrow_mut().detach(&label));
-            let _ = sender.send(());
-        })
-        .map_err(|_| BrowserFailure::Unavailable)?;
-    receiver
-        .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| BrowserFailure::Unavailable)
-}
-
-#[cfg(windows)]
-fn detach_failed(
-    webview: &tauri::Webview,
-    state: Arc<AtomicU8>,
-) -> Result<(), crate::acp::browser::BrowserFailure> {
-    use crate::acp::browser::BrowserFailure;
-    let label = webview.label().to_owned();
-    webview
-        .with_webview(move |_| {
-            NATIVE_SUBSCRIPTIONS.with(|table| table.borrow_mut().detach_if(&label, &state));
-        })
-        .map_err(|_| BrowserFailure::Unavailable)
-}
+pub(crate) use native::detach;

@@ -1,5 +1,13 @@
 use super::*;
 
+#[tauri::command]
+pub async fn get_acp_file_snapshot(
+    state: State<'_, AppState>,
+    request: GetAcpFileSnapshotRequest,
+) -> Result<AcpFileSnapshotResponse, AcpIpcError> {
+    get_acp_file_snapshot_inner(&state, request).await
+}
+
 #[cfg(test)]
 mod tests;
 

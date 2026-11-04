@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
 import {
-  MAX_OUTLINE_SOURCE_CHARS,
+  MAX_OUTLINE_DEPTH,
   MAX_OUTLINE_SYMBOLS,
   syntaxOutline,
   type OutlineSymbol,
@@ -9,12 +10,13 @@ import {
 
 function entries(symbols: readonly OutlineSymbol[] | undefined) {
   return (symbols ?? []).map(
-    ({ name, kind, line }) => `${line} ${kind} ${name}`,
+    ({ name, kind, line, depth }) =>
+      `${"  ".repeat(depth)}${line} ${kind} ${name}`,
   );
 }
 
 describe("syntaxOutline", () => {
-  it("lists every top-level TypeScript declaration, including exported ones", async () => {
+  it("lists TypeScript declarations, nesting class and interface members", async () => {
     const source = [
       'import value from "./value";',
       "export function first(a: number) {",
@@ -36,7 +38,9 @@ describe("syntaxOutline", () => {
       "2 function first",
       "6 function default",
       "7 class Second",
+      "  7 function method",
       "8 type Third",
+      "  8 property a",
       "9 type Fourth",
       "10 type Fifth",
       "11 variable sixth",
@@ -68,6 +72,7 @@ describe("syntaxOutline", () => {
     expect(entries(outline?.symbols)).toEqual([
       "4 function first",
       "7 class Second",
+      "  8 function method",
       "11 function third",
     ]);
   });
@@ -91,20 +96,36 @@ describe("syntaxOutline", () => {
       "2 function first",
       "3 type Point",
       "4 type impl fmt::Display for Point",
+      "  5 function fmt",
       "7 variable LIMIT",
       "8 module inner",
       "9 function twice",
     ]);
   });
 
-  it("lists Markdown headings without their marks", async () => {
+  it("stops nesting at the depth cap", async () => {
+    const levels = MAX_OUTLINE_DEPTH + 2;
+    const source =
+      Array.from({ length: levels }, (_, index) => `mod m${index} {`).join(
+        "\n",
+      ) + "}".repeat(levels);
+    const outline = await syntaxOutline("src/deep.rs", source);
+    expect(outline?.symbols.map(({ name, depth }) => [name, depth])).toEqual(
+      Array.from({ length: MAX_OUTLINE_DEPTH }, (_, index) => [
+        `m${index}`,
+        index,
+      ]),
+    );
+  });
+
+  it("lists Markdown headings without their marks, nested by level", async () => {
     const outline = await syntaxOutline(
       "README.md",
       "# Title\n\nText\n\n## Second *part* ##\n\nSetext\n===\n",
     );
     expect(entries(outline?.symbols)).toEqual([
       "1 heading Title",
-      "5 heading Second *part*",
+      "  5 heading Second *part*",
       "7 heading Setext",
     ]);
   });
@@ -208,6 +229,46 @@ describe("syntaxOutline", () => {
       expect(outline?.symbols).toHaveLength(MAX_OUTLINE_SYMBOLS);
     } finally {
       timeout.mockRestore();
+    }
+  });
+
+  it("yields and can stop inside one large namespace, not only between top-level nodes", async () => {
+    const source = `namespace N {\n${"call();\n".repeat(5_000)}}\n`;
+    // Parse once so the runs below measure only the symbol walk.
+    await syntaxOutline("namespace.ts", source);
+    // Hundreds of forced yields must not depend on the host timer resolution.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // A clock that advances 1ms per read makes every slice a few nodes long.
+    let now = 0;
+    const clock = vi
+      .spyOn(performance, "now")
+      .mockImplementation(() => (now += 1));
+    const timeout = vi.spyOn(globalThis, "setTimeout");
+    const yields = () =>
+      timeout.mock.calls.filter(([, delay]) => delay === 0).length;
+    try {
+      const pending = syntaxOutline("namespace.ts", source);
+      await vi.runAllTimersAsync();
+      const outline = await pending;
+      expect(entries(outline?.symbols)).toEqual(["1 module N"]);
+      expect(yields()).toBeGreaterThan(100);
+
+      timeout.mockClear();
+      let checks = 0;
+      // Current through the language load, stale at the walk's first yield.
+      const stopping = syntaxOutline(
+        "namespace.ts",
+        source,
+        () => (checks += 1) === 1,
+      );
+      await vi.runAllTimersAsync();
+      const stopped = await stopping;
+      expect(stopped).toBeNull();
+      expect(yields()).toBe(1);
+    } finally {
+      clock.mockRestore();
+      timeout.mockRestore();
+      vi.useRealTimers();
     }
   });
 });

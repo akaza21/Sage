@@ -1,14 +1,14 @@
 import { resourceKey, sameResource } from "../domain/resourceIdentity";
 import {
+  type FileChange,
+  type GitFileMutationAction,
+  type RepositoryRef,
+  type ResourceRef,
+} from "../domain/workbench";
+import {
   conflictGroupLabel,
   partitionSourceChanges,
 } from "../features/git/conflictPresentation";
-import type {
-  FileChange,
-  GitFileMutationAction,
-  RepositoryRef,
-  ResourceRef,
-} from "../domain/workbench";
 import { SourceChangeRow } from "./SourceChangeRow";
 
 export function SourceChangeGroups({

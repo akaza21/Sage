@@ -7,6 +7,8 @@
 #[cfg(windows)]
 mod annotate;
 #[cfg(windows)]
+mod device;
+#[cfg(windows)]
 mod report;
 #[cfg(windows)]
 mod s10_tls;
@@ -51,7 +53,7 @@ mod lane {
     use sage_lib::native_lane::{self, Lane};
 
     use crate::{
-        annotate, report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads,
+        annotate, device, report::Report, s1_popups, s3_ipc, s8_devtools, s10_tls, s11_downloads,
         site::Site,
     };
 
@@ -68,6 +70,7 @@ mod lane {
         ("s1", s1_popups::run),
         ("s11", s11_downloads::run),
         ("annotate", annotate::run),
+        ("device", device::run),
     ];
 
     pub fn run() -> i32 {

@@ -14,6 +14,7 @@ export interface BrowserDeveloperMode {
   /** Only the Windows browser (WebView2) has CDP. */
   available: boolean;
   enabled: boolean;
+  allowedMethods: string[];
 }
 
 export function browserDeveloperMode(): Promise<BrowserDeveloperMode> {

@@ -27,11 +27,13 @@ impl BrowserCapabilityDispatch for AttachedTabPort<'_> {
         if !permit.is_live() {
             return Err(permit.revoked_failure());
         }
+        let generation = self.lease.resource_generation();
         let mut native = self
             .lanes
             .get_or_try_insert(&request.scope, &self.lease, || {
-                NativeDevtools::for_tab(self.browser, request.scope.clone())
+                NativeDevtools::for_attachment(self.browser, request.scope.clone(), &self.lease, generation, &permit)
             })?;
+        native.wake_diagnostics(&self.lease, &permit)?;
         native.dispatch(request, permit)
     }
 }

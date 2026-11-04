@@ -191,10 +191,10 @@ export function PermissionPrompt({
       </Detail>
       {developer ? (
         <p className="acp-permission-prompt__risk">
-          The agent gets Chrome DevTools Protocol access to this tab. It can run
-          its own scripts on the page and read this site&apos;s cookies and
-          session data until you stop it, take over or leave the site. Only
-          allow this for sites you trust.
+          The agent gets allowlisted Chrome DevTools Protocol access to this
+          tab. Scripts run as the signed-in user and can read data available to
+          the page until you stop it, take over or leave the site. Only allow
+          this for sites you trust.
         </p>
       ) : null}
       {sent?.[0] === item.id && !sent[1] ? (

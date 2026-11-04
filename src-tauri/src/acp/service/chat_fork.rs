@@ -41,8 +41,7 @@ impl AcpService {
             runtime_epoch: source.runtime_epoch,
         };
         let host = self
-            .runtime
-            .for_owner(&owner)
+            .host_for(&owner)
             .map_err(|_| ChatForkError::Unavailable)?;
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
@@ -77,7 +76,7 @@ impl AcpService {
             session_id: source.session_id.clone(),
             runtime_epoch: source.runtime_epoch,
         };
-        let Ok(host) = self.runtime.for_owner(&owner) else {
+        let Ok(host) = self.host_for(&owner) else {
             return false;
         };
         let result = host.native_rpc(NativeRpcIntent {

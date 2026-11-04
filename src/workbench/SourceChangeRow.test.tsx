@@ -1,15 +1,41 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { sameResource } from "../domain/resourceIdentity";
+import type { ComponentProps } from "react";
+import type * as ConflictPresentation from "../features/git/conflictPresentation";
 import type { FileChange, ResourceRef } from "../domain/workbench";
-import { SourceChangeRow } from "./SourceChangeRow";
+import { SourceChangeGroups } from "./SourceChangeGroups";
+
+function SourceChangeRow({
+  change,
+  isSelected,
+  ...props
+}: Omit<
+  ComponentProps<typeof SourceChangeGroups>,
+  | "changes"
+  | "selected"
+  | "rebaseInProgress"
+  | "cherryPickInProgress"
+  | "revertInProgress"
+> & { change: FileChange; isSelected: boolean }) {
+  return (
+    <SourceChangeGroups
+      {...props}
+      changes={[change]}
+      selected={isSelected ? change.resource : null}
+      rebaseInProgress={false}
+      cherryPickInProgress={false}
+      revertInProgress={false}
+    />
+  );
+}
 
 const { sourceChangeStatusChip } = vi.hoisted(() => ({
   sourceChangeStatusChip: vi.fn(() => "M"),
 }));
 
-vi.mock("../features/git/conflictPresentation", () => ({
+vi.mock("../features/git/conflictPresentation", async (importOriginal) => ({
+  ...(await importOriginal<typeof ConflictPresentation>()),
   sourceChangeStatusChip,
 }));
 
@@ -76,16 +102,14 @@ it("updates only selected Source Change rows without staling their actions", () 
     openDiff,
   };
   const ChangeRows = ({ selected }: { selected: ResourceRef | null }) => (
-    <>
-      {changes.map((entry) => (
-        <SourceChangeRow
-          {...props}
-          change={entry}
-          isSelected={sameResource(selected, entry.resource)}
-          key={entry.resource.relativePath}
-        />
-      ))}
-    </>
+    <SourceChangeGroups
+      {...props}
+      changes={changes}
+      selected={selected}
+      rebaseInProgress={false}
+      cherryPickInProgress={false}
+      revertInProgress={false}
+    />
   );
   const { rerender } = render(<ChangeRows selected={resource} />);
   sourceChangeStatusChip.mockClear();

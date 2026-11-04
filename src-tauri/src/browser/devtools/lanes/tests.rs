@@ -182,3 +182,44 @@ fn a_new_session_or_attachment_never_reuses_an_old_scope_lane() {
         .unwrap();
     assert!(created);
 }
+
+#[test]
+fn sleeping_keeps_handles_and_approval_but_releases_diagnostic_history() {
+    let registry = BrowserAttachments::default();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    registry.attach(project.clone(), chat.clone(), "browser-1", "https://example.com/", 1).unwrap();
+    let lease = registry.resolve(&project, &chat).unwrap();
+    let scope = BrowserScope { session_id: "session-1".into(), tab_id: 1 };
+    lease.authority_for(&scope).unwrap();
+    assert!(lease.grant_developer_mode("session-1", "https://example.com"));
+    let mut lanes = AttachmentLanes::default();
+    let lane = lanes.get_or_try_insert(&scope, &lease, || Ok(DevtoolsCapability::new(scope.clone(), Page(1)))).unwrap();
+    let BrowserResult::SnapshotPage { nodes, .. } = lane.perform(&BrowserRequest { scope: scope.clone(), command: BrowserCommand::SnapshotPage {} }).unwrap() else { panic!("snapshot") };
+    let rings = lane.diagnostics();
+    rings.lock().unwrap().push_console("log", "before sleeping");
+    lease.bind_resources(lease.resource_generation(), || true, Box::new(lane.release_buffers())).unwrap();
+    let sleeping_rings = rings.clone();
+    lease.diagnostic_scope().unwrap().with_registered_diagnostics(|| Ok(((), Some(Box::new(move || sleeping_rings.lock().unwrap().suspend()))))).unwrap();
+    registry.suspend_tab("browser-1");
+    assert!(lease.developer_granted("session-1", "https://example.com"));
+    assert!(rings.lock().unwrap().console(None, 10).unwrap().1.is_empty());
+    let lane = lanes.get_or_try_insert(&scope, &lease, || panic!("sleep discarded semantic handles")).unwrap();
+    assert_eq!(lane.perform(&BrowserRequest::act(scope.clone(), BrowserAction::Click { handle: nodes[0].handle.clone() })), Ok(BrowserResult::Act { applied: true }));
+    registry.end_developer_mode();
+    assert_eq!(lane.perform(&BrowserRequest { scope, command: BrowserCommand::SnapshotPage {} }), Err(BrowserFailure::Denied));
+}
+
+#[test]
+fn switching_developer_mode_off_preserves_an_ordinary_lane() {
+    let registry = BrowserAttachments::default();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    registry.attach(project.clone(), chat.clone(), "browser-1", "https://example.com/", 1).unwrap();
+    let lease = registry.resolve(&project, &chat).unwrap();
+    let scope = BrowserScope { session_id: "session-1".into(), tab_id: 1 };
+    let mut lane = DevtoolsCapability::new(scope.clone(), Page(1));
+    lease.bind_resources(lease.resource_generation(), || true, Box::new(lane.release_buffers())).unwrap();
+    registry.end_developer_mode();
+    assert!(lane.perform(&BrowserRequest { scope, command: BrowserCommand::SnapshotPage {} }).is_ok());
+}

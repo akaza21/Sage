@@ -2,7 +2,7 @@ import type {
   ResolvePermissionDecisionRequest,
   ResolvePermissionDecisionResponse,
 } from "../domain/acp";
-import { isRecord, safeCounter, safeIdentifier } from "./acpDesktopResponses";
+import { isRecord, safeCounter, safeIdentifier } from "./acpDesktopGuards";
 
 function safePermissionDecision(
   value: unknown,

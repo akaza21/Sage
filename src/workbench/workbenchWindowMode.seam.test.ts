@@ -1,23 +1,31 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { createElement } from "react";
 import {
-  cleanup,
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
-import { useWorkbenchStore } from "../app/store";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
+import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import {
   DEFAULT_WORKBENCH_WINDOW_MODE,
   EDITOR_CANVAS_KINDS,
@@ -36,15 +44,17 @@ vi.mock("./useCompactWorkbenchLayout", () => ({
   useCompactWorkbenchLayout: () => compactViewport,
 }));
 
-const srcRoot = path.resolve(import.meta.dirname, "..");
 const initialState = useWorkbenchStore.getState();
 
 beforeAll(async () => {
   await import("./AgentWorkbenchBody");
 });
 
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
+
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   localStorage.clear();
   compactViewport = false;
   useWorkbenchStore.setState(initialState, true);
@@ -62,9 +72,8 @@ async function switchWindowMode(mode: "Agent" | "Editor") {
 }
 
 describe("D0 workbench window mode seam", () => {
-  it("reveals a requested Browser settings page from Agent without restoring the last file over it", async () => {
+  it("opens the shared Browser settings dialog from Editor and preserves its active resource", async () => {
     useWorkbenchStore.setState({
-      sidebarOpen: false,
       tabs: [
         {
           id: "file:current",
@@ -73,47 +82,44 @@ describe("D0 workbench window mode seam", () => {
           position: 0,
           pinned: false,
           dirty: false,
-          resource: { rootId: "root-a", relativePath: "src/current.ts" },
-        },
-        {
-          id: "chat:current",
-          kind: "chat",
-          title: "Chat",
-          position: 1,
-          pinned: false,
-          dirty: false,
+          resource: { rootId: "root-a", relativePath: "current.ts" },
         },
       ],
       activeTabId: "file:current",
-      loadEditor: vi.fn(async () => undefined),
     });
     render(createElement(Workbench));
     await settleLazyModules();
-    await switchWindowMode("Agent");
-    // The browser menu uses the real store action, without the titlebar's
-    // explicit mode switch. Keep a prior file to exercise editor continuity.
+    const activeTabId = useWorkbenchStore.getState().activeTabId;
     await act(() => useWorkbenchStore.getState().openSettings("browser"));
     await settleLazyModules();
+    expect(
+      screen.getByRole("dialog", { name: "Agent settings" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Browser" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(useWorkbenchStore.getState().activeTabId).toBe(activeTabId);
     expect(
       within(screen.getByRole("radiogroup", { name: "Window mode" })).getByRole(
         "radio",
         { name: "Editor" },
       ),
     ).toBeChecked();
-    const settings = await screen.findByRole("region", { name: "Settings" });
+    act(() => useAgentSettingsState.getState().close());
+    await switchWindowMode("Editor");
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    await settleLazyModules();
+    fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+    await settleLazyModules();
     expect(
-      within(settings).getByRole("tab", { name: "Browser" }),
-    ).toHaveAttribute("aria-selected", "true");
-    expect(
-      await within(settings).findByRole("heading", { name: "Browser" }),
-    ).toBeVisible();
-    expect(useWorkbenchStore.getState().activeTabId).toBe(
-      "settings:appearance",
-    );
+      screen.getAllByRole("dialog", { name: "Agent settings" }),
+    ).toHaveLength(1);
   });
-  it("offers exactly Agent and Editor with Editor as the default", () => {
+
+  it("offers exactly Agent and Editor with Agent as the default", () => {
     expect([...WORKBENCH_WINDOW_MODES]).toEqual(["agent", "editor"]);
-    expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("editor");
+    expect(DEFAULT_WORKBENCH_WINDOW_MODE).toBe("agent");
     expect(isWorkbenchWindowMode("agent")).toBe(true);
     expect(isWorkbenchWindowMode("editor")).toBe(true);
     expect(isWorkbenchWindowMode("split")).toBe(false);
@@ -425,13 +431,5 @@ describe("D0 workbench window mode seam", () => {
     expect(
       screen.queryByRole("navigation", { name: "Agent artifact tabs" }),
     ).toBeNull();
-  });
-
-  it("keeps desktop out of Workbench composition", async () => {
-    const source = await readFile(
-      path.join(srcRoot, "workbench/Workbench.tsx"),
-      "utf8",
-    );
-    expect(source).not.toMatch(/from ["'][^"']*desktop["']/);
   });
 });

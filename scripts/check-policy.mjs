@@ -14,6 +14,135 @@ import {
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 
+const reviewedSpawnModules = new Map([
+  ["git_process.rs", "Git CLI execution boundary"],
+  ["acp/process/unix/spawn.rs", "Contained ACP harness launch on Unix"],
+  ["user_terminal/unix.rs", "User terminal shell launch on Unix"],
+  ["app_preview/lifecycle.rs", "User-requested app preview server"],
+  ["harness_discovery/version_probe.rs", "Bounded harness version discovery"],
+  ["workspace/search/helper_process.rs", "Bounded workspace search helper"],
+  ["codex_helper_boundary/caller.rs", "Provisioning helper caller"],
+  ["commands/acp/claude_auth.rs", "Claude Code sign-in"],
+  ["acp/fixture/process_ops.rs", "Feature-gated adversarial process fixture"],
+  [
+    "acp/fixture/host/redaction_observer.rs",
+    "Feature-gated redaction observer",
+  ],
+  [
+    "browser/devtools/cdp_lane/chromium.rs",
+    "Feature-gated Chromium measurement lane",
+  ],
+]);
+
+const frontendSecurityPatterns = [
+  [/\bdangerouslySetInnerHTML\b/u, "dangerouslySetInnerHTML"],
+  [/\.\s*innerHTML\s*=(?!=)/u, "innerHTML assignment"],
+  [/\beval\s*\(/u, "eval"],
+  [/\bnew\s+Function\s*\(/u, "Function constructor"],
+];
+const rustProcessPattern =
+  /\bCommand\s*::\s*new\s*\(|\bstd\s*::\s*process\s*::\s*Command\b/u;
+const testSourcePath =
+  /(?:^|\/)tests(?:\/|\.rs$)|_tests\.rs$|\.test\.[cm]?[jt]sx?$/u;
+
+const rustFlatToken =
+  /r(#+)?"[\s\S]*?"\1|"(?:\\[\s\S]|[^"\\])*"|'(?:\\.|[^'\\])'|\/\/[^\n]*/uy;
+const rustBlockCommentOpen = "/*";
+const rustBlockCommentClose = "*/";
+
+function blankRustToken(token) {
+  return token.replace(/[^\n]/gu, " ");
+}
+
+// Returns the end offset of the block comment opening at `start`. Rust block
+// comments nest, so each `/*` needs its own `*/`. An unterminated comment
+// runs to the end of the source.
+function rustBlockCommentEnd(source, start) {
+  let depth = 0;
+  let index = start;
+  while (index < source.length) {
+    if (source.startsWith(rustBlockCommentOpen, index)) {
+      depth += 1;
+      index += rustBlockCommentOpen.length;
+    } else if (source.startsWith(rustBlockCommentClose, index)) {
+      depth -= 1;
+      index += rustBlockCommentClose.length;
+      if (depth === 0) return index;
+    } else {
+      index += 1;
+    }
+  }
+  return source.length;
+}
+
+function maskRustLiteralsAndComments(source) {
+  let masked = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith(rustBlockCommentOpen, index)) {
+      const end = rustBlockCommentEnd(source, index);
+      masked += blankRustToken(source.slice(index, end));
+      index = end;
+      continue;
+    }
+    rustFlatToken.lastIndex = index;
+    const token = rustFlatToken.exec(source)?.[0];
+    if (token) {
+      masked += blankRustToken(token);
+      index += token.length;
+    } else {
+      masked += source[index];
+      index += 1;
+    }
+  }
+  return masked;
+}
+
+function rustProductionSource(source) {
+  // Mask literals and comments before balancing test-module braces. Preserve
+  // offsets so a test module cannot hide production code that follows it.
+  const masked = maskRustLiteralsAndComments(source);
+  const testModule =
+    /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/gu;
+  let result = "";
+  let previousEnd = 0;
+  for (const match of masked.matchAll(testModule)) {
+    if (match.index < previousEnd) continue;
+    let end = match.index + match[0].length;
+    let depth = 1;
+    while (end < masked.length && depth > 0) {
+      if (masked[end] === "{") depth += 1;
+      if (masked[end] === "}") depth -= 1;
+      end += 1;
+    }
+    result += masked.slice(previousEnd, match.index);
+    previousEnd = end;
+  }
+  return result + masked.slice(previousEnd);
+}
+
+export function sourceSecurityErrors(file, source) {
+  const relative = canonicalRelative(file);
+  if (testSourcePath.test(relative)) return [];
+  if (relative.startsWith("src/")) {
+    return frontendSecurityPatterns
+      .filter(([pattern]) => pattern.test(source))
+      .map(
+        ([, description]) => `${relative} contains forbidden ${description}.`,
+      );
+  }
+  const rustRoot = "src-tauri/src/";
+  if (
+    relative.startsWith(rustRoot) &&
+    relative.endsWith(".rs") &&
+    !reviewedSpawnModules.has(relative.slice(rustRoot.length)) &&
+    rustProcessPattern.test(rustProductionSource(source))
+  ) {
+    return [`${relative} creates processes outside a reviewed spawn module.`];
+  }
+  return [];
+}
+
 const root = process.cwd();
 const failures = [];
 
@@ -57,7 +186,7 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "634344e11a46328536cd53d629b1544ae14dead07fc854c8f559fb9f5c065e3d" ||
+    "9c04318159a01606821611b25b5a768e8d65665a61591a2ea15d2e7aafc8646b" ||
   betaAcceptance.schemaVersion !== 1 ||
   betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
   betaAcceptance.workItem !== "BETA-0001"
@@ -75,7 +204,7 @@ const betaCandidateSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaCandidateSha256 !==
-    "fdea662a05dbef4eb8b025c04cdd99f59f387892b4dbb50c9eda12d156fc27d6" ||
+    "8267376521550caaf0bbd62b875cc4ec4c151e785a506967d7c3b5dbb472407e" ||
   betaCandidate.schemaVersion !== 1 ||
   betaCandidate.status !== "frozen-verdict-matrix" ||
   betaCandidate.workItem !== "BETA-0001" ||
@@ -303,6 +432,17 @@ if (
   fail(
     "Production script/connect CSP must match the reviewed exact allowlist.",
   );
+}
+
+for (const [label, policy] of [
+  ["Production", csp],
+  ["Development", devCsp],
+]) {
+  for (const directive of ["object-src", "base-uri", "form-action"]) {
+    if (policy?.[directive] !== "'none'") {
+      fail(`${label} CSP must set ${directive} to 'none'.`);
+    }
+  }
 }
 
 if (
@@ -769,10 +909,17 @@ if (
 }
 
 const sourceInventory = await discoverSourceFilesWithCssBound(root);
-const productionFiles = [
+const securityFiles = [
   ...sourceInventory.files,
   ...(await filesBelow("src-tauri/src")),
-].filter(
+];
+for (const file of securityFiles.filter((file) =>
+  /\.(?:[cm]?[jt]sx?|rs)$/.test(file),
+)) {
+  const source = await readFile(path.join(root, file), "utf8");
+  for (const error of sourceSecurityErrors(file, source)) fail(error);
+}
+const productionFiles = securityFiles.filter(
   (file) =>
     /\.(?:ts|tsx|rs)$/.test(file) &&
     !/\.test\.tsx?$/u.test(file) &&

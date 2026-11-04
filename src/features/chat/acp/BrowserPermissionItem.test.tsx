@@ -194,7 +194,9 @@ describe("local browser permission card", () => {
     expect(screen.getByText("Allow developer mode on this site?")).toBeTruthy();
     expect(screen.getByText("Elevated")).toBeTruthy();
     expect(
-      screen.getByText(/read this site's cookies and session data/),
+      screen.getByText(
+        /Scripts run as the signed-in user and can read data available to the page/,
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Allow once/ })).toBeNull();
     expect(

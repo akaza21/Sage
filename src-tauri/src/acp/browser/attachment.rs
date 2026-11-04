@@ -21,6 +21,8 @@ mod agent;
 mod control;
 mod developer;
 mod popup;
+mod resources;
+pub(crate) use resources::DiagnosticScope;
 pub(crate) use control::AgentControl;
 pub(crate) use popup::AgentAction;
 
@@ -48,6 +50,7 @@ pub(crate) struct AttachmentLease {
     /// The developer-mode grant (ADR-0009b): the session and origin the
     /// user approved, in memory only (`developer.rs`).
     developer: Arc<Mutex<Option<developer::DeveloperGrant>>>,
+    resources: Arc<resources::Resources>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -83,6 +86,7 @@ impl AttachmentLease {
             }
             authority.stop();
             self.end_developer_mode();
+            self.release_resources();
         }
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
@@ -102,10 +106,12 @@ impl AttachmentLease {
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
             self.end_developer_mode();
+            self.release_resources();
             return;
         };
         self.active.store(false, Ordering::Release);
         self.end_developer_mode();
+            self.release_resources();
         if let Some((_, authority)) = slot.as_ref() {
             authority.stop();
         }
@@ -139,6 +145,7 @@ impl AttachmentLease {
     fn retire(&self) {
         self.retiring.store(true, Ordering::Release);
         self.end_developer_mode();
+            self.release_resources();
         self.stop_retired();
         if let Ok(slot) = self.authority.lock()
             && let Some((_, authority)) = slot.as_ref()
@@ -231,6 +238,7 @@ impl BrowserAttachments {
                 last_session: Arc::default(),
                 opener: None,
                 developer: Arc::default(),
+                resources: Arc::default(),
             },
         );
         drop(entries);

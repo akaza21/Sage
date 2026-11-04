@@ -395,3 +395,26 @@ fn switch_off_or_a_grant_ending_after_the_checks_still_stops_native_issue() {
         );
     }
 }
+
+#[test]
+fn navigation_cannot_keep_an_elevated_call_alive_after_revocation() {
+    struct NavigateThenRevoke { authority: BrowserAuthority, policy: Arc<Policy> }
+    impl BrowserCapabilityDispatch for NavigateThenRevoke {
+        fn dispatch(&mut self, _: &BrowserRequest, permit: BrowserDispatchPermit) -> Result<PendingBrowserResult, BrowserFailure> {
+            permit.with_live_lock(|| { permit.mark_issued(); Ok(()) })?;
+            self.authority.navigation_started();
+            assert!(permit.was_invalidated_by_navigation());
+            self.policy.enabled.store(false, Ordering::SeqCst);
+            assert!(!permit.is_live());
+            assert!(!permit.was_invalidated_by_navigation(), "revocation ends the navigation exemption");
+            Ok(Box::new(move || Err(permit.revoked_failure())))
+        }
+    }
+    let authority = authority();
+    let policy = Policy::on();
+    let mut gate = BrowserPermissionGate::new(
+        NavigateThenRevoke { authority: authority.clone(), policy: policy.clone() },
+        |_: &BrowserPermissionPrompt| BrowserPermissionChoice::AllowDeveloperMode, authority,
+    ).with_developer_mode(policy);
+    assert_eq!(gate.perform(&evaluate()), Err(BrowserFailure::OutcomeUnknown));
+}
