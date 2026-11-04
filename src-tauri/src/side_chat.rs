@@ -1,6 +1,7 @@
 use crate::acp::contract::{SageChatId, SageProjectId};
 use crate::{
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
+    persistence::Database,
     state::AppState,
 };
 use tauri::{Manager, State};
@@ -156,11 +157,21 @@ pub async fn close_side_chat(
 }
 
 #[tauri::command]
-pub fn get_confirm_close_side_chat(state: State<'_, AppState>) -> Result<bool, String> {
-    state
-        .settings
-        .confirm_close_side_chat()
-        .map_err(|error| error.to_string())
+pub async fn get_confirm_close_side_chat(state: State<'_, AppState>) -> Result<bool, String> {
+    get_confirm_close_side_chat_async(&state.settings).await
+}
+
+async fn get_confirm_close_side_chat_async(
+    settings: &crate::settings_store::SettingsStore,
+) -> Result<bool, String> {
+    let settings = settings.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        settings
+            .confirm_close_side_chat()
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[derive(serde::Serialize)]
@@ -173,8 +184,19 @@ pub struct SideChatSummary {
 }
 
 #[tauri::command]
-pub fn list_side_chats(state: State<'_, AppState>) -> Result<Vec<SideChatSummary>, String> {
-    let connection = state.database.connection();
+pub async fn list_side_chats(state: State<'_, AppState>) -> Result<Vec<SideChatSummary>, String> {
+    list_side_chats_async(&state.database).await
+}
+
+async fn list_side_chats_async(database: &Database) -> Result<Vec<SideChatSummary>, String> {
+    let database = database.clone();
+    tauri::async_runtime::spawn_blocking(move || list_side_chats_inner(&database))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn list_side_chats_inner(database: &Database) -> Result<Vec<SideChatSummary>, String> {
+    let connection = database.connection();
     let mut statement = connection.prepare("SELECT w.id,w.project_id,json_extract(w.metadata_json,'$.parentChatId'),EXISTS(SELECT 1 FROM turns t WHERE t.project_id=w.project_id AND t.chat_id=w.id AND t.state NOT IN ('completed','cancelled','failed','interrupted','deliveryUnknown')) FROM workbench_tabs w WHERE w.kind='chat' AND json_extract(w.metadata_json,'$.ephemeral')=1 ORDER BY w.id LIMIT 9").map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {
@@ -197,6 +219,86 @@ pub fn list_side_chats(state: State<'_, AppState>) -> Result<Vec<SideChatSummary
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn side_chat_lookup_reports_parent_and_running_and_refuses_overflow() {
+        let root = std::env::temp_dir().join(format!("sage-side-list-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = Database::open(&root.join("sage.db")).unwrap();
+        let project = database.create_project_from_root(&root).unwrap().id;
+        let parent = database
+            .bootstrap_snapshot()
+            .unwrap()
+            .active_tab_id
+            .unwrap();
+        // Seed registry states directly: normal creation permits only one side chat per Project.
+        let add_side = || {
+            let mut connection = database.connection();
+            let transaction = connection.transaction().unwrap();
+            let id =
+                crate::chat_lifecycle::insert_new_chat(&transaction, &project, true, Some(&parent))
+                    .unwrap();
+            transaction.commit().unwrap();
+            id
+        };
+        let running = add_side();
+        let idle = add_side();
+        {
+            let connection = database.connection();
+            connection.execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
+                 capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at)
+                 VALUES('side-session',?1,?2,0,'codex-app-server',?3,'{}','active','hot',0,0,0,1,1)",
+                rusqlite::params![project, running, "a".repeat(64)],
+            ).unwrap();
+            connection.execute(
+                "INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at)
+                 VALUES(?1,?2,'side-session',1,'running',1)",
+                rusqlite::params![project, running],
+            ).unwrap();
+            connection.execute(
+                "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
+                 state,delivery_state,revision,created_at,updated_at)
+                 VALUES('side-turn',?1,?2,'side-session',1,0,'side-intent','running','correlated',0,1,1)",
+                rusqlite::params![project, running],
+            ).unwrap();
+        }
+        let rows = list_side_chats_async(&database).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        for (id, expected_running) in [(&running, true), (&idle, false)] {
+            let row = rows.iter().find(|row| &row.id == id).unwrap();
+            assert_eq!(
+                serde_json::to_value(row).unwrap(),
+                serde_json::json!({
+                    "id": id, "projectId": project, "parentChatId": parent, "running": expected_running,
+                })
+            );
+        }
+        for _ in 2..8 {
+            add_side();
+        }
+        assert_eq!(list_side_chats_async(&database).await.unwrap().len(), 8);
+        add_side();
+        assert_eq!(
+            list_side_chats_async(&database).await.err().unwrap(),
+            "temporary Chat registry exceeds eight"
+        );
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn confirm_close_lookup_reads_the_persisted_preference() {
+        let root = std::env::temp_dir().join(format!("sage-side-confirm-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let settings =
+            crate::settings_store::SettingsStore::open(&root.join("settings.db")).unwrap();
+        assert!(get_confirm_close_side_chat_async(&settings).await.unwrap());
+        settings.set_confirm_close_side_chat(false).unwrap();
+        assert!(!get_confirm_close_side_chat_async(&settings).await.unwrap());
+        drop(settings);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn the_opt_out_is_saved_only_after_the_side_chat_is_gone() {
