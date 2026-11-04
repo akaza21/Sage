@@ -1,52 +1,334 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  installScenario,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
-async function openTerminal(page: Page) {
-  await openScenario(page, "agent-single", "agent");
-  await page.evaluate(() => {
+/** The native boundary is simulated; the setting adapter, command and xterm are real. */
+async function attachNativeTerminal(page: Page, waitForControls = true) {
+  await page.evaluate(async () => {
+    const [{ useTerminalDockStore }, { useWorkbenchStore }] = await Promise.all(
+      [import("/src/app/terminalDockStore.ts"), import("/src/app/store.ts")],
+    );
+    let sequence = 0;
+    const sessions = new Map<string, string>();
     const pty = { columns: 80, rows: 24 };
-    Object.assign(window, { terminalPtySize: pty });
+    const input: number[] = [];
+    Object.assign(window, { terminalPtySize: pty, terminalPtyInput: input });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
         invoke: async (
           command: string,
-          args: { request: { columns: number; rows: number } },
+          args?: {
+            visible: boolean;
+            request: {
+              handle: { sessionId: string };
+              cursor: string;
+              columns: number;
+              rows: number;
+              text: string;
+            };
+          },
         ) => {
+          if (
+            command === "get_terminal_dock_visible" ||
+            command === "set_terminal_dock_visible"
+          ) {
+            return (
+              window as unknown as {
+                nativeDockSetting: (value?: boolean) => Promise<boolean>;
+              }
+            ).nativeDockSetting(
+              command.startsWith("set_") ? args!.visible : undefined,
+            );
+          }
           switch (command) {
-            case "terminal_create":
+            case "terminal_create": {
+              const sessionId = `f99cd56a-32d9-4600-a1f6-${String(++sequence).padStart(12, "0")}`;
+              sessions.set(sessionId, `Retained shell ${sequence}\r\n`);
               return {
-                sessionId: "f99cd56a-32d9-4600-a1f6-269e05734268",
+                sessionId,
                 revision: "1",
-                shellPath: "fixture-shell",
+                shellPath: `shell-${sequence}`,
               };
+            }
+            case "terminal_read": {
+              const output = sessions.get(args!.request.handle.sessionId);
+              if (!output) throw { code: "unknown_session" };
+              if (args!.request.cursor !== "0")
+                return new Promise(() => undefined);
+              return {
+                bytesBase64: btoa(output),
+                nextCursor: "1",
+                truncations: "0",
+                truncated: false,
+              };
+            }
+            case "terminal_close":
+              sessions.delete(args!.request.handle.sessionId);
+              return;
             case "terminal_resize":
               Object.assign(pty, {
-                columns: args.request.columns,
-                rows: args.request.rows,
+                columns: args!.request.columns,
+                rows: args!.request.rows,
               });
               return;
-            case "terminal_read":
-              return new Promise(() => undefined);
-            case "terminal_close":
+            case "terminal_write":
+              for (const byte of new TextEncoder().encode(args!.request.text)) {
+                if (input.length >= 32)
+                  throw new Error("Terminal fixture input limit reached");
+                input.push(byte);
+              }
               return;
             default:
-              throw new Error(`Unexpected terminal command: ${command}`);
+              throw new Error(
+                `Unsupported terminal fixture command: ${command}`,
+              );
           }
         },
       },
     });
+    await useTerminalDockStore.getState().restore();
+    useWorkbenchStore.setState((state) => ({
+      sidebarOpen: !state.sidebarOpen,
+    }));
   });
-  // Re-render the workbench after attaching the desktop fixture.
+  if (waitForControls)
+    await expect(
+      page.getByRole("button", { name: "Toggle terminal", exact: true }),
+    ).toBeVisible();
+}
+
+test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+
+test.beforeEach(async ({ page }) => {
+  let persisted = false;
+  // Outlives the WebView, as the native settings service does.
+  await page.exposeFunction("nativeDockSetting", (value?: boolean) => {
+    if (typeof value === "boolean") persisted = value;
+    return persisted;
+  });
+  await openScenario(page, "agent-single", "agent");
+  await attachNativeTerminal(page);
+});
+
+test("defaults closed; the labelled toggle persists open and closed across reload", async ({
+  page,
+}) => {
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  await expect(toggle).toHaveText(">_ Terminal");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toHaveAttribute("title", "Show terminal (Ctrl+`)");
+  await expect(dock).toHaveCount(0);
+  const layout = await toggle.evaluate((button) => {
+    const icon = button.querySelector("span")!.getBoundingClientRect();
+    const label = [...button.childNodes].find(
+      (node) =>
+        node.nodeType === Node.TEXT_NODE &&
+        node.textContent?.includes("Terminal"),
+    )!;
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    const text = range.getBoundingClientRect();
+    const footer = button.closest("footer")!.getBoundingClientRect();
+    return {
+      icon: { x: icon.x, y: icon.y, width: icon.width, height: icon.height },
+      text: { x: text.x, y: text.y, height: text.height },
+      footer: { top: footer.top, bottom: footer.bottom },
+    };
+  });
+  expect(layout.text.x).toBeGreaterThanOrEqual(
+    layout.icon.x + layout.icon.width,
+  );
+  expect(
+    Math.abs(
+      layout.icon.y +
+        layout.icon.height / 2 -
+        layout.text.y -
+        layout.text.height / 2,
+    ),
+  ).toBeLessThan(2);
+  expect(layout.text.y).toBeGreaterThanOrEqual(layout.footer.top);
+  expect(layout.text.y + layout.text.height).toBeLessThanOrEqual(
+    layout.footer.bottom,
+  );
+  for (const visible of [true, false]) {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
+    await page.evaluate(async () => {
+      const { useTerminalDockStore } =
+        await import("/src/app/terminalDockStore.ts");
+      await useTerminalDockStore.getState().flush();
+    });
+    await page.reload();
+    await installScenario(page, "agent-single");
+    await attachNativeTerminal(page);
+    await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
+    if (visible) await expect(dock).toBeVisible();
+    else await expect(dock).toBeHidden();
+  }
+});
+
+test("shortcut and chrome Escape preserve sessions and return focus to the composer", async ({
+  page,
+}) => {
+  const composer = page.getByRole("textbox", {
+    name: "Message agent",
+    exact: true,
+  });
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  await composer.focus();
+  await page.keyboard.press("Control+Backquote");
+  await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 1",
+  );
+  await dock.getByRole("button", { name: "New terminal", exact: true }).click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 2",
+  );
+  await dock.getByRole("button", { name: "New terminal", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(dock).toBeHidden();
+  await expect(composer).toBeFocused();
+  await toggle.click();
+  await expect(dock.getByRole("tab")).toHaveCount(2);
+  await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 2",
+  );
+  await dock.getByRole("tab").first().click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 1",
+  );
+  await page.keyboard.press("Control+Backquote");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(composer).toBeFocused();
+});
+
+test("navigation and terminal commands stay independent across layout changes", async ({
+  page,
+}) => {
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  const navigation = page.getByRole("button", {
+    name: "Hide projects and chats",
+  });
+  await toggle.click();
+  await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
   await page
-    .getByRole("radiogroup", { name: "Window mode" })
-    .locator("label")
-    .filter({ hasText: "Editor" })
+    .getByRole("textbox", { name: "Message agent", exact: true })
+    .focus();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(navigation).toBeHidden();
+  await expect(dock).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Show projects and chats" }).click();
+  await expect(navigation).toBeVisible();
+  await expect(dock).toBeVisible();
+  await page.keyboard.press("Control+Backquote");
+  await expect(dock).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(navigation).toBeHidden();
+  await toggle.click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 1",
+  );
+  await expect(navigation).toBeHidden();
+  await expect(dock.getByRole("tab")).toHaveCount(1);
+});
+
+test("reopening after ending the last session starts a focused usable shell", async ({
+  page,
+}) => {
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  await toggle.click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 1",
+  );
+  await dock
+    .getByRole("button", { name: "Close terminal tab", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Open terminal", exact: true })
-    .click();
-  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 2",
+  );
+  await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+});
+
+test("returns to the toggle when opened without a focus target", async ({
+  page,
+}) => {
+  await page.evaluate(() =>
+    (document.activeElement as HTMLElement | null)?.blur(),
+  );
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  await toggle.click();
+  await expect(page.locator(".xterm-helper-textarea:visible")).toBeFocused();
+  await page.getByRole("button", { name: "New terminal", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
+for (const mode of ["Agent", "Editor"]) {
+  test(`Escape reaches terminal input before and after toggling in ${mode} mode`, async ({
+    page,
+  }) => {
+    await page
+      .getByRole("radiogroup", { name: "Window mode" })
+      .locator("label")
+      .filter({ hasText: mode })
+      .click();
+    const dock = page.getByRole("region", { name: "Terminal", exact: true });
+    const toggle = page.getByRole("button", {
+      name: "Toggle terminal",
+      exact: true,
+    });
+    const input = dock.locator(".xterm-helper-textarea:visible");
+    const received: number[] = [];
+    await toggle.click();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(input).toBeFocused();
+      await page.keyboard.press("Escape");
+      received.push(27);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (window as unknown as { terminalPtyInput: number[] })
+                .terminalPtyInput,
+          ),
+        )
+        .toEqual(received);
+      await expect(dock).toBeVisible();
+      await expect(input).toBeFocused();
+      await page.keyboard.press("Control+Backquote");
+      await expect(dock).toBeHidden();
+      await toggle.click();
+      await expect(dock.getByRole("tab")).toHaveCount(1);
+    }
+  });
 }
 
 async function gridGeometry(page: Page) {
@@ -106,7 +388,10 @@ test("the terminal viewport follows the dock as the window shrinks and grows", a
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await openTerminal(page);
+  await page
+    .getByRole("button", { name: "Toggle terminal", exact: true })
+    .click();
+  await expect(page.locator(".xterm-screen:visible")).toBeVisible();
   await expect
     .poll(async () => (await dockGeometry(page)).unusedHeight)
     .toBe(0);
@@ -134,7 +419,10 @@ for (const deviceScaleFactor of [1, 1.25, 2]) {
     test("fits both axes and matches the PTY after narrow and wide resizes", async ({
       page,
     }) => {
-      await openTerminal(page);
+      await page
+        .getByRole("button", { name: "Toggle terminal", exact: true })
+        .click();
+      await expect(page.locator(".xterm-screen:visible")).toBeVisible();
       const host = page.locator(".terminal-dock__screen");
       let firstFit: Awaited<ReturnType<typeof gridGeometry>> | undefined;
       for (const [width, height] of [
@@ -180,3 +468,18 @@ for (const deviceScaleFactor of [1, 1.25, 2]) {
     });
   });
 }
+
+test("reports a terminal controller loading failure", async ({ page }) => {
+  await page.route("**/src/workbench/terminalDockCommands.tsx*", (route) =>
+    route.abort(),
+  );
+  await page.reload();
+  await installScenario(page, "agent-single");
+  await attachNativeTerminal(page, false);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Terminal failed to load." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Toggle terminal", exact: true }),
+  ).toHaveCount(0);
+});

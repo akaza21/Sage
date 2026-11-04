@@ -4,7 +4,7 @@
   width: 100%;
   resize: none;
   overflow: auto;
-  padding: 12px;
+  padding: var(--space-3);
   border: 0;
   color: var(--color-text-primary);
   background: var(--color-canvas);

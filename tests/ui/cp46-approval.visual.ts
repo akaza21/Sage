@@ -327,16 +327,55 @@ for (const width of [720, 480]) {
         Math.abs(deny.x + deny.width - (actions.x + actions.width)),
       ).toBeLessThanOrEqual(1);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
-    // The rail's "Awaiting approval" pill keeps a gap before its spinner;
-    // the title truncates first (s6/f0526).
-    const spinner = page.locator(".project-chat__approval-spinner").first();
-    if (await spinner.isVisible()) {
-      const pill = (await page
-        .locator(".rail-pill--approval")
-        .first()
-        .boundingBox())!;
-      const glyph = (await spinner.boundingBox())!;
-      expect(pill.x + pill.width).toBeLessThanOrEqual(glyph.x - 4);
+    if (width <= 600)
+      await page
+        .getByRole("button", { name: "Show projects and chats" })
+        .click();
+    const row = page
+      .locator(".project-chat-row")
+      .filter({ has: page.locator(".project-chat__approval-spinner") })
+      .first();
+    const chat = row.locator(".project-chat");
+    await expect(row).toBeVisible();
+    await page.mouse.move(0, 0);
+    for (const state of ["resting", "hovered", "keyboard-focused"]) {
+      await test.step(`${state} approval row keeps its content clear`, async () => {
+        if (state === "hovered") await row.hover();
+        if (state === "keyboard-focused") {
+          await page.mouse.move(0, 0);
+          await chat.focus();
+          await page.keyboard.press("Shift+Tab");
+          await page.keyboard.press("Tab");
+          await expect(chat).toBeFocused();
+          await expect(chat.locator(":scope:focus-visible")).toHaveCount(1);
+        }
+        const actions = row.locator(".project-chat__quick-actions");
+        await expect(actions).toHaveCSS(
+          "opacity",
+          state === "resting" ? "0" : "1",
+        );
+        const geometry = await row.evaluate((element) => {
+          const box = (selector: string) =>
+            element.querySelector(selector)!.getBoundingClientRect();
+          const content = box(".project-chat__copy");
+          const title = box(".project-chat__title-label");
+          const pill = box(".rail-pill--approval");
+          const spinner = box(".project-chat__approval-spinner");
+          const actions = box(".project-chat__quick-actions");
+          return {
+            titleToPill: pill.left - title.right,
+            contentToSpinner: spinner.left - content.right,
+            pillToSpinner: spinner.left - pill.right,
+            contentToActions: actions.left - content.right,
+          };
+        });
+        expect(geometry.titleToPill).toBeGreaterThanOrEqual(4);
+        expect(geometry.contentToSpinner).toBeGreaterThanOrEqual(4);
+        expect(geometry.pillToSpinner).toBeGreaterThanOrEqual(4);
+        // Pin and Archive replace the spinner visually on hover and focus.
+        if (state !== "resting")
+          expect(geometry.contentToActions).toBeGreaterThanOrEqual(4);
+      });
     }
   });
 }

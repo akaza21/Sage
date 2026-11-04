@@ -96,9 +96,9 @@
 .annotation-comment {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 44px;
-  padding: 0 8px 0 16px;
+  padding: 0 var(--space-2) 0 var(--space-4);
   border-radius: var(--radius-annotation-comment);
 }
 
@@ -135,7 +135,7 @@
 
 .composer__annotation-row {
   display: flex;
-  padding: 8px 8px 0;
+  padding: var(--space-2) var(--space-2) 0;
 }
 
 .annotation-chip {
@@ -190,7 +190,7 @@
 }
 
 .annotation-chip--sent .annotation-chip__trigger {
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 0;
   outline: 1px solid var(--chat-annotation-sent-edge);
   border-radius: var(--radius-annotation-sent);
@@ -200,7 +200,7 @@
   position: fixed;
   z-index: var(--z-popover-card);
   max-height: 50vh;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   overflow: auto;
   border-radius: var(--radius-annotation-card);
   overflow-wrap: anywhere;
@@ -210,12 +210,12 @@
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 4px;
+  column-gap: var(--space-1);
 }
 
 .annotation-card__entry + .annotation-card__entry {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-panel-raised-hover);
 }
 
@@ -246,7 +246,7 @@
   top: 0;
   right: 0;
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .annotation-card__actions button {
@@ -263,7 +263,7 @@
 
 .transcript-selection-status {
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   font-size: 12px;
   transform: translate(-50%, calc(-100% - 12px));
@@ -272,7 +272,7 @@
 .side-chat-tab {
   flex: 0 1 213px;
   height: 28px;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--space-1) 0 var(--space-2);
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-sm);
   background: var(--color-plane-raised);
@@ -311,13 +311,13 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 240px;
   text-align: center;
 }
 
 .side-chat-home svg {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   color: var(--color-text-secondary);
 }
 
@@ -333,7 +333,7 @@
 }
 
 .close-side-chat-dialog {
-  padding: 16px;
+  padding: var(--space-4);
   border: 1px solid var(--color-panel-raised-hover);
   border-radius: var(--radius-side-chat-dialog);
   color: var(--color-status-foreground);
@@ -341,11 +341,11 @@
 }
 
 .close-side-chat-dialog h2 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
 }
 
 .close-side-chat-dialog p {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   color: var(--color-text-muted);
   line-height: 1.4;
 }
@@ -353,7 +353,7 @@
 .close-side-chat-dialog label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .close-side-chat-dialog input[type="checkbox"] {
@@ -372,7 +372,7 @@
 }
 
 .close-side-chat-dialog .dirty-dialog__actions {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 .close-side-chat-dialog .dirty-dialog__actions .button {

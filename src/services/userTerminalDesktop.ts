@@ -45,8 +45,8 @@ export interface UserTerminalPage {
 
 /** The native error's `code`, when it carries one. */
 export function terminalErrorCode(error: unknown): unknown {
-  return error && typeof error === "object" && "code" in error
-    ? (error as { code?: unknown }).code
+  return typeof error === "object"
+    ? (error as { code?: unknown } | null)?.code
     : undefined;
 }
 
