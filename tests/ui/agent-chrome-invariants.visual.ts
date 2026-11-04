@@ -359,9 +359,8 @@ for (const [only, role, other] of [
   });
 }
 
-test("keeps a pressed code action on the active fill, even while hovered", async ({
-  page,
-}) => {
+// Replaces the rich answer with one plain code block and returns it.
+async function openCodeBlock(page: Page) {
   await openScenario(page, "rich", "agent");
   await settleChatProjections(page);
   await page.evaluate(async () => {
@@ -389,7 +388,13 @@ test("keeps a pressed code action on the active fill, even while hovered", async
     );
   });
   await settleTranscriptAtEnd(page);
-  const code = page.getByRole("region", { name: "Code block" });
+  return page.getByRole("region", { name: "Code block" });
+}
+
+test("keeps a pressed code action on the active fill, even while hovered", async ({
+  page,
+}) => {
+  const code = await openCodeBlock(page);
   const wrap = code.getByRole("button", { name: "Wrap code" });
   const fill = () =>
     wrap.evaluate((node) => getComputedStyle(node).backgroundColor);
@@ -409,4 +414,54 @@ test("keeps a pressed code action on the active fill, even while hovered", async
   await expect.poll(fill).toBe(active);
   await wrap.hover();
   await expect.poll(fill).toBe(active);
+});
+
+test("keeps the masked wrap glyph visible in forced colours in every state", async ({
+  page,
+}) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  const code = await openCodeBlock(page);
+  const wrap = code.getByRole("button", { name: "Wrap code" });
+  const icon = wrap.locator(".acp-code-block__wrap-icon");
+  // The glyph is a mask painted with its own background, so forced colours
+  // would erase it unless that paint follows the button's system foreground.
+  const systemColour = (keyword: string) =>
+    icon.evaluate((node, keyword) => {
+      const probe = document.createElement("span");
+      probe.style.forcedColorAdjust = "none";
+      probe.style.color = keyword;
+      node.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    }, keyword);
+  const paint = () =>
+    icon.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return {
+        glyph: getComputedStyle(node).backgroundColor,
+        button: getComputedStyle(node.closest("button")!).backgroundColor,
+        painted: box.width > 0 && box.height > 0,
+      };
+    });
+  const expectGlyph = async (keyword: string) => {
+    const expected = await systemColour(keyword);
+    await expect.poll(async () => (await paint()).glyph).toBe(expected);
+    const { button, painted } = await paint();
+    expect(painted).toBe(true);
+    expect(button).not.toBe(expected);
+  };
+
+  await page.mouse.move(0, 0);
+  await expectGlyph("ButtonText");
+  await wrap.hover();
+  await expectGlyph("HighlightText");
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("Tab");
+  await wrap.focus();
+  await expectGlyph("HighlightText");
+  await page.keyboard.press("Enter");
+  await expect(wrap).toHaveAttribute("aria-pressed", "true");
+  await wrap.blur();
+  await expectGlyph("HighlightText");
 });
