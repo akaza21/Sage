@@ -22,11 +22,10 @@ export function AgentTaskStatus({
   const parentStatus = useParentChatStatus();
   const resolvedStatus = parentStatus(chatId, status);
   const label =
-    awaiting.has(chatId) || interactions.approval.has(chatId)
-      ? "Awaiting approval"
-      : resolvedStatus
-        ? sessionRailStatusLabel(resolvedStatus) || "Idle"
-        : (snapshot?.statusLabel ?? "Idle");
+    sessionRailStatusLabel(
+      resolvedStatus,
+      awaiting.has(chatId) || interactions.approval.has(chatId),
+    ) || (resolvedStatus ? "Idle" : (snapshot?.statusLabel ?? "Idle"));
   return (
     <>
       <span
@@ -44,13 +43,11 @@ export function AgentTaskStatus({
             title={harnessStatus}
             tabIndex={0}
           >
-            <span
+            <Info
               className="agent-task-header__harness-icon"
               aria-hidden="true"
-            >
-              <Info size={14} />
-            </span>
-            <span className="sr-only">{harnessStatus}</span>
+              size={14}
+            />
           </summary>
           <p>{harnessStatus}</p>
         </details>

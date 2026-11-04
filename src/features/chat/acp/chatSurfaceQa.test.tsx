@@ -70,6 +70,7 @@ it("retains the interrupted cause outside Worked", () => {
     />,
   );
   expect(screen.getByText("File write denied by policy")).toBeVisible();
+  expect(screen.queryByText("Reason unavailable")).toBeNull();
 });
 
 it("identifies incomplete workspace tracking as a system notice", () => {

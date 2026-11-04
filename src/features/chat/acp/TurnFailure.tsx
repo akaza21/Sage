@@ -1,7 +1,7 @@
 import { useId } from "react";
 
-import type { AcpItem, TurnProjection } from "../../../domain/acp";
-import { turnTerminalReasonLabels } from "./statusSemantics";
+import type { TurnProjection } from "../../../domain/acp";
+import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
 
 export function TurnFailure({
   turn,
@@ -12,18 +12,11 @@ export function TurnFailure({
 }) {
   const headingId = useId();
   if (turn.state !== "failed") return null;
-  const error = [...turn.items]
-    .reverse()
-    .find(
-      (item): item is Extract<AcpItem, { kind: "error" }> =>
-        item.kind === "error" && item.payload.kind !== "attempt",
-    );
   const message =
-    turn.terminalReason?.message?.trim() ||
-    error?.payload.message?.trim() ||
+    turnReasonMessage(turn) ||
     (turn.terminalReason && turn.terminalReason.kind !== "other"
       ? turnTerminalReasonLabels[turn.terminalReason.kind]
-      : "The harness reported a failed turn without additional details.");
+      : "The harness gave no error details.");
   return (
     <div className="acp-turn__failure" role="group" aria-labelledby={headingId}>
       <strong id={headingId}>Turn failed</strong>

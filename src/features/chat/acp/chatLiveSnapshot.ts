@@ -19,25 +19,6 @@ export type ChatLiveSnapshot = {
   working: boolean;
 };
 
-const waitingStates = new Set<TurnProjection["state"]>([
-  "waitingApproval",
-  "waitingUser",
-]);
-
-const workingStates = new Set<TurnProjection["state"]>([
-  "queued",
-  "sending",
-  "running",
-  "waitingModel",
-  "waitingTool",
-  "cancelling",
-]);
-
-const failedStates = new Set<TurnProjection["state"]>([
-  "failed",
-  "deliveryUnknown",
-]);
-
 function currentTurn(page: AcpChatPage): TurnProjection | null {
   let current: TurnProjection | null = null;
   let latest: TurnProjection | null = null;
@@ -71,12 +52,8 @@ function capLiveText(text: string): string {
   return `${text.slice(0, MAX_LIVE_SNAPSHOT_TEXT - 1)}…`;
 }
 
-function isStreaming(turn: TurnProjection, items: readonly AcpItem[]): boolean {
-  if (!terminalTurnStates.has(turn.state)) return true;
-  for (const item of items) {
-    if (item.lifecycle === "streaming") return true;
-  }
-  return false;
+function isStreamingItem(item: AcpItem): boolean {
+  return item.lifecycle === "streaming";
 }
 
 export function projectChatLiveSnapshot(
@@ -95,22 +72,26 @@ export function projectChatLiveSnapshot(
       working: false,
     };
   }
+  const terminal = terminalTurnStates.has(turn.state);
   const approval =
-    !terminalTurnStates.has(turn.state) &&
+    !terminal &&
     (turn.state === "waitingApproval" || turn.items.some(awaitingPermission));
+  const waiting = approval || turn.state === "waitingUser";
+  const working = !waiting && !terminal;
   return {
     chatId,
     statusLabel: approval ? "Awaiting approval" : getTurnStatusLabel(turn),
-    statusTone: failedStates.has(turn.state)
-      ? "failed"
-      : approval || waitingStates.has(turn.state)
-        ? "waiting"
-        : workingStates.has(turn.state)
-          ? "working"
-          : "idle",
+    statusTone:
+      turn.state === "failed" || turn.state === "deliveryUnknown"
+        ? "failed"
+        : waiting
+          ? "waiting"
+          : working
+            ? "working"
+            : "idle",
     latestText: capLiveText(latestTextItem(turn)),
-    streaming: isStreaming(turn, turn.items),
-    waiting: approval || waitingStates.has(turn.state),
-    working: !approval && workingStates.has(turn.state),
+    streaming: !terminal || turn.items.some(isStreamingItem),
+    waiting,
+    working,
   };
 }

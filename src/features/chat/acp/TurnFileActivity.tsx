@@ -8,7 +8,7 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
-import { WorkspaceTrackingNotice } from "./WorkspaceTrackingNotice";
+import { WorkspaceTrackingNotice } from "../AcpHistoryNotices";
 
 export function TurnFileActivity({
   page,

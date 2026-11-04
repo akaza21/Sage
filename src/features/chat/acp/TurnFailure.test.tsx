@@ -14,13 +14,36 @@ import { TurnHeader } from "./TurnHeader";
 afterEach(cleanup);
 
 describe("TurnFailure", () => {
+  it("does not substitute an earlier error for a later failure without details", () => {
+    const turn = page("failed", { kind: "other" }).turns[0];
+    turn.items = [
+      {
+        kind: "error",
+        payload: {
+          code: "earlier",
+          message: "An earlier error",
+          recoverable: false,
+        },
+      } as never,
+      {
+        kind: "error",
+        payload: { code: "latest", message: " ", recoverable: false },
+      } as never,
+    ];
+    render(<TurnFailure turn={turn} />);
+    expect(
+      screen.getByRole("group", { name: "Turn failed" }),
+    ).toHaveTextContent("The harness gave no error details.");
+    expect(screen.queryByText("An earlier error")).toBeNull();
+  });
+
   it.each([
     ["authRequired", "Not signed in"],
     ["harnessExited", "Harness exited"],
     ["protocolError", "Protocol error"],
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
-    ["other", "The harness reported a failed turn without additional details."],
+    ["other", "The harness gave no error details."],
   ] as const)(
     "states a message-free %s failure cause only once in the turn",
     (kind, label) => {
@@ -69,9 +92,7 @@ describe("TurnFailure", () => {
       screen.getByRole("group", { name: "Turn failed" }),
     ).toHaveTextContent("Turn failed");
     expect(
-      screen.getByText(
-        "The harness reported a failed turn without additional details.",
-      ),
+      screen.getByText("The harness gave no error details."),
     ).toBeVisible();
     expect(screen.queryByRole("button")).toBeNull();
   });
@@ -82,7 +103,7 @@ describe("TurnFailure", () => {
     ["protocolError", "Protocol error"],
     ["refusedVersion", "Version refused"],
     ["timeout", "Timed out"],
-    ["other", "The harness reported a failed turn without additional details."],
+    ["other", "The harness gave no error details."],
   ] as const)(
     "uses the %s reason as the cause when no text was supplied",
     (kind, label) => {
@@ -224,9 +245,7 @@ describe("TurnFailure", () => {
     turn.items = [{ kind: "error", payload: { message: "  " } } as never];
     render(<TurnFailure turn={turn} />);
     expect(
-      screen.getByText(
-        "The harness reported a failed turn without additional details.",
-      ),
+      screen.getByText("The harness gave no error details."),
     ).toBeVisible();
   });
 });

@@ -34,7 +34,6 @@ import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
 import { VirtualTurnList } from "./VirtualTurnList";
-import { WorkspaceTrackingNotice } from "./WorkspaceTrackingNotice";
 
 import type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
 export type { AcpChatPresentationProps } from "./acpChatPresentationTypes";
@@ -247,7 +246,7 @@ const Turn = memo(
             ) : null}
             {terminal && fileSummaryInDock ? (
               workspaceIncomplete ? (
-                <WorkspaceTrackingNotice />
+                <NavigationPart part="WorkspaceTrackingNotice" />
               ) : null
             ) : terminal ? (
               <TurnFileActivity

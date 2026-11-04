@@ -10,7 +10,13 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
   const stopped = turn.state === "interrupted" || turn.state === "cancelled";
   const userStopped = stopped && reason?.kind === "cancelledByUser";
   const label = getTurnStatusLabel(turn);
-  const message = turnReasonMessage(turn);
+  const failed = turn.state === "failed";
+  const message = failed
+    ? undefined
+    : turnReasonMessage(turn) ||
+      (reason && !userStopped
+        ? turnTerminalReasonLabels[reason.kind]
+        : undefined);
   const remediation = reason?.remediation;
   return (
     <header className="acp-turn__header">
@@ -26,13 +32,11 @@ export function TurnHeader({ turn }: { turn: TurnProjection }) {
       >
         {label}
       </span>
-      {reason && !userStopped && turn.state !== "failed" ? (
-        <span className="acp-turn__reason" data-turn-reason={reason.kind}>
-          {turnTerminalReasonLabels[reason.kind]}
-        </span>
-      ) : null}
-      {turn.state !== "failed" && (message || remediation) ? (
-        <div className="acp-turn__reason-detail">
+      {!failed && (message || remediation) ? (
+        <div
+          className="acp-turn__reason-detail"
+          data-turn-reason={reason && !userStopped ? reason.kind : undefined}
+        >
           {message ? (
             <p className="acp-turn__reason-text" data-turn-reason-message="">
               {message}
