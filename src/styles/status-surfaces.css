@@ -170,6 +170,17 @@
   cursor: pointer;
 }
 
+.status-bar__terminal {
+  display: inline-flex;
+  gap: 5px;
+  padding: 0 6px;
+}
+
+.status-bar__terminal[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-border-subtle);
+}
+
 .status-bar__button:hover {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
