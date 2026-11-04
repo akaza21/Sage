@@ -115,7 +115,7 @@ it("collapses on entering a narrow breakpoint after desktop sidebar interaction"
   vi.stubGlobal(
     "matchMedia",
     vi.fn((query: string) =>
-      query === "(max-width: 600px)"
+      query === "(max-width: 981px)"
         ? media
         : {
             matches: false,

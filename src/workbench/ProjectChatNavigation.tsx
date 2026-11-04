@@ -173,7 +173,7 @@ export function ProjectChatNavigation({
           );
         }
         const viewed = selected && tab.id === viewedChatId;
-        const focused = !suppressActive && selected && tab.id === activeTabId;
+        const focused = !suppressActive && viewed;
         const status = parentChatStatus(tab.id, tab.status);
         const fingerprint = sessionRailFingerprint(status, tab.updatedAt);
         if (viewed && fingerprint.length > 0) {
@@ -253,13 +253,13 @@ export function ProjectChatNavigation({
                       aria-hidden="true"
                     />
                   ) : null}
-                  {approvalLabel ? (
-                    <span className="rail-pill rail-pill--approval">
-                      {approvalLabel}
-                    </span>
-                  ) : null}
                 </span>
               </span>
+              {approvalLabel ? (
+                <span className="rail-pill rail-pill--approval">
+                  {approvalLabel}
+                </span>
+              ) : null}
             </button>
             <div className="project-chat__trailing">
               <ProjectChatTrailingState

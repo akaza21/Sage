@@ -14,14 +14,16 @@
   background: var(--color-canvas);
 }
 .workbench--agent {
+  --reading-measure: var(--reading-measure-agent);
   --workbench-card-radius: var(--radius-xl);
   --workbench-card-fill: var(--agent-shell-center);
   --workbench-card-margin: var(--space-2);
+  --workbench-card-leading-inset: var(--space-2);
 }
 .title-bar {
   display: grid;
   grid-template-areas: "start center end";
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   padding: 0 var(--space-3);
   border-bottom: var(--border-width) solid var(--agent-shell-title-divider);

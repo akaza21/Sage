@@ -40,7 +40,7 @@
   left: 3px;
   width: 2px;
   border-radius: var(--radius-pill);
-  background: var(--color-border-subtle);
+  background: transparent;
   content: "";
 }
 

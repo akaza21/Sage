@@ -134,6 +134,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
+  // A newly completed turn activates the deferred Changes observer.
+  "src/features/diff/AgentChangesObserver.tsx",
   "src/features/diff/ChangesSurface.tsx",
   "src/features/diff/ChangesTab.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.

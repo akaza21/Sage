@@ -148,13 +148,9 @@ export function AgentArtifactPane({
     () => ownerFromFocusedPage(focusedPage, focusedPageValid),
     [focusedPage, focusedPageValid],
   );
-  const selectedSubagent = subagentPaneForPage(
-    subagentOpen,
-    focusedPageValid ? focusedPage : null,
-  );
-  const subagentTarget =
-    selectedSubagent ??
-    latestSubagentForPage(focusedPageValid ? focusedPage : null);
+  const ownedPage = focusedPageValid ? focusedPage : null;
+  const selectedSubagent = subagentPaneForPage(subagentOpen, ownedPage);
+  const subagentTarget = selectedSubagent ?? latestSubagentForPage(ownedPage);
   const subagentAvailable = subagentTarget !== null;
   const changes = useAgentChangesPane(
     focusedOwner,
@@ -163,6 +159,7 @@ export function AgentArtifactPane({
     onExpandedChange,
     projectTransitioning ? null : (project?.id ?? null),
     focusedChatId,
+    ownedPage,
   );
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;
@@ -242,10 +239,6 @@ export function AgentArtifactPane({
     changes.selected || subagentSelected
       ? null
       : activeArtifactForTarget(artifacts, selectedTarget);
-  const activeArtifactAdmitted = Boolean(
-    activeArtifact &&
-    agentArtifactAdmitted(admissions, focusedOwner, activeArtifact.id),
-  );
   const selectedPosition = availableTargets.findIndex((target) =>
     sameAgentArtifactTarget(target, selectedTarget),
   );
@@ -287,6 +280,7 @@ export function AgentArtifactPane({
 
   return (
     <div className="agent-artifact-surface" onKeyDown={onPaneKeyDown}>
+      {changes.observer}
       {expanded ? null : (
         <AgentArtifactCollapsedPane
           count={
@@ -309,7 +303,7 @@ export function AgentArtifactPane({
           aria-modal={modal || undefined}
           className={`agent-artifact-pane surface surface--card${
             hasResources ? "" : " agent-artifact-pane--empty"
-          }${activeArtifact && activeArtifact.kind !== "browser" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
+          }${activeArtifact?.kind === "file" ? " agent-artifact-pane--with-header" : ""}${maximized ? " agent-artifact-pane--maximized" : ""}`}
           aria-label="Agent artifacts"
           data-owner-project-id={focusedOwner?.projectId}
           data-owner-chat-id={focusedOwner?.chatId}
@@ -355,12 +349,16 @@ export function AgentArtifactPane({
               }}
             />
           </header>
-          {activeArtifact && activeArtifact.kind !== "browser" ? (
+          {activeArtifact?.kind === "file" ? (
             <Suspense fallback={null}>
               <AgentArtifactHeader
                 key={activeArtifact.id}
                 tab={activeArtifact}
-                admitted={activeArtifactAdmitted}
+                admitted={agentArtifactAdmitted(
+                  admissions,
+                  focusedOwner,
+                  activeArtifact.id,
+                )}
                 page={focusedOwner ? focusedPage : null}
                 position={selectedPosition}
                 total={availableTargets.length}
@@ -385,7 +383,10 @@ export function AgentArtifactPane({
             {!previewSelected && activeArtifact
               ? activeArtifact.kind === "browser"
                 ? renderRegisteredCanvas("browser", activeArtifact)
-                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+                : renderFileOrDiffCanvas(activeArtifact, {
+                    readOnly: true,
+                    onOpenInEditor,
+                  })
               : null}
             {!changes.selected &&
             !subagentSelected &&

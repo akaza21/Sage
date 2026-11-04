@@ -1,8 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type { AcpChatPage } from "../domain/acp";
 import { useAgentChangesState } from "./agentChangesState";
 
-import { AgentChangesView, AgentChangesTab } from "./AgentChangesViews";
+import {
+  AgentChangesView,
+  AgentChangesTab,
+  AgentChangesObserver,
+} from "./AgentChangesViews";
 
 export function useAgentChangesPane(
   owner: AgentArtifactOwner | null,
@@ -11,6 +16,7 @@ export function useAgentChangesPane(
   onExpandedChange: ((expanded: boolean) => void) | undefined,
   projectId: string | null,
   chatId: string | null,
+  page: AcpChatPage | null = null,
 ) {
   const state = useAgentChangesState();
   const open =
@@ -27,6 +33,13 @@ export function useAgentChangesPane(
     if (selected && !expanded && changed) onExpandedChange?.(true);
   }, [selected, expanded, onExpandedChange, state.owner]);
   return {
+    observer: (
+      <AgentChangesObserver
+        key={JSON.stringify([generation, projectId, chatId, owner?.sessionId])}
+        page={page}
+        generation={generation}
+      />
+    ),
     open,
     selected,
     tab: open ? (

@@ -44,6 +44,42 @@
   text-overflow: clip;
 }
 
+@container agent-rail (max-width: 260px) {
+  .workbench--agent .project-chat-row:has(.rail-pill--approval) {
+    height: auto;
+    grid-template-rows: auto;
+  }
+
+  .workbench--agent
+    .project-chat-row:has(.rail-pill--approval)
+    > .project-chat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .workbench--agent
+    .project-chat-row:has(.rail-pill--approval)
+    .project-chat__copy {
+    padding-inline-end: var(--agent-rail-title-end);
+  }
+
+  .workbench--agent .project-chat-row:has(.rail-pill--approval) .rail-pill {
+    justify-self: start;
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+  }
+
+  .workbench--agent
+    .project-chat-row:has(.rail-pill--approval)
+    .project-chat__trailing {
+    align-self: start;
+    padding-block-start: var(--space-1);
+  }
+}
+
 .workbench--agent .project-chat__working {
   width: 12px;
   height: 12px;

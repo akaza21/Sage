@@ -149,6 +149,10 @@ describe("Devin-dark theme tokens", () => {
         selector: ".source-change--selected",
       },
       {
+        path: "workbench/terminal-dock.css",
+        selector: '.terminal-dock__tab [aria-selected="true"]',
+      },
+      {
         path: "workbench/workbench-window-mode.css",
         selector: '.agent-artifact-pane__follow[aria-pressed="true"]',
       },

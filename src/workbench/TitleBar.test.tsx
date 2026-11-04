@@ -109,18 +109,18 @@ describe("TitleBar center chrome", () => {
     ).toBeEnabled();
   });
 
-  it("shows the focused session title in Agent and Quick Open's Search files in Editor", () => {
+  it("keeps Chat titles in the card and offers Search files in Editor", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
 
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    expect(screen.queryByRole("heading")).toBeNull();
     expect(screen.queryByRole("button", { name: "Search files" })).toBeNull();
 
     useWorkbenchStore.setState({ activeTabId: "file:app" });
     rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    expect(screen.queryByRole("heading")).toBeNull();
 
     rerender(<TitleBar mode="editor" onModeChange={vi.fn()} />);
     expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
@@ -134,7 +134,7 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("keeps the parent's window title while its side chat has focus (Codex s2/f0244)", () => {
+  it("does not duplicate the parent or side Chat title in window chrome", () => {
     seedChats();
     const { tabs } = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
@@ -156,7 +156,7 @@ describe("TitleBar center chrome", () => {
     });
     try {
       render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-      expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+      expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Side chat" })).toBeNull();
     } finally {
       useSideChatState.setState({ sides: [] });

@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acpProjection";
@@ -8,6 +9,15 @@ import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
 import { ChangesFileDiff } from "./ChangesFileDiff";
 import { projectChanges, type ChangesScope } from "./agentChanges";
 import "./changes.css";
+
+/** Refresh completed-turn snapshots without subscribing workbench chrome. */
+export function ChatChangesSurface({ chatId }: { chatId: string | null }) {
+  const turnRevision = useStore(acpProjectionStoreFor(chatId), (state) => {
+    const turn = state.page?.turns.at(-1);
+    return turn ? `${turn.id}:${turn.state}` : "";
+  });
+  return <ChangesSurface key={turnRevision} chatId={chatId} />;
+}
 
 export const ChangesSurface = memo(function ChangesSurface({
   page: suppliedPage = null,

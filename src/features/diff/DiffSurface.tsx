@@ -1,4 +1,9 @@
-import { FileDiff, FileText, RefreshCw } from "../../ui/leanIcons";
+import {
+  FileDiff,
+  FileText,
+  RefreshCw,
+  SquareArrowOutUpRight,
+} from "../../ui/leanIcons";
 import { useEffect } from "react";
 
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
@@ -17,17 +22,24 @@ import { DiffLineCommentComposer } from "./DiffLineCommentComposer";
 export function DiffSurface({
   tab,
   readOnly = false,
+  onOpenInEditor,
 }: {
   tab: WorkbenchTab;
   readOnly?: boolean;
+  onOpenInEditor?: (tabId: string) => void;
 }) {
   return tab.diffRef ? (
-    <SnapshotDiffSurface tab={tab} commentEnabled={readOnly} />
+    <SnapshotDiffSurface
+      tab={tab}
+      commentEnabled={readOnly}
+      onOpenInEditor={onOpenInEditor}
+    />
   ) : (
     <DiffDocument
       tab={tab}
       unavailable={isSnapshotDiffTab(tab)}
       workingTreeNotice={readOnly && !isSnapshotDiffTab(tab)}
+      onOpenInEditor={onOpenInEditor}
     />
   );
 }
@@ -35,9 +47,11 @@ export function DiffSurface({
 function SnapshotDiffSurface({
   tab,
   commentEnabled,
+  onOpenInEditor,
 }: {
   tab: WorkbenchTab;
   commentEnabled: boolean;
+  onOpenInEditor?: (tabId: string) => void;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const projectGeneration = useWorkbenchStore(
@@ -60,6 +74,7 @@ function SnapshotDiffSurface({
       tab={tab}
       unavailable={!current}
       commentEnabled={commentEnabled && current}
+      onOpenInEditor={onOpenInEditor}
     />
   );
 }
@@ -69,11 +84,13 @@ function DiffDocument({
   unavailable = false,
   commentEnabled = false,
   workingTreeNotice = false,
+  onOpenInEditor,
 }: {
   tab: WorkbenchTab;
   unavailable?: boolean;
   commentEnabled?: boolean;
   workingTreeNotice?: boolean;
+  onOpenInEditor?: (tabId: string) => void;
 }) {
   const focusedChatId = usePinnedAgentChatOwner();
   const captureChatOwnership = useWorkbenchStore(
@@ -160,12 +177,6 @@ function DiffDocument({
       className="diff-surface resource-document"
       aria-label={`Diff for ${path}`}
     >
-      {workingTreeNotice ? (
-        <p role="status">
-          Current working-tree changes against Git; may include edits from other
-          turns.
-        </p>
-      ) : null}
       <header className="diff-header">
         <div className="diff-header__path">
           <FileDiff size={16} aria-hidden="true" />
@@ -175,42 +186,58 @@ function DiffDocument({
           <span>{additions == null ? "" : `+${additions}`}</span>
           <span>{deletions == null ? "" : `-${deletions}`}</span>
         </div>
-      </header>
-      <div className="diff-toolbar">
-        <span className="diff-toolbar__scope">
-          {isSnapshotDiffTab(tab)
-            ? "Saved agent change"
-            : "Changes since HEAD (or initial tree)"}
-        </span>
-        <span className="diff-toolbar__hint">Read-only</span>
-        <div
-          className="diff-toolbar__actions"
-          role="group"
-          aria-label="Diff actions"
-        >
-          {tabResource && !unavailable ? (
-            <button
-              type="button"
-              aria-label="Refresh diff"
-              title="Refresh diff"
-              disabled={!diff || diff.phase === "loading"}
-              onClick={refreshDiff}
-            >
-              <RefreshCw size={14} aria-hidden="true" />
-            </button>
-          ) : null}
-          {tabResource && !isSnapshotDiffTab(tab) ? (
-            <button
-              type="button"
-              aria-label="Open file"
-              title="Open file"
-              onClick={() => void openFile(tabResource)}
-            >
-              <FileText size={14} aria-hidden="true" />
-            </button>
-          ) : null}
+        <div className="diff-toolbar">
+          <span className="diff-toolbar__scope">
+            {isSnapshotDiffTab(tab)
+              ? "Saved agent change"
+              : "Changes since HEAD (or initial tree)"}
+          </span>
+          <span className="diff-toolbar__hint">Read-only</span>
+          <div
+            className="diff-toolbar__actions"
+            role="group"
+            aria-label="Diff actions"
+          >
+            {onOpenInEditor ? (
+              <button
+                type="button"
+                aria-label="Open in Editor"
+                title="Open in Editor"
+                onClick={() => onOpenInEditor(tab.id)}
+              >
+                <SquareArrowOutUpRight size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            {tabResource && !unavailable ? (
+              <button
+                type="button"
+                aria-label="Refresh diff"
+                title="Refresh diff"
+                disabled={!diff || diff.phase === "loading"}
+                onClick={refreshDiff}
+              >
+                <RefreshCw size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            {tabResource && !isSnapshotDiffTab(tab) ? (
+              <button
+                type="button"
+                aria-label="Open file"
+                title="Open file"
+                onClick={() => void openFile(tabResource)}
+              >
+                <FileText size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </header>
+      {workingTreeNotice ? (
+        <p className="diff-limit" role="status">
+          Current working-tree changes against Git; may include edits from other
+          turns.
+        </p>
+      ) : null}
       {!diff || diff.phase === "loading" ? (
         <ResourceStateNotice state="loading" title="Loading diff…" />
       ) : null}

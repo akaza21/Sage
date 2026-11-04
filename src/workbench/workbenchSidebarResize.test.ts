@@ -18,22 +18,22 @@ describe("resizeWorkbenchSidebar", () => {
   it("opens the icon rail and project sidebar at the captured Codex width", () => {
     expect(initialAgentLeftRailWidth(1936)).toBe(326);
     expect(initialAgentLeftRailWidth(1872)).toBe(326);
-    expect(initialAgentArtifactWidth(1936)).toBe(871);
+    expect(initialAgentArtifactWidth(1936)).toBe(813);
     expect(initialAgentDesktopSidebarWidths(1380)).toEqual({
       leftRailWidth: 326,
-      artifactWidth: 621,
+      artifactWidth: 580,
     });
   });
-  // The artifact pane opens at 45% of the window. Beside the 326 px sidebar
-  // at 1888 that leaves Chat about 45% of the remaining space.
+  // The resource pane shares the window proportionally while leaving room
+  // for the wider Chat reading column.
   it("opens the desktop Agent rail and artifact pane at the reference proportions", () => {
     expect(initialAgentLeftRailWidth(1672)).toBe(326);
-    expect(initialAgentArtifactWidth(1672)).toBe(752);
+    expect(initialAgentArtifactWidth(1672)).toBe(702);
     expect(initialAgentLeftRailWidth(1380)).toBe(326);
-    expect(initialAgentArtifactWidth(1380)).toBe(621);
+    expect(initialAgentArtifactWidth(1380)).toBe(580);
     const pane = initialAgentArtifactWidth(1888);
     const chat = 1888 - initialAgentLeftRailWidth(1888) - 16 - pane;
-    expect(pane / (pane + chat)).toBeCloseTo(0.55, 2);
+    expect(pane / (pane + chat)).toBeCloseTo(0.51, 2);
   });
 
   it("keeps a usable Chat column when either desktop splitter reaches its end", () => {
