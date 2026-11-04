@@ -1,8 +1,23 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
+
+import {
+  openSelectionScenario,
+  dragAnswerPhrase,
+} from "./shared/transcriptSelection";
+
+async function openSplitComposerScenario(page: Page) {
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page
+    .getByRole("button", { name: "Ask in side chat", exact: true })
+    .click();
+  await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+  await settleChatProjections(page);
+}
 
 async function expectProjectInOptionsMenu(composer: Locator) {
   const page = composer.page();
@@ -71,7 +86,7 @@ async function expectResponsiveToolbar(
   const modelLabel = model.locator(".composer__model-label");
   // The brand mark always stays whole inside the harness trigger.
   const harnessBox = (await harness.boundingBox())!;
-  const markBox = (await harness.locator(".harness-logo").boundingBox())!;
+  const markBox = (await harness.locator("[data-harness-icon]").boundingBox())!;
   expect(markBox.width).toBeGreaterThanOrEqual(12);
   expect(markBox.x).toBeGreaterThanOrEqual(harnessBox.x - 0.5);
   expect(markBox.x + markBox.width).toBeLessThanOrEqual(
@@ -311,7 +326,9 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     const toolbar = (await composer
       .locator(".composer__toolbar")
       .boundingBox())!;
-    expect(field.height).toBeGreaterThanOrEqual(44);
+    // The 360 px viewport uses the compact 40–56 px textarea range.
+    expect(field.height).toBeGreaterThanOrEqual(40);
+    expect(field.height).toBeLessThanOrEqual(56);
     expect(field.y).toBeGreaterThanOrEqual(form.y);
     expect(field.y + field.height).toBeLessThanOrEqual(toolbar.y);
     expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
@@ -327,9 +344,11 @@ test("keeps the split chip nonshrinking after the later composer styles load", a
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
-  await openScenario(page, "agent-dual", "agent");
-  await settleChatProjections(page);
-  for (const composer of await page.locator("form.composer").all()) {
+  await openSplitComposerScenario(page);
+  await expect(
+    page.locator("form.composer").nth(1).locator(".project-scope"),
+  ).toHaveCount(0);
+  for (const composer of [page.locator("form.composer").first()]) {
     const chip = composer.locator(".project-scope");
     const trigger = chip.getByRole("button");
     await expect(chip).toHaveCSS("width", "28px");
@@ -372,7 +391,7 @@ test("reserves clickable icon targets while allowing the harness to shrink", asy
   await expect(project).toHaveCSS("min-height", "28px");
   await expect(effort).toHaveCSS("overflow", "hidden");
   await composer.evaluate((element) => {
-    element.style.width = "322px";
+    element.style.width = "320px";
   });
   await expectResponsiveToolbar(composer, true);
 });
@@ -382,12 +401,17 @@ test("uses the same nonshrinking icon-only chip below 400px and in split panes",
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   for (const scenario of ["agent-single", "agent-dual"] as const) {
-    await openScenario(page, scenario, "agent");
+    if (scenario === "agent-dual") await openSplitComposerScenario(page);
+    else await openScenario(page, scenario, "agent");
     await settleChatProjections(page);
-    for (const composer of await page.locator("form.composer").all()) {
+    if (scenario === "agent-dual")
+      await expect(
+        page.locator("form.composer").nth(1).locator(".project-scope"),
+      ).toHaveCount(0);
+    for (const composer of [page.locator("form.composer").first()]) {
       if (scenario === "agent-single") {
         await composer.evaluate((element) => {
-          element.style.width = "402px";
+          element.style.width = "400px";
         });
       }
       const chip = composer.locator(".project-scope");

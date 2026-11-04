@@ -12,17 +12,22 @@
   height: var(--terminal-dock-height);
   min-width: 0;
   min-height: 0;
-  grid-template-rows: var(--terminal-dock-header-height) auto minmax(0, 1fr);
+  grid-template:
+    "header" var(--terminal-dock-header-height)
+    "message" auto
+    "viewport" minmax(0, 1fr)
+    / minmax(0, 1fr);
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-canvas);
 }
 
 .terminal-dock--collapsed {
   height: auto;
-  grid-template-rows: var(--terminal-dock-header-height);
+  grid-template: "header" var(--terminal-dock-header-height) / minmax(0, 1fr);
 }
 
 .terminal-dock__header {
+  grid-area: header;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -47,7 +52,7 @@
   gap: var(--space-1);
 }
 
-.terminal-dock__button {
+.terminal-dock .icon-button {
   display: inline-grid;
   width: var(--control-height-compact);
   height: var(--control-height-compact);
@@ -61,7 +66,7 @@
   cursor: pointer;
 }
 
-.terminal-dock__button:hover:not(:disabled) {
+.terminal-dock .icon-button:hover:not(:disabled) {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
 }
@@ -109,6 +114,7 @@
 }
 
 .terminal-dock__message {
+  grid-area: message;
   margin: 0;
   padding: 4px 8px;
   color: var(--color-warning);
@@ -116,12 +122,21 @@
 }
 
 .terminal-dock__viewport {
+  grid-area: viewport;
   min-width: 0;
   min-height: 0;
   padding: 8px;
   overflow: hidden;
 }
 
+/* The grid is sized from this box, which carries no padding. */
+.terminal-dock__screen,
 .terminal-dock__viewport .xterm {
   height: 100%;
+}
+
+/* xterm paints the theme background only behind whole rows; the part-row
+   left under them shows its viewport, which xterm.css fills black. */
+.terminal-dock__viewport .xterm .xterm-viewport {
+  background-color: var(--color-canvas);
 }

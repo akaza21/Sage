@@ -10,13 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { HarnessLogo, type HarnessLogoKind } from "./HarnessLogo";
+import type { HarnessBrand } from "../domain/harness";
+import "../styles/searchable-picker.css";
 import { ChevronDown } from "./leanIcons";
-import { PickerOption } from "./PickerOption";
+import { PickerOption, PickerLogo } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
 import { ResourceStateNotice } from "./ResourceStateNotice";
-import "../styles/searchable-picker.css";
 
 export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
 export const SEARCHABLE_PICKER_MAX_RENDERED = 200;
@@ -30,7 +30,10 @@ export interface SearchablePickerOption {
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
-  icon?: HarnessLogoKind;
+  icon?: HarnessBrand | "generic";
+  logo?: string;
+  /** A secondary action rendered beside the option, e.g. "Sign in". */
+  action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
@@ -54,8 +57,6 @@ export function SearchablePicker({
   triggerClassName,
   triggerRole,
   triggerIcon,
-  variant,
-  keyboardFocus,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -79,15 +80,6 @@ export function SearchablePicker({
   triggerClassName?: string;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
-  /**
-   * Omit for a standard field. Harness uses a plain brand trigger and compact
-   * icon/copy/check rows; project uses a chip that can collapse to its icon.
-   * searchable-picker.css owns both surfaces and documents their --picker-*
-   * size, padding, icon-slot and compact-visibility tokens.
-   */
-  variant?: "harness" | "project";
-  /** Preserve keyboard focus styling while suppressing pointer-restored focus. */
-  keyboardFocus?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -112,7 +104,6 @@ export function SearchablePicker({
     (candidate) => candidate.id === selectedId,
   );
   const selectedLabel = selected?.triggerLabel ?? selected?.label;
-  const expanded = open && !disabled;
   const visible = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return admittedCandidates.filter((candidate) =>
@@ -144,11 +135,11 @@ export function SearchablePicker({
     inputRef.current?.focus();
   }, [disabled, open, searchable]);
   useLayoutEffect(() => {
-    if (!active) return;
+    if (!activeId) return;
     triggerRef.current?.ownerDocument
-      .getElementById(optionId(id, active.id))
+      .getElementById(optionId(id, activeId))
       ?.scrollIntoView?.({ block: "nearest" });
-  }, [active, id]);
+  }, [activeId, id]);
 
   const close = useCallback(
     (reason?: MenuDismissReason) => {
@@ -160,13 +151,8 @@ export function SearchablePicker({
     [searchable, setOpen],
   );
   useLayoutEffect(() => {
-    if (!disabled) return;
-    queueMicrotask(() => close());
-  }, [close, disabled]);
-  useLayoutEffect(() => {
-    if (!invalid) return;
-    queueMicrotask(() => close());
-  }, [close, invalid]);
+    if (disabled || invalid) queueMicrotask(() => close());
+  }, [close, disabled, invalid]);
   const moveActive = (direction: number, page = false) => {
     if (selectable.length === 0) return;
     const found = selectable.findIndex(
@@ -225,6 +211,9 @@ export function SearchablePicker({
     }
   };
 
+  const expanded = open && !disabled;
+  const listed = expanded ? rendered : EMPTY_CANDIDATES;
+
   if (invalid) {
     return (
       <ResourceStateNotice
@@ -236,11 +225,7 @@ export function SearchablePicker({
   }
 
   return (
-    <div
-      className={["searchable-picker", className].filter(Boolean).join(" ")}
-      data-variant={variant}
-      data-keyboard-focus={keyboardFocus}
-    >
+    <div className={["searchable-picker", className].filter(Boolean).join(" ")}>
       <button
         ref={triggerRef}
         type="button"
@@ -266,7 +251,11 @@ export function SearchablePicker({
           } else if (event.key === "Tab") close("tab");
         }}
       >
-        {selected?.icon ? <HarnessLogo kind={selected.icon} /> : triggerIcon}
+        {selected?.logo || selected?.icon ? (
+          <PickerLogo logo={selected.logo} icon={selected.icon} />
+        ) : (
+          triggerIcon
+        )}
         <span className="searchable-picker__trigger-label">
           {selectedLabel ?? emptyLabel}
         </span>
@@ -281,7 +270,6 @@ export function SearchablePicker({
         className={[
           "searchable-picker__popover",
           "menu-popover--editor",
-          variant && `searchable-picker__popover--${variant}`,
           popoverClassName,
         ]
           .filter(Boolean)
@@ -342,7 +330,7 @@ export function SearchablePicker({
           />
         ) : null}
         <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-          {rendered.map((candidate) => (
+          {listed.map((candidate) => (
             <PickerOption
               key={candidate.id}
               active={candidate.id === active?.id}
@@ -352,6 +340,7 @@ export function SearchablePicker({
               onRender={onOptionRender}
               onSelect={selectCandidate}
               selected={candidate.id === selectedId}
+              disabled={disabled}
             />
           ))}
           {visible.length > rendered.length ? (

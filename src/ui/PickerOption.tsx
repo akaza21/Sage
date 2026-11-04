@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { HarnessLogo } from "./HarnessLogo";
 import { Check } from "./leanIcons";
 import type { SearchablePickerOption } from "./SearchablePicker";
 
@@ -26,7 +25,8 @@ export const PickerOption = memo(function PickerOption({
 }) {
   onRender?.(candidate.id);
   const unavailable = disabled || Boolean(candidate.disabledReason);
-  return (
+  const logo = candidate.logo ?? candidate.icon;
+  const option = (
     <button
       id={id}
       type="button"
@@ -44,7 +44,7 @@ export const PickerOption = memo(function PickerOption({
       onMouseMove={() => !unavailable && onActivate?.(candidate.id)}
       onClick={() => !unavailable && onSelect(candidate.id)}
     >
-      {candidate.icon ? <HarnessLogo kind={candidate.icon} /> : null}
+      {logo ? <PickerLogo logo={candidate.logo} icon={candidate.icon} /> : null}
       <span className="searchable-picker__option-copy">
         <span>{candidate.label}</span>
         {candidate.subtitle ? (
@@ -53,7 +53,7 @@ export const PickerOption = memo(function PickerOption({
           </span>
         ) : null}
       </span>
-      {selected && (candidate.icon || showSelectedCheck) ? (
+      {selected && (logo || showSelectedCheck) ? (
         <Check
           className="searchable-picker__selected-check"
           size={14}
@@ -67,4 +67,48 @@ export const PickerOption = memo(function PickerOption({
       ) : null}
     </button>
   );
+  const action = candidate.action;
+  return action ? (
+    <div className="searchable-picker__option-row" role="none">
+      {option}
+      <button
+        type="button"
+        className="searchable-picker__option-action"
+        aria-label={action.accessibleLabel ?? action.label}
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          action.onAction();
+        }}
+      >
+        {action.label}
+      </button>
+    </div>
+  ) : (
+    option
+  );
 });
+
+/** Official marks use external path data; custom and unavailable marks keep their existing assets. */
+export function PickerLogo({ logo, icon }: { logo?: string; icon?: string }) {
+  const builtin = `/harness-${icon}.svg`;
+  const src = logo ?? builtin;
+  return src === builtin ? (
+    <svg
+      className="harness-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+      data-harness-icon={icon}
+    >
+      <use href={`${src}#mark`} />
+    </svg>
+  ) : (
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
+      data-harness-icon={icon ?? "generic"}
+    />
+  );
+}

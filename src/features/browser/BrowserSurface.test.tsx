@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
+import { Activity } from "react";
 
 import type { WorkbenchTab } from "../../domain/workbench";
 import { BrowserSurface } from "./BrowserSurface";
@@ -15,6 +16,7 @@ import { browserOperationFixture } from "../../domain/browserOperation.fixture";
 import { recordBrowserAgentOperation } from "../../app/browserAgentActivityStore";
 import { useWorkbenchStore } from "../../app/store";
 import { pinAgentChatOwner } from "../../app/agentChatOwner";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 
 const browserStatus = vi.fn();
 const openBrowser = vi.fn(async (_url?: string) => "browser-new");
@@ -111,15 +113,67 @@ const tab: WorkbenchTab = {
   dirty: false,
 };
 
-it("shows a closed placeholder for a restored browser without contacting native state", () => {
+it("shows a closed placeholder for a restored browser without contacting native state", async () => {
   render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
   expect(
-    screen.getByText(/browser session closed when Sage restarted/i),
+    await screen.findByText(/browser session closed when Sage restarted/i),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Open new browser" }),
   ).toBeInTheDocument();
   expect(browserStatus).not.toHaveBeenCalled();
+});
+
+it("shows a restored page creation failure locally and clears it on the next attempt", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Could not open the browser tab. Try again.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
+    const open = await screen.findByRole("button", {
+      name: "Open new browser",
+    });
+    fireEvent.click(open);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not open the browser tab. Try again.",
+    );
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+    act(() =>
+      useWorkbenchStore.setState({ openBrowser: async () => undefined }),
+    );
+    fireEvent.click(open);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
+});
+
+it("shows a New page creation failure in the browser without changing composer feedback", async () => {
+  const previous = useWorkbenchStore.getState();
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "",
+    revision: "1",
+    loading: false,
+  });
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Browser tab limit reached.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New page" }));
+    expect(await screen.findByText("Browser tab limit reached.")).toBeVisible();
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
 });
 
 beforeEach(() => {
@@ -145,9 +199,62 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   pinAgentChatOwner(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("routes Browser settings to Agent settings with the originating tab", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+  expect(useAgentSettingsState.getState().page).toBe("Browser");
+  expect(useAgentSettingsState.getState().browserTabId).toBe(tab.id);
+  expect(
+    screen.queryByRole("complementary", { name: "Browser settings" }),
+  ).toBeNull();
+});
+
+it("routes Site settings to the originating tab with permissions expanded", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(browserStatus).toHaveBeenCalledWith(tab.id));
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: true,
+  });
+});
+
+it("disposes a navigation subscription that resolves after Activity sleeps without bootstrapping hidden browser state", async () => {
+  let finish: ((dispose: () => void) => void) | undefined;
+  const lateDispose = vi.fn();
+  vi.mocked(listen).mockImplementation(async (name) =>
+    name === "browser:navigation"
+      ? new Promise<() => void>((resolve) => {
+          finish = resolve;
+        })
+      : () => undefined,
+  );
+  const view = render(
+    <Activity mode="visible">
+      <BrowserSurface tab={tab} />
+    </Activity>,
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(
+    <Activity mode="hidden">
+      <BrowserSurface tab={tab} />
+    </Activity>,
+  );
+  await act(async () => finish?.(lateDispose));
+  expect(lateDispose).toHaveBeenCalledOnce();
+  expect(browserStatus).not.toHaveBeenCalled();
+  view.unmount();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
 });
 
 it("shows a native favicon after an earlier navigation event arrives during status hydration", async () => {
@@ -700,6 +807,44 @@ it("covers the native page while a toolbar popover is open, even across a resize
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
   // A real hide ends Annotate; a popover opening or closing must not.
   expect(hideBrowser).not.toHaveBeenCalled();
+});
+
+it("keeps the native page visible under a non-overlapping menu, and covers it only if the menu moves over the page", async () => {
+  let overlaps = false;
+  let nativePage = "hidden";
+  positionBrowser.mockImplementation(async () => {
+    nativePage = "visible";
+  });
+  coverBrowser.mockImplementation(async () => {
+    nativePage = "covered";
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return DOMRect.fromRect(
+        this.matches('[role="menu"]')
+          ? { x: overlaps ? 520 : 0, y: 120, width: 200, height: 200 }
+          : { x: 500, y: 100, width: 400, height: 300 },
+      );
+    },
+  );
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await waitFor(() => expect(nativePage).toBe("visible"));
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(screen.getByRole("menu")).toBeVisible();
+    expect(nativePage).toBe("visible");
+    overlaps = true;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(nativePage).toBe("covered"));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(nativePage).toBe("visible"));
+  } finally {
+    positionBrowser.mockResolvedValue(undefined);
+    coverBrowser.mockResolvedValue(undefined);
+  }
 });
 
 it("keeps the native page covered until the clear-data confirmation is dismissed", async () => {

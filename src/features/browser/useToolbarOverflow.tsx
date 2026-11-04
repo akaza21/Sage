@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { usePortalHost } from "../../ui/usePortalHost";
 
 /**
  * The toolbar's compaction steps, in order; each is an attribute on the
@@ -31,14 +31,12 @@ const SUBPIXEL = 0.5;
  * and behave identically wherever they are shown.
  */
 export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
-  const [host] = useState(() => {
-    const element = document.createElement("div");
-    element.className = "browser-surface__page-actions-host";
-    return element;
-  });
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const { host, portal } = usePortalHost(
+    slot,
+    "browser-surface__page-actions-host",
+  );
   const [tier, setTier] = useState(0);
-  useLayoutEffect(() => slot?.append(host), [slot, host]);
   useLayoutEffect(() => {
     const group = slot?.parentElement;
     const toolbar = group?.closest<HTMLElement>(".browser-surface__toolbar");
@@ -111,7 +109,7 @@ export function useToolbarOverflow(menuOpen: boolean, pageControls: ReactNode) {
     toolbarActions: (
       <>
         <div ref={setSlot} className="browser-surface__page-actions-slot" />
-        {pageControls ? createPortal(pageControls, host) : null}
+        {pageControls ? portal(pageControls) : null}
       </>
     ),
     // Only an open menu holds the actions, so the closed row always fits

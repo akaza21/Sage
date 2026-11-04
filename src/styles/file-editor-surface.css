@@ -378,18 +378,6 @@
   background: var(--resource-document-active-line);
 }
 
-/* With several cursors CodeMirror draws every selection and hides the
-   native one; these rules style the native selection only when it shows.
-   A class, not :has(), which would recheck styles on every edit. */
-.editor-input .cm-selectionBackground,
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  background: var(--resource-document-selection) !important;
-}
-
-.editor-input .cm-editor:not(.cm-drawnCursors) .cm-content ::selection {
-  color: var(--resource-document-selection-foreground) !important;
-}
-
 .editor-input .cm-cursor {
   border-left-color: var(--resource-document-caret);
 }
@@ -567,5 +555,148 @@
   .editor-input .cm-editor .cm-findMatch--current {
     outline: 2px solid Highlight;
     box-shadow: none;
+  }
+}
+
+/* Change markers against the staged text (EP-14), as VS Code's gutter draws
+   them: a bar for added and changed lines, a wedge where lines were deleted. */
+.editor-input .cm-editor {
+  --git-gutter-added: var(--diff-add);
+  --git-gutter-modified: var(--color-accent);
+  --git-gutter-deleted: var(--diff-delete);
+}
+
+.editor-input .git-gutter .cm-gutterElement {
+  position: relative;
+  width: 6px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.editor-input .git-gutter-marker {
+  position: absolute;
+  inset: 0 2px 0 0;
+}
+
+.editor-input .git-gutter-marker--added {
+  background: var(--git-gutter-added);
+}
+
+.editor-input .git-gutter-marker--modified {
+  background: var(--git-gutter-modified);
+}
+
+.editor-input .git-gutter-marker--deleted-above,
+.editor-input .git-gutter-marker--deleted-below {
+  right: auto;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 4px solid var(--git-gutter-deleted);
+}
+
+.editor-input .git-gutter-marker--deleted-above {
+  top: -4px;
+}
+
+.editor-input .git-gutter-marker--deleted-below {
+  top: auto;
+  bottom: -4px;
+}
+
+.editor-input .git-gutter-peek-line--added {
+  background: var(--diff-add-muted);
+}
+
+.editor-input .git-gutter-peek-line--modified {
+  background: color-mix(
+    in srgb,
+    var(--git-gutter-modified) 12%,
+    var(--doc-panel)
+  );
+}
+
+.editor-input .git-gutter-peek {
+  margin: 2px 0;
+  border-top: 2px solid var(--git-gutter-modified);
+  border-bottom: 2px solid var(--git-gutter-modified);
+  background: var(--doc-panel);
+  font-family: var(--font-family-mono);
+}
+
+.editor-input .git-gutter-peek__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--resource-document-gutter-divider);
+  color: var(--resource-document-gutter-foreground);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-xs);
+}
+
+.editor-input .git-gutter-peek__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.editor-input .git-gutter-peek__action {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.editor-input .git-gutter-peek__action:hover:not(:disabled) {
+  color: var(--color-text-emphasis);
+  background: var(--resource-document-active-line);
+}
+
+.editor-input .git-gutter-peek__action:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.editor-input .git-gutter-peek__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.editor-input .git-gutter-peek__lines {
+  max-height: 240px;
+  overflow: auto;
+  padding: 2px 0;
+}
+
+.editor-input .git-gutter-peek__line {
+  padding: 0 20px 0 8px;
+  white-space: pre;
+  background: var(--diff-delete-muted);
+}
+
+.editor-input .git-gutter-peek__note {
+  padding: 2px 8px;
+  color: var(--resource-document-gutter-foreground);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-xs);
+}
+
+@media (forced-colors: active) {
+  .editor-input .git-gutter-marker--added,
+  .editor-input .git-gutter-marker--modified {
+    background: CanvasText;
+  }
+
+  .editor-input .git-gutter-marker--deleted-above,
+  .editor-input .git-gutter-marker--deleted-below {
+    border-left-color: CanvasText;
   }
 }

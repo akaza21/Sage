@@ -1,23 +1,15 @@
-import { FileText, FolderOpen, X } from "../../ui/leanIcons";
-
+import "./browser-downloads-panel.css";
 import { useState } from "react";
 import {
   browserCancelDownload,
   browserShowDownloadInFolder,
   type BrowserDownload,
 } from "../../ports/nativeBrowserDownloadsPort";
-import { progressLabel } from "./browserDownloadLabel";
+import { FileText, FolderOpen, X } from "../../ui/leanIcons";
+import { progressLabel, sourceHost } from "./browserDownloadLabel";
 import { isActiveDownload } from "./useBrowserDownloads";
 
-function sourceHost(source: string): string {
-  try {
-    return new URL(source).host || source;
-  } catch {
-    return source;
-  }
-}
-
-/** The downloads popover's body (Codex toolbar ⬇), newest first. */
+/** The downloads popover's body, newest first. */
 export default function BrowserDownloadsPanel({
   tabId,
   downloads,

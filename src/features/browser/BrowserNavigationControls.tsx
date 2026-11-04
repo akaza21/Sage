@@ -22,12 +22,15 @@ import type {
   BrowserControlAction,
   BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
-import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
 import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
-import { useDismissOnOutsidePointer } from "./browserPopover";
+import {
+  browserMenuKeyDown,
+  useDismissOnOutsidePointer,
+} from "./browserPopover";
 import { useToolbarOverflow } from "./useToolbarOverflow";
+import { useNativePageLayer } from "../../ui/nativePageLayers";
 
 interface Props {
   navigation: BrowserNavigation | null;
@@ -85,61 +88,33 @@ export function BrowserNavigationControls({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const addressText = useAddressText(editing, page, address);
-  const menuTrigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
   const overflow = useToolbarOverflow(menuOpen, pageControls);
-  useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
-  useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useLayoutEffect(() => {
     if (editing) addressField.current?.select();
   }, [editing, addressField]);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useNativePageLayer(menu, { open: menuOpen });
+  useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
+  useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useEffect(() => {
     if (menuOpen)
       menu.current
         ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
         ?.focus();
   }, [menuOpen]);
-  const run = (action: () => void) => {
+  const run = (action?: () => void) => {
     setMenuOpen(false);
     menuTrigger.current?.focus();
-    action();
+    action?.();
   };
   const onMenuClickCapture = (event: MouseEvent<HTMLDivElement>) => {
     if (!(event.target instanceof Element)) return;
     if (!event.target.closest(".browser-clear-data--menu button")) return;
-    setMenuOpen(false);
-    menuTrigger.current?.focus();
+    run();
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!menuOpen) return;
-    if (event.key === "Escape") {
-      // The menu is the innermost layer: Escape must not reach the pane.
-      event.preventDefault();
-      event.stopPropagation();
-      setMenuOpen(false);
-      menuTrigger.current?.focus();
-      return;
-    }
-    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-    // Form controls moved into the menu keep their own arrow keys.
-    if ((event.target as Element).closest("select, input, textarea")) return;
-    event.preventDefault();
-    const items = Array.from(
-      menu.current?.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ) ?? [],
-    );
-    if (!items.length) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : event.key === "ArrowDown"
-            ? (current + 1) % items.length
-            : (current - 1 + items.length) % items.length;
-    items[next]?.focus();
+    if (menuOpen) browserMenuKeyDown(event, menu.current, run);
   };
   return (
     <>
@@ -207,6 +182,13 @@ export function BrowserNavigationControls({
           onFocus={() => setEditing(true)}
           onBlur={() => setEditing(false)}
           onChange={(event) => onAddressChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAddressChange(navigation?.url ?? "");
+            event.currentTarget.blur();
+          }}
         />
       </form>
       <div className="browser-surface__right-group" onKeyDown={onMenuKeyDown}>
@@ -350,27 +332,5 @@ export function BrowserNavigationControls({
         </div>
       </div>
     </>
-  );
-}
-
-export function ClosedBrowserSurface({ tabId }: { tabId: string }) {
-  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
-  const closeTab = useWorkbenchStore((state) => state.closeTab);
-  return (
-    <section
-      aria-label="Browser page"
-      className="browser-surface browser-surface--closed"
-    >
-      <p>
-        This browser session closed when Sage restarted. Its page was not
-        restored.
-      </p>
-      <button type="button" onClick={() => void openBrowser()}>
-        Open new browser
-      </button>
-      <button type="button" onClick={() => closeTab(tabId)}>
-        Close tab
-      </button>
-    </section>
   );
 }

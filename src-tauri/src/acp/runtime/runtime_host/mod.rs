@@ -5,7 +5,6 @@ mod mailbox;
 mod types;
 
 pub(crate) use host::{RuntimeHost, TerminalNotification};
-#[cfg(test)]
 pub(crate) use types::HostState;
 pub(crate) use types::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,

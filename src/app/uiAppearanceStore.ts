@@ -1,5 +1,4 @@
 import { create } from "zustand";
-
 import {
   DEFAULT_UI_APPEARANCE,
   admitUiAppearance,
@@ -9,6 +8,7 @@ import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { createSettingWriter } from "./settingWriteQueue";
 
 const LOAD_FAILURE = "Appearance settings could not be loaded.";
+
 const SAVE_FAILURE = "Appearance settings could not be saved.";
 
 interface UiAppearanceStore {
@@ -49,3 +49,15 @@ export const useUiAppearanceStore = create<UiAppearanceStore>((set, get) => ({
     );
   },
 }));
+
+useUiAppearanceStore.subscribe(({ appearance }, previous) => {
+  if (appearance !== previous.appearance) projectUiAppearance(appearance);
+});
+
+function projectUiAppearance(appearance: UiAppearance) {
+  const style = document.documentElement.style;
+  style.setProperty("--font-size-md", `${appearance.fontSize}px`);
+  const height = appearance.density === "compact" ? "28px" : "32px";
+  style.setProperty("--row-height-default", height);
+  style.setProperty("--control-height-default", height);
+}

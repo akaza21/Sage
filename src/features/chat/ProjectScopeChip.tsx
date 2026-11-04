@@ -56,7 +56,6 @@ export function ProjectScopeChip({
     >
       {candidates.length > 0 ? (
         <SearchablePicker
-          variant="project"
           triggerRole={menuItem ? "menuitem" : undefined}
           triggerClassName={menuItem ? "menu-item" : undefined}
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}

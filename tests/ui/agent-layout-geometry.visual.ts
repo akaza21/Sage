@@ -132,15 +132,18 @@ for (const mode of ["agent", "editor"] as const) {
     const dock = await openTerminal(page, mode);
     const dockBox = await bounds(dock);
     // The region's padding box: Editor draws the region as a bordered card.
-    const center = await page.locator(".center-region").evaluate((node) => {
-      const rect = node.getBoundingClientRect();
-      return {
-        x: rect.x + node.clientLeft,
-        y: rect.y + node.clientTop,
-        width: node.clientWidth,
-        height: node.clientHeight,
-      };
-    });
+    const center = await page
+      .locator(".center-region")
+      .filter({ visible: true })
+      .evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+          x: rect.x + node.clientLeft,
+          y: rect.y + node.clientTop,
+          width: node.clientWidth,
+          height: node.clientHeight,
+        };
+      });
     const statusBar = await bounds(page.locator(".status-bar"));
     // The dock spans the center region's width and ends at its bottom edge.
     expect(Math.abs(dockBox.x - center.x)).toBeLessThanOrEqual(SUBPIXEL);
@@ -243,10 +246,13 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
   await page.setViewportSize({ width: 1440, height: 900 });
   await openScenario(page, "preview", "agent");
   const composer = page.locator("form.composer").first();
-  // The Preview pane leaves the composer below the 400px compaction step.
+  // Exercise the compaction step independently of the current sidebar widths.
+  await composer.evaluate((element) => {
+    element.style.width = "400px";
+  });
   expect((await bounds(composer)).width).toBeLessThanOrEqual(400);
   const trigger = composer.getByRole("button", { name: "Harness" });
-  const logo = trigger.locator(".harness-logo");
+  const logo = trigger.locator("[data-harness-icon]");
   const label = trigger.locator(".searchable-picker__trigger-label");
   await expect(label).toHaveText("Codex");
   await expectUnclippedText(label);
@@ -259,7 +265,9 @@ test("a narrow composer keeps the harness name beside its brand mark, on the com
     (await bounds(label)).x + SUBPIXEL,
   );
   expect(
-    await logo.evaluate((node) => getComputedStyle(node).maskImage),
+    await logo.evaluate((node) =>
+      node.querySelector("use")?.getAttribute("href"),
+    ),
   ).toContain("/harness-generic.svg");
   expect(await backgroundColor(trigger)).toBe("rgba(0, 0, 0, 0)");
   expect(await backgroundColor(composer.locator(".composer__harness"))).toBe(
@@ -299,7 +307,7 @@ test("a long harness name shows whole or not at all as the composer narrows", as
           requestAnimationFrame(() => requestAnimationFrame(resolve)),
         ),
     );
-    await expect(trigger.locator(".harness-logo")).toBeVisible();
+    await expect(trigger.locator("[data-harness-icon]")).toBeVisible();
     const named = await label.isVisible();
     if (named) await expectUnclippedText(label);
     else expect((await bounds(trigger)).width).toBeGreaterThanOrEqual(24);
@@ -773,4 +781,28 @@ test("download progress in the open Downloads popover does not refit the toolbar
       ),
     ),
   ).toEqual(before);
+});
+
+test("overflowed Downloads returns keyboard focus to More", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await page.goto(
+    "/tests/ui/fixtures/browser-address.html?chat=Chat&width=339",
+  );
+  const toolbar = page.locator(".browser-surface__toolbar");
+  await expect(toolbar).toHaveAttribute("data-overflow-downloads", "");
+  const more = toolbar.getByRole("button", { name: "More options" });
+  await more.click();
+  await toolbar
+    .getByRole("menuitem", { name: "Downloads", exact: true })
+    .click();
+  const downloads = page.getByRole("dialog", {
+    name: "Downloads",
+    exact: true,
+  });
+  await expect(downloads).toBeVisible();
+  await downloads.press("Escape");
+  await expect(downloads).toHaveCount(0);
+  await expect(more).toBeFocused();
 });

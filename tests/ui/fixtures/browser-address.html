@@ -20,6 +20,7 @@
       import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
       import { BrowserDownloadsControl } from "/src/features/browser/BrowserDownloadsControl.tsx";
       import { BrowserAgentPresence } from "/src/features/browser/BrowserAgentPresence.tsx";
+      import { useAgentArtifactPaneFocus } from "/src/workbench/useAgentArtifactPaneFocus.ts";
       import { BrowserClearData } from "/src/features/browser/BrowserClearData.tsx";
       import "/src/styles/global.css";
       import "/src/styles/shared-dialogs.css";
@@ -32,11 +33,22 @@
       const width = params.get("width");
       if (width)
         document.querySelector(".browser-surface").style.width = `${width}px`;
+      const artifactFocus = params.has("artifact-focus");
       function Fixture() {
         const [address, setAddress] = React.useState(newTab ? "" : url);
         const addressField = React.useRef(null);
         const [downloadsOpen, setDownloadsOpen] = React.useState(false);
-        return React.createElement(BrowserNavigationControls, {
+        const [expanded, setExpanded] = React.useState(true);
+        const paneRef = React.useRef(null);
+        const triggerRef = React.useRef(null);
+        const onKeyDown = useAgentArtifactPaneFocus({
+          expanded: artifactFocus && expanded,
+          overlay: false,
+          paneRef,
+          triggerRef,
+          onExpandedChange: setExpanded,
+        });
+        const controls = React.createElement(BrowserNavigationControls, {
           navigation: {
             tabId: "browser-visual",
             url: newTab ? "" : url,
@@ -115,6 +127,29 @@
               })
             : undefined,
         });
+        return artifactFocus
+          ? React.createElement(
+              React.Fragment,
+              null,
+              React.createElement(
+                "button",
+                { ref: triggerRef, onClick: () => setExpanded(true) },
+                "Show files and preview",
+              ),
+              expanded
+                ? React.createElement(
+                    "aside",
+                    {
+                      ref: paneRef,
+                      tabIndex: -1,
+                      onKeyDown,
+                      "aria-label": "Agent artifacts",
+                    },
+                    controls,
+                  )
+                : null,
+            )
+          : controls;
       }
       createRoot(document.getElementById("toolbar")).render(
         React.createElement(Fixture),

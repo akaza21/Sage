@@ -3,8 +3,9 @@
    useComposerCompaction hides it when the toolbar has no room, leaving the mark. */
 .composer__harness.composer__control-trigger {
   --picker-trigger-icon-size: var(--icon-size-md);
-  min-width: calc(var(--picker-trigger-icon-size) + 2 * var(--space-1));
-  max-width: 160px;
+  height: var(--control-height-compact);
+  min-width: var(--control-height-compact);
+  max-width: var(--picker-harness-trigger-max-width);
   flex: 0 1 auto;
 }
 
@@ -87,4 +88,166 @@
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   white-space: normal;
+}
+
+/* The compact composer control retains its established type size. */
+.composer__harness,
+.composer__harness-menu.menu-popover {
+  --picker-harness-type-size: 11px;
+}
+
+.composer__harness .searchable-picker {
+  width: 100%;
+  height: 100%;
+}
+
+.composer__harness .searchable-picker__trigger {
+  display: inline-flex;
+  width: 100%;
+  height: var(--picker-trigger-height, 100%);
+  min-height: 0;
+  justify-content: var(--picker-trigger-justify, space-between);
+  gap: var(--space-1);
+  padding: var(--picker-trigger-padding, 0 var(--space-1));
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--composer-control-text);
+  background: transparent;
+  font-size: var(--picker-harness-type-size);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.composer__harness[data-keyboard-focus="false"] .searchable-picker__trigger {
+  outline: none;
+  box-shadow: none;
+}
+
+.composer__harness .searchable-picker__trigger-label {
+  display: var(--picker-label-display, block);
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--border-width);
+  overflow: hidden;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.composer__harness .searchable-picker__chevron {
+  display: var(--picker-chevron-display, block);
+  width: var(--picker-chevron-size, var(--space-3));
+  height: var(--picker-chevron-size, var(--space-3));
+}
+
+.composer__harness .searchable-picker__trigger > :is(svg, img):first-child {
+  width: var(--picker-trigger-icon-size, var(--icon-size-md));
+  height: var(--picker-trigger-icon-size, var(--icon-size-md));
+  flex: 0 0 auto;
+}
+
+.composer__harness-menu.menu-popover {
+  --menu-focus-edge: var(--color-border-strong);
+  --menu-selected-fill: var(--color-surface-hover);
+  display: flex;
+  flex-direction: column;
+  width: min(var(--picker-harness-menu-width), calc(100vw - var(--space-8)));
+  border-radius: var(--radius-composer-menu);
+  background: var(--color-plane-raised);
+  backdrop-filter: none;
+}
+
+.composer__harness-menu .searchable-picker__current,
+.composer__harness-menu .searchable-picker__section-label {
+  position: absolute;
+  width: var(--border-width);
+  height: var(--border-width);
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.composer__harness-menu .searchable-picker__option {
+  min-height: var(--picker-option-min-height, var(--control-height-default));
+  grid-template-columns:
+    var(--picker-option-icon-size, var(--icon-size-lg)) minmax(0, 1fr)
+    var(--picker-option-check-size, var(--icon-size-md));
+  gap: var(--picker-option-gap, var(--space-2));
+  padding: var(--picker-option-padding, var(--space-1) var(--space-2));
+  border-radius: var(--radius-md);
+}
+
+.composer__harness-menu > [role="listbox"] {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.composer__harness-menu .searchable-picker__option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--border-width);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.composer__harness-menu .searchable-picker__subtitle {
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: var(--picker-harness-type-size);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__harness-menu .searchable-picker__option:hover,
+.composer__harness-menu .searchable-picker__option:focus-visible {
+  background: var(--composer-control-hover);
+  box-shadow: var(--glass-highlight);
+}
+
+.composer__harness-menu .searchable-picker__selected-check {
+  grid-column: 3;
+  color: var(--composer-control-text);
+}
+
+.composer__harness-menu .searchable-picker__reason {
+  position: absolute;
+  width: var(--border-width);
+  height: var(--border-width);
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@media (forced-colors: active) {
+  .composer__harness-menu.menu-popover {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .composer__harness-menu
+    .searchable-picker__option:is(
+      :hover,
+      :focus-visible,
+      [aria-selected="true"]
+    ) {
+    color: HighlightText;
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  .composer__harness-menu .searchable-picker__selected-check {
+    color: inherit;
+  }
+}
+
+.composer__harness-menu .searchable-picker__option > :is(svg, img) {
+  width: var(--picker-option-icon-size, var(--icon-size-lg));
+  height: var(--picker-option-icon-size, var(--icon-size-lg));
+  flex: none;
 }

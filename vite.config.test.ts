@@ -70,7 +70,30 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
   rust: "src/features/files/editorLanguageRust.ts",
 } as const;
 
+const COMPOSER_MENU_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerAccessMenu.tsx",
+  "src/features/chat/ComposerEffortMenu.tsx",
+  "src/features/chat/ComposerModelMenu.tsx",
+];
+const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/ports/editorWatchSession.ts",
+  "src/features/files/newFileResult.ts",
+  "src/app/browserPopupNative.ts",
+  "src/app/agentWorkingDiffRepository.ts",
+  "src/features/files/fileRenameResult.ts",
+  "src/features/files/resourceTrashContract.ts",
+  "src/features/browser/browserSuggestions.ts",
+  "src/features/browser/browserClipboard.ts",
+  "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/BrowserAnnotatePopover.tsx",
+  "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/files/fileSymbolNavigation.ts",
+  "src/features/files/FileGoToLineBar.tsx",
+];
 const REQUIRED_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerAddActions.tsx",
+  ...REQUEST_ONLY_DYNAMIC_FACADES,
+  ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
   "node_modules/@tauri-apps/api/core.js",
   "node_modules/@tauri-apps/api/event.js",
@@ -89,6 +112,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
+  "src/features/chat/ChatQueueExecution.tsx",
+  // Recovery notices and sign-in actions stay off the ready Chat path.
+  "src/features/chat/HarnessDiscoveryNotice.tsx",
+  "src/features/chat/ClaudeAuthActions.tsx",
   // Queued-message rows load with the first queued message.
   "src/features/chat/ComposerQueuedPrompts.tsx",
   "src/features/chat/ForkChat.tsx",
@@ -96,17 +123,27 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
   "src/features/chat/acp/PermissionPrompt.tsx",
+  "src/features/chat/acp/TurnFileActivity.tsx",
   // The stream-fade run tracker loads beside the transcript, off its path.
   "src/features/chat/acp/streamTail.ts",
+  // A terminal turn's Git workspace changes load after the turn settles.
+  "src/features/chat/acp/turnWorkspaceChanges.ts",
+  "src/features/chat/acp/TurnEditSummary.tsx",
+  "src/features/harness/HarnessSignInStatus.tsx",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",
   "src/features/chat/chatImageTransfer.ts",
   "src/features/diff/DiffSurface.tsx",
+  "src/features/diff/ChangesSurface.tsx",
+  "src/features/diff/ChangesTab.tsx",
   // The Find and Replace bar (EP-04) loads on the first Find or Replace.
   "src/features/files/FileFindBar.tsx",
   // Explorer loads on first show, off the Agent startup path.
   "src/features/files/ExplorerSurface.tsx",
   "src/features/files/FileSurface.tsx",
+  // Harness sign-in status loads when the desktop picker has harnesses.
+  "src/features/harness/harnessSignIn.ts",
+  "src/features/files/MixedEolFileView.tsx",
   // New File hands focus to the editor through this, off the startup path.
   "src/features/files/editorFocusRequest.ts",
   // The editing features (EP-03) load with the first editable File.
@@ -115,6 +152,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/git/gitDecorationsUi.ts",
   // The Editor tab strip loads with the Editor.
   "src/workbench/TabStrip.tsx",
+  // Change markers (EP-14) load with the first File in a repository.
+  "src/features/files/gitGutter/index.ts",
   // Outline is an Editor tool panel; its syntax parse loads with CodeMirror.
   "src/features/outline/OutlineSurface.tsx",
   "src/features/outline/syntaxOutline.ts",
@@ -123,11 +162,30 @@ const REQUIRED_DYNAMIC_FACADES = [
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
   "src/features/search/SearchSurface.tsx",
-  // Native file-watch delivery loads only when a document subscribes.
-  "src/ports/editorWatchSession.ts",
-  // The Chat list options menu loads on its first open.
-  "src/workbench/AgentRailFilterOptions.tsx",
+  "src/features/settings/AgentBrowserSettings.tsx",
+  "src/features/settings/AgentKeyboardSettings.tsx",
+  "src/features/settings/AgentSettingsExecution.tsx",
+  "src/features/settings/AgentSettingsSurface.tsx",
+  "src/features/settings/openEditorSettings.ts",
+  "src/workbench/ActiveEditorCanvas.tsx",
+  // The sidebar options menu loads on its first open.
+  "src/workbench/AgentRailOptionsPopover.tsx",
+  // The Create project dialog loads on the rail's first "+".
+  "src/workbench/CreateProjectDialog.tsx",
   "src/workbench/AgentTaskResources.tsx",
+  "src/workbench/AgentArtifactHeader.tsx",
+  "src/workbench/AgentArtifactOpenMenu.tsx",
+  "src/workbench/AgentArtifactTabStrip.tsx",
+  "src/workbench/AgentChatSplitter.tsx",
+  "src/workbench/AgentCollapsedNavigation.tsx",
+  "src/workbench/AgentResourcesPopover.tsx",
+  "src/workbench/AgentSideChatHeaders.tsx",
+  "src/workbench/AgentProjectMenu.tsx",
+  "src/workbench/AgentRailArchiveNotice.tsx",
+  "src/workbench/AgentRecentChats.tsx",
+  "src/workbench/useAgentRailStatus.ts",
+  "src/workbench/ProjectChatActionPopover.tsx",
+  "src/workbench/ProjectChatRename.tsx",
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
@@ -161,14 +219,11 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/features/preview/useHarnessBrowseSession.ts",
   "src/workbench/AgentArtifactCollapsedPane.tsx",
   "src/workbench/AgentArtifactFocusGuard.tsx",
-  "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
-  "src/workbench/AgentArtifactTabStrip.tsx",
-  "src/workbench/AgentChatPane.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
-  "src/workbench/AgentRailFilterMenu.tsx",
+  "src/workbench/AgentRailOptionsMenu.tsx",
   "src/workbench/AgentRailSections.tsx",
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
@@ -180,7 +235,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/LeftSidebar.tsx",
   "src/workbench/ProjectChatActionMenu.tsx",
   "src/workbench/ProjectChatNavigation.tsx",
-  "src/workbench/ProjectChatRailGlyph.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
   "src/workbench/useAgentArtifactPaneFocus.ts",
   "src/workbench/useSubagentPaneExpansion.ts",
@@ -475,6 +529,37 @@ describe("desktop-native runtime resolver", () => {
 });
 
 describe("desktop-native chunk topology", () => {
+  it("ignores generated work and evidence paths without ignoring application source", () => {
+    const config = initialGroupConfig("serve", DESKTOP_NATIVE_BUILD_MODE);
+    const ignored = config.server?.watch?.ignored;
+    const ignores = (file: string) =>
+      (Array.isArray(ignored) ? ignored : [ignored]).some((matcher) =>
+        typeof matcher === "function"
+          ? matcher(file)
+          : typeof matcher === "string"
+            ? path.matchesGlob(file, matcher)
+            : matcher instanceof RegExp && matcher.test(file),
+      );
+    for (const generated of [
+      "work/landing-tmp/fixture/tsconfig.json",
+      "work/landing-tmp/fixture/index.html",
+      "output/ui-results/index.html",
+      "local-evidence/receipt.json",
+      "src-tauri/src/lib.rs",
+    ]) {
+      expect(ignores(path.join(root, generated)), generated).toBe(true);
+    }
+    for (const source of [
+      "index.html",
+      "tsconfig.json",
+      "src/app/store.ts",
+      "src/features/work/Surface.tsx",
+      "tests/ui/fixtures/visualScenarios.ts",
+    ]) {
+      expect(ignores(path.join(root, source)), source).toBe(false);
+    }
+  });
+
   it("keeps chat announcements, edit summaries and queued-tray sizing out of Editor closures", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     const chatOnly = [
@@ -483,6 +568,7 @@ describe("desktop-native chunk topology", () => {
       "src/features/chat/acp/AcpAnnouncementRegions.tsx",
       "src/features/chat/acp/agentEditSummary.ts",
       "src/features/chat/acp/chatEditSummary.ts",
+      "src/features/chat/acp/turnWorkspaceBridge.ts",
       "src/features/chat/acp/editingFiles.ts",
     ];
     for (const facade of [
@@ -500,6 +586,17 @@ describe("desktop-native chunk topology", () => {
         ).toBe(false);
     }
     const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
+    for (const module of COMPOSER_MENU_DYNAMIC_FACADES) {
+      expect(graph.dynamicFacades).toContain(module);
+      expect(
+        chat.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        graph.initialModules.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+    }
     // chatEditSummary and the lazy queued-message rows are not static.
     for (const module of chatOnly.filter(
       (id) =>
@@ -555,9 +652,8 @@ describe("desktop-native chunk topology", () => {
     const baselineGraph = graphInventory(baseline);
     const groupedGraph = graphInventory(grouped);
     const files = [
-      "src/features/chat/acp/TurnEditSummary.tsx",
       "src/features/chat/acp/TurnActivityItem.tsx",
-      "src/features/chat/acp/ToolActivityRollupView.tsx",
+      "src/features/chat/acp/PrimaryActivities.tsx",
       "src/features/chat/acp/ChatCodeBlock.tsx",
     ].map((id) => groupedGraph.moduleFiles.get(id));
     expect(files.every((file) => typeof file === "string")).toBe(true);
@@ -604,6 +700,12 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    const artifactStrip = groupedGraph.moduleFiles.get(
+      "src/workbench/AgentArtifactTabStrip.tsx",
+    );
+    expect(artifactStrip).toBeDefined();
+    expect(artifactStrip).not.toBe(agentFile);
+    expect(artifactStrip).not.toBe(sharedFile);
     const resources = "src/workbench/AgentTaskResources.tsx";
     const resourcesFile = groupedGraph.moduleFiles.get(resources);
     expect(groupedGraph.chunkNames.get(resourcesFile!)).toBe(
@@ -612,9 +714,14 @@ describe("desktop-native chunk topology", () => {
     expect(resourcesFile).not.toBe(agentFile);
     expect(resourcesFile).not.toBe(sharedFile);
     for (const facade of [workbench, agent]) {
-      expect(closureForModule(groupedGraph, facade)).not.toContain(
-        path.join(root, resources).split(path.sep).join("/"),
-      );
+      for (const module of [
+        resources,
+        "src/workbench/AgentResourcesPopover.tsx",
+      ]) {
+        expect(closureForModule(groupedGraph, facade)).not.toContain(
+          path.join(root, module).split(path.sep).join("/"),
+        );
+      }
     }
     // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
@@ -717,12 +824,18 @@ describe("desktop-native chunk topology", () => {
     for (const facade of [workbench, agent, presentation]) {
       expect(
         closureForModule(groupedGraph, facade).filter((id) =>
-          /(?:InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
+          /(?:TurnEditSummary\.tsx|turnWorkspaceChanges\.ts|HarnessSignInStatus\.tsx|harnessSignIn(?:Bridge)?\.ts|InlineSavedDiff\.tsx|DiffHunks\.tsx|snapshotDiff\.ts|MermaidFigure\.tsx|mermaid[^/]+\.ts|@codemirror|CodeMirrorEditorRuntime\.ts)/.test(
             id,
           ),
         ),
         facade,
       ).toEqual([]);
+      expect(
+        closureForModule(groupedGraph, facade).some((id) =>
+          id.endsWith("src/features/chat/acp/turnWorkspaceBridge.ts"),
+        ),
+        facade,
+      ).toBe(facade !== workbench);
     }
     for (const facade of [
       workbench,
@@ -831,14 +944,15 @@ describe("desktop-native chunk topology", () => {
       Math.ceil(ordinaryGraph.allModules.length * 0.65),
     );
     for (const snapshotModule of [
+      ...REQUEST_ONLY_DYNAMIC_FACADES.map((file) => `/${file}`),
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",
       "/src/app/agentDiffAdmission.ts",
       "/src/app/agentDiffLoad.ts",
       "/src/features/diff/snapshotDiff.ts",
-      "/src/ports/editorWatchSession.ts",
       "/src/workbench/AgentWorkbenchBody.tsx",
       "/src/workbench/AgentTaskResources.tsx",
+      "/src/workbench/AgentResourcesPopover.tsx",
       "/src/workbench/SettingsSurface.tsx",
       "/src/workbench/SourceControlView.tsx",
       "/src/workbench/Workbench.tsx",
@@ -852,6 +966,14 @@ describe("desktop-native chunk topology", () => {
     }
     expect(groupedGraph.allModules).toEqual(ordinaryGraph.allModules);
     expect(groupedGraph.initialModules).toEqual(ordinaryGraph.initialModules);
+    expect(
+      closureForModule(
+        ordinaryGraph,
+        "src/workbench/AgentWorkbenchBody.tsx",
+      )?.some((id) =>
+        id.endsWith("/src/features/settings/agentSettingsState.ts"),
+      ),
+    ).toBe(true);
     expect(
       groupedGraph.allModules.some((id) => id.endsWith(BROWSER_FIXTURE_MODULE)),
     ).toBe(false);

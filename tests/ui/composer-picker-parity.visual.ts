@@ -27,7 +27,7 @@ test("gives harness and model triggers the same control treatment", async ({
     });
   expect(await treatment(harness)).toEqual(await treatment(model));
   for (const [icon, size] of [
-    [harness.locator(".harness-logo"), "16px"],
+    [harness.locator("[data-harness-icon]"), "16px"],
     [model.locator("svg").last(), "16px"],
   ] as const) {
     await expect(icon).toBeVisible();
@@ -216,10 +216,15 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   await openScenario(page, "agent-picker-harness-model", "agent");
 
   const composer = page.locator("form.composer").first();
-  const composerBox = await composer.boundingBox();
+  const composerBox = await page.locator(".chat-dock").first().boundingBox();
   expect(composerBox).not.toBeNull();
-  expect(composerBox!.width).toBeGreaterThanOrEqual(656);
-  expect(composerBox!.width).toBeLessThanOrEqual(672);
+  const columnBox = await page
+    .locator(".message-list__content")
+    .first()
+    .boundingBox();
+  expect(columnBox).not.toBeNull();
+  expect(composerBox!.width).toBeCloseTo(columnBox!.width, 1);
+  expect(composerBox!.x).toBeCloseTo(columnBox!.x, 1);
 
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
@@ -320,8 +325,16 @@ test("known context and Goal fit the reference composer without invented native 
   expect(composerBox).not.toBeNull();
   expect(goalBox).not.toBeNull();
   expect(goalBox!.height).toBe(32);
-  expect(goalBox!.width).toBeGreaterThanOrEqual(634);
-  expect(goalBox!.width).toBeLessThanOrEqual(642);
+  const insets = await goal.evaluate((element) => {
+    const form = element.closest("form")!;
+    const style = getComputedStyle(form);
+    return (
+      2 *
+      (Number.parseFloat(style.getPropertyValue("--space-3")) +
+        Number.parseFloat(style.borderLeftWidth))
+    );
+  });
+  expect(goalBox!.width).toBeCloseTo(composerBox!.width - insets, 1);
   expect(goalBox!.x - composerBox!.x).toBeGreaterThanOrEqual(8);
   expect(goalBox!.x - composerBox!.x).toBeLessThanOrEqual(16);
 });

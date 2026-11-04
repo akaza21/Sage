@@ -217,6 +217,7 @@
 }
 
 .select-control {
+  --radius-select-control-trigger: var(--radius-sm);
   position: relative;
   display: inline-grid;
   min-width: 0;

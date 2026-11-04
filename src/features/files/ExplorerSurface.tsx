@@ -27,7 +27,11 @@ import {
 } from "./explorerContextMenu";
 import { ExplorerRow } from "./ExplorerRow";
 import { FileKindIcon } from "./FileKindIcon";
-import { flattenFileTree } from "./fileTree";
+import {
+  EXPLORER_ROW_LIMIT,
+  flattenFileTree,
+  type FlattenedFileTree,
+} from "./fileTree";
 
 // The `files.exclude` matcher loads beside the startup bundle, starting as
 // this module loads, long before the first listing returns.
@@ -41,8 +45,10 @@ const matcherLoaded = import("../../domain/pathGlobMatcher").then(
 
 const RootTree = memo(function RootTree({
   root,
+  tree,
 }: {
   root: ProjectRootSummary;
+  tree: FlattenedFileTree;
 }) {
   const selected = useWorkbenchStore((state) => state.selectedResource);
   const listings = useWorkbenchStore((state) => state.directoryListings);
@@ -52,18 +58,6 @@ const RootTree = memo(function RootTree({
   const selectDirectory = useWorkbenchStore((state) => state.selectDirectory);
   const openFile = useWorkbenchStore((state) => state.openFile);
   const selectRoot = useWorkbenchStore((state) => state.selectRoot);
-  const hideIgnored = useEditorSettingsStore(
-    (store) => store.settings["explorer.showIgnored"] === "hidden",
-  );
-  const filesExclude = useEditorSettingsStore(
-    (store) => store.settings["files.exclude"],
-  );
-  const [matcher, setMatcher] = useState(matcherModule);
-  useEffect(() => {
-    if (!matcher) {
-      void matcherLoaded.then((module) => module && setMatcher(module));
-    }
-  }, [matcher]);
   const git = useRootGitDecorations(root.id);
   const rootGitDecoration = git?.ui.gitDecorationAt(git.decorations, "", true);
   const selectedRow = useRef<HTMLButtonElement>(null);
@@ -93,18 +87,6 @@ const RootTree = memo(function RootTree({
     [contextMenu],
   );
   const rootSelected = sameResource(rootResource, selected);
-  const tree = useMemo(
-    () =>
-      flattenFileTree(
-        rootResource,
-        listings,
-        expanded,
-        500,
-        hideIgnored,
-        matcher?.pathGlobMatcher(filesExclude),
-      ),
-    [expanded, filesExclude, hideIgnored, listings, matcher, rootResource],
-  );
   const listing = listings[resourceKey(rootResource)];
   const nestedTruncatedResource = tree.entries.find((entry) => {
     const entryListing = listings[resourceKey(entry.resource)];
@@ -214,6 +196,36 @@ const RootTree = memo(function RootTree({
 
 export function ExplorerSurface() {
   const project = useWorkbenchStore(selectOpenProject);
+  const listings = useWorkbenchStore((state) => state.directoryListings);
+  const expanded = useWorkbenchStore((state) => state.expandedDirectories);
+  const hideIgnored = useEditorSettingsStore(
+    (store) => store.settings["explorer.showIgnored"] === "hidden",
+  );
+  const filesExclude = useEditorSettingsStore(
+    (store) => store.settings["files.exclude"],
+  );
+  const [matcher, setMatcher] = useState(matcherModule);
+  useEffect(() => {
+    if (!matcher) {
+      void matcherLoaded.then((module) => module && setMatcher(module));
+    }
+  }, [matcher]);
+  const trees = useMemo(() => {
+    let remaining = EXPLORER_ROW_LIMIT;
+    const excluded = matcher?.pathGlobMatcher(filesExclude);
+    return project?.roots.map((root) => {
+      const tree = flattenFileTree(
+        childResource(root.id),
+        listings,
+        expanded,
+        remaining,
+        hideIgnored,
+        excluded,
+      );
+      remaining -= tree.entries.length;
+      return { root, tree };
+    });
+  }, [project, listings, expanded, hideIgnored, matcher, filesExclude]);
   const fileCreateNotice = useWorkbenchStore((state) => state.fileCreateNotice);
   const folderCreateNotice = useWorkbenchStore(
     (state) => state.folderCreateNotice,
@@ -250,8 +262,10 @@ export function ExplorerSurface() {
         </p>
       ) : null}
       <div className="tree" role="tree" aria-label="Project files">
-        {project?.roots.length ? (
-          project.roots.map((root) => <RootTree key={root.id} root={root} />)
+        {trees?.length ? (
+          trees.map(({ root, tree }) => (
+            <RootTree key={root.id} root={root} tree={tree} />
+          ))
         ) : (
           <p className="sidebar__empty">Open a folder to see files.</p>
         )}

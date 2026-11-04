@@ -3,6 +3,7 @@ use std::sync::Arc;
 mod catalog_definition;
 mod claude_auth;
 mod discovery_state;
+mod persisted_binding;
 use catalog_definition::{CuratedProtocol, definition};
 use discovery_state::DiscoveryState;
 
@@ -202,7 +203,7 @@ impl HarnessCatalog {
             definition(
                 "pi",
                 "Pi",
-                "Discovers the local RPC CLI; a compatible binding is required before launch.",
+                "Launches the discovered local Pi CLI over its RPC mode with read-only tools.",
                 self.install_state("pi").as_str(),
                 "builtIn",
                 self.registered_protocol("pi"),
@@ -817,7 +818,11 @@ mod tests {
             by_id(&snapshot.harnesses, "opencode").binding_id.as_deref(),
             Some("opencode-acp")
         );
-        for id in ["pi", "gemini-cli", "cursor-agent", "oh-my-pi"] {
+        assert_eq!(
+            by_id(&snapshot.harnesses, "pi").binding_id.as_deref(),
+            Some("pi-rpc")
+        );
+        for id in ["gemini-cli", "cursor-agent", "oh-my-pi"] {
             assert!(by_id(&snapshot.harnesses, id).binding_id.is_none());
         }
     }
@@ -948,7 +953,11 @@ mod tests {
             by_id(&definitions, "opencode").unavailable_reason,
             Some(HarnessUnavailableReason::AdmissionIncomplete),
         );
-        for id in ["pi", "gemini-cli", "cursor-agent", "oh-my-pi"] {
+        assert_eq!(
+            by_id(&definitions, "pi").unavailable_reason,
+            Some(HarnessUnavailableReason::AdmissionIncomplete),
+        );
+        for id in ["gemini-cli", "cursor-agent", "oh-my-pi"] {
             assert!(by_id(&definitions, id).unavailable_reason.is_none(), "{id}");
         }
     }

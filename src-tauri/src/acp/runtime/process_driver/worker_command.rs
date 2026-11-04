@@ -307,10 +307,26 @@ impl ProcessLivePort {
         command: WorkerCommand,
         deadline: Instant,
     ) -> Result<WorkerReply, HostError> {
+        let started = Instant::now();
+        let kind = match &command {
+            WorkerCommand::PreparePrompt(_) => "prepare_prompt",
+            WorkerCommand::DispatchPrompt { .. } => "dispatch_prompt",
+            WorkerCommand::ObserveSend { .. } => "observe_send",
+            _ => "control",
+        };
+        let budget_ms = deadline.saturating_duration_since(started).as_millis();
         let response = self
             .mailbox
             .submit_worker_until(command, deadline)
-            .map_err(map_mailbox)?;
+            .map_err(map_mailbox)
+            .inspect_err(|error| {
+                crate::acp::runtime::prompt_diagnostics::failed(
+                    "port.submit",
+                    started,
+                    error,
+                    (kind, budget_ms, self.mailbox.diagnostic_state()),
+                );
+            })?;
         match response.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(reply) => reply,
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -320,6 +336,14 @@ impl ProcessLivePort {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
         }
+        .inspect_err(|error| {
+            crate::acp::runtime::prompt_diagnostics::failed(
+                "port.reply",
+                started,
+                error,
+                (kind, budget_ms, self.mailbox.diagnostic_state()),
+            );
+        })
     }
 }
 

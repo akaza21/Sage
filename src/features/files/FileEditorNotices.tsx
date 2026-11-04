@@ -1,6 +1,5 @@
+import { type EditorConflict } from "../../domain/workbench";
 import { AlertTriangle } from "../../ui/leanIcons";
-
-import type { EditorConflict } from "../../domain/workbench";
 
 interface FileEditorNoticesProps {
   conflict: EditorConflict | null;

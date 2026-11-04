@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useDismissOnOutsidePointer } from "./browserPopover";
+import { useNativePageLayer } from "../../ui/nativePageLayers";
 import {
   activeDownloadProgress,
   isActiveDownload,
@@ -18,7 +19,7 @@ import {
 const BrowserDownloadsPanel = lazy(() => import("./BrowserDownloadsPanel"));
 
 /**
- * The toolbar's ⬇ button and its popover (Codex browser toolbar). A ring on
+ * The toolbar's ⬇ button and its popover. A ring on
  * the button shows the active downloads' progress while the popover is shut.
  */
 export function BrowserDownloadsControl({
@@ -34,18 +35,27 @@ export function BrowserDownloadsControl({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useNativePageLayer(popover, { open });
   const active = downloads.filter(isActiveDownload).length;
   const progress = activeDownloadProgress(downloads);
   useDismissOnOutsidePointer(open, [root], onOpenChange);
   useEffect(() => {
-    if (open) popover.current?.focus();
+    if (open) {
+      const active = document.activeElement;
+      returnFocus.current =
+        active instanceof HTMLElement && active !== document.body
+          ? active
+          : trigger.current;
+      popover.current?.focus();
+    }
   }, [open]);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!open || event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
     onOpenChange(false);
-    trigger.current?.focus();
+    returnFocus.current?.focus();
   };
   return (
     <div

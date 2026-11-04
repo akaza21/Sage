@@ -88,32 +88,27 @@
    drops its title, the Agent's presence drops its label, then Downloads and
    last the page actions move into the More menu. Only with nothing left to
    move does the address shrink further. */
-.browser-surface__toolbar[data-compact-annotate] .browser-surface__annotate {
-  width: 28px;
+[data-compact-annotate] .browser-surface__annotate {
+  width: var(--control-height-compact);
   padding: 0;
   justify-content: center;
   font-size: 0;
 }
-.browser-surface__toolbar[data-compact-presence]
+[data-compact-presence]
   .browser-surface__page-actions-slot
   .browser-surface__agent-presence-label {
-  /* Still announced and in the presence row's title; just not drawn. */
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
+  /* Keep the live status in the accessibility tree while its text yields. */
+  width: 0;
 }
 .browser-surface__page-actions-slot,
 .browser-surface__page-actions-host {
   display: contents;
 }
-.browser-surface__toolbar[data-overflow-downloads] .browser-downloads__trigger,
-.browser-surface__toolbar[data-overflow-actions]
-  .browser-surface__page-actions-slot {
+[data-overflow-downloads] .browser-downloads__trigger,
+[data-overflow-actions] .browser-surface__page-actions-slot {
   display: none;
 }
-.browser-surface__toolbar[data-overflow-actions] .browser-surface__address {
+[data-overflow-actions] .browser-surface__address {
   min-width: 0;
 }
 .browser-surface__nav-group,
@@ -124,8 +119,12 @@
   gap: 2px;
 }
 .browser-surface__nav-group {
+  overflow: clip;
   border-radius: var(--radius-pill);
   background: var(--browser-control-fill);
+}
+.browser-surface__nav-group button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .browser-surface__right-group {
   position: relative;
@@ -192,7 +191,7 @@
   display: flex;
   flex: 0 1 auto;
   min-width: 10ch;
-  max-width: 160px;
+  max-width: var(--browser-chat-picker-max-width);
 }
 .browser-surface__attachment select {
   width: 100%;
@@ -216,14 +215,14 @@
     display: none;
   }
 }
-.browser-surface__toolbar[data-compact-chat]
+[data-compact-chat]
   .browser-surface__page-actions-slot
   .browser-surface__chat-picker {
   flex: none;
   width: var(--control-height-compact);
   min-width: 0;
 }
-.browser-surface__toolbar[data-compact-chat]
+[data-compact-chat]
   .browser-surface__page-actions-slot
   .browser-surface__attachment
   select {
@@ -234,7 +233,7 @@
 .browser-surface__attachment option {
   color: var(--browser-control-text);
 }
-.browser-surface__toolbar[data-compact-chat]
+[data-compact-chat]
   .browser-surface__page-actions-slot
   .browser-surface__chat-icon {
   display: block;
@@ -248,33 +247,13 @@
   flex-direction: column;
   align-items: stretch;
 }
-.browser-surface__menu-page-actions .browser-surface__attachment {
-  flex: 1 1 auto;
-}
 .browser-surface__menu-page-actions .browser-surface__agent-presence-label {
   flex: 1 1 auto;
   max-width: none;
 }
 .browser-surface__menu-page-actions .browser-surface__chat-picker {
   flex: 1 1 0;
-  width: auto;
   max-width: none;
-}
-.browser-surface__menu-page-actions .browser-surface__attachment select {
-  padding: 0 var(--space-2);
-  color: var(--browser-control-text);
-  appearance: auto;
-}
-.browser-surface__menu-page-actions .browser-surface__chat-icon {
-  display: none;
-}
-/* Undo the menu's full-width row styling: these stay the toolbar's buttons. */
-.browser-surface__menu-page-actions .browser-surface__attachment button {
-  display: grid;
-  width: var(--control-height-compact);
-  border: 1px solid var(--browser-control-border);
-  background: var(--browser-control-fill);
-  padding: 0;
 }
 .browser-surface__attachment button:hover:not(:disabled),
 .browser-surface__attachment select:hover:not(:disabled) {
@@ -309,7 +288,7 @@
   margin-top: 4px;
   padding-top: 4px;
 }
-.browser-surface__menu button {
+.browser-surface__menu [role="menuitem"] {
   display: block;
   width: 100%;
   height: 28px;
@@ -571,8 +550,7 @@
   padding: 2px 8px;
 }
 .browser-clear-data [role="alert"],
-.browser-site-permissions p[role="alert"],
-.browser-downloads__error {
+.browser-site-permissions p[role="alert"] {
   color: var(--color-danger);
 }
 
@@ -589,8 +567,7 @@
   margin: 0;
   list-style: none;
 }
-/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
-   popover hangs from the right group like the … menu does. */
+
 .browser-downloads__trigger {
   position: relative;
 }
@@ -637,65 +614,6 @@
 }
 .browser-downloads__popover:focus {
   outline: none;
-}
-.browser-downloads__title {
-  margin: 0;
-  padding: 2px 8px 4px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.browser-downloads__empty {
-  margin: 0;
-  padding: 8px;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__error {
-  margin: 0;
-  padding: 0 8px;
-}
-.browser-downloads__list {
-  display: grid;
-  gap: 2px;
-  max-height: 288px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.browser-downloads__item {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0 8px;
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-}
-.browser-downloads__item:hover {
-  background: var(--browser-control-hover);
-}
-.browser-downloads__item > svg {
-  grid-row: 1 / span 2;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__name,
-.browser-downloads__status {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.browser-downloads__status {
-  grid-column: 2;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__item > button {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-}
-.browser-downloads__item > progress {
-  grid-column: 2 / -1;
-  width: 100%;
-  height: 4px;
-  accent-color: var(--color-accent);
 }
 .browser-site-permissions {
   display: grid;

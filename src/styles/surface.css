@@ -1,0 +1,30 @@
+/* One painted edge per surface. Nested surfaces reset all roles locally. */
+.surface {
+  --surface-radius: var(--radius-md);
+  --surface-radius-inner: calc(var(--surface-radius) - var(--border-width));
+  --radius-surface: var(--surface-radius);
+  --surface-border: var(--color-border-subtle);
+  --surface-fill: var(--color-panel);
+  --surface-shadow: none;
+  --surface-margin: 0;
+  margin: var(--surface-margin);
+  overflow: clip;
+  border: var(--border-width) solid var(--surface-border);
+  border-radius: var(--radius-surface);
+  background: var(--surface-fill);
+  box-shadow: var(--surface-shadow);
+}
+
+.surface--card {
+  --surface-radius: var(--workbench-card-radius);
+  --surface-border: var(--workbench-card-border);
+  --surface-fill: var(--workbench-card-fill);
+  --surface-margin: var(--workbench-card-margin);
+}
+
+.surface--dock {
+  --surface-radius: var(--radius-xl);
+  --surface-border: var(--composer-border);
+  --surface-fill: var(--composer-fill);
+  --surface-shadow: var(--composer-shadow);
+}

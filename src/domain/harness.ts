@@ -95,3 +95,13 @@ export interface ModelOption {
   isDefault?: boolean;
   contextWindow?: number;
 }
+
+/** Presentation-only mark selection; never selects protocol behavior. */
+export function harnessIconKind(
+  name: string | null | undefined,
+): "claude" | "codex" | "opencode" | undefined {
+  if (/claude/i.test(name ?? "")) return "claude";
+  if (/codex/i.test(name ?? "")) return "codex";
+  if (/opencode/i.test(name ?? "")) return "opencode";
+  return undefined;
+}

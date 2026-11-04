@@ -113,6 +113,25 @@ describe("harness discovery reconciliation", () => {
     expect(state.harnessDiscoveryPhase).toBe("ready");
   });
 
+  it("loads models when a restored unavailable selection becomes available", async () => {
+    seed({
+      harnesses: [{ ...available, installState: "unavailable" }],
+      selectedHarnessId: "codex",
+    });
+    await useWorkbenchStore
+      .getState()
+      .loadHarnessModelsForProjection("codex", null, 0, "project-a");
+    expect(useWorkbenchStore.getState().models).toEqual([]);
+    discoverCodex.mockResolvedValue(discovery);
+    await useWorkbenchStore.getState().applyHarnessDiscovery([available]);
+    const state = useWorkbenchStore.getState();
+    expect(state.selectedHarnessId).toBe("codex");
+    expect(state.selectedModelId).toBe("gpt-x");
+    expect(state.models).toEqual([
+      { id: "gpt-x", name: "GPT-X", isDefault: true },
+    ]);
+  });
+
   it("drops a discovery result issued for a superseded project generation", async () => {
     let release: () => void = () => undefined;
     discoverCodex.mockImplementation(async () => {
