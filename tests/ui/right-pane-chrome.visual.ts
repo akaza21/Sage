@@ -4,7 +4,11 @@ import {
   openAgentSnapshotDiff,
 } from "./resourceVisualHelpers";
 
-test.use({ deviceScaleFactor: 1 });
+test.use({
+  deviceScaleFactor: 1,
+  // Keep rounded-card edge coverage repeatable for exact DPR 1 captures.
+  launchOptions: { args: ["--disable-gpu"] },
+});
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
 
 for (const viewport of [
@@ -37,7 +41,7 @@ for (const viewport of [
     await expect(page.locator(".status-bar")).toHaveCSS("height", "24px");
     await expect(page.locator(".status-bar")).toHaveCSS(
       "background-color",
-      "rgb(32, 32, 32)",
+      "rgb(31, 31, 31)",
     );
     await expect(pane.locator(".agent-artifact-pane__header")).toHaveCSS(
       "height",
@@ -126,7 +130,7 @@ for (const viewport of [
     );
     await expect(page.locator(".status-bar")).toHaveCSS(
       "background-color",
-      "rgb(32, 32, 32)",
+      "rgb(31, 31, 31)",
     );
   });
 }

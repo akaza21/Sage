@@ -6,7 +6,7 @@
   --control-gap: var(--space-1);
   --title-bar-fill: var(--agent-shell-rail);
   --status-bar-height: 24px;
-  --status-bar-fill: var(--agent-shell-rail);
+  --status-bar-fill: #1f1f1f;
   --agent-pane-deletions: #fa423e;
   grid-template-rows:
     var(--chrome-row-height) minmax(0, 1fr)
