@@ -16,7 +16,7 @@ import type {
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { desktop } from "../services/desktop";
-import { acpDesktop } from "../services/acpDesktop";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { useWorkbenchStore } from "./store";
 import { useAcpProjectionStore } from "./acpProjectionStore";
 import {
@@ -612,7 +612,9 @@ describe("workbench resource and project navigation", () => {
     };
     const pending = deferred<CodexDiscoveryResponse>();
     useWorkbenchStore.setState({ harnesses: [codex] });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
     vi.spyOn(getWorkbenchPorts().chat, "createChat").mockResolvedValue({
       committed: true,
       transitionEpoch: 1,
@@ -3280,7 +3282,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3334,7 +3336,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const genericModels = vi.spyOn(desktop, "listHarnessModels");
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3373,7 +3375,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-a",
@@ -3413,7 +3415,7 @@ describe("workbench resource and project navigation", () => {
       ],
     });
     const discover = vi
-      .spyOn(acpDesktop, "discoverCodex")
+      .spyOn(acpHarnessDesktop, "discoverCodex")
       .mockResolvedValueOnce({
         projectId: "project-a",
         projectGeneration: "0",
@@ -3435,8 +3437,10 @@ describe("workbench resource and project navigation", () => {
         defaultModelId: "gpt-auth",
       } as never);
     const login =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(login.promise);
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      login.promise,
+    );
 
     await useWorkbenchStore.getState().selectHarness("account-harness");
     useWorkbenchStore.getState().requestHarnessSignIn();
@@ -3480,13 +3484,15 @@ describe("workbench resource and project navigation", () => {
       selectedHarnessId: "future-auth",
       harnessDiscoveryPhase: "waiting",
     });
-    const cancel = vi.spyOn(acpDesktop, "cancelCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "waiting",
-      revision: "2",
-    } as never);
+    const cancel = vi
+      .spyOn(acpHarnessDesktop, "cancelCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "waiting",
+        revision: "2",
+      } as never);
     await useWorkbenchStore.getState().cancelHarnessSignIn();
     expect(cancel).toHaveBeenCalledWith({
       projectId: "project-a",
@@ -3495,13 +3501,15 @@ describe("workbench resource and project navigation", () => {
     });
 
     useWorkbenchStore.setState({ harnessDiscoveryPhase: "ready" });
-    const logout = vi.spyOn(acpDesktop, "logoutCodexAuth").mockResolvedValue({
-      projectId: "project-a",
-      projectGeneration: "0",
-      bindingId: "future-auth-binding",
-      phase: "signedOut",
-      revision: "3",
-    } as never);
+    const logout = vi
+      .spyOn(acpHarnessDesktop, "logoutCodexAuth")
+      .mockResolvedValue({
+        projectId: "project-a",
+        projectGeneration: "0",
+        bindingId: "future-auth-binding",
+        phase: "signedOut",
+        revision: "3",
+      } as never);
     await useWorkbenchStore.getState().logoutHarness();
     expect(logout).toHaveBeenCalledOnce();
     expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe(
@@ -3527,9 +3535,11 @@ describe("workbench resource and project navigation", () => {
       harnessDiscoveryPhase: "consent",
     });
     const pending =
-      deferred<Awaited<ReturnType<typeof acpDesktop.startCodexAuth>>>();
-    vi.spyOn(acpDesktop, "startCodexAuth").mockReturnValue(pending.promise);
-    const discover = vi.spyOn(acpDesktop, "discoverCodex");
+      deferred<Awaited<ReturnType<typeof acpHarnessDesktop.startCodexAuth>>>();
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      pending.promise,
+    );
+    const discover = vi.spyOn(acpHarnessDesktop, "discoverCodex");
 
     const signingIn = useWorkbenchStore.getState().confirmHarnessSignIn();
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3562,7 +3572,9 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockReturnValue(pending.promise);
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockReturnValue(
+      pending.promise,
+    );
 
     const selecting = useWorkbenchStore.getState().selectHarness("codex");
     useWorkbenchStore.setState({ nativeTransitionEpoch: 1 });
@@ -3604,7 +3616,7 @@ describe("workbench resource and project navigation", () => {
         },
       ],
     });
-    vi.spyOn(acpDesktop, "discoverCodex").mockResolvedValue({
+    vi.spyOn(acpHarnessDesktop, "discoverCodex").mockResolvedValue({
       projectId: "project-a",
       projectGeneration: "0",
       rootId: "root-foreign",
