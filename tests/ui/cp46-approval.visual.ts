@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -261,6 +262,7 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
     "Allow once",
     "Allow similar commands",
   ]);
+  await waitForAnimations(menu);
   const menuBox = await menu.boundingBox();
   const chevronBox = await chevron.boundingBox();
   expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(chevronBox!.y);

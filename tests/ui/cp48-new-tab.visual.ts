@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
   test.use({ viewport: { width: 1920, height: 1080 } });
@@ -127,6 +130,7 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
     const menu = page.getByRole("menu", { name: "Chat tools", exact: true });
     await expect(menu).toBeVisible();
     await expect(more).toHaveCSS("outline-style", "solid");
+    await waitForAnimations(menu);
     const [menuBox, headerBox] = await Promise.all([
       menu.boundingBox(),
       header.boundingBox(),
@@ -176,8 +180,9 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
       name: "Changes",
       exact: true,
     });
-    const measure = () =>
-      row.evaluate((rowNode) => {
+    const measure = async () => {
+      await waitForAnimations(menu);
+      return row.evaluate((rowNode) => {
         const menuNode = rowNode.closest<HTMLElement>('[role="menu"]')!;
         const nameNode = rowNode.querySelector<HTMLElement>(":scope > span")!;
         const actionNode =
@@ -202,6 +207,7 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
           menuRight: menuBox.right,
         };
       });
+    };
 
     // Short names render as before: whole, with the action pinned at 24 px.
     const shortName = await page.evaluate(async () => {

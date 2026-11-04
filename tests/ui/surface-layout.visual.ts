@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -61,6 +62,8 @@ test("transcript owns one responsive reading column with nonnegative rhythm", as
           ),
         measure,
       );
+    for (const actions of await page.locator(".chat-transcript-actions").all())
+      await waitForAnimations(actions);
     const geometry = await page
       .locator(".message-list__content")
       .evaluate((column) => {
