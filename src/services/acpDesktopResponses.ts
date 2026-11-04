@@ -1,17 +1,18 @@
+import {
+  isOneOf,
+  isRecord,
+  safeCounter,
+  safeIdentifier,
+  safeOrdinal,
+  safeNullableCounter,
+  safeNullableIdentifier,
+  safeText,
+} from "./acpDesktopGuards";
 import type {
   AcpChatPage,
   AcpMutationResult,
   AgentSessionProjection,
-  CodexDiscoveryModel,
-  CodexDiscoveryResponse,
 } from "../domain/acp";
-import {
-  boundedIdentifier as safeIdentifier,
-  decimalU64Counter,
-  isRecord,
-  safeOrdinal,
-} from "../domain/guards";
-import { utf8ByteLength } from "../domain/text";
 import type { AcpGoalState } from "../domain/acpGoal";
 import { safeTurn } from "./acpDesktopResponseTurns";
 
@@ -21,58 +22,6 @@ const ACP_PAGE_LIMITS = {
   items: 256,
   activities: 128,
 } as const;
-
-export function safeCounter(value: unknown, allowZero: boolean): string | null {
-  return decimalU64Counter(value, { allowZero });
-}
-
-export { isRecord, safeIdentifier, safeOrdinal };
-
-export function isOneOf<const Value extends string>(
-  value: unknown,
-  allowed: readonly Value[],
-): value is Value {
-  return typeof value === "string" && allowed.includes(value as Value);
-}
-
-export function safeText(value: unknown, maximumBytes: number): string | null {
-  return typeof value === "string" && utf8ByteLength(value) <= maximumBytes
-    ? value
-    : null;
-}
-
-export function safeMessage(value: unknown): string | null {
-  if (typeof value !== "string" || value.length === 0 || value.length > 8192) {
-    return null;
-  }
-  return utf8ByteLength(value) <= 8192 ? value : null;
-}
-
-export function safeTimestamp(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value)
-    ? value
-    : null;
-}
-
-export function safeNullableIdentifier(
-  value: unknown,
-): string | null | undefined {
-  return value === null ? null : (safeIdentifier(value) ?? undefined);
-}
-
-export function safeNullableCounter(
-  value: unknown,
-  allowZero: boolean,
-): string | null | undefined {
-  return value === null ? null : (safeCounter(value, allowZero) ?? undefined);
-}
-
-export function safeNullableText(
-  value: unknown,
-  maximumBytes: number,
-): string | null | undefined {
-  return value === null ? null : (safeText(value, maximumBytes) ?? undefined);
-}
 
 function safeCapabilities(
   value: unknown,
@@ -313,72 +262,5 @@ export function safeAcpMutationResponse(
       ...(Number.isSafeInteger(epoch) &&
         epoch > 0 && { childProjectionEpoch: epoch }),
     },
-  };
-}
-
-export function safeCodexDiscovery(
-  value: unknown,
-): CodexDiscoveryResponse | null {
-  if (!isRecord(value) || !Array.isArray(value.models)) return null;
-  const projectId = safeIdentifier(value.projectId);
-  const projectGeneration = safeCounter(value.projectGeneration, true);
-  const rootId = safeIdentifier(value.rootId);
-  const bindingId = safeIdentifier(value.bindingId);
-  const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
-  if (
-    !projectId ||
-    !projectGeneration ||
-    !rootId ||
-    !bindingId ||
-    !runtimeEpoch ||
-    !isOneOf(value.account, [
-      "managedChatgpt",
-      "providerManaged",
-      "signedOut",
-    ] as const) ||
-    value.models.length > 128
-  )
-    return null;
-  const ids = new Set<string>();
-  let defaults = 0;
-  const models: CodexDiscoveryModel[] = [];
-  for (const candidate of value.models) {
-    if (!isRecord(candidate)) return null;
-    const id = safeIdentifier(candidate.id);
-    const name = safeIdentifier(candidate.name);
-    if (!id || !name || typeof candidate.isDefault !== "boolean" || ids.has(id))
-      return null;
-    ids.add(id);
-    defaults += Number(candidate.isDefault);
-    models.push({
-      id: id as CodexDiscoveryModel["id"],
-      name,
-      isDefault: candidate.isDefault,
-    });
-  }
-  const defaultModelId =
-    value.defaultModelId === null ? null : safeIdentifier(value.defaultModelId);
-  if (
-    (value.account === "signedOut" &&
-      (models.length !== 0 || defaultModelId !== null)) ||
-    (value.account === "managedChatgpt" && models.length === 0) ||
-    defaults > 1 ||
-    (value.defaultModelId !== null && !defaultModelId) ||
-    (defaultModelId !== null && !ids.has(defaultModelId)) ||
-    (defaults === 0 && defaultModelId !== null) ||
-    (defaults === 1 &&
-      !models.some((model) => model.id === defaultModelId && model.isDefault))
-  )
-    return null;
-  return {
-    projectId: projectId as CodexDiscoveryResponse["projectId"],
-    projectGeneration:
-      projectGeneration as CodexDiscoveryResponse["projectGeneration"],
-    rootId,
-    bindingId: bindingId as CodexDiscoveryResponse["bindingId"],
-    runtimeEpoch: runtimeEpoch as CodexDiscoveryResponse["runtimeEpoch"],
-    account: value.account,
-    models,
-    defaultModelId: defaultModelId as CodexDiscoveryResponse["defaultModelId"],
   };
 }
