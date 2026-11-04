@@ -38,7 +38,7 @@ pub(crate) fn parse_recent_commits(
         }
         commits.push(GitRecentCommit {
             sha: admit_sha(sha)?,
-            subject: admit_subject(subject)?,
+            subject: admit_subject(subject),
         });
     }
     Ok(RecentCommitList { commits, truncated })
@@ -74,7 +74,9 @@ pub(crate) async fn list_recent_commits(workspace: &Workspace) -> AppResult<Rece
     parse_recent_commits(&output.stdout, output.stdout_truncated)
 }
 
-fn admit_sha(value: &str) -> AppResult<String> {
+fn admit_sha(value: &[u8]) -> AppResult<String> {
+    let value = std::str::from_utf8(value)
+        .map_err(|_| AppError::Git("Git returned an invalid commit identity".into()))?;
     let sha = value.trim().to_ascii_lowercase();
     if sha.len() == GIT_SHA_BYTES
         && sha
@@ -88,35 +90,30 @@ fn admit_sha(value: &str) -> AppResult<String> {
     ))
 }
 
-fn admit_subject(value: &str) -> AppResult<String> {
-    if value.contains('\0') || value.chars().any(|ch| ch.is_control() && ch != '\t') {
-        return Err(AppError::Git(
-            "Git returned an invalid commit subject".into(),
-        ));
+fn admit_subject(value: &[u8]) -> String {
+    let decoded = String::from_utf8_lossy(value);
+    let mut subject = String::new();
+    for ch in decoded.chars() {
+        let ch = if ch.is_control() && ch != '\t' {
+            '\u{fffd}'
+        } else {
+            ch
+        };
+        if subject.len() + ch.len_utf8() > MAX_COMMIT_SUBJECT_BYTES {
+            break;
+        }
+        subject.push(ch);
     }
-    if value.len() <= MAX_COMMIT_SUBJECT_BYTES {
-        return Ok(value.to_owned());
-    }
-    let mut end = MAX_COMMIT_SUBJECT_BYTES;
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    Ok(value[..end].to_owned())
+    subject
 }
 
-fn commit_records(bytes: &[u8], output_truncated: bool) -> AppResult<Vec<&str>> {
+fn commit_records(bytes: &[u8], output_truncated: bool) -> AppResult<Vec<&[u8]>> {
     let bytes = trim_trailing_newlines(bytes);
     if bytes.is_empty() {
         return Ok(Vec::new());
     }
     let complete = complete_nul_records(bytes, output_truncated)?;
-    let mut records = complete
-        .split(|byte| *byte == 0)
-        .map(|record| {
-            std::str::from_utf8(record)
-                .map_err(|_| AppError::Git("Git returned a non-UTF-8 commit list record".into()))
-        })
-        .collect::<AppResult<Vec<_>>>()?;
+    let mut records = complete.split(|byte| *byte == 0).collect::<Vec<_>>();
     if records.last().is_some_and(|record| record.is_empty()) {
         records.pop();
     }
@@ -247,6 +244,149 @@ mod tests {
         let listed = parse_recent_commits(&pair(FIRST, ""), false).unwrap();
         assert_eq!(listed.commits[0].sha, FIRST);
         assert_eq!(listed.commits[0].subject, "");
+    }
+
+    #[test]
+    fn unusual_subjects_stay_paired_with_their_sha() {
+        for (subject, expected) in [
+            (&b"before\rafter"[..], "before\u{fffd}after"),
+            (&b"\x1b[31mred"[..], "\u{fffd}[31mred"),
+            (&b"caf\xe9"[..], "caf\u{fffd}"),
+            (
+                "tab\tdelete\u{7f}next\u{85}".as_bytes(),
+                "tab\tdelete\u{fffd}next\u{fffd}",
+            ),
+        ] {
+            let mut bytes = pair(FIRST, "");
+            bytes.pop();
+            bytes.extend_from_slice(subject);
+            bytes.push(0);
+            bytes.extend_from_slice(&pair(SECOND, "normal"));
+            let listed = parse_recent_commits(&bytes, false).unwrap();
+            assert_eq!(listed.commits[0].sha, FIRST);
+            assert_eq!(listed.commits[0].subject, expected);
+            assert_eq!(listed.commits[1].sha, SECOND);
+            assert_eq!(listed.commits[1].subject, "normal");
+            assert!(!listed.truncated);
+        }
+    }
+
+    #[test]
+    fn replacement_expansion_is_bounded_on_a_character_boundary() {
+        for suffix in ["\r", "é", "\u{fffd}"] {
+            let subject = format!("{}{}tail", "a".repeat(254), suffix);
+            let listed = parse_recent_commits(&pair(FIRST, &subject), false).unwrap();
+            assert_eq!(listed.commits[0].subject, "a".repeat(254));
+        }
+        let listed = parse_recent_commits(&pair(FIRST, &"\r".repeat(100)), false).unwrap();
+        assert_eq!(listed.commits[0].subject, "\u{fffd}".repeat(85));
+        let mut bytes = pair(FIRST, &"a".repeat(253));
+        bytes.pop();
+        bytes.extend_from_slice(b"\xe9\0");
+        let listed = parse_recent_commits(&bytes, false).unwrap();
+        assert_eq!(listed.commits[0].subject, "a".repeat(253));
+    }
+
+    #[test]
+    fn non_utf8_sha_still_fails_closed() {
+        let mut bytes = pair(FIRST, "subject");
+        bytes[0] = 0xe9;
+        assert!(parse_recent_commits(&bytes, false).is_err());
+    }
+
+    #[test]
+    fn lists_unusual_subjects_from_real_commit_objects() {
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
+
+        let (root, workspace) = fixture_repository();
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        };
+        let tree = git(&["rev-parse", "HEAD^{tree}"]);
+        let author = git(&["var", "GIT_AUTHOR_IDENT"]);
+        let committer = git(&["var", "GIT_COMMITTER_IDENT"]);
+        let mut parent = git(&["rev-parse", "HEAD"]);
+        let mut expected = vec![
+            GitRecentCommit {
+                sha: git(&["rev-parse", "HEAD^"]),
+                subject: "first".into(),
+            },
+            GitRecentCommit {
+                sha: parent.clone(),
+                subject: "second".into(),
+            },
+        ];
+        // Byte 255 falls inside é, so the bound must stop at byte 254.
+        let long_prefix = "a".repeat(254);
+        let long_message = format!("{long_prefix}é{}\n", "z".repeat(4096));
+        for (message, subject) in [
+            (&b"\x1b[31mred\n"[..], "\u{fffd}[31mred"),
+            (&b"caf\xe9\n"[..], "caf\u{fffd}"),
+            (&b""[..], ""),
+            (long_message.as_bytes(), long_prefix.as_str()),
+            (
+                &b"first line\nsecond line\n\nbody is not the subject\n"[..],
+                "first line second line",
+            ),
+            (&b"--option\n"[..], "--option"),
+            (&b"%H %s\n"[..], "%H %s"),
+        ] {
+            // Write the object verbatim: commit-tree may recode invalid UTF-8.
+            let mut object =
+                format!("tree {tree}\nparent {parent}\nauthor {author}\ncommitter {committer}\n\n")
+                    .into_bytes();
+            object.extend_from_slice(message);
+            let mut child = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(["hash-object", "-t", "commit", "-w", "--stdin"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(&object).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            parent = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+            let stored = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(["cat-file", "commit", &parent])
+                .output()
+                .unwrap();
+            assert!(stored.status.success());
+            assert_eq!(stored.stdout, object);
+            expected.push(GitRecentCommit {
+                sha: parent.clone(),
+                subject: subject.into(),
+            });
+        }
+        git(&["update-ref", "HEAD", &parent]);
+        let listed = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(list_recent_commits(&workspace))
+            .unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        expected.reverse();
+        assert_eq!(listed.commits, expected);
+        assert_eq!(listed.commits.len(), 9);
+        assert!(
+            listed
+                .commits
+                .iter()
+                .all(|commit| commit.subject.len() <= MAX_COMMIT_SUBJECT_BYTES)
+        );
+        assert!(!listed.truncated);
     }
 
     fn fixture_repository() -> (std::path::PathBuf, Workspace) {

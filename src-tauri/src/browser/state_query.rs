@@ -13,6 +13,17 @@ pub(crate) async fn browser_live_tabs(
     Ok(tabs.entries.keys().cloned().collect())
 }
 
+/// The live tab's navigation stack, distinct from persistent browsing visits.
+#[tauri::command]
+pub(crate) async fn browser_history(
+    state: State<'_, BrowserState>,
+    tab_id: String,
+) -> Result<Vec<String>, String> {
+    let tabs = state.tabs.lock().map_err(|error| error.to_string())?;
+    let tab = tabs.entries.get(&tab_id).ok_or("browser tab unavailable")?;
+    Ok(tab.history.recent().map(str::to_owned).collect())
+}
+
 #[tauri::command]
 pub(crate) async fn browser_suggested_sites(
     state: State<'_, BrowserState>,

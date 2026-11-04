@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { BrowserVisit } from "../../ports/nativeBrowserHistoryPort";
 import { Globe, Search, X } from "../../ui/leanIcons";
 import { HISTORY_MAX_LOADED, useBrowsingHistory } from "./useBrowsingHistory";
 import { dayKey, historyDayLabel } from "./historyDays";
+import { BrowserClearData } from "./BrowserClearData";
 import "./BrowserHistoryPage.css";
 
 const timeFormat = new Intl.DateTimeFormat(undefined, {
@@ -36,11 +37,9 @@ function groupByDay(visits: readonly BrowserVisit[]) {
 export function BrowserHistoryPage({
   onNavigate,
   onClose,
-  clearDataControl,
 }: {
   onNavigate: (url: string) => void;
   onClose: () => void;
-  clearDataControl?: ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const search = query.trim();
@@ -94,7 +93,7 @@ export function BrowserHistoryPage({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {clearDataControl}
+        <BrowserClearData />
       </div>
       {history.error ? (
         <p className="browser-history__error" role="alert">

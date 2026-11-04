@@ -1,5 +1,78 @@
 Set-StrictMode -Version Latest
 
+if (-not ("SageFootprint.ProcessImageIdentity" -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace SageFootprint {
+  public static class ProcessImageIdentity {
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000;
+    const uint NO_DATA_ACCESS = 0;
+    const uint FILE_SHARE_ALL = 0x00000007;
+    const uint OPEN_EXISTING = 3;
+    const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    const int MaxPathChars = 32768;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder name, ref uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern SafeFileHandle CreateFileW(string fileName, uint desiredAccess, uint shareMode,
+      IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder path, uint size, uint flags);
+
+    static string StripVerbatimPrefix(string path) {
+      if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) { return @"\\" + path.Substring(8); }
+      if (path.StartsWith(@"\\?\", StringComparison.Ordinal)) { return path.Substring(4); }
+      return path;
+    }
+
+    // Resolves junctions, symbolic links, 8.3 names and \\?\ prefixes to the
+    // file's final path. Returns null when the file cannot be opened. It asks
+    // for no access rights: GetFinalPathNameByHandleW needs none.
+    public static string FinalPath(string path) {
+      if (String.IsNullOrEmpty(path)) { return null; }
+      using (SafeFileHandle file = CreateFileW(path, NO_DATA_ACCESS, FILE_SHARE_ALL, IntPtr.Zero,
+          OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero)) {
+        if (file.IsInvalid) { return null; }
+        StringBuilder name = new StringBuilder(MaxPathChars);
+        uint length = GetFinalPathNameByHandleW(file, name, (uint)MaxPathChars, 0);
+        if (length == 0 || length >= MaxPathChars) { return null; }
+        return StripVerbatimPrefix(name.ToString(0, (int)length));
+      }
+    }
+
+    // The kernel records the image path when it creates the process, so this
+    // read is valid before the loader has initialised the main module.
+    // Returns null when the process cannot be opened or queried.
+    public static string Query(int processId) {
+      IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+      if (handle == IntPtr.Zero) { return null; }
+      try {
+        uint size = 32768;
+        StringBuilder name = new StringBuilder((int)size);
+        if (!QueryFullProcessImageNameW(handle, 0, name, ref size)) { return null; }
+        return name.ToString(0, (int)size);
+      } finally {
+        CloseHandle(handle);
+      }
+    }
+  }
+}
+'@
+}
+
 $script:MaxProcessSnapshotRows = 4096
 $script:MaxRetainedProcessRecords = 128
 $script:MaxRetainedIdentityBytes = 64KB
@@ -18,7 +91,7 @@ function Get-FootprintProcessSnapshot {
   $rows = @(Get-CimInstance Win32_Process -Property @(
     "ProcessId", "ParentProcessId", "Name", "ExecutablePath", "CreationDate", "CommandLine",
     "PrivatePageCount", "WorkingSetSize", "KernelModeTime", "UserModeTime"
-  ))
+  ) -ErrorAction Stop)
   if ($rows.Count -gt $script:MaxProcessSnapshotRows) {
     throw "Process snapshot exceeds its $($script:MaxProcessSnapshotRows)-row limit."
   }
@@ -206,8 +279,14 @@ function Get-FootprintRootIdentity {
 
 function Get-FootprintLaunchIdentity {
   param([Parameter(Mandatory)]$Process, [Parameter(Mandatory)][string]$ExpectedExecutablePath)
-  $path = $Process.Path
-  if (-not $path -or -not [string]::Equals([IO.Path]::GetFullPath($path), [IO.Path]::GetFullPath($ExpectedExecutablePath), [StringComparison]::OrdinalIgnoreCase)) {
+  # $Process.Path reads the main module, which is unavailable while the process
+  # is still initialising; the kernel's image path is valid from creation. Both
+  # sides are compared as final paths, so a junction, 8.3 name or \\?\ prefix in
+  # the expected path still names the same file.
+  $imagePath = [SageFootprint.ProcessImageIdentity]::Query([int]$Process.Id)
+  $actual = [SageFootprint.ProcessImageIdentity]::FinalPath($imagePath)
+  $expected = [SageFootprint.ProcessImageIdentity]::FinalPath($ExpectedExecutablePath)
+  if (-not $actual -or -not $expected -or -not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
     throw "The launched process object does not identify the exact executable."
   }
   return ConvertTo-FootprintProcessIdentity ([pscustomobject]@{
@@ -393,6 +472,24 @@ function Stop-FootprintLaunchedProcessObject {
   }
 }
 
+function Get-FootprintTrackedProcessState {
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$Identity,
+    [Parameter(Mandatory)][hashtable]$ProcessRowsById
+  )
+  $rows = $ProcessRowsById[[int]$Identity.processId]
+  if ($null -eq $rows) { return "absent" }
+  if ($rows.Count -ne 1) { return "lost" }
+  $created = Get-FootprintCreationTime $rows[0]
+  $expectedCreated = ConvertTo-FootprintCreationTime $Identity.creationDate
+  if ($null -eq $created -or $null -eq $expectedCreated) { return "lost" }
+  # Windows cannot reuse a PID until the original process is gone. A known
+  # different creation time proves exit, even if the new executable is hidden.
+  if ((ConvertTo-FootprintCreationIdentity $created) -ne (ConvertTo-FootprintCreationIdentity $expectedCreated)) { return "reused" }
+  if (Test-FootprintProcessIdentity $rows[0] $Identity.executablePath $Identity.creationDate) { return "matching" }
+  return "lost"
+}
+
 function Get-FootprintTeardownPlan {
   param(
     [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
@@ -403,21 +500,31 @@ function Get-FootprintTeardownPlan {
   if ($ProcessRows.Count -gt $script:MaxProcessSnapshotRows) {
     throw "Process snapshot exceeds its $($script:MaxProcessSnapshotRows)-row limit."
   }
-  $rootRows = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$RootIdentity.processId })
-  $rootState = if ($rootRows.Count -eq 0) { "absent" } elseif (
-    @($rootRows | Where-Object { Test-FootprintProcessIdentity $_ $RootIdentity.executablePath $RootIdentity.creationDate }).Count -eq 1
-  ) { "matching" } else { "reused" }
+  # Keep every row for a PID so an ambiguous snapshot still fails closed.
+  # Build once per plan rather than scanning the snapshot for each identity.
+  $rowsByProcessId = @{}
+  foreach ($row in $ProcessRows) {
+    $processId = [int]$row.ProcessId
+    if (-not $rowsByProcessId.ContainsKey($processId)) {
+      $rowsByProcessId[$processId] = [Collections.Generic.List[object]]::new()
+    }
+    $rowsByProcessId[$processId].Add($row)
+  }
+  $rootState = Get-FootprintTrackedProcessState $RootIdentity $rowsByProcessId
+  $identityLost = $rootState -eq "lost"
   $candidates = @()
   $reusedProcessIds = @()
-  foreach ($row in $ProcessRows) {
-    $samePid = @($RememberedIdentities.Values | Where-Object { [int]$_.processId -eq [int]$row.ProcessId })
-    if ($samePid.Count -eq 0) { continue }
-    $match = @($samePid | Where-Object { Test-FootprintProcessIdentity $row $_.executablePath $_.creationDate }) | Select-Object -First 1
-    if ($null -ne $match) { $candidates += $row } else { $reusedProcessIds += [int]$row.ProcessId }
+  foreach ($identity in $RememberedIdentities.Values) {
+    $state = Get-FootprintTrackedProcessState $identity $rowsByProcessId
+    switch ($state) {
+      "matching" { $candidates += $rowsByProcessId[[int]$identity.processId][0] }
+      "reused" { $reusedProcessIds += [int]$identity.processId }
+      "lost" { $identityLost = $true }
+    }
   }
   return [ordered]@{
     rootState = $rootState
-    identityLost = $rootState -eq "reused"
+    identityLost = $identityLost
     candidates = @($candidates | Sort-Object ProcessId)
     reusedProcessIds = @($reusedProcessIds | Sort-Object -Unique)
   }
@@ -429,6 +536,26 @@ function Get-FootprintForceKillCandidates {
   $root = @($ProcessRows | Where-Object { [int]$_.ProcessId -eq [int]$RootIdentity.processId }) | Select-Object -First 1
   if ($null -eq $root -or -not (Test-FootprintProcessIdentity $root $RootIdentity.executablePath $RootIdentity.creationDate)) { return @() }
   return @(Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate)
+}
+
+function Update-FootprintTeardownPlan {
+  param(
+    [Parameter(Mandatory)][Collections.IDictionary]$RootIdentity,
+    [Parameter(Mandatory)][Collections.Generic.Dictionary[string, object]]$KnownProcessIdentities,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$ProcessRows,
+    [Parameter(Mandatory)][ref]$TreeObserved
+  )
+  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $ProcessRows
+  if (-not $TreeObserved.Value -and $plan.rootState -eq "matching") {
+    # A recovered root must establish the same bounded descendant boundary as
+    # the initial observation before its tree can be terminated or proven zero.
+    Add-FootprintRememberedIdentities $KnownProcessIdentities @(
+      Get-FootprintDescendants ([int]$RootIdentity.processId) $ProcessRows -RootCreationDate $RootIdentity.creationDate
+    )
+    $TreeObserved.Value = $true
+    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $ProcessRows
+  }
+  return $plan
 }
 
 function Invoke-FootprintTreeCore {
@@ -446,13 +573,11 @@ function Invoke-FootprintTreeCore {
   $rootPid = [int]$RootIdentity.processId
   [void](Add-FootprintRememberedIdentity $KnownProcessIdentities ([pscustomobject]@{ ProcessId = $rootPid; ExecutablePath = $RootIdentity.executablePath; CreationDate = $RootIdentity.creationDate }))
   $reusedProcessIds = [Collections.Generic.HashSet[int]]::new()
+  $treeObserved = $false
   $initialRows = @(& $SnapshotProvider)
-  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
+  $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows ([ref]$treeObserved)
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-  $identityLost = [bool]$plan.identityLost
   if ($plan.rootState -eq "matching") {
-    Add-FootprintRememberedIdentities $KnownProcessIdentities @(Get-FootprintDescendants $rootPid $initialRows -RootCreationDate $RootIdentity.creationDate)
-    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities $initialRows
     try {
       $root = Open-FootprintExactProcess $RootIdentity
       if ($null -ne $root) {
@@ -468,31 +593,26 @@ function Invoke-FootprintTreeCore {
   }
   $deadline = ([DateTime](& $UtcNow)).AddSeconds($GraceSeconds)
   do {
-    $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-    $identityLost = $identityLost -or $plan.identityLost
-    if ($plan.candidates.Count -eq 0) { return [ordered]@{ forced = $false; identityLost = $identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
+    if ($plan.candidates.Count -eq 0 -and -not $plan.identityLost) { return [ordered]@{ forced = $false; identityLost = [bool]$plan.identityLost; candidates = @(); remaining = @(); reusedProcessIds = @($reusedProcessIds | Sort-Object) } }
     & $Delay 100
   } while ([DateTime](& $UtcNow) -lt $deadline)
-  $plan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+  $plan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
   foreach ($reusedProcessId in @($plan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-  $identityLost = $identityLost -or $plan.identityLost
   $candidates = @($plan.candidates | Sort-Object @{ Expression = { [int]$_.ProcessId -eq $rootPid } }, @{ Expression = { [int]$_.ProcessId }; Descending = $true })
   $killed = @()
-  $exactRootTerminationIssued = $false
   foreach ($candidate in $candidates) {
-    $currentPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $currentPlan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($currentPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-    $identityLost = $identityLost -or $currentPlan.identityLost
     $current = @($currentPlan.candidates | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }) | Select-Object -First 1
     if ($null -eq $current -or -not (Test-FootprintProcessIdentity $current $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))) { continue }
     $currentIdentity = ConvertTo-FootprintProcessIdentity $current
     try {
       $terminated = [bool](& $StopExactProcess $currentIdentity)
     } catch {
-      $afterStopFailure = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+      $afterStopFailure = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
       foreach ($reusedProcessId in @($afterStopFailure.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-      $identityLost = $identityLost -or $afterStopFailure.identityLost
       $stillPresent = @($afterStopFailure.candidates | Where-Object {
           [int]$_.ProcessId -eq [int]$candidate.ProcessId -and
           (Test-FootprintProcessIdentity $_ $candidate.ExecutablePath (ConvertTo-FootprintCreationIdentity $candidate.CreationDate))
@@ -505,19 +625,19 @@ function Invoke-FootprintTreeCore {
       continue
     }
     $killed += $currentIdentity
-    if ([int]$current.ProcessId -eq $rootPid) { $exactRootTerminationIssued = $true }
   }
   $postKillDeadline = ([DateTime](& $UtcNow)).AddSeconds($script:PostKillWaitSeconds)
   do {
-    $remainingPlan = Get-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider)
+    $remainingPlan = Update-FootprintTeardownPlan $RootIdentity $KnownProcessIdentities @(& $SnapshotProvider) ([ref]$treeObserved)
     foreach ($reusedProcessId in @($remainingPlan.reusedProcessIds)) { [void]$reusedProcessIds.Add([int]$reusedProcessId) }
-    if (-not $exactRootTerminationIssued) { $identityLost = $identityLost -or $remainingPlan.identityLost }
-    if ($remainingPlan.candidates.Count -eq 0) { break }
+    # An empty kill set is not exit proof while an identity is unobservable.
+    # Keep observing within the existing deadline until terminal zero is proven.
+    if ($remainingPlan.candidates.Count -eq 0 -and -not $remainingPlan.identityLost) { break }
     & $Delay 100
   } while ([DateTime](& $UtcNow) -lt $postKillDeadline)
   return [ordered]@{
     forced = $killed.Count -gt 0
-    identityLost = $identityLost
+    identityLost = [bool]$remainingPlan.identityLost
     candidates = @($candidates | ForEach-Object ProcessId)
     remaining = @($remainingPlan.candidates | ForEach-Object ProcessId)
     reusedProcessIds = @($reusedProcessIds | Sort-Object)

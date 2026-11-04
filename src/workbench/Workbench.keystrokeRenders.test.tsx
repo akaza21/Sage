@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { Profiler, type ComponentType, type ReactNode } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
 import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
@@ -13,6 +13,7 @@ import type * as StatusBarModule from "./StatusBar";
 import type * as TabStripModule from "./TabStrip";
 import type * as TitleBarModule from "./TitleBar";
 import { Workbench } from "./Workbench";
+import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 // Each region outside the File surface commits under its own Profiler, so a
 // re-render caused by its own store subscription is counted too.
@@ -55,7 +56,8 @@ vi.mock("./RightSidebar", async (original) => {
 });
 vi.mock("./DirtyTabDialog", async (original) => {
   const module = await original<typeof DirtyTabDialogModule>();
-  return { DirtyTabDialog: profiled("DirtyTabDialog", module.DirtyTabDialog) };
+  const Dialog = profiled("DirtyTabDialog", module.DirtyTabDialog);
+  return { DirtyTabDialog: Dialog, default: Dialog };
 });
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <section>Active chat</section>,
@@ -92,6 +94,8 @@ const tabs: WorkbenchTab[] = [
     resource,
   },
 ];
+
+beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {
   cleanup();
@@ -141,15 +145,10 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
   // The first keystroke flips the tab to dirty, which the tab strip shows.
   type("a");
   expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(true);
-  for (const region of [
-    "TabStrip",
-    "TitleBar",
-    "StatusBar",
-    "RightSidebar",
-    "DirtyTabDialog",
-  ]) {
+  for (const region of ["TabStrip", "TitleBar", "StatusBar", "RightSidebar"]) {
     expect(commits.get(region), `${region} mounted`).toBeGreaterThan(0);
   }
+  expect(commits.get("DirtyTabDialog") ?? 0).toBe(0);
   commits.clear();
 
   for (const text of ["b", "c", "d", "e"]) type(text);

@@ -59,42 +59,6 @@ impl<T> BrowserTabs<T> {
         true
     }
 
-    pub(super) fn set_document_title(&mut self, label: &str, url: &str, raw: &str) -> bool {
-        let Some(tab) = self.entries.get_mut(label) else {
-            return false;
-        };
-        if tab.loading || tab.last_error.is_some() || tab.committed_url.as_deref() != Some(url) {
-            return false;
-        }
-        let title = raw
-            .chars()
-            .take(256)
-            .filter(|character| {
-                !matches!(character, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
-            })
-            .map(|character| if character.is_control() { ' ' } else { character })
-            .collect::<String>()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .chars()
-            .take(80)
-            .collect::<String>();
-        let title = if title.is_empty() { None } else { Some(title) };
-        if tab.title == title {
-            return false;
-        }
-        // Only the visit to this page takes its title, never an earlier one.
-        if let Some(title) = &title
-            && tab.visited_url.as_deref() == Some(url)
-        {
-            self.browsing_history.record_title(label, title);
-        }
-        tab.title = title;
-        tab.revision = tab.revision.wrapping_add(1);
-        true
-    }
-
     pub(super) fn source_changed(&mut self, label: &str, url: &str) -> bool {
         if admit_url(url).is_err() {
             return false;

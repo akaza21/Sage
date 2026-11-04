@@ -55,7 +55,7 @@
 }
 .turn-navigator__preview p {
   display: -webkit-box;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;

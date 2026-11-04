@@ -6,10 +6,10 @@ import {
   Search,
   X,
 } from "../../ui/leanIcons";
-import { chatFindStatus, MAX_CHAT_FIND_QUERY } from "./chatFindModel";
 import "./chat-find.css";
+import { chatFindStatus, MAX_CHAT_FIND_QUERY } from "./chatFindModel";
 
-/** Codex "Search chat…" box: one row when empty, a result row once typed. */
+/** One row when empty, with a result row once a query is entered. */
 export function ChatFindBar({
   query,
   onQuery,

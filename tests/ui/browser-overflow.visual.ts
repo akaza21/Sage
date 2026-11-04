@@ -3,6 +3,36 @@ import { forbidBrowserRetries } from "./shared/browserRetryGuard";
 
 forbidBrowserRetries();
 
+test("clips browser navigation hover fills at the pill corner and retains focus", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/browser-address.html");
+  const group = page.locator(".browser-surface__nav-group");
+  const back = page.getByRole("button", { name: "Back", exact: true });
+  await back.hover();
+  expect(
+    await group.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return node.contains(
+        document.elementFromPoint(box.left + 3, box.top + 3),
+      );
+    }),
+  ).toBe(false);
+  await page.keyboard.press("Tab");
+  await back.focus();
+  const focus = await back.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      focused: node.matches(":focus-visible"),
+      width: parseFloat(style.outlineWidth),
+      offset: parseFloat(style.outlineOffset),
+    };
+  });
+  expect(focus.focused).toBe(true);
+  expect(focus.width).toBeGreaterThan(0);
+  expect(focus.offset).toBeLessThanOrEqual(-focus.width);
+});
+
 test("new-tab browser menu retains unavailable page actions at 560 px", async ({
   page,
 }) => {
@@ -21,6 +51,7 @@ test("new-tab browser menu retains unavailable page actions at 560 px", async ({
     "Zoom out",
     "Zoom in",
     "Reset zoom",
+    "Show device toolbar",
   ])
     await expect(menu.getByRole("menuitem", { name })).toBeDisabled();
   for (const name of [

@@ -7,7 +7,7 @@
 
 .workspace-search__form {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -15,21 +15,21 @@
 .workspace-search__query-row {
   display: grid;
   min-width: 0;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: var(--editor-search-option-size) minmax(0, 1fr);
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .workspace-search__input {
   display: grid;
   min-width: 0;
-  height: var(--row-height-compact);
+  height: var(--editor-search-input-height);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  padding: 0 4px 0 8px;
+  gap: var(--space-1);
+  padding: 0 var(--space-1) 0 var(--space-2);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   background: var(--color-surface);
 }
@@ -64,9 +64,9 @@
 .workspace-search__query-actions button,
 .workspace-search__details-toggle {
   display: inline-grid;
-  min-height: 24px;
-  min-width: 24px;
-  padding: 0 4px;
+  min-height: var(--editor-search-option-size);
+  min-width: var(--editor-search-option-size);
+  padding: 0;
   place-items: center;
   border: 0;
   border-radius: var(--radius-sm);
@@ -96,8 +96,8 @@
 
 .workspace-search__filters {
   display: grid;
-  gap: 4px;
-  margin-left: 24px;
+  gap: var(--space-1);
+  margin-left: calc(var(--editor-search-option-size) + var(--space-1));
 }
 
 .workspace-search__filters label {
@@ -111,8 +111,8 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
+  height: var(--editor-search-input-height);
+  padding: 0 var(--space-2);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   outline: 0;
@@ -134,7 +134,6 @@
 
 .workspace-search__details-toggle {
   align-self: center;
-  padding: 0;
 }
 
 .workspace-search__details-toggle[aria-expanded="true"] {
@@ -149,27 +148,30 @@
 
 .workspace-search__file-group {
   display: grid;
-  gap: 1px;
 }
 
 .workspace-search__file-heading {
   display: grid;
   width: 100%;
-  min-height: 28px;
+  height: var(--editor-list-row-height);
   min-width: 0;
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--editor-list-gap);
+  padding: 0 var(--editor-list-inline-padding);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: var(--font-size-xs);
-  font-weight: 650;
+  font-size: var(--font-size-sm);
   text-align: left;
+}
+
+.workspace-search__file-heading svg {
+  width: var(--editor-list-icon-size);
+  height: var(--editor-list-icon-size);
 }
 .workspace-search__file-heading:hover,
 .workspace-search__file-heading:focus-visible {
@@ -180,14 +182,14 @@
   display: flex;
   min-width: 0;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-2);
 }
 
 .workspace-search__file-identity strong {
   flex: 0 1 auto;
   overflow: hidden;
   color: var(--color-text-primary);
-  font-weight: 600;
+  font-weight: var(--font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -202,9 +204,15 @@
   white-space: nowrap;
 }
 .workspace-search__file-count {
-  padding: 2px 4px;
+  display: inline-grid;
+  min-width: var(--editor-count-badge-min-size);
+  height: var(--editor-count-badge-min-size);
+  padding: 0 var(--space-1);
+  place-items: center;
   border-radius: var(--radius-pill);
+  color: var(--color-text-primary);
   background: var(--color-plane-raised);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 .workspace-search__preview mark {
@@ -216,32 +224,38 @@
 
 .workspace-search__summary {
   display: flex;
-  min-height: 28px;
+  min-height: var(--editor-list-row-height);
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: 0 var(--editor-list-inline-padding);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
+/* Messages wrap, so they sit outside the fixed-height row treatment. */
 .workspace-search__empty,
 .workspace-search__error,
 .workspace-search__notice {
   margin: 0;
-  padding: 8px;
-  color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-  line-height: 1.45;
+  line-height: var(--line-height-normal);
+}
+
+.workspace-search__empty {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
 }
 
 .workspace-search__error {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-danger);
   color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .workspace-search__notice {
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding: var(--space-1) var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-warning);
 }
@@ -249,7 +263,7 @@
 .workspace-search__progress {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .workspace-search__progress svg {
@@ -258,19 +272,23 @@
 
 .workspace-search__results {
   display: grid;
-  gap: 1px;
   padding: 0 var(--space-1) var(--space-2);
 }
 
+/* Matches sit one tree level under their file, aligned with its icon. */
 .workspace-search__result {
   display: grid;
   width: 100%;
-  min-height: 24px;
+  height: var(--editor-list-row-height);
   min-width: 0;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px 4px 36px;
+  gap: var(--space-2);
+  padding: 0 var(--editor-list-inline-padding) 0
+    calc(
+      var(--editor-list-inline-padding) + var(--editor-tree-twisty-size) +
+        var(--editor-list-gap)
+    );
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -289,10 +307,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workspace-search__preview {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
 }

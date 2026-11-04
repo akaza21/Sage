@@ -26,6 +26,7 @@ pub(crate) mod bounds;
 pub(crate) mod browsing_history;
 pub(crate) mod clear_data;
 mod commit;
+pub(crate) mod device;
 pub(crate) mod devtools;
 pub(crate) mod downloads;
 mod favicon;
@@ -43,6 +44,7 @@ mod shortcuts;
 pub(crate) mod site_permissions;
 mod state_init;
 pub(crate) mod state_query;
+mod tab_title;
 mod teardown;
 pub(crate) mod user_screenshot;
 mod visibility;
@@ -76,6 +78,9 @@ pub(crate) struct BrowserState {
     annotate: annotate::Annotate,
     clearing_data: AtomicBool,
     browsing_history: browsing_history::BrowsingHistory,
+    /// Device toolbar updates apply one at a time across tabs.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    device_updates: Mutex<()>,
 }
 
 impl BrowserState {
@@ -119,6 +124,7 @@ struct BrowserTab<T> {
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
+    device: device::TabDevice,
     navigation_id: Option<u64>,
     revision: u64,
     document_revision: u64,
@@ -139,6 +145,7 @@ struct BrowserSnapshot {
     title: Option<String>,
     favicon: Option<String>,
     zoom_percent: u16,
+    device: device::DeviceHeld,
     navigation_id: Option<u64>,
     revision: u64,
     committed_url: Option<String>,
@@ -214,6 +221,7 @@ impl<T> BrowserTabs<T> {
                 title: None,
                 favicon: None,
                 zoom_percent: 100,
+                device: device::TabDevice::default(),
                 navigation_id: None,
                 revision: 0,
                 document_revision: 0,
@@ -242,6 +250,7 @@ impl<T> BrowserTabs<T> {
             title: tab.title.clone(),
             favicon: tab.favicon.clone(),
             zoom_percent: tab.zoom_percent,
+            device: tab.device.held(),
             navigation_id: tab.navigation_id,
             revision: tab.revision,
             committed_url: if tab.last_error.is_none() {

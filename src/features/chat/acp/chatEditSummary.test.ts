@@ -7,6 +7,107 @@ import { projectChatEditSummary } from "./chatEditSummary";
 
 afterEach(() => vi.restoreAllMocks());
 
+it("deduplicates missing-resource harness deletions with ledger paths", () => {
+  const page = snapshotPage();
+  const item = page.turns[0].items[0];
+  if (item.kind !== "fileChangeDiff") throw new Error("Expected edit");
+  item.payload.changes = [
+    {
+      ...item.payload.changes[0],
+      operation: "deleted",
+      resource: {
+        kind: "unavailable",
+        reason: "missing",
+        label: "src/a.ts",
+        displayResource: { rootId: "root-a", relativePath: "src/a.ts" },
+      },
+    },
+  ];
+  const workspace = {
+    turnId: page.turns[0].id,
+    rootId: "root-a",
+    relativePath: "src/a.ts",
+    operation: "deleted" as const,
+  };
+  expect(projectChatEditSummary(page, [workspace]).changes).toHaveLength(1);
+  const later = {
+    ...page.turns[0],
+    id: "later" as never,
+    ordinal: 2,
+    items: [],
+  };
+  page.turns = [...page.turns, later];
+  const summary = projectChatEditSummary(page, [
+    workspace,
+    { ...workspace, turnId: later.id, operation: "created" },
+  ]);
+  expect(summary.changes).toHaveLength(1);
+  expect(summary.changes[0]).toMatchObject({
+    operation: "created",
+    turn: { id: "later" },
+  });
+});
+
+it("bounds shell-only rows and keeps the last record within a turn", () => {
+  const page = snapshotPage();
+  page.turns[0].items = [];
+  const workspace = Array.from({ length: 300 }, (_, index) => ({
+    turnId: page.turns[0].id,
+    rootId: "root-a",
+    relativePath: `shell-${index}.ts`,
+    operation: "created" as const,
+  }));
+  const summary = projectChatEditSummary(page, [
+    ...workspace,
+    { ...workspace[299], operation: "deleted" },
+  ]);
+  expect(summary.changes).toHaveLength(32);
+  expect(summary.omittedCount).toBe(268);
+  expect(summary.changes.at(-1)).toMatchObject({
+    operation: "deleted",
+    resource: { resource: { relativePath: "shell-299.ts" } },
+  });
+});
+
+it.each([
+  [false, false],
+  [false, true],
+  [true, false],
+  [true, true],
+])(
+  "uses the newest turn's shell record over older edits (harness: %s, reversed: %s)",
+  (harness, reversed) => {
+    const page = snapshotPage();
+    const first = page.turns[0];
+    const latest = { ...first, id: "latest" as never, ordinal: 2, items: [] };
+    page.turns = [harness ? first : { ...first, items: [] }, latest];
+    const workspace = [
+      {
+        turnId: first.id,
+        rootId: "root-a",
+        relativePath: "src/a.ts",
+        operation: "created" as const,
+      },
+      {
+        turnId: latest.id,
+        rootId: "root-a",
+        relativePath: "src/a.ts",
+        operation: "deleted" as const,
+      },
+    ];
+    const summary = projectChatEditSummary(
+      page,
+      reversed ? workspace.reverse() : workspace,
+    );
+    expect(summary.changes).toHaveLength(1);
+    expect(summary.changes[0]).toMatchObject({
+      operation: "deleted",
+      turn: { id: "latest" },
+    });
+    expect(summary.changes[0].diffRef).toBeUndefined();
+  },
+);
+
 it("caches at most 32 changes per turn while retaining keys for unique omissions", () => {
   const page = snapshotPage();
   const original = page.turns[0];
@@ -223,3 +324,50 @@ it.each(["unsafe path", "nonfinite counts"])(
     expect(summary.rejectedUnsafeOrStale).toBe(true);
   },
 );
+
+it("adds shell-made workspace changes beside harness edits, harness records winning", () => {
+  const page = snapshotPage();
+  const turn = page.turns[0];
+  const saved = turn.items[0];
+  if (saved.kind !== "fileChangeDiff") throw new Error("Expected saved edit");
+  const harnessPath = (
+    saved.payload.changes[0].resource as {
+      resource: { relativePath: string; rootId: string };
+    }
+  ).resource;
+  const summary = projectChatEditSummary(page, [
+    {
+      turnId: turn.id,
+      rootId: harnessPath.rootId,
+      relativePath: harnessPath.relativePath,
+      operation: "updated",
+    },
+    {
+      turnId: turn.id,
+      rootId: harnessPath.rootId,
+      relativePath: "README.md",
+      operation: "updated",
+    },
+    {
+      turnId: "unknown-turn",
+      rootId: harnessPath.rootId,
+      relativePath: "ignored.md",
+      operation: "created",
+    },
+  ]);
+  expect(summary.changes).toHaveLength(2);
+  const shell = summary.changes.find(
+    (change) =>
+      change.resource.kind === "resource" &&
+      change.resource.resource.relativePath === "README.md",
+  );
+  expect(shell?.operation).toBe("updated");
+  expect(shell?.diffRef).toBeUndefined();
+  expect(shell?.turn.id).toBe(turn.id);
+  const harness = summary.changes.find(
+    (change) =>
+      change.resource.kind === "resource" &&
+      change.resource.resource.relativePath === harnessPath.relativePath,
+  );
+  expect(harness?.diffRef).toBeDefined();
+});

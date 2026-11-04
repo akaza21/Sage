@@ -535,6 +535,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
         let mut lease = service
+            .lane_at(0)
             .sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
@@ -630,7 +631,12 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
         old.binding_digest =
             "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e".into();
         old.harness_version = Some(SafeText::new("harnessVersion", "0.145.0").unwrap());
-        let started = service.sessions.start_session(old).await.unwrap();
+        let started = service
+            .lane_at(0)
+            .sessions
+            .start_session(old)
+            .await
+            .unwrap();
         let owner = RuntimeOwner {
             project_id: project_id.clone(),
             chat_id: chat_id.clone(),
@@ -638,6 +644,7 @@ fn earlier_codex_session_keeps_its_chat_page_and_refuses_native_resume() {
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
         let mut lease = service
+            .lane_at(0)
             .sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
@@ -769,6 +776,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
             .unwrap()
             .projection_revision;
         let started = service
+            .lane_at(0)
             .sessions
             .start_session(StartSessionCommand {
                 project_id: project_id.clone(),
@@ -790,6 +798,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
         let mut lease = service
+            .lane_at(0)
             .sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
@@ -906,6 +915,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
         let chat_id = SageChatId::parse(snapshot.active_tab_id.unwrap()).unwrap();
         let service = AcpService::new(database.clone()).unwrap();
         let started = service
+            .lane_at(0)
             .sessions
             .start_session(StartSessionCommand {
                 project_id: project_id.clone(),
@@ -931,6 +941,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
         let mut first = service
+            .lane_at(0)
             .sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
@@ -980,6 +991,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
         };
         let mut second = service
+            .lane_at(0)
             .sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_id.clone(),
@@ -1454,7 +1466,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         let binding = "11".repeat(32);
         let artifact = "22".repeat(32);
         let started = service
-            .sessions
+            .lane_at(0).sessions
             .start_session(StartSessionCommand {
                 project_id: project_a_id.clone(),
                 chat_id: chat_a.clone(),
@@ -1471,7 +1483,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         entered.await;
         let epoch = RuntimeEpoch::new(1).unwrap();
         let mut tree = service
-            .sessions
+            .lane_at(0).sessions
             .activate_session(ActivateSessionCommand {
                 project_id: project_a_id.clone(),
                 chat_id: chat_a.clone(),
@@ -1615,7 +1627,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
             )
             .unwrap();
         assert_eq!(terminal, ("completed".into(), Some(now + 8)));
-        let active = service.scheduler.active().unwrap();
+        let active = service.lane_at(0).scheduler.active().unwrap();
         assert_eq!(active.tree.project_id, project_a_id);
         assert!(!active.turn_reserved);
         assert_eq!(active.turn_id, None);

@@ -40,7 +40,7 @@ export function BrowserSitePermissions({
     void import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
         if (!mounted) return;
-        unlisten = await listen<BrowserPermissionSnapshot>(
+        const dispose = await listen<BrowserPermissionSnapshot>(
           "browser:permissions",
           (event) => {
             if (mounted && event.payload.tabId === tabId) {
@@ -50,9 +50,10 @@ export function BrowserSitePermissions({
           },
         );
         if (!mounted) {
-          unlisten();
+          dispose();
           return;
         }
+        unlisten = dispose;
         const initial = await browserPermissionStatus(tabId);
         if (mounted && !sawEvent) setSnapshot(initial);
       })
@@ -172,26 +173,5 @@ export function BrowserSitePermissions({
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </aside>
-  );
-}
-
-export function BrowserDrawers({
-  tabId,
-  settingsOpen,
-  onCloseSettings,
-}: {
-  tabId: string;
-  settingsOpen: boolean;
-  onCloseSettings: () => void;
-}) {
-  return settingsOpen ? (
-    <aside className="browser-surface__drawer" aria-label="Site settings">
-      <button type="button" onClick={onCloseSettings}>
-        Close site settings
-      </button>
-      <BrowserSitePermissions tabId={tabId} showEmpty />
-    </aside>
-  ) : (
-    <BrowserSitePermissions tabId={tabId} />
   );
 }

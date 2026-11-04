@@ -5,7 +5,24 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { ToolActivityRollup } from "./ToolActivityRollupView";
+import { PrimaryActivities } from "./PrimaryActivities";
+import type { ComponentProps } from "react";
+import type { ToolRollup } from "./toolActivityRollup";
+function ToolActivityRollup({
+  rollup,
+  ...props
+}: Pick<
+  ComponentProps<typeof PrimaryActivities>,
+  "interactive" | "onOpenResource"
+> & { rollup: ToolRollup }) {
+  return (
+    <PrimaryActivities
+      {...props}
+      items={rollup.items}
+      renderItem={() => null}
+    />
+  );
+}
 import { WorkedTurnTerminal } from "./WorkedActivityVisibility";
 
 afterEach(cleanup);

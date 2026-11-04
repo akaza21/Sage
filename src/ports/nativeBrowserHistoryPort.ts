@@ -31,3 +31,12 @@ export function browserHistoryPage(query: {
 export function browserHistoryRemove(ids: readonly number[]): Promise<number> {
   return invokeNative("browser_history_remove", { ids });
 }
+
+/** This tab's navigation stack for Settings; persistent visits use browserHistoryPage. */
+export function browserHistory(tabId: string): Promise<string[]> {
+  return invokeNative("browser_history", { tabId });
+}
+
+export function browserSuggestedSites(): Promise<string[]> {
+  return invokeNative("browser_suggested_sites");
+}

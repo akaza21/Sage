@@ -38,13 +38,14 @@ pub(super) enum Write {
     },
 }
 
+#[derive(Clone)]
 struct LastVisit {
     tab: String,
     id: i64,
     visited_at: i64,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct Writer {
     last: VecDeque<LastVisit>,
     /// Visits inserted since the last prune; `None` before the first.
@@ -61,6 +62,9 @@ impl Writer {
         now: i64,
     ) -> rusqlite::Result<()> {
         let transaction = connection.transaction()?;
+        // Row ids may be reused after rollback. Keep every cache update
+        // local to this transaction until its rows are committed.
+        let mut pending = self.clone();
         let mut inserted = 0;
         for write in batch {
             match write {
@@ -74,7 +78,7 @@ impl Writer {
                     if !store::admissible(url, *visited_at) {
                         continue;
                     }
-                    let fold = self
+                    let fold = pending
                         .latest(tab)
                         .filter(|last| {
                             *same_document && visited_at - last.visited_at < SAME_DOCUMENT_FOLD_MS
@@ -87,23 +91,24 @@ impl Writer {
                     }
                     let id = store::insert(&transaction, url, title.as_deref(), *visited_at)?;
                     inserted += 1;
-                    self.remember(tab, id, *visited_at);
+                    pending.remember(tab, id, *visited_at);
                 }
                 Write::Title { tab, title } => {
-                    if let Some(last) = self.latest(tab) {
+                    if let Some(last) = pending.latest(tab) {
                         store::set_title(&transaction, last.id, title)?;
                     }
                 }
             }
         }
-        let since = self
+        let since = pending
             .since_prune
             .map_or(PRUNE_EVERY, |since| since + inserted);
         if since >= PRUNE_EVERY {
             store::prune(&transaction, now)?;
         }
         transaction.commit()?;
-        self.since_prune = Some(if since >= PRUNE_EVERY { 0 } else { since });
+        pending.since_prune = Some(if since >= PRUNE_EVERY { 0 } else { since });
+        *self = pending;
         Ok(())
     }
 

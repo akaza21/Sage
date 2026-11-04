@@ -30,9 +30,12 @@ use super::{
 };
 use crate::{acp::process::TerminalJobBoundary, project_registry::ProjectRootAuthority};
 
+use environment::environment_block;
+#[cfg(test)]
+use environment::environment_block_from;
+
 const DESCENDANT_LIMIT: u32 = 32;
 const SETTLE_DEADLINE: Duration = Duration::from_secs(3);
-
 pub(super) struct ConPtyFactory;
 
 impl TerminalFactory for ConPtyFactory {
@@ -382,32 +385,6 @@ fn wide_text(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn environment_block() -> Result<Vec<u16>, TerminalError> {
-    let mut entries = Vec::new();
-    for name in [
-        "ComSpec",
-        "SystemRoot",
-        "TEMP",
-        "TMP",
-        "PATH",
-        "PATHEXT",
-        "USERPROFILE",
-    ] {
-        if let Some(value) = std::env::var_os(name) {
-            let value = value.to_string_lossy();
-            if value.contains('\0') || value.len() > 8_192 {
-                return Err(TerminalError::Backend);
-            }
-            entries.extend(format!("{name}={value}").encode_utf16());
-            entries.push(0);
-        }
-    }
-    entries.push(0);
-    if entries.len() > 16_384 {
-        return Err(TerminalError::Backend);
-    }
-    Ok(entries)
-}
-
+mod environment;
 #[cfg(test)]
 mod tests;

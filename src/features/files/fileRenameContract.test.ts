@@ -5,10 +5,8 @@ import type {
   RenameProjectFileResult,
   ResourceRef,
 } from "../../domain/workbench";
-import {
-  renameTargetResource,
-  validateFileRenameResult,
-} from "./fileRenameContract";
+import { renameTargetResource } from "./fileRenameContract";
+import { validateFileRenameResult } from "./fileRenameResult";
 
 const source = { rootId: "root-a", relativePath: "src/old.ts" };
 const target = { rootId: "root-a", relativePath: "src/new.ts" };

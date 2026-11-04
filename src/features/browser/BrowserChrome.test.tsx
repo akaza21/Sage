@@ -1,3 +1,4 @@
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
@@ -7,7 +8,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkbenchTab } from "../../domain/workbench";
@@ -72,7 +72,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPrint: (tabId: string) => browserPrint(tabId),
   browserCaptureScreenshot: (tabId: string, revision: string) =>
     browserCaptureScreenshot(tabId, revision),
-  browserSuggestedSites: () => browserSuggestedSites(),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
@@ -93,6 +92,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     positionBrowser(tabId, bounds),
 }));
 vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserSuggestedSites: () => browserSuggestedSites(),
+
   browserHistoryPage: (query: unknown) => browserHistoryPage(query),
   browserHistoryRemove: vi.fn(async () => 1),
 }));
@@ -135,6 +136,9 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
   expect(screen.getByRole("menuitem", { name: "Find in page" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Zoom out" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Downloads" })).toBeEnabled();
   await waitFor(() =>
     expect(screen.getByRole("menuitem", { name: "Downloads" })).toHaveFocus(),
@@ -391,38 +395,27 @@ it("loads the stored Show full URL choice when the browser opens", async () => {
   await screen.findByRole("textbox", { name: "Address or search" });
   expect(browserPreferences).toHaveBeenCalled();
 });
-it("opens Settings on the Browser page from the menu, as Codex does", async () => {
-  const openSettings = vi.fn(async () => undefined);
-  const previous = useWorkbenchStore.getState().openSettings;
-  useWorkbenchStore.setState({ openSettings });
-  try {
-    render(<BrowserSurface tab={tab} />);
-    await screen.findByRole("textbox", { name: "Address or search" });
-    fireEvent.click(screen.getByRole("button", { name: "More options" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
-    expect(openSettings).toHaveBeenCalledWith("browser");
-    expect(
-      screen.queryByRole("complementary", { name: "Site settings" }),
-    ).toBeNull();
-  } finally {
-    useWorkbenchStore.setState({ openSettings: previous });
-  }
+it("opens the shared Browser settings dialog from the menu", async () => {
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByRole("textbox", { name: "Address or search" });
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Browser settings" }));
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: false,
+  });
 });
-it("keeps this tab's site permissions one menu item away", async () => {
+it("keeps this tab's site permissions one menu item away in the shared dialog", async () => {
   render(<BrowserSurface tab={tab} />);
   await screen.findByRole("textbox", { name: "Address or search" });
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Site settings" }));
-  const drawer = await screen.findByRole("complementary", {
-    name: "Site settings",
+  expect(useAgentSettingsState.getState()).toMatchObject({
+    page: "Browser",
+    browserTabId: tab.id,
+    showSitePermissions: true,
   });
-  expect(drawer).toHaveTextContent("No site permissions saved for this tab.");
-  fireEvent.click(
-    within(drawer).getByRole("button", { name: "Close site settings" }),
-  );
-  expect(
-    screen.queryByRole("complementary", { name: "Site settings" }),
-  ).toBeNull();
 });
 it("groups supported page controls in an overflow menu without dead features", async () => {
   render(<BrowserSurface tab={tab} />);
@@ -439,15 +432,17 @@ it("groups supported page controls in an overflow menu without dead features", a
     screen.getByRole("menuitem", { name: "Browser settings" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("menuitem", { name: "Print" })).toBeInTheDocument();
-  expect(screen.queryByText("Show device toolbar")).toBeNull();
+  expect(
+    screen.getByRole("menuitem", { name: "Show device toolbar" }),
+  ).toBeEnabled();
   expect(
     screen.getByRole("menuitem", { name: "Take a screenshot" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Import cookies and passwords...")).toBeNull();
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
   expect(
-    screen.getByRole("textbox", { name: "Find text" }),
-  ).toBeInTheDocument();
+    await screen.findByRole("textbox", { name: "Find text" }),
+  ).toHaveFocus();
 });
 it("opens native print for the loaded tab from the menu", async () => {
   browserPrint.mockClear();
@@ -679,7 +674,7 @@ it("clips native webview bounds to the Agent canvas below browser chrome", async
         return rect(630, 100, 740, 760);
       if (this.classList.contains("browser-surface__toolbar"))
         return rect(630, 100, 740, 40);
-      if (this.classList.contains("browser-surface__frame"))
+      if (this.classList.contains("browser-surface__viewport"))
         return rect(600, 110, 800, 800);
       return rect(0, 0, 0, 0);
     },
@@ -772,7 +767,7 @@ it("offers committed origin, copy, external open, zoom and find on the active ta
   fireEvent.click(screen.getByRole("menuitem", { name: "Zoom in" }));
   await waitFor(() => expect(browserZoom).toHaveBeenCalledWith(tab.id, 125));
   fireEvent.click(screen.getByRole("menuitem", { name: "Find in page" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Find text" }), {
+  fireEvent.change(await screen.findByRole("textbox", { name: "Find text" }), {
     target: { value: "example" },
   });
   fireEvent.click(screen.getByRole("button", { name: /^Find$/ }));

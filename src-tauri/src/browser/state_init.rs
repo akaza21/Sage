@@ -47,6 +47,7 @@ impl BrowserState {
             annotate: annotate::Annotate::default(),
             clearing_data: AtomicBool::new(false),
             browsing_history,
+            device_updates: Mutex::new(()),
         })
     }
 

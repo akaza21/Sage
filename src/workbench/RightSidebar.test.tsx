@@ -1159,6 +1159,9 @@ describe("RightSidebar Explorer Rename File", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Renaming/ })).toBeDisabled();
 
+    await vi.waitFor(() =>
+      expect(projectPort.renameProjectFile).toHaveBeenCalled(),
+    );
     act(() => rejectRename(new Error("Native rename failed safely.")));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Native rename failed safely.",

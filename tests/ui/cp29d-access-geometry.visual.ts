@@ -152,9 +152,13 @@ for (const width of [1888, 720, 480]) {
       expect(panel!.x + panel!.width).toBeLessThanOrEqual(width - 8);
       expect(panel!.y).toBeGreaterThanOrEqual(8);
       expect(panel!.y + panel!.height).toBeLessThanOrEqual(1088);
+      const edits = await page
+        .locator(".chat-edit-summary-zone:not(:empty)")
+        .boundingBox();
+      const aboveEdge = edits ? Math.min(edits.y, anchor!.y) : anchor!.y;
       expect(
         Math.min(
-          Math.abs(panel!.y + panel!.height - anchor!.y),
+          Math.abs(panel!.y + panel!.height - aboveEdge),
           Math.abs(panel!.y - anchor!.y - anchor!.height),
         ),
       ).toBeLessThanOrEqual(9);
