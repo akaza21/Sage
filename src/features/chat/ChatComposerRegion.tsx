@@ -237,6 +237,9 @@ export function ChatComposerRegion({
               }
               aria-describedby={`${descriptionId}${composerDisabled ? "" : ` ${shortcutDescriptionId}`}${disabledReason ? ` ${disabledReasonId}` : ""}`}
               value={text}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
               maxLength={MAX_CHAT_COMPOSER_BYTES}
               rows={2}
               placeholder={composerPromptPlaceholder(

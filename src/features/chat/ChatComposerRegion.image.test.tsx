@@ -76,6 +76,43 @@ function renderComposer(
   };
 }
 
+describe("composer prompt input", () => {
+  it.each(["Codex", "Claude Code", "Pi"])(
+    "disables writing assistance and preserves literal prompts for %s",
+    (name) => {
+      useWorkbenchStore.setState({
+        harnesses: [
+          {
+            id: "fixture",
+            name,
+            description: "",
+            installState: "available",
+            source: "builtIn",
+            transport: "acp",
+            bindingId: "fixture",
+            accountModelDiscovery: false,
+          },
+        ],
+      });
+      const onTextChange = vi.fn();
+      const { rerenderComposer } = renderComposer({
+        selectedHarnessId: "fixture",
+        sessionHarnessId: "fixture",
+        onTextChange,
+      });
+      const prompt = screen.getByRole("textbox", { name: "Message agent" });
+      expect(prompt).toHaveAttribute("spellcheck", "false");
+      expect(prompt).toHaveAttribute("autocorrect", "off");
+      expect(prompt).toHaveAttribute("autocapitalize", "off");
+      const literal = "fix src/foo_bar.ts\nconst quux = 'teh';";
+      fireEvent.change(prompt, { target: { value: literal } });
+      expect(onTextChange).toHaveBeenCalledWith(literal);
+      rerenderComposer({ text: literal });
+      expect(prompt).toHaveValue(literal);
+    },
+  );
+});
+
 describe("composer image input", () => {
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
