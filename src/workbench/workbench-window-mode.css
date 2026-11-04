@@ -187,20 +187,26 @@
   outline: none;
 }
 
+/* The rail reads role tokens per state; a mode sets the tokens. */
 .workbench-sidebar-splitter::after {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 3px;
-  width: 2px;
+  width: var(--sidebar-splitter-width, 2px);
   border-radius: var(--radius-pill);
-  background: var(--color-border-subtle);
+  background: var(--sidebar-splitter-fill, var(--color-border-subtle));
   content: "";
 }
 
-.workbench-sidebar-splitter:hover::after,
+.workbench-sidebar-splitter:hover::after {
+  background: var(--sidebar-splitter-hover-fill, var(--color-accent));
+  box-shadow: var(--sidebar-splitter-hover-shadow, none);
+}
+
 .workbench-sidebar-splitter--active::after {
-  background: var(--color-accent);
+  background: var(--sidebar-splitter-active-fill, var(--color-accent));
+  box-shadow: var(--sidebar-splitter-active-shadow, none);
 }
 
 /* The Agent artifact edge keeps its generous pointer target without painting it. */

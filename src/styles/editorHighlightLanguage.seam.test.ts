@@ -94,8 +94,15 @@ describe("Editor highlight language seam", () => {
     expect(css).toContain(
       ".menu-popover--editor .searchable-picker__input:focus-visible",
     );
-    expect(css).toContain(".activity-rail__button--active");
-    expect(activityCss).toContain(".workbench-sidebar-splitter--active::after");
+    expect(visualCss).toMatch(
+      /--activity-button-active-fill:\s*var\(\s*--editor-active-fill\b/,
+    );
+    expect(visualCss).toMatch(
+      /--sidebar-splitter-active-fill:\s*var\(--editor-focus-edge\)/,
+    );
+    expect(activityCss).toMatch(
+      /--activity-indicator-fill:\s*var\(--editor-active-edge\)/,
+    );
     expect(visualCss).toContain(".new-file-dialog--editor");
     expect(visualCss).toContain(".dirty-dialog--editor");
   });

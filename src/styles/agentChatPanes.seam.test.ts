@@ -52,7 +52,7 @@ describe("Agent Chat panes stylesheet seam", () => {
     ] as const) {
       expect(css).toMatch(
         new RegExp(
-          `\\.${family}::after\\s*\\{[^}]*left:\\s*3px;[^}]*width:\\s*2px;`,
+          `\\.${family}::after\\s*\\{[^}]*left:\\s*3px;[^}]*width:\\s*(?:2px|var\\(--[\\w-]+,\\s*2px\\));`,
           "s",
         ),
       );
