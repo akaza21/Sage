@@ -42,13 +42,16 @@
     var(--color-surface-hover)
   );
   --activity-button-active-hover-fill: var(--activity-button-active-fill);
-  /* A hairline tool-rail splitter that lights with the highlight roles. */
+  /* A hairline tool-rail splitter that lights with the highlight roles,
+     which global.css also defines for forced colours. Hover and drag take
+     the focus-ring width: a hairline normally, 2px in forced colours. */
   --sidebar-splitter-width: var(--border-width);
+  --sidebar-splitter-state-width: var(--focus-ring-width);
   --sidebar-splitter-fill: transparent;
-  --sidebar-splitter-hover-fill: var(--editor-selection-edge);
-  --sidebar-splitter-hover-shadow: 0 0 4px var(--editor-focus-halo);
-  --sidebar-splitter-active-fill: var(--editor-focus-edge);
-  --sidebar-splitter-active-shadow: var(--editor-focus-halo-shadow);
+  --sidebar-splitter-hover-fill: var(--highlight-selection-edge);
+  --sidebar-splitter-hover-shadow: 0 0 4px var(--highlight-focus-halo);
+  --sidebar-splitter-active-fill: var(--highlight-focus-edge);
+  --sidebar-splitter-active-shadow: var(--highlight-focus-halo-shadow);
 }
 
 @media (forced-colors: none) {

@@ -187,7 +187,10 @@
   outline: none;
 }
 
-/* The rail reads role tokens per state; a mode sets the tokens. */
+/* The rail reads role tokens per state; a mode sets the tokens. Hover and
+   drag keep the idle width unless a mode gives them their own. A pointer
+   drag keeps the rail hovered, so hover carries no extra specificity and
+   the drag state after it wins. */
 .workbench-sidebar-splitter::after {
   position: absolute;
   top: 0;
@@ -199,20 +202,31 @@
   content: "";
 }
 
-.workbench-sidebar-splitter:hover::after {
+.workbench-sidebar-splitter:where(:hover)::after {
+  width: var(
+    --sidebar-splitter-state-width,
+    var(--sidebar-splitter-width, 2px)
+  );
   background: var(--sidebar-splitter-hover-fill, var(--color-accent));
   box-shadow: var(--sidebar-splitter-hover-shadow, none);
 }
 
 .workbench-sidebar-splitter--active::after {
+  width: var(
+    --sidebar-splitter-state-width,
+    var(--sidebar-splitter-width, 2px)
+  );
   background: var(--sidebar-splitter-active-fill, var(--color-accent));
   box-shadow: var(--sidebar-splitter-active-shadow, none);
 }
 
 /* The Agent artifact edge keeps its generous pointer target without painting it. */
+.workbench-sidebar-splitter--trailing {
+  --sidebar-splitter-width: 1px;
+}
+
 .workbench-sidebar-splitter--trailing::after {
   left: calc(50% - 0.5px);
-  width: 1px;
 }
 
 .workbench-sidebar-splitter:focus-visible {
@@ -226,8 +240,8 @@
 }
 
 @media (forced-colors: active) {
-  .workbench-sidebar-splitter::after {
-    width: 2px;
+  .workbench-sidebar-splitter--trailing {
+    --sidebar-splitter-width: 2px;
   }
 
   .workbench-sidebar-splitter--trailing::after {

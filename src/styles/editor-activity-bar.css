@@ -67,7 +67,7 @@
 .workbench--editor .right-region--leading {
   --activity-indicator-width: var(--border-width);
   --radius-activity-indicator: var(--radius-none);
-  --activity-indicator-fill: var(--editor-active-edge);
+  --activity-indicator-fill: var(--highlight-active-edge);
 
   width: 100%;
   grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
