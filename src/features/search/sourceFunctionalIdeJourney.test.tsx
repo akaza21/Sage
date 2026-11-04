@@ -221,7 +221,7 @@ describe("source-functional IDE journey", () => {
     search.unmount();
     const outline = render(<OutlineSurface />);
     expect(
-      await screen.findByRole("button", {
+      await screen.findByRole("treeitem", {
         name: "Variable: x. src/main.ts, line 1, column 5",
       }),
     ).toBeInTheDocument();

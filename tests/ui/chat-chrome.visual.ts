@@ -76,6 +76,28 @@ async function chooseWindowMode(page: Page, mode: "Agent" | "Editor") {
   await expect(radio).toBeChecked();
 }
 
+test("transcript replacement keeps following through a queued old-layout scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 1000 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const transcript = page.locator(".message-list");
+  const remaining = () =>
+    transcript.evaluate(
+      (element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop,
+    );
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  const revisions = await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
+    return fixture.replaceChatChromeWithQueuedScroll();
+  });
+  await expect.poll(remaining).toBeLessThanOrEqual(1);
+  expect(revisions).toEqual({ before: "42", after: "43" });
+});
+
 async function expectSingleHeaderRow(page: Page, width: number) {
   await expect(page.locator(".agent-task-header__title")).toBeVisible();
   const header = page.locator(".agent-task-header");
@@ -167,14 +189,15 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
       await expect(
         page.getByRole("region", { name: "Archived chats" }),
       ).toBeVisible();
+      // The row's "…" stays keyboard-only, as in the target; a pointer opens
+      // the same chat actions by right click.
       await page
         .getByRole("button", {
-          name: "Chat actions for A long chat title that must truncate instead of wrapping the header",
+          name: "Open chat A long chat title that must truncate instead of wrapping the header, pinned",
           exact: true,
         })
-        // AP-C4: Recents lists every chat, so a pinned chat has two rows.
         .first()
-        .click();
+        .click({ button: "right" });
       await expect(
         page.getByRole("menuitem", { name: "Close session", exact: true }),
       ).toHaveCount(0);

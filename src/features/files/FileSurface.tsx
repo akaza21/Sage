@@ -20,7 +20,6 @@ import { sameResource } from "../../domain/resourceIdentity";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import type { EditorAdapterHandle } from "./EditorAdapter";
-import { contentText, sameContent } from "./editorContent";
 import {
   subscribeEditorFocusRequest,
   takeEditorFocusRequest,
@@ -34,7 +33,6 @@ import {
   FileSurfaceContent,
   FileSurfaceResourceState,
 } from "./FileSurfaceContent";
-import { goToLineSelection } from "./goToLine";
 import { canPreviewMarkdown } from "./markdownPreview";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
@@ -66,7 +64,6 @@ export function FileSurface({
     projectTransitioning,
     updateEditorContent,
     saveActiveEditor,
-    content: findContent,
     findOpen,
     openFind,
     closeFind,
@@ -74,12 +71,10 @@ export function FileSurface({
     findControlRef,
     find,
   } = useFileSurfaceModel(tab, editorInputRef, findInputRef);
-  const goToInputRef = useRef<HTMLInputElement>(null);
   const [previewSessionKey, setPreviewSessionKey] = useState("");
   const [sourceSessionKey, setSourceSessionKey] = useState("");
   const [goToSessionKey, setGoToSessionKey] = useState("");
   const [goToQuery, setGoToQuery] = useState("");
-  const [goToError, setGoToError] = useState(false);
   const agentMarkdown = readOnly && canPreviewMarkdown(path);
   const previewing = agentMarkdown
     ? sourceSessionKey !== activeResourceKey
@@ -155,22 +150,13 @@ export function FileSurface({
     }
   }, [resource, editorShown, focusRequests]);
 
-  useEffect(() => {
-    if (goToOpen) {
-      goToInputRef.current?.focus();
-      goToInputRef.current?.select();
-    }
-  }, [goToOpen]);
-
   function openGoToLine() {
     hideFind();
-    setGoToError(false);
     setGoToSessionKey(activeResourceKey);
   }
 
   function openFindFromSurface(replace = false) {
     setGoToSessionKey("");
-    setGoToError(false);
     openFind(replace);
   }
 
@@ -184,7 +170,6 @@ export function FileSurface({
 
   function closeGoToLine() {
     setGoToSessionKey("");
-    setGoToError(false);
     editorInputRef.current?.focus();
   }
 
@@ -202,7 +187,6 @@ export function FileSurface({
       if (!direction && !matches("find")) return;
       event.preventDefault();
       setGoToSessionKey("");
-      setGoToError(false);
       if (direction && findOpen && findControlRef.current) {
         findControlRef.current.move(direction);
       } else {
@@ -243,47 +227,22 @@ export function FileSurface({
     });
   }, [readOnly]);
 
-  function submitGoToLine() {
-    const selection = goToLineSelection(contentText(findContent), goToQuery);
-    if (!selection) {
-      setGoToError(true);
-      return;
-    }
+  function submitGoToLine(selection: { start: number; end: number }) {
     editorInputRef.current?.setSelection(selection.start, selection.end);
     closeGoToLine();
   }
 
   async function goToLocalSymbol() {
     const input = editorInputRef.current;
-    const readyEditor = editor;
-    if (!input || !resource || readyEditor?.phase !== "ready") {
-      setLanguageNavigationStatus("Local symbol navigation is unavailable.");
-      return;
-    }
-    const { content } = readyEditor;
-    const selection = input.selection();
-    const { findLocalSymbol } = await import("../outline/outlineNavigation");
-    const text = contentText(content);
-    const target = await findLocalSymbol(
-      resource.relativePath,
-      text,
+    const selection = input?.selection();
+    const { navigateFileSymbol } = await import("./fileSymbolNavigation");
+    const message = await navigateFileSymbol(
+      input,
+      resource,
+      editor,
       selection,
     );
-    const stillCurrent = useWorkbenchStore.getState().activeEditor;
-    if (
-      stillCurrent?.phase !== "ready" ||
-      !sameResource(stillCurrent.resource, resource) ||
-      !sameContent(stillCurrent.content, content)
-    ) {
-      return;
-    }
-    if (!target) {
-      setLanguageNavigationStatus("No declaration in this File for that name.");
-      return;
-    }
-    input.focus();
-    input.setSelection(target.start, target.end);
-    setLanguageNavigationStatus("Moved to local symbol.");
+    if (message) setLanguageNavigationStatus(message);
   }
 
   if (
@@ -314,13 +273,8 @@ export function FileSurface({
       goTo={
         goToOpen && !previewing
           ? {
-              inputRef: goToInputRef,
               query: goToQuery,
-              status: goToError ? "Enter a line" : "Line or line:column",
-              onQueryChange: (query) => {
-                setGoToQuery(query);
-                setGoToError(false);
-              },
+              onQueryChange: setGoToQuery,
               onSubmit: submitGoToLine,
               onClose: closeGoToLine,
             }

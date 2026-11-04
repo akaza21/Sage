@@ -1,36 +1,43 @@
 import {
   ChevronDown,
-  ChevronRight,
+  Folder,
   FolderOpen,
-  GitBranch,
   Plus,
+  SquarePen,
 } from "../ui/leanIcons";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { lazyParts } from "../features/chat/lazyParts";
+import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
+import { useWorkbenchStore } from "../app/store";
+import type { AgentRailChat } from "../domain/workbench";
+import {
+  seenSessionRailFingerprint,
+  sessionRailUnreadVisible,
+} from "../features/chat/acp/sessionRail";
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
-import { MAX_AGENT_RAIL_CHATS_PER_PROJECT } from "./agentChatRail";
+import {
+  MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS,
+  visibleProjectChats,
+} from "./agentChatRail";
+import { useAgentRailInteractions } from "./agentRailInteractions";
 import type * as ProjectMenuChunk from "./AgentProjectMenu";
-import { AgentRailFilterMenu } from "./AgentRailFilterMenu";
-import { groupAgentRailByStatus } from "./agentRailStatusView";
+import { AgentRailOptionsMenu } from "./AgentRailOptionsMenu";
+import type {
+  AgentRailOrdering,
+  AgentRailTrailingState,
+} from "./agentRailStatusView";
 import {
   agentRailSectionCollapsed,
   toggleAgentRailSection,
   type AgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 import type * as RecentChatsChunk from "./AgentRecentChats";
+import { ProjectChatRailGlyph } from "./ProjectChatActionMenu";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
+import { useParentChatStatus, useRailChatId } from "./sideChatState";
 
-function visibleProjectChats(
-  group: AgentRailProjectGroup,
-  activeId: string | null,
-) {
-  const visible = group.chats.slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
-  const active = group.chats.find((chat) => chat.id === activeId);
-  if (active && !visible.includes(active)) visible[visible.length - 1] = active;
-  return visible;
-}
 const RecentChatsPart = lazyParts<typeof RecentChatsChunk>(
   () => import("./AgentRecentChats"),
 );
@@ -41,6 +48,7 @@ const ProjectMenuPart = lazyParts<typeof ProjectMenuChunk>(
 interface AgentRailSectionProps {
   id: string;
   label: string;
+  collapsible?: boolean;
   actions?: ReactNode;
   children: ReactNode;
 }
@@ -48,26 +56,33 @@ interface AgentRailSectionProps {
 function AgentRailSection({
   id,
   label,
+  collapsible = true,
   actions,
   children,
 }: AgentRailSectionProps) {
-  const collapsed = agentRailSectionCollapsed(id);
+  const collapsed = collapsible && agentRailSectionCollapsed(id);
   return (
     <section className="agent-rail-section" aria-label={label}>
       <div className="agent-rail-section__header">
-        <button
-          className="agent-rail-section__disclosure"
-          type="button"
-          aria-expanded={!collapsed}
-          onClick={() => toggleAgentRailSection(id)}
-        >
-          {collapsed ? (
-            <ChevronRight size={14} aria-hidden="true" />
-          ) : (
-            <ChevronDown size={14} aria-hidden="true" />
-          )}
-          <span>{label}</span>
-        </button>
+        {collapsible ? (
+          <button
+            className="agent-rail-section__disclosure"
+            type="button"
+            aria-expanded={!collapsed}
+            onClick={() => toggleAgentRailSection(id)}
+          >
+            <span>{label}</span>
+            <ChevronDown
+              className="agent-rail-section__chevron"
+              size={12}
+              aria-hidden="true"
+            />
+          </button>
+        ) : (
+          <h2 className="agent-rail-section__label" tabIndex={-1}>
+            {label}
+          </h2>
+        )}
         {actions ? (
           <div className="agent-rail-section__actions">{actions}</div>
         ) : null}
@@ -80,25 +95,42 @@ function AgentRailSection({
 function ProjectEntry({
   group,
   selected,
-  prefs,
+  currentChatId,
+  ordering,
   createChat,
   switchProject,
-  onShowMore,
-  hideArchived = false,
-  workspaceLabel,
-  branchLabel,
+  onShowAll,
 }: {
   group: AgentRailProjectGroup;
   selected: boolean;
-  prefs: AgentRailViewPrefs;
+  currentChatId: string | null;
+  ordering: AgentRailOrdering;
   createChat: (projectId?: string) => Promise<unknown>;
   switchProject: (projectId: string) => Promise<unknown>;
-  onShowMore: (projectId: string) => void;
-  hideArchived?: boolean;
-  workspaceLabel?: string;
-  branchLabel?: string;
+  onShowAll: (projectId: string) => void;
 }) {
   const expanded = !agentRailSectionCollapsed(`project:${group.id}`);
+  const [showAll, setShowAll] = useState(false);
+  const chats = visibleProjectChats(
+    group.chats,
+    selected ? currentChatId : null,
+    ordering,
+    showAll,
+  );
+  const hidden =
+    group.chats.length > MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS && !showAll;
+  const more = hidden
+    ? { label: "Show more", onClick: () => setShowAll(true) }
+    : group.truncated
+      ? { label: "Show more", onClick: () => onShowAll(group.id) }
+      : showAll
+        ? { label: "Show less", onClick: () => setShowAll(false) }
+        : undefined;
+  const FolderIcon = expanded && group.chats.length > 0 ? FolderOpen : Folder;
+  const collapsedState = useCollapsedProjectState(
+    expanded ? [] : group.chats,
+    selected,
+  );
   return (
     <div className="project-entry">
       <div className="project-entry__header">
@@ -106,46 +138,42 @@ function ProjectEntry({
           className={`project-row ${selected ? "project-row--active" : ""}`}
           type="button"
           aria-current={selected ? "page" : undefined}
-          title={`Project ${group.name}`}
+          title={group.name}
           aria-label={`Project ${group.name}`}
           aria-expanded={expanded}
           onClick={() => toggleAgentRailSection(`project:${group.id}`)}
         >
-          <FolderOpen size={16} aria-hidden="true" />
+          <FolderIcon size={16} aria-hidden="true" />
           <span>{group.name}</span>
-          {selected && branchLabel ? (
-            <span className="project-row__branch project-row__branch--chip">
-              <GitBranch size={10} aria-hidden="true" />
-              {branchLabel}
-            </span>
-          ) : (
-            <span className="project-row__count">{group.rootCount}</span>
-          )}
-          {expanded ? (
-            <ChevronDown size={14} aria-hidden="true" />
-          ) : (
-            <ChevronRight size={14} aria-hidden="true" />
-          )}
         </button>
-        <ProjectMenuPart
-          part="AgentProjectMenu"
-          name={group.name}
-          onCreateChat={() => void createChat(group.id)}
-          onOpenProject={() => void switchProject(group.id)}
-        />
+        <div className="project-entry__trailing">
+          <ProjectChatRailGlyph state={collapsedState} />
+          <div className="project-entry__actions">
+            <ProjectMenuPart
+              part="AgentProjectMenu"
+              name={group.name}
+              onCreateChat={() => void createChat(group.id)}
+              onOpenProject={() => void switchProject(group.id)}
+            />
+            <button
+              className="project-entry__new-chat"
+              type="button"
+              aria-label={`New chat in ${group.name}`}
+              title={`New chat in ${group.name}`}
+              onClick={() => void createChat(group.id)}
+            >
+              <SquarePen size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </div>
       {expanded ? (
         <ProjectChatNavigation
           projectId={group.id}
-          chats={group.chats}
+          chats={chats}
           archived={selected ? undefined : group.archived}
-          truncated={group.truncated}
+          more={more}
           selected={selected}
-          workspaceLabel={workspaceLabel}
-          showUpdated={prefs.show.updated}
-          showBranch={prefs.show.branch}
-          hideArchived={hideArchived || !prefs.showArchived}
-          onShowMore={onShowMore}
           projectChatCount={group.totalChatCount ?? group.chats.length}
         />
       ) : null}
@@ -153,14 +181,45 @@ function ProjectEntry({
   );
 }
 
+/**
+ * What a collapsed project row shows for the chats it hides: a spinner while
+ * one runs, otherwise a dot while one has unread updates.
+ */
+function useCollapsedProjectState(
+  chats: ReadonlyArray<AgentRailChat>,
+  selected: boolean,
+): AgentRailTrailingState | null {
+  const interactions = useAgentRailInteractions();
+  const parentChatStatus = useParentChatStatus();
+  const activeTabId = useRailChatId(
+    useWorkbenchStore((state) => state.activeTabId),
+  );
+  const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
+  if (chats.length === 0) return null;
+  const running = chats.some((chat) => {
+    const status = parentChatStatus(chat.id, chat.status);
+    return status === "working" || status === "recovering";
+  });
+  if (running) return { kind: "working", label: "Working" };
+  const unread = chats.some(
+    (chat) =>
+      interactions.unread.has(chat.id) ||
+      sessionRailUnreadVisible({
+        focused: selected && chat.id === viewedChatId,
+        status: chat.status,
+        updatedAt: chat.updatedAt,
+        seenFingerprint: seenSessionRailFingerprint(chat.id),
+      }),
+  );
+  return unread ? { kind: "unread", label: "Unread" } : null;
+}
+
 function FlatChatList({
   items,
   currentProjectId,
-  prefs,
 }: {
   items: ReadonlyArray<AgentRailChatItem>;
   currentProjectId: string | null;
-  prefs: AgentRailViewPrefs;
 }) {
   return (
     <div className="agent-rail-flat-list">
@@ -170,9 +229,6 @@ function FlatChatList({
           projectId={item.projectId}
           chats={[item.chat]}
           selected={item.projectId === currentProjectId}
-          workspaceLabel={prefs.show.workspace ? item.projectName : undefined}
-          showUpdated={false}
-          showBranch={prefs.show.branch}
           hideArchived
           flat
           projectChatCount={item.projectChatCount}
@@ -186,173 +242,110 @@ export function AgentRailSections({
   pinned,
   projects,
   recent,
+  all,
+  allOverflowProjectId,
   currentProjectId,
   currentChatId,
-  unreadByChatId,
   prefs,
-  currentBranchLabel,
   createChat,
-  createProject,
+  onCreateProject,
   switchProject,
   onShowMore,
-  onShowAll,
-  onMarkAllRead,
 }: {
   pinned: ReadonlyArray<AgentRailChatItem>;
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
+  /** Every unpinned chat in the chosen order, for "In one list". */
+  all: ReadonlyArray<AgentRailChatItem>;
+  allOverflowProjectId: string | null;
   currentProjectId: string | null;
   currentChatId: string | null;
-  unreadByChatId: Readonly<Record<string, boolean>>;
   prefs: AgentRailViewPrefs;
-  currentBranchLabel: string;
-  emptyProjects: boolean;
   createChat: (projectId?: string) => Promise<unknown>;
-  createProject: () => Promise<unknown>;
+  onCreateProject: () => void;
   switchProject: (projectId: string) => Promise<unknown>;
   onShowMore: (projectId: string) => void;
-  onShowAll: () => void;
-  onMarkAllRead: () => void;
 }) {
-  const statusSections = groupAgentRailByStatus({
-    groups: projects,
-    unreadByChatId,
-    statusFilter: prefs.statusFilter,
-    ordering: prefs.ordering,
-  });
+  const actions = (
+    <>
+      <AgentRailOptionsMenu />
+      <button
+        type="button"
+        aria-label="Create project"
+        title="Create project"
+        onClick={onCreateProject}
+      >
+        <Plus size={14} aria-hidden="true" />
+      </button>
+    </>
+  );
+  const pinnedSection =
+    pinned.length > 0 ? (
+      <AgentRailSection id="pinned" label="Pinned">
+        <FlatChatList items={pinned} currentProjectId={currentProjectId} />
+      </AgentRailSection>
+    ) : null;
+
+  // "In one list": every chat under Recents, in the chosen order.
+  if (prefs.organize === "list") {
+    return (
+      <>
+        {pinnedSection}
+        <AgentRailSection
+          id="recent"
+          label="Recents"
+          collapsible={false}
+          actions={actions}
+        >
+          <RecentChatsPart
+            part="AgentRecentChats"
+            items={all}
+            currentProjectId={currentProjectId}
+            onSearchMore={
+              allOverflowProjectId === null
+                ? undefined
+                : () => onShowMore(allOverflowProjectId)
+            }
+          />
+        </AgentRailSection>
+      </>
+    );
+  }
 
   return (
     <>
-      <AgentRailSection
-        id="projects"
-        label={prefs.grouping === "status" ? "Chats" : "Projects"}
-        actions={
-          <>
-            <AgentRailFilterMenu onMarkAllRead={onMarkAllRead} />
-            {prefs.grouping === "folder" ? (
-              <button
-                type="button"
-                aria-label="Open folder as project"
-                title="Open folder as project"
-                onClick={() => void createProject()}
-              >
-                <Plus size={14} aria-hidden="true" />
-              </button>
-            ) : null}
-          </>
-        }
-      >
-        {prefs.grouping === "status"
-          ? statusSections.map((section) => {
-              const collapsed = agentRailSectionCollapsed(section.id);
-              return (
-                <section
-                  className="agent-rail-status"
-                  key={section.id}
-                  aria-label={section.label}
-                >
-                  <button
-                    className="agent-rail-status__header"
-                    type="button"
-                    aria-expanded={!collapsed}
-                    onClick={() => toggleAgentRailSection(section.id)}
-                  >
-                    <span>{section.label}</span>
-                    {collapsed ? (
-                      <ChevronRight size={14} aria-hidden="true" />
-                    ) : (
-                      <ChevronDown size={14} aria-hidden="true" />
-                    )}
-                  </button>
-                  {collapsed
-                    ? null
-                    : section.groups.map((group) => (
-                        <ProjectEntry
-                          key={group.id}
-                          group={group}
-                          selected={group.id === currentProjectId}
-                          prefs={prefs}
-                          createChat={createChat}
-                          switchProject={switchProject}
-                          onShowMore={onShowMore}
-                          hideArchived={section.id !== "done"}
-                          workspaceLabel={
-                            prefs.show.workspace ? group.name : undefined
-                          }
-                          branchLabel={
-                            group.id === currentProjectId
-                              ? currentBranchLabel
-                              : undefined
-                          }
-                        />
-                      ))}
-                  {!collapsed && section.truncated ? (
-                    <button
-                      className="project-chat-more"
-                      type="button"
-                      title="More"
-                      onClick={onShowAll}
-                    >
-                      More
-                    </button>
-                  ) : null}
-                </section>
-              );
-            })
-          : projects.map((group) => (
-              <ProjectEntry
-                key={group.id}
-                group={{
-                  ...group,
-                  chats: visibleProjectChats(
-                    group,
-                    group.id === currentProjectId ? currentChatId : null,
-                  ),
-                  truncated:
-                    group.truncated ||
-                    group.chats.length > MAX_AGENT_RAIL_CHATS_PER_PROJECT,
-                }}
-                selected={group.id === currentProjectId}
-                prefs={prefs}
-                createChat={createChat}
-                switchProject={switchProject}
-                onShowMore={onShowMore}
-                branchLabel={
-                  group.id === currentProjectId ? currentBranchLabel : undefined
-                }
-              />
-            ))}
+      <AgentRailSection id="projects" label="Projects" actions={actions}>
+        {projects.map((group) => (
+          <ProjectEntry
+            key={group.id}
+            group={group}
+            selected={group.id === currentProjectId}
+            currentChatId={currentChatId}
+            ordering={prefs.ordering}
+            createChat={createChat}
+            switchProject={switchProject}
+            onShowAll={onShowMore}
+          />
+        ))}
         {projects.length === 0 ? (
           <p className="project-empty-copy">
-            New chat starts under Local. Open a folder when you want files.
+            New chat starts under Local. Create a project when you want files.
           </p>
         ) : null}
       </AgentRailSection>
 
-      <AgentRailSection id="pinned" label="Pinned">
-        {pinned.length > 0 ? (
-          <FlatChatList
-            items={pinned}
-            currentProjectId={currentProjectId}
-            prefs={prefs}
-          />
-        ) : (
-          <p className="agent-rail-section__empty">No pinned tasks</p>
-        )}
-      </AgentRailSection>
+      {pinnedSection}
 
-      <AgentRailSection id="recent" label="Recent">
-        {recent.length > 0 ? (
+      {recent.length === 0 ? null : (
+        <AgentRailSection id="recent" label="Recents" collapsible={false}>
           <RecentChatsPart
             part="AgentRecentChats"
             items={recent}
             currentProjectId={currentProjectId}
-            prefs={prefs}
+            recent
           />
-        ) : (
-          <p className="agent-rail-section__empty">No recent tasks</p>
-        )}
-      </AgentRailSection>
+        </AgentRailSection>
+      )}
     </>
   );
 }
