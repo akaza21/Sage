@@ -803,6 +803,31 @@ fn save_keeps_the_buffer_when_the_target_is_replaced_after_the_replace() {
 }
 
 #[test]
+fn save_keeps_the_buffer_when_identical_bytes_replace_the_installed_file() {
+    let path = "same-content.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    // Create the replacement first so it cannot reuse the saved file's identity.
+    let replacement = fixture.root.join("replacement.txt");
+    fs::write(&replacement, b"dirty\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::rename(&replacement, fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[test]
 fn save_keeps_the_buffer_when_the_target_is_deleted_after_the_replace() {
     let path = "deleted.txt";
     let fixture = dirty_fixture(path, b"base\n", "dirty\n");
