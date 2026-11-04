@@ -59,6 +59,7 @@ impl PreviewPhase {
 pub(crate) enum PreviewFailure {
     ScriptMissing,
     OriginNotLoopback,
+    OriginUnsupported,
     StartupTimeout,
     HealthTimeout,
     ExitedEarly,
