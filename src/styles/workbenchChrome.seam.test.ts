@@ -58,26 +58,6 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
   });
-  it("matches every artifact grid header row to the rendered header height", async () => {
-    const [chromeCss, modeCss] = await Promise.all([
-      readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-      readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
-    ]);
-    const headerHeight =
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*(var\(--agent-pane-header-height\));/s.exec(
-        chromeCss,
-      )?.[1];
-
-    expect(modeCss).toMatch(/--agent-pane-header-height:\s*46px;/);
-    expect(headerHeight).toBe("var(--agent-pane-header-height)");
-    for (const selector of [
-      /\.agent-artifact-pane\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--empty\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--with-header\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+auto\s+minmax\(0, 1fr\);/s,
-    ]) {
-      expect(selector.exec(modeCss)?.[1]).toBe(headerHeight);
-    }
-  });
 
   it("sizes the chat search pill to the owner reference with a trailing chord", async () => {
     const chromeCss = await readFile(

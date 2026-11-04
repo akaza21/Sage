@@ -11,6 +11,54 @@ test.use({
 });
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
 
+for (const scenario of ["agent-single", "preview", "file"] as const) {
+  test(`artifact header and canvas do not overlap in ${scenario}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1872, height: 1080 });
+    await openAgentScenario(page, scenario);
+    if (scenario === "agent-single") {
+      await page
+        .getByRole("button", {
+          name: "Show files and preview · Waiting",
+          exact: true,
+        })
+        .click();
+    }
+    const pane = page.getByLabel("Agent artifacts", { exact: true });
+    await expect(pane).toBeVisible();
+    if (scenario === "file") {
+      await expect(pane.locator(".agent-artifact-header")).toBeVisible();
+    }
+    const geometry = await pane.evaluate((node) => {
+      const header = node
+        .querySelector(".agent-artifact-pane__header")!
+        .getBoundingClientRect();
+      const fileHeader = node
+        .querySelector(".agent-artifact-header")
+        ?.getBoundingClientRect();
+      const canvas = node
+        .querySelector(".agent-artifact-pane__canvas")!
+        .getBoundingClientRect();
+      const bounds = node.getBoundingClientRect();
+      return {
+        headerHeight: header.height,
+        headerBottom: header.bottom,
+        contentTop: fileHeader?.top ?? canvas.top,
+        contentBottom: fileHeader?.bottom ?? header.bottom,
+        canvasTop: canvas.top,
+        canvasBottom: canvas.bottom,
+        paneBottom: bounds.bottom,
+      };
+    });
+    expect(geometry.headerHeight).toBe(46);
+    expect(geometry.contentTop).toBeCloseTo(geometry.headerBottom, 0);
+    expect(geometry.canvasTop).toBeCloseTo(geometry.contentBottom, 0);
+    expect(geometry.canvasBottom).toBeLessThanOrEqual(geometry.paneBottom);
+    expect(geometry.paneBottom - geometry.canvasBottom).toBeLessThanOrEqual(1);
+  });
+}
+
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 1872, height: 1080 },
