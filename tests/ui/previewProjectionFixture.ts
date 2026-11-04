@@ -64,6 +64,7 @@ export async function installPreviewProjectionTransport(page: Page) {
             request?: unknown;
           },
         ) => {
+          if (command === "get_terminal_dock_visible") return false;
           if (command === "plugin:event|listen") {
             if (args.event !== PREVIEW_EVENT) {
               release(args.handler ?? 0);
