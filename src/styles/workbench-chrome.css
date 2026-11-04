@@ -134,11 +134,6 @@
 .title-bar__chat-search--pill:hover:not(:disabled) {
   background: var(--title-bar-control-hover);
 }
-.workbench--agent .agent-task-header {
-  min-height: 44px;
-  border-bottom-color: var(--agent-shell-divider);
-  background: var(--agent-shell-center);
-}
 .workbench--agent .agent-artifact-pane__header {
   height: 44px;
   border-bottom: 1px solid var(--agent-shell-divider);

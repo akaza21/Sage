@@ -4,7 +4,7 @@
   max-height: 100%;
   flex-direction: column;
   width: min(
-    var(--reading-measure),
+    var(--chat-column-measure),
     calc(
       100% - var(--chat-column-gutter) - var(--chat-column-gutter) -
         var(--chat-column-trailing)
@@ -12,7 +12,7 @@
   );
   margin-inline-start: max(
     var(--chat-column-gutter),
-    calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
+    calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2)
   );
 }
 
