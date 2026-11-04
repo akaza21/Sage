@@ -141,12 +141,22 @@ export function TabStrip({
         {visibleTabs.map((tab) => {
           const Icon = icons[tab.kind];
           const active = tab.id === activeTabId;
+          const closeDisabled = tab.kind === "chat" && attachedChatCount <= 1;
 
           return (
             <div
               className={`tab ${active ? "tab--active" : ""}`}
               key={tab.id}
               role="presentation"
+              onMouseDown={(event) => {
+                // Prevent WebView2 autoscroll before the auxiliary click arrives.
+                if (event.button === 1) event.preventDefault();
+              }}
+              onAuxClick={(event) => {
+                if (event.button !== 1) return;
+                event.preventDefault();
+                if (!tab.pinned && !closeDisabled) closeTab(tab.id);
+              }}
             >
               <button
                 className="tab__activate"
@@ -202,7 +212,7 @@ export function TabStrip({
                   className="tab__close"
                   type="button"
                   aria-label={`${tab.kind === "chat" ? "Archive" : "Close"} ${tab.title}`}
-                  disabled={tab.kind === "chat" && attachedChatCount <= 1}
+                  disabled={closeDisabled}
                   onClick={() => closeTab(tab.id)}
                 >
                   <X size={14} aria-hidden="true" />

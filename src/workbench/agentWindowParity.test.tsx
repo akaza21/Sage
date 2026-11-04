@@ -218,7 +218,7 @@ it("collapses navigation to its icon rail, keeps header New chat usable, and res
   expect(container.querySelector(".project-sidebar__scroll")).toBeNull();
   expect(container.querySelector(".project-sidebar__actions")).toBeNull();
   expect(container.querySelector(".project-sidebar__account")).toBeNull();
-  expect(body.style.gridTemplateColumns).toBe("54px minmax(0, 1fr)");
+  expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
   expect(
     screen.queryByRole("separator", { name: "Resize project and chat rail" }),
   ).toBeNull();

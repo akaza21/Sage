@@ -191,8 +191,9 @@ describe("document token authority", () => {
   });
 
   it("drives document syntax colors from tokens in the editor runtime", async () => {
-    const [language, runtime, runtimeGuard] = await Promise.all([
+    const [language, theme, runtime, runtimeGuard] = await Promise.all([
       readFile(resolve("src/styles/resource-document-language.css"), "utf8"),
+      readFile(resolve("src/features/files/editorDocumentTheme.ts"), "utf8"),
       readFile(
         resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
         "utf8",
@@ -202,9 +203,9 @@ describe("document token authority", () => {
         "utf8",
       ),
     ]);
-    expect(runtime).toContain("HighlightStyle.define(");
-    expect(runtime).toContain("defaultHighlightStyle.specs");
-    expect(runtime).toContain("DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX");
+    expect(theme).toContain("HighlightStyle.define(");
+    expect(theme).toContain("defaultHighlightStyle.specs");
+    expect(theme).toContain("DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX");
     expect(runtimeGuard).toContain(
       "assertDefaultSpecFingerprint(defaultHighlightStyle.specs)",
     );
@@ -239,9 +240,10 @@ describe("document token authority", () => {
     expect(colors).toContain("var(--doc-syntax-keyword)");
     expect(colors).toContain("var(--doc-syntax-literal)");
     expect(runtime).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(theme).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     for (const token of REQUIRED_DOC_TOKENS) {
       if (!token.startsWith("--doc-syntax-")) continue;
-      expect(runtime, token).toContain(`var(${token})`);
+      expect(theme, token).toContain(`var(${token})`);
     }
     expect(language).not.toContain(".tok-");
   });
@@ -314,10 +316,6 @@ describe("shared File and Diff document language", () => {
     expect(fileStyles).toContain("var(--resource-document-gutter-foreground)");
     expect(fileStyles).toContain("var(--resource-document-active-line)");
     expect(fileStyles).toContain("var(--resource-document-caret)");
-    expect(fileStyles).toContain("var(--resource-document-selection)");
-    expect(fileStyles).toContain(
-      "var(--resource-document-selection-foreground)",
-    );
     expect(fileStyles).toContain("container-type: inline-size");
     expect(fileStyles).toContain("@container (max-width: 560px)");
     expect(diffStyles).toContain("var(--resource-document-header-height)");

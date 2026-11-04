@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
-import { AgentPrimaryNavigation } from "./AgentRailFilterMenu";
+import { AgentPrimaryNavigation } from "./AgentRailOptionsMenu";
 import { ChatSearchGate } from "./LeftSidebar";
 import { agentRailSectionSelectors } from "./agentRailNavigation";
 import { SquarePen } from "../ui/leanIcons";
@@ -46,7 +46,10 @@ export function AgentCollapsedNavigation({
             if (disclosure?.getAttribute("aria-expanded") === "false")
               disclosure.click();
             section?.scrollIntoView?.();
-            disclosure?.focus();
+            (
+              disclosure ??
+              section?.querySelector<HTMLElement>(".agent-rail-section__label")
+            )?.focus();
           });
         }}
       />
