@@ -194,10 +194,21 @@ jobs:
       - run: npm ci
       - name: Provision the bundled Chromium the smoke CLI drives
         run: npx playwright install chromium
-      # The Windows Cargo Job tests give each cargo command 10 s; install the
-      # rust-toolchain.toml toolchain first so no command waits on a download.
+      # The Windows Cargo Job tests give each cargo command 10 s. Install the
+      # rust-toolchain.toml toolchain first so no command waits on a download,
+      # then launch it once: the hosted image downloads fresh binaries every
+      # job, and their first launch (file scanning and first-run setup) can
+      # take longer than a bounded test allows. The timings stay in the log.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
+      - name: Launch the pinned Rust toolchain once
+        shell: pwsh
+        run: |
+          foreach ($tool in 'cargo', 'rustc') {
+            $elapsed = Measure-Command { & $tool --version | Out-Host }
+            if ($LASTEXITCODE -ne 0) { throw "$tool --version exited $LASTEXITCODE" }
+            Write-Host ("{0} first launch took {1:N0} ms" -f $tool, $elapsed.TotalMilliseconds)
+          }
       - name: Run the Windows budget lane
         # Hosted TEMP can use an 8.3 short spelling, which
         # the native-IDE journey scripts refuse as non-canonical.
