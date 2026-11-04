@@ -229,17 +229,6 @@
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
-.agent-settings .browser-downloads__source {
-  width: 100%;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.agent-settings .browser-downloads__toggle {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
 .agent-settings .settings-surface__keymap td {
   width: auto;
   max-width: 168px;

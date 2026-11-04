@@ -304,12 +304,13 @@ describe("AcpChatProjection", () => {
     fireEvent.click(screen.getByRole("button", { name: /file changed/ }));
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Open file Project / src/new.ts" }),
+      screen.getByRole("button", { name: "Open diff Project / src/new.ts" }),
     );
     expect(openResource).toHaveBeenCalledWith(
       createdFileEvent.resource,
-      "file",
+      "workingTreeDiff",
       { projectId: "project-1", chatId: "chat-1", sessionId: "session-1" },
+      undefined,
     );
   });
   it("badges an assistant message with the Sage avatar beside its role label", async () => {
@@ -1887,7 +1888,7 @@ describe("AcpChatProjection", () => {
     expect(openResource).not.toHaveBeenCalled();
   });
 
-  it("names a deleted unavailable file without offering an open action", async () => {
+  it("opens the known deleted file as a working diff while leaving unidentified deletions unavailable", async () => {
     const edited = page("completed");
     edited.sessions = [{ id: "session-1", ordinal: 0 } as never];
     const deleted = editItem("deleted", 1, "root-a", "deleted");
@@ -1953,8 +1954,10 @@ describe("AcpChatProjection", () => {
       within(summary).getByText("Path does not exist · unavailable"),
     ).toBeInTheDocument();
     expect(
-      within(summary).queryByRole("button", { name: /^Open / }),
-    ).toBeNull();
+      within(summary).getByRole("button", {
+        name: "Open diff cp8-pane-probe.md",
+      }),
+    ).toHaveAttribute("title", "Open current working-tree changes against Git");
     expect(openResource).not.toHaveBeenCalled();
   });
 

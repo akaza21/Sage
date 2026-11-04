@@ -65,6 +65,11 @@ export function usePinnedAgentChatOwner(): string | null {
   );
 }
 
+/** Window chrome follows retained Agent focus while Settings sleeps the body. */
+export function useAgentChatFocus(): string | null {
+  return useAgentChatOwnerStore((state) => state.agentFocusId);
+}
+
 export function clearAgentChatOwner(): void {
   pinAgentChatOwner(null);
 }

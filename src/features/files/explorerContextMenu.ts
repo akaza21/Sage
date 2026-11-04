@@ -1,16 +1,19 @@
 import { createContext } from "react";
 
-type OpenAt = (anchor: HTMLElement) => void;
+import type { PopoverPoint } from "../../ui/pointerPopoverPosition";
+
+type OpenAt = (anchor: HTMLElement, point?: PopoverPoint) => void;
 
 /**
  * Lets a right-click in the tree (or the context-menu key on a row) open the
- * Explorer actions menu at that row (ED-18). Each Explorer has its own; its
- * menu registers while mounted.
+ * Explorer actions menu for that row (ED-18): at the pointer for a click, or
+ * below the row for the keyboard. Each Explorer has its own; its menu
+ * registers while mounted.
  */
 export interface ExplorerContextMenu {
   register: (openAt: OpenAt) => () => void;
   /** False when no menu is mounted. */
-  open: (anchor: HTMLElement) => boolean;
+  open: (anchor: HTMLElement, point?: PopoverPoint) => boolean;
 }
 
 export function createExplorerContextMenu(): ExplorerContextMenu {
@@ -22,9 +25,9 @@ export function createExplorerContextMenu(): ExplorerContextMenu {
         if (current === openAt) current = null;
       };
     },
-    open: (anchor) => {
+    open: (anchor, point) => {
       if (!current) return false;
-      current(anchor);
+      current(anchor, point);
       return true;
     },
   };
