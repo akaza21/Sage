@@ -137,9 +137,10 @@
   align-items: center;
   justify-content: space-between;
   overflow-x: auto;
-  padding: 0 8px 0 8px;
+  padding: 0 var(--space-2);
+  border-top: 1px solid var(--agent-shell-title-divider);
   color: var(--color-text-muted);
-  background: var(--color-canvas);
+  background: var(--status-bar-fill);
   font-size: var(--font-size-xs);
   user-select: none;
 }

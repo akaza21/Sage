@@ -4,11 +4,16 @@
   height: 100%;
   --control-target: var(--control-height-compact);
   --control-gap: var(--space-1);
-  grid-template-rows: var(--chrome-row-height) minmax(0, 1fr) 24px;
+  --title-bar-fill: var(--agent-shell-rail);
+  --status-bar-height: 24px;
+  --status-bar-fill: var(--agent-shell-rail);
+  --agent-pane-deletions: #fa423e;
+  grid-template-rows:
+    var(--chrome-row-height) minmax(0, 1fr)
+    var(--status-bar-height);
   background: var(--color-canvas);
 }
 .workbench--agent {
-  --title-bar-fill: #111111;
   --workbench-card-radius: var(--radius-xl);
   --workbench-card-fill: var(--agent-shell-center);
   --workbench-card-margin: var(--space-2);
@@ -140,48 +145,9 @@
   background: var(--agent-shell-center);
 }
 .workbench--agent .agent-artifact-pane__header {
-  height: 44px;
+  height: var(--agent-pane-header-height);
+  padding-inline: var(--agent-pane-summary-inset);
   border-bottom: 1px solid var(--agent-shell-divider);
-}
-.workbench--agent .agent-artifact-pane .tab-strip {
-  align-items: center;
-  background: var(--agent-shell-center);
-}
-.workbench--agent .agent-artifact-pane .tab {
-  overflow: clip;
-  height: 28px;
-  min-width: 96px;
-  max-width: 208px;
-  /* Size each tab to its own title so a filename gets room before the strip
-     shrinks; when space runs out, tabs shrink in proportion to that width. */
-  flex: 0 1 auto;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-.workbench--agent .agent-artifact-pane .tab__activate {
-  gap: 4px;
-  padding: 0 4px 0 8px;
-}
-.workbench--agent .agent-artifact-pane .tab button:focus-visible {
-  outline-offset: calc(-1 * var(--focus-ring-offset));
-}
-.workbench--agent .agent-artifact-pane .tab__close {
-  display: none;
-  width: 20px;
-  min-width: 20px;
-}
-.workbench--agent
-  .agent-artifact-pane
-  .tab:is(:hover, :focus-within, .tab--active)
-  .tab__close {
-  display: grid;
-}
-.workbench--agent .agent-artifact-pane .tab--active {
-  min-width: 112px;
-  background: var(--color-plane-raised);
-  border: 1px solid var(--agent-shell-tab-border);
-  box-shadow: none;
 }
 /* Window modes recolour tabs through --tab-strip-fill, --tab-fill and
    --tab-active-fill, and opt into motion through --tab-motion-duration. */

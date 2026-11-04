@@ -1,0 +1,132 @@
+import { expect, test } from "@playwright/test";
+import {
+  openAgentScenario,
+  openAgentSnapshotDiff,
+} from "./resourceVisualHelpers";
+
+test.use({ deviceScaleFactor: 1 });
+const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1872, height: 1080 },
+]) {
+  test(`right pane and window chrome at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openAgentScenario(page, "diff");
+    await openAgentSnapshotDiff(page);
+    const pane = page.getByLabel("Agent artifacts", { exact: true });
+    await page.keyboard.press("Control+Shift+G");
+    const changes = pane.getByRole("region", { name: "Chat changes" });
+    const changesTab = pane.getByRole("tab", { name: "Changes", exact: true });
+    await expect(changesTab).toHaveAttribute("aria-selected", "true");
+    await expect(
+      changes.getByRole("combobox", { name: "Changes scope" }),
+    ).toHaveValue("lastTurn");
+    // This chat's latest turn made no edits. Earlier edits and project Git
+    // changes must not be represented as Last turn totals.
+    await expect(changes.getByText("No changes in this scope.")).toBeVisible();
+    await expect(changes.locator(".diff-header__counts")).toHaveCount(0);
+    await expect(page.locator(".title-bar")).toHaveCSS(
+      "background-color",
+      "rgb(32, 32, 32)",
+    );
+    await expect(page.locator(".title-bar")).toHaveCSS("height", "40px");
+    await expect(page.locator(".status-bar")).toHaveCSS("height", "24px");
+    await expect(page.locator(".status-bar")).toHaveCSS(
+      "background-color",
+      "rgb(32, 32, 32)",
+    );
+    await expect(pane.locator(".agent-artifact-pane__header")).toHaveCSS(
+      "height",
+      "46px",
+    );
+    await expect(pane).toHaveScreenshot(
+      `team-pane-${viewport.width}-changes.png`,
+      pixelExact,
+    );
+    await expect(page.locator(".title-bar")).toHaveScreenshot(
+      `team-pane-${viewport.width}-title.png`,
+      pixelExact,
+    );
+    await expect(page.locator(".status-bar")).toHaveScreenshot(
+      `team-pane-${viewport.width}-status.png`,
+      pixelExact,
+    );
+
+    await pane
+      .getByRole("tab", {
+        name: "Diff src/workbench/AgentChatPanes.tsx",
+        exact: true,
+      })
+      .click();
+    await expect(changes).toHaveCount(0);
+    await expect(
+      pane.getByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    await expect(pane).toHaveScreenshot(
+      `team-pane-${viewport.width}-diff.png`,
+      pixelExact,
+    );
+    await changesTab.click();
+    await expect(
+      pane.getByRole("table", { name: "Unified file diff" }),
+    ).toHaveCount(0);
+    await expect(changes).toBeVisible();
+    await openAgentSnapshotDiff(page);
+    await expect(changes).toHaveCount(0);
+    await expect(
+      pane.getByRole("tab", {
+        name: "Diff src/workbench/AgentChatPanes.tsx",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    // Make the saved edit the latest turn, using the same real projection
+    // shape as a chat whose last turn edited a file. The saved diff remains
+    // the one opened above, rather than invented totals or file contents.
+    await page.evaluate(async () => {
+      const { acpProjectionStoreFor } =
+        await import("/src/app/acpProjectionRegistry.ts");
+      const projection = acpProjectionStoreFor("visual-chat-diff");
+      const current = projection.getState().page!;
+      projection.setState({
+        page: { ...current, turns: current.turns.slice(0, 1) },
+      });
+    });
+    await changesTab.click();
+    const totals = changes.locator(
+      ".changes-surface__toolbar .diff-header__counts",
+    );
+    await expect(totals).toHaveText("+1−1");
+    await expect(
+      changes.getByRole("button", {
+        name: /src\/workbench\/AgentChatPanes\.tsx/,
+      }),
+    ).toBeVisible();
+    await expect(
+      changes.getByRole("table", { name: "Unified file diff" }),
+    ).toBeVisible();
+    await expect(pane).toHaveScreenshot(
+      `team-pane-${viewport.width}-last-turn.png`,
+      pixelExact,
+    );
+    await page
+      .getByRole("radiogroup", { name: "Window mode" })
+      .getByText("Editor", { exact: true })
+      .click();
+    await expect(
+      page.getByRole("radio", { name: "Editor", exact: true }),
+    ).toBeChecked();
+    await expect(page.locator(".title-bar")).toHaveCSS(
+      "background-color",
+      "rgb(32, 32, 32)",
+    );
+    await expect(page.locator(".status-bar")).toHaveCSS(
+      "background-color",
+      "rgb(32, 32, 32)",
+    );
+  });
+}

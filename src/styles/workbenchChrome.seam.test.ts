@@ -26,19 +26,21 @@ function mediaBlock(css: string, query: string) {
 
 describe("Workbench chrome stylesheet seam", () => {
   it("uses the measured Agent centre and right-panel chrome", async () => {
-    const css = await readFile(
-      resolve("src/styles/workbench-chrome.css"),
-      "utf8",
-    );
+    const css = (
+      await Promise.all([
+        readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
+        readFile(resolve("src/workbench/AgentArtifactPaneTabs.css"), "utf8"),
+      ])
+    ).join("\n");
     expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--title-bar-fill:\s*#111111;/s,
+      /\.workbench\s*\{[^}]*--title-bar-fill:\s*var\(--agent-shell-rail\);/s,
     );
     expect(css).not.toMatch(/--chrome-row-height:/);
     expect(css).toMatch(
       /\.workbench--agent\s*\{[^}]*--workbench-card-fill:\s*var\(--agent-shell-center\);/s,
     );
     expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*44px;[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
+      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*var\(--agent-pane-header-height\);[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
     );
     expect(css).toMatch(
       /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*1px solid var\(--agent-shell-tab-border\);/s,
@@ -62,15 +64,16 @@ describe("Workbench chrome stylesheet seam", () => {
       readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
     ]);
     const headerHeight =
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*(\d+px);/s.exec(
+      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*(var\(--agent-pane-header-height\));/s.exec(
         chromeCss,
       )?.[1];
 
-    expect(headerHeight).toBe("44px");
+    expect(modeCss).toMatch(/--agent-pane-header-height:\s*46px;/);
+    expect(headerHeight).toBe("var(--agent-pane-header-height)");
     for (const selector of [
-      /\.agent-artifact-pane\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--empty\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--with-header\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+auto\s+minmax\(0, 1fr\);/s,
+      /\.agent-artifact-pane\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+minmax\(0, 1fr\);/s,
+      /\.agent-artifact-pane--empty\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+minmax\(0, 1fr\);/s,
+      /\.agent-artifact-pane--with-header\s*\{[^}]*grid-template-rows:\s*(var\(--agent-pane-header-height\))\s+auto\s+minmax\(0, 1fr\);/s,
     ]) {
       expect(selector.exec(modeCss)?.[1]).toBe(headerHeight);
     }
