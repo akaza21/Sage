@@ -59,14 +59,11 @@
       280px,
       40%
     );
+  position: relative;
 }
 
 .workbench--agent .center-region {
   grid-template-rows: minmax(0, 1fr);
-}
-
-.workbench--agent .workbench__body {
-  position: relative;
 }
 
 .agent-artifact-surface {
