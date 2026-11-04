@@ -202,13 +202,9 @@ jobs:
         # Hosted TEMP can use an 8.3 short spelling, which
         # the native-IDE journey scripts refuse as non-canonical.
         # Point temp files at the runner's long-path temp directory instead.
-        # SAGE_CARGO_PROXY_TRACE is instrumentation for the Cargo proxy stall:
-        # the proxy semantics test repeats its bounded call and prints each
-        # call's time. It is removed once the stall's cause is fixed.
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-          SAGE_CARGO_PROXY_TRACE: "1"
         run: npm run test:budgets:windows
 
   rust:

@@ -282,58 +282,44 @@ test("VCTIP retained-handle revalidation refuses a disappearing Job member", asy
 
 // origin: check-lanes.node-test.mjs:314 "Windows Cargo Job preserves Cargo proxy command semantics" -> check-lanes.native-windows.node-test.mjs
 test("Windows Cargo Job preserves Cargo proxy command semantics", async () => {
-  // Instrumentation for the Cargo proxy stall, removed with its fix: with
-  // SAGE_CARGO_PROXY_TRACE set, the same bounded command runs 20 more times
-  // and each call's elapsed time is printed, so one run shows the
-  // distribution and is more likely to catch a stall with its diagnostics.
-  const runs = process.env.SAGE_CARGO_PROXY_TRACE ? 21 : 1;
-  const elapsed = [];
-  try {
-    for (let run = 0; run < runs; run += 1) {
-      const captured = { stdout: "", stderr: "" };
-      const capture = (stream) =>
-        new Writable({
-          write(chunk, _encoding, callback) {
-            captured[stream] = (
-              captured[stream] + chunk.toString("utf8")
-            ).slice(0, 4_096);
-            callback();
-          },
-        });
-      const started = performance.now();
-      try {
-        await executeWindowsCargoJobCommand(
-          {
-            label: "cargo-locate-project",
-            command: "cargo.exe",
-            args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
-            cwd: path.resolve("."),
-            timeoutMs: 10_000,
-            terminationGraceMs: 500,
-            settlementTimeoutMs: 2_000,
-            maximumLineBytes: 1_024,
-            maximumOutputBytes: 4_096,
-          },
-          new AbortController().signal,
-          { stdout: capture("stdout"), stderr: capture("stderr") },
+  const captured = { stdout: "", stderr: "" };
+  const capture = (stream) =>
+    new Writable({
+      write(chunk, _encoding, callback) {
+        captured[stream] = (captured[stream] + chunk.toString("utf8")).slice(
+          0,
+          4_096,
         );
-      } catch (error) {
-        error.cargoStdout = captured.stdout;
-        error.cargoStderr = captured.stderr;
-        error.elapsedMs = Math.round(performance.now() - started);
-        error.run = run;
-        throw error;
-      } finally {
-        elapsed.push(Math.round(performance.now() - started));
-      }
-      assert.deepEqual(
-        JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
-        { root: path.resolve("src-tauri/Cargo.toml") },
-      );
-    }
-  } finally {
-    if (runs > 1) console.log(`cargo proxy call ms: ${elapsed.join(", ")}`);
+        callback();
+      },
+    });
+  const started = performance.now();
+  try {
+    await executeWindowsCargoJobCommand(
+      {
+        label: "cargo-locate-project",
+        command: "cargo.exe",
+        args: ["locate-project", "--manifest-path", "src-tauri/Cargo.toml"],
+        cwd: path.resolve("."),
+        timeoutMs: 10_000,
+        terminationGraceMs: 500,
+        settlementTimeoutMs: 2_000,
+        maximumLineBytes: 1_024,
+        maximumOutputBytes: 4_096,
+      },
+      new AbortController().signal,
+      { stdout: capture("stdout"), stderr: capture("stderr") },
+    );
+  } catch (error) {
+    error.cargoStdout = captured.stdout;
+    error.cargoStderr = captured.stderr;
+    error.elapsedMs = Math.round(performance.now() - started);
+    throw error;
   }
+  assert.deepEqual(
+    JSON.parse(captured.stdout.replace(/^\[cargo-locate-project\] /u, "")),
+    { root: path.resolve("src-tauri/Cargo.toml") },
+  );
 });
 
 // Regression justification: catches an unintentional change to the current behavior
@@ -725,6 +711,14 @@ test("Windows Cargo Job timeout proves descendant zero", async () => {
           memberImages: ["caf\u00e9.exe"],
           omittedMembers: 0,
         });
+        // The deadline diagnostic reports the Job's accounting: the root and
+        // its descendant were both created, and the descendant still runs.
+        const accounting = error.wrapperDiagnostic?.match(
+          /cargo-job deadline userMs=\d+ kernelMs=\d+ totalProcesses=(\d+) activeProcesses=(\d+) pageFaults=\d+/u,
+        );
+        assert.ok(accounting, error.wrapperDiagnostic);
+        assert.ok(Number(accounting[1]) >= 2);
+        assert.ok(Number(accounting[2]) >= 1);
         return true;
       },
     );
