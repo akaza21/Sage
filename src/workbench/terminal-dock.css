@@ -1,11 +1,15 @@
-.workbench:has(.terminal-dock) {
+.workbench:has(.terminal-dock:not([hidden])) {
   grid-template-rows:
     var(--chrome-row-height) minmax(0, 1fr) minmax(180px, 28vh)
     24px;
 }
 
-.workbench:has(.terminal-dock--collapsed) {
+.workbench:has(.terminal-dock--collapsed:not([hidden])) {
   grid-template-rows: var(--chrome-row-height) minmax(0, 1fr) 34px 24px;
+}
+
+.terminal-dock[hidden] {
+  display: none;
 }
 
 .terminal-dock {

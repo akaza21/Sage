@@ -52,9 +52,8 @@ export type AgentToolRequest = {
 export const AgentToolsPart = lazyParts<typeof NewTabChunk>(
   () => import("../features/browser/BrowserNewTab"),
 );
-const TOOLS: readonly AgentTool[] = [
+const KEYBOARD_TOOLS: readonly Exclude<AgentTool, "terminal">[] = [
   "changes",
-  "terminal",
   "files",
   "sideChat",
 ];
@@ -112,7 +111,7 @@ export function AgentToolsProvider({
         document.querySelector("dialog[open]")
       )
         return;
-      const tool = TOOLS.find((candidate) =>
+      const tool = KEYBOARD_TOOLS.find((candidate) =>
         matchesKeymapChord(keymapBinding(`agent.${candidate}`), event),
       );
       if (!tool) return;

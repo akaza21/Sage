@@ -7,7 +7,7 @@ import {
   isRecord,
   safeCounter,
   safeIdentifier,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 
 const EVENT = "acp-projection-changed-v1";
 
@@ -74,6 +74,7 @@ function valid(phase: unknown, failure: unknown): boolean {
       [
         "scriptMissing",
         "originNotLoopback",
+        "originUnsupported",
         "startupTimeout",
         "healthTimeout",
         "internal",
@@ -124,6 +125,7 @@ export function safePreviewProjectionChanged(
       !isOneOf(failure, [
         "scriptMissing",
         "originNotLoopback",
+        "originUnsupported",
         "startupTimeout",
         "healthTimeout",
         "exitedEarly",
