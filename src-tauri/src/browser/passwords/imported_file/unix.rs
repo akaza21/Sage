@@ -6,14 +6,11 @@
 
 use std::{
     ffi::{CStr, CString, OsStr},
-    fs::{File, Metadata, OpenOptions},
+    fs::{File, OpenOptions},
     io,
     os::{
         fd::{AsRawFd, FromRawFd},
-        unix::{
-            ffi::OsStrExt,
-            fs::{MetadataExt, OpenOptionsExt},
-        },
+        unix::{ffi::OsStrExt, fs::OpenOptionsExt},
     },
     path::Path,
 };
@@ -21,10 +18,6 @@ use std::{
 use uuid::Uuid;
 
 use super::super::VaultResult;
-
-pub(super) fn volume_and_file_id(_file: &File, metadata: &Metadata) -> io::Result<(u64, u128)> {
-    Ok((metadata.dev(), metadata.ino().into()))
-}
 
 pub(super) fn delete_if_same(
     path: &Path,

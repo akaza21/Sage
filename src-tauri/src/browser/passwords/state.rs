@@ -15,13 +15,15 @@ use super::{
     clipboard::{self, PendingClear},
     csv_import,
     imported_file::ImportedFile,
-    key_store::{KeyFile, KeyProtector, platform_protector},
+    key_store::{KeyFile, KeyProtector, LoadedKey, platform_protector},
     secret::Secret,
     store::{CredentialPage, MergeCounts, Source, Store},
+    vault_lock::VaultLock,
 };
 
 const DATABASE_FILE: &str = "passwords.db";
 const KEY_FILE: &str = "passwords.key";
+const LOCK_FILE: &str = "passwords.lock";
 /// A search longer than this cannot match a stored site or username.
 const MAX_QUERY_BYTES: usize = 256;
 /// How long the vault stays open after its last use. Closing it drops the
@@ -44,7 +46,7 @@ pub(crate) struct PasswordsState(Arc<Shared>);
 struct Shared {
     directory: PathBuf,
     protector: Option<Arc<dyn KeyProtector>>,
-    vault: Mutex<Option<Vault>>,
+    vault: Mutex<Option<OpenVault>>,
     /// Whether a thread is waiting to close the vault once it goes idle.
     /// Changed only while `vault` is locked.
     idle_watch: AtomicBool,
@@ -117,11 +119,29 @@ impl Drop for ImportRun {
     }
 }
 
+/// The open vault and the lock that serializes its use across processes.
+struct OpenVault {
+    lock: VaultLock,
+    vault: Vault,
+}
+
 struct Vault {
     store: Store,
     key_file: KeyFile,
-    key: Option<VaultKey>,
+    key: Option<LoadedKey>,
     last_used: Instant,
+}
+
+impl Vault {
+    /// Forgets the cached key if the key file no longer holds it.
+    fn drop_stale_key(&mut self) -> VaultResult<()> {
+        if let Some(loaded) = &self.key
+            && !self.key_file.still_holds(loaded)?
+        {
+            self.key = None;
+        }
+        Ok(())
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -155,23 +175,34 @@ impl PasswordsState {
     }
 
     /// Runs `action` on the vault, opening it if it is closed, and keeps it
-    /// open until it has gone `IDLE_AFTER` without use.
+    /// open until it has gone `IDLE_AFTER` without use. The action holds the
+    /// cross-process vault lock, and a cached key another Sage process has
+    /// since replaced or removed is dropped first, so the action never seals
+    /// or opens a password with a key the vault no longer uses.
     fn with_vault<T>(&self, action: impl FnOnce(&mut Vault) -> VaultResult<T>) -> VaultResult<T> {
         let mut guard = lock(&self.0.vault);
-        let vault = match guard.as_mut() {
-            Some(vault) => vault,
+        let OpenVault {
+            lock: vault_lock,
+            vault,
+        } = match guard.as_mut() {
+            Some(open) => open,
             None => {
                 let protector = self.0.protector.clone().ok_or(VaultError::Unsupported)?;
                 std::fs::create_dir_all(&self.0.directory)?;
-                guard.insert(Vault {
-                    store: Store::open(&self.0.directory.join(DATABASE_FILE))?,
-                    key_file: KeyFile::new(self.0.directory.join(KEY_FILE), protector),
-                    key: None,
-                    last_used: Instant::now(),
+                guard.insert(OpenVault {
+                    lock: VaultLock::open(&self.0.directory.join(LOCK_FILE))?,
+                    vault: Vault {
+                        store: Store::open(&self.0.directory.join(DATABASE_FILE))?,
+                        key_file: KeyFile::new(self.0.directory.join(KEY_FILE), protector),
+                        key: None,
+                        last_used: Instant::now(),
+                    },
                 })
             }
         };
-        let result = action(vault);
+        let held = vault_lock.acquire()?;
+        let result = vault.drop_stale_key().and_then(|()| action(vault));
+        drop(held);
         vault.last_used = Instant::now();
         if !self.0.idle_watch.swap(true, Ordering::Relaxed) {
             self.watch_idle();
@@ -206,7 +237,7 @@ impl PasswordsState {
         let mut vault = lock(&self.0.vault);
         let idle_for = vault
             .as_ref()
-            .map(|vault| now.saturating_duration_since(vault.last_used));
+            .map(|open| now.saturating_duration_since(open.vault.last_used));
         match idle_for {
             Some(idle_for) if idle_for < IDLE_AFTER => Some(IDLE_AFTER - idle_for),
             _ => {
@@ -380,13 +411,13 @@ impl PasswordsState {
 /// The vault key, loaded once per run. A missing key is created only when
 /// `create` is set and no sealed row could depend on an older one.
 fn unlocked<'a>(
-    key: &'a mut Option<VaultKey>,
+    key: &'a mut Option<LoadedKey>,
     key_file: &KeyFile,
     store: &Store,
     create: bool,
 ) -> VaultResult<&'a VaultKey> {
     match key {
-        Some(key) => Ok(key),
+        Some(loaded) => Ok(loaded.key()),
         None => {
             let loaded = match key_file.load()? {
                 Some(loaded) => loaded,
@@ -394,7 +425,7 @@ fn unlocked<'a>(
                 None if create => key_file.create()?,
                 None => return Err(VaultError::NotFound),
             };
-            Ok(key.insert(loaded))
+            Ok(key.insert(loaded).key())
         }
     }
 }

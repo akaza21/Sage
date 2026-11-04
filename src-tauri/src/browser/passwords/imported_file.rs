@@ -5,42 +5,18 @@
 //! check and the removal. A file saved over the same name since the import,
 //! or changed in place, is left alone.
 
-use std::{fs::File, io, path::PathBuf, time::SystemTime};
+use std::{fs::File, path::PathBuf};
 
-use super::{VaultError, VaultResult};
+use super::{VaultError, VaultResult, file_identity::FileIdentity};
 
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
-use unix::{delete_if_same, volume_and_file_id};
+use unix::delete_if_same;
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
-use windows::{delete_if_same, volume_and_file_id};
-
-/// A file's identity and the version of its contents the import read: the
-/// volume and file id name the file whatever it is called, and the length
-/// and last write time tell a rewrite in place apart from the import.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FileIdentity {
-    volume: u64,
-    file_id: u128,
-    len: u64,
-    modified: SystemTime,
-}
-
-impl FileIdentity {
-    fn of(file: &File) -> io::Result<Self> {
-        let metadata = file.metadata()?;
-        let (volume, file_id) = volume_and_file_id(file, &metadata)?;
-        Ok(Self {
-            volume,
-            file_id,
-            len: metadata.len(),
-            modified: metadata.modified()?,
-        })
-    }
-}
+use windows::delete_if_same;
 
 /// The file the last import read, as it was when the import read it.
 pub(super) struct ImportedFile {

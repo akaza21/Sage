@@ -7,7 +7,7 @@ use std::{
 
 use zeroize::Zeroizing;
 
-use super::{VaultError, VaultResult, cipher::VaultKey};
+use super::{VaultError, VaultResult, cipher::VaultKey, file_identity::FileIdentity};
 
 #[cfg(windows)]
 mod dpapi;
@@ -36,6 +36,18 @@ pub(super) fn platform_protector() -> Option<Arc<dyn KeyProtector>> {
     }
 }
 
+/// The unwrapped key and the version of the key file it was read from.
+pub(super) struct LoadedKey {
+    key: VaultKey,
+    file: FileIdentity,
+}
+
+impl LoadedKey {
+    pub(super) fn key(&self) -> &VaultKey {
+        &self.key
+    }
+}
+
 /// The vault key's file in Sage's data folder. It only ever holds the key as
 /// the protector wrapped it.
 pub(super) struct KeyFile {
@@ -50,36 +62,58 @@ impl KeyFile {
 
     /// The stored key, `None` when there is no key file yet. A file the
     /// protector cannot unwrap (another account, or damage) is `KeyLost`.
-    pub(super) fn load(&self) -> VaultResult<Option<VaultKey>> {
-        let mut wrapped = Vec::new();
-        match fs::File::open(&self.path) {
-            Ok(file) => file
-                .take(MAX_WRAPPED_KEY_BYTES + 1)
-                .read_to_end(&mut wrapped)?,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(error.into()),
+    pub(super) fn load(&self) -> VaultResult<Option<LoadedKey>> {
+        let Some(file) = self.open()? else {
+            return Ok(None);
         };
+        let identity = FileIdentity::of(&file)?;
+        let mut wrapped = Vec::new();
+        file.take(MAX_WRAPPED_KEY_BYTES + 1)
+            .read_to_end(&mut wrapped)?;
         if wrapped.len() as u64 > MAX_WRAPPED_KEY_BYTES {
             return Err(VaultError::KeyLost);
         }
         let key = self.protector.unprotect(&wrapped)?;
-        VaultKey::from_bytes(&key)
-            .map(Some)
-            .ok_or(VaultError::KeyLost)
+        let key = VaultKey::from_bytes(&key).ok_or(VaultError::KeyLost)?;
+        Ok(Some(LoadedKey {
+            key,
+            file: identity,
+        }))
+    }
+
+    /// Whether the key file is still the one `loaded` was read from.
+    pub(super) fn still_holds(&self, loaded: &LoadedKey) -> VaultResult<bool> {
+        Ok(match self.open()? {
+            Some(file) => FileIdentity::of(&file)? == loaded.file,
+            None => false,
+        })
+    }
+
+    fn open(&self) -> VaultResult<Option<fs::File>> {
+        match fs::File::open(&self.path) {
+            Ok(file) => Ok(Some(file)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// Generates a key and writes it wrapped, through a temporary file so a
     /// crash never leaves a half-written key behind.
-    pub(super) fn create(&self) -> VaultResult<VaultKey> {
+    pub(super) fn create(&self) -> VaultResult<LoadedKey> {
         let key = VaultKey::generate()?;
         let wrapped = self.protector.protect(key.as_bytes())?;
         let staging = self.path.with_extension("key-new");
         let mut file = fs::File::create(&staging)?;
         file.write_all(&wrapped)?;
         file.sync_all()?;
+        // Renaming keeps the file's id, length and last write time.
+        let identity = FileIdentity::of(&file)?;
         drop(file);
         fs::rename(&staging, &self.path)?;
-        Ok(key)
+        Ok(LoadedKey {
+            key,
+            file: identity,
+        })
     }
 
     pub(super) fn remove(&self) -> VaultResult<()> {

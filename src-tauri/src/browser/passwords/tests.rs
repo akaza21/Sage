@@ -675,3 +675,25 @@ fn an_idle_vault_closes_and_reopens_on_its_next_use() {
     assert_eq!(state.password(&ada.id).unwrap().expose(), "first-secret");
     assert!(state.is_open());
 }
+
+/// Another Sage process on the same profile deletes everything and imports
+/// again under a new key. This process's next import must seal with that
+/// new key, so every saved password still opens afterwards.
+#[test]
+fn an_import_after_another_process_re_keys_the_vault_uses_the_new_key() {
+    let scratch = Scratch::new();
+    let directory = scratch.0.join("profile");
+    let first = state(&directory, 1);
+    import(&first, scratch.csv("a.csv", CHROME_CSV));
+    let second = state(&directory, 1);
+    second.delete_all().unwrap();
+    import(&second, scratch.csv("b.csv", NEWER_CSV));
+    import(&first, scratch.csv("c.csv", CHROME_CSV));
+
+    let reopened = state(&directory, 1);
+    let page = ready(reopened.overview("").unwrap());
+    assert_eq!(page.total, 2);
+    for entry in page.entries {
+        reopened.password(&entry.id).unwrap();
+    }
+}

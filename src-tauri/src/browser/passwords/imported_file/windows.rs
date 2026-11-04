@@ -3,7 +3,7 @@
 //! that handle keeps every writer out until the file is gone.
 
 use std::{
-    fs::{File, Metadata, OpenOptions},
+    fs::{File, OpenOptions},
     io,
     os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
     path::Path,
@@ -14,33 +14,12 @@ use windows_sys::Win32::{
     Storage::FileSystem::{
         DELETE, FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
         FILE_DISPOSITION_INFO, FILE_DISPOSITION_INFO_EX, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_ID_INFO, FILE_INFO_BY_HANDLE_CLASS, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-        FileDispositionInfo, FileDispositionInfoEx, FileIdInfo, GetFileInformationByHandleEx,
-        SetFileInformationByHandle,
+        FILE_INFO_BY_HANDLE_CLASS, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FileDispositionInfo,
+        FileDispositionInfoEx, SetFileInformationByHandle,
     },
 };
 
 use super::super::VaultResult;
-
-pub(super) fn volume_and_file_id(file: &File, _metadata: &Metadata) -> io::Result<(u64, u128)> {
-    let mut information = FILE_ID_INFO::default();
-    // SAFETY: the handle is live and the output is a FILE_ID_INFO of the size passed.
-    if unsafe {
-        GetFileInformationByHandleEx(
-            file.as_raw_handle() as HANDLE,
-            FileIdInfo,
-            (&raw mut information).cast(),
-            size_of::<FILE_ID_INFO>() as u32,
-        )
-    } == 0
-    {
-        return Err(io::Error::last_os_error());
-    }
-    Ok((
-        information.VolumeSerialNumber,
-        u128::from_le_bytes(information.FileId.Identifier),
-    ))
-}
 
 pub(super) fn delete_if_same(
     path: &Path,

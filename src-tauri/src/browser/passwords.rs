@@ -14,6 +14,7 @@ mod csv_import;
 mod csv_tests;
 #[cfg(windows)]
 mod engine;
+mod file_identity;
 mod imported_file;
 mod key_store;
 mod origin;
@@ -22,6 +23,7 @@ mod state;
 mod store;
 #[cfg(test)]
 mod tests;
+mod vault_lock;
 
 #[cfg(windows)]
 pub(super) use engine::disable_engine_password_manager;
