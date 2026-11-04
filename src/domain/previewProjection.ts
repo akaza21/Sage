@@ -22,6 +22,7 @@ export type PreviewPhase =
 export type PreviewFailure =
   | "scriptMissing"
   | "originNotLoopback"
+  | "originUnsupported"
   | "startupTimeout"
   | "healthTimeout"
   | "exitedEarly"

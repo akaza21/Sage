@@ -11,7 +11,7 @@ import {
   safeIdentifier,
   safeText,
   safeTimestamp,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 
 export function safeProjectionChanged(
   value: unknown,

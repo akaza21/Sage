@@ -9,7 +9,7 @@ import {
   safeOrdinal,
   safeText,
   safeTimestamp,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 import { admittedImageDataUrl } from "./acpDesktopResponseImage";
 import {
   MAX_FILE_CHANGES,
