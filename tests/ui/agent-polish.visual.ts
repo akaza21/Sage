@@ -26,15 +26,18 @@ test("reserves the collapsed rail column while its controls load", async ({
     await expect(page.locator(".workbench")).toHaveClass(
       /workbench--navigation-collapsed/,
     );
-    expect((await page.locator(".center-region").boundingBox())!.width).toBe(
-      426,
-    );
+    const center = (await page.locator(".center-region").boundingBox())!;
+    expect(center.x).toBe(46);
+    expect(center.width).toBe(434);
   } finally {
     release();
   }
   await expect(
     page.getByRole("navigation", { name: "Primary navigation" }),
   ).toBeVisible();
+  const loadedCenter = (await page.locator(".center-region").boundingBox())!;
+  expect(loadedCenter.x).toBe(46);
+  expect(loadedCenter.width).toBe(434);
 });
 
 test("grows and shrinks the composer within its scroll bound", async ({

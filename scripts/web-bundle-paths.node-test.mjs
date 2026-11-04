@@ -345,7 +345,7 @@ test("committed path caps tighten startup and Agent within the original 0.5 perc
         Math.floor(bytes * 1.005),
       ]),
     ),
-    initial: 104423,
+    initial: 97598,
     agentOneChat: 208434,
   });
   assert.equal(

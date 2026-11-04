@@ -1,6 +1,6 @@
 import type { AcpChatPage } from "../../../domain/acp";
 import { isRecord, isShortId } from "../../../domain/guards";
-import { acpDesktop } from "../../../services/acpDesktop";
+import { getTurnWorkspaceChanges } from "../../../services/acpDesktop";
 import { canonicalRelativePath } from "./agentEditSummary";
 import { terminalTurnStates } from "./statusSemantics";
 
@@ -70,7 +70,7 @@ export function decodeTurnWorkspaceChanges(
 }
 
 async function loadTurn(
-  request: Parameters<typeof acpDesktop.getTurnWorkspaceChanges>[0],
+  request: Parameters<typeof getTurnWorkspaceChanges>[0],
   signal: AbortSignal,
 ): Promise<TurnWorkspaceResult> {
   const key = JSON.stringify(request);
@@ -91,8 +91,7 @@ async function loadTurn(
     if (!pending && inFlight.size < MAX_CONCURRENT_READS) {
       pending = {};
       inFlight.set(key, pending);
-      void acpDesktop
-        .getTurnWorkspaceChanges(request)
+      void getTurnWorkspaceChanges(request)
         .then(
           (reply) =>
             decodeTurnWorkspaceChanges(reply, request.turnId) ?? unavailable,

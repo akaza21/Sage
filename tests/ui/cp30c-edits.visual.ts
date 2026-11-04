@@ -164,7 +164,7 @@ for (const width of [1888, 720, 480]) {
         (await box(queue)).y,
       );
       await summary
-        .getByRole("button", { name: /^Open file Review / })
+        .getByRole("button", { name: /^Open diff Review / })
         .last()
         .click({ trial: true });
       await composer
@@ -220,7 +220,10 @@ for (const width of [720, 480]) {
           .locator("li")
           .filter({ has: page.getByText("disclosure-0.tsx", { exact: true }) });
         await expect(
-          current.getByRole("button", { name: /Open file/ }),
+          current.getByRole("button", {
+            name: "Open diff Sage / src/disclosure-0.tsx",
+            exact: true,
+          }),
         ).toBeEnabled();
         const bounds = await box(summary);
         const surface = await box(pane.locator(".chat-surface"));
