@@ -166,7 +166,7 @@ export function Workbench() {
     () => <div className="center-region__dock" ref={terminalSlotRef} />,
     [terminalSlotRef],
   );
-  const terminalDockSlot = terminal.visible ? dockSlot : null;
+  const terminalDockSlot = terminalVisited ? dockSlot : null;
   // Memoized so a sleeping Agent body is not re-rendered by Workbench updates.
   const agentBody = useMemo(
     () => (
@@ -309,7 +309,7 @@ export function Workbench() {
             <TerminalDock
               container={terminalContainer}
               setOpen={terminal.setOpen}
-              visible={terminal.visible}
+              visible={terminal.visible && !agentSettingsPage}
               inert={resourceModal}
               pinnedChatId={pinnedAgentChatOwner()}
             />

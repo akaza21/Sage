@@ -69,18 +69,16 @@ export default function TerminalDockForWorkbench({
 }: WorkbenchDockProps & { container: HTMLElement | null }) {
   const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  const [owner, setOwner] = useState(() => ({
-    scope: selectedScope(pinnedChatId),
-    uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
-  }));
-  const { scope, uiProjectGeneration } = owner;
+  const [[scope, uiProjectGeneration], setOwner] = useState(
+    () =>
+      [
+        selectedScope(pinnedChatId),
+        useWorkbenchStore.getState().projectGeneration,
+      ] as const,
+  );
   if (visible && !scope) {
     const next = selectedScope(pinnedChatId);
-    if (next)
-      setOwner({
-        scope: next,
-        uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
-      });
+    if (next) setOwner([next, useWorkbenchStore.getState().projectGeneration]);
   }
   useEffect(() => {
     if (!scope) return;
@@ -94,10 +92,7 @@ export default function TerminalDockForWorkbench({
         current.projectGeneration !== scope.projectGeneration ||
         current.chatId !== scope.chatId
       ) {
-        setOwner({
-          scope: null,
-          uiProjectGeneration,
-        });
+        setOwner([null, uiProjectGeneration]);
         onClose();
       }
     });
@@ -116,7 +111,7 @@ export default function TerminalDockForWorkbench({
         aria-label="Terminal"
         hidden={!visible}
         inert={inert}
-        aria-hidden={inert || undefined}
+        aria-hidden={inert}
       >
         <div className="terminal-dock__header">Terminal</div>
         <p className="terminal-dock__message" role="status">
@@ -217,12 +212,12 @@ export function TerminalDockShell({
   useEffect(() => {
     const owner = ownerRef.current;
     const lifecycle = owner.lifecycle;
-    if (!visible || entries.length !== 0) return;
+    if (!visible || entries.length) return;
     void Promise.resolve().then(() => {
       if (
         !owner.disposed &&
         owner.lifecycle === lifecycle &&
-        owner.entries.length === 0
+        !owner.entries.length
       )
         void create();
     });
@@ -264,16 +259,16 @@ export function TerminalDockShell({
     const owner = ownerRef.current;
     const next = owner.entries.map((entry) =>
       entry.session.sessionId === sessionId
-        ? { ...entry, ended: entry.ended || Boolean(ended), message: status }
+        ? { ...entry, ended: entry.ended || ended === true, message: status }
         : entry,
     );
     owner.entries = next;
     setEntries(next);
   };
 
-  const active = entries.find((entry) => entry.session.sessionId === activeId);
-  const status = message ?? active?.message;
-  const collapseLabel = collapsed ? "Expand terminal" : "Collapse terminal";
+  const status =
+    message ??
+    entries.find((entry) => entry.session.sessionId === activeId)?.message;
   const CollapseIcon = collapsed ? ChevronUp : ChevronDown;
   return (
     <section
@@ -281,7 +276,7 @@ export function TerminalDockShell({
       aria-label="Terminal"
       hidden={!visible}
       inert={inert}
-      aria-hidden={inert || undefined}
+      aria-hidden={inert}
     >
       <div className="terminal-dock__header">
         <div
@@ -323,7 +318,7 @@ export function TerminalDockShell({
             <Plus size={16} />
           </IconButton>
           <IconButton
-            aria-label={collapseLabel}
+            aria-label={collapsed ? "Expand terminal" : "Collapse terminal"}
             onClick={() => setCollapsed(!collapsed)}
           >
             <CollapseIcon size={16} />
@@ -341,17 +336,17 @@ export function TerminalDockShell({
           load={loadTerminalView}
           fallback={null}
           render={(TerminalView) =>
-            entries.map((entry) => (
+            entries.map(({ session, ended }) => (
               <TerminalView
-                key={entry.session.sessionId}
+                key={session.sessionId}
                 scope={scope}
-                session={entry.session}
-                ended={entry.ended}
+                session={session}
+                ended={ended}
                 visible={
-                  visible && !collapsed && entry.session.sessionId === activeId
+                  visible && !collapsed && session.sessionId === activeId
                 }
                 onStatus={(status, ended) =>
-                  updateStatus(entry.session.sessionId, status, ended)
+                  updateStatus(session.sessionId, status, ended)
                 }
               />
             ))

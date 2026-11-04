@@ -4,6 +4,15 @@ import {
   openScenario,
 } from "./shared/visualBrowserPrimitives";
 
+type TerminalActivity = {
+  polling: boolean;
+  reads: number;
+  resizes: number;
+  minColumns: number;
+  minRows: number;
+  output: string;
+};
+
 /** The native boundary is simulated; the setting adapter, command and xterm are real. */
 async function attachNativeTerminal(page: Page, waitForControls = true) {
   await page.evaluate(async () => {
@@ -14,7 +23,19 @@ async function attachNativeTerminal(page: Page, waitForControls = true) {
     const sessions = new Map<string, string>();
     const pty = { columns: 80, rows: 24 };
     const input: number[] = [];
-    Object.assign(window, { terminalPtySize: pty, terminalPtyInput: input });
+    const activity: TerminalActivity = {
+      polling: false,
+      reads: 0,
+      resizes: 0,
+      minColumns: 500,
+      minRows: 300,
+      output: "",
+    };
+    Object.assign(window, {
+      terminalPtySize: pty,
+      terminalPtyInput: input,
+      terminalActivity: activity,
+    });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {
@@ -54,10 +75,20 @@ async function attachNativeTerminal(page: Page, waitForControls = true) {
               };
             }
             case "terminal_read": {
+              activity.reads += 1;
               const output = sessions.get(args!.request.handle.sessionId);
               if (!output) throw { code: "unknown_session" };
-              if (args!.request.cursor !== "0")
-                return new Promise(() => undefined);
+              if (args!.request.cursor !== "0") {
+                if (!activity.polling) return new Promise(() => undefined);
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                const bytes = activity.output;
+                activity.output = "";
+                return {
+                  bytesBase64: btoa(bytes),
+                  nextCursor: String(BigInt(args!.request.cursor) + 1n),
+                  truncated: false,
+                };
+              }
               return {
                 bytesBase64: btoa(output),
                 nextCursor: "1",
@@ -69,6 +100,12 @@ async function attachNativeTerminal(page: Page, waitForControls = true) {
               sessions.delete(args!.request.handle.sessionId);
               return;
             case "terminal_resize":
+              activity.resizes += 1;
+              activity.minColumns = Math.min(
+                activity.minColumns,
+                args!.request.columns,
+              );
+              activity.minRows = Math.min(activity.minRows, args!.request.rows);
               Object.assign(pty, {
                 columns: args!.request.columns,
                 rows: args!.request.rows,
@@ -111,6 +148,70 @@ test.beforeEach(async ({ page }) => {
   });
   await openScenario(page, "agent-single", "agent");
   await attachNativeTerminal(page);
+});
+
+test("Settings suspends terminal polling and rendering without shrinking or replacing its session", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    (
+      window as unknown as { terminalActivity: TerminalActivity }
+    ).terminalActivity.polling = true;
+  });
+  await page
+    .getByRole("button", { name: "Toggle terminal", exact: true })
+    .click();
+  const dock = page.getByRole("region", {
+    name: "Terminal",
+    exact: true,
+    includeHidden: true,
+  });
+  const rows = dock.locator(".xterm-rows");
+  await expect(rows).toContainText("Retained shell 1");
+  const original = await gridGeometry(page);
+  expect(original.columns).toBeGreaterThan(2);
+  expect(original.rows).toBeGreaterThan(1);
+  await page.clock.pauseAt(new Date("2026-08-31T09:31:00.000Z"));
+  const activity = () =>
+    page.evaluate(() => {
+      const { reads, resizes, minColumns, minRows } = (
+        window as unknown as { terminalActivity: TerminalActivity }
+      ).terminalActivity;
+      return { reads, resizes, minColumns, minRows };
+    });
+  const before = await activity();
+  await page.keyboard.press("Control+,");
+  await expect(
+    page.getByRole("dialog", { name: "Agent settings", exact: true }),
+  ).toBeVisible();
+  await expect(dock).toBeHidden();
+  await page.evaluate(() => {
+    (
+      window as unknown as { terminalActivity: TerminalActivity }
+    ).terminalActivity.output = "Output received while hidden\r\n";
+  });
+  // Finish the outstanding native read, then observe another polling interval.
+  await page.clock.runFor(250);
+  const hidden = await activity();
+  await page.clock.runFor(250);
+  expect(await activity()).toEqual(hidden);
+  expect(hidden.reads).toBe(before.reads);
+  expect(hidden.resizes).toBe(before.resizes);
+  expect(hidden.minColumns).toBeGreaterThanOrEqual(original.columns);
+  expect(hidden.minRows).toBeGreaterThanOrEqual(original.rows);
+  await expect(rows).not.toContainText("Output received while hidden");
+
+  await page
+    .getByRole("button", { name: "Close settings", exact: true })
+    .click();
+  await page.clock.runFor(250);
+  await expect(dock).toBeVisible();
+  await expect(rows).toContainText("Output received while hidden");
+  await expect(rows).toContainText("Retained shell 1");
+  await expect(dock.getByRole("tab")).toHaveCount(1);
+  expect((await activity()).reads).toBeGreaterThan(hidden.reads);
+  await expect.poll(() => gridGeometry(page)).toEqual(original);
+  expect((await activity()).resizes).toBe(hidden.resizes + 1);
 });
 
 test("defaults closed; the labelled toggle persists open and closed across reload", async ({

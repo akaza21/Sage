@@ -543,6 +543,32 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   await waitFor(() => expectGrid(container, 800, 160, 100, 10));
 });
 
+it.each([
+  [0, 0],
+  [0, 160],
+  [800, 0],
+])(
+  "keeps the PTY grid while its host measures %i by %i, then fits the visible host",
+  async (width, height) => {
+    setScreenSize(800, 160);
+    const { container } = render(
+      <TerminalDock
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    await waitFor(() => expectGrid(container, 800, 160, 100, 10));
+    setScreenSize(width, height);
+    await act(async () => resizeCallback?.());
+    expectGrid(container, 800, 160, 100, 10);
+    setScreenSize(960, 320);
+    resizeCallback?.();
+    await waitFor(() => expectGrid(container, 960, 320, 120, 20));
+  },
+);
+
 it("closes every owned session when the focused chat changes", async () => {
   useWorkbenchStore.setState({
     project: { id: scope.projectId, name: "Project", roots: [] },

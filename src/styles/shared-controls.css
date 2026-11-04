@@ -308,13 +308,6 @@
     backdrop-filter: none;
   }
 
-  .searchable-picker__trigger,
-  .searchable-picker__input {
-    border-color: ButtonText;
-    color: ButtonText;
-    background: Canvas;
-  }
-
   .menu-item:focus-visible,
   .menu-item[aria-checked="true"],
   .menu-item[aria-selected="true"] {

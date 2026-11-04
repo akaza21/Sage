@@ -11,6 +11,7 @@ import {
   terminalErrorCode,
   terminalErrorLabel,
   writeUserTerminal,
+  type UserTerminalPage,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
@@ -74,6 +75,7 @@ export default function TerminalDock({
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = devicePixelRatio;
     let resumeRead: (() => void) | null = null;
+    let fitRequired = true;
     const terminal = new Terminal({
       scrollback: SCROLLBACK_LINES,
       fontSize: 12,
@@ -95,13 +97,14 @@ export default function TerminalDock({
         selectionBackground: token("--color-selection"),
       };
     };
-    applyTheme();
     // xterm has no nonce option; its renderer and viewport create their
     // <style> elements inside open().
     withStyleNonce(element.ownerDocument, () => terminal.open(element));
 
     async function pollOutput(): Promise<void> {
       let cursor = "0";
+      // One bounded page may settle while hidden; render it before reading again.
+      let page: UserTerminalPage | undefined;
       try {
         while (!stopped) {
           // Keep the reader and xterm screen across visibility changes. A pending
@@ -112,25 +115,28 @@ export default function TerminalDock({
             });
             continue;
           }
-          let page;
-          try {
-            page = await readUserTerminal(scope, session, cursor);
-          } catch (error) {
-            if (terminalErrorCode(error) === "busy") {
-              await new Promise((resolve) =>
-                setTimeout(resolve, READ_RETRY_DELAY_MS),
-              );
-              continue;
+          if (!page) {
+            try {
+              page = await readUserTerminal(scope, session, cursor);
+            } catch (error) {
+              if (terminalErrorCode(error) === "busy") {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, READ_RETRY_DELAY_MS),
+                );
+                continue;
+              }
+              throw error;
             }
-            throw error;
           }
-          if (stopped) return;
-          if (page.truncated)
+          if (stopped || !showing) continue;
+          const output = page;
+          page = undefined;
+          if (output.truncated)
             terminal.write("\r\n[Earlier terminal output was truncated]\r\n");
           await new Promise<void>((resolve) =>
-            terminal.write(page.bytes, resolve),
+            terminal.write(output.bytes, resolve),
           );
-          cursor = page.nextCursor;
+          cursor = output.nextCursor;
         }
       } catch (error) {
         if (!stopped) reportStatus(terminalErrorLabel(error));
@@ -196,7 +202,7 @@ export default function TerminalDock({
     }
 
     const inputListener = terminal.onData((data) => {
-      if (stopped || sessionEnded || !data) return;
+      if (stopped || sessionEnded || !showing || !data) return;
       const byteLength = utf8ByteLength(data);
       if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
         reportStatus(
@@ -209,7 +215,8 @@ export default function TerminalDock({
       if (!inputSending) void drainInput();
     });
     const refreshDimensions = () => {
-      if (stopped || !showing) return;
+      if (stopped || !showing || !element.clientWidth || !element.clientHeight)
+        return;
       if (devicePixelRatio !== observedPixelRatio) {
         observedPixelRatio = devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
@@ -239,14 +246,21 @@ export default function TerminalDock({
           ),
         ),
       ];
-      if (terminal.cols === next[0] && terminal.rows === next[1]) return;
+      if (
+        !fitRequired &&
+        terminal.cols === next[0] &&
+        terminal.rows === next[1]
+      )
+        return;
       terminal.resize(...next);
+      fitRequired = false;
       latestResize = next;
       if (!resizeActive) void drainResizes();
     };
     const palette = window.matchMedia?.(FORCED_COLORS_QUERY);
     // A new font face can change the cell size, so the grid is refitted.
     const followTheme = () => {
+      if (!showing) return;
       applyTheme();
       refreshDimensions();
     };
@@ -257,10 +271,14 @@ export default function TerminalDock({
     displayRef.current = (show) => {
       showing = show;
       terminal.options.cursorBlink = show;
-      if (!show) return;
+      if (!show) {
+        latestResize = null;
+        return;
+      }
+      fitRequired = true;
       resumeRead?.();
       resumeRead = null;
-      refreshDimensions();
+      followTheme();
       terminal.focus();
     };
     void pollOutput();
