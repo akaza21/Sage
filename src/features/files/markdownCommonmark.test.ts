@@ -68,3 +68,82 @@ describe("CommonMark 0.31.2 supported block structure", () => {
     },
   );
 });
+
+describe("CommonMark list paragraph interruption sweep", () => {
+  const paragraph: Structure = { kind: "paragraph" };
+  const emptySiblings: Structure[] = [
+    { kind: "list", ordered: false, items: [[paragraph], []] },
+  ];
+  const contentSiblings: Structure[] = [
+    { kind: "list", ordered: false, items: [[paragraph], [paragraph]] },
+  ];
+  const emptyNested: Structure[] = [
+    {
+      kind: "list",
+      ordered: false,
+      items: [[paragraph, { kind: "list", ordered: false, items: [[]] }]],
+    },
+  ];
+  const contentNested: Structure[] = [
+    {
+      kind: "list",
+      ordered: false,
+      items: [
+        [paragraph, { kind: "list", ordered: false, items: [[paragraph]] }],
+      ],
+    },
+  ];
+
+  // Spec 5.2 exception 1 and examples 281/285/294:
+  // https://spec.commonmark.org/0.31.2/#list-items
+  // Empty siblings continue the existing list; an empty nested list cannot
+  // interrupt a paragraph, but can start after a blank line. These literal
+  // structures follow the reference HTML, ignoring tight/loose wrappers.
+  const cases = [
+    {
+      marker: "+",
+      indent: "",
+      position: "sibling",
+      paragraph: emptySiblings,
+      blank: emptySiblings,
+    },
+    {
+      marker: "+ two",
+      indent: "",
+      position: "sibling",
+      paragraph: contentSiblings,
+      blank: contentSiblings,
+    },
+    {
+      marker: "+",
+      indent: "  ",
+      position: "nested",
+      paragraph: [{ kind: "list", ordered: false, items: [[paragraph]] }],
+      blank: emptyNested,
+    },
+    {
+      marker: "+ two",
+      indent: "  ",
+      position: "nested",
+      paragraph: contentNested,
+      blank: contentNested,
+    },
+  ].flatMap(({ marker, indent, position, paragraph, blank }) =>
+    (["paragraph", "blank"] as const).map((after) => ({
+      marker,
+      position,
+      after,
+      markdown: `+ one\n${after === "blank" ? "\n" : ""}${indent}${marker}\n`,
+      expected: after === "paragraph" ? paragraph : blank,
+    })),
+  );
+
+  it.each(cases)(
+    "$position $marker after a $after line",
+    ({ markdown, expected }) => {
+      const document = renderMarkdownPreview(markdown);
+      expect(document.truncated).toBe(false);
+      expect(document.blocks.map(structure)).toEqual(expected);
+    },
+  );
+});

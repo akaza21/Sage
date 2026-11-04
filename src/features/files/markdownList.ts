@@ -87,7 +87,7 @@ export function readMarkdownList(
   const shape: ListItemShape[] = [];
   const levels: ListItem[] = [];
   let next: ListItem | null = first;
-  let contentIndent = first.content;
+  let contentIndent = 0;
   while (next) {
     while (levels.length > 1 && next.indent < levels.at(-2)!.content)
       levels.pop();
@@ -99,6 +99,7 @@ export function readMarkdownList(
       levels[levels.length ? levels.length - 1 : 0] = next;
     }
     const newList = !nested && parent && parent.marker !== next.marker;
+    const base = levels.at(-2)?.content ?? 0;
     contentIndent = next.content;
     // Bound same-line descent as well as the retained tree. Tab stops stay
     // anchored to the original line, including preceding container markers.
@@ -106,7 +107,8 @@ export function readMarkdownList(
       levels.length < MAX_MARKDOWN_LIST_DEPTH
         ? listItem(next.text, next.content)
         : null;
-    const parts = [inner ? "" : next.text];
+    // Collected text opens a paragraph, even after an empty opening marker.
+    const parts = inner || !next.text ? [] : [next.text];
     if (!inner) {
       cursor++;
       // A lazy paragraph continuation need not carry container indentation.
@@ -115,18 +117,20 @@ export function readMarkdownList(
       while (cursor < lines.length && lines[cursor].trim()) {
         const line = lines[cursor];
         const candidate = listItem(line);
-        const base = levels.length > 1 ? levels.at(-2)!.content : 0;
         if (
           candidate &&
-          (candidate.indent < base + 4 || candidate.indent >= next.content)
+          (!parts.length ||
+            (candidate.indent < next.content && candidate.indent < base + 4))
         )
           break;
         const relative =
           indentation(line) >= next.content
             ? stripIndent(line, next.content)
             : line;
+        // A new nested list must interrupt this item's paragraph; siblings
+        // continue an existing list even when their marker has no content.
         if (startsLeafBlock(relative) || interruptsParagraph(relative)) break;
-        if (!parts[0] && indentation(line) < next.content) break;
+        if (!parts.length && indentation(line) < next.content) break;
         parts.push(relative);
         cursor++;
       }
@@ -153,7 +157,6 @@ export function readMarkdownList(
     while (following < lines.length && !lines[following].trim()) following++;
     next = listItem(lines[following] ?? "");
     if (!next) break;
-    const base = levels.length > 1 ? levels.at(-2)!.content : 0;
     if (next.indent >= base + 4 && next.indent < contentIndent) break;
     cursor = following;
   }

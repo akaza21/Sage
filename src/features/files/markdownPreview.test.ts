@@ -742,6 +742,28 @@ describe("ATX classification before setext", () => {
 });
 
 describe("shared list interruption classification", () => {
+  it.each(["- one", "-\n  one"])(
+    "keeps an empty nested marker in the paragraph opened by %j",
+    (prefix) => {
+      expect(renderMarkdownPreview(`${prefix}\n  +\n  two`).blocks).toEqual([
+        { kind: "list", items: ["one + two"] },
+      ]);
+    },
+  );
+
+  it("admits an empty nested list before a paragraph has opened", () => {
+    expect(renderMarkdownPreview("-\n  +").blocks).toEqual([
+      {
+        kind: "list",
+        items: ["", ""],
+        shape: [
+          { depth: 0, ordered: false },
+          { depth: 1, ordered: false },
+        ],
+      },
+    ]);
+  });
+
   it.each(["-    ", "-\t"])(
     "uses the current sibling's content column after %j",
     (prefix) => {
