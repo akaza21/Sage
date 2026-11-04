@@ -65,12 +65,19 @@ pub(super) enum Event {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Attempt {
+    Ready,
+    Pending,
+    Declined,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Policy {
     pub state: MemoryState,
     pub generation: u64,
-    tried: bool,
+    attempt: Attempt,
     pins: Pins,
-    minimized: bool,
+    target: MemoryTarget,
 }
 
 impl Default for Policy {
@@ -78,9 +85,9 @@ impl Default for Policy {
         Self {
             state: MemoryState::Active,
             generation: 0,
-            tried: false,
+            attempt: Attempt::Ready,
             pins: Pins::default(),
-            minimized: false,
+            target: MemoryTarget::Normal,
         }
     }
 }
@@ -114,13 +121,28 @@ pub(super) fn next_state(input: Inputs, now: Instant) -> Option<Transition> {
     if matches!(event, Event::Timer(g) | Event::Completed(g, _) if g != current.generation) {
         return None;
     }
+    if matches!(event, Event::Completed(_, _)) && current.attempt != Attempt::Pending {
+        return None;
+    }
     let mut next = current;
     let mut suspend = false;
     let mut resume = false;
     if placed {
         next.state = MemoryState::Active;
-        next.tried = false;
+        next.attempt = Attempt::Ready;
         resume = event == Event::Wake || current.state != MemoryState::Active;
+    } else if let Event::Completed(_, successful) = event {
+        if !successful {
+            next.attempt = Attempt::Declined;
+        } else {
+            next.attempt = Attempt::Ready;
+            if pins.any() {
+                next.state = MemoryState::Hidden { since: now };
+                resume = true;
+            } else {
+                next.state = MemoryState::Suspended;
+            }
+        }
     } else if matches!(current.state, MemoryState::Active)
         || event == Event::Wake
         || (matches!(current.state, MemoryState::Hidden { .. }) && event == Event::PinsChanged)
@@ -128,26 +150,26 @@ pub(super) fn next_state(input: Inputs, now: Instant) -> Option<Transition> {
         || (pins != current.pins && current.state != MemoryState::Suspended)
     {
         next.state = MemoryState::Hidden { since: now };
-        resume = event == Event::Wake || current.state == MemoryState::Suspended;
-        if matches!(current.state, MemoryState::Active | MemoryState::Suspended) {
-            next.tried = false;
-        }
-    } else if let Event::Completed(_, successful) = event {
-        if successful && !pins.any() {
-            next.state = MemoryState::Suspended;
-        } else {
-            resume = successful;
+        resume = event == Event::Wake
+            || current.state == MemoryState::Suspended
+            || current.attempt == Attempt::Pending;
+        if matches!(current.state, MemoryState::Active | MemoryState::Suspended)
+            || current.attempt == Attempt::Pending
+        {
+            next.attempt = Attempt::Ready;
         }
     } else if let MemoryState::Hidden { since } = current.state
-        && !current.tried
+        && current.attempt == Attempt::Ready
         && !pins.any()
         && now.saturating_duration_since(since) >= SUSPEND_AFTER
     {
-        next.tried = true;
+        next.attempt = Attempt::Pending;
         suspend = true;
     }
     next.pins = pins;
-    next.minimized = minimized;
+    // Record the desired effect, not window-only input changes that cannot
+    // change a hidden tab's LOW target or invalidate its pending completion.
+    next.target = MemoryTarget::for_placement(placed, minimized);
     if matches!(event, Event::Completed(_, true)) && next.state != MemoryState::Suspended {
         resume = true;
     }
@@ -156,14 +178,14 @@ pub(super) fn next_state(input: Inputs, now: Instant) -> Option<Transition> {
     }
     next.generation = next.generation.wrapping_add(1);
     let sleep = match next.state {
-        MemoryState::Hidden { since } if !next.tried && !pins.any() => {
+        MemoryState::Hidden { since } if next.attempt == Attempt::Ready && !pins.any() => {
             Some(SUSPEND_AFTER.saturating_sub(now.saturating_duration_since(since)))
         }
         _ => None,
     };
     Some(Transition {
         next,
-        target: MemoryTarget::for_placement(placed, minimized),
+        target: next.target,
         resume,
         suspend,
         sleep,
@@ -189,5 +211,7 @@ pub(super) fn ensure_awake(_: &tauri::Webview) -> Result<Awake, String> {
 #[cfg(not(windows))]
 pub(super) fn refresh(_: &tauri::Webview) {}
 
+#[cfg(test)]
+mod race_tests;
 #[cfg(test)]
 mod tests;

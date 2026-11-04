@@ -309,8 +309,10 @@ fn update(app: &AppHandle, label: &str, core: &ICoreWebView2, event: Event) -> R
         }));
         // Other runtime-owned activity may decline suspension.
         // That is a completed attempt, never a polling loop.
-        if let Ok(suspend) = core.cast::<ICoreWebView2_3>()
-            && unsafe { suspend.TrySuspend(&completed) }.is_err()
+        if core
+            .cast::<ICoreWebView2_3>()
+            .and_then(|suspend| unsafe { suspend.TrySuspend(&completed) })
+            .is_err()
         {
             update(app, label, core, Event::Completed(generation, false))?;
         }

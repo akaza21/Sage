@@ -1,6 +1,6 @@
 use super::*;
 
-fn step(
+pub(super) fn step(
     current: Policy,
     placed: bool,
     pins: Pins,
@@ -198,7 +198,7 @@ fn activity_on_a_suspended_page_resumes_it_without_placing_it() {
     let now = Instant::now();
     let suspended = Policy {
         state: MemoryState::Suspended,
-        tried: true,
+        target: MemoryTarget::Low,
         ..Policy::default()
     };
     let activity = step(
@@ -252,7 +252,7 @@ fn a_coalesced_pin_change_restarts_hidden_grace_without_waking_a_suspended_page(
     assert!(!changed.suspend);
     let suspended = Policy {
         state: MemoryState::Suspended,
-        tried: true,
+        target: MemoryTarget::Low,
         ..Policy::default()
     };
     assert!(step(suspended, false, Pins::default(), Event::PinsChanged, now).is_none());
@@ -277,20 +277,22 @@ fn a_declined_suspend_stays_hidden_without_retrying_until_the_next_hide() {
         now + Duration::from_secs(30),
     )
     .unwrap();
+    let declined = step(
+        attempted.next,
+        false,
+        Pins::default(),
+        Event::Completed(attempted.next.generation, false),
+        now + Duration::from_secs(30),
+    )
+    .unwrap();
+    assert!(matches!(declined.next.state, MemoryState::Hidden { .. }));
+    assert_eq!(declined.target, MemoryTarget::Low);
+    assert!(!declined.resume);
+    assert!(!declined.suspend);
+    assert_eq!(declined.sleep, None);
     assert!(
         step(
-            attempted.next,
-            false,
-            Pins::default(),
-            Event::Completed(attempted.next.generation, false),
-            now + Duration::from_secs(30)
-        )
-        .is_none()
-    );
-    assert!(matches!(attempted.next.state, MemoryState::Hidden { .. }));
-    assert!(
-        step(
-            attempted.next,
+            declined.next,
             false,
             Pins::default(),
             Event::Changed,
@@ -298,12 +300,36 @@ fn a_declined_suspend_stays_hidden_without_retrying_until_the_next_hide() {
         )
         .is_none()
     );
+    let wake = step(
+        declined.next,
+        false,
+        Pins {
+            agent: true,
+            ..Pins::default()
+        },
+        Event::Wake,
+        now + Duration::from_secs(90),
+    )
+    .unwrap();
+    assert!(wake.resume);
+    assert!(!wake.suspend);
+    assert_eq!(wake.sleep, None);
+    let quiet = step(
+        wake.next,
+        false,
+        Pins::default(),
+        Event::Changed,
+        now + Duration::from_secs(91),
+    )
+    .unwrap();
+    assert!(!quiet.suspend);
+    assert_eq!(quiet.sleep, None);
     let placed = step(
-        attempted.next,
+        quiet.next,
         true,
         Pins::default(),
         Event::Changed,
-        now + Duration::from_secs(90),
+        now + Duration::from_secs(92),
     )
     .unwrap();
     let hidden = step(
@@ -311,7 +337,7 @@ fn a_declined_suspend_stays_hidden_without_retrying_until_the_next_hide() {
         false,
         Pins::default(),
         Event::Changed,
-        now + Duration::from_secs(91),
+        now + Duration::from_secs(93),
     )
     .unwrap();
     assert_eq!(hidden.sleep, Some(Duration::from_secs(30)));
