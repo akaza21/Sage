@@ -54,7 +54,6 @@ fn build_initial_bootstrap_snapshot(
 ) -> crate::error::AppResult<BootstrapSnapshot> {
     let mut snapshot = database.bootstrap_snapshot_with_catalog(harnesses)?;
     snapshot.transition_epoch = transition_epoch;
-    snapshot.harnesses = harnesses.definitions();
     let Some(project) = &snapshot.project else {
         append_startup_recovery_notice(&mut snapshot, startup_recovery_notice);
         return Ok(snapshot);
@@ -74,7 +73,6 @@ async fn build_bootstrap_snapshot_with_repository_status(
         .database
         .bootstrap_snapshot_with_catalog(&state.harnesses)?;
     snapshot.transition_epoch = transition_epoch;
-    snapshot.harnesses = state.harnesses.definitions();
     let Some(project) = &snapshot.project else {
         append_startup_recovery_notice(&mut snapshot, state.startup_recovery_notice.as_deref());
         return Ok(snapshot);
