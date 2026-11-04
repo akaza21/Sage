@@ -8,6 +8,7 @@ import {
 export function useAgentArtifactPaneFocus({
   expanded,
   overlay,
+  overlayOnExpand = overlay,
   modal = false,
   paneRef,
   triggerRef,
@@ -15,6 +16,7 @@ export function useAgentArtifactPaneFocus({
 }: {
   expanded: boolean;
   overlay: boolean;
+  overlayOnExpand?: boolean;
   modal?: boolean;
   paneRef: RefObject<HTMLElement | null>;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -26,6 +28,7 @@ export function useAgentArtifactPaneFocus({
     modal: boolean;
   } | null>(null);
   const preserveOutsideFocus = useRef(false);
+  const restoreWhenInline = useRef(false);
   useLayoutEffect(() => {
     const before = previous.current;
     const focusInside = paneRef.current?.contains(document.activeElement);
@@ -36,12 +39,17 @@ export function useAgentArtifactPaneFocus({
       !focusInside;
     if (resizingOutside) {
       preserveOutsideFocus.current = true;
+      restoreWhenInline.current = true;
       onExpandedChange?.(false);
+    } else if (!expanded && !overlayOnExpand && restoreWhenInline.current) {
+      restoreWhenInline.current = false;
+      onExpandedChange?.(true);
     } else if (
       expanded &&
       overlay &&
       (!before || !before.expanded || (!before.overlay && focusInside))
     ) {
+      restoreWhenInline.current = false;
       paneRef.current?.focus();
     }
     if (!expanded && before?.expanded) {
@@ -49,14 +57,27 @@ export function useAgentArtifactPaneFocus({
       preserveOutsideFocus.current = false;
     }
     previous.current = { expanded, overlay, modal };
-  }, [expanded, overlay, modal, paneRef, triggerRef, onExpandedChange]);
+  }, [
+    expanded,
+    overlay,
+    overlayOnExpand,
+    modal,
+    paneRef,
+    triggerRef,
+    onExpandedChange,
+  ]);
 
   return (event: KeyboardEvent<HTMLElement>) => {
     const pane = paneRef.current;
-    if (!expanded || !pane) return;
+    if (!expanded || !pane || event.defaultPrevented) return;
     if (event.key === "Escape") {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("input, textarea, select, [contenteditable=true]")
+      )
+        return;
       event.preventDefault();
-      if (overlay) event.stopPropagation();
+      event.stopPropagation();
       onExpandedChange?.(false);
     } else if (overlay && event.key === "Tab") {
       const controls = Array.from(

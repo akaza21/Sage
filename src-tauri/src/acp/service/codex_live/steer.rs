@@ -4,8 +4,9 @@ use crate::acp::{
 };
 
 use super::live_recovery::LiveHostRecoveryPhase;
-use super::{AcpService, CodexSessionError, map_slot_error};
+use super::{CodexSessionError, map_slot_error};
 use crate::acp::service::SessionDispatchError;
+use crate::acp::service::{AcpService, live_lanes::Lane};
 
 impl AcpService {
     pub(crate) fn dispatch_session_steer(
@@ -22,10 +23,14 @@ impl AcpService {
         if !capabilities.active_turn_steer {
             return Err(SessionDispatchError::Binding);
         }
-        self.steer_codex_turn(intent)
+        self.lane_for(&intent.owner)
+            .ok_or(CodexSessionError::Intent)
+            .and_then(|lane| lane.steer_codex_turn(intent))
             .map_err(SessionDispatchError::Operation)
     }
+}
 
+impl Lane<'_> {
     fn steer_codex_turn(&self, intent: HostSteerIntent) -> Result<HostOutcome, CodexSessionError> {
         let owner = intent.owner.clone();
         let host = self.runtime.for_owner(&owner).map_err(map_slot_error)?;

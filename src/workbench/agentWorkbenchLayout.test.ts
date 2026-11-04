@@ -3,12 +3,51 @@ import { describe, expect, it } from "vitest";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 describe("Agent navigation allocation", () => {
+  it.each([1041, 1280, 1888])(
+    "preserves the chat and Files floors at splitter extremes at %i",
+    (viewportWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: true,
+        requestedWidths: { leftRailWidth: 385, artifactWidth: 1200 },
+      });
+      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.chatWidth).toBeGreaterThanOrEqual(360);
+      expect(layout.artifactWidth).toBeGreaterThanOrEqual(280);
+      expect(
+        layout.leftRailWidth + layout.chatWidth + layout.artifactWidth,
+      ).toBeLessThan(viewportWidth);
+    },
+  );
+  it.each([480, 760, 1000, 1280, 1888])(
+    "keeps only the 46px icon rail when navigation is collapsed at %i",
+    (viewportWidth) => {
+      for (const artifactExpanded of [false, true]) {
+        const layout = agentWorkbenchLayout({
+          viewportWidth,
+          artifactExpanded,
+          navigationCollapsed: true,
+        });
+        expect(layout.leftRailWidth).toBe(46);
+        expect(layout.navigationResizable).toBe(false);
+        expect(layout.gridTemplateColumns).toMatch(/^46px minmax/);
+        expect(layout.chatWidth).toBe(
+          viewportWidth -
+            46 -
+            (artifactExpanded && !layout.artifactOverlay
+              ? layout.artifactWidth + 8
+              : 0),
+        );
+        expect(layout.chatWidth).toBeGreaterThanOrEqual(360);
+      }
+    },
+  );
   it.each([
     [480, true, 60, 420],
     [623, true, 203, 420],
     [624, false, 304, 320],
-    [720, false, 332, 388],
-    [761, false, 352, 409],
+    [720, false, 326, 394],
+    [761, false, 341, 420],
   ])(
     "bounds overlays without overlapping interactive navigation at %i",
     (viewportWidth, modal, left, width) => {
@@ -25,12 +64,12 @@ describe("Agent navigation allocation", () => {
   it.each([
     [479, 262, 217],
     [480, 262, 218],
-    [719, 332, 387],
-    [720, 332, 388],
-    [760, 344, 416],
-    [761, 344, 409],
-    [1280, 385, 887],
-    [1888, 385, 1495],
+    [719, 326, 393],
+    [720, 326, 394],
+    [760, 326, 434],
+    [761, 326, 427],
+    [1280, 326, 946],
+    [1888, 326, 1554],
   ])(
     "retains navigation at %i without reserving a closed resource edge",
     (viewportWidth, navigation, chat) => {
@@ -47,11 +86,13 @@ describe("Agent navigation allocation", () => {
   it.each([
     [479, 262, 217],
     [480, 262, 218],
-    [719, 332, 387],
-    [720, 332, 388],
-    [760, 344, 416],
-    [761, 344, 409],
-    [1040, 385, 647],
+    [719, 326, 393],
+    [720, 326, 394],
+    [760, 326, 434],
+    [761, 326, 427],
+    [800, 326, 466],
+    [936, 326, 602],
+    [981, 326, 647],
   ])(
     "opens resources over the same chat allocation at %i",
     (viewportWidth, navigation, chat) => {
@@ -66,9 +107,11 @@ describe("Agent navigation allocation", () => {
   );
 
   it.each([
-    [1041, 385, 280, 360],
-    [1280, 385, 519, 360],
-    [1888, 385, 850, 637],
+    [982, 326, 280, 360],
+    [1040, 326, 338, 360],
+    [1041, 326, 339, 360],
+    [1280, 326, 576, 362],
+    [1888, 326, 850, 696],
   ])(
     "admits inline resources with a usable chat at %i",
     (viewportWidth, navigation, resource, chat) => {
@@ -116,15 +159,21 @@ describe("Agent navigation allocation", () => {
     });
   });
 
-  it("admits inline resources below the default threshold when resized navigation leaves room", () => {
-    const layout = agentWorkbenchLayout({
-      viewportWidth: 1000,
-      artifactExpanded: true,
-      requestedWidths: { leftRailWidth: 180, artifactWidth: 300 },
-    });
-    expect(layout.artifactOverlay).toBe(false);
-    expect(layout.leftRailWidth).toBe(180);
-    expect(layout.artifactWidth).toBe(300);
-    expect(layout.chatWidth).toBe(504);
-  });
+  it.each([
+    [836, 280, 360],
+    [1000, 300, 504],
+  ])(
+    "admits inline resources at %i when resized navigation leaves room",
+    (viewportWidth, artifactWidth, chatWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: true,
+        requestedWidths: { leftRailWidth: 180, artifactWidth },
+      });
+      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.leftRailWidth).toBe(180);
+      expect(layout.artifactWidth).toBe(artifactWidth);
+      expect(layout.chatWidth).toBe(chatWidth);
+    },
+  );
 });

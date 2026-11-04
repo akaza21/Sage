@@ -12,6 +12,10 @@
 }
 
 .chat-home {
+  --project-scope-trigger-border: 0;
+  --project-scope-trigger-fill: transparent;
+  --project-scope-trigger-blur: none;
+  --project-scope-trigger-shadow: none;
   width: 100%;
   min-width: 0;
   text-align: center;
@@ -19,26 +23,6 @@
 
 .chat-home > svg {
   color: var(--color-text-muted);
-}
-
-.chat-home__scope {
-  display: flex;
-  width: min(100%, var(--reading-measure));
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 auto;
-  padding: var(--space-2) var(--space-3);
-  border-top-left-radius: var(--radius-xl);
-  border-top-right-radius: var(--radius-xl);
-  color: var(--color-text-secondary);
-  background: var(--color-plane-raised);
-  font-size: var(--font-size-xs);
-  overflow-wrap: anywhere;
-}
-
-.chat-home__scope > svg {
-  flex: none;
 }
 
 .chat-home h3 {

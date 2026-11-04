@@ -53,7 +53,7 @@ test("CP-28 regular tool summary computes to Codex's a3a3a3 400 text", async ({
 
 for (const layout of [
   { width: 720, scenario: "agent-command-rollup" as const, panes: 1 },
-  { width: 1888, scenario: "agent-dual" as const, panes: 2 },
+  { width: 1888, scenario: "agent-dual" as const, panes: 1 },
 ]) {
   test(`CP-28 long native command stays one line at ${layout.width}px in ${layout.panes} pane(s)`, async ({
     page,

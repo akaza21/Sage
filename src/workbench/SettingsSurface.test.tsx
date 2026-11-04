@@ -1,3 +1,4 @@
+import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
   act,
   cleanup,
@@ -27,6 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useSettingsPageRequest.setState({ page: null });
+  useAgentSettingsState.getState().close();
   useEditorSettingsStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -47,14 +49,14 @@ describe("SettingsSurface", () => {
   });
 
   it("opens on a requested page and follows a request while open", async () => {
-    useSettingsPageRequest.setState({ page: "browser" });
+    useSettingsPageRequest.setState({ page: "keyboard" });
     render(<SettingsSurface />);
-    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Keyboard" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(
-      await screen.findByRole("heading", { name: "Browser" }),
+      await screen.findByRole("heading", { name: "Keyboard Shortcuts" }),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(useSettingsPageRequest.getState().page).toBeNull(),
@@ -72,17 +74,13 @@ describe("SettingsSurface", () => {
     expect(useSettingsPageRequest.getState().page).toBeNull();
   });
 
-  it("loads the Browser page on demand", async () => {
+  it("opens Browser in the shared Agent settings dialog", async () => {
     render(<SettingsSurface />);
-    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
-    expect(
-      await screen.findByRole("heading", { name: "Browser" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Browser" })).toHaveAttribute(
-      "aria-selected",
-      "true",
+    await waitFor(() =>
+      expect(useAgentSettingsState.getState().page).toBe("Browser"),
     );
+    expect(screen.queryByRole("heading", { name: "Browser" })).toBeNull();
   });
 
   it("shows the real chord for each shortcut on the Keyboard page", () => {

@@ -1,12 +1,14 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useLayoutEffect } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
@@ -30,6 +32,35 @@ function submitWorkspaceSearch() {
 }
 
 describe("Workspace Search view", () => {
+  it("retains a query entered before the initial passive effects finish", async () => {
+    function SearchWithEarlyInput() {
+      // A lazy surface can expose its input before passive effects run.
+      useLayoutEffect(() => {
+        const input = screen.getByRole("searchbox", { name: "Search text" });
+        input.dispatchEvent(
+          createEvent.change(input, { target: { value: "needle" } }),
+        );
+      }, []);
+      return (
+        <WorkspaceSearchView
+          projectId="project-a"
+          transitionEpoch={4}
+          indexGeneration={0}
+          gateway={{ search: vi.fn() }}
+          onOpenMatch={vi.fn()}
+        />
+      );
+    }
+
+    await act(async () => {
+      render(<SearchWithEarlyInput />);
+    });
+
+    expect(screen.getByRole("searchbox", { name: "Search text" })).toHaveValue(
+      "needle",
+    );
+  });
+
   it("keeps Search filters beside the query instead of adding a details row", () => {
     render(
       <WorkspaceSearchView

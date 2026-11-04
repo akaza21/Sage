@@ -46,6 +46,14 @@ impl DiscoveryState {
                 .iter()
                 .find(|candidate| candidate.id == "opencode"),
         );
+        // Pi launch facts are read only when its CLI is present.
+        registry.pi_admission().apply_discovery(
+            if discovered.iter().any(|candidate| candidate.id == "pi") {
+                crate::harness_discovery::discover_pi_launch()
+            } else {
+                crate::harness_discovery::PiLaunchDiscovery::Absent
+            },
+        );
         *self.0.write().expect("harness discovery lock poisoned") =
             DiscoverySnapshot::Discovered(discovered);
     }

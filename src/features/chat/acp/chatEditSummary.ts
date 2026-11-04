@@ -7,6 +7,7 @@ import {
   type AgentEditSummaryProjection,
 } from "./agentEditSummary";
 import { terminalItemLifecycles } from "./statusSemantics";
+import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 
 const retainedTurns = new WeakMap<
   TurnProjection,
@@ -15,10 +16,79 @@ const retainedTurns = new WeakMap<
     chatId: string;
     sessionKnown: boolean;
     summary: AgentEditSummaryProjection;
+    workspace?: readonly TurnWorkspaceChange[];
+    merged?: AgentEditSummaryProjection;
   }
 >();
 
-export function projectChatEditSummary(page: AcpChatPage) {
+function workspaceChange(change: TurnWorkspaceChange): AgentEditSummaryChange {
+  return {
+    resource: {
+      kind: "resource",
+      resource: { rootId: change.rootId, relativePath: change.relativePath },
+    },
+    operation: change.operation,
+    originalResource: null,
+    summary: "",
+    additions: null,
+    deletions: null,
+  };
+}
+
+function mergeWorkspaceChanges(
+  summary: AgentEditSummaryProjection,
+  turn: TurnProjection,
+  workspaceChanges: readonly TurnWorkspaceChange[],
+): AgentEditSummaryProjection {
+  if (!workspaceChanges.length) return summary;
+  const changes = new Map<string, AgentEditSummaryChange>();
+  const changeKeys = new Set(summary.changeKeys);
+  for (const workspace of workspaceChanges) {
+    if (workspace.turnId !== turn.id) continue;
+    const change = workspaceChange(workspace);
+    const key = agentEditSummaryChangeKey(change);
+    if (summary.changeKeys.has(key)) continue;
+    changeKeys.add(key);
+    changes.delete(key);
+    changes.set(key, change);
+  }
+  for (const change of summary.changes) {
+    const key = agentEditSummaryChangeKey(change);
+    changes.delete(key);
+    changes.set(key, change);
+  }
+  while (changes.size > MAX_AGENT_EDIT_SUMMARY_FILES)
+    changes.delete(changes.keys().next().value!);
+  return {
+    ...summary,
+    changes: [...changes.values()],
+    changeKeys,
+    omittedCount: changeKeys.size - changes.size,
+  };
+}
+
+export function projectTurnEditSummary(
+  page: AcpChatPage,
+  turn: TurnProjection,
+  workspaceChanges: readonly TurnWorkspaceChange[] = [],
+  workspaceIncomplete = false,
+) {
+  const summary = projectAgentEditSummary(page, turn);
+  return mergeWorkspaceChanges(
+    {
+      ...summary,
+      sourceTruncated: summary.sourceTruncated || workspaceIncomplete,
+    },
+    turn,
+    workspaceChanges,
+  );
+}
+
+export function projectChatEditSummary(
+  page: AcpChatPage,
+  workspaceChanges: readonly TurnWorkspaceChange[] = [],
+  workspaceIncomplete = false,
+) {
   const changeKeys = new Set<string>();
   const changes = new Map<
     string,
@@ -28,9 +98,10 @@ export function projectChatEditSummary(page: AcpChatPage) {
     changes: [],
     changeKeys,
     omittedCount: 0,
-    sourceTruncated: false,
+    sourceTruncated: workspaceIncomplete,
     rejectedUnsafeOrStale: false,
   };
+  const byTurn = groupWorkspaceChanges(workspaceChanges);
   for (const turn of page.turns) {
     const sessionKnown = page.sessions.some(
       (session) => session.id === turn.sessionId,
@@ -47,20 +118,28 @@ export function projectChatEditSummary(page: AcpChatPage) {
               terminalItemLifecycles.has(item.lifecycle),
             ),
           });
-    if (retained !== cached?.summary)
-      retainedTurns.set(turn, {
-        projectId: page.projectId,
-        chatId: page.chatId,
-        sessionKnown,
-        summary: retained,
-      });
-    summary.sourceTruncated ||= retained.sourceTruncated;
-    summary.rejectedUnsafeOrStale ||= retained.rejectedUnsafeOrStale;
-    for (const key of retained.changeKeys) {
+    const workspace = byTurn.get(turn.id) ?? NO_CHANGES;
+    const merged =
+      cached?.summary === retained &&
+      cached.workspace === workspace &&
+      cached.merged
+        ? cached.merged
+        : mergeWorkspaceChanges(retained, turn, workspace);
+    retainedTurns.set(turn, {
+      projectId: page.projectId,
+      chatId: page.chatId,
+      sessionKnown,
+      summary: retained,
+      workspace,
+      merged,
+    });
+    summary.sourceTruncated ||= merged.sourceTruncated;
+    summary.rejectedUnsafeOrStale ||= merged.rejectedUnsafeOrStale;
+    for (const key of merged.changeKeys) {
       changeKeys.add(key);
       changes.delete(key);
     }
-    for (const change of retained.changes) {
+    for (const change of merged.changes) {
       const key = agentEditSummaryChangeKey(change);
       changes.delete(key);
       changes.set(key, {
@@ -75,5 +154,44 @@ export function projectChatEditSummary(page: AcpChatPage) {
   return {
     ...summary,
     changes: [...changes.values()],
+  };
+}
+
+const NO_CHANGES: readonly TurnWorkspaceChange[] = [];
+const groupedWorkspace = new WeakMap<
+  readonly TurnWorkspaceChange[],
+  Map<string, TurnWorkspaceChange[]>
+>();
+function groupWorkspaceChanges(changes: readonly TurnWorkspaceChange[]) {
+  let grouped = groupedWorkspace.get(changes);
+  if (!grouped) {
+    grouped = new Map();
+    for (const change of changes) {
+      const turn = grouped.get(change.turnId) ?? [];
+      turn.push(change);
+      grouped.set(change.turnId, turn);
+    }
+    groupedWorkspace.set(changes, grouped);
+  }
+  return grouped;
+}
+
+export function editDiffAction(change: AgentEditSummaryChange) {
+  const location = change.resource;
+  const resource =
+    location.kind === "resource"
+      ? location.resource
+      : location.reason === "missing" && change.operation === "deleted"
+        ? location.displayResource
+        : undefined;
+  return {
+    resource,
+    title: change.diffRef
+      ? "Open the saved file diff"
+      : "Open current working-tree changes against Git",
+    unavailable:
+      location.kind === "unavailable"
+        ? `${location.label}: ${location.reason}`
+        : "No file baseline is available.",
   };
 }

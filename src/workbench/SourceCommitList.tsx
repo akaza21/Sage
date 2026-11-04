@@ -1,4 +1,4 @@
-import type { GitRecentCommit } from "../domain/workbench";
+import { type GitRecentCommit } from "../domain/workbench";
 import {
   shortCommitSha,
   visibleRecentCommits,

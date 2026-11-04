@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { utf8ByteLength } from "../../domain/text";
@@ -162,7 +168,9 @@ export function useWorkspaceSearch({
   const active = useRef<AbortController | null>(null);
   const generation = useRef(0);
 
-  useEffect(() => {
+  // Retire the previous context before the input can accept events. A passive
+  // reset can erase typing on a freshly revealed lazy surface.
+  useLayoutEffect(() => {
     generation.current += 1;
     active.current?.abort();
     active.current = null;

@@ -1,5 +1,6 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
 import { terminalToolStates } from "./statusSemantics";
+import { commandRowText } from "./toolCommandContent";
 import {
   collaborationRun,
   subagentToolSummary,
@@ -160,21 +161,31 @@ export function toolRollupLabel(
   return tests ? `Ran tests · ${items.length} commands` : mixedClauses(items);
 }
 
+const commandRows = new Map<string, string>();
+
 export function toolCommandLine(item: ToolProjectionItem): string | null {
   const { presentation, inputSummary } = item.payload;
   if (presentation.kind !== "execute") return null;
-  const candidate = presentation.summary?.trim() || inputSummary?.trim();
-  if (!candidate) return null;
+  const summary = presentation.summary?.trim() || inputSummary?.trim();
+  if (!summary) return null;
+  const cached = commandRows.get(summary);
+  if (cached !== undefined) return cached;
+  const candidate = commandRowText(summary);
   const command = candidate
     .slice(0, 512)
     .replace(/[\r\n\t\u2028\u2029]/g, " ")
     .trim();
-  return candidate.length <= 512
-    ? command
-    : `${command
-        .slice(0, 511)
-        .replace(/[\uD800-\uDBFF]$/, "")
-        .trimEnd()}…`;
+  const label =
+    candidate.length <= 512
+      ? command
+      : `${command
+          .slice(0, 511)
+          .replace(/[\uD800-\uDBFF]$/, "")
+          .trimEnd()}…`;
+  commandRows.set(summary, label);
+  if (commandRows.size > 16)
+    commandRows.delete(commandRows.keys().next().value!);
+  return label;
 }
 
 function joinable(item: ToolProjectionItem): boolean {

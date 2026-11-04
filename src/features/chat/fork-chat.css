@@ -1,5 +1,3 @@
-/* Fork chunk (ForkChat.tsx); geometry from the Codex s2 fork frames. */
-
 .answer-more-menu.menu-popover {
   width: max-content;
   min-width: 148px;
@@ -41,8 +39,6 @@
   text-align: left;
 }
 
-/* A pointer open shows neither fill nor ring until hover or a key press
-   (Codex s2/f0055); keyboard focus shows as the fill. */
 .fork-chat-dialog button:hover:not(:disabled),
 .fork-chat-dialog button:not([data-fresh]):focus-visible {
   background: var(--chat-dialog-option-hover);
@@ -108,5 +104,7 @@
 }
 
 .chat-fork-turn {
+  display: grid;
+  gap: var(--transcript-answer-gap);
   min-width: 0;
 }

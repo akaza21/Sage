@@ -1,4 +1,127 @@
 import { expect, test } from "@playwright/test";
+import {
+  openScenario,
+  settleChatProjections,
+} from "./shared/visualBrowserPrimitives";
+
+for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
+  test(`${command} reveals navigation and collapses inline Files when space is tight`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openScenario(page, "agent-single", "agent");
+    await settleChatProjections(page);
+    await page.getByRole("button", { name: "Hide projects and chats" }).click();
+    await page.getByRole("button", { name: /^Show files and preview/ }).click();
+    const pane = page.getByLabel("Agent artifacts", { exact: true });
+    await expect(pane).toBeVisible();
+    await expect(
+      page.getByRole("separator", { name: "Resize files and preview" }),
+    ).toBeVisible();
+    const resourceControl = pane.getByRole("button", {
+      name: "Collapse files, changes, and preview",
+    });
+    await resourceControl.focus();
+    await expect(resourceControl).toBeFocused();
+
+    if (command === "Ctrl+B") await page.keyboard.press("ControlOrMeta+b");
+    else
+      await page
+        .getByRole("button", { name: "Show projects and chats" })
+        .click();
+
+    await expect(
+      page.getByRole("button", { name: "Hide projects and chats" }),
+    ).toBeVisible();
+    await expect(pane).toBeHidden();
+    expect((await page.locator(".project-sidebar").boundingBox())!.width).toBe(
+      326,
+    );
+    expect((await page.locator(".center-region").boundingBox())!.width).toBe(
+      466,
+    );
+    const composer = page.getByRole("textbox", { name: "Message agent" });
+    await composer.fill("Chat remains usable");
+    await expect(composer).toBeFocused();
+  });
+}
+
+test("preserves manual tab scrolling across transcript updates", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/artifact-tabs.html");
+  await page.getByRole("button", { name: "Select last resource" }).click();
+  const strip = page.locator(".tab-strip__scroll");
+  await expect
+    .poll(() => strip.evaluate((node) => node.scrollLeft))
+    .toBeGreaterThan(0);
+  await strip.evaluate((node) => {
+    node.scrollLeft = 0;
+  });
+  await page.getByRole("button", { name: "Transcript update 0" }).click();
+  await expect(
+    page.getByRole("button", { name: "Transcript update 1" }),
+  ).toBeVisible();
+  expect(await strip.evaluate((node) => node.scrollLeft)).toBe(0);
+  await expect(page.getByRole("tab", { selected: true })).toHaveAccessibleName(
+    "Browser Browser page 8",
+  );
+});
+
+test("selected overflow tab stays fully visible on selection, keyboard navigation and resize", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/artifact-tabs.html");
+  await page.getByRole("button", { name: "Select last resource" }).click();
+  const selected = page.getByRole("tab", { selected: true });
+  const visibleTab = async () => {
+    const geometry = await selected.evaluate((tab) => {
+      const row = tab.closest(".tab")!.getBoundingClientRect();
+      const strip = tab.closest(".tab-strip__scroll")!.getBoundingClientRect();
+      return {
+        left: row.left,
+        right: row.right,
+        stripLeft: strip.left,
+        stripRight: strip.right,
+      };
+    });
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.stripLeft - 1);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.stripRight + 1);
+  };
+  await expect(selected).toHaveAccessibleName("Browser Browser page 8");
+  await visibleTab();
+  await selected.focus();
+  await selected.press("Home");
+  await expect(selected).toHaveAccessibleName("Browser Browser page 1");
+  await visibleTab();
+  await selected.press("ArrowLeft");
+  await expect(selected).toHaveAccessibleName("Browser Browser page 8");
+  await page.setViewportSize({ width: 400, height: 700 });
+  await expect
+    .poll(async () =>
+      selected.evaluate((tab) => tab.closest(".tab-strip__scroll")!.scrollLeft),
+    )
+    .toBeGreaterThan(0);
+  await visibleTab();
+  await expect(
+    page.getByRole("button", { name: "New browser tab" }),
+  ).toBeDisabled();
+});
+
+test("Escape reverts the browser address without collapsing the artifact pane", async ({
+  page,
+}) => {
+  await page.goto("/tests/ui/fixtures/browser-address.html?artifact-focus");
+  const address = page.getByRole("textbox", { name: "Address or search" });
+  await address.click();
+  await address.fill("draft.example");
+  await address.press("Escape");
+  await expect(page.getByLabel("Agent artifacts")).toBeVisible();
+  await address.focus();
+  await expect(address).toHaveValue(
+    "https://en.wikipedia.org/wiki/Web_browser",
+  );
+});
 
 test("mixed resource and browser tabs share a 560 px pane without clipping controls", async ({
   page,

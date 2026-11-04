@@ -5,13 +5,6 @@ import {
 import { SETTINGS_KEYMAP_BINDINGS } from "../../domain/settingsNavigation";
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 
-const SCOPES: readonly KeymapScope[] = [
-  "Global",
-  "Agent",
-  "Agent chat",
-  "Editor",
-];
-
 const SCOPE_COPY: Record<KeymapScope, string> = {
   Global: "Available anywhere in Sage.",
   Agent: "Available while the Agents view is open.",
@@ -19,7 +12,13 @@ const SCOPE_COPY: Record<KeymapScope, string> = {
   Editor: "Available while a file is open in the Editor.",
 };
 
-export function SettingsKeyboardPage({ visible }: { visible: Set<string> }) {
+export function SettingsKeyboardPage({
+  scopes,
+  visible,
+}: {
+  scopes: readonly KeymapScope[];
+  visible: Set<string>;
+}) {
   const apple = usesMetaModifier();
   return (
     <section
@@ -30,7 +29,7 @@ export function SettingsKeyboardPage({ visible }: { visible: Set<string> }) {
         <h2 id="keyboard-shortcuts-heading">Keyboard Shortcuts</h2>
         <p>These shortcuts are read-only for now.</p>
       </header>
-      {SCOPES.map((scope) => {
+      {scopes.map((scope) => {
         const bindings = SETTINGS_KEYMAP_BINDINGS.filter(
           (binding) => binding.scope === scope && visible.has(binding.id),
         );

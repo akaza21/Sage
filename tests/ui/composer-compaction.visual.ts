@@ -146,9 +146,19 @@ for (const width of [1888, 720, 480]) {
         name: "Model",
         exact: true,
       });
+      const contentWidth = await composer.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          element.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight)
+        );
+      });
+      const compactProject = contentWidth <= 280;
+      const compactEffort = contentWidth <= 320;
       const label = model.locator(".composer__model-label");
       await expect(label).toHaveText(profile.model);
-      if (width === 480) await expect(label).toBeHidden();
+      if (compactProject) await expect(label).toBeHidden();
       else await expect(label).toBeVisible();
       await expect(model).not.toHaveText(/Medium/);
       await expect(
@@ -205,9 +215,9 @@ for (const width of [1888, 720, 480]) {
       });
       if (width === 480) {
         expect((await composer.boundingBox())!.width).toBeGreaterThanOrEqual(
-          184,
+          390,
         );
-        expect((await composer.boundingBox())!.width).toBeLessThanOrEqual(200);
+        expect((await composer.boundingBox())!.width).toBeLessThanOrEqual(400);
       }
       await composer
         .getByRole("button", { name: "Harness", exact: true })
@@ -223,7 +233,10 @@ for (const width of [1888, 720, 480]) {
         exact: true,
       });
       const hasAddActions =
-        profile.goal || profile.modes.length > 0 || width === 480;
+        profile.goal ||
+        profile.modes.length > 0 ||
+        compactProject ||
+        (Boolean(profile.effort) && profile.access && compactEffort);
       const menu = page.getByRole("menu", { name: "Composer options menu" });
       if (hasAddActions) {
         await add.click();
@@ -234,11 +247,11 @@ for (const width of [1888, 720, 480]) {
         await expect(
           menu.getByRole("menuitem", { name: "Thinking level", exact: true }),
         ).toHaveCount(
-          profile.effort && profile.access && width === 480 ? 1 : 0,
+          profile.effort && profile.access && compactEffort ? 1 : 0,
         );
         await expect(
           menu.getByRole("menuitem", { name: /^Project:/ }),
-        ).toHaveCount(width === 480 ? 1 : 0);
+        ).toHaveCount(compactProject ? 1 : 0);
         if (profile.modes.includes("Plan")) {
           const plan = menu.getByRole("menuitemradio", {
             name: "Plan mode",
@@ -249,7 +262,7 @@ for (const width of [1888, 720, 480]) {
             plan.locator('svg[aria-hidden="true"]').first(),
           ).toBeVisible();
         }
-      } else await expect(add).toBeDisabled();
+      } else await expect(add).toHaveCount(0);
       if (!profile.effort) {
         if (hasAddActions) await page.keyboard.press("Escape");
         return;
@@ -258,15 +271,16 @@ for (const width of [1888, 720, 480]) {
         // No advertised access mode blocks the composer (CP-29d), so the
         // effort control is shown but cannot open a panel.
         if (hasAddActions) await page.keyboard.press("Escape");
-        if (width !== 480)
+        if (!compactEffort)
           await expect(
             composer.locator(".composer__effort-picker"),
           ).toBeDisabled();
         return;
       }
-      const effortAnchor =
-        width === 480 ? add : composer.locator(".composer__effort-picker");
-      if (width === 480) {
+      const effortAnchor = compactEffort
+        ? add
+        : composer.locator(".composer__effort-picker");
+      if (compactEffort) {
         await menu
           .getByRole("menuitem", { name: "Thinking level", exact: true })
           .click();

@@ -34,7 +34,7 @@ pub(crate) fn lookup_prepared_turn(
     connection: &rusqlite::Connection,
     command: &PrepareTurnCommand,
 ) -> Result<Option<PreparedTurn>, StoreError> {
-    let payload = user_item_payload(command)?;
+    let payload = user_item_payload(&command.prompt.user_payload())?;
     duplicate_turn(connection, command, &hex_digest(payload.as_bytes()))
 }
 
@@ -94,7 +94,8 @@ pub(super) fn prepare_turn_in(
     transaction: &Transaction<'_>,
     command: PrepareTurnCommand,
 ) -> Result<PreparedTurn, StoreError> {
-    let item_payload = user_item_payload(&command)?;
+    let user_payload = command.prompt.user_payload();
+    let item_payload = user_item_payload(&user_payload)?;
     let item_bytes = i64::try_from(item_payload.len()).map_err(|_| StoreError::PayloadTooLarge)?;
     if item_bytes > LIMITS.wire.normalized_item_bytes as i64 {
         return Err(StoreError::PayloadTooLarge);
@@ -119,6 +120,13 @@ pub(super) fn prepare_turn_in(
         transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
+    )?;
+    crate::chat_lifecycle::auto_title_first_prompt_in(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+        user_payload["text"].as_str().unwrap_or_default(),
+        command.now_millis,
     )?;
     transaction.execute(
         "INSERT INTO turns (id,project_id,chat_id,session_id,runtime_epoch,ordinal,
@@ -298,11 +306,9 @@ fn duplicate_turn(
     }))
 }
 
-fn user_item_payload(command: &PrepareTurnCommand) -> Result<String, StoreError> {
-    serde_json::to_string(
-        &serde_json::json!({"kind":"text","payload":command.prompt.user_payload()}),
-    )
-    .map_err(|_| StoreError::Corrupt("user item serialization"))
+fn user_item_payload(payload: &serde_json::Value) -> Result<String, StoreError> {
+    serde_json::to_string(&serde_json::json!({"kind":"text","payload":payload}))
+        .map_err(|_| StoreError::Corrupt("user item serialization"))
 }
 
 fn ensure_turn_capacity(
