@@ -8,15 +8,9 @@ type PendingCloseAction = "discard" | "save";
 function DirtyTabConfirmation({
   tabId,
   title,
-  cancel,
-  discard,
-  save,
 }: {
   tabId: string;
   title: string;
-  cancel: () => void;
-  discard: () => Promise<void>;
-  save: () => Promise<void>;
 }) {
   const [pendingAction, setPendingAction] = useState<PendingCloseAction | null>(
     null,
@@ -24,30 +18,22 @@ function DirtyTabConfirmation({
   const pendingActionRef = useRef<PendingCloseAction | null>(null);
   const pending = pendingAction !== null;
 
-  const dismiss = () => {
-    if (
-      pendingActionRef.current ||
-      useWorkbenchStore.getState().pendingCloseTabId !== tabId
-    ) {
-      return;
-    }
-    cancel();
+  const activeCommands = () => {
+    const state = useWorkbenchStore.getState();
+    return !pendingActionRef.current && state.pendingCloseTabId === tabId
+      ? state
+      : null;
   };
-
-  const run = async (
-    action: PendingCloseAction,
-    operation: () => Promise<void>,
-  ) => {
-    if (
-      pendingActionRef.current ||
-      useWorkbenchStore.getState().pendingCloseTabId !== tabId
-    ) {
-      return;
-    }
+  const dismiss = () => activeCommands()?.cancelCloseTab();
+  const run = async (action: PendingCloseAction) => {
+    const commands = activeCommands();
+    if (!commands) return;
     pendingActionRef.current = action;
     setPendingAction(action);
     try {
-      await operation();
+      await (action === "save"
+        ? commands.saveAndCloseTab()
+        : commands.discardAndCloseTab());
     } finally {
       if (useWorkbenchStore.getState().pendingCloseTabId === tabId) {
         pendingActionRef.current = null;
@@ -80,7 +66,7 @@ function DirtyTabConfirmation({
           className="button button--danger"
           type="button"
           disabled={pending}
-          onClick={() => void run("discard", discard)}
+          onClick={() => void run("discard")}
         >
           {pendingAction === "discard" ? "Discarding…" : "Discard"}
         </button>
@@ -88,7 +74,7 @@ function DirtyTabConfirmation({
           className="button button--primary"
           type="button"
           disabled={pending}
-          onClick={() => void run("save", save)}
+          onClick={() => void run("save")}
         >
           {pendingAction === "save" ? "Saving…" : "Save"}
         </button>
@@ -98,29 +84,15 @@ function DirtyTabConfirmation({
 }
 
 export function DirtyTabDialog() {
-  const pendingCloseTabId = useWorkbenchStore(
-    (state) => state.pendingCloseTabId,
+  const tab = useWorkbenchStore((state) =>
+    state.tabs.find((candidate) => candidate.id === state.pendingCloseTabId),
   );
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const cancelCloseTab = useWorkbenchStore((state) => state.cancelCloseTab);
-  const saveAndCloseTab = useWorkbenchStore((state) => state.saveAndCloseTab);
-  const discardAndCloseTab = useWorkbenchStore(
-    (state) => state.discardAndCloseTab,
-  );
-  const tab = tabs.find((candidate) => candidate.id === pendingCloseTabId);
 
   if (!tab) {
     return null;
   }
 
-  return (
-    <DirtyTabConfirmation
-      key={tab.id}
-      tabId={tab.id}
-      title={tab.title}
-      cancel={cancelCloseTab}
-      discard={discardAndCloseTab}
-      save={saveAndCloseTab}
-    />
-  );
+  return <DirtyTabConfirmation key={tab.id} tabId={tab.id} title={tab.title} />;
 }
+
+export default DirtyTabDialog;

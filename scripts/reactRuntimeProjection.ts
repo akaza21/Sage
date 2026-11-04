@@ -49,8 +49,13 @@ function runtimeBindings(runtime: Record<string, unknown>) {
 }
 
 function projectBindings(bindings: readonly string[]) {
+  // React's runtime exports are static values. Unused projections need no
+  // property read, so demand-loaded hooks do not retain every runtime export.
   return bindings
-    .map((name) => `export const ${name} = runtime.${name};`)
+    .map(
+      (name) =>
+        `export const ${name} = /* @__PURE__ */ (() => runtime.${name})();`,
+    )
     .join(" ");
 }
 

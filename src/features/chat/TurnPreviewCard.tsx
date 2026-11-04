@@ -1,4 +1,5 @@
-import type { TurnProjection } from "../../domain/acp";
+import { type TurnProjection } from "../../domain/acp";
+import "./turn-navigator.css";
 import { turnAnswerPreview, turnPrompt } from "./turnNavigatorModel";
 
 /** Hover / focus card for one navigator dash (`role="tooltip"`). */

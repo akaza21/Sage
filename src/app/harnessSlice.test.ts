@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HarnessDefinition } from "../domain/harness";
-import type * as AcpDesktopModule from "../services/acpDesktop";
+import type * as AcpHarnessDesktopModule from "../services/acpHarnessDesktop";
 import { useWorkbenchStore } from "./store";
 
 const discoverCodex = vi.fn();
 
-vi.mock("../services/acpDesktop", async (importOriginal) => {
-  const actual = await importOriginal<typeof AcpDesktopModule>();
+vi.mock("../services/acpHarnessDesktop", async (importOriginal) => {
+  const actual = await importOriginal<typeof AcpHarnessDesktopModule>();
   return {
     ...actual,
-    acpDesktop: {
-      ...actual.acpDesktop,
+    acpHarnessDesktop: {
+      ...actual.acpHarnessDesktop,
       discoverCodex: (request: unknown) => discoverCodex(request),
     },
   };
@@ -111,6 +111,25 @@ describe("harness discovery reconciliation", () => {
     expect(state.selectedHarnessId).toBe("codex");
     expect(state.selectedModelId).toBe("gpt-x");
     expect(state.harnessDiscoveryPhase).toBe("ready");
+  });
+
+  it("loads models when a restored unavailable selection becomes available", async () => {
+    seed({
+      harnesses: [{ ...available, installState: "unavailable" }],
+      selectedHarnessId: "codex",
+    });
+    await useWorkbenchStore
+      .getState()
+      .loadHarnessModelsForProjection("codex", null, 0, "project-a");
+    expect(useWorkbenchStore.getState().models).toEqual([]);
+    discoverCodex.mockResolvedValue(discovery);
+    await useWorkbenchStore.getState().applyHarnessDiscovery([available]);
+    const state = useWorkbenchStore.getState();
+    expect(state.selectedHarnessId).toBe("codex");
+    expect(state.selectedModelId).toBe("gpt-x");
+    expect(state.models).toEqual([
+      { id: "gpt-x", name: "GPT-X", isDefault: true },
+    ]);
   });
 
   it("drops a discovery result issued for a superseded project generation", async () => {

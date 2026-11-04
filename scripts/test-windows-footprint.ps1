@@ -191,7 +191,7 @@ Assert-Equal "11" (($rootGoneChildAlive.candidates | ForEach-Object ProcessId) -
 
 $rootReusedChildAlive = Get-FootprintTeardownPlan $rootIdentity $remembered $reusedRootRows
 Assert-Equal "reused" $rootReusedChildAlive.rootState "Root PID reuse was not recognized."
-Assert-True $rootReusedChildAlive.identityLost "Root PID reuse did not fail closed."
+Assert-True (-not $rootReusedChildAlive.identityLost) "A different creation time did not prove the tracked root exited."
 Assert-Equal "" (($rootReusedChildAlive.candidates | ForEach-Object ProcessId) -join ",") "A reused root or child identity was authorized for kill."
 
 $matchingRootReusedChild = @(

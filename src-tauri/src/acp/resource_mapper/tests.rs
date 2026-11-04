@@ -36,6 +36,30 @@ fn native(path: &Path) -> String {
 }
 
 #[test]
+fn diff_context_is_root_scoped_bounded_utf8_text() {
+    let tree = TempTree::new();
+    let path = tree.path().join("context.txt");
+    let mapper = NativeResourceMapper::new([root("root-one", tree.0.clone())]).unwrap();
+    let resource =
+        SafeResourceRef::new(SageRootId::parse("root-one").unwrap(), "context.txt").unwrap();
+    let exact = "é".repeat(crate::acp::file_diff::DIFF_SIDE_BYTES_MAX / 2);
+    fs::write(&path, &exact).unwrap();
+    assert_eq!(
+        mapper.read_diff_context(&resource).as_deref(),
+        Some(exact.as_str())
+    );
+    fs::write(&path, format!("{exact}x")).unwrap();
+    assert!(mapper.read_diff_context(&resource).is_none());
+    for bytes in [&b"binary\0text"[..], &b"\xff"[..]] {
+        fs::write(&path, bytes).unwrap();
+        assert!(mapper.read_diff_context(&resource).is_none());
+    }
+    let foreign =
+        SafeResourceRef::new(SageRootId::parse("other-root").unwrap(), "context.txt").unwrap();
+    assert!(mapper.read_diff_context(&foreign).is_none());
+}
+
+#[test]
 fn duplicate_relative_paths_keep_root_qualified_identity() {
     let tree = TempTree::new();
     let first = tree.path().join("first");

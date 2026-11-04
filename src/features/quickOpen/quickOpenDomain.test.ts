@@ -5,6 +5,7 @@ import {
   nextQuickOpenStamp,
   parseQuickOpenInput,
   parseQuickOpenResponse,
+  shortcutKeys,
 } from "./quickOpenDomain";
 
 describe("Quick Open input", () => {
@@ -105,5 +106,17 @@ describe("highlight runs", () => {
       { text: ".", matched: true },
       { text: "ts", matched: false },
     ]);
+  });
+});
+
+describe("shortcut keys", () => {
+  it.each([
+    ["Ctrl+G", ["Ctrl", "G"]],
+    ["Cmd+Shift+P", ["Cmd", "Shift", "P"]],
+    ["Ctrl+,", ["Ctrl", ","]],
+    ["Ctrl++", ["Ctrl", "+"]],
+    ["F12", ["F12"]],
+  ])("splits %s into its keycaps", (label, keys) => {
+    expect(shortcutKeys(label)).toEqual(keys);
   });
 });

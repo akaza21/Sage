@@ -40,7 +40,7 @@ describe("Compact chat controls", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", () => {
+  it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -91,7 +91,7 @@ describe("Compact chat controls", () => {
     );
     expect(trigger.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("menu", {
+    const dialog = await screen.findByRole("menu", {
       name: "Access mode",
     });
     expect(dialog.parentElement).toBe(document.body);

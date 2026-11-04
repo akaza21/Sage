@@ -135,6 +135,7 @@ pub(crate) fn publish_projection(
         "UPDATE chats SET projection_revision=?3,updated_at=?4 WHERE project_id=?1 AND id=?2 AND projection_revision<?3",
         params![project_id,chat_id,revision.get() as i64,now_millis],
     )?,"chat projection")?;
+    crate::turn_workspace::settle_terminal(transaction, session_id)?;
     ensure_one(transaction.execute(
         "UPDATE agent_sessions SET projection_revision=?2 WHERE id=?1 AND projection_revision<?2",
         params![session_id,revision.get() as i64],

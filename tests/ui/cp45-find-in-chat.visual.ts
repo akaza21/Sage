@@ -181,16 +181,20 @@ test("CP-45 finds unmounted retained turns and truthfully reports partial histor
       ),
     )
     .toBe("Needle turn 12.");
+  // AP-A1: selecting Beta replaces Alpha in the one centre pane, so Beta's
+  // find starts empty and Alpha's highlights do not leak into it.
   await focusPane(page, "Beta");
+  await expect(alpha).toHaveCount(0);
   await page.keyboard.press("Control+f");
-  await expect(
-    beta.getByRole("searchbox", { name: "Search chat" }),
-  ).toBeVisible();
-  await expect(input).toHaveValue("Needle turn 12.");
-  await beta.getByRole("button", { name: "Close search" }).click();
+  const betaInput = beta.getByRole("searchbox", { name: "Search chat" });
+  await expect(betaInput).toBeVisible();
+  await expect(betaInput).toHaveValue("");
   expect(
-    await page.evaluate(() => CSS.highlights.get("sage-find-current")?.size),
-  ).toBe(1);
-  await input.press("Escape");
+    await page.evaluate(
+      () => CSS.highlights.get("sage-find-current")?.size ?? 0,
+    ),
+  ).toBe(0);
+  await beta.getByRole("button", { name: "Close search" }).click();
+  await expect(betaInput).toHaveCount(0);
   expect(await page.evaluate(() => CSS.highlights.size)).toBe(0);
 });

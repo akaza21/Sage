@@ -8,12 +8,12 @@
   display: grid;
   max-height: min(400px, 50vh);
   overflow: auto;
-  margin-block: 12px;
+  margin-block: var(--space-3);
 }
 .agent-tool-panel__list button {
   min-width: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: var(--space-2);
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;

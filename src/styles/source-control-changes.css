@@ -5,22 +5,22 @@
 }
 
 .source-change-row--confirming {
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
 }
 
 .source-change {
   display: grid;
   width: 100%;
-  height: var(--row-height-emphasis);
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  height: var(--editor-list-row-height);
+  grid-template-columns: var(--editor-scm-decoration-size) minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
+  gap: var(--editor-list-gap);
+  padding: 0 var(--editor-list-inline-padding);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   background: transparent;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -34,7 +34,6 @@
   color: var(--color-text-primary);
   background: var(--color-surface-selected);
   box-shadow: inset 2px 0 0 var(--color-accent);
-  font-weight: var(--font-weight-semibold);
 }
 
 .source-change--conflicted {
@@ -45,15 +44,15 @@
 
 .source-change__status {
   color: var(--color-warning);
-  font-weight: 700;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
 }
 
 .source-change__status--conflict {
-  padding: 2px 4px;
   border-radius: var(--radius-pill);
   color: var(--color-status-foreground);
   background: var(--color-danger);
-  font-size: var(--font-size-xs);
 }
 
 .source-change__path {
@@ -64,6 +63,7 @@
 
 .source-change__counts {
   color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -74,14 +74,33 @@
   }
 }
 
+/* Row actions keep their width so revealing them never moves the row; they
+   show on hover, on keyboard focus, for the selected row, and always where
+   there is no hover. Conflict resolution stays visible. */
 .source-change__actions {
   display: flex;
-  gap: 2px;
-  padding-right: 4px;
+  align-items: center;
+  padding-right: var(--space-1);
+}
+
+.source-change__row-actions {
+  display: flex;
+  align-items: center;
+}
+
+@media (hover: hover) {
+  .source-change__row-actions {
+    opacity: 0;
+  }
+
+  .source-change-row:is(:hover, :focus-within) .source-change__row-actions,
+  .source-change-row:has(.source-change--selected) .source-change__row-actions {
+    opacity: 1;
+  }
 }
 
 .source-change__resolve {
-  padding: 2px 4px;
+  padding: 0 var(--space-1);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
@@ -104,8 +123,8 @@
 
 .source-change__action {
   display: grid;
-  width: var(--control-height-compact);
-  height: var(--control-height-compact);
+  width: var(--editor-scm-action-size);
+  height: var(--editor-scm-action-size);
   padding: 0;
   place-items: center;
   border: 0;
@@ -131,9 +150,9 @@
   grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 4px;
-  padding: 8px;
+  gap: var(--space-2);
+  margin: 0 var(--space-1);
+  padding: var(--space-2);
   border: 1px solid
     color-mix(in srgb, var(--color-danger) 42%, var(--color-border-subtle));
   border-radius: var(--radius-sm);
@@ -145,11 +164,11 @@
 .source-change__confirmation-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .source-change__confirmation-button {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);

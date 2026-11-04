@@ -20,6 +20,9 @@ import { snapshotPage } from "../../app/agentDiff.fixture";
 
 afterEach(() => {
   cleanup();
+  document
+    .querySelectorAll(".chat-edit-summary-zone")
+    .forEach((slot) => slot.remove());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -30,10 +33,14 @@ async function renderTranscript(
   useNativeAcp = true,
   showJumpToLatest: boolean | "activity" = false,
 ) {
+  const slot = document.createElement("div");
+  slot.className = "chat-edit-summary-zone";
+  document.body.append(slot);
   const onRetry = vi.fn();
   const onJumpToLatest = vi.fn();
   const transcript = (page: AcpChatPage | null, focused = true) => (
     <ChatTranscript
+      editSummaryContainer={slot}
       transcriptRef={{ current: null }}
       contentRef={{ current: null }}
       endRef={{ current: null }}

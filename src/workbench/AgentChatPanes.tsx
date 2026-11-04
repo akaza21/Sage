@@ -1,71 +1,49 @@
 import {
   Fragment,
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
-  type PointerEvent,
 } from "react";
 import { useStore } from "zustand";
-
 import {
   acpProjectionStoreFor,
   pinAcpProjectionIds,
 } from "../app/acpProjectionRegistry";
 import {
+  type AgentSessionChrome,
   AgentSessionChromeContext,
   pinAgentChatOwner,
-  type AgentSessionChrome,
+  releaseAgentChatOwner,
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
-import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
-import { setHarnessBrowseOwner } from "../features/preview/harnessBrowse";
-import type { HarnessBrowseOwner } from "../features/preview/harnessBrowse";
 import { ChatSurface } from "../features/chat/ChatSurface";
+import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
-import type { WorkbenchTab } from "../domain/workbench";
-import { AgentChatPane } from "./AgentChatPane";
-import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
-import { isSideChatId, useSideChatState } from "./sideChatState";
+import { lazyParts } from "../features/chat/lazyParts";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
-import {
-  AGENT_CHAT_SPLIT_MAX,
-  AGENT_CHAT_SPLIT_MIN,
-  canShowAgentChatSplit,
-  resizeAgentChatSplit,
-} from "./agentChatSplit";
-import {
-  readWorkbenchLayout,
-  writeWorkbenchLayout,
-} from "./workbenchLayoutStorage";
-import {
-  collectChatTabIds,
-  focusedAgentChatId,
-  reconcileVisibleChatIds,
-  selectVisibleChatIds,
-} from "./workbenchWindowMode";
+import { type HarnessBrowseOwner } from "../features/preview/harnessBrowse";
+import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
+import { AgentChatPane } from "./AgentChatPane";
+import type * as SplitterChunk from "./AgentChatSplitter";
+import { canShowAgentChatSplit } from "./agentChatSplit";
+import { isSideChatId, useSideChatState } from "./sideChatState";
+import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
+import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 
-function sameVisibleIds(left: readonly string[], right: readonly string[]) {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
-}
-
-function isChatTab(tab: WorkbenchTab | undefined): tab is WorkbenchTab {
-  return tab?.kind === "chat";
-}
+const SplitterPart = lazyParts<typeof SplitterChunk>(
+  () => import("./AgentChatSplitter"),
+);
 
 export function AgentChatPanes({
   compact = false,
+  navigationCollapsed = false,
   onArtifactHeaderMount,
 }: {
   compact?: boolean;
+  navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
 }) {
   const tabs = useWorkbenchStore((state) => state.tabs);
@@ -81,7 +59,6 @@ export function AgentChatPanes({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const [visibleIds, setVisibleIds] = useState<string[]>([]);
   // Only the focused Chat and a focused side chat's parent publish, and each
   // withdraws on cleanup, so this holds at most two entries.
   const [sessionChromeById, setSessionChromeById] = useState<
@@ -94,16 +71,15 @@ export function AgentChatPanes({
       ),
     [],
   );
-  const [storedPercent, setStoredPercent] = useState(
-    () => readWorkbenchLayout().agentChatSplitPercent,
-  );
-  const [resizing, setResizing] = useState(false);
-  const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const panesRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
   const previousFocusedId = usePinnedAgentChatOwner();
+  const [lastFocusedId, setLastFocusedId] = useState<string | null>(null);
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
   // A side chat pairs with its parent (parent left) while either has focus;
   // its 43 / 57 split lives in the side-chat store and is never persisted.
+  const splitPercent = useSideChatState((state) => state.split);
+  const pairedId = useSideChatState((state) => state.pairedId);
   const side = useSideChatState((state) =>
     state.sides.find(
       (entry) =>
@@ -112,57 +88,37 @@ export function AgentChatPanes({
         chatIds.includes(entry.parentChatId),
     ),
   );
-  const sideSplit = useSideChatState((state) => state.split);
-  const sidePanes =
+  const splitRequested = Boolean(
     side &&
+    pairedId === side.id &&
     (!activeTabId ||
+      !chatIds.includes(activeTabId) ||
       activeTabId === side.id ||
-      activeTabId === side.parentChatId)
-      ? [side.parentChatId, side.id]
-      : null;
-  const splitPercent = sidePanes ? sideSplit : storedPercent;
-  const setSplitPercent = (percent: number) =>
-    sidePanes
-      ? useSideChatState.setState({ split: percent })
-      : setStoredPercent(percent);
-  // A just-opened fork takes over the current pane (Codex s2/f0064-f0066)
-  // until the user selects another Chat; it never pairs itself.
-  const soloId = useSideChatState((state) => state.soloChatId);
-  const solo = soloId && soloId === activeTabId && chatIds.includes(soloId);
-  useEffect(() => {
-    if (soloId && !solo) useSideChatState.setState({ soloChatId: null });
-  }, [soloId, solo]);
-  const nextVisibleIds =
-    sidePanes ??
-    (solo ? [soloId] : null) ??
-    (activeTabId && chatIds.includes(activeTabId)
-      ? selectVisibleChatIds(chatIds, visibleIds, activeTabId)
-      : reconcileVisibleChatIds(chatIds, visibleIds, null));
-  if (!sameVisibleIds(nextVisibleIds, visibleIds)) {
-    setVisibleIds(nextVisibleIds);
-  }
-
-  const focusedId = focusedAgentChatId(
-    chatIds,
-    nextVisibleIds,
-    activeTabId,
-    previousFocusedId,
+      activeTabId === side.parentChatId),
   );
-  const focusOnly =
-    compact ||
-    (nextVisibleIds.length > 1 &&
-      containerWidth !== null &&
-      !canShowAgentChatSplit(containerWidth));
+  const focusCandidates =
+    splitRequested && side ? [side.parentChatId, side.id] : chatIds;
+  const focusedId = focusedAgentChatId(
+    focusCandidates,
+    activeTabId,
+    previousFocusedId ?? lastFocusedId,
+  );
+  if (lastFocusedId !== focusedId) setLastFocusedId(focusedId);
   const displayedIds = useMemo(
-    () => (focusOnly && focusedId ? [focusedId] : nextVisibleIds),
-    [focusOnly, focusedId, nextVisibleIds],
+    () =>
+      splitRequested && !compact && !narrow && side
+        ? [side.parentChatId, side.id]
+        : focusedId
+          ? [focusedId]
+          : [],
+    [compact, narrow, focusedId, side, splitRequested],
   );
   pinAcpProjectionIds(displayedIds);
   pinUnreadAckIds(displayedIds);
 
   useLayoutEffect(() => {
     pinAgentChatOwner(focusedId);
-    return () => pinAgentChatOwner(null);
+    return releaseAgentChatOwner;
   }, [focusedId]);
 
   const focusedProjectionStore = acpProjectionStoreFor(focusedId);
@@ -206,45 +162,37 @@ export function AgentChatPanes({
     projectTransitioning,
   ]);
 
-  useLayoutEffect(() => {
-    setHarnessBrowseOwner(focusedOwner, displayedIds);
-  }, [displayedIds, focusedOwner]);
-
-  const hasVisibleChats = nextVisibleIds.length > 0;
-  const chatTabs = useMemo(
-    () =>
-      chatIds.map((id) => tabs.find((tab) => tab.id === id)).filter(isChatTab),
-    [chatIds, tabs],
+  useRetainedHarnessBrowse(
+    focusedOwner,
+    displayedIds,
+    chatIds,
+    Boolean(focusedId) &&
+      !projectTransitioning &&
+      (!focusedScope || focusedPage?.chatId !== focusedId),
   );
+
   const focusedSnapshot = useAcpChatLiveSnapshot(
     focusedId ?? "",
     Boolean(focusedId),
   );
   useLayoutEffect(() => {
     const panes = panesRef.current;
-    if (!panes || !hasVisibleChats) return;
+    if (!panes || !splitRequested || compact) return;
 
     const updateWidth = (width: number) => {
-      if (Number.isFinite(width) && width > 0) {
-        setContainerWidth(width);
-      }
+      if (width > 0) setNarrow(!canShowAgentChatSplit(width));
     };
     updateWidth(panes.getBoundingClientRect().width);
 
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width !== undefined) updateWidth(width);
+      updateWidth(entries[0]?.contentRect.width ?? 0);
     });
     observer.observe(panes);
     return () => observer.disconnect();
-  }, [hasVisibleChats]);
+  }, [compact, splitRequested]);
 
-  useEffect(() => {
-    writeWorkbenchLayout({ agentChatSplitPercent: storedPercent });
-  }, [storedPercent]);
-
-  if (nextVisibleIds.length === 0) {
+  if (!focusedId) {
     return (
       <div className="active-canvas" role="tabpanel">
         <ChatSurface />
@@ -252,64 +200,20 @@ export function AgentChatPanes({
     );
   }
 
-  function setSplitFromPointer(event: PointerEvent<HTMLDivElement>) {
-    const bounds = panesRef.current?.getBoundingClientRect();
-    if (!bounds) return;
-    setSplitPercent(
-      resizeAgentChatSplit({
-        containerWidth: bounds.width,
-        pointerOffset: event.clientX - bounds.left,
-      }),
-    );
-  }
-
-  function beginResize(event: PointerEvent<HTMLDivElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setResizing(true);
-    setSplitFromPointer(event);
-  }
-
-  function endResize(event: PointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setResizing(false);
-  }
-
-  function resizeByKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    const amount = event.shiftKey ? 10 : 5;
-    const next =
-      event.key === "ArrowLeft"
-        ? splitPercent - amount
-        : event.key === "ArrowRight"
-          ? splitPercent + amount
-          : event.key === "Home"
-            ? AGENT_CHAT_SPLIT_MIN
-            : event.key === "End"
-              ? AGENT_CHAT_SPLIT_MAX
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    setSplitPercent(
-      Math.min(AGENT_CHAT_SPLIT_MAX, Math.max(AGENT_CHAT_SPLIT_MIN, next)),
-    );
-  }
-
   const split = displayedIds.length > 1;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
-      <div className="agent-chat-center">
+      <div className="agent-chat-center surface surface--card">
         <AgentChatCenterHeader
           tabs={tabs}
-          paneIds={
-            sidePanes && displayedIds.some(isSideChatId) ? displayedIds : null
-          }
+          paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}
           focusedId={focusedId}
           focusedSnapshot={focusedSnapshot}
-          chatCount={chatTabs.length}
+          chatCount={chatIds.length}
           sessionChromeById={sessionChromeById}
           splitPercent={splitPercent}
           onArtifactHeaderMount={onArtifactHeaderMount}
+          navigationCollapsed={navigationCollapsed}
         />
         <div
           ref={panesRef}
@@ -336,28 +240,10 @@ export function AgentChatPanes({
                   tab={tab}
                   focused={id === focusedId}
                   snapshot={id === focusedId ? focusedSnapshot : undefined}
-                  onFocus={() => void activateTab(id)}
+                  activateTab={activateTab}
                 />
                 {split && index === 0 ? (
-                  <div
-                    className={`agent-chat-splitter${
-                      resizing ? " agent-chat-splitter--active" : ""
-                    }`}
-                    role="separator"
-                    aria-label="Resize chat panes"
-                    aria-orientation="vertical"
-                    aria-valuemin={AGENT_CHAT_SPLIT_MIN}
-                    aria-valuemax={AGENT_CHAT_SPLIT_MAX}
-                    aria-valuenow={splitPercent}
-                    tabIndex={0}
-                    onKeyDown={resizeByKeyboard}
-                    onPointerDown={beginResize}
-                    onPointerMove={(event) => {
-                      if (resizing) setSplitFromPointer(event);
-                    }}
-                    onPointerUp={endResize}
-                    onPointerCancel={endResize}
-                  />
+                  <SplitterPart part="AgentChatSplitter" panesRef={panesRef} />
                 ) : null}
               </Fragment>
             );

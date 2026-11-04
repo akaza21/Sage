@@ -51,7 +51,7 @@ for (const width of [1888, 720, 480]) {
       await open(page, "running");
       const summary = page.locator(".acp-tool-rollup > summary");
       await expect(summary).toHaveText(
-        "Running git diff --stat -- src/features/chat/acp/ToolActivityRollupView.tsx",
+        "Running git diff --stat -- src/features/chat/acp/PrimaryActivities.tsx",
       );
       await expect(summary.locator(".acp-tool-running")).toHaveCount(0);
       await expect(summary.locator(".acp-live-shimmer")).toHaveCount(1);
@@ -240,6 +240,21 @@ for (const width of [1888, 720, 480]) {
 
     test("thinking after prose has the reference gap", async ({ page }) => {
       await open(page, "thinking");
+      await expect(page.locator(".acp-thought")).toHaveText("Thinking");
+      await expect(page.locator(".acp-thought")).toHaveClass(
+        /acp-live-shimmer/,
+      );
+      await expect(page.locator(".acp-thought")).toHaveCSS(
+        "color",
+        "rgba(0, 0, 0, 0)",
+      );
+      await expect(page.locator(".acp-thought")).toHaveCSS(
+        "animation-name",
+        "acp-live-shimmer",
+      );
+      await expect(page.getByText("Inspecting the dependencies.")).toHaveCount(
+        0,
+      );
       const prose = await page
         .getByText("Checking the project now.", { exact: true })
         .boundingBox();
@@ -248,6 +263,107 @@ for (const width of [1888, 720, 480]) {
         18,
       );
       expect(thinking!.y - (prose!.y + prose!.height)).toBeLessThanOrEqual(24);
+    });
+
+    test("AP-E command labels hide shell-profile noise but keep redacted command and truthful output", async ({
+      page,
+    }) => {
+      await open(page, "wrapped-command");
+      await page.locator(".chat-transcript-work > summary").click();
+      const row = page.locator(".acp-tool-rollup");
+      await expect(row.locator(":scope > summary")).toHaveText(
+        "Ran Get-Content -LiteralPath README.md --token [redacted]",
+      );
+      await row.locator(":scope > summary").click();
+      await expect(row.getByLabel("Command line")).toContainText(
+        "-NoProfile -Command",
+      );
+      await expect(row).toContainText(
+        "PowerShell profile could not be loaded.",
+      );
+    });
+
+    test("AP-E notices have human headings, never raw ids", async ({
+      page,
+    }) => {
+      await open(page, "notice");
+      await page.locator(".chat-transcript-work > summary").click();
+      const notice = page.locator(".acp-error");
+      await expect(notice.locator("strong")).toHaveText(
+        "Browser tools unavailable",
+      );
+      await expect(notice).toContainText("You can continue chatting.");
+      await expect(notice).not.toContainText("browserMcpUnavailable");
+    });
+
+    test("AP-E edited-files card has real counts, bounded rows and honest actions", async ({
+      page,
+    }) => {
+      await open(page, "edits");
+      const card = page.getByRole("region", {
+        name: "Edited files",
+        exact: true,
+      });
+      await expect(card).toContainText("Edited 5 files");
+      const totals = card.locator(
+        ".acp-edited-files__heading .acp-file-changes__totals",
+      );
+      await expect(totals).toContainText("+15");
+      await expect(totals).toContainText("-10");
+      const countColors = await totals.evaluate((element) => {
+        const addition = element.querySelector<HTMLElement>(
+          ".acp-file-changes__additions",
+        )!;
+        const deletion = element.querySelector<HTMLElement>(
+          ".acp-file-changes__deletions",
+        )!;
+        const readToken = (token: string) => {
+          const probe = document.createElement("span");
+          probe.style.color = `var(${token})`;
+          element.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        };
+        return {
+          additions: getComputedStyle(addition).color,
+          deletions: getComputedStyle(deletion).color,
+          added: readToken("--color-diff-add"),
+          deleted: readToken("--color-diff-delete"),
+        };
+      });
+      expect(countColors.additions).toBe(countColors.added);
+      expect(countColors.deletions).toBe(countColors.deleted);
+      await expect(card.getByRole("listitem")).toHaveCount(3);
+      const undo = card.getByRole("button", { name: "Undo", exact: true });
+      await expect(undo).toHaveCount(0);
+      await card.getByRole("button", { name: "View changes" }).click();
+      await expect(page.getByLabel("Opened diff")).toHaveText(
+        "diff:src/file-0.ts",
+      );
+      await card.getByRole("button", { name: "Show 2 more files" }).click();
+      await expect(card.getByRole("listitem")).toHaveCount(5);
+      await card.getByRole("button", { name: /src\/file-4.ts/ }).click();
+      await expect(page.getByLabel("Opened diff")).toHaveText(
+        "diff:src/file-4.ts",
+      );
+      expect(
+        await card.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+    });
+
+    test("AP-E edited-files appearance (Windows baseline pending)", async ({
+      page,
+    }) => {
+      await open(page, "edits");
+      const card = page.getByRole("region", {
+        name: "Edited files",
+        exact: true,
+      });
+      await expect(card.getByRole("listitem")).toHaveCount(3);
+      await expect(card).toHaveScreenshot(`ap-e-edited-files-${width}.png`);
     });
 
     test("failed compaction uses an icon-led normal row and error tone", async ({

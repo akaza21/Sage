@@ -15,6 +15,7 @@ use std::{
 mod candidates;
 mod claude;
 mod parsing;
+mod pi;
 mod validation;
 mod version_probe;
 
@@ -23,7 +24,6 @@ mod hash_tests;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
@@ -31,6 +31,7 @@ pub(crate) use claude::{
 use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;
+pub(crate) use pi::{DiscoveredPiLaunch, PiLaunchDiscovery, discover_pi_launch};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
