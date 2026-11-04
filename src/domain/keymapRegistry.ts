@@ -48,7 +48,6 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   ...(
     [
       ["agent.changes", "Changes", "g", "required", "forbidden"],
-      ["agent.terminal", "Terminal", "`", "forbidden", "forbidden"],
       ["agent.files", "Files", "p", "forbidden", "forbidden"],
       ["agent.sideChat", "Side chat", "s", "forbidden", "required"],
     ] as const
@@ -62,6 +61,17 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     scope: "Agent" as const,
     ctrlOrMeta: "required" as const,
   })),
+  {
+    id: "agent.terminal",
+    label: "Toggle terminal",
+    description:
+      "Shows or hides the terminal dock without ending its sessions.",
+    scope: "Global",
+    key: "`",
+    ctrlOrMeta: "required",
+    shift: "forbidden",
+    alt: "forbidden",
+  },
   {
     id: "newTask",
     label: "New chat",
