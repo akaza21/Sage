@@ -43,4 +43,5 @@ mod fixture_protocol;
 #[cfg(test)]
 mod tests {
     mod contract;
+    mod limits;
 }
