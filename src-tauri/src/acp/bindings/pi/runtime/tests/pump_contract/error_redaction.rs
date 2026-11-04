@@ -1,6 +1,5 @@
 use super::turn_failures::Reopened;
 use super::*;
-use crate::acp::bindings::pi::runtime::support::ATTEMPT_FAILURE_CODE;
 use crate::acp::{
     intent::ErrorKind, lifecycle::TurnState, projection::ItemContent, store::load_chat_page,
 };
@@ -362,7 +361,7 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
                             ..
                         } => {
                             assert_eq!(*kind, Some(ErrorKind::Attempt));
-                            assert_eq!(code.as_str(), ATTEMPT_FAILURE_CODE);
+                            assert_eq!(code.as_str(), "Attempt failed (attempt 1)");
                             Some(message.as_str())
                         }
                         _ => None,
