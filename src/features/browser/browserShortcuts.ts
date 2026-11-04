@@ -14,6 +14,12 @@ export function dispatchBrowserChromeShortcut(
   dispatch: (action: BrowserShortcut) => void,
 ): void {
   if (!(event.target instanceof Node) || !root.contains(event.target)) return;
+  if (
+    event.key === "Escape" &&
+    event.target instanceof HTMLElement &&
+    event.target.matches("input, textarea, [contenteditable=true]")
+  )
+    return;
   const action = browserShortcutFor(event, loading);
   if (!action) return;
   event.preventDefault();

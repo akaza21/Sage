@@ -19,7 +19,6 @@ import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
-import { DirtyTabDialog } from "./DirtyTabDialog";
 import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
@@ -69,6 +68,11 @@ const loadQuickOpenHost = () =>
     default: QuickOpenHost,
   }));
 
+const loadDirtyTabDialog = () =>
+  import("./DirtyTabDialog").then(({ DirtyTabDialog }) => ({
+    default: DirtyTabDialog,
+  }));
+
 // The Editor's tab strip stays off the Agent startup path.
 const loadTabStrip = () =>
   import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
@@ -112,6 +116,16 @@ export function Workbench() {
       agentArtifactExpanded,
       agentNavigationCollapsed,
     );
+  const toggleAgentNavigation = useCallback(() => {
+    const collapsed = !agentLayout.navigationCollapsed;
+    if (!collapsed && !agentLayout.navigationFits)
+      setAgentArtifactExpanded(false);
+    setNavigation({ narrow: narrowAgent, collapsed });
+  }, [
+    agentLayout.navigationCollapsed,
+    agentLayout.navigationFits,
+    narrowAgent,
+  ]);
   const resourceModal =
     windowMode === "agent" && !agentSettingsPage && agentLayout.artifactModal;
   const terminal = useTerminalDock(resourceModal);
@@ -126,10 +140,9 @@ export function Workbench() {
     void useUiAppearanceStore.getState().restore();
   }, []);
   useWorkbenchKeys({
-    narrowAgent,
     resourceModal,
     windowMode,
-    setNavigation,
+    toggleAgentNavigation,
     setWindowMode,
   });
   useEditorHistoryKeys(windowMode === "editor");
@@ -176,10 +189,8 @@ export function Workbench() {
             layout={agentLayout}
             style={{ gridTemplateColumns: agentLayout.gridTemplateColumns }}
             drawerOpen={agentLayout.artifactOverlay}
-            navigationCollapsed={agentNavigationCollapsed}
-            onExpandNavigation={() =>
-              setNavigation({ narrow: narrowAgent, collapsed: false })
-            }
+            navigationCollapsed={agentLayout.navigationCollapsed}
+            onExpandNavigation={toggleAgentNavigation}
             artifactExpanded={agentArtifactExpanded}
             onArtifactExpandedChange={changeAgentArtifact}
             onAgentLeftRailWidthChange={(width) =>
@@ -197,13 +208,12 @@ export function Workbench() {
     [
       agentArtifactExpanded,
       agentLayout,
-      agentNavigationCollapsed,
       changeAgentArtifact,
       changeAgentSidebarWidth,
-      narrowAgent,
       openArtifactInEditor,
       onPreviewTargetChange,
       terminal.open,
+      toggleAgentNavigation,
     ],
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
@@ -214,20 +224,15 @@ export function Workbench() {
       };
   return (
     <main
-      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentNavigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
+      className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentLayout.navigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
       style={workbenchGeometryStyle}
     >
       <TitleBar
         mode={windowMode}
         onModeChange={setWindowMode}
         inert={resourceModal}
-        agentNavigationCollapsed={agentNavigationCollapsed}
-        onToggleAgentNavigation={() =>
-          setNavigation({
-            narrow: narrowAgent,
-            collapsed: !agentNavigationCollapsed,
-          })
-        }
+        agentNavigationCollapsed={agentLayout.navigationCollapsed}
+        onToggleAgentNavigation={toggleAgentNavigation}
       />
       {isTauriRuntime() ? (
         <LazyModuleBoundary
@@ -332,7 +337,13 @@ export function Workbench() {
         showEditorSettings={windowMode === "editor"}
         terminalControls={terminal.controls}
       />
-      {pendingClose ? <DirtyTabDialog /> : null}
+      {pendingClose ? (
+        <LazyModuleBoundary
+          label="Unsaved file confirmation"
+          load={loadDirtyTabDialog}
+          render={(DirtyTabDialog) => <DirtyTabDialog />}
+        />
+      ) : null}
     </main>
   );
 }

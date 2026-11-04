@@ -22,18 +22,14 @@ import type { WorkbenchWindowMode } from "./workbenchWindowMode";
 
 /** Window-level commands shared by Agent and Editor, guarded by resource modals. */
 export function useWorkbenchKeys({
-  narrowAgent,
   resourceModal,
   windowMode,
-  setNavigation,
+  toggleAgentNavigation,
   setWindowMode,
 }: {
-  narrowAgent: boolean;
   resourceModal: boolean;
   windowMode: WorkbenchWindowMode;
-  setNavigation: Dispatch<
-    SetStateAction<{ narrow: boolean; collapsed: boolean }>
-  >;
+  toggleAgentNavigation: () => void;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
   // Own the Editor lifetime even while its deferred UI is still loading.
@@ -47,13 +43,7 @@ export function useWorkbenchKeys({
       const apple = usesMetaModifier();
       if (matchesPlatformChord(keymapBinding("toggleSidebar"), event, apple)) {
         event.preventDefault();
-        if (windowMode === "agent")
-          setNavigation((value) => ({
-            narrow: narrowAgent,
-            collapsed: !(value.narrow === narrowAgent
-              ? value.collapsed
-              : narrowAgent),
-          }));
+        if (windowMode === "agent") toggleAgentNavigation();
         else useWorkbenchStore.getState().toggleSidebar();
       }
       if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
@@ -85,7 +75,7 @@ export function useWorkbenchKeys({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [narrowAgent, resourceModal, setNavigation, setWindowMode, windowMode]);
+  }, [resourceModal, toggleAgentNavigation, setWindowMode, windowMode]);
 }
 
 /** The terminal controller loads when a native workbench is available. */

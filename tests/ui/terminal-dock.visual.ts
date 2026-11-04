@@ -215,6 +215,41 @@ test("shortcut and chrome Escape preserve sessions and return focus to the compo
   await expect(composer).toBeFocused();
 });
 
+test("navigation and terminal commands stay independent across layout changes", async ({
+  page,
+}) => {
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal",
+    exact: true,
+  });
+  const dock = page.getByRole("region", { name: "Terminal", exact: true });
+  const navigation = page.getByRole("button", {
+    name: "Hide projects and chats",
+  });
+  await toggle.click();
+  await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+  await page
+    .getByRole("textbox", { name: "Message agent", exact: true })
+    .focus();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(navigation).toBeHidden();
+  await expect(dock).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Show projects and chats" }).click();
+  await expect(navigation).toBeVisible();
+  await expect(dock).toBeVisible();
+  await page.keyboard.press("Control+Backquote");
+  await expect(dock).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(navigation).toBeHidden();
+  await toggle.click();
+  await expect(dock.locator(".xterm-rows:visible")).toContainText(
+    "Retained shell 1",
+  );
+  await expect(navigation).toBeHidden();
+  await expect(dock.getByRole("tab")).toHaveCount(1);
+});
+
 test("reopening after ending the last session starts a focused usable shell", async ({
   page,
 }) => {
