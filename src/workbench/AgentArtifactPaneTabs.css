@@ -1,10 +1,10 @@
 .workbench--agent .agent-artifact-surface {
   --agent-pane-summary-height: 44px;
-  --agent-pane-tab-height: 28px;
+  --agent-pane-tab-height: var(--control-height-compact);
   --agent-pane-tab-min-width: 96px;
   --agent-pane-tab-max-width: 214px;
   --agent-pane-tab-close-width: 20px;
-  --radius-agent-pane-tab: 6px;
+  --radius-agent-pane-tab: var(--radius-sm);
   --radius-agent-pane-summary-end: 0 var(--radius-pill) var(--radius-pill) 0;
   --agent-pane-summary-fill: var(--color-panel-raised);
   --agent-pane-additions: var(--rail-approval-text);

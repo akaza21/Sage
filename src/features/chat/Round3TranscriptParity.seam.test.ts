@@ -66,9 +66,9 @@ it("reserves find space below header actions at every pane width (R3-05)", () =>
   expect(css).not.toMatch(/position:\s*absolute/);
 });
 
-it("uses sibling pitch, inherited label color and an 8px chevron gap (R3-04)", () => {
-  expect(polish()).toMatch(
-    /\.chat-transcript-work__groups \.acp-tool-rollup__items\s*\{[^}]*margin-top:\s*0;/s,
+it("uses a compact disclosure gap, inherited label color and an 8px chevron gap (R3-04)", () => {
+  expect(read("src/features/chat/acp/acp-activity-details.css")).toMatch(
+    /\.acp-tool-rollup__items\s*\{[^}]*margin-top:\s*calc\(var\(--space-1\) \/ 2\);/s,
   );
   expect(polish()).toMatch(
     /\.chat-transcript-work__groups \.acp-tool-rollup > summary\s*\{[^}]*gap:\s*var\(--space-2\);/s,

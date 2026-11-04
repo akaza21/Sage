@@ -247,7 +247,7 @@
 
 .agent-artifact-pane {
   --agent-pane-header-height: 46px;
-  --agent-pane-control-width: 28px;
+  --agent-pane-control-width: var(--control-height-compact);
   --agent-pane-summary-inset: 6px;
   --color-diff-add: var(--agent-pane-additions);
   --color-diff-delete: var(--agent-pane-deletions);

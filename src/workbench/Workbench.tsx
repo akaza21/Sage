@@ -354,3 +354,5 @@ export function Workbench() {
     </main>
   );
 }
+
+export default Workbench;

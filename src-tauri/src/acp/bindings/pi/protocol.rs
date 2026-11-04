@@ -103,6 +103,8 @@ pub enum AdapterOutput {
         message: Option<String>,
     },
     AttemptFailed {
+        attempt: u64,
+        max_attempts: Option<u64>,
         message: String,
     },
     TextStarted {

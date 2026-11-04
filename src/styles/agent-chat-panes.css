@@ -71,7 +71,7 @@
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .agent-chat-panes--split .agent-chat-pane--focused {
@@ -102,7 +102,7 @@
 
 .agent-chat-panes--split .surface-header {
   gap: var(--space-1);
-  padding: 4px var(--space-2);
+  padding: var(--space-1) var(--space-2);
 }
 
 .agent-chat-panes--split .session-controls {

@@ -55,6 +55,7 @@ describe("Preview presentation semantics", () => {
     const failures: PreviewFailure[] = [
       "scriptMissing",
       "originNotLoopback",
+      "originUnsupported",
       "startupTimeout",
       "healthTimeout",
       "exitedEarly",
@@ -74,6 +75,10 @@ describe("Preview presentation semantics", () => {
       {
         detail: "Preview did not provide a safe loopback address.",
         label: "Unsafe origin",
+      },
+      {
+        detail: "Preview supports http:// loopback origins only.",
+        label: "Unsupported origin",
       },
       {
         detail: "Preview did not start before its deadline.",

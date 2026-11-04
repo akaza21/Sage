@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { win32 } from "node:path";
 import { snapshotPage } from "../../../app/agentDiff.fixture";
-import { acpDesktop } from "../../../services/acpDesktop";
+import * as acpDesktop from "../../../services/acpDesktop";
 
 import loadTurnWorkspaceChanges, {
   decodeTurnWorkspaceChanges,
