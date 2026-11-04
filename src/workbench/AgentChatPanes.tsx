@@ -1,6 +1,7 @@
 import {
   Activity,
   Fragment,
+  memo,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -22,11 +23,13 @@ import {
 import { useWorkbenchStore } from "../app/store";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
-import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
+import { AcpProjectionOwnerContext } from "../features/chat/acp/AcpProjectionOwnerContext";
+import { projectChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import { useAcpChatProjection } from "../features/chat/acp/useAcpChatProjection";
 import { lazyParts } from "../features/chat/lazyParts";
 import { TranscriptPart } from "../features/chat/transcriptLazy";
 import { type HarnessBrowseOwner } from "../features/preview/harnessBrowse";
-import { AgentChatCenterHeader } from "./AgentChatCenterHeader";
+import { AgentChatCenterHeader as ChatCenterHeader } from "./AgentChatCenterHeader";
 import { AgentChatPane } from "./AgentChatPane";
 import type * as SplitterChunk from "./AgentChatSplitter";
 import { canShowAgentChatSplit } from "./agentChatSplit";
@@ -37,6 +40,13 @@ import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 const SplitterPart = lazyParts<typeof SplitterChunk>(
   () => import("./AgentChatSplitter"),
 );
+
+const AgentChatCenterHeader = memo(ChatCenterHeader);
+
+function ChatProjectionOwner({ chatId }: { chatId: string }) {
+  useAcpChatProjection(true, chatId);
+  return null;
+}
 
 export function AgentChatPanes({
   visible = true,
@@ -174,9 +184,19 @@ export function AgentChatPanes({
       (!focusedScope || focusedPage?.chatId !== focusedId),
   );
 
-  const focusedSnapshot = useAcpChatLiveSnapshot(
-    focusedId ?? "",
-    Boolean(focusedId) && visible,
+  // Visible artifacts still consume the focused Chat while its transcript
+  // sleeps. One owner per displayed slot also avoids duplicate native readers.
+  const projection = useMemo(() => {
+    const ids = visible ? displayedIds : focusedId ? [focusedId] : [];
+    return {
+      ids: new Set(ids),
+      owners: ids.map((id) => <ChatProjectionOwner key={id} chatId={id} />),
+    };
+  }, [displayedIds, focusedId, visible]);
+  const presentedPage = visible ? focusedPage : null;
+  const focusedSnapshot = useMemo(
+    () => projectChatLiveSnapshot(focusedId ?? "", presentedPage),
+    [focusedId, presentedPage],
   );
   useLayoutEffect(() => {
     const panes = panesRef.current;
@@ -208,61 +228,64 @@ export function AgentChatPanes({
   const split = displayedIds.length > 1;
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
-      <Activity mode={visible ? "visible" : "hidden"}>
-        <div className="agent-chat-center surface surface--card">
-          <AgentChatCenterHeader
-            tabs={tabs}
-            paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}
-            focusedId={focusedId}
-            focusedSnapshot={focusedSnapshot}
-            chatCount={chatIds.length}
-            sessionChromeById={sessionChromeById}
-            splitPercent={splitPercent}
-            onArtifactHeaderMount={onArtifactHeaderMount}
-            navigationCollapsed={navigationCollapsed}
-          />
-          <div
-            ref={panesRef}
-            id="agent-chat-panel"
-            aria-label="Agent chat panes"
-            className={`agent-chat-panes${split ? " agent-chat-panes--split" : ""}`}
-            role="tabpanel"
-            style={
-              split
-                ? {
-                    gridTemplateColumns: `minmax(0, ${splitPercent}fr) 8px minmax(0, ${
-                      100 - splitPercent
-                    }fr)`,
-                  }
-                : undefined
-            }
-          >
-            {displayedIds.map((id, index) => {
-              const tab = tabs.find((candidate) => candidate.id === id);
-              if (!tab) return null;
-              return (
-                <Fragment key={id}>
-                  <AgentChatPane
-                    tab={tab}
-                    focused={id === focusedId}
-                    snapshot={id === focusedId ? focusedSnapshot : undefined}
-                    activateTab={activateTab}
-                  />
-                  {split && index === 0 ? (
-                    <SplitterPart
-                      part="AgentChatSplitter"
-                      panesRef={panesRef}
+      {projection.owners}
+      <AcpProjectionOwnerContext value={projection.ids}>
+        <Activity mode={visible ? "visible" : "hidden"}>
+          <div className="agent-chat-center surface surface--card">
+            <AgentChatCenterHeader
+              tabs={tabs}
+              paneIds={displayedIds.some(isSideChatId) ? displayedIds : null}
+              focusedId={focusedId}
+              focusedSnapshot={focusedSnapshot}
+              chatCount={chatIds.length}
+              sessionChromeById={sessionChromeById}
+              splitPercent={splitPercent}
+              onArtifactHeaderMount={onArtifactHeaderMount}
+              navigationCollapsed={navigationCollapsed}
+            />
+            <div
+              ref={panesRef}
+              id="agent-chat-panel"
+              aria-label="Agent chat panes"
+              className={`agent-chat-panes${split ? " agent-chat-panes--split" : ""}`}
+              role="tabpanel"
+              style={
+                split
+                  ? {
+                      gridTemplateColumns: `minmax(0, ${splitPercent}fr) 8px minmax(0, ${
+                        100 - splitPercent
+                      }fr)`,
+                    }
+                  : undefined
+              }
+            >
+              {displayedIds.map((id, index) => {
+                const tab = tabs.find((candidate) => candidate.id === id);
+                if (!tab) return null;
+                return (
+                  <Fragment key={id}>
+                    <AgentChatPane
+                      tab={tab}
+                      focused={id === focusedId}
+                      snapshot={id === focusedId ? focusedSnapshot : undefined}
+                      activateTab={activateTab}
                     />
-                  ) : null}
-                </Fragment>
-              );
-            })}
+                    {split && index === 0 ? (
+                      <SplitterPart
+                        part="AgentChatSplitter"
+                        panesRef={panesRef}
+                      />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </div>
           </div>
-        </div>
-        {chatIds.some(isSideChatId) ? (
-          <TranscriptPart part="SideChatDialogs" />
-        ) : null}
-      </Activity>
+          {chatIds.some(isSideChatId) ? (
+            <TranscriptPart part="SideChatDialogs" />
+          ) : null}
+        </Activity>
+      </AcpProjectionOwnerContext>
     </AgentSessionChromeContext.Provider>
   );
 }

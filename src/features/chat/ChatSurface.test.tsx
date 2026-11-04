@@ -771,6 +771,9 @@ describe("ChatSurface ACP resource integration", () => {
       ],
       activeTabId: "chat-a",
     });
+    vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
+      async () => hooks.page!,
+    );
     const view = render(<Workbench />);
     fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
     await settleLazyModules();
