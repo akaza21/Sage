@@ -6,7 +6,7 @@ import {
   waitFor,
   screen,
 } from "@testing-library/react";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
@@ -49,15 +49,24 @@ afterEach(() => {
 });
 function Launcher() {
   const { launch } = useContext(AgentToolsContext);
-  return <button onClick={() => launch("changes")}>Changes launcher</button>;
-}
-it("routes real Agent keybindings to the resource picker and terminal dock", async () => {
-  const terminal = vi.fn();
-  render(
-    <AgentToolsProvider onOpenTerminal={terminal}>
-      <Launcher />
-    </AgentToolsProvider>,
+  return (
+    <>
+      <button onClick={() => launch("changes")}>Changes launcher</button>
+      <button onClick={() => launch("terminal")}>Terminal launcher</button>
+    </>
   );
+}
+it("routes Agent keybindings to the resource picker and the terminal menu to its command", async () => {
+  function Host() {
+    const [terminalOpen, setTerminalOpen] = useState(false);
+    return (
+      <AgentToolsProvider onOpenTerminal={() => setTerminalOpen(true)}>
+        <Launcher />
+        {terminalOpen ? <section aria-label="Opened terminal" /> : null}
+      </AgentToolsProvider>
+    );
+  }
+  render(<Host />);
   const trigger = screen.getByRole("button", { name: "Changes launcher" });
   trigger.focus();
   fireEvent.keyDown(window, { key: "G", ctrlKey: true, shiftKey: true });
@@ -72,8 +81,8 @@ it("routes real Agent keybindings to the resource picker and terminal dock", asy
   fireEvent.keyDown(window, { key: "p", ctrlKey: true });
   expect(await screen.findByRole("dialog", { name: "Files" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  fireEvent.keyDown(window, { key: "`", ctrlKey: true });
-  expect(terminal).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Terminal launcher" }));
+  expect(screen.getByRole("region", { name: "Opened terminal" })).toBeVisible();
 });
 it("offers Side chat only for a selected answer or an existing side chat", () => {
   render(

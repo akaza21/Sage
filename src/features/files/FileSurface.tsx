@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
 } from "react";
@@ -202,30 +203,27 @@ export function FileSurface({
   }, [readOnly]);
 
   // The command palette (ED-2a) runs the same actions as the editor's keys.
-  const commandsRef = useRef<FileSurfaceCommands>({
-    available: () => false,
-    run: () => undefined,
-  });
+  const availableCommand = useRef<FileSurfaceCommands["available"]>(
+    () => false,
+  );
   useEffect(() => {
-    commandsRef.current = {
-      // Only what the keys would do now: the editor is showing, and the
-      // Markdown preview has no find or go to.
-      available: (command) =>
-        editor?.phase === "ready" && (command === "save" || !previewing),
-      run: (command) => {
-        if (command === "save") void saveActiveEditor();
-        else if (command === "find") openFindFromSurface();
-        else if (command === "replace") openFindFromSurface(true);
-        else if (command === "goToLine") openGoToLine();
-        else void goToLocalSymbol();
-      },
-    };
+    // Availability is queried during command-palette rendering, so it reads
+    // the last committed editor state rather than invoking an Effect Event.
+    availableCommand.current = (command) =>
+      editor?.phase === "ready" && (command === "save" || !previewing);
+  });
+  const runCommand = useEffectEvent<FileSurfaceCommands["run"]>((command) => {
+    if (command === "save") void saveActiveEditor();
+    else if (command === "find") openFindFromSurface();
+    else if (command === "replace") openFindFromSurface(true);
+    else if (command === "goToLine") openGoToLine();
+    else void goToLocalSymbol();
   });
   useEffect(() => {
     if (readOnly) return;
     return registerFileSurfaceCommands({
-      available: (command) => commandsRef.current.available(command),
-      run: (command) => commandsRef.current.run(command),
+      available: (command) => availableCommand.current(command),
+      run: (command) => runCommand(command),
     });
   }, [readOnly]);
 
