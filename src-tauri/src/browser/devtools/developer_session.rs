@@ -9,7 +9,10 @@ use crate::acp::browser::{
 };
 use crate::browser::BrowserState;
 
+mod completion;
 mod native;
+pub(super) use completion::Completion;
+use completion::CompletionTarget;
 
 #[derive(Clone, Default)]
 pub(in crate::browser) struct Slot(Arc<SharedSlot>);
@@ -27,6 +30,7 @@ struct State {
     phase: Phase,
     busy: bool,
     sleep: bool,
+    pending_completion: bool,
 }
 
 #[derive(Default)]
@@ -35,6 +39,7 @@ enum Phase {
     Opening,
     Ready(String),
     Closing,
+    Detached,
     Closed,
 }
 
@@ -47,7 +52,7 @@ impl State {
         let id = match &self.phase {
             Phase::Opening => None,
             Phase::Ready(id) => Some(id.clone()),
-            Phase::Closing | Phase::Closed => return None,
+            Phase::Closing | Phase::Detached | Phase::Closed => return None,
         };
         self.phase = Phase::Closing;
         id
@@ -59,6 +64,33 @@ impl State {
             None
         } else {
             Some(id)
+        }
+    }
+
+    fn begin_completion(&mut self) -> Result<(), BrowserFailure> {
+        if !matches!(self.phase, Phase::Ready(_)) || self.pending_completion {
+            return Err(BrowserFailure::Unavailable);
+        }
+        self.pending_completion = true;
+        Ok(())
+    }
+
+    fn detached(&mut self) -> bool {
+        self.phase = if self.pending_completion {
+            Phase::Detached
+        } else {
+            Phase::Closed
+        };
+        !self.pending_completion
+    }
+
+    fn completed(&mut self) -> bool {
+        self.pending_completion = false;
+        if matches!(self.phase, Phase::Detached) {
+            self.phase = Phase::Closed;
+            true
+        } else {
+            false
         }
     }
 }
@@ -109,7 +141,8 @@ impl Session {
                     .state
                     .lock()
                     .map_err(|_| BrowserFailure::Unavailable)?;
-                if !matches!(state.phase, Phase::Ready(_)) || state.busy {
+                if !matches!(state.phase, Phase::Ready(_)) || state.busy || state.pending_completion
+                {
                     return Err(BrowserFailure::Unavailable);
                 }
                 state.busy = true;
@@ -158,7 +191,9 @@ impl Session {
                 .lock()
                 .map_err(|_| BrowserFailure::Unavailable)?;
             match state.phase {
-                Phase::Closing | Phase::Closed => return Err(BrowserFailure::Unavailable),
+                Phase::Closing | Phase::Detached | Phase::Closed => {
+                    return Err(BrowserFailure::Unavailable);
+                }
                 Phase::Ready(_) => return Ok(work),
                 Phase::Opening => {}
             }
@@ -176,6 +211,14 @@ impl Session {
             Phase::Ready(id) if !id.is_empty() => issue(id),
             _ => Err(BrowserFailure::Denied),
         }
+    }
+
+    pub(super) fn begin_completion(self: &Arc<Self>) -> Result<Completion, BrowserFailure> {
+        self.state
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .begin_completion()?;
+        Ok(Completion::new(self))
     }
 
     pub(super) fn close(self: &Arc<Self>, force: bool) {
@@ -215,6 +258,22 @@ impl Session {
                 .is_some_and(|current| Arc::ptr_eq(current, self))
         {
             current.take();
+        }
+    }
+
+    fn detached(self: &Arc<Self>) {
+        let clear = self.state.lock().is_ok_and(|mut state| state.detached());
+        if clear {
+            self.finished();
+        }
+    }
+}
+
+impl CompletionTarget for Session {
+    fn complete(self: &Arc<Self>) {
+        let clear = self.state.lock().is_ok_and(|mut state| state.completed());
+        if clear {
+            self.finished();
         }
     }
 }

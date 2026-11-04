@@ -112,7 +112,7 @@ impl Session {
             let done =
                 CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |outcome, _| {
                     if outcome.is_ok() {
-                        session.finished();
+                        session.detached();
                     }
                     Ok(())
                 }));
@@ -122,6 +122,27 @@ impl Session {
                 &json!({"sessionId":id}).to_string(),
                 &done,
             );
+        });
+    }
+
+    pub(super) fn release_objects(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        let _ = self.webview.with_webview(move |platform| {
+            let Some(session) = weak.upgrade() else {
+                return;
+            };
+            let Ok(core) = (unsafe { platform.controller().CoreWebView2() }) else {
+                return;
+            };
+            let _ = session.with_id(|id| {
+                super::super::cdp::notify_session(
+                    &core,
+                    id,
+                    "Runtime.releaseObjectGroup",
+                    &crate::acp::browser::developer::release_params(),
+                );
+                Ok(())
+            });
         });
     }
 }

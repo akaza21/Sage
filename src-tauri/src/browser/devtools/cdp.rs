@@ -10,7 +10,9 @@ use std::{
 use super::developer_session::Session;
 use tauri::{Manager, Webview};
 use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_11;
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2_11, ICoreWebView2CallDevToolsProtocolMethodCompletedHandler,
+};
 use windows_core::{Interface, PCWSTR};
 
 #[derive(Default)]
@@ -113,32 +115,32 @@ pub(super) fn call_with_permit(
                 let core = unsafe { platform.controller().CoreWebView2() }
                     .map_err(|_| BrowserFailure::Unavailable)?;
                 let completed_sender = sender.clone();
-                let release_core = release_on_completion.then(|| core.clone());
-                let release_session = dispatch.session.clone();
+                let release_core =
+                    (release_on_completion && dispatch.session.is_none()).then(|| core.clone());
+                let completion = dispatch
+                    .session
+                    .as_ref()
+                    .map(Session::begin_completion)
+                    .transpose()?;
                 let completed = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
                     move |outcome, json| {
-                        let _ = completed_sender.try_send(if json.len() > max_result_bytes {
+                        let result = if json.len() > max_result_bytes {
                             Err(BrowserFailure::Capacity)
                         } else if outcome.is_ok() {
                             Ok(json)
                         } else {
                             Err(BrowserFailure::Unavailable)
-                        });
-                        if let Some(core) = release_core {
-                            if let Some(session) = release_session {
-                                let _ = session.with_id(|id| {
-                                    notify_session(
-                                        &core,
-                                        id,
-                                        "Runtime.releaseObjectGroup",
-                                        &crate::acp::browser::developer::release_params(),
-                                    );
-                                    Ok(())
-                                });
-                            } else {
-                                release_developer_objects(&core);
+                        };
+                        if let Some(mut completion) = completion {
+                            if release_on_completion {
+                                completion.release_objects();
                             }
+                            completion.acknowledge();
                         }
+                        if let Some(core) = release_core {
+                            release_developer_objects(&core);
+                        }
+                        let _ = completed_sender.try_send(result);
                         Ok(())
                     },
                 ));
@@ -245,9 +247,12 @@ pub(super) fn notify(
 ) {
     let method = wide(method);
     let params = wide(params);
-    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
     let _ = unsafe {
-        core.CallDevToolsProtocolMethod(PCWSTR(method.as_ptr()), PCWSTR(params.as_ptr()), &done)
+        core.CallDevToolsProtocolMethod(
+            PCWSTR(method.as_ptr()),
+            PCWSTR(params.as_ptr()),
+            None::<&ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>,
+        )
     };
 }
 
@@ -263,14 +268,13 @@ pub(super) fn notify_session(
     let session = wide(session);
     let method = wide(method);
     let params = wide(params);
-    let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
     if let Ok(core) = core.cast::<ICoreWebView2_11>() {
         let _ = unsafe {
             core.CallDevToolsProtocolMethodForSession(
                 PCWSTR(session.as_ptr()),
                 PCWSTR(method.as_ptr()),
                 PCWSTR(params.as_ptr()),
-                &done,
+                None::<&ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>,
             )
         };
     }
