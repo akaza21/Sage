@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 
 describe("Agent navigation allocation", () => {
+  it.each([1041, 1280, 1888])(
+    "preserves the chat and Files floors at splitter extremes at %i",
+    (viewportWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: true,
+        requestedWidths: { leftRailWidth: 385, artifactWidth: 1200 },
+      });
+      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.chatWidth).toBeGreaterThanOrEqual(360);
+      expect(layout.artifactWidth).toBeGreaterThanOrEqual(280);
+      expect(
+        layout.leftRailWidth + layout.chatWidth + layout.artifactWidth,
+      ).toBeLessThan(viewportWidth);
+    },
+  );
   it.each([480, 760, 1000, 1280, 1888])(
     "keeps only the 46px icon rail when navigation is collapsed at %i",
     (viewportWidth) => {
@@ -74,6 +90,9 @@ describe("Agent navigation allocation", () => {
     [720, 326, 394],
     [760, 326, 434],
     [761, 326, 427],
+    [800, 326, 466],
+    [936, 326, 602],
+    [981, 326, 647],
   ])(
     "opens resources over the same chat allocation at %i",
     (viewportWidth, navigation, chat) => {
@@ -88,6 +107,7 @@ describe("Agent navigation allocation", () => {
   );
 
   it.each([
+    [982, 326, 280, 360],
     [1040, 326, 338, 360],
     [1041, 326, 339, 360],
     [1280, 326, 576, 362],
@@ -139,15 +159,21 @@ describe("Agent navigation allocation", () => {
     });
   });
 
-  it("admits inline resources below the default threshold when resized navigation leaves room", () => {
-    const layout = agentWorkbenchLayout({
-      viewportWidth: 1000,
-      artifactExpanded: true,
-      requestedWidths: { leftRailWidth: 180, artifactWidth: 300 },
-    });
-    expect(layout.artifactOverlay).toBe(false);
-    expect(layout.leftRailWidth).toBe(180);
-    expect(layout.artifactWidth).toBe(300);
-    expect(layout.chatWidth).toBe(504);
-  });
+  it.each([
+    [836, 280, 360],
+    [1000, 300, 504],
+  ])(
+    "admits inline resources at %i when resized navigation leaves room",
+    (viewportWidth, artifactWidth, chatWidth) => {
+      const layout = agentWorkbenchLayout({
+        viewportWidth,
+        artifactExpanded: true,
+        requestedWidths: { leftRailWidth: 180, artifactWidth },
+      });
+      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.leftRailWidth).toBe(180);
+      expect(layout.artifactWidth).toBe(artifactWidth);
+      expect(layout.chatWidth).toBe(chatWidth);
+    },
+  );
 });

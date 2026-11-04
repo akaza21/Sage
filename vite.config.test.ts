@@ -79,11 +79,13 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
+  "src/app/agentWorkingDiffRepository.ts",
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
   "src/features/browser/browserSuggestions.ts",
   "src/features/browser/browserClipboard.ts",
   "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
@@ -172,6 +174,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/AgentTaskResources.tsx",
   "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactOpenMenu.tsx",
+  "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatSplitter.tsx",
   "src/workbench/AgentCollapsedNavigation.tsx",
   "src/workbench/AgentResourcesPopover.tsx",
@@ -217,7 +220,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentArtifactFocusGuard.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
-  "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
   "src/workbench/AgentRailOptionsMenu.tsx",
@@ -697,6 +699,12 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    const artifactStrip = groupedGraph.moduleFiles.get(
+      "src/workbench/AgentArtifactTabStrip.tsx",
+    );
+    expect(artifactStrip).toBeDefined();
+    expect(artifactStrip).not.toBe(agentFile);
+    expect(artifactStrip).not.toBe(sharedFile);
     const resources = "src/workbench/AgentTaskResources.tsx";
     const resourcesFile = groupedGraph.moduleFiles.get(resources);
     expect(groupedGraph.chunkNames.get(resourcesFile!)).toBe(

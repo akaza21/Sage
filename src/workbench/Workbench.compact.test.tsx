@@ -128,6 +128,33 @@ afterEach(() => {
 });
 
 describe("compact Workbench project tools", () => {
+  it("reveals navigation in one click after manually collapsing it before narrowing with Files open", async () => {
+    compactViewport = false;
+    vi.stubGlobal("innerWidth", 1280);
+    seedResourceChat();
+    const { container } = render(<Workbench />);
+    await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide projects and chats" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show files and preview · Waiting" }),
+    );
+    act(() => {
+      vi.stubGlobal("innerWidth", 800);
+      window.dispatchEvent(new Event("resize"));
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show projects and chats" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Hide projects and chats" }),
+    ).toBeVisible();
+    expect(
+      container.querySelector(".agent-artifact-pane__canvas"),
+    ).not.toBeVisible();
+  });
+
   it("keeps an empty Agent resource pane collapsed until the user opens it", async () => {
     compactViewport = false;
     vi.stubGlobal("innerWidth", 1280);

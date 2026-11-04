@@ -50,18 +50,25 @@
         const [open, setOpen] = React.useState(false);
         const frame = React.useRef(null);
         const surface = React.useRef(null);
-        useBrowserPlacement("browser-1", frame, surface, console.error, open);
+        useBrowserPlacement("browser-1", frame, surface, console.error);
         return React.createElement(
           "section",
-          { ref: surface, className: "browser-surface" },
+          { ref: surface, className: "browser-surface", style: { width: 960 } },
           React.createElement(
             "div",
             { className: "browser-surface__toolbar" },
-            React.createElement(BrowserDownloadsControl, {
-              tabId: "browser-1",
-              open,
-              onOpenChange: setOpen,
-            }),
+            React.createElement(
+              "div",
+              {
+                className: "browser-surface__right-group",
+                style: { marginLeft: "auto" },
+              },
+              React.createElement(BrowserDownloadsControl, {
+                tabId: "browser-1",
+                open,
+                onOpenChange: setOpen,
+              }),
+            ),
           ),
           React.createElement(
             "div",

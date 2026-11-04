@@ -118,6 +118,13 @@ export function agentWorkbenchLayout({
   );
   return {
     ...widths,
+    navigationCollapsed,
+    navigationFits:
+      viewportWidth >=
+      AGENT_LEFT_RAIL_WIDTH.minWidth +
+        AGENT_CHAT_MIN_WIDTH +
+        16 +
+        AGENT_ARTIFACT_WIDTH.minWidth,
     leftRailBounds,
     artifactBounds,
     navigationResizable,
