@@ -90,6 +90,13 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     });
   }, []);
 
+  // After a change that can replace any password, nothing shown may be stale.
+  const hideAll = useCallback(() => {
+    for (const timer of hideTimers.current.values()) window.clearTimeout(timer);
+    hideTimers.current.clear();
+    setRevealed((current) => (current.size === 0 ? current : new Map()));
+  }, []);
+
   useEffect(() => {
     const timers = hideTimers.current;
     mounted.current = true;
@@ -156,7 +163,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const removeAll = () => {
     void run(async () => {
       await passwordsDeleteAll();
-      for (const id of revealed.keys()) hide(id);
+      hideAll();
       reload();
       setNotice("All saved passwords were deleted.");
     });
@@ -172,6 +179,8 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
         setNotice(null);
       });
       if (report) {
+        // The import may have replaced a password that is showing.
+        hideAll();
         setImported(report);
         reload();
       } else if (request.cancelRequested) {

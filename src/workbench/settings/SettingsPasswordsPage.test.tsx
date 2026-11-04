@@ -186,6 +186,43 @@ it("imports a CSV, reports counts and offers to delete the plaintext file", asyn
   expect(native.deleteImportedFile).toHaveBeenCalledTimes(1);
 });
 
+it("hides a revealed password once an import may have replaced it", async () => {
+  native.overview.mockResolvedValue(ready());
+  native.reveal.mockResolvedValue("old-secret");
+  native.importCsv.mockResolvedValue({
+    added: 0,
+    updated: 1,
+    unchanged: 0,
+    skipped: 0,
+    fileName: "passwords.csv",
+  });
+  render(<SettingsPasswordsPage visible={all()} />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  await act(async () => {
+    fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  });
+  expect(
+    screen.getByLabelText("Password for ada on example.com"),
+  ).toHaveTextContent("old-secret");
+  vi.useFakeTimers();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+  });
+  expect(
+    screen.getByText(/Imported passwords.csv: 0 added, 1 updated\./),
+  ).toBeVisible();
+  expect(screen.queryByText("old-secret")).toBeNull();
+  // Its hide timer went with it: a new reveal is not cut short by the old one.
+  native.reveal.mockResolvedValue("new-secret");
+  await act(async () => {
+    fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  });
+  act(() => vi.advanceTimersByTime(REVEAL_MS - 1));
+  expect(
+    screen.getByLabelText("Password for ada on example.com"),
+  ).toHaveTextContent("new-secret");
+});
+
 it("edits a username", async () => {
   native.overview.mockResolvedValue(ready());
   native.update.mockResolvedValue(undefined);
