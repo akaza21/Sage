@@ -1,6 +1,6 @@
 import { createContext, type CSSProperties, type RefObject } from "react";
 
-const GUTTER = 8;
+export const GUTTER = 8;
 const MIN_USABLE_HEIGHT = 120;
 export const PopoverPlacementContext = createContext<{
   originRef: RefObject<HTMLElement | null>;

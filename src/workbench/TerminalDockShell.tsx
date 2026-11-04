@@ -56,6 +56,7 @@ type WorkbenchDockProps = {
   inert?: boolean;
   setOpen: (open: boolean) => void;
   pinnedChatId: string | null;
+  visible?: boolean;
 };
 
 /** Keep the session owner mounted while the visible center adopts its host. */
@@ -64,16 +65,23 @@ export default function TerminalDockForWorkbench({
   inert,
   setOpen,
   pinnedChatId,
+  visible = true,
 }: WorkbenchDockProps & { container: HTMLElement | null }) {
   const { portal } = usePortalHost(container);
   const onClose = useCallback(() => setOpen(false), [setOpen]);
-  const [[scope, uiProjectGeneration]] = useState(
-    () =>
-      [
-        selectedScope(pinnedChatId),
-        useWorkbenchStore.getState().projectGeneration,
-      ] as const,
-  );
+  const [owner, setOwner] = useState(() => ({
+    scope: selectedScope(pinnedChatId),
+    uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+  }));
+  const { scope, uiProjectGeneration } = owner;
+  if (visible && !scope) {
+    const next = selectedScope(pinnedChatId);
+    if (next)
+      setOwner({
+        scope: next,
+        uiProjectGeneration: useWorkbenchStore.getState().projectGeneration,
+      });
+  }
   useEffect(() => {
     if (!scope) return;
     return useWorkbenchStore.subscribe(() => {
@@ -86,23 +94,33 @@ export default function TerminalDockForWorkbench({
         current.projectGeneration !== scope.projectGeneration ||
         current.chatId !== scope.chatId
       ) {
+        setOwner({
+          scope: null,
+          uiProjectGeneration,
+        });
         onClose();
       }
     });
   }, [scope, onClose, pinnedChatId, uiProjectGeneration]);
   return portal(
     scope ? (
-      <TerminalDockShell scope={scope} onClose={onClose} inert={inert} />
+      <TerminalDockShell
+        scope={scope}
+        onClose={onClose}
+        inert={inert}
+        visible={visible}
+      />
     ) : (
       <section
         className="terminal-dock"
         aria-label="Terminal"
+        hidden={!visible}
         inert={inert}
         aria-hidden={inert || undefined}
       >
-        <div className="terminal-dock__header">Terminal unavailable</div>
+        <div className="terminal-dock__header">Terminal</div>
         <p className="terminal-dock__message" role="status">
-          Open a chat in an active project to use the terminal.
+          Open a chat first.
         </p>
         <button type="button" onClick={onClose}>
           Close terminal
@@ -116,16 +134,19 @@ export function TerminalDockShell({
   inert,
   scope,
   onClose,
+  visible = true,
 }: {
   inert?: boolean;
   scope: UserTerminalScope;
   onClose: () => void;
+  visible?: boolean;
 }) {
   const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [closing, setClosing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  if (!visible && collapsed) setCollapsed(false);
   const [message, setMessage] = useState<string | null>(null);
   const ownerRef = useRef({
     entries: [] as SessionEntry[],
@@ -183,10 +204,6 @@ export function TerminalDockShell({
     const owner = ownerRef.current;
     owner.disposed = false;
     owner.lifecycle += 1;
-    const lifecycle = owner.lifecycle;
-    void Promise.resolve().then(() => {
-      if (!owner.disposed && owner.lifecycle === lifecycle) void create();
-    });
     return () => {
       owner.disposed = true;
       owner.lifecycle += 1;
@@ -195,7 +212,21 @@ export function TerminalDockShell({
         void closeUserTerminal(scope, entry.session).catch(() => undefined);
       owner.entries = [];
     };
-  }, [create, scope]);
+  }, [scope]);
+
+  useEffect(() => {
+    const owner = ownerRef.current;
+    const lifecycle = owner.lifecycle;
+    if (!visible || entries.length !== 0) return;
+    void Promise.resolve().then(() => {
+      if (
+        !owner.disposed &&
+        owner.lifecycle === lifecycle &&
+        owner.entries.length === 0
+      )
+        void create();
+    });
+  }, [create, visible, entries.length]);
 
   const close = async (sessionId: string) => {
     const owner = ownerRef.current;
@@ -248,6 +279,7 @@ export function TerminalDockShell({
     <section
       className={`terminal-dock${collapsed ? " terminal-dock--collapsed" : ""}`}
       aria-label="Terminal"
+      hidden={!visible}
       inert={inert}
       aria-hidden={inert || undefined}
     >
@@ -303,22 +335,27 @@ export function TerminalDockShell({
           {status}
         </p>
       ) : null}
-      {!collapsed && active ? (
+      {entries.length ? (
         <LazyModuleBoundary
           label="Terminal view"
           load={loadTerminalView}
           fallback={null}
-          render={(TerminalView) => (
-            <TerminalView
-              key={active.session.sessionId}
-              scope={scope}
-              session={active.session}
-              ended={active.ended}
-              onStatus={(status, ended) =>
-                updateStatus(active.session.sessionId, status, ended)
-              }
-            />
-          )}
+          render={(TerminalView) =>
+            entries.map((entry) => (
+              <TerminalView
+                key={entry.session.sessionId}
+                scope={scope}
+                session={entry.session}
+                ended={entry.ended}
+                visible={
+                  visible && !collapsed && entry.session.sessionId === activeId
+                }
+                onStatus={(status, ended) =>
+                  updateStatus(entry.session.sessionId, status, ended)
+                }
+              />
+            ))
+          }
         />
       ) : null}
     </section>

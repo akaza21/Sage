@@ -60,13 +60,11 @@ export function SettingsSurface() {
       aria-label="Settings"
       aria-busy={persistencePhase === "loading"}
     >
+      {/* Search leads, as in VS Code: the tab already names the page. */}
       <header className="settings-surface__header">
-        <div className="settings-surface__title">
-          <h1>Settings</h1>
-          <p>{activePage?.description}</p>
-        </div>
+        <h1 className="sr-only">Settings</h1>
         <label className="settings-surface__search">
-          <span>Search settings</span>
+          <span className="sr-only">Search settings</span>
           <input
             autoFocus
             className="input"
@@ -86,6 +84,7 @@ export function SettingsSurface() {
           else setActivePageId(page);
         }}
       />
+      <p className="settings-surface__description">{activePage?.description}</p>
       {persistencePhase === "loading" ? (
         <p className="settings-surface__loading" role="status">
           Loading editor settings…

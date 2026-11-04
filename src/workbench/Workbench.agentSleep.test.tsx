@@ -25,7 +25,7 @@ vi.mock("./AgentWorkbenchBody", () => ({
   },
 }));
 vi.mock("./ActiveEditorCanvas", () => ({ default: () => null }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
 vi.mock("./TabStrip", () => ({ TabStrip: () => null }));

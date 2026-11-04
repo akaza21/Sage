@@ -15,9 +15,18 @@ export type RepositoryPrimaryAction =
   | null;
 
 function upstreamRemote(upstream: string, remotes: readonly string[]) {
-  const slash = upstream.indexOf("/");
-  const remote = slash > 0 ? upstream.slice(0, slash) : "";
-  return remotes.includes(remote) ? remote : null;
+  let match: string | null = null;
+  for (const remote of remotes) {
+    if (
+      upstream.startsWith(`${remote}/`) &&
+      upstream.length > remote.length + 1
+    ) {
+      // A display upstream cannot disambiguate remote and branch slashes.
+      if (match !== null) return null;
+      match = remote;
+    }
+  }
+  return match;
 }
 
 /** Chooses only an operation the current native Git projection can justify. */
@@ -74,7 +83,9 @@ export function repositoryPrimaryAction(
       repository.upstream,
       repository.remotes ?? [],
     );
-    return remote && canPushRemote(repository, remote)
+    return remote &&
+      repository.upstream.slice(remote.length + 1) === repository.branch &&
+      canPushRemote(repository, remote)
       ? { kind: "push", label: "Push", remote, reason: null }
       : null;
   }

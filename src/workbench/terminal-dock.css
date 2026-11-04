@@ -5,6 +5,10 @@
   min-width: 0;
 }
 
+.terminal-dock[hidden] {
+  display: none;
+}
+
 .terminal-dock {
   --terminal-dock-header-height: var(--control-height-emphasis);
   --terminal-dock-height: max(180px, 28vh);

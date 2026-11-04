@@ -12,12 +12,10 @@ import { useWorkbenchStore } from "../app/store";
 import { useUiAppearanceStore } from "../app/uiAppearanceStore";
 import { ExplorerReleasesOpenFiles } from "../features/files/explorerOpenFiles";
 import { usePreviewTargetLifetime } from "../features/preview/usePreviewTargetLifetime";
-import { QuickOpenHost } from "../features/quickOpen/QuickOpenHost";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useRetainedElement } from "../ui/useRetainedElement";
 import { LazyModuleBoundary, RetainedActivity } from "../ui/LazyModuleBoundary";
-import { DirtyTabDialog } from "./DirtyTabDialog";
 import "./harness-browser-mode.css";
 import { registerWorkbenchSurfaces } from "./registeredSurfaces";
 import { RightSidebar } from "./RightSidebar";
@@ -28,7 +26,7 @@ import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
-import { useWorkbenchKeys } from "./useWorkbenchKeys";
+import { useWorkbenchKeys, useTerminalDock } from "./useWorkbenchKeys";
 import "./workbench-window-mode.css";
 import {
   AgentCenterKeeper,
@@ -63,6 +61,10 @@ const loadRailStatus = () =>
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
 
+const loadQuickOpenHost = () => import("../features/quickOpen/QuickOpenHost");
+
+const loadDirtyTabDialog = () => import("./DirtyTabDialog");
+
 // The Editor's tab strip stays off the Agent startup path.
 const loadTabStrip = () =>
   import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
@@ -82,7 +84,7 @@ export function Workbench() {
     (state) => state.page !== null,
   );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  const pendingClose = useWorkbenchStore((state) => state.pendingCloseTabId);
   const compact = useCompactWorkbenchLayout();
   const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
@@ -114,6 +116,9 @@ export function Workbench() {
   ]);
   const agentVisible = windowMode === "agent" && !agentSettingsPage;
   const resourceModal = agentVisible && agentLayout.artifactModal;
+  const terminal = useTerminalDock(resourceModal);
+  const [terminalVisited, setTerminalVisited] = useState(false);
+  if (terminal.visible && !terminalVisited) setTerminalVisited(true);
   const [editorToolRailWidth, setEditorToolRailWidth] = useState(
     initialLayout.editorToolRailWidth,
   );
@@ -161,7 +166,7 @@ export function Workbench() {
     () => <div className="center-region__dock" ref={terminalSlotRef} />,
     [terminalSlotRef],
   );
-  const terminalDockSlot = terminalOpen ? dockSlot : null;
+  const terminalDockSlot = terminal.visible ? dockSlot : null;
   // Memoized so a sleeping Agent body is not re-rendered by Workbench updates.
   const agentBody = useMemo(
     () => (
@@ -182,7 +187,7 @@ export function Workbench() {
             onAgentLeftRailWidthChange={(width) =>
               changeAgentSidebarWidth("left", width)
             }
-            onOpenTerminal={() => setTerminalOpen(true)}
+            onOpenTerminal={terminal.open}
             onAgentArtifactWidthChange={(width) =>
               changeAgentSidebarWidth("artifact", width)
             }
@@ -198,6 +203,7 @@ export function Workbench() {
       changeAgentSidebarWidth,
       openArtifactInEditor,
       onPreviewTargetChange,
+      terminal.open,
       toggleAgentNavigation,
       terminalDockSlot,
     ],
@@ -287,17 +293,23 @@ export function Workbench() {
             />
             {terminalDockSlot}
           </div>
-          <QuickOpenHost />
+          <LazyModuleBoundary
+            label="Quick Open controller"
+            load={loadQuickOpenHost}
+            fallback={null}
+            render={(QuickOpenHost) => <QuickOpenHost />}
+          />
         </div>
       ) : null}
-      {terminalOpen ? (
+      {terminalVisited ? (
         <LazyModuleBoundary
           label="Terminal"
           load={loadTerminalDock}
           render={(TerminalDock) => (
             <TerminalDock
               container={terminalContainer}
-              setOpen={setTerminalOpen}
+              setOpen={terminal.setOpen}
+              visible={terminal.visible}
               inert={resourceModal}
               pinnedChatId={pinnedAgentChatOwner()}
             />
@@ -309,13 +321,15 @@ export function Workbench() {
         railLeading={windowMode === "editor"}
         showSidebarToggle={windowMode === "editor"}
         showEditorSettings={windowMode === "editor"}
-        onOpenTerminal={
-          !terminalOpen && isTauriRuntime()
-            ? () => setTerminalOpen(true)
-            : undefined
-        }
+        terminalControls={terminal.controls}
       />
-      <DirtyTabDialog />
+      {pendingClose ? (
+        <LazyModuleBoundary
+          label="Unsaved file confirmation"
+          load={loadDirtyTabDialog}
+          render={(DirtyTabDialog) => <DirtyTabDialog />}
+        />
+      ) : null}
     </main>
   );
 }

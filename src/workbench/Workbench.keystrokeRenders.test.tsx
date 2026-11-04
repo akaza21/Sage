@@ -56,7 +56,8 @@ vi.mock("./RightSidebar", async (original) => {
 });
 vi.mock("./DirtyTabDialog", async (original) => {
   const module = await original<typeof DirtyTabDialogModule>();
-  return { DirtyTabDialog: profiled("DirtyTabDialog", module.DirtyTabDialog) };
+  const Dialog = profiled("DirtyTabDialog", module.DirtyTabDialog);
+  return { DirtyTabDialog: Dialog, default: Dialog };
 });
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <section>Active chat</section>,
@@ -144,15 +145,10 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
   // The first keystroke flips the tab to dirty, which the tab strip shows.
   type("a");
   expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(true);
-  for (const region of [
-    "TabStrip",
-    "TitleBar",
-    "StatusBar",
-    "RightSidebar",
-    "DirtyTabDialog",
-  ]) {
+  for (const region of ["TabStrip", "TitleBar", "StatusBar", "RightSidebar"]) {
     expect(commits.get(region), `${region} mounted`).toBeGreaterThan(0);
   }
+  expect(commits.get("DirtyTabDialog") ?? 0).toBe(0);
   commits.clear();
 
   for (const text of ["b", "c", "d", "e"]) type(text);
