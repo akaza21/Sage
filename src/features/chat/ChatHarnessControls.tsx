@@ -1,3 +1,4 @@
+import { IconButton } from "../../ui/IconButton";
 import { Plus, Settings } from "../../ui/leanIcons";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
@@ -22,9 +23,11 @@ import { capitalizeLabel } from "../../domain/text";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { composerOptionLabel, useComposerToolbarFit } from "./composerChrome";
+import { composerOptionLabel } from "./composerChrome";
+import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
-import { lazyComposerMenu } from "./ComposerMenuLoading";
+import { ComposerOptionsPart } from "./lazyParts";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
 import { useComposerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModel";
@@ -35,10 +38,6 @@ import {
 } from "./useChatHarnessSelection";
 import { useComposerModelChoices } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
-
-const ComposerOptionsMenu = lazyComposerMenu(
-  () => import("./ComposerAddActions"),
-);
 
 interface Props {
   accessBindingId?: string | null;
@@ -174,11 +173,9 @@ export function ChatHarnessControls({
     confirmedModelLabel ?? inheriting?.model ?? "Model",
   );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
-  const effortLabel =
-    composerOptionLabel(effortOption) ??
-    (confirmedEffort
-      ? capitalizeLabel(confirmedEffort)
-      : (inheriting?.effort ?? null));
+  const effortName =
+    composerOptionLabel(effortOption) ?? confirmedEffort ?? inheriting?.effort;
+  const effortLabel = effortName ? capitalizeLabel(effortName) : null;
   const modelChoices = useComposerModelChoices(modelOption, models);
   const currentModelId = hasSessionModel
     ? modelOption.currentValue
@@ -195,14 +192,12 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(harnesses).map(
-    (candidate) => ({
-      ...candidate,
-      subtitle:
-        candidate.id === selectedHarnessId && confirmedModelLabel
-          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-          : undefined,
-    }),
+  const harnessCandidates = harnessPickerCandidates(
+    harnesses,
+    selectedHarnessId,
+    confirmedModelLabel
+      ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+      : undefined,
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const modeCandidates = modeOptions.map((mode) => ({
@@ -219,7 +214,7 @@ export function ChatHarnessControls({
   const { controls, effortInMenu, projectInMenu } = useComposerToolbarFit(
     canSelectEffort,
     Boolean(projectName),
-    active !== null,
+    active !== null && active !== "options",
   );
   // The options trigger appears once a control moves into its menu; that
   // refits the row with the trigger in place, so the controls only return to
@@ -239,8 +234,6 @@ export function ChatHarnessControls({
     Boolean(imageAction),
     Boolean(onOpenGoal),
     canSelectEffort,
-    effortInMenu,
-    projectInMenu,
     modeCandidates.map((mode) => mode.id),
     otherOptions.map((option) => [
       option.id,
@@ -269,22 +262,18 @@ export function ChatHarnessControls({
   return (
     <div ref={controls} className="composer__controls">
       {hasActions ? (
-        <button
+        <IconButton
           ref={optionsTriggerRef}
           className="composer__plus"
-          type="button"
           aria-label="Composer options"
           aria-controls={optionsId}
           aria-haspopup="menu"
           aria-expanded={active === "options"}
           disabled={turnBusy || projectTransitioning}
-          onClick={(event) => {
-            optionsTriggerRef.current = event.currentTarget;
-            toggle("options");
-          }}
+          onClick={() => toggle("options")}
         >
           <Plus size={16} aria-hidden="true" />
-        </button>
+        </IconButton>
       ) : null}
       {availableBinding && accessHarness?.bindingId ? (
         <ComposerAccessControl
@@ -315,7 +304,7 @@ export function ChatHarnessControls({
           disabled={projectTransitioning || turnBusy}
           state={harnessesPending ? "loading" : undefined}
           stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
-          onSelect={(id) => void onSelectHarness(id)}
+          onSelect={onSelectHarness}
           selectedId={selectedHarnessId}
         />
       </label>
@@ -324,6 +313,7 @@ export function ChatHarnessControls({
         panelId={modelId}
         open={active === "model"}
         effortOpen={active === "effort"}
+        effortSuspended={effortInMenu && active !== "effort"}
         onToggle={() => toggle("model")}
         onToggleEffort={() => {
           setEffortFromAdd(false);
@@ -351,7 +341,13 @@ export function ChatHarnessControls({
         onSelectModel={chooseModel}
         onSetOption={onSetSessionConfigOption}
       />
-      {projectName ? (
+      {projectName && projectInMenu ? (
+        <span
+          className="project-scope"
+          data-overflow-control="project"
+          data-suspended
+        />
+      ) : projectName ? (
         <ProjectScopeChip
           projectName={projectName}
           disabled={projectTransitioning || turnBusy}
@@ -363,7 +359,14 @@ export function ChatHarnessControls({
         />
       ) : null}
       {active === "options" && hasActions ? (
-        <ComposerOptionsMenu
+        <ComposerOptionsPart
+          part="ComposerOptionsMenu"
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={optionsTriggerRef}
+              onDismiss={dismiss}
+            />
+          }
           id={optionsId}
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}

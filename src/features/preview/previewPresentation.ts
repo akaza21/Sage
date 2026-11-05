@@ -15,6 +15,10 @@ const FAILURE_PRESENTATION = {
     label: "Unsafe origin",
     detail: "Preview did not provide a safe loopback address.",
   },
+  originUnsupported: {
+    label: "Unsupported origin",
+    detail: "Preview supports http:// loopback origins only.",
+  },
   startupTimeout: {
     label: "Startup timeout",
     detail: "Preview did not start before its deadline.",

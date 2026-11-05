@@ -1,4 +1,5 @@
 import { lazy, Suspense, useId, useRef, type ComponentProps } from "react";
+import { capitalizeLabel } from "../../domain/text";
 import { Brain, ChevronDown } from "../../ui/leanIcons";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
@@ -19,14 +20,16 @@ export function ComposerEffortControl(props: Props) {
     (level) => level.value === props.option.currentValue,
   );
   if (index < 0) return null;
+  const label = capitalizeLabel(levels[index].name);
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
         className="composer__control-trigger composer__effort-picker"
+        data-overflow-control="effort"
         title="Select effort"
-        aria-label={"Thinking level: " + levels[index].name}
+        aria-label={"Thinking level: " + label}
         aria-controls={panelId}
         aria-haspopup="dialog"
         aria-expanded={props.open}
@@ -35,7 +38,7 @@ export function ComposerEffortControl(props: Props) {
         onClick={props.onToggle}
       >
         <Brain className="composer__effort-icon" size={14} aria-hidden="true" />
-        <span className="composer__effort-label">{levels[index].name}</span>
+        <span className="composer__effort-label">{label}</span>
         <ChevronDown size={12} aria-hidden="true" />
       </button>
       {props.open ? (

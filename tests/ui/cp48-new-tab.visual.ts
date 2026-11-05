@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
   test.use({ viewport: { width: 1920, height: 1080 } });
@@ -107,37 +110,32 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
   }) => {
     await openScenario(page, "agent-single", "agent");
     const header = page.locator(".agent-task-header").first();
-    const pencil = header.getByRole("button", {
-      name: "Rename chat",
-      exact: true,
-    });
+    await expect(
+      header.getByRole("button", { name: "Rename chat", exact: true }),
+    ).toHaveCount(0);
     const more = header.getByRole("button", {
       name: /Chat actions for .* task$/,
     });
     const resources = header.getByRole("button", {
       name: "Show chat resources",
     });
-    const pencilBox = await pencil.boundingBox();
     const moreBox = await more.boundingBox();
     const resourcesBox = await resources.boundingBox();
-    expect(pencilBox!.x).toBeLessThan(moreBox!.x);
     expect(moreBox!.x).toBeLessThan(resourcesBox!.x);
     // Codex 68 is a pointer open: the ring sits on the trigger, not an item.
     await more.click();
     const menu = page.getByRole("menu", { name: "Chat tools", exact: true });
     await expect(menu).toBeVisible();
     await expect(more).toHaveCSS("outline-style", "solid");
-    const [menuBox, headerBox] = await Promise.all([
-      menu.boundingBox(),
-      header.boundingBox(),
-    ]);
+    await waitForAnimations(menu);
+    const menuBox = await menu.boundingBox();
     expect(Math.round(menuBox!.width)).toBe(272);
     expect(Math.round(menuBox!.x + menuBox!.width)).toBe(
       Math.round(resourcesBox!.x + resourcesBox!.width),
     );
-    expect(menuBox!.y).toBeGreaterThanOrEqual(
-      headerBox!.y + headerBox!.height + 6,
-    );
+    // The popover is anchored 16px below its trigger, independently of the
+    // header's height and the half-pixel centering of its controls.
+    expect(menuBox!.y).toBe(moreBox!.y + moreBox!.height + 16);
     await expect(page).toHaveScreenshot("cp48-header-more.png");
     await page.keyboard.press("Escape");
     await expect(more).toBeFocused();
@@ -152,7 +150,13 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
     await page
       .getByRole("button", { name: "Close Changes", exact: true })
       .click();
-    await pencil.click();
+    await more.click();
+    await menu
+      .getByRole("menuitem", { name: /^More chat actions in / })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Rename chat", exact: true })
+      .click();
     await expect(
       header.getByRole("textbox", { name: "New chat name" }),
     ).toBeFocused();
@@ -176,8 +180,9 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
       name: "Changes",
       exact: true,
     });
-    const measure = () =>
-      row.evaluate((rowNode) => {
+    const measure = async () => {
+      await waitForAnimations(menu);
+      return row.evaluate((rowNode) => {
         const menuNode = rowNode.closest<HTMLElement>('[role="menu"]')!;
         const nameNode = rowNode.querySelector<HTMLElement>(":scope > span")!;
         const actionNode =
@@ -202,6 +207,7 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
           menuRight: menuBox.right,
         };
       });
+    };
 
     // Short names render as before: whole, with the action pinned at 24 px.
     const shortName = await page.evaluate(async () => {

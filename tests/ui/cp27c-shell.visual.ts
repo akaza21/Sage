@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
 } from "./shared/visualBrowserPrimitives";
@@ -141,6 +142,7 @@ async function editorControlsReachable(page: Page) {
   // The title-bar pill opens Quick Open (EP-08), which stays in the window.
   await search.click();
   const quickOpen = page.getByRole("dialog", { name: "Quick Open" });
+  await waitForAnimations(quickOpen);
   await expectContained(quickOpen, page);
   await page.keyboard.press("Escape");
   await expect(quickOpen).toHaveCount(0);
@@ -244,10 +246,16 @@ for (const width of [480, 720]) {
               },
             },
           }));
+          let visible = false;
           Object.defineProperty(window, "__TAURI_INTERNALS__", {
             configurable: true,
             value: {
-              invoke: async (command: string) => {
+              invoke: async (command: string, args?: { visible: boolean }) => {
+                if (command === "get_terminal_dock_visible") return visible;
+                if (command === "set_terminal_dock_visible") {
+                  visible = args!.visible;
+                  return visible;
+                }
                 if (command !== "terminal_create")
                   throw new Error(
                     `Unsupported geometry fixture command: ${command}`,
@@ -288,7 +296,7 @@ for (const width of [480, 720]) {
           page,
         );
         await page
-          .getByRole("button", { name: "Open terminal", exact: true })
+          .getByRole("button", { name: "Toggle terminal", exact: true })
           .click();
         const terminal = page.getByRole("region", {
           name: "Terminal",

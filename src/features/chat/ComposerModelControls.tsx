@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type RefObject } from "react";
+import { lazy, Suspense, useEffect, useRef, type RefObject } from "react";
 import { Brain, ChevronDown, Sparkles } from "../../ui/leanIcons";
 import {
   type AcpConfigOption,
@@ -16,6 +16,7 @@ export function ComposerModelControls({
   panelId,
   open,
   effortOpen,
+  effortSuspended = false,
   onToggle,
   onToggleEffort,
   effortAnchorRef,
@@ -37,6 +38,7 @@ export function ComposerModelControls({
   panelId: string;
   open: boolean;
   effortOpen: boolean;
+  effortSuspended?: boolean;
   onToggle: () => void;
   onToggleEffort: () => void;
   effortAnchorRef?: RefObject<HTMLButtonElement | null>;
@@ -54,7 +56,9 @@ export function ComposerModelControls({
   onSelectModel: (modelId: string) => void;
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
-  const available = !disabled && !pending && choices.length > 0;
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const singleton = choices.length === 1;
+  const available = !disabled && !pending && choices.length > 1;
   const hasEffortControl =
     effortOption?.type === "select" &&
     flattenChoices(effortOption).some(
@@ -71,39 +75,60 @@ export function ComposerModelControls({
     )
       onDismiss();
   }, [available, disabled, effortOpen, effortOption?.type, onDismiss, open]);
+  const modelIdentity = (
+    <>
+      <Sparkles className="composer__model-icon" size={16} aria-hidden="true" />
+      <span className="composer__model-label">{modelLabel}</span>
+      {effortLabel && !hasEffortControl ? (
+        <span className="composer__model-effort"> {effortLabel}</span>
+      ) : null}
+    </>
+  );
   return (
     <>
       <div className="composer__model-group">
-        <button
-          ref={triggerRef}
-          className="composer__control-trigger composer__picker-trigger composer__model-trigger"
-          type="button"
-          aria-label="Model"
-          aria-description={modelDescription}
-          title={modelDescription}
-          data-readonly-label={(readOnlyLabel && !pending) || undefined}
-          aria-controls={panelId}
-          aria-haspopup="listbox"
-          aria-expanded={open && available}
-          disabled={!available}
-          onPointerDown={(event) => event.currentTarget.blur()}
-          onClick={onToggle}
-        >
-          <Sparkles
-            className="composer__model-icon"
-            size={16}
-            aria-hidden="true"
+        {singleton ? (
+          <span
+            ref={labelRef}
+            className="composer__control-trigger composer__picker-trigger composer__model-trigger"
+            aria-label="Model"
+            aria-description={modelDescription}
+            title={modelDescription}
+            data-selected-id={selectedId ?? undefined}
+          >
+            {modelIdentity}
+          </span>
+        ) : (
+          <button
+            ref={triggerRef}
+            className="composer__control-trigger composer__picker-trigger composer__model-trigger"
+            type="button"
+            aria-label="Model"
+            aria-description={modelDescription}
+            data-selected-id={selectedId ?? undefined}
+            title={modelDescription}
+            data-readonly-label={(readOnlyLabel && !pending) || undefined}
+            aria-controls={panelId}
+            aria-haspopup="listbox"
+            aria-expanded={open && available}
+            disabled={!available}
+            onPointerDown={(event) => event.currentTarget.blur()}
+            onClick={onToggle}
+          >
+            {modelIdentity}
+            <ChevronDown size={12} aria-hidden="true" />
+          </button>
+        )}
+        {effortSuspended ? (
+          <span
+            className="composer__control-trigger composer__effort-picker"
+            data-overflow-control="effort"
+            data-suspended
           />
-          <span className="composer__model-label">{modelLabel}</span>
-          {effortLabel && !hasEffortControl ? (
-            <span className="composer__model-effort"> {effortLabel}</span>
-          ) : null}
-          <ChevronDown size={12} aria-hidden="true" />
-        </button>
-        {effortOption?.type === "select" ? (
+        ) : effortOption?.type === "select" ? (
           <ComposerEffortControl
             anchorRef={effortAnchorRef}
-            fallbackRef={triggerRef}
+            fallbackRef={singleton ? labelRef : triggerRef}
             option={effortOption}
             modelLabel={modelLabel}
             open={effortOpen}

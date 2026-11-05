@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -233,8 +234,8 @@ async function expectOverlay(
   panel: Locator,
   viewport: { width: number; height: number },
 ) {
-  // One page round trip per attempt: the panel sits inside the viewport's
-  // 8px inset and its first actionable item is reachable by a pointer.
+  await expect(panel).toBeVisible();
+  await waitForAnimations(panel, { subtree: false });
   await expect
     .poll(() =>
       panel.evaluate((element, { width, height }) => {
@@ -272,6 +273,8 @@ async function expectOverlay(
 }
 
 async function expectNestedPlacement(picker: Locator, parent: Locator) {
+  await waitForAnimations(parent, { subtree: false });
+  await waitForAnimations(picker);
   const child = await picker.boundingBox();
   const owner = await parent.boundingBox();
   expect(
@@ -366,6 +369,7 @@ test("expanded narrow file changes keep names and totals on one row", async ({
   const disclosure = summary.locator(".acp-file-changes__header");
   if ((await disclosure.getAttribute("aria-expanded")) === "false")
     await disclosure.click();
+  await waitForAnimations(summary);
   const rows = summary.locator(".chat-file-chip");
   expect(await rows.count()).toBeGreaterThan(0);
   for (const row of await rows.all()) {
@@ -616,6 +620,7 @@ for (const forcedColors of ["none", "active"] as const) {
     await expect(trigger).toBeFocused();
     await trigger.click();
     await expect(panel).toBeVisible();
+    await waitForAnimations(panel);
     const initialAnchor = await trigger.boundingBox();
     // The leading options trigger sits at the composer's left edge, so the
     // shared placement clamps the panel to the composer instead of

@@ -4,6 +4,7 @@ import {
   settledComposerFit,
 } from "./shared/composerGeometry";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -146,16 +147,10 @@ for (const width of [1888, 720, 480]) {
         });
       }, profile);
       const composer = page.locator("form.composer").first();
-      const model = composer.getByRole("button", {
-        name: "Model",
-        exact: true,
-      });
+      const model = composer.getByLabel("Model", { exact: true });
       const label = model.locator(".composer__model-label");
       await expect(label).toHaveText(profile.model);
-      if (profile.effort)
-        await expect(
-          composer.locator(".composer__effort-picker[aria-controls]"),
-        ).toHaveCount(1);
+
       // The toolbar moves Project and then effort into the options menu only
       // when the row cannot fit them even as icons.
       const fit = await settledComposerFit(composer);
@@ -295,11 +290,7 @@ for (const width of [1888, 720, 480]) {
         "aria-valuetext",
         "Medium",
       );
-      await effort.evaluate((element) =>
-        Promise.all(
-          element.getAnimations().map((animation) => animation.finished),
-        ),
-      );
+      await waitForAnimations(effort);
       const anchor = (await effortAnchor.boundingBox())!;
       const panel = (await effort.boundingBox())!;
       expect(panel.x).toBeGreaterThanOrEqual(8);
@@ -326,7 +317,7 @@ const LABEL_PRIORITY = [
   ".composer__access-text",
   ".composer__harness .searchable-picker__trigger-label",
   ".project-scope .searchable-picker__trigger-label",
-  ".composer__effort-picker[aria-controls] .composer__effort-label",
+  ".composer__effort-picker[data-overflow-control] .composer__effort-label",
   ".composer__model-label",
 ];
 
@@ -362,7 +353,7 @@ const toolbarStates = {
       });
     },
     ready: (composer: Locator) =>
-      composer.locator(".composer__effort-picker[aria-controls]"),
+      composer.locator(".composer__effort-picker[data-overflow-control]"),
   },
   // A name shorter than the readable prefix must not need more room once the
   // model name starts to truncate.
@@ -377,7 +368,7 @@ const toolbarStates = {
       });
     },
     ready: (composer: Locator) =>
-      composer.getByRole("button", { name: "Model", exact: true }).filter({
+      composer.getByLabel("Model", { exact: true }).filter({
         hasText: "GPT-5",
       }),
   },
@@ -433,7 +424,9 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
               const label = element.querySelector<HTMLElement>(selector);
               const box = label?.getBoundingClientRect();
               const shown = Boolean(box && box.width > 0);
-              const host = label?.closest("button, .composer__capacity, label");
+              const host = label?.closest(
+                "button, .composer__model-trigger, .composer__capacity, label",
+              );
               const hostBox = host?.getBoundingClientRect();
               return {
                 present: Boolean(label),

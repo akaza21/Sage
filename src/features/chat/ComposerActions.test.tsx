@@ -63,9 +63,8 @@ async function renderActions(
   );
   const view = render(controls);
   const trigger = screen.queryByRole("button", { name: "Composer options" })!;
-  if (trigger) {
+  if (trigger && !trigger.hasAttribute("disabled")) {
     fireEvent.click(trigger);
-    // The options menu loads on first open.
     await screen.findByRole("menu", { name: "Composer options menu" });
   }
   return {

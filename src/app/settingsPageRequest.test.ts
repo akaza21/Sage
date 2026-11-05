@@ -20,6 +20,43 @@ beforeEach(() => {
 afterEach(() => {
   useWorkbenchStore.setState(original, true);
   useAgentSettingsState.getState().close();
+  vi.unstubAllGlobals();
+});
+
+it.each([
+  { compact: true, alreadyActive: false },
+  { compact: true, alreadyActive: true },
+  { compact: false, alreadyActive: false },
+  { compact: false, alreadyActive: true },
+])(
+  "reveals Settings without changing a desktop rail ($compact, $alreadyActive)",
+  async ({ compact, alreadyActive }) => {
+    vi.stubGlobal("matchMedia", () => ({ matches: compact }));
+    if (alreadyActive) await useWorkbenchStore.getState().openSettings();
+    useWorkbenchStore.setState({ sidebarOpen: true });
+
+    await useWorkbenchStore.getState().openSettings();
+
+    expect(useWorkbenchStore.getState().activeTabId).toBe(
+      "settings:appearance",
+    );
+    expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+  },
+);
+
+it("leaves the compact drawer open when Settings cannot open", async () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  useWorkbenchStore.setState({
+    sidebarOpen: true,
+    flushActiveEditor: async () => {
+      throw new Error("Snapshot failed");
+    },
+  });
+
+  await useWorkbenchStore.getState().openSettings();
+
+  expect(useWorkbenchStore.getState().activeTabId).toBeNull();
+  expect(useWorkbenchStore.getState().sidebarOpen).toBe(true);
 });
 
 it("opens Settings on the page the caller names", async () => {

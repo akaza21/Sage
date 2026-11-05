@@ -423,8 +423,8 @@ export function validatePendingAcp04Candidate(candidate, output) {
   if (
     runtime.admittedEntrypoint.version !==
       candidate.identities.codexPreflight.version ||
-    runtime.admittedEntrypoint.version !==
-      candidate.observation.harness.text.replace(/^Codex \u2014 /u, "") ||
+    candidate.observation.harness.id !== "codex" ||
+    candidate.observation.harness.text !== "Codex" ||
     sha256(runtime.owner.projectId) !== candidate.observation.projectIdSha256 ||
     sha256(runtime.owner.chatId) !== candidate.observation.chatIdSha256 ||
     sha256(runtime.owner.sessionId) !== candidate.observation.sessionIdSha256 ||

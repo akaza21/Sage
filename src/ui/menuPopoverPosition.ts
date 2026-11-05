@@ -1,6 +1,6 @@
 import { createContext, type CSSProperties, type RefObject } from "react";
 
-const GUTTER = 8;
+export const GUTTER = 8;
 const MIN_USABLE_HEIGHT = 120;
 export const PopoverPlacementContext = createContext<{
   originRef: RefObject<HTMLElement | null>;
@@ -104,17 +104,9 @@ export function menuPopoverPosition(
   const placeAbove = aboveStart
     ? surface.height <= roomAbove || roomAbove > roomBelow
     : surface.height > roomBelow && roomAbove > roomBelow;
-  let top = placeAbove
+  const top = placeAbove
     ? anchor.top - surface.height - gap
     : anchor.bottom + gap;
-  const edits =
-    dock &&
-    origin
-      .closest(".chat-surface")
-      ?.querySelector(".chat-edit-summary-zone:not(:empty)")
-      ?.getBoundingClientRect();
-  if (edits && placeAbove && top < edits.bottom)
-    top = Math.min(top, edits.top - surface.height - gap);
   return {
     ...shared,
     left: clampLeft(

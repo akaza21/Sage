@@ -51,6 +51,11 @@
   gap: 4px;
   padding: 0 4px;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+span.composer__model-trigger {
+  cursor: default;
 }
 
 .composer__effort-menu.menu-popover {

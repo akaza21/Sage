@@ -83,14 +83,16 @@ describe("Chat container control breakpoints", () => {
     },
   );
 
-  it("compacts header status and reflows goals with their chat container, not the window", async () => {
+  it("compacts header titles and reflows goals with their chat container, not the window", async () => {
     const css = await readFile(
       "src/styles/chat-container-controls.css",
       "utf8",
     );
     const header = await readFile("src/styles/agent-task-header.css", "utf8");
     expect(header).toContain("@container chat-center (max-width: 400px)");
-    expect(header).toContain(".agent-task-header__status-label");
+    expect(header).toMatch(
+      /\.agent-task-header__title\s*\{[^}]*min-width:\s*3em;/s,
+    );
     expect(header).not.toMatch(/font-size:\s*0;/);
     expect(css).toMatch(
       /@container composer \(max-width: 280px\)[\s\S]*\.chat-goal-strip__row\s*\{[^}]*height:\s*auto;[^}]*flex-wrap:\s*wrap;/,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
@@ -11,6 +11,7 @@ import {
   terminalErrorCode,
   terminalErrorLabel,
   writeUserTerminal,
+  type UserTerminalPage,
   type UserTerminalScope,
   type UserTerminalSession,
 } from "../services/userTerminalDesktop";
@@ -31,10 +32,7 @@ const FORCED_COLORS_QUERY = "(forced-colors: active)";
 const MIN_COLUMNS = 2;
 const MIN_ROWS = 1;
 
-interface Dimensions {
-  columns: number;
-  rows: number;
-}
+type Dimensions = readonly [columns: number, rows: number];
 
 /** xterm 6 has no public cell metrics API. Keep this private seam local. */
 type MeasuredTerminal = Terminal & {
@@ -45,67 +43,30 @@ type MeasuredTerminal = Terminal & {
   };
 };
 
-/** Fit unrounded device cells, independent of the previous grid's rounding. */
-function dimensionsFor(element: HTMLElement, terminal: Terminal): Dimensions {
-  const cell = (terminal as MeasuredTerminal)._core._renderService.dimensions
-    .device.cell;
-  if (cell.width <= 0 || cell.height <= 0)
-    return { columns: terminal.cols, rows: terminal.rows };
-  const scrollbarWidth =
-    element.querySelector(".scrollbar.vertical")?.getBoundingClientRect()
-      .width ?? 0;
-  return {
-    columns: Math.max(
-      MIN_COLUMNS,
-      Math.min(
-        TERMINAL_MAX_COLUMNS,
-        Math.floor(
-          ((element.clientWidth - scrollbarWidth) * devicePixelRatio) /
-            cell.width,
-        ),
-      ),
-    ),
-    rows: Math.max(
-      MIN_ROWS,
-      Math.min(
-        TERMINAL_MAX_ROWS,
-        Math.floor((element.clientHeight * devicePixelRatio) / cell.height),
-      ),
-    ),
-  };
-}
-
 export type TerminalDockProps = {
   scope: UserTerminalScope;
   session: UserTerminalSession;
   ended: boolean;
+  visible: boolean;
   onStatus: (status: string, ended?: boolean) => void;
 };
 
-export function TerminalDock({
+export default function TerminalDock({
   scope,
   session,
   ended,
   onStatus,
+  visible,
 }: TerminalDockProps) {
   const screenRef = useRef<HTMLDivElement>(null);
-  const onStatusRef = useRef(onStatus);
-  useEffect(() => {
-    onStatusRef.current = onStatus;
-  }, [onStatus]);
-  const ownerScope = useMemo(
-    () => ({
-      projectId: scope.projectId,
-      projectGeneration: scope.projectGeneration,
-      chatId: scope.chatId,
-    }),
-    [scope.projectId, scope.projectGeneration, scope.chatId],
-  );
+  const reportStatus = useEffectEvent(onStatus);
+  const displayRef = useRef<((visible: boolean) => void) | null>(null);
 
   useEffect(() => {
     const element = screenRef.current;
     if (!element) return;
     let stopped = false;
+    let showing = false;
     let sessionEnded = ended;
     let pendingInput = "";
     let pendingInputBytes = 0;
@@ -113,8 +74,9 @@ export function TerminalDock({
     let resizeActive = false;
     let latestResize: Dimensions | null = null;
     let observedPixelRatio = devicePixelRatio;
+    let resumeRead: (() => void) | null = null;
+    let fitRequired = true;
     const terminal = new Terminal({
-      cursorBlink: true,
       scrollback: SCROLLBACK_LINES,
       fontSize: 12,
       lineHeight: 1.3,
@@ -135,92 +97,71 @@ export function TerminalDock({
         selectionBackground: token("--color-selection"),
       };
     };
-    applyTheme();
     // xterm has no nonce option; its renderer and viewport create their
     // <style> elements inside open().
     withStyleNonce(element.ownerDocument, () => terminal.open(element));
-    const initial = dimensionsFor(element, terminal);
-    terminal.resize(initial.columns, initial.rows);
 
     async function pollOutput(): Promise<void> {
       let cursor = "0";
+      // One bounded page may settle while hidden; render it before reading again.
+      let page: UserTerminalPage | undefined;
       try {
         while (!stopped) {
-          let page;
-          try {
-            page = await readUserTerminal(ownerScope, session, cursor);
-          } catch (error) {
-            if (terminalErrorCode(error) === "busy") {
-              await new Promise((resolve) =>
-                setTimeout(resolve, READ_RETRY_DELAY_MS),
-              );
-              continue;
+          // Keep the reader and xterm screen across visibility changes. A pending
+          // native read owns an exclusive lease and cannot be replaced on hide.
+          if (!showing) {
+            await new Promise<void>((resolve) => {
+              resumeRead = resolve;
+            });
+            continue;
+          }
+          if (!page) {
+            try {
+              page = await readUserTerminal(scope, session, cursor);
+            } catch (error) {
+              if (terminalErrorCode(error) === "busy") {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, READ_RETRY_DELAY_MS),
+                );
+                continue;
+              }
+              throw error;
             }
-            throw error;
           }
-          if (stopped) return;
-          if (page.truncated)
+          if (stopped || !showing) continue;
+          const output = page;
+          page = undefined;
+          if (output.truncated)
             terminal.write("\r\n[Earlier terminal output was truncated]\r\n");
-          if (page.bytes.length > 0) {
-            await new Promise<void>((resolve) =>
-              terminal.write(page.bytes, resolve),
-            );
-          }
-          cursor = page.nextCursor;
+          await new Promise<void>((resolve) =>
+            terminal.write(output.bytes, resolve),
+          );
+          cursor = output.nextCursor;
         }
       } catch (error) {
-        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
+        if (!stopped) reportStatus(terminalErrorLabel(error));
       }
     }
 
     async function drainResizes(): Promise<void> {
-      if (resizeActive) return;
       resizeActive = true;
       try {
         while (latestResize && !stopped) {
           const next = latestResize;
           latestResize = null;
-          await resizeUserTerminal(
-            ownerScope,
-            session,
-            next.columns,
-            next.rows,
-          );
+          try {
+            await resizeUserTerminal(scope, session, ...next);
+          } catch (error) {
+            if (!latestResize && !stopped)
+              reportStatus(terminalErrorLabel(error));
+          }
         }
-      } catch (error) {
-        if (!stopped) onStatusRef.current(terminalErrorLabel(error));
       } finally {
         resizeActive = false;
       }
     }
 
-    // A program that is not reading its input makes the native side refuse
-    // a write as busy without taking any of it, so the same chunk is sent
-    // again after a growing pause, for up to INPUT_RETRY_MS.
-    async function writeWhenAccepted(chunk: string): Promise<void> {
-      const started = Date.now();
-      for (
-        let delay = INPUT_RETRY_FIRST_DELAY_MS;
-        !stopped;
-        delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
-      ) {
-        try {
-          await writeUserTerminal(ownerScope, session, chunk);
-          return;
-        } catch (error) {
-          if (
-            terminalErrorCode(error) !== "busy" ||
-            stopped ||
-            Date.now() - started >= INPUT_RETRY_MS
-          )
-            throw error;
-        }
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-
     async function drainInput(): Promise<void> {
-      if (inputSending) return;
       inputSending = true;
       try {
         while (pendingInput && !stopped && !sessionEnded) {
@@ -228,13 +169,30 @@ export function TerminalDock({
           pendingInput = "";
           pendingInputBytes = 0;
           try {
-            await writeWhenAccepted(chunk);
+            const started = Date.now();
+            for (
+              let delay = INPUT_RETRY_FIRST_DELAY_MS;
+              !stopped;
+              delay = Math.min(delay * 2, INPUT_RETRY_MAX_DELAY_MS)
+            ) {
+              try {
+                await writeUserTerminal(scope, session, chunk);
+                break;
+              } catch (error) {
+                if (
+                  terminalErrorCode(error) !== "busy" ||
+                  stopped ||
+                  Date.now() - started >= INPUT_RETRY_MS
+                )
+                  throw error;
+              }
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
           } catch (error) {
             pendingInput = "";
             pendingInputBytes = 0;
             sessionEnded = terminalErrorCode(error) === "ended";
-            if (!stopped)
-              onStatusRef.current(terminalErrorLabel(error), sessionEnded);
+            if (!stopped) reportStatus(terminalErrorLabel(error), sessionEnded);
             break;
           }
         }
@@ -243,58 +201,106 @@ export function TerminalDock({
       }
     }
 
-    const inputListener = terminal.onData((data) => {
-      if (stopped || sessionEnded) return;
+    // The terminal owns its event emitters and disposes their listeners with it.
+    terminal.onData((data) => {
+      if (stopped || sessionEnded || !showing || !data) return;
       const byteLength = utf8ByteLength(data);
-      if (byteLength === 0) return;
       if (pendingInputBytes + byteLength > TERMINAL_INPUT_BYTES) {
-        onStatusRef.current(
+        reportStatus(
           "Input was not sent: terminal input buffer limit reached.",
         );
         return;
       }
       pendingInput += data;
       pendingInputBytes += byteLength;
-      void drainInput();
+      if (!inputSending) void drainInput();
     });
     const refreshDimensions = () => {
-      if (stopped) return;
+      if (stopped || !showing || !element.clientWidth || !element.clientHeight)
+        return;
       if (devicePixelRatio !== observedPixelRatio) {
         observedPixelRatio = devicePixelRatio;
         terminal.refresh(0, terminal.rows - 1);
       }
-      const next = dimensionsFor(element, terminal);
-      if (terminal.cols === next.columns && terminal.rows === next.rows) return;
-      terminal.resize(next.columns, next.rows);
+      const cell = (terminal as MeasuredTerminal)._core._renderService
+        .dimensions.device.cell;
+      if (cell.width <= 0 || cell.height <= 0) return;
+      const scrollbarWidth =
+        element.querySelector(".scrollbar.vertical")?.getBoundingClientRect()
+          .width ?? 0;
+      const next: Dimensions = [
+        Math.max(
+          MIN_COLUMNS,
+          Math.min(
+            TERMINAL_MAX_COLUMNS,
+            Math.floor(
+              ((element.clientWidth - scrollbarWidth) * devicePixelRatio) /
+                cell.width,
+            ),
+          ),
+        ),
+        Math.max(
+          MIN_ROWS,
+          Math.min(
+            TERMINAL_MAX_ROWS,
+            Math.floor((element.clientHeight * devicePixelRatio) / cell.height),
+          ),
+        ),
+      ];
+      if (
+        !fitRequired &&
+        terminal.cols === next[0] &&
+        terminal.rows === next[1]
+      )
+        return;
+      terminal.resize(...next);
+      fitRequired = false;
       latestResize = next;
-      void drainResizes();
+      if (!resizeActive) void drainResizes();
     };
     const palette = window.matchMedia?.(FORCED_COLORS_QUERY);
     // A new font face can change the cell size, so the grid is refitted.
     const followTheme = () => {
+      if (!showing) return;
       applyTheme();
       refreshDimensions();
     };
-    palette?.addEventListener("change", followTheme);
     const observer = new ResizeObserver(refreshDimensions);
-    observer.observe(element);
-    window.addEventListener("resize", refreshDimensions);
-    latestResize = initial;
-    void drainResizes();
+    displayRef.current = (show) => {
+      showing = show;
+      terminal.options.cursorBlink = show;
+      if (!show) {
+        observer.disconnect();
+        palette?.removeEventListener("change", followTheme);
+        window.removeEventListener("resize", refreshDimensions);
+        latestResize = null;
+        return;
+      }
+      observer.observe(element);
+      palette?.addEventListener("change", followTheme);
+      window.addEventListener("resize", refreshDimensions);
+      fitRequired = true;
+      resumeRead?.();
+      resumeRead = null;
+      followTheme();
+      terminal.focus();
+    };
     void pollOutput();
-    terminal.focus();
     return () => {
       stopped = true;
-      observer.disconnect();
-      palette?.removeEventListener("change", followTheme);
-      window.removeEventListener("resize", refreshDimensions);
-      inputListener.dispose();
+      resumeRead?.();
+      displayRef.current?.(false);
+      displayRef.current = null;
       terminal.dispose();
     };
-  }, [ended, ownerScope, session]);
+  }, [ended, scope, session]);
+
+  useEffect(() => {
+    displayRef.current?.(visible);
+  }, [visible, ended, scope, session]);
 
   return (
-    <div className="terminal-dock__viewport">
+    <div className="terminal-dock__viewport" hidden={!visible}>
       <div className="terminal-dock__screen" ref={screenRef} />
     </div>
   );

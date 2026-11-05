@@ -22,7 +22,7 @@ import {
 import { orderedTabs } from "../app/tabState";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
-import { RetainedActivity } from "../ui/LazyModuleBoundary";
+import { RetainedActivity } from "../ui/RetainedActivity";
 import { useRetainedElement } from "../ui/useRetainedElement";
 import {
   agentArtifactAdmitted,
@@ -31,7 +31,6 @@ import {
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
-  AgentArtifactEmptyState,
   AgentBrowserPaneControls,
   AgentBrowserPaneStatus,
 } from "./AgentArtifactPaneControls";
@@ -392,7 +391,7 @@ export function AgentArtifactPane({
             !subagentSelected &&
             !previewSelected &&
             !activeArtifact ? (
-              <AgentArtifactEmptyState titleId={emptyTitleId} />
+              <TabsPart part="AgentArtifactEmptyState" titleId={emptyTitleId} />
             ) : null}
           </div>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />

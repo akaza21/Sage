@@ -632,7 +632,7 @@ it("contains browser chrome inside the Agent canvas and styles page actions", as
     /\.browser-surface__attachment (?:button|select)[^}]*background:\s*var\(--browser-control-fill\);/s,
   );
   expect(css).toMatch(
-    /\.browser-surface__menu button\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
+    /\.browser-surface__menu \[role="menuitem"\]\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,
   );
   expect(css).toMatch(/\.browser-surface__toolbar\s*\{[^}]*height:\s*44px;/s);
   expect(css).toMatch(
@@ -811,5 +811,37 @@ it("shows a failed history retry without offering a mismatched origin", async ()
   expect(screen.queryByRole("menuitem", { name: "Copy URL" })).toBeNull();
   expect(
     screen.queryByRole("menuitem", { name: "Open externally" }),
+  ).toBeNull();
+});
+
+it("discards a closed history drawer's pending page and reopens with fresh native history", async () => {
+  let finish!: (entries: string[]) => void;
+  browserHistory
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(["https://fresh.example/"]);
+  render(<BrowserSurface tab={tab} />);
+  await screen.findByLabelText("Secure connection");
+  const openHistory = () => {
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  };
+  openHistory();
+  await screen.findByRole("complementary", { name: "Browser history" });
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  openHistory();
+  await screen.findByRole("button", { name: "https://fresh.example/" });
+  await act(async () => finish(["https://stale.example/"]));
+  expect(screen.queryByText("https://stale.example/")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "https://fresh.example/" }),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  expect(
+    screen.queryByRole("complementary", { name: "Browser history" }),
   ).toBeNull();
 });

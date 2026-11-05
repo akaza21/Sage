@@ -1,3 +1,4 @@
+import "./browser-downloads-panel.css";
 import { useState } from "react";
 import {
   browserCancelDownload,

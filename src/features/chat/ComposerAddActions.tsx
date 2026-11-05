@@ -1,5 +1,10 @@
 import { Check, Sparkles, Target } from "../../ui/leanIcons";
-import type { ComponentProps, ReactNode, RefObject } from "react";
+import {
+  useLayoutEffect,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type {
   AcpConfigValue,
@@ -8,7 +13,7 @@ import type {
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
 import { sessionModeActions } from "../../domain/acpSessionConfigControls";
 
-export default function ComposerOptionsMenu({
+export function ComposerOptionsMenu({
   id,
   triggerRef,
   onDismiss,
@@ -18,6 +23,21 @@ export default function ComposerOptionsMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
 }) {
+  const overflowKey =
+    Boolean(actions.projectAction) + ":" + Boolean(actions.onOpenEffort);
+  useLayoutEffect(() => {
+    // Live fitting can remove the focused overflow item while fixed actions remain.
+    if (document.activeElement === document.body) {
+      const panel = document.getElementById(id);
+      const target =
+        panel?.querySelector<HTMLButtonElement>("button:not(:disabled)") ??
+        panel;
+      if (target) {
+        if (target === panel) target.tabIndex = -1;
+        target.focus();
+      }
+    }
+  }, [id, overflowKey]);
   return (
     <MenuPopover
       id={id}

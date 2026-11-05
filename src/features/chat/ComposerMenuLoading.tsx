@@ -1,17 +1,12 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  type ComponentType,
-  type RefObject,
-} from "react";
+import { useEffect, type RefObject } from "react";
 
-interface MenuProps {
+export function ComposerMenuLoading({
+  triggerRef,
+  onDismiss,
+}: {
   triggerRef: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
-}
-
-export function ComposerMenuLoading({ triggerRef, onDismiss }: MenuProps) {
+}) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" && event.key !== "Tab") return;
@@ -36,28 +31,4 @@ export function ComposerMenuLoading({ triggerRef, onDismiss }: MenuProps) {
       Loading options…
     </span>
   );
-}
-
-/**
- * A composer menu loaded on first open. Until it arrives, its trigger still
- * dismisses it on Escape, Tab or an outside press.
- */
-export function lazyComposerMenu<Props extends MenuProps>(
-  load: () => Promise<{ default: ComponentType<Props> }>,
-) {
-  const Menu = lazy(load);
-  return function LazyComposerMenu(props: Props) {
-    return (
-      <Suspense
-        fallback={
-          <ComposerMenuLoading
-            triggerRef={props.triggerRef}
-            onDismiss={props.onDismiss}
-          />
-        }
-      >
-        <Menu {...props} />
-      </Suspense>
-    );
-  };
 }

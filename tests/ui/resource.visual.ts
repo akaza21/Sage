@@ -10,6 +10,7 @@ import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   installFixedClock,
   installLayoutMode,
@@ -101,6 +102,14 @@ test.describe("AV-01 projection-fixture browser routes", () => {
         );
       }
       await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Toggle terminal", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        page.getByText("Terminal visibility could not be loaded.", {
+          exact: true,
+        }),
+      ).toHaveCount(0);
       // Projection-fixture proof only; native lifecycle proof is separate.
       await expectNoViewportOverflow(page);
       await settleTranscriptAtEnd(page);
@@ -1298,6 +1307,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(
       menu.getByRole("menuitem", { name: "Reload preview" }),
     ).toBeEnabled();
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const bounds = node.getBoundingClientRect();

@@ -13,11 +13,12 @@ import {
 } from "../../domain/keymapRegistry";
 import type { AcpConfigOption } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
-import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
-import { utf8ByteLength } from "../../domain/text";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
+import type {
+  createDictation,
+  BrowserRecognition,
+} from "./composerDictationRuntime";
 import { shortcutLabel } from "../../ui/shortcutLabel";
-import { useOverflowSteps } from "../../ui/useOverflowSteps";
 
 export { shortcutLabel, usesMetaModifier } from "../../ui/shortcutLabel";
 
@@ -26,47 +27,12 @@ export const COMPOSER_PROMPT_PLACEHOLDER_DISABLED =
   "Choose an available harness before starting a session";
 export const COMPOSER_WORKSPACE_NAME_CAP = 48;
 
-interface VoiceEvent {
-  id: string;
-  kind: "partial" | "final" | "ended" | "error";
-  text?: string;
-  message?: string;
-}
-
-interface BrowserRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult:
-    | ((event: {
-        resultIndex: number;
-        results: ArrayLike<{
-          isFinal: boolean;
-          [index: number]: { transcript: string };
-        }>;
-      }) => void)
-    | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
 function browserRecognition() {
   const speech = window as Window & {
     SpeechRecognition?: new () => BrowserRecognition;
     webkitSpeechRecognition?: new () => BrowserRecognition;
   };
   return speech.SpeechRecognition ?? speech.webkitSpeechRecognition;
-}
-
-interface ActiveDictation {
-  id: string;
-  base: string;
-  start: number;
-  end: number;
-  unlisten?: () => void;
 }
 
 export function useComposerDictation(
@@ -78,25 +44,16 @@ export function useComposerDictation(
 ) {
   const [listeningState, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const active = useRef<ActiveDictation | null>(null);
-  const browser = useRef<BrowserRecognition | null>(null);
+  const recording = useRef<ReturnType<typeof createDictation> | null>(null);
   const generation = useRef(0);
   const change = useRef(onTextChange);
   useEffect(() => {
     change.current = onTextChange;
   }, [onTextChange]);
   const cancel = useCallback(() => {
-    browser.current?.abort();
-    browser.current = null;
-    const current = active.current;
-    active.current = null;
-    current?.unlisten?.();
-    if (current) {
-      void invokeNative("stop_voice_input", {
-        id: current.id,
-        cancel: true,
-      }).catch(() => undefined);
-    }
+    generation.current += 1;
+    recording.current?.cancel();
+    recording.current = null;
     setListening(false);
   }, []);
   useEffect(() => {
@@ -104,128 +61,43 @@ export function useComposerDictation(
   }, [cancel, suspended]);
   useEffect(() => () => cancel(), [cancel, scope]);
   useEffect(() => {
+    if (suspended) return;
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
-  }, [cancel]);
-
+  }, [cancel, suspended]);
   const nativeSupported = isTauriRuntime() && /win/i.test(navigator.platform);
   const supported = nativeSupported || Boolean(browserRecognition());
   const start = async () => {
     if (!supported || suspended) return;
-    if (!nativeSupported) {
-      const Constructor = browserRecognition();
-      if (!Constructor) return;
-      cancel();
-      try {
-        const next = new Constructor();
-        next.continuous = false;
-        next.interimResults = false;
-        next.lang = navigator.language;
-        next.onresult = (event) => {
-          if (browser.current !== next) return;
-          const spoken = Array.from(event.results)
-            .slice(event.resultIndex)
-            .filter((result) => result.isFinal)
-            .map((result) => result[0]?.transcript ?? "")
-            .join(" ")
-            .trim();
-          if (!spoken) return;
-          const base = inputRef.current?.value ?? text;
-          const updated = `${base}${base && !/\s$/.test(base) ? " " : ""}${spoken}`;
-          if (utf8ByteLength(updated) > MAX_CHAT_COMPOSER_BYTES) {
-            setError("Dictation is too long for this message.");
-            cancel();
-            return;
-          }
-          change.current(updated);
-        };
-        next.onerror = () => {
-          if (browser.current === next) {
-            setError(
-              "Dictation failed. Check microphone access and try again.",
-            );
-            cancel();
-          }
-        };
-        next.onend = () => {
-          if (browser.current === next) {
-            browser.current = null;
-            setListening(false);
-          }
-        };
-        browser.current = next;
-        setError(null);
-        next.start();
-        setListening(true);
-      } catch {
-        cancel();
-        setError("Dictation could not start. Check microphone access.");
-      }
-      return;
-    }
-    const input = inputRef.current;
-    const id =
-      globalThis.crypto?.randomUUID?.() ??
-      `${Date.now()}-${++generation.current}`;
-    const current: ActiveDictation = {
-      id,
-      base: text,
-      start: input?.selectionStart ?? text.length,
-      end: input?.selectionEnd ?? text.length,
-    };
     cancel();
-    active.current = current;
+    const request = generation.current;
     setError(null);
     try {
-      const { listen } = await import("@tauri-apps/api/event");
-      current.unlisten = await listen<VoiceEvent>("voice-input", (event) => {
-        const payload = event.payload;
-        if (active.current !== current || payload.id !== id) return;
-        if (payload.kind === "error") {
-          setError(
-            payload.message ?? "Dictation failed. Check microphone access.",
-          );
+      const { createDictation } = await import("./composerDictationRuntime");
+      if (generation.current !== request) return;
+      const current = createDictation({
+        sequence: request,
+        text,
+        input: inputRef.current,
+        getText: () => inputRef.current?.value ?? text,
+        invoke: invokeNative,
+        onText: (next) => change.current(next),
+        onError: (message) => {
+          setError(message);
           cancel();
-          return;
-        }
-        if (payload.kind === "ended") {
-          current.unlisten?.();
-          active.current = null;
+        },
+        onEnded: () => {
+          recording.current = null;
           setListening(false);
-          return;
-        }
-        const transcript = payload.text?.trim();
-        if (!transcript) return;
-        const prefix = current.base.slice(0, current.start);
-        const suffix = current.base.slice(current.end);
-        const leading = prefix && !/\s$/.test(prefix) ? " " : "";
-        const trailing = suffix && !/^\s/.test(suffix) ? " " : "";
-        const nextText = `${prefix}${leading}${transcript}${trailing}${suffix}`;
-        if (utf8ByteLength(nextText) > MAX_CHAT_COMPOSER_BYTES) {
-          setError("Dictation is too long for this message.");
-          cancel();
-          return;
-        }
-        change.current(nextText);
-        const caret = prefix.length + leading.length + transcript.length;
-        queueMicrotask(() => input?.setSelectionRange(caret, caret));
-        if (payload.kind === "final") {
-          current.base = nextText;
-          current.start = caret;
-          current.end = caret;
-        }
+        },
       });
-      if (active.current !== current) {
-        current.unlisten();
-        return;
-      }
-      await invokeNative("start_voice_input", { id });
-      if (active.current !== current) {
-        await invokeNative("stop_voice_input", { id, cancel: true });
-        return;
-      }
-      setListening(true);
+      recording.current = current;
+      const active = await current.start(
+        nativeSupported ? null : (browserRecognition() ?? null),
+      );
+      if (recording.current === current) setListening(active);
     } catch (cause) {
+      if (generation.current !== request) return;
       cancel();
       setError(
         cause instanceof Error
@@ -235,21 +107,12 @@ export function useComposerDictation(
     }
   };
   const stop = () => {
-    if (browser.current) {
-      browser.current.stop();
-      browser.current = null;
-      setListening(false);
-      return;
-    }
-    const current = active.current;
-    if (current) {
-      active.current = null;
-      current.unlisten?.();
-      void invokeNative("stop_voice_input", {
-        id: current.id,
-        cancel: false,
-      }).catch(() => setError("Dictation could not stop."));
-    }
+    generation.current += 1;
+    const epoch = generation.current;
+    recording.current?.stop((message) => {
+      if (generation.current === epoch) setError(message);
+    });
+    recording.current = null;
     setListening(false);
   };
   return {
@@ -332,49 +195,4 @@ export function useComposerFocusHotkey(
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [composerRef, enabled]);
-}
-
-/**
- * The toolbar's compaction steps, lowest priority first, as data-fit tokens
- * that chat-container-controls.css keys on. A disabled placeholder goes first
- * and the model name last: it truncates to a readable prefix before it gives
- * way to its icon.
- */
-const TOOLBAR_STEPS = [
-  "placeholder",
-  "capacity",
-  "access",
-  "harness",
-  "project",
-  "effort",
-  "effort-menu",
-  "project-menu",
-  "model-shrink",
-  "model",
-  "dense",
-  "wrap",
-] as const;
-
-/**
- * Fits the composer toolbar's controls row. Effort and the project chip move
- * into the options menu only when there is a menu item to take their place;
- * while a popover from the row is open, the row keeps its steps.
- */
-export function useComposerToolbarFit(
-  canSelectEffort: boolean,
-  hasProject: boolean,
-  paused: boolean,
-) {
-  const controls = useRef<HTMLDivElement>(null);
-  const steps = TOOLBAR_STEPS.filter(
-    (step) =>
-      (step !== "effort-menu" || canSelectEffort) &&
-      (step !== "project-menu" || hasProject),
-  );
-  const taken = useOverflowSteps(controls, steps, paused);
-  return {
-    controls,
-    effortInMenu: taken.includes("effort-menu"),
-    projectInMenu: taken.includes("project-menu"),
-  };
 }
