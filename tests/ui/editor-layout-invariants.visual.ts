@@ -215,6 +215,60 @@ test.describe("Editor layout invariants", () => {
     expect(colours.hunkText).not.toBe(colours.addedText);
   });
 
+  test("keeps the status bar on one row and scrolls it when a notice overflows", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+    await openScenario(page, "editor", "editor");
+    // At this width the tool drawer covers the editor and its caret item.
+    await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    const bar = page.locator(".status-bar");
+    await expect(bar.getByTitle("Caret position")).toBeVisible();
+    const before = await box(bar);
+    // The notice the native runtime raises for stored dirty buffers.
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState({
+        recoveryNotice:
+          "2 dirty buffers remain safely stored; close a File/Diff tab and restart to open recovery tabs",
+      });
+    });
+    await expect(bar.getByRole("status")).toBeVisible();
+    await expect(bar.getByTitle("Caret position")).toBeVisible();
+    expect(await box(bar)).toEqual(before);
+    const layout = await bar.evaluate((node) => {
+      const items = [...node.querySelectorAll(".status-bar__group > *")].map(
+        (item) => {
+          const { left, right, top, bottom } = item.getBoundingClientRect();
+          return { text: item.textContent, left, right, top, bottom };
+        },
+      );
+      return {
+        scrolls: node.scrollWidth > node.clientWidth,
+        items,
+      };
+    });
+    expect(layout.scrolls).toBe(true);
+    for (const item of layout.items) {
+      expect(item.top).toBeGreaterThanOrEqual(before.top);
+      expect(item.bottom).toBeLessThanOrEqual(before.bottom);
+    }
+    // Items sit one after another; none is painted over its neighbour.
+    for (const [index, item] of layout.items.slice(1).entries())
+      expect(
+        item.left,
+        `"${item.text}" starts before "${layout.items[index].text}" ends`,
+      ).toBeGreaterThanOrEqual(layout.items[index].right);
+    // Scrolling the bar to its end brings its last item fully into view.
+    const lastRight = await bar.evaluate((node) => {
+      node.scrollLeft = node.scrollWidth;
+      return node
+        .querySelector(".status-bar__group:last-child > :last-child")!
+        .getBoundingClientRect().right;
+    });
+    expect(lastRight).toBeLessThanOrEqual(before.right);
+  });
+
   test("dims Settings pages with no match for the query", async ({ page }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "editor", "editor");
