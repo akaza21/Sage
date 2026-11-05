@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { AGENT_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
+import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import {
   dragAnswerPhrase,
   openSelectionScenario,
@@ -641,15 +642,7 @@ test.describe("ED02 picker visual states", () => {
       "agent-composer-narrow",
       "agent",
     );
-    await page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
-      useWorkbenchStore.setState((state) => ({
-        models: [
-          ...state.models,
-          { id: "alternative", name: "Alternative model" },
-        ],
-      }));
-    });
+    await advertiseAlternativeModel(page);
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
     // The content-sized trigger keeps its complete label when the measured
@@ -1673,6 +1666,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(workbench).toHaveScreenshot("agent-zoom-200.png");
 
     await openScenario(page, "agent-composer-narrow", "agent");
+    await advertiseAlternativeModel(page);
     await page.getByRole("button", { name: "Harness" }).click();
     const harnessListbox = page.getByRole("listbox", { name: "Harness" });
     const harnessInput = harnessListbox.getByRole("option", {

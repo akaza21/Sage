@@ -163,9 +163,15 @@ export async function expectRunningComposerReadyToQueue(
   await expect(
     owner.getByRole("button", { name: "Harness", exact: true }),
   ).toBeDisabled();
+  const model = owner.getByLabel("Model", { exact: true });
+  await expect(model).toBeVisible();
+  await expect(model).toHaveText("Model");
+  await expect(model).toHaveAttribute("data-selected-id", "journey-model");
+  await expect(model).toHaveJSProperty("tagName", "SPAN");
+  await expect(model).toHaveJSProperty("tabIndex", -1);
   await expect(
     owner.getByRole("button", { name: "Model", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(owner.locator(".composer__disabled-reason")).toHaveCount(0);
 }
 
