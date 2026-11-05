@@ -280,7 +280,7 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
 }
 
 /// Unstarted/canceled silent saves release their claim and private staging
-/// destination on the download worker.
+/// destination on its isolated destination lane.
 fn release_reserved(id: u64) {
     RESERVED.with_borrow_mut(|reserved| reserved.remove(&id));
 }

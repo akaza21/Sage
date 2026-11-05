@@ -31,18 +31,15 @@ pub(super) fn plan_off_thread(
         let ui_app = worker_app.clone();
         let ui_webview = worker_webview.clone();
         let ui_tab = worker_tab.clone();
-        if !planning::submit(
-            move || request.plan(),
-            move |planned| {
-                deliver(
-                    &ui_app,
-                    &ui_webview,
-                    &ui_tab,
-                    id,
-                    planned.unwrap_or(fallback),
-                );
-            },
-        ) {
+        if !planning::submit(request, move |planned| {
+            deliver(
+                &ui_app,
+                &ui_webview,
+                &ui_tab,
+                id,
+                planned.unwrap_or(fallback),
+            );
+        }) {
             deliver(&worker_app, &worker_webview, &worker_tab, id, saturated);
         }
     });

@@ -20,7 +20,7 @@ pub(crate) use file_types::{is_dangerous, is_dangerous_mime};
 
 const MAX_NAME_BYTES: usize = 200;
 const MAX_EXTENSION_BYTES: usize = 24;
-// Bound file-system attempts on the download worker. Planning asks after
+// Bound file-system attempts on a destination lane. Planning asks after
 // exhaustion; publication fails without replacing any existing file.
 const MAX_SUFFIX: u32 = 99;
 const FALLBACK_NAME: &str = "download";

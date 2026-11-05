@@ -18,6 +18,7 @@ export interface BrowserDownload {
     | "error";
   receivedBytes: number;
   totalBytes: number | null;
+  error?: string;
 }
 
 export function browserDownloads(tabId: string): Promise<BrowserDownload[]> {

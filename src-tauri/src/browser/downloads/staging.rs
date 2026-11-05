@@ -2,6 +2,7 @@
 //! freshly created, unpredictable directory on the destination volume.
 //! Publish the completed file with a single no-replace rename per candidate.
 
+use super::io::Deadline;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -23,8 +24,14 @@ impl Staging {
         })
     }
 
-    pub(super) fn publish(&self, folder: &Path, name: &str) -> io::Result<PathBuf> {
+    pub(super) fn publish(
+        &self,
+        folder: &Path,
+        name: &str,
+        deadline: Deadline,
+    ) -> io::Result<PathBuf> {
         for candidate in super::folder::destination_candidates(folder, name) {
+            deadline.check()?;
             match move_without_replacing(&self.path, &candidate) {
                 Ok(()) => return Ok(candidate),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -39,9 +46,13 @@ impl Staging {
 
     /// Only our fixed file and its private directory are removed. Never walk
     /// the directory or remove anything at a public destination by name.
-    pub(super) fn cleanup(self) {
-        let _ = std::fs::remove_file(&self.path);
-        let _ = std::fs::remove_dir(&self.directory);
+    pub(super) fn cleanup(self, deadline: Deadline) {
+        if deadline.check().is_ok() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+        if deadline.check().is_ok() {
+            let _ = std::fs::remove_dir(&self.directory);
+        }
     }
 }
 

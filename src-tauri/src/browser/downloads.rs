@@ -7,6 +7,7 @@ use super::{BrowserState, admit_url};
 
 mod close;
 pub(crate) mod folder;
+pub(crate) mod io;
 #[cfg(windows)]
 mod native;
 pub(crate) mod placeholder;
@@ -39,6 +40,8 @@ pub(crate) struct DownloadView {
     pub(super) state: &'static str,
     pub(super) received_bytes: u64,
     pub(super) total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) error: Option<String>,
 }
 
 pub(super) struct DownloadRegistry {
@@ -159,6 +162,7 @@ impl DownloadRegistry {
                 state: "choosingDestination",
                 received_bytes: 0,
                 total_bytes: None,
+                error: None,
             },
         );
         while self.entries.len() > MAX_DOWNLOADS {

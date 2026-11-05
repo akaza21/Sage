@@ -20,21 +20,35 @@ pub(super) fn finish(
     if terminal == "completed"
         && let Some(reservation) = reservation
     {
+        let reservation = reservation.completed();
         let publish_app = app.clone();
         let publish_tab = tab_id.to_owned();
         if !worker::submit(move || {
-            let state = publish_app.state::<BrowserState>();
-            match publish_if_downloading(&state.downloads, id, || {
-                emit_views(&publish_app, &publish_tab);
-                reservation.publish()
+            let claim_app = publish_app.clone();
+            let claim_tab = publish_tab.clone();
+            let result_app = publish_app.clone();
+            let result_tab = publish_tab.clone();
+            let recovery = reservation.writer_path().to_owned();
+            if !reservation.publish_if(move || {
+                let claimed = claim_publication(&claim_app.state::<BrowserState>().downloads, id);
+                if claimed {
+                    emit_views(&claim_app, &claim_tab);
+                }
+                claimed
+            }, move |result| {
+                match result {
+                    Ok(Some(path)) => record(&result_app, &result_tab, id, "completed", Some(path)),
+                    Ok(None) => record(&result_app, &result_tab, id, "canceled", None),
+                    Err(error) => {
+                        let message = format!("{error}. Downloaded bytes may be recovered from {} or may already be saved in the destination folder.", recovery.display());
+                        record_error(&result_app, &result_tab, id, message);
+                    }
+                }
+                release_active(&result_app, id);
             }) {
-                Ok(Some(path)) => record(&publish_app, &publish_tab, id, "completed", Some(path)),
-                Ok(None) => record(&publish_app, &publish_tab, id, "canceled", None),
-                Err(_) => record(&publish_app, &publish_tab, id, "error", None),
+                record_error(&publish_app, &publish_tab, id, "Download destination I/O executor unavailable".into());
+                release_active(&publish_app, id);
             }
-            let _ = publish_app.run_on_main_thread(move || {
-                ACTIVE.with_borrow_mut(|active| active.remove(&id));
-            });
         }) {
             ACTIVE.with_borrow_mut(|active| active.remove(&id));
             record(app, tab_id, id, "error", None);
@@ -45,14 +59,38 @@ pub(super) fn finish(
     }
 }
 
+fn release_active(app: &AppHandle, id: u64) {
+    let _ = app.run_on_main_thread(move || {
+        ACTIVE.with_borrow_mut(|active| active.remove(&id));
+    });
+}
+
+fn record_error(app: &AppHandle, tab_id: &str, id: u64, message: String) {
+    if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock()
+        && registry.settle(id, "error")
+        && let Some(entry) = registry.entries.get_mut(&id)
+    {
+        entry.error = Some(message.chars().take(2048).collect());
+    }
+    emit_views(app, tab_id);
+}
+
+#[cfg(test)]
 fn publish_if_downloading(
     downloads: &Mutex<DownloadRegistry>,
     id: u64,
     publish: impl FnOnce() -> std::io::Result<PathBuf>,
 ) -> std::io::Result<Option<PathBuf>> {
+    if !claim_publication(downloads, id) {
+        return Ok(None);
+    }
+    publish().map(Some)
+}
+
+fn claim_publication(downloads: &Mutex<DownloadRegistry>, id: u64) -> bool {
     // Claim publication atomically with respect to Cancel/tab-close. The lock
     // must be released before filesystem I/O, which can stall on network folders.
-    let claimed = downloads.lock().is_ok_and(|mut registry| {
+    downloads.lock().is_ok_and(|mut registry| {
         let Some(entry) = registry.entries.get_mut(&id) else {
             return false;
         };
@@ -61,11 +99,7 @@ fn publish_if_downloading(
         }
         entry.state = "publishing";
         true
-    });
-    if !claimed {
-        return Ok(None);
-    }
-    publish().map(Some)
+    })
 }
 
 fn record(app: &AppHandle, tab_id: &str, id: u64, terminal: &'static str, saved: Option<PathBuf>) {
@@ -87,6 +121,73 @@ mod tests {
     use crate::browser::downloads::{
         NavigationProvenance, folder::unique_destination, reservation::Reservation,
     };
+
+    #[test]
+    fn cancel_or_tab_close_while_queued_on_destination_writes_no_final_file() {
+        use crate::browser::downloads::io;
+        use std::{
+            sync::{Arc, mpsc},
+            time::Duration,
+        };
+
+        for close_tab in [false, true] {
+            let folder = std::env::temp_dir()
+                .join(format!("sage-destination-cancel-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&folder).unwrap();
+            let mut registry = DownloadRegistry::default();
+            registry.set_provenance("browser-one", NavigationProvenance::User);
+            let id = registry
+                .begin("browser-one", "https://example.com/report", "report.txt")
+                .unwrap();
+            let mut reservation = Reservation::adopt(
+                unique_destination(&folder, "report.txt", |_| false).unwrap(),
+                "report.txt",
+            );
+            assert!(registry.record_destination(id, reservation.path().to_owned()));
+            assert!(registry.destination_chosen(id));
+            assert!(reservation.handoff());
+            std::fs::write(reservation.writer_path(), b"downloaded bytes").unwrap();
+            let downloads = Arc::new(Mutex::new(registry));
+            let (release, wait) = mpsc::sync_channel::<()>(0);
+            let (started, start) = mpsc::sync_channel(1);
+            io::acquire(&folder).unwrap().cleanup(move |_| {
+                started.send(()).unwrap();
+                let _ = wait.recv();
+            });
+            start.recv_timeout(Duration::from_secs(1)).unwrap();
+            let claim_registry = Arc::clone(&downloads);
+            let (done, completion) = mpsc::sync_channel(1);
+            assert!(reservation.publish_if(
+                move || claim_publication(&claim_registry, id),
+                move |result| {
+                    done.send(result).ok();
+                }
+            ));
+            if close_tab {
+                assert_eq!(
+                    downloads.lock().unwrap().cancel_tab("browser-one"),
+                    vec![id]
+                );
+            } else {
+                assert!(downloads.lock().unwrap().cancel("browser-one", id));
+            }
+            drop(release);
+            assert_eq!(
+                completion
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap()
+                    .unwrap(),
+                None
+            );
+            worker::flush();
+            assert_eq!(
+                downloads.lock().unwrap().views("browser-one")[0].state,
+                "canceled"
+            );
+            assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
+            std::fs::remove_dir(folder).unwrap();
+        }
+    }
 
     #[test]
     fn cancel_or_tab_close_while_publication_is_queued_writes_no_final_file() {

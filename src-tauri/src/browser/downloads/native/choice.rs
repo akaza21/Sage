@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 use super::super::{
     BrowserState, DownloadRegistry,
     folder::{self, Plan},
+    io::{Deadline, Destination},
     reservation::Reservation,
 };
 use crate::{
@@ -76,7 +77,22 @@ impl Request {
     }
 
     /// All folder I/O, including private staging, belongs to the isolated probe.
+    pub(super) fn destination(&self) -> Option<&Path> {
+        self.record.as_ref()?.path.as_deref()
+    }
+
+    #[cfg(test)]
     pub(super) fn plan(self) -> Planned {
+        let Some(destination) = self.destination().and_then(super::super::io::acquire) else {
+            return self.fallback();
+        };
+        self.plan_on(destination, super::super::io::test_deadline())
+    }
+
+    pub(super) fn plan_on(self, destination: Destination, deadline: Deadline) -> Planned {
+        if deadline.check().is_err() {
+            return self.fallback();
+        }
         let Some(record) = &self.record else {
             return self.fallback();
         };
@@ -87,9 +103,12 @@ impl Request {
             |path| self.claimed.contains(path),
         ) {
             Plan::Silent(placeholder) => {
-                let mut reservation =
-                    Reservation::adopt(placeholder, &folder::sanitize_file_name(&self.suggested));
-                if !reservation.handoff() {
+                let mut reservation = Reservation::on_destination(
+                    placeholder,
+                    &folder::sanitize_file_name(&self.suggested),
+                    destination,
+                );
+                if deadline.check().is_err() || !reservation.handoff() {
                     reservation.discard();
                     return self.fallback();
                 }

@@ -1,9 +1,5 @@
-//! One background thread for download publication and releasing placeholders.
-//! Folder probes use isolated deadline-limited
-//! probes so an unavailable remembered folder cannot block this queue. This work
-//! can block (an offline network share), so it never runs on the WebView2
-//! UI thread. The queue is bounded; when it is full the caller falls back
-//! (a download is canceled, private leftovers remain untouched).
+//! Bounded state coordination only. All destination filesystem work belongs
+//! to `io`, including disposal and closing destination handles.
 
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -48,4 +44,5 @@ pub(crate) fn flush() {
     receiver
         .recv_timeout(std::time::Duration::from_secs(10))
         .unwrap();
+    super::io::flush();
 }

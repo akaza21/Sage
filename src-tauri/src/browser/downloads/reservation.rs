@@ -5,7 +5,11 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{placeholder::Placeholder, worker};
+#[cfg(any(windows, test))]
+use super::io;
+#[cfg(windows)]
+use super::io::Deadline;
+use super::{io::Destination, placeholder::Placeholder};
 
 #[derive(Debug)]
 pub(crate) struct Reservation {
@@ -14,17 +18,33 @@ pub(crate) struct Reservation {
     name: String,
     #[cfg(windows)]
     staging: Option<super::staging::Staging>,
+    #[cfg(windows)]
+    preserve_staging: bool,
     placeholder: Option<Placeholder>,
+    destination: Option<Destination>,
 }
 
 impl Reservation {
+    #[cfg(test)]
     pub(crate) fn adopt(placeholder: Placeholder, name: &str) -> Self {
+        let destination = io::acquire(placeholder.path.parent().unwrap()).unwrap();
+        Self::on_destination(placeholder, name, destination)
+    }
+
+    pub(crate) fn on_destination(
+        placeholder: Placeholder,
+        name: &str,
+        destination: Destination,
+    ) -> Self {
         Self {
             path: placeholder.path.clone(),
             name: name.to_owned(),
             #[cfg(windows)]
             staging: None,
+            #[cfg(windows)]
+            preserve_staging: false,
             placeholder: Some(placeholder),
+            destination: Some(destination),
         }
     }
 
@@ -32,7 +52,7 @@ impl Reservation {
         &self.path
     }
 
-    /// Allocate the private destination on the worker before resuming
+    /// Allocate the private destination on its I/O lane before resuming
     /// WebView2. The public placeholder remains a claim, never a writer path.
     #[cfg(windows)]
     pub(crate) fn handoff(&mut self) -> bool {
@@ -55,46 +75,114 @@ impl Reservation {
             .path
     }
 
-    /// Run only after WebView2 has closed the writer, on the download worker.
+    /// Once native writing completed, dispatch failure must keep the bytes too.
     #[cfg(windows)]
-    pub(crate) fn publish(mut self) -> std::io::Result<PathBuf> {
+    pub(crate) fn completed(mut self) -> Self {
+        self.preserve_staging = true;
+        self
+    }
+
+    /// Run only after WebView2 has closed the writer, on its destination lane.
+    /// Taking staging before I/O preserves completed bytes on every failure,
+    /// including when the deadline expires inside an uninterruptible OS call.
+    #[cfg(windows)]
+    pub(crate) fn publish_until(mut self, deadline: Deadline) -> std::io::Result<PathBuf> {
+        let staging = self
+            .staging
+            .take()
+            .ok_or_else(|| std::io::Error::other("download was not staged"))?;
+        deadline.check()?;
         // Retire only our empty placeholder by identity. Whether its name is
         // absent is irrelevant: the no-replace rename makes the final claim.
         let _ = self.placeholder.take().and_then(Placeholder::retire);
-        let staging = self
-            .staging
-            .as_ref()
-            .ok_or_else(|| std::io::Error::other("download was not staged"))?;
+        deadline.check()?;
         let folder = self
             .path
             .parent()
             .and_then(super::folder::admit_folder)
             .ok_or_else(|| std::io::Error::other("download folder unavailable"))?;
+        deadline.check()?;
         // Report the same canonical, long folder spelling as Settings, even
         // when the reservation arrived through an 8.3 alias.
-        let path = staging.publish(&folder, &self.name)?;
-        if let Some(staging) = self.staging.take() {
-            staging.cleanup();
-        }
-        self.keep();
+        let path = staging.publish(&folder, &self.name, deadline)?;
+        staging.cleanup(deadline);
+        deadline.check()?;
         Ok(path)
     }
 
-    /// The download finished writing here: close the handle, keep the file.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    pub(crate) fn keep(mut self) {
-        self.placeholder.take();
+    #[cfg(all(windows, test))]
+    pub(crate) fn publish(self) -> std::io::Result<PathBuf> {
+        self.publish_until(io::test_deadline())
     }
 
-    /// Dispose a late plan on its isolated probe thread. A stalled remote
-    /// cleanup must never enter the publication queue.
+    #[cfg(all(windows, test))]
+    pub(crate) fn publish_off_thread(
+        self,
+        completed: impl FnOnce(std::io::Result<PathBuf>) + Send + 'static,
+    ) -> bool {
+        self.publish_if(
+            || true,
+            move |result| {
+                completed(result.and_then(|path| {
+                    path.ok_or_else(|| std::io::Error::other("download canceled"))
+                }))
+            },
+        )
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn publish_if(
+        mut self,
+        claim: impl FnOnce() -> bool + Send + 'static,
+        completed: impl FnOnce(std::io::Result<Option<PathBuf>>) + Send + 'static,
+    ) -> bool {
+        self.preserve_staging = true;
+        let destination = self
+            .destination
+            .as_ref()
+            .expect("reservation owns its destination lane")
+            .operation();
+        destination.run(
+            move |_, deadline| {
+                if let Err(error) = deadline.check() {
+                    self.staging.take();
+                    return Err(error);
+                }
+                if !claim() {
+                    // A timeout callback can settle the row while claim checks it.
+                    // Preserve completed bytes in that race as well as in I/O.
+                    self.preserve_staging = deadline.check().is_err();
+                    drop(self);
+                    return Ok(None);
+                }
+                self.publish_until(deadline).map(Some)
+            },
+            completed,
+            |_| {},
+        )
+    }
+
+    /// The download finished writing here: close the handle, keep the file.
+    #[cfg(test)]
+    pub(crate) fn keep(mut self) {
+        if let Some(placeholder) = self.placeholder.take() {
+            self.destination
+                .take()
+                .unwrap()
+                .cleanup(move |_| drop(placeholder));
+        }
+    }
+
+    /// Dispose a late plan on its destination lane, retaining admission while
+    /// the OS closes or deletes its handles. No shared coordinator is involved.
     #[cfg(windows)]
     pub(crate) fn discard(mut self) {
+        let deadline = io::cleanup_deadline();
         if let Some(placeholder) = self.placeholder.take() {
             placeholder.delete_if_empty();
         }
         if let Some(staging) = self.staging.take() {
-            staging.cleanup();
+            staging.cleanup(deadline);
         }
     }
 }
@@ -105,6 +193,8 @@ impl Drop for Reservation {
         #[cfg(windows)]
         let staging = self.staging.take();
         #[cfg(windows)]
+        let staging = if self.preserve_staging { None } else { staging };
+        #[cfg(windows)]
         if placeholder.is_none() && staging.is_none() {
             return;
         }
@@ -112,15 +202,16 @@ impl Drop for Reservation {
         if placeholder.is_none() {
             return;
         }
-        // Queue saturation leaves private/empty leftovers rather than doing
-        // potentially blocking cleanup on the WebView2 thread.
-        worker::submit(move || {
-            if let Some(placeholder) = placeholder {
+        // Admission reserved a disposal slot before creating any handles.
+        self.destination.take().unwrap().cleanup(move |deadline| {
+            if let Some(placeholder) = placeholder
+                && deadline.check().is_ok()
+            {
                 placeholder.delete_if_empty();
             }
             #[cfg(windows)]
             if let Some(staging) = staging {
-                staging.cleanup();
+                staging.cleanup(deadline);
             }
         });
     }
@@ -134,8 +225,29 @@ mod tests {
     #[cfg(windows)]
     use crate::browser::downloads::folder::admit_folder;
     use crate::browser::downloads::folder::unique_destination;
+    use crate::browser::downloads::worker;
 
     struct Scratch(PathBuf);
+
+    #[cfg(windows)]
+    #[test]
+    fn a_completed_download_keeps_its_bytes_if_publication_cannot_be_dispatched() {
+        let scratch = Scratch::new("completed-undispatched");
+        let mut reservation = Reservation::adopt(
+            unique_destination(&scratch.0, "report.txt", |_| false).unwrap(),
+            "report.txt",
+        );
+        assert!(reservation.handoff());
+        let recovery = reservation.writer_path().to_owned();
+        std::fs::write(&recovery, b"completed bytes").unwrap();
+        let reservation = reservation.completed();
+        let queued_publication = move || reservation.publish();
+        // A rejected coordination closure must retain completed native bytes.
+        drop(queued_publication);
+        worker::flush();
+        assert_eq!(std::fs::read(recovery).unwrap(), b"completed bytes");
+        assert!(!scratch.0.join("report.txt").exists());
+    }
 
     impl Scratch {
         fn new(name: &str) -> Self {

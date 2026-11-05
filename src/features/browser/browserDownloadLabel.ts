@@ -22,7 +22,7 @@ export function progressLabel(download: BrowserDownload): string {
       return "Downloaded";
     case "interrupted":
     case "error":
-      return "Download failed";
+      return download.error || "Download failed";
     case "canceled":
       return "Canceled";
   }
