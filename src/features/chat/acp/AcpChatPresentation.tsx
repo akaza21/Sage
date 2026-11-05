@@ -1,9 +1,8 @@
-import { Fragment, memo, useCallback, useMemo, useRef } from "react";
+import { Fragment, memo, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
-import type { AgentDiffRef } from "../../../domain/agentDiff";
 import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { acpDesktop } from "../../../services/acpDesktop";
@@ -50,6 +49,7 @@ const Turn = memo(
     onRetry,
     inherited = false,
     answerActions = inherited,
+    fileSummaryInDock = false,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
@@ -57,6 +57,7 @@ const Turn = memo(
     inherited?: boolean;
     /** Earlier/inherited answers retain Copy. */
     answerActions?: boolean;
+    fileSummaryInDock?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
     workspaceChanges?: readonly TurnWorkspaceChange[];
     workspaceIncomplete?: boolean;
@@ -243,7 +244,11 @@ const Turn = memo(
                 <span className="acp-live-shimmer">Editing files</span>
               </div>
             ) : null}
-            {terminal ? (
+            {terminal && fileSummaryInDock ? (
+              workspaceIncomplete ? (
+                <NavigationPart part="WorkspaceTrackingNotice" />
+              ) : null
+            ) : terminal ? (
               <TurnFileActivity
                 page={page}
                 turn={turn}
@@ -255,7 +260,11 @@ const Turn = memo(
             ) : null}
             {stopped ? <TurnHeader turn={turn} /> : null}
             {stopped && !finalAnswer && onRetry ? (
-              <button type="button" onClick={onRetry}>
+              <button
+                className="acp-turn__retry"
+                type="button"
+                onClick={onRetry}
+              >
                 Retry
               </button>
             ) : null}
@@ -286,6 +295,7 @@ const Turn = memo(
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
     left.answerActions === right.answerActions &&
+    left.fileSummaryInDock === right.fileSummaryInDock &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
 );
@@ -310,40 +320,16 @@ export function AcpChatPresentation({
   const labelsKey = projectRootLabelKey(projectRoots);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const labels = useMemo(() => projectRootLabels(projectRoots), [labelsKey]);
-  const onOpenDiff = useCallback(
-    (resource: ResourceRef, diffRef: AgentDiffRef) =>
-      onOpenResource?.(
-        resource,
-        "diff",
-        {
-          projectId: page.projectId,
-          chatId: page.chatId,
-          sessionId: diffRef.sessionId,
-        },
-        diffRef,
-      ),
-    [onOpenResource, page.projectId, page.chatId],
-  );
-  const onOpenFile = useCallback(
-    (resource: ResourceRef, turn: TurnProjection) =>
-      onOpenResource?.(resource, "file", {
-        projectId: page.projectId,
-        chatId: page.chatId,
-        sessionId: turn.sessionId,
-      }),
-    [onOpenResource, page.projectId, page.chatId],
-  );
   const editSummary = (
     <EditSummaryPart
       part="TurnEditSummary"
+      onOpenResource={onOpenResource}
       key={page.projectId + ":" + page.chatId + ":" + page.currentSessionId}
       page={page}
       rootLabels={labels}
       countIncomplete={countIncomplete}
       workspaceChanges={workspaceChanges}
       workspaceIncomplete={incompleteTurnIds.size > 0}
-      onOpenDiff={onOpenResource ? onOpenDiff : undefined}
-      onOpenFile={onOpenResource ? onOpenFile : undefined}
       onRecordDisposition={acpDesktop.recordAgentEditDisposition}
     />
   );
@@ -359,6 +345,7 @@ export function AcpChatPresentation({
         onOpenResource={onOpenResource}
         onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         answerActions={index < page.turns.length - 1}
+        fileSummaryInDock={editSummaryContainer !== undefined}
       />
     </Fragment>
   );

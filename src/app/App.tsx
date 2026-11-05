@@ -9,10 +9,7 @@ import { useWorkbenchStore } from "./store";
 import { traceCloseStage } from "./workspaceNotifyLifecycle";
 import { errorMessage } from "../domain/errors";
 
-const loadWorkbench = async () => {
-  const { Workbench } = await import("../workbench/Workbench");
-  return { default: Workbench };
-};
+const loadWorkbench = () => import("../workbench/Workbench");
 
 const markStartup = (name: string) => {
   if (performance.getEntriesByName(name).length === 0) {

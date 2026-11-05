@@ -3,6 +3,7 @@ use std::sync::Arc;
 mod catalog_definition;
 mod claude_auth;
 mod discovery_state;
+mod persisted_binding;
 use catalog_definition::{CuratedProtocol, definition};
 use discovery_state::DiscoveryState;
 
@@ -287,12 +288,14 @@ impl HarnessCatalog {
     ) -> Vec<HarnessDefinition> {
         let _ = simulator_in_catalog;
         for definition in &mut definitions {
-            definition.sign_in = known_harness_spec(&definition.id)
-                .and_then(|spec| spec.sign_in)
-                .map(|sign_in| crate::domain::HarnessSignIn {
-                    command: sign_in.command.into(),
-                    hint: sign_in.hint.into(),
-                });
+            let spec = known_harness_spec(&definition.id);
+            definition.brand = spec.and_then(|spec| spec.brand);
+            definition.sign_in =
+                spec.and_then(|spec| spec.sign_in)
+                    .map(|sign_in| crate::domain::HarnessSignIn {
+                        command: sign_in.command.into(),
+                        hint: sign_in.hint.into(),
+                    });
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
@@ -440,6 +443,29 @@ mod tests {
             .find(|definition| definition.id == id)
             .unwrap()
             .clone()
+    }
+
+    #[test]
+    fn curated_harnesses_carry_their_brand_and_others_have_none() {
+        use crate::domain::HarnessBrand;
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            CodexBindingRegistration::unavailable_for_test(),
+            CodexHostPresence::Absent,
+        );
+        let definitions = catalog.definitions();
+        for (id, brand) in [
+            ("claude-code", Some(HarnessBrand::Claude)),
+            ("codex", Some(HarnessBrand::Codex)),
+            ("opencode", Some(HarnessBrand::OpenCode)),
+            ("pi", Some(HarnessBrand::Pi)),
+            ("oh-my-pi", None),
+            ("gemini-cli", None),
+            ("cursor-agent", None),
+        ] {
+            assert_eq!(by_id(&definitions, id).brand, brand, "{id}");
+        }
+        let wire = serde_json::to_value(by_id(&definitions, "opencode")).unwrap();
+        assert_eq!(wire["brand"], "opencode");
     }
 
     #[test]
@@ -764,7 +790,8 @@ mod tests {
                     "boundVersion",
                     "characterisation",
                     "unavailableReason",
-                    "signIn"
+                    "signIn",
+                    "brand"
                 ]
                 .into_iter()
                 .collect()

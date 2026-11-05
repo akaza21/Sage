@@ -18,7 +18,7 @@ import {
   safeNullableText,
   safeText,
   safeCounter,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 
 export const MAX_FILE_CHANGES = MAX_AGENT_DIFFS_PER_TURN;
 export const MAX_TOOL_RESOURCES = 64;

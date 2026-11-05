@@ -12,12 +12,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
-import { AgentWorkbenchBody } from "./AgentWorkbenchBody";
+import AgentWorkbenchBody from "./AgentWorkbenchBodyView";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
-import {
-  resetAgentRailViewPrefs,
-  setAgentRailGrouping,
-} from "./agentRailViewPrefs";
+import { resetAgentRailViewPrefs } from "./agentRailViewPrefs";
 
 vi.mock("./AgentChatPanes", () => ({ AgentChatPanes: () => null }));
 vi.mock("./AgentArtifactPane", () => ({ AgentArtifactPane: () => null }));
@@ -48,6 +45,9 @@ function NavigationWorkbench() {
         drawerOpen={false}
         navigationCollapsed={collapsed}
         onExpandNavigation={() => setCollapsed(false)}
+        centerVisible
+        artifactMaximized={false}
+        onArtifactMaximizedChange={() => undefined}
         artifactExpanded={false}
         onArtifactExpandedChange={() => undefined}
         onAgentLeftRailWidthChange={() => undefined}
@@ -71,16 +71,11 @@ it("opens Agent settings from collapsed navigation without opening an Editor tab
 });
 
 it.each([
-  ["Go to recent chats", "Recent", "folder", false],
-  ["Go to projects", "Projects", "folder", false],
-  ["Go to recent chats", "Recent", "folder", true],
-  ["Go to projects", "Projects", "folder", true],
-  ["Go to projects", "Chats", "status", false],
-  ["Go to projects", "Chats", "status", true],
+  ["Go to projects", "Projects", false],
+  ["Go to projects", "Projects", true],
 ] as const)(
-  "%s reveals %s in %s grouping (section initially collapsed: %s)",
-  async (control, label, grouping, initiallyCollapsed) => {
-    setAgentRailGrouping(grouping);
+  "%s reveals %s (section initially collapsed: %s)",
+  async (control, label, initiallyCollapsed) => {
     const loadRepositoryInventory = vi.fn(async () => undefined);
     useWorkbenchStore.setState({
       project: { id: "sage", name: "Sage", roots: [] },

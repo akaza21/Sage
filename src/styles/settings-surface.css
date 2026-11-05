@@ -1,4 +1,19 @@
+/*
+ * Search-led, as VS Code's Settings editor (settingsEditor2.css): the search
+ * box spans the measure, then the page navigation, then the rows.
+ */
 .settings-surface {
+  --settings-header-padding-top: 14px;
+  --settings-gutter: var(--space-6);
+  --settings-row-inset: 14px;
+  --settings-row-padding-top: var(--space-3);
+  --settings-row-padding-bottom: 18px;
+  --settings-row-hover-fill: color-mix(
+    in srgb,
+    var(--color-surface-hover) 50%,
+    transparent
+  );
+
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -7,7 +22,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--settings-content-gap);
-  padding: 28px clamp(20px, 5vw, 56px) 48px;
+  padding: var(--settings-header-padding-top) var(--settings-gutter)
+    var(--space-8);
   color: var(--color-text-primary);
   background: var(--color-canvas);
 }
@@ -20,28 +36,30 @@
 .settings-surface__header {
   display: grid;
   max-width: var(--settings-measure);
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
-  align-items: end;
-  gap: 24px;
   margin: 0 auto;
 }
 
-.settings-surface__title,
+.settings-surface__search .input {
+  min-height: var(--control-height-default);
+  font-size: var(--font-size-sm);
+}
+
+.settings-surface .settings-surface__description {
+  max-width: var(--settings-measure);
+  margin: 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
 .settings-surface__search,
 .settings-surface__section,
 .settings-surface__copy {
   display: grid;
 }
 
-.settings-surface__title,
 .settings-surface__copy {
   gap: 4px;
-}
-
-.settings-surface__search {
-  gap: 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
 }
 
 .settings-surface h1,
@@ -51,17 +69,12 @@
   margin: 0;
 }
 
-.settings-surface h1 {
-  font-size: 22px;
-  line-height: 1.25;
-}
-
 .settings-surface h2 {
   font-size: var(--font-size-md);
 }
 
 .settings-surface h3 {
-  padding: 12px 0 4px;
+  padding: 12px var(--settings-row-inset) 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -69,14 +82,12 @@
   text-transform: uppercase;
 }
 
-.settings-surface__title p,
 .settings-surface__section-header p,
 .settings-surface__copy p,
 .settings-surface__copy small {
   color: var(--color-text-muted);
 }
 
-.settings-surface__title p,
 .settings-surface__section-header p,
 .settings-surface__copy p {
   font-size: var(--font-size-sm);
@@ -124,7 +135,7 @@
 }
 
 .settings-surface__group-note {
-  padding-bottom: 4px;
+  padding: 0 var(--settings-row-inset, 0px) 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -141,9 +152,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+/* Inset like the setting rows, so every page lines up with its headings. */
 .settings-surface__keymap th,
 .settings-surface__keymap td {
-  padding: 8px 0;
+  padding: 8px var(--settings-row-inset, 0px);
   border-bottom: 1px solid var(--color-border-subtle);
   font-weight: 400;
   vertical-align: baseline;
@@ -203,17 +215,22 @@
 .settings-surface__section-header {
   display: grid;
   gap: 4px;
-  padding: 16px 0 12px;
+  padding: 16px var(--settings-row-inset, 0px) 12px;
 }
 
 .settings-surface__row {
   display: grid;
-  min-height: 72px;
   grid-template-columns: minmax(0, 1fr) minmax(132px, 180px);
   align-items: center;
-  gap: 24px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  gap: var(--space-6);
+  padding: var(--settings-row-padding-top) var(--settings-row-inset)
+    var(--settings-row-padding-bottom);
+  border-radius: var(--radius-sm);
+}
+
+.settings-surface__row:hover,
+.settings-surface__row:focus-within {
+  background: var(--settings-row-hover-fill);
 }
 
 .settings-surface__copy label,
@@ -432,22 +449,16 @@
 
 @media (max-width: 760px) {
   .settings-surface {
-    padding: 20px 16px 36px;
+    --settings-gutter: var(--space-4);
   }
 
-  .settings-surface__header,
   .settings-surface__row,
   .settings-surface__row--list {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-surface__header {
-    align-items: stretch;
-    gap: 16px;
-  }
-
   .settings-surface__row {
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .settings-surface__toggle {

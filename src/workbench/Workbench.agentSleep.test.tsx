@@ -10,8 +10,8 @@ import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 
 const body = vi.hoisted(() => ({ renders: 0, liveTimers: 0 }));
 
-vi.mock("./AgentWorkbenchBody", () => ({
-  AgentWorkbenchBody: () => {
+vi.mock("./AgentWorkbenchBodyView", () => ({
+  default: function AgentWorkbenchBodyProbe() {
     body.renders += 1;
     useEffect(() => {
       body.liveTimers += 1;
@@ -25,10 +25,10 @@ vi.mock("./AgentWorkbenchBody", () => ({
   },
 }));
 vi.mock("./ActiveEditorCanvas", () => ({ default: () => null }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
-vi.mock("./TabStrip", () => ({ TabStrip: () => null }));
+vi.mock("./TabStrip", () => ({ default: () => null }));
 vi.mock("./useCompactWorkbenchLayout", () => ({
   useCompactWorkbenchLayout: () => false,
 }));

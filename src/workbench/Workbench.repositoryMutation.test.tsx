@@ -12,13 +12,13 @@ vi.mock("../features/diff/DiffSurface", () => ({
   DiffSurface: () => <div>Diff surface</div>,
 }));
 vi.mock("../features/files/FileSurface", () => ({
-  FileSurface: () => <div>File surface</div>,
+  default: () => <div>File surface</div>,
 }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./LeftSidebar", () => ({ LeftSidebar: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
-vi.mock("./TabStrip", () => ({ TabStrip: () => null }));
+vi.mock("./TabStrip", () => ({ default: () => null }));
 vi.mock("./useCompactWorkbenchLayout", () => ({
   useCompactWorkbenchLayout: () => false,
 }));

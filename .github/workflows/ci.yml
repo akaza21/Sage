@@ -194,8 +194,29 @@ jobs:
       - run: npm ci
       - name: Provision the bundled Chromium the smoke CLI drives
         run: npx playwright install chromium
-      # The Windows Cargo Job tests give each cargo command 10 s; install the
-      # rust-toolchain.toml toolchain first so no command waits on a download.
+      # The Windows Cargo Job tests give each cargo command 10 s. The image
+      # keeps rustup on C:, which Defender saturates for about 30 s when it
+      # loads new security intelligence partway through the job; a rustup
+      # proxy that pages in from C: then can stall past that deadline. Install
+      # rustup into the runner temp directory, which shares the workspace's
+      # disk (D: on hosted images), so rustup, its proxies and the toolchain
+      # are not read from C:.
+      - name: Install rustup on the runner's local disk
+        run: |
+          $cargoHome = Join-Path $env:RUNNER_TEMP "cargo"
+          $rustupHome = Join-Path $env:RUNNER_TEMP "rustup"
+          $installer = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+          Copy-Item (Get-Command rustup -CommandType Application | Select-Object -First 1).Source $installer
+          $env:CARGO_HOME = $cargoHome
+          $env:RUSTUP_HOME = $rustupHome
+          & $installer -y --no-modify-path --default-toolchain none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item $installer
+          "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          "RUSTUP_HOME=$rustupHome" >> $env:GITHUB_ENV
+          Join-Path $cargoHome "bin" >> $env:GITHUB_PATH
+      # Install the rust-toolchain.toml toolchain first so no command waits on
+      # a download.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Run the Windows budget lane

@@ -6,7 +6,8 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
-import { acpDesktop } from "../services/acpDesktop";
+import { MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES } from "../domain/chatOwnership";
+import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
 import {
   cachedHarnessModels,
@@ -119,6 +120,17 @@ export const createHarnessSlice: StateCreator<
     const usesAccountModelDiscovery =
       harness?.transport === "acp" && harness.accountModelDiscovery;
     const detecting = harness?.installState === "detecting";
+    if (harness && !detecting && harness.installState !== "available") {
+      set({
+        selectedHarnessId: harnessId,
+        selectedModelId: previousModelId,
+        models: [],
+        harnessRequestGeneration: requestGeneration,
+        harnessDiscoveryPhase: "ready",
+        harnessDiscoveryError: null,
+      });
+      return;
+    }
     const identity = usesAccountModelDiscovery
       ? null
       : harnessModelIdentity(harness);
@@ -152,7 +164,7 @@ export const createHarnessSlice: StateCreator<
         const nativeGeneration = String(
           get().nativeTransitionEpoch,
         ) as ProjectGeneration;
-        const response = await acpDesktop.discoverCodex({
+        const response = await acpHarnessDesktop.discoverCodex({
           projectId: projectId as SageProjectId,
           projectGeneration: nativeGeneration,
           bindingId: harness.bindingId as CuratedBindingId,
@@ -229,6 +241,24 @@ export const createHarnessSlice: StateCreator<
       await load(harnessId, previous, generation, projectId);
     },
     applyHarnessDiscovery: async (harnesses) => {
+      const previous = get().harnesses.find(
+        (candidate) => candidate.id === get().selectedHarnessId,
+      );
+      // Discovery describes installed harnesses. Keep restored bindings visible
+      // until the next Project projection replaces this bounded catalog.
+      harnesses = [
+        ...harnesses,
+        ...get()
+          .harnesses.filter(
+            (previous) => !harnesses.some((next) => next.id === previous.id),
+          )
+          .slice(0, MAX_ATTACHED_CHAT_OWNERSHIP_ENTRIES)
+          .map((previous): HarnessDefinition => ({
+            ...previous,
+            installState: "unavailable",
+            accountModelDiscovery: false,
+          })),
+      ];
       set({ harnesses });
       const projectId = get().project?.id;
       if (!projectId || get().projectTransitioning) return;
@@ -239,12 +269,18 @@ export const createHarnessSlice: StateCreator<
           candidate.installState === "available",
       );
       const selected = get().selectedHarnessId;
-      const next =
-        selectable.find((candidate) => candidate.id === selected) ??
-        selectable[0];
+      const next = selected
+        ? harnesses.find((candidate) => candidate.id === selected)
+        : selectable[0];
       if (!next) return;
       const retained = next.id === selected;
-      if (retained && get().harnessDiscoveryPhase === "ready") return;
+      if (
+        retained &&
+        get().harnessDiscoveryPhase === "ready" &&
+        harnessModelIdentity(previous) === harnessModelIdentity(next) &&
+        previous?.accountModelDiscovery === next.accountModelDiscovery
+      )
+        return;
       await load(
         next.id,
         retained ? get().selectedModelId : null,
@@ -276,7 +312,7 @@ export const createHarnessSlice: StateCreator<
       const requestGeneration = get().harnessRequestGeneration;
       set({ harnessDiscoveryPhase: "waiting", harnessDiscoveryError: null });
       try {
-        const response = await acpDesktop.startCodexAuth(scope);
+        const response = await acpHarnessDesktop.startCodexAuth(scope);
         if (!authCurrent(get(), scope, requestGeneration)) return;
         if (response.phase !== "signedIn") {
           set({ harnessDiscoveryPhase: "signInRequired" });
@@ -298,7 +334,7 @@ export const createHarnessSlice: StateCreator<
       }
       const scope = authScope(get());
       if (!scope || get().harnessDiscoveryPhase !== "waiting") return;
-      await acpDesktop.cancelCodexAuth(scope);
+      await acpHarnessDesktop.cancelCodexAuth(scope);
     },
     logoutHarness: async () => {
       const scope = authScope(get());
@@ -310,7 +346,7 @@ export const createHarnessSlice: StateCreator<
         selectedModelId: null,
       });
       try {
-        const response = await acpDesktop.logoutCodexAuth(scope);
+        const response = await acpHarnessDesktop.logoutCodexAuth(scope);
         if (!authCurrent(get(), scope, requestGeneration)) return;
         set({
           harnessDiscoveryPhase:

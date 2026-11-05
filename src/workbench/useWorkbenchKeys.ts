@@ -1,9 +1,19 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import {
+  createElement,
+  useEffect,
+  useEffectEvent,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
+import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
+import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
+  closeQuickOpen,
   openCommandPalette,
   openQuickOpen,
 } from "../features/quickOpen/quickOpenState";
@@ -12,20 +22,20 @@ import type { WorkbenchWindowMode } from "./workbenchWindowMode";
 
 /** Window-level commands shared by Agent and Editor, guarded by resource modals. */
 export function useWorkbenchKeys({
-  narrowAgent,
   resourceModal,
   windowMode,
-  setNavigation,
+  toggleAgentNavigation,
   setWindowMode,
 }: {
-  narrowAgent: boolean;
   resourceModal: boolean;
   windowMode: WorkbenchWindowMode;
-  setNavigation: Dispatch<
-    SetStateAction<{ narrow: boolean; collapsed: boolean }>
-  >;
+  toggleAgentNavigation: () => void;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
+  // Own the Editor lifetime even while its deferred UI is still loading.
+  useEffect(() => {
+    if (windowMode === "editor") return closeQuickOpen;
+  }, [windowMode]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (resourceModal) return;
@@ -33,13 +43,7 @@ export function useWorkbenchKeys({
       const apple = usesMetaModifier();
       if (matchesPlatformChord(keymapBinding("toggleSidebar"), event, apple)) {
         event.preventDefault();
-        if (windowMode === "agent")
-          setNavigation((value) => ({
-            narrow: narrowAgent,
-            collapsed: !(value.narrow === narrowAgent
-              ? value.collapsed
-              : narrowAgent),
-          }));
+        if (windowMode === "agent") toggleAgentNavigation();
         else useWorkbenchStore.getState().toggleSidebar();
       }
       if (matchesPlatformChord(keymapBinding("openSettings"), event, apple)) {
@@ -71,5 +75,39 @@ export function useWorkbenchKeys({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [narrowAgent, resourceModal, setNavigation, setWindowMode, windowMode]);
+  }, [resourceModal, toggleAgentNavigation, setWindowMode, windowMode]);
+}
+
+/** The terminal controller loads when a native workbench is available. */
+export function useTerminalDock(blocked: boolean) {
+  const [terminal, setTerminal] = useState(DISCONNECTED_TERMINAL);
+  const isBlocked = useEffectEvent(() => blocked);
+  const native = isTauriRuntime();
+  useEffect(() => {
+    if (!native) return;
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void import("./terminalDockCommands").then(
+      ({ connectTerminalDock }) => {
+        if (!cancelled)
+          dispose = connectTerminalDock(() => isBlocked(), setTerminal);
+      },
+      () => {
+        if (!cancelled)
+          setTerminal({
+            ...DISCONNECTED_TERMINAL,
+            controls: createElement(
+              "span",
+              { role: "status" },
+              "Terminal failed to load.",
+            ),
+          });
+      },
+    );
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
+  }, [native]);
+  return terminal;
 }

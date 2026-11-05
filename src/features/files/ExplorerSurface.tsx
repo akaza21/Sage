@@ -18,6 +18,7 @@ import {
 } from "../../domain/resourceIdentity";
 import type * as MatcherModule from "../../domain/pathGlobMatcher";
 import type { ProjectRootSummary, ResourceRef } from "../../domain/workbench";
+import type { PopoverPoint } from "../../ui/pointerPopoverPosition";
 import { useRootGitDecorations } from "../git/useRootGitDecorations";
 import { ExplorerActions } from "./ExplorerActions";
 import {
@@ -66,7 +67,7 @@ const RootTree = memo(function RootTree({
   // Like VS Code, a right-click selects what it is on (without opening a
   // File) and opens the actions for it there.
   const openContextMenu = useCallback(
-    (resource: ResourceRef, row: HTMLElement): void => {
+    (resource: ResourceRef, row: HTMLElement, point?: PopoverPoint): void => {
       const state = useWorkbenchStore.getState();
       if (!contextMenu || !state.project || state.projectTransitioning) {
         return;
@@ -82,7 +83,7 @@ const RootTree = memo(function RootTree({
       ) {
         return;
       }
-      contextMenu.open(row);
+      contextMenu.open(row, point);
     },
     [contextMenu],
   );
@@ -130,7 +131,10 @@ const RootTree = memo(function RootTree({
         onClick={() => selectRoot(root.id)}
         onContextMenu={(event) => {
           event.preventDefault();
-          openContextMenu(rootResource, event.currentTarget);
+          openContextMenu(rootResource, event.currentTarget, {
+            x: event.clientX,
+            y: event.clientY,
+          });
         }}
         onKeyDown={(event) => {
           if (!isContextMenuKey(event)) return;
@@ -273,3 +277,5 @@ export function ExplorerSurface() {
     </ExplorerContextMenuContext.Provider>
   );
 }
+
+export default ExplorerSurface;

@@ -1,58 +1,53 @@
-import { PickerLogo } from "../ui/PickerOption";
-import { harnessIconKind } from "../domain/harness";
-import { AlertTriangle, CircleAlert, Info } from "../ui/leanIcons";
+import { Info } from "../ui/leanIcons";
 import type { ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
+import type { SessionStatus } from "../domain/workbench";
+import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
+import { useAgentRailInteractions } from "./agentRailInteractions";
+import { useParentChatStatus } from "./sideChatState";
 
 export function AgentTaskStatus({
+  chatId,
   snapshot,
   harnessStatus,
-  harnessName,
+  status,
 }: {
+  chatId: string;
   snapshot: ChatLiveSnapshot | null;
   harnessStatus?: string;
-  harnessName?: string;
+  status?: SessionStatus;
 }) {
-  const icon = harnessIconKind(harnessName);
-  const label = snapshot?.statusLabel ?? "Idle";
-  const tone = snapshot?.statusTone ?? "idle";
-  const StatusIcon =
-    tone === "waiting" ? AlertTriangle : tone === "failed" ? CircleAlert : null;
+  const awaiting = useChatsAwaitingApproval();
+  const interactions = useAgentRailInteractions();
+  const parentStatus = useParentChatStatus();
+  const resolvedStatus = parentStatus(chatId, status);
+  const label =
+    sessionRailStatusLabel(
+      resolvedStatus,
+      awaiting.has(chatId) || interactions.approval.has(chatId),
+    ) || (resolvedStatus ? "Idle" : (snapshot?.statusLabel ?? "Idle"));
   return (
     <>
       <span
-        className={`agent-task-header__status agent-chat-chip agent-chat-chip--${tone}`}
+        className="sr-only"
         role="status"
         aria-label={`Chat status: ${label}`}
         title={label}
-        tabIndex={0}
       >
-        {tone === "working" ? (
-          <span className="agent-chat-chip__spinner" aria-hidden="true" />
-        ) : null}
-        {StatusIcon ? (
-          <StatusIcon
-            className="agent-task-header__status-icon"
-            size={12}
-            aria-hidden="true"
-          />
-        ) : null}
-        <span className="agent-task-header__status-label">{label}</span>
+        {label}
       </span>
-      {harnessStatus ? (
+      {harnessStatus && !["Idle", "Ready", "Live"].includes(harnessStatus) ? (
         <details className="agent-task-header__harness-status">
           <summary
             aria-label={`Harness status: ${harnessStatus}`}
-            aria-description={harnessName}
             title={harnessStatus}
             tabIndex={0}
           >
-            <span
+            <Info
               className="agent-task-header__harness-icon"
               aria-hidden="true"
-            >
-              {icon ? <PickerLogo icon={icon} /> : <Info size={14} />}
-            </span>
-            <span>{harnessStatus}</span>
+              size={14}
+            />
           </summary>
           <p>{harnessStatus}</p>
         </details>

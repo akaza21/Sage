@@ -392,4 +392,37 @@ mod tests {
             fs::remove_dir_all(root).unwrap();
         });
     }
+
+    #[test]
+    fn committed_chat_transition_stops_the_previous_epoch_preview_but_a_stale_one_does_not() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(format!("sage-chat-preview-{}", Uuid::new_v4()));
+            fs::create_dir_all(&root).unwrap();
+            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let initial = database.bootstrap_snapshot().unwrap();
+            let layout = ProjectLayoutRequest {
+                project_id: project.id,
+                tabs: initial.tabs,
+                active_tab_id: initial.active_tab_id,
+                selected_root_id: initial.selected_root_id,
+                selected_resource: initial.selected_resource,
+            };
+            let state = AppState::new(database);
+            let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+            let stale = create_chat_inner(&state, layout.clone(), 1, None).await;
+            assert!(!stale.committed);
+            assert!(
+                preview.is_serving(),
+                "a rejected transition must not stop the current Preview"
+            );
+
+            let created = create_chat_inner(&state, layout, 0, None).await;
+            assert!(created.committed);
+            assert_eq!(created.transition_epoch, 1);
+            assert!(!preview.is_serving());
+            fs::remove_dir_all(root).unwrap();
+        });
+    }
 }

@@ -392,29 +392,29 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     await expect(search).toHaveCount(0);
     await expect(filter).toBeFocused();
 
-    // L5, L6, L13 — present, and in the target's top-to-bottom order.
+    // L5, L6 — present, and in the target's top-to-bottom order; both fold.
+    // This fixture's only chat is pinned, so Recents (L13) has nothing to
+    // list and, as in the target, is left out.
     const sections = sidebar.getByRole("region");
-    await expect(sections).toHaveCount(3);
+    await expect(sections).toHaveCount(2);
     await expect(sections.nth(0)).toHaveAccessibleName("Projects");
     await expect(sections.nth(1)).toHaveAccessibleName("Pinned");
-    await expect(sections.nth(2)).toHaveAccessibleName("Recent");
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       await expect(
         sections.nth(index).getByRole("button", { expanded: true }).first(),
-        "each rail section is collapsible with a disclosure control",
+        "Projects and Pinned fold with a disclosure control",
       ).toBeVisible();
     }
 
-    // L7, L10 — the project tree's active row and its branch chip. The rows
-    // carry no role beyond `button`, so `aria-current` is the only semantic
-    // handle on "this is the active project".
+    // L7 — the project tree's active row. The rows carry no role beyond
+    // `button`, so `aria-current` is the only semantic handle on "this is the
+    // active project".
     const projects = sections.nth(0);
     const activeProject = projects.locator('button[aria-current="page"]');
     await expect(activeProject).toHaveCount(1);
-    await expect(activeProject.locator(".project-row__branch")).toHaveCount(1);
 
-    // L11, L12 — worktree and PR chips are decided omissions; the branch chip
-    // is the one repository fact the projection actually supplies.
+    // L10, L11, L12 — like the target, the rail shows no branch, worktree or
+    // PR chips.
     await expect(
       projects.getByText(/worktree/i),
       "L11: no worktree chip may be invented",
@@ -423,14 +423,14 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     // L14 — the footer identity line, below every section.
     const footer = sidebar.locator(".project-sidebar__account");
     await expect(footer).toBeVisible();
-    const [recentBox, footerBox] = await Promise.all([
-      boundsOf(sections.nth(2)),
+    const [lastBox, footerBox] = await Promise.all([
+      boundsOf(sections.last()),
       boundsOf(footer),
     ]);
     expect(
       footerBox.y,
-      "the identity footer sits below Recent",
-    ).toBeGreaterThan(recentBox.y);
+      "the identity footer sits below every section",
+    ).toBeGreaterThan(lastBox.y);
   });
 
   test("opens Settings from the rail footer gear", async ({ page }) => {
@@ -451,19 +451,19 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     ).toBeVisible();
   });
 
-  test("creates a task from the chord the rail advertises", async ({
-    page,
-  }) => {
+  test("announces the New chat chord the keymap binds", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
 
     const newTask = rail(page).getByRole("button", {
       name: "New chat",
       exact: true,
     });
-    await expect(
-      newTask,
-      "L3: the rail advertises the chord the keymap actually binds",
-    ).toContainText(/Ctrl\+N|⌘N/);
+    // L3 — like the target, the row does not print the chord; it announces it.
+    await expect(newTask).toHaveAttribute(
+      "aria-keyshortcuts",
+      /Control\+N|Meta\+N/,
+    );
+    await expect(newTask).not.toContainText(/Ctrl\+N|⌘N/);
   });
 
   test("keeps a pinned chat's title legible without redundant metadata", async ({
@@ -473,11 +473,9 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     const pinned = rail(page).getByRole("region", { name: "Pinned" });
     const row = pinned.locator(".project-chat-row").first();
     const label = row.locator(".project-chat__title-label");
-    const context = row.locator(".project-chat__context");
 
     await expect(label).toBeVisible();
-    await expect(context).toHaveCount(1);
-    await expect(context).toBeHidden();
+    await expect(row.locator(".project-chat__context")).toHaveCount(0);
 
     expect(
       await label.evaluate((node) => node.scrollWidth - node.clientWidth),
@@ -500,17 +498,10 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
   });
 
   test("renders Recent entries carrying a trailing state", async ({ page }) => {
-    // L13, partly. The target's Recent list is relative-timestamped, and
-    // `ProjectChatRailGlyph` does append ` ago` — but only for a chat whose
-    // trailing state resolves to `time`, which needs a terminal status, no
-    // unread badge and an `updatedAt`. Live status outranks the stamp, and no
-    // visual fixture reaches that combination, so the ` ago` suffix itself is
-    // unit-covered only (`src/workbench/agentRailStatusView.test.ts`). What is
-    // reachable here — that Recent lists real entries, each with a trailing
-    // state — is asserted; the stamp is recorded as a fixture gap in
-    // docs/design/agent-panel-conformance.md rather than faked.
+    // L13. Like the target, Recents rows carry no timestamp; a row shows a
+    // trailing glyph only while it runs, waits or has unread updates.
     await openScenario(page, "agent-dual", "agent");
-    const recent = rail(page).getByRole("region", { name: "Recent" });
+    const recent = rail(page).getByRole("region", { name: "Recents" });
 
     const entries = recent.locator(".project-chat-row");
     await expect(entries).toHaveCount(1);
@@ -543,17 +534,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // `Project /` segment; the project name lives in the header "…" menu.
     const location = header.locator('[aria-label="Chat location"]');
     await expect(location).toHaveCount(1);
-    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
+    const folder = location.locator(".agent-task-header__folder");
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveCSS("width", "16px");
+    await expect(folder).toHaveCSS("height", "16px");
+    await expect(folder).not.toHaveCSS("mask-image", "none");
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
       0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
-    // C2 — different. The status is announced, but renders as bare coloured
-    // text rather than the target's pill with a leading icon.
+    // Chat surface: status is announced without adding visible header chrome.
     const status = header.getByRole("status");
     await expect(status).toHaveCount(1);
     await expect(status).toHaveAccessibleName(/^Chat status: /);
+    await expect(status).toHaveClass("sr-only");
     await expect(
       status.locator("svg"),
       "C2: the status still has no leading icon",

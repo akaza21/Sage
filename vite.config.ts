@@ -40,9 +40,22 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    // FileKindIcon is shared by the Agent body and the lazy Editor tab strip;
-    // it stays here rather than in either side's chunk.
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker)|features[\\/]files[\\/]FileKindIcon)\.tsx|app[\\/]snapshotProjection\.ts)$/,
+    // Shared page-layer state belongs to the shell, not Agent UI.
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
+  },
+  {
+    name: "modal-dialog",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Shared confirmations must not pull Agent UI into an Editor resource.
+    test: /src[\\/]ui[\\/]ModalDialog\.tsx$/,
+  },
+  {
+    name: "file-kind-icons",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Resource icons are shared by the deferred Agent and Editor tab strips.
+    test: /src[\\/]features[\\/]files[\\/](?:FileKindIcon\.tsx|fileKind\.ts)$/,
   },
   {
     name: "agent-workbench",

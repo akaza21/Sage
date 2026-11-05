@@ -40,6 +40,10 @@ const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
 const browserHistory = vi.fn(async (_tabId: string) => [
   "https://example.com/",
 ]);
+const attachBrowserTab = vi.fn(
+  async (_projectId: string, _chatId: string, _tabId: string) =>
+    ({}) as unknown,
+);
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -75,7 +79,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
   browserSuggestedSites: () => browserSuggestedSites(),
   browserHistory: (tabId: string) => browserHistory(tabId),
-  attachBrowserTab: vi.fn(),
+  attachBrowserTab: (projectId: string, chatId: string, tabId: string) =>
+    attachBrowserTab(projectId, chatId, tabId),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
   stopBrowserTab: (tabId: string) => stopBrowserTab(tabId),
@@ -117,6 +122,58 @@ it("shows a closed placeholder for a restored browser without contacting native 
     screen.getByRole("button", { name: "Open new browser" }),
   ).toBeInTheDocument();
   expect(browserStatus).not.toHaveBeenCalled();
+});
+
+it("shows a restored page creation failure locally and clears it on the next attempt", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Could not open the browser tab. Try again.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={{ ...tab, status: "closed" }} />);
+    const open = await screen.findByRole("button", {
+      name: "Open new browser",
+    });
+    fireEvent.click(open);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not open the browser tab. Try again.",
+    );
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+    act(() =>
+      useWorkbenchStore.setState({ openBrowser: async () => undefined }),
+    );
+    fireEvent.click(open);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
+});
+
+it("shows a New page creation failure in the browser without changing composer feedback", async () => {
+  const previous = useWorkbenchStore.getState();
+  browserStatus.mockResolvedValueOnce({
+    tabId: tab.id,
+    url: "",
+    revision: "1",
+    loading: false,
+  });
+  useWorkbenchStore.setState({
+    openBrowser: async () => "Browser tab limit reached.",
+    error: "Existing composer feedback",
+  });
+  try {
+    render(<BrowserSurface tab={tab} />);
+    fireEvent.click(await screen.findByRole("button", { name: "New page" }));
+    expect(await screen.findByText("Browser tab limit reached.")).toBeVisible();
+    expect(useWorkbenchStore.getState().error).toBe(
+      "Existing composer feedback",
+    );
+  } finally {
+    useWorkbenchStore.setState(previous, true);
+  }
 });
 
 beforeEach(() => {
@@ -752,6 +809,44 @@ it("covers the native page while a toolbar popover is open, even across a resize
   expect(hideBrowser).not.toHaveBeenCalled();
 });
 
+it("keeps the native page visible under a non-overlapping menu, and covers it only if the menu moves over the page", async () => {
+  let overlaps = false;
+  let nativePage = "hidden";
+  positionBrowser.mockImplementation(async () => {
+    nativePage = "visible";
+  });
+  coverBrowser.mockImplementation(async () => {
+    nativePage = "covered";
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return DOMRect.fromRect(
+        this.matches('[role="menu"]')
+          ? { x: overlaps ? 520 : 0, y: 120, width: 200, height: 200 }
+          : { x: 500, y: 100, width: 400, height: 300 },
+      );
+    },
+  );
+  try {
+    render(<BrowserSurface tab={tab} />);
+    await waitFor(() => expect(nativePage).toBe("visible"));
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(screen.getByRole("menu")).toBeVisible();
+    expect(nativePage).toBe("visible");
+    overlaps = true;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(nativePage).toBe("covered"));
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(nativePage).toBe("visible"));
+  } finally {
+    positionBrowser.mockResolvedValue(undefined);
+    coverBrowser.mockResolvedValue(undefined);
+  }
+});
+
 it("keeps the native page covered until the clear-data confirmation is dismissed", async () => {
   let nativePage: "hidden" | "visible" | "covered" = "hidden";
   positionBrowser.mockImplementation(async () => {
@@ -831,4 +926,38 @@ it("still hides the native page for real when the centre pane is hidden", async 
   act(() => center.setAttribute("aria-hidden", "true"));
   await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   center.remove();
+});
+
+it("shows a failed attach in the surface's error row and clears it on a successful retry", async () => {
+  const previous = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    project: { id: "project-1" } as typeof previous.project,
+    tabs: [{ ...tab, id: "chat-attach", kind: "chat", title: "Research chat" }],
+  });
+  attachBrowserTab.mockRejectedValueOnce(new Error("native"));
+  const view = render(<BrowserSurface tab={tab} />);
+  const attach = await screen.findByRole("button", {
+    name: "Attach tab to chat",
+  });
+  await waitFor(() => expect(attach).toBeEnabled());
+  fireEvent.click(attach);
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent(
+    "Could not attach this tab to the selected chat.",
+  );
+  // The row sits in the surface's layout between the toolbar and the page,
+  // not inside the toolbar, so it pushes the native page down.
+  expect(error.closest(".browser-surface__toolbar")).toBeNull();
+  const toolbar = view.container.querySelector(".browser-surface__toolbar")!;
+  expect(
+    toolbar.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  fireEvent.click(attach);
+  await screen.findByRole("button", { name: "Detach tab from chat" });
+  expect(screen.queryByRole("alert")).toBeNull();
+  useWorkbenchStore.setState({
+    project: previous.project,
+    tabs: previous.tabs,
+  });
 });

@@ -2,16 +2,20 @@
   display: grid;
   gap: var(--space-1);
   max-height: 220px;
-  margin-top: var(--space-1);
+  margin-top: calc(var(--space-1) / 2);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
 .acp-tool-rollup > summary {
-  min-height: 32px;
+  min-height: var(--row-height-compact);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-right: var(--space-1);
+  list-style: none;
+  transition: color var(--motion-duration-fast) ease;
 }
 
 .acp-tool-rollup__items .acp-tool-rollup > summary {
@@ -66,21 +70,12 @@
   background: transparent;
 }
 
-.acp-tool-rollup > summary {
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: var(--row-height-compact);
-  padding-right: var(--space-1);
-  list-style: none;
-  transition: color var(--motion-duration-fast) ease;
-}
-
 .acp-tool-rollup > summary::-webkit-details-marker {
   display: none;
 }
 
 .acp-tool-rollup__summary-copy,
-.acp-tool-rollup__meta,
-.acp-tool-rollup__duration {
+.acp-tool-rollup__meta {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -89,7 +84,7 @@
 
 .acp-tool-rollup__summary-copy {
   overflow: hidden;
-  align-items: baseline;
+  align-items: center;
 }
 
 .acp-tool-rollup__summary-copy > svg {
@@ -148,21 +143,18 @@
   white-space: nowrap;
 }
 
-.acp-tool-rollup[data-activity-state="completed"] .acp-tool-rollup__duration,
 .acp-tool-rollup[data-activity-state="completed"]
   .acp-tool-rollup__meta
   > .acp-state {
   display: none;
 }
 
-.acp-tool-rollup__duration {
-  font-variant-numeric: tabular-nums;
-}
-
 .acp-tool-rollup__chevron {
   flex: 0 0 auto;
   opacity: 0;
-  transition: transform var(--motion-duration-chevron) ease-out;
+  transition:
+    opacity var(--motion-duration-fast) ease,
+    transform var(--motion-duration-chevron) ease-out;
 }
 
 .acp-tool-rollup__items > * {
@@ -201,12 +193,17 @@
 }
 
 .acp-tool-command-frame {
+  --chat-tool-foreground: color-mix(
+    in srgb,
+    var(--color-text-primary) 80%,
+    var(--color-text-secondary)
+  );
   max-width: 100%;
   margin-top: var(--space-2);
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--color-canvas);
+  border: var(--border-width) solid var(--agent-shell-tab-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
 }
 
 .acp-tool-command-frame .acp-tool-command__disclosure {
@@ -215,21 +212,24 @@
   justify-content: space-between;
   gap: var(--space-2);
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
-  background: var(--color-panel);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 0;
+  color: var(--chat-tool-foreground);
+  background: transparent;
   font-family: var(--font-family-ui);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   white-space: normal;
 }
 
 .acp-tool-command__outcome {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--color-border-subtle);
+  padding: var(--space-1) var(--space-2);
+  border-top: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  text-align: right;
 }
 
 .acp-tool-compact[data-activity-state="failed"] .acp-tool-command__outcome {
@@ -246,9 +246,9 @@
   padding: var(--space-3);
   overflow: auto;
   border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-canvas);
-  font-family: var(--font-family-mono);
+  color: var(--chat-tool-foreground, var(--color-text-primary));
+  background: transparent;
+  font-family: var(--chat-font-family-mono, var(--font-family-mono));
   font-size: var(--font-size-sm);
   line-height: 1.6;
   tab-size: 2;
@@ -256,7 +256,7 @@
 }
 
 .acp-tool-command--line {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2) 0;
   max-height: 14rem;
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
@@ -269,7 +269,7 @@
 
 .acp-tool-command--output {
   max-height: 14rem;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
   word-break: break-word;

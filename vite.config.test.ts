@@ -76,19 +76,24 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
   "src/app/browserPopupNative.ts",
+  "src/app/agentWorkingDiffRepository.ts",
   "src/features/files/fileRenameResult.ts",
   "src/features/files/resourceTrashContract.ts",
   "src/features/browser/browserSuggestions.ts",
   "src/features/browser/browserClipboard.ts",
   "src/features/browser/BrowserFindControls.tsx",
+  "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerAddActions.tsx",
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
@@ -110,6 +115,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
+  "src/features/chat/ChatQueueRuntime.tsx",
   // Recovery notices and sign-in actions stay off the ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",
@@ -158,6 +164,7 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/preview/PreviewSurface.tsx",
   // Quick Open (EP-08) loads on its first open, or while idle.
   "src/features/quickOpen/QuickOpen.tsx",
+  "src/features/quickOpen/QuickOpenHost.tsx",
   "src/features/search/SearchSurface.tsx",
   "src/features/settings/AgentBrowserSettings.tsx",
   "src/features/settings/AgentKeyboardSettings.tsx",
@@ -165,11 +172,14 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/settings/AgentSettingsSurface.tsx",
   "src/features/settings/openEditorSettings.ts",
   "src/workbench/ActiveEditorCanvas.tsx",
-  // The Chat list options menu loads on its first open.
-  "src/workbench/AgentRailFilterOptions.tsx",
+  // The sidebar options menu loads on its first open.
+  "src/workbench/AgentRailOptionsPopover.tsx",
+  // The Create project dialog loads on the rail's first "+".
+  "src/workbench/CreateProjectDialog.tsx",
   "src/workbench/AgentTaskResources.tsx",
   "src/workbench/AgentArtifactHeader.tsx",
   "src/workbench/AgentArtifactOpenMenu.tsx",
+  "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatSplitter.tsx",
   "src/workbench/AgentCollapsedNavigation.tsx",
   "src/workbench/AgentResourcesPopover.tsx",
@@ -187,6 +197,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
   "src/workbench/TerminalDockShell.tsx",
+  // Terminal controls load outside the shared workbench.
+  "src/workbench/terminalDockCommands.tsx",
 ].sort();
 
 const ORDINARY_DYNAMIC_FACADES = [
@@ -215,10 +227,9 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/AgentArtifactFocusGuard.tsx",
   "src/workbench/AgentArtifactPane.tsx",
   "src/workbench/agentArtifactTabPresentation.ts",
-  "src/workbench/AgentArtifactTabStrip.tsx",
   "src/workbench/AgentChatPanes.tsx",
   "src/workbench/agentPreviewControllerOwner.ts",
-  "src/workbench/AgentRailFilterMenu.tsx",
+  "src/workbench/AgentRailOptionsMenu.tsx",
   "src/workbench/AgentRailSections.tsx",
   "src/workbench/agentRailViewPrefs.ts",
   "src/workbench/AgentTaskHeader.tsx",
@@ -230,7 +241,6 @@ const CONSOLIDATED_AGENT_MODULES = [
   "src/workbench/LeftSidebar.tsx",
   "src/workbench/ProjectChatActionMenu.tsx",
   "src/workbench/ProjectChatNavigation.tsx",
-  "src/workbench/ProjectChatRailGlyph.tsx",
   "src/workbench/useAgentArtifactFollowLifecycle.ts",
   "src/workbench/useAgentArtifactPaneFocus.ts",
   "src/workbench/useSubagentPaneExpansion.ts",
@@ -436,6 +446,29 @@ function expectNoNewFeatureModules(
 }
 
 describe("desktop-native runtime resolver", () => {
+  it("loads transcript decoders with Chat rather than harness discovery", async () => {
+    const graph = graphInventory(await build(desktopGraphConfig(true)));
+    for (const module of [
+      "/src/services/acpDesktopResponseTurns.ts",
+      "/src/services/acpDesktopResponseItems.ts",
+      "/src/services/acpDesktopResponsePayloads.ts",
+      "/src/services/acpDesktopPreview.ts",
+      "/src/services/acpDesktopPermission.ts",
+    ]) {
+      expect(
+        graph.initialModules.some((id) => id.endsWith(module)),
+        module,
+      ).toBe(false);
+      expect(
+        closureForModule(
+          graph,
+          "src/features/chat/acp/AcpChatPresentation.tsx",
+        ).some((id) => id.endsWith(module)),
+        module,
+      ).toBe(true);
+    }
+  }, 90_000);
+
   it("keeps Agent-only rail and composer logic out of Editor closures", async () => {
     const graph = graphInventory(await build(desktopGraphConfig(true)));
     for (const facade of [
@@ -449,6 +482,8 @@ describe("desktop-native runtime resolver", () => {
         "/src/features/chat/composerChrome.ts",
         "/src/workbench/agentChatRail.ts",
         "/src/workbench/agentRailStatusView.ts",
+        "/src/ui/IconButton.tsx",
+        "/src/ui/RetainedActivity.tsx",
       ]) {
         expect(
           closureForModule(graph, facade).some((id) => id.endsWith(module)),
@@ -687,6 +722,9 @@ describe("desktop-native chunk topology", () => {
     const agent = "src/workbench/AgentWorkbenchBody.tsx";
     const sharedFile = groupedGraph.moduleFiles.get(workbench);
     expect(groupedGraph.chunkNames.get(sharedFile!)).toBe("workbench-deps");
+    expect(groupedGraph.moduleFiles.get("src/ui/nativePageLayers.ts")).toBe(
+      sharedFile,
+    );
     const agentFile = groupedGraph.moduleFiles.get(agent);
     expect(groupedGraph.chunkNames.get(agentFile!)).toBe("agent-workbench");
     expect(agentFile).not.toBe(sharedFile);
@@ -696,6 +734,12 @@ describe("desktop-native chunk topology", () => {
     for (const module of CONSOLIDATED_AGENT_MODULES) {
       expect(groupedGraph.moduleFiles.get(module), module).toBe(agentFile);
     }
+    const artifactStrip = groupedGraph.moduleFiles.get(
+      "src/workbench/AgentArtifactTabStrip.tsx",
+    );
+    expect(artifactStrip).toBeDefined();
+    expect(artifactStrip).not.toBe(agentFile);
+    expect(artifactStrip).not.toBe(sharedFile);
     const resources = "src/workbench/AgentTaskResources.tsx";
     const resourcesFile = groupedGraph.moduleFiles.get(resources);
     expect(groupedGraph.chunkNames.get(resourcesFile!)).toBe(

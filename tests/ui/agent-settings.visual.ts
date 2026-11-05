@@ -96,6 +96,21 @@ for (const width of [480, 1380]) {
     await expect(
       settings.getByRole("row", { name: "New browser tab Ctrl+T" }),
     ).toBeVisible();
+    const shortcutSpacing = await settings
+      .getByRole("row", { name: "New browser tab Ctrl+T" })
+      .evaluate((row) => {
+        const label = row.querySelector("th")!;
+        const text = document.createRange();
+        text.selectNodeContents(label);
+        return {
+          rowHeight: row.getBoundingClientRect().height,
+          labelHeight: text.getBoundingClientRect().height,
+        };
+      });
+    expect(
+      shortcutSpacing.rowHeight,
+      "Shortcut rows retain vertical breathing room in Agent Settings",
+    ).toBeGreaterThanOrEqual(shortcutSpacing.labelHeight + 16);
     await expect(
       settings.getByRole("row", { name: "Browser zoom in Ctrl++" }),
     ).toBeVisible();
@@ -128,8 +143,7 @@ for (const width of [480, 1380]) {
       page.getByRole("radio", { name: "Editor", exact: true }),
     ).toBeChecked();
     await page.keyboard.press("Control+,");
-    // At 480px the compact Editor's open tool drawer is modal, so the
-    // canvas behind it is hidden from the accessibility tree while visible.
+    // Opening Settings reveals its canvas, dismissing a compact tool drawer.
     const editor = page.getByRole("region", {
       name: "Settings",
       exact: true,

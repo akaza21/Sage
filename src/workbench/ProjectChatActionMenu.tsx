@@ -1,9 +1,12 @@
 import { useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import { lazyParts } from "../features/chat/lazyParts";
-import { FileDiff, MoreHorizontal } from "../ui/leanIcons";
+import { FileDiff, Folder, MoreHorizontal } from "../ui/leanIcons";
 import { MenuPopover } from "../ui/MenuPopover";
 import { AgentHeaderMenuContext } from "./AgentToolsProvider";
+import { agentRailHoverAge } from "./agentRailInteractions";
+import type { AgentRailTrailingState } from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
 const ActionsPart = lazyParts<typeof ActionsChunk>(
   () => import("./ProjectChatActionPopover"),
@@ -173,5 +176,117 @@ export function AgentHeaderMore({
         </button>
       </MenuPopover>
     </div>
+  );
+}
+
+/**
+ * A rail row's trailing state. Running and unread rows show only a glyph
+ * (spinner, dot); a failed or waiting row that is open keeps its label.
+ */
+export function ProjectChatTrailingState({
+  awaitingApproval,
+  focused,
+  state,
+}: {
+  awaitingApproval: boolean;
+  focused: boolean;
+  state: AgentRailTrailingState | null;
+}) {
+  if (awaitingApproval)
+    return (
+      <span
+        className="project-chat__state project-chat__approval-spinner"
+        aria-hidden="true"
+      >
+        <span className="spinner agent-chat-chip__spinner" />
+      </span>
+    );
+  if (focused && (state?.kind === "failed" || state?.kind === "waiting"))
+    return (
+      <span
+        className={`project-chat__state project-chat__status-chip project-chat__status-chip--${state.kind}`}
+      >
+        {state.label}
+      </span>
+    );
+  return <ProjectChatRailGlyph state={state} />;
+}
+
+const GLYPH_LABELS = {
+  unread: "Unread updates",
+  working: "Working",
+  recovering: "Recovering",
+  waiting: "Needs attention",
+} as const;
+
+export function ProjectChatRailGlyph({
+  state,
+}: {
+  state: AgentRailTrailingState | null;
+}) {
+  if (!state) return null;
+  if (state.kind === "failed")
+    return (
+      <span className="project-chat__state project-chat__state--failed">
+        {state.label}
+      </span>
+    );
+  return (
+    <span
+      className={`project-chat__state project-chat__state--${state.kind}`}
+      role="img"
+      aria-label={GLYPH_LABELS[state.kind]}
+    >
+      {state.kind === "working" || state.kind === "recovering" ? (
+        <span className="project-chat__working" aria-hidden="true" />
+      ) : null}
+    </span>
+  );
+}
+
+const HOVER_CARD_WIDTH = 288;
+
+/**
+ * The card beside a rested-on rail row, as in Codex: level with the row and
+ * starting where the row ends, over the center pane. It never takes the
+ * pointer and adds nothing for assistive technology, which reads the row.
+ */
+export function ProjectChatHoverCard({
+  row,
+  shownAt,
+  title,
+  updatedAt,
+  project,
+}: {
+  row: DOMRect;
+  /** When the card appeared; its age reads from then. */
+  shownAt: number;
+  title: string;
+  updatedAt?: number;
+  project?: string;
+}) {
+  const age = agentRailHoverAge(updatedAt, shownAt);
+  const left = Math.max(
+    8,
+    Math.min(row.right, window.innerWidth - HOVER_CARD_WIDTH - 8),
+  );
+  return createPortal(
+    <div
+      className="agent-rail-hover-card"
+      aria-hidden="true"
+      style={{ left, top: row.top, width: HOVER_CARD_WIDTH }}
+    >
+      <div className="agent-rail-hover-card__head">
+        <strong>{title}</strong>
+        {age ? <span>{age}</span> : null}
+      </div>
+      {project ? (
+        <div className="agent-rail-hover-card__project">
+          <Folder size={12} />
+          <span>{project}</span>
+        </div>
+      ) : null}
+    </div>,
+    document.body,
   );
 }

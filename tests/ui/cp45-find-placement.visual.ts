@@ -44,7 +44,10 @@ for (const width of [1872, 720, 480]) {
       const headerLocator = page.locator(".agent-chat-center__header");
       const header = (await headerLocator.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(header.y + header.height);
-      const controls = headerLocator.locator("button, [role=status]");
+      const status = headerLocator.getByRole("status");
+      await expect(status).toHaveClass("sr-only");
+      await expect(status).toHaveAccessibleName(/^Chat status: /);
+      const controls = headerLocator.getByRole("button");
       expect(await controls.count()).toBeGreaterThan(0);
       for (const control of await controls.all()) {
         if (!(await control.isVisible())) continue;

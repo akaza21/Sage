@@ -41,7 +41,7 @@ fn open_directory(path: &Path) -> AppResult<File> {
     Ok(directory)
 }
 
-fn open_parent(authority: ParentAuthority<'_>) -> AppResult<Vec<File>> {
+pub(in crate::workspace) fn open_parent(authority: ParentAuthority<'_>) -> AppResult<Vec<File>> {
     let root = open_directory(authority.root)?;
     if root_identity_file(&root)? != authority.expected_root {
         return Err(AppError::InvalidRequest(

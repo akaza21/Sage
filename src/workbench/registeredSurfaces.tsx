@@ -12,16 +12,13 @@ let explorerModule: typeof ExplorerModule | null = null;
 const loadExplorerSurface = () =>
   import("../features/files/ExplorerSurface").then((module) => {
     explorerModule = module;
-    return { default: module.ExplorerSurface };
+    return module;
   });
 const loadChatSurface = () =>
   import("../features/chat/ChatSurface").then(({ ChatSurface }) => ({
     default: ChatSurface,
   }));
-const loadSearchSurface = () =>
-  import("../features/search/SearchSurface").then(({ SearchSurface }) => ({
-    default: SearchSurface,
-  }));
+const loadSearchSurface = () => import("../features/search/SearchSurface");
 const loadOutlineSurface = () =>
   import("../features/outline/OutlineSurface").then(({ OutlineSurface }) => ({
     default: OutlineSurface,
@@ -38,10 +35,7 @@ const loadDiffSurface = () =>
   import("../features/diff/DiffSurface").then(({ DiffSurface }) => ({
     default: DiffSurface,
   }));
-const loadFileSurface = () =>
-  import("../features/files/FileSurface").then(({ FileSurface }) => ({
-    default: FileSurface,
-  }));
+const loadFileSurface = () => import("../features/files/FileSurface");
 const loadBrowserSurface = () =>
   import("../features/browser/BrowserSurface").then(({ BrowserSurface }) => ({
     default: BrowserSurface,
@@ -100,7 +94,7 @@ function ExplorerToolSurface() {
   // dialog) when its module arrives while the fallback is showing.
   const [loaded] = useState(() => explorerModule);
   return loaded ? (
-    <loaded.ExplorerSurface />
+    <loaded.default />
   ) : (
     <LazyToolSurface label="Explorer" load={loadExplorerSurface} />
   );

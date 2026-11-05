@@ -9,6 +9,7 @@ import { Profiler, useId, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MenuPopover } from "./MenuPopover";
+import { pointerPopoverPosition } from "./pointerPopoverPosition";
 
 const INITIAL_INNER_HEIGHT = window.innerHeight;
 const INITIAL_INNER_WIDTH = window.innerWidth;
@@ -126,6 +127,30 @@ function GrowingMenuHarness() {
   );
 }
 
+function PointerMenuHarness({ point }: { point: { x: number; y: number } }) {
+  const [open, setOpen] = useState(true);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button ref={triggerRef} type="button">
+        Row
+      </button>
+      <MenuPopover
+        id="pointer-menu"
+        open={open}
+        positionAt={(popover) => pointerPopoverPosition(point, popover)}
+        ariaLabel="Row actions"
+        triggerRef={triggerRef}
+        onDismiss={() => setOpen(false)}
+      >
+        <button className="menu-item" type="button" role="menuitem">
+          Rename
+        </button>
+      </MenuPopover>
+    </>
+  );
+}
+
 describe("MenuPopover", () => {
   it.each(
     [720, 480].flatMap((viewport) =>
@@ -169,6 +194,42 @@ describe("MenuPopover", () => {
       left: "300px",
       maxWidth: `${viewport - 308}px`,
     });
+  });
+
+  it.each([
+    ["at the pointer where it fits", { x: 100, y: 120 }, 100, 120],
+    ["flipped left and up near the far corner", { x: 950, y: 650 }, 750, 500],
+    ["clamped inside the viewport near the near corner", { x: 2, y: 4 }, 8, 8],
+  ])("opens a context menu %s", (_, point, left, top) => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 700,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 200, 150);
+        return new DOMRect(40, 300, 240, 22);
+      },
+    );
+    render(<PointerMenuHarness point={point} />);
+    expect(screen.getByRole("menu", { name: "Row actions" })).toHaveStyle({
+      left: `${left}px`,
+      top: `${top}px`,
+    });
+  });
+
+  it("hands the focus back to its row when a pointer-opened menu closes", () => {
+    render(<PointerMenuHarness point={{ x: 100, y: 120 }} />);
+    const item = screen.getByRole("menuitem", { name: "Rename" });
+    expect(item).toHaveFocus();
+    fireEvent.keyDown(item, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Row actions" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Row" })).toHaveFocus();
   });
 
   it("dismisses when a resize stops rendering its trigger instead of anchoring to an empty rect", () => {
@@ -291,6 +352,48 @@ describe("MenuPopover", () => {
       });
     },
   );
+
+  it("opens a below-start menu from the trigger's left edge toward the right", () => {
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 768,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("role") === "menu")
+          return new DOMRect(0, 0, 200, 80);
+        return new DOMRect(255, 40, 24, 24);
+      },
+    );
+    function StartHarness() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={triggerRef}>Sidebar options</button>
+          <MenuPopover
+            ariaLabel="Sidebar options"
+            id="start"
+            open
+            gap={4}
+            placement="below-start"
+            triggerRef={triggerRef}
+            onDismiss={() => {}}
+          >
+            <button role="menuitem">Organize sidebar</button>
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<StartHarness />);
+    expect(screen.getByRole("menu", { name: "Sidebar options" })).toHaveStyle({
+      left: "255px",
+      top: "68px",
+    });
+  });
 
   it.each([
     [100, 244, 308],
@@ -810,23 +913,31 @@ describe("MenuPopover", () => {
     expect(menu.style.top).toBe("126px");
   });
 
-  it("rebinds closest-dialog geometry observers after the portal node moves", () => {
-    const observed: HTMLElement[][] = [];
-    const disconnected: boolean[] = [];
+  it("repositions in the closest dialog when its trigger moves after portal migration", () => {
+    const observers = new Map<ResizeObserverCallback, Set<Element>>();
     class ResizeObserverStub {
-      index = observed.length;
-      constructor(_callback: ResizeObserverCallback) {
-        observed.push([]);
-        disconnected.push(false);
+      constructor(private callback: ResizeObserverCallback) {
+        observers.set(callback, new Set());
       }
-      observe(element: HTMLElement) {
-        observed[this.index].push(element);
+      observe(element: Element) {
+        observers.get(this.callback)?.add(element);
       }
       disconnect() {
-        disconnected[this.index] = true;
+        observers.delete(this.callback);
       }
-      unobserve() {}
+      unobserve(element: Element) {
+        observers.get(this.callback)?.delete(element);
+      }
     }
+    let triggerTop = 100;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.tagName === "BUTTON")
+          return new DOMRect(100, triggerTop, 120, 28);
+        if (this.id === "dialog-popup") return new DOMRect(0, 0, 160, 80);
+        return new DOMRect();
+      },
+    );
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     function DialogHarness() {
       const triggerRef = useRef<HTMLButtonElement>(null);
@@ -855,13 +966,18 @@ describe("MenuPopover", () => {
     expect(popup).not.toBeNull();
     if (!popup) throw new Error("dialog popup missing");
     expect(popup.closest("dialog")).not.toBeNull();
-    expect(observed).toHaveLength(2);
-    expect(disconnected[0]).toBe(true);
-    expect(observed[1]).toEqual([
-      popup,
-      screen.getByRole("button", { name: "Target" }),
-      popup.closest("dialog"),
-    ]);
+    expect(popup).toHaveStyle({ left: "60px", top: "132px" });
+    const input = screen.getByRole("combobox", { name: "Target" });
+    expect(input).toHaveFocus();
+    triggerTop = 180;
+    const trigger = screen.getByRole("button", { name: "Target" });
+    act(() => {
+      for (const [callback, targets] of observers) {
+        if (targets.has(trigger)) callback([], {} as ResizeObserver);
+      }
+    });
+    expect(popup).toHaveStyle({ left: "60px", top: "212px" });
+    expect(input).toHaveFocus();
   });
 });
 

@@ -7,6 +7,7 @@ import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
+import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () => <section>Active chat</section>,
@@ -14,13 +15,13 @@ vi.mock("../features/chat/ChatSurface", () => ({
 vi.mock("../features/diff/DiffSurface", () => ({
   DiffSurface: () => <section>Diff</section>,
 }));
-vi.mock("./DirtyTabDialog", () => ({ DirtyTabDialog: () => null }));
+vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./LeftSidebar", () => ({ LeftSidebar: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
-vi.mock("./TabStrip", () => ({ TabStrip: () => null }));
+vi.mock("./TabStrip", () => ({ default: () => null }));
 vi.mock("./useCompactWorkbenchLayout", () => ({
-  useCompactWorkbenchLayout: () => false,
+  useCompactWorkbenchLayout: vi.fn(() => false),
 }));
 
 const initialState = useWorkbenchStore.getState();
@@ -60,7 +61,10 @@ const tabs: WorkbenchTab[] = [
   },
 ];
 
-beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
+beforeEach(() => {
+  writeWorkbenchLayout({ windowMode: "editor" });
+  vi.mocked(useCompactWorkbenchLayout).mockReturnValue(false);
+});
 
 afterEach(() => {
   cleanup();
@@ -100,4 +104,46 @@ it("destroys the heavy editor when a non-File tab becomes active", async () => {
   expect(screen.getByRole("region", { name: "Editor welcome" })).toBeVisible();
   expect(container.querySelector(".cm-editor")).toBeNull();
   expect(destroy).toHaveBeenCalledOnce();
+});
+
+it("releases the fully covered editor and restores its document when the drawer closes", async () => {
+  vi.mocked(useCompactWorkbenchLayout).mockReturnValue(true);
+  useWorkbenchStore.setState({
+    tabs,
+    sidebarOpen: false,
+    activeTabId: "file:current",
+    loadEditor: async () => undefined,
+    activeEditor: {
+      phase: "ready",
+      resource,
+      document,
+      content: document.buffer.content,
+      revision: 0,
+      persistedRevision: 0,
+      persisting: false,
+      saving: false,
+      message: null,
+    },
+  });
+  const { container } = render(<Workbench />);
+  await settleLazyModules();
+  const editor = await screen.findByRole("textbox", {
+    name: "Edit src/current.ts",
+  });
+  const view = EditorView.findFromDOM(editor);
+  if (!view) throw new Error("Expected a mounted CodeMirror editor");
+
+  act(() => useWorkbenchStore.getState().toggleSidebar());
+  expect(container.querySelector(".cm-editor")).toBeNull();
+  expect(view.dom.isConnected).toBe(false);
+  expect(container.querySelector(".center-region")).toHaveAttribute("inert");
+
+  act(() => useWorkbenchStore.getState().toggleSidebar());
+  await settleLazyModules();
+  const restored = await screen.findByRole("textbox", {
+    name: "Edit src/current.ts",
+  });
+  expect(restored).toBeVisible();
+  expect(restored).toHaveTextContent("const current = 1;");
+  expect(EditorView.findFromDOM(restored)).not.toBe(view);
 });

@@ -6,6 +6,23 @@ import { turnStateLabels } from "../../../src/features/chat/acp/statusSemantics"
 
 const FIXED_TIME = "2026-09-04T12:00:00.000Z";
 const MAX_SCREENSHOT_ATTACHMENTS = 12;
+// The header shares Chat status with the rail; individual Turns retain their
+// protocol state labels below. These are the chat-surface display contracts.
+const chatStatusLabels: Record<TurnState, string> = {
+  queued: "Working…",
+  sending: "Working…",
+  running: "Working…",
+  waitingModel: "Working…",
+  waitingTool: "Working…",
+  waitingApproval: "Awaiting approval",
+  waitingUser: "Waiting",
+  cancelling: "Working…",
+  completed: "Done",
+  interrupted: "Done",
+  cancelled: "Done",
+  failed: "Failed",
+  deliveryUnknown: "Failed",
+};
 export const JOURNEY_IDS = {
   projectA: "journey-project-a",
   projectB: "journey-project-b",
@@ -128,7 +145,7 @@ export async function expectTurnState(
   ) {
     await expect(
       page.locator(".agent-task-header").getByRole("status"),
-    ).toHaveText(turnStateLabels[state]);
+    ).toHaveText(chatStatusLabels[state]);
   }
 }
 
