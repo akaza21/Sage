@@ -59,3 +59,27 @@ fn a_panicking_trial_read_reopens_the_gate() {
     assert!(caught.is_err());
     assert!(reports_diagnostics());
 }
+
+/// Only a repeated Turn terminal proves the stream is past the Turn. A
+/// repeated item terminal also reads as a no-op duplicate, but it is not a
+/// Turn boundary, so the probe must refuse it and leave recovery to the read.
+#[test]
+fn a_repeated_item_terminal_is_not_a_turn_terminal() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let item = || {
+        frame(json!({"method":"item/completed","params":{
+            "threadId":"thread-1","turnId":"turn-1",
+            "item":{"type":"agentMessage","id":"queued-item","text":"done"}
+        }}))
+    };
+    runtime.ingest(&item(), &Mapper).expect("item terminal");
+    runtime
+        .ingest(&interrupted(), &Mapper)
+        .expect("turn terminal");
+
+    assert!(!runtime.frames_repeat_terminal(&[item()], &Mapper));
+    assert!(!runtime.frames_repeat_terminal(&[interrupted(), item()], &Mapper));
+    assert!(runtime.frames_repeat_terminal(&[interrupted()], &Mapper));
+}

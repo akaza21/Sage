@@ -101,8 +101,10 @@ impl CodexRuntime {
     /// Runs `frames`, in order, through the protocol ingestion `ingest_frame`
     /// applies, against one copy of the adapter state, and reports whether
     /// each would be read as a duplicate terminal that leaves the state as it
-    /// was. A DuplicateTerminal outcome alone is not enough: a late reply can
-    /// read as one while it settles a pending RPC. While a native RPC reply
+    /// was. Only a repeated `turn/completed` counts: a repeated item terminal
+    /// also reads as DuplicateTerminal, but it is not a Turn boundary. A
+    /// DuplicateTerminal outcome alone is not enough: a late reply can read
+    /// as one while it settles a pending RPC. While a native RPC reply
     /// is pending, `ingest_frame` may consume a frame before that ingestion,
     /// so the probe answers false. Diagnostics stay silent: the trial is not
     /// the read, and the real read reports them.
@@ -122,14 +124,30 @@ impl CodexRuntime {
         let mut probe = self.inner.clone();
         super::super::incoming::trial_read(|| {
             frames.iter().all(|frame| {
-                matches!(
-                    ingest_disposition(&mut probe, frame, resources, &self.declared_test_commands),
-                    Ok(IngressDisposition::DuplicateTerminal)
-                ) && request_payload_digest(frame).is_ok()
+                is_turn_terminal(frame)
+                    && matches!(
+                        ingest_disposition(
+                            &mut probe,
+                            frame,
+                            resources,
+                            &self.declared_test_commands
+                        ),
+                        Ok(IngressDisposition::DuplicateTerminal)
+                    )
+                    && request_payload_digest(frame).is_ok()
                     && probe == self.inner
             })
         })
     }
+}
+
+/// Whether `frame` is a Turn terminal notification. Checked before the trial
+/// read, so no other frame is mapped or diffed by the probe.
+fn is_turn_terminal(frame: &Frame) -> bool {
+    serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
+        .ok()
+        .and_then(|value| value.get("method")?.as_str().map(|m| m == "turn/completed"))
+        .unwrap_or(false)
 }
 
 fn ingest_disposition(
