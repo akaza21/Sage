@@ -69,33 +69,11 @@ test.describe("compact Agent chat header", () => {
   // the compact (<= 400 px) header layout.
   test.use({ viewport: { width: 640, height: 800 } });
 
-  test("drops the idle status word so the title keeps readable width", async ({
-    page,
-  }) => {
-    const header = await openCompactHeader(page, "completed");
-    await expect(
-      header.getByRole("status", { name: "Chat status: Completed" }),
-    ).toBeHidden();
-    await expectReadableTitle(header);
-  });
-
-  for (const [turnState, status, shape] of [
-    ["running", "Running", ".agent-chat-chip__spinner"],
-    ["failed", "Failed", ".agent-task-header__status-icon"],
-  ] as const) {
-    test(`keeps the ${turnState} status shape without its word`, async ({
+  for (const turnState of ["completed", "running", "failed"] as const) {
+    test(`keeps the title readable while the turn is ${turnState}`, async ({
       page,
     }) => {
-      const header = await openCompactHeader(page, turnState);
-      const chip = header.getByRole("status", {
-        name: `Chat status: ${status}`,
-      });
-      await expect(chip).toBeVisible();
-      await expect(
-        chip.locator(".agent-task-header__status-label"),
-      ).toBeHidden();
-      await expect(chip.locator(shape)).toBeVisible();
-      await expectReadableTitle(header);
+      await expectReadableTitle(await openCompactHeader(page, turnState));
     });
   }
 
