@@ -58,6 +58,47 @@ it("shows installation and sign-in evidence without treating an installed adapte
   expect(screen.queryByText("Signed in")).toBeNull();
 });
 
+it("states each harness's install state once and puts the sign-in command before its follow-up step", () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...harness,
+        id: "pi",
+        name: "Pi",
+        version: "0.9.0",
+        signIn: { command: "pi", hint: "Then run /login." },
+      },
+      {
+        ...harness,
+        id: "missing",
+        name: "Missing",
+        installState: "notInstalled",
+        signIn: { command: "missing login", hint: "Follow the prompts." },
+      },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  expect(
+    screen.getByText(
+      "Available · 0.9.0. Sign-in status is not exposed by this harness.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      (_, node) =>
+        node?.textContent === "Run pi in a terminal. Then run /login.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "Not installed. Install it, then refresh harness discovery in Settings.",
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText(/missing login/)).toBeNull();
+});
+
 it("restores an archived chat through the existing project-scoped action", async () => {
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({
