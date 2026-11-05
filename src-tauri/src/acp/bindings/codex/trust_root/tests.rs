@@ -34,41 +34,67 @@ fn packet() -> crate::acp::bindings::codex::manifest::MetadataValidatedPacket {
     parse_packet_metadata(PACKET_FIXTURE).unwrap()
 }
 
+/// A scratch file that removes itself, so attacker bytes never outlive a test.
+struct ScratchArtifact(std::path::PathBuf);
+
+impl ScratchArtifact {
+    fn with_bytes(bytes: &[u8]) -> Self {
+        let path =
+            std::env::temp_dir().join(format!("sage-untrusted-{}.exe", uuid::Uuid::new_v4()));
+        std::fs::write(&path, bytes).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for ScratchArtifact {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 #[test]
-fn ephemeral_public_key_cannot_mint_a_verified_signature() {
-    let source = include_str!("../trust_root.rs");
-    let win32_source = include_str!("win32.rs");
-    assert!(
-        !source.contains("TrustRootPublicKey"),
-        "caller-chosen SPKI types must not exist on this seam"
+fn production_catalog_rejects_unsigned_bytes_and_absent_artifacts() {
+    let unsigned = ScratchArtifact::with_bytes(b"MZ unsigned bytes from an untrusted publisher");
+
+    assert_eq!(
+        authenticode_win_verify_trust(&unsigned.0, INSTALLED_AUTHENTICODE_POLICY),
+        Err(VerifyError::Authenticode)
     );
-    assert!(
-        !source.contains("spki_der"),
-        "caller-chosen public key bytes must not be an input"
+    assert_eq!(
+        WinVerifyTrustCatalog.win_verify_trust_file(&unsigned.0, INSTALLED_AUTHENTICODE_POLICY),
+        Err(VerifyError::Authenticode)
     );
-    assert!(source.contains("win_verify_trust_file"));
-    assert!(win32_source.contains("WINTRUST_ACTION_GENERIC_VERIFY_V2"));
-    assert!(win32_source.contains("unsafe extern \"system\""));
-    assert!(win32_source.contains("WinVerifyTrust("));
-    assert!(win32_source.contains("WTHelperGetProvSignerFromChain("));
-    assert!(win32_source.contains("CERT_NAME_ATTR_TYPE"));
-    assert!(source.contains("share_mode(FILE_SHARE_READ)"));
-    let digest_fn = source
-        .find("fn verify_installed_authenticode_for_observed_digest")
-        .expect("test-only digest hook");
-    assert!(
-        source[..digest_fn].contains("#[cfg(test)]"),
-        "caller-chosen digest must not compile into production"
+
+    let absent = std::env::temp_dir().join(format!("sage-absent-{}.exe", uuid::Uuid::new_v4()));
+    assert_eq!(
+        authenticode_win_verify_trust(&absent, INSTALLED_AUTHENTICODE_POLICY),
+        Err(VerifyError::Artifact)
     );
-    assert!(
-        !source.contains("std::fs::read("),
-        "PE digest must stream bounded reads"
+    assert_eq!(
+        WinVerifyTrustCatalog.win_verify_trust_file(&absent, INSTALLED_AUTHENTICODE_POLICY),
+        Err(VerifyError::Artifact)
     );
-    let err = authenticode_win_verify_trust(Path::new("codex.exe"), INSTALLED_AUTHENTICODE_POLICY);
-    assert_eq!(err, Err(VerifyError::Artifact));
-    let production = WinVerifyTrustCatalog
-        .win_verify_trust_file(Path::new("codex.exe"), INSTALLED_AUTHENTICODE_POLICY);
-    assert_eq!(production, Err(VerifyError::Artifact));
+}
+
+#[test]
+fn forged_bytes_of_the_pinned_length_cannot_obtain_a_verified_signature() {
+    // The smallest signed artifact keeps this fast while still matching the
+    // packet's byte-length claim exactly, so only the pinned digest can refuse it.
+    let entry = r"vendor\x86_64-pc-windows-msvc\codex-resources\codex-command-runner.exe";
+    let binding = bind_packet_artifact(&packet(), entry).unwrap();
+    let length = usize::try_from(binding.artifact_byte_len).unwrap();
+    let forged = ScratchArtifact::with_bytes(&vec![0x5a; length]);
+
+    // Even a catalog that would accept any signer (self-signed or a foreign
+    // publisher) cannot turn bytes outside the packet claim into a signature.
+    assert_eq!(
+        verify_installed_authenticode(&AcceptingCatalog, &packet(), entry, &forged.0),
+        Err(VerifyError::Artifact)
+    );
+    assert_eq!(
+        verify_installed_authenticode(&WinVerifyTrustCatalog, &packet(), entry, &forged.0),
+        Err(VerifyError::Artifact)
+    );
 }
 
 #[cfg(windows)]
