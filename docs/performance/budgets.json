@@ -11,7 +11,7 @@
       "editorSearch": 193942,
       "editorFile": 290998
     },
-    "webTotalJsGzipBytes": 461000,
+    "webTotalJsGzipBytes": 460850,
     "webTerminalLazyJsGzipBytes": 89516,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
@@ -301,9 +301,9 @@
       },
       {
         "entry": "src/features/browser/BrowserSurface.tsx",
-        "maxGzipBytes": 8635,
+        "maxGzipBytes": 8785,
         "maxCssGzipBytes": 3147,
-        "reason": "Browser toolbar and page host; loads only when a Browser resource is opened."
+        "reason": "Browser toolbar, persistent History and page host; loads only for a Browser resource. Combined History and overflow receive 150 B transferred from the core allowance."
       },
       {
         "entry": "src/features/chat/acp/MermaidFigure.tsx",

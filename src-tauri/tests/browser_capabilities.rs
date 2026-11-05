@@ -76,6 +76,8 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::navigation::browser_status",
         "browser::state_query::browser_live_tabs",
         "browser::state_query::browser_history",
+        "browser::browsing_history::commands::browser_history_page",
+        "browser::browsing_history::commands::browser_history_remove",
         "browser::state_query::browser_suggested_sites",
         "browser::page_controls::browser_navigate",
         "browser::navigation::control::browser_control",
