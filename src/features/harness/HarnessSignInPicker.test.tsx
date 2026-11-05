@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 const desktop = vi.hoisted(() => ({
@@ -9,12 +15,17 @@ vi.mock("../../services/acpDesktop", () => ({ acpDesktop: desktop }));
 vi.mock("../../ports/desktopRuntime", () => ({ isTauriRuntime: () => true }));
 
 import { HarnessSignInPicker } from "./HarnessSignInPicker";
-import { resetHarnessSignInForTest } from "./harnessSignIn";
+import {
+  harnessSignInStatus,
+  resetHarnessSignInForTest,
+} from "./harnessSignIn";
+import { settleLazyModules } from "../../test/settleLazyModules";
 
 afterEach(() => {
   cleanup();
   resetHarnessSignInForTest();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 it("keeps the picker synchronous while loading sign-in decorations lazily", async () => {
@@ -51,4 +62,49 @@ it("keeps the picker synchronous while loading sign-in decorations lazily", asyn
   expect(desktop.startClaudeAuthLogin).toHaveBeenCalledTimes(1);
   expect(select).not.toHaveBeenCalled();
   expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(1);
+});
+
+it("checks sign-in on opening and sleeps a pending login while the picker is closed", async () => {
+  vi.useFakeTimers();
+  let loggedIn = false;
+  desktop.getClaudeAuthStatus.mockImplementation(async () => ({ loggedIn }));
+  desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
+  render(
+    <HarnessSignInPicker
+      ariaLabel="Harness"
+      candidates={[{ id: "claude-code", label: "Claude Code" }]}
+      harnesses={[
+        { id: "claude-code", name: "Claude Code", installState: "available" },
+      ]}
+      selectedId="claude-code"
+      onSelect={() => undefined}
+    />,
+  );
+  await settleLazyModules();
+  expect(harnessSignInStatus("claude-code").state).toBe("unknown");
+  const trigger = screen.getByRole("button", { name: "Harness" });
+  fireEvent.click(trigger);
+  await settleLazyModules();
+  expect(
+    screen.getByRole("button", { name: "Sign in to Claude Code" }),
+  ).toBeVisible();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Sign in to Claude Code" }),
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  fireEvent.click(trigger);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  loggedIn = true;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(harnessSignInStatus("claude-code").state).toBe("signedOut");
+  fireEvent.click(trigger);
+  await settleLazyModules();
+  expect(screen.getByText("Signed in")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Sign in to Claude Code" }),
+  ).toBeNull();
 });

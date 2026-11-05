@@ -75,6 +75,7 @@ test("AP-A1/A3: only an explicit side-chat action opens a second titled, closabl
   await openSelectionScenario(page);
   const panes = page.locator(".agent-chat-pane");
   await expect(panes).toHaveCount(1);
+  const parentId = await panes.first().getAttribute("data-chat-id");
   await dragAnswerPhrase(page);
   await page
     .getByRole("button", { name: "Ask in side chat", exact: true })
@@ -92,9 +93,13 @@ test("AP-A1/A3: only an explicit side-chat action opens a second titled, closabl
   await expect(panes).toHaveCount(1);
   await expect(panes.first()).toHaveAttribute("data-chat-id", sideId!);
   await page.setViewportSize({ width: 1888, height: 1080 });
-  await expect(panes).toHaveCount(1);
+  // Widening restores the pair that was explicitly requested before narrowing.
+  await expect(panes).toHaveCount(2);
+  await expect(panes.first()).toHaveAttribute("data-chat-id", parentId!);
+  await expect(panes.last()).toHaveAttribute("data-chat-id", sideId!);
   await page.keyboard.press("Control+Alt+s");
   await expect(panes).toHaveCount(2);
+  await expect(panes.first()).toHaveAttribute("data-chat-id", parentId!);
   await expect(panes.last()).toHaveAttribute("data-chat-id", sideId!);
   await expect(header.locator(".side-chat-tab")).toHaveCount(1);
   await expect(
@@ -109,7 +114,7 @@ test("AP-A1/A3: only an explicit side-chat action opens a second titled, closabl
     .getByRole("button", { name: "Close side chat", exact: true })
     .click();
   await expect(panes).toHaveCount(1);
-  await expect(panes.first()).not.toHaveAttribute("data-chat-id", sideId!);
+  await expect(panes.first()).toHaveAttribute("data-chat-id", parentId!);
 });
 
 test("AP-A4: Escape closes Preview's innermost menu before the resource pane", async ({

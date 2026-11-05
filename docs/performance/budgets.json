@@ -105,6 +105,11 @@
         "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request."
       },
       {
+        "entry": "src/features/chat/ComposerAddActions.tsx",
+        "maxGzipBytes": 3000,
+        "reason": "Composer Add menu, image/goal actions and session controls load on first open; closed composers need only the trigger."
+      },
+      {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
         "maxGzipBytes": 928,
         "maxCssGzipBytes": 243,
@@ -291,7 +296,8 @@
       {
         "entry": "src/features/browser/BrowserDownloadsPanel.tsx",
         "maxGzipBytes": 826,
-        "reason": "Browser download rows and transfer actions; loads only while the downloads panel is open."
+        "maxCssGzipBytes": 500,
+        "reason": "Browser download rows, transfer actions and their CSS; loads only while the downloads panel is open."
       },
       {
         "entry": "src/features/browser/BrowserSurface.tsx",

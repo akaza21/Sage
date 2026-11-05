@@ -40,7 +40,7 @@ function ProfiledRegion({ id, children }: { id: string; children: ReactNode }) {
 
 vi.mock("./TabStrip", async (original) => {
   const module = await original<typeof TabStripModule>();
-  return { TabStrip: profiled("TabStrip", module.TabStrip) };
+  return { default: profiled("TabStrip", module.default) };
 });
 vi.mock("./TitleBar", async (original) => {
   const module = await original<typeof TitleBarModule>();

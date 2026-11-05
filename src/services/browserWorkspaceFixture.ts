@@ -78,6 +78,7 @@ export const browserSnapshot: BootstrapSnapshot = {
   harnesses: [
     {
       id: "codex",
+      brand: "codex",
       name: "Codex",
       description: "Curated ACP adapter, installed only when requested.",
       installState: "notInstalled",
@@ -88,6 +89,7 @@ export const browserSnapshot: BootstrapSnapshot = {
     },
     {
       id: "pi",
+      brand: "pi",
       name: "Pi",
       description: "Curated ACP adapter, installed only when requested.",
       installState: "notInstalled",
@@ -98,6 +100,7 @@ export const browserSnapshot: BootstrapSnapshot = {
     },
     {
       id: "claude-code",
+      brand: "claude",
       name: "Claude Code",
       description: "Curated ACP adapter, installed only when requested.",
       installState: "notInstalled",

@@ -745,6 +745,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(drawer).toBeVisible();
     await expect(center).toHaveAttribute("inert", "");
     await expect(center).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: "Hide left sidebar" }).click();
     await expect(
       page.getByRole("textbox", {
         name: "Edit src/workbench/AgentChatPanes.tsx",
@@ -759,6 +760,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       center.locator(".file-surface .cm-content .cm-line span[class]").first(),
     ).toBeAttached();
+    await page.getByRole("button", { name: "Show left sidebar" }).click();
+    await expect(center).toHaveAttribute("inert", "");
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -798,7 +801,9 @@ test.describe("Wave 2 200% zoom state", () => {
   test("keeps Editor Settings usable at 200% zoom", async ({ page }) => {
     await openScenario(page, "editor", "editor");
     await page.getByRole("button", { name: "Open settings" }).click();
-    await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    await expect(
+      page.getByRole("button", { name: "Show left sidebar" }),
+    ).toBeVisible();
 
     const settings = page.getByRole("region", { name: "Settings" });
     await expect(settings).toBeVisible();

@@ -162,14 +162,14 @@ for (const geometry of geometries) {
           ".agent-chat-pane--focused form.composer textarea",
         );
         await draft.fill("CP-27b draft survives resources and resizing");
-        if (resource !== "closed") await openResource(page, resource, ownerId);
+        const inline = resource !== "closed" && width >= 1280;
+        if (inline) await openResource(page, resource, ownerId);
         const nav = await box(navigation);
         const chat = await box(center);
         expect(nav.x).toBe(0);
         expect(nav.width).toBe(navigationWidth);
         expect(chat.x).toBe(nav.width + (width > 760 ? 8 : 0));
         expect(chat.x + chat.width).toBeLessThanOrEqual(width);
-        const inline = resource !== "closed" && width >= 1280;
         expect(chat.width).toBe(resource === "closed" ? closedChat : openChat);
         await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
         for (const pane of await page.locator(".agent-chat-pane").all()) {
@@ -202,6 +202,12 @@ for (const geometry of geometries) {
         }
         if (inline) await expectComposerControls(page);
         if (resource !== "closed") {
+          // Covered chats sleep; measure their reading geometry before opening
+          // an overlay, then verify the visible controls after closing it.
+          if (!inline) {
+            await openResource(page, resource, ownerId);
+            await expect(page.locator(".agent-chat-pane")).toBeHidden();
+          }
           const pane = page.getByLabel("Agent artifacts", { exact: true });
           const bounds = await box(pane);
           expect(bounds.x + bounds.width).toBe(width - 8);

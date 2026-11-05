@@ -178,11 +178,7 @@ for (const viewport of [
     expect.soft(geometry.join).toBe(0);
     for (const edge of geometry.edges) expect.soft(edge).toBe(geometry.border);
 
-    if (!(await page.locator(".agent-artifact-pane").isVisible()))
-      await page
-        .getByRole("button", { name: /Show files and preview/ })
-        .click();
-    for (const selector of [".agent-chat-center", ".agent-artifact-pane"]) {
+    const assertInsetCard = async (selector: string) => {
       const card = page.locator(selector);
       await expect(card).toBeVisible();
       const bounds = await card.evaluate((element) => {
@@ -219,7 +215,8 @@ for (const viewport of [
       }
       if (selector === ".agent-artifact-pane")
         expect.soft(bounds.right).toBe(bounds.inset);
-    }
+    };
+    await assertInsetCard(".agent-chat-center");
     const rules = await composer.evaluate((form) => {
       const bottom = form.getBoundingClientRect().bottom;
       return [...document.querySelectorAll("body *")]
@@ -241,8 +238,39 @@ for (const viewport of [
         })
         .map((element) => element.className || element.tagName);
     });
-    // Window chrome owns the single status-bar divider below the inset cards.
+    // The window status bar owns the single full-width divider below the
+    // inset cards; the composer must not introduce another separator.
     expect(rules).toEqual(["status-bar"]);
+    const status = page.locator(".status-bar");
+    await expect(status).toHaveCSS(
+      "border-top-width",
+      await status.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--border-width").trim(),
+      ),
+    );
+    await expect(status).toHaveCSS("border-top-style", "solid");
+
+    if (!(await page.locator(".agent-artifact-pane").isVisible()))
+      await page
+        .getByRole("button", { name: /Show files and preview/ })
+        .click();
+    await assertInsetCard(".agent-artifact-pane");
+    const center = page.locator(".agent-chat-center");
+    if (await page.locator(".workbench__body--artifact-overlay").count()) {
+      await expect(center).toBeHidden();
+      await page
+        .getByRole("button", {
+          name: "Collapse files, changes, and preview",
+          exact: true,
+        })
+        .click();
+      await expect(center).toBeVisible();
+      await assertInsetCard(".agent-chat-center");
+      await page
+        .getByRole("button", { name: /Show files and preview/ })
+        .click();
+      await expect(center).toBeHidden();
+    } else await assertInsetCard(".agent-chat-center");
 
     await page
       .getByRole("button", { name: "Expand resource pane", exact: true })

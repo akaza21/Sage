@@ -123,9 +123,12 @@ it("keeps Harness and Access mutually exclusive without pointer events", async (
   expect(access).toHaveFocus();
 });
 
-function openOptions() {
+async function openOptions() {
   const options = screen.queryByRole("button", { name: "Composer options" });
-  if (options) fireEvent.click(options);
+  if (options) {
+    fireEvent.click(options);
+    await screen.findByRole("menu", { name: "Composer options menu" });
+  }
 }
 
 it("waits for session confirmation before labeling the active model", () => {
@@ -466,7 +469,7 @@ describe("last confirmed model label", () => {
       />,
       { container: host },
     );
-    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    await openOptions();
     const project = screen.getByRole("menuitem", { name: "Project: A" });
     expect(
       host.querySelector(".composer__controls > .project-scope"),
@@ -1102,7 +1105,7 @@ describe("composer permission mode picker", () => {
       switchProject,
     });
     renderControls({ projectName: "Alpha" });
-    openOptions();
+    await openOptions();
     const project = screen.getByRole("button", { name: "Project: Alpha" });
     expect(project).toHaveAttribute("title", "Project: Alpha");
     expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
@@ -1438,7 +1441,7 @@ describe("composer permission mode picker", () => {
     const { rerenderControls } = renderControls({
       imageAction: { disabled: false, onChoose: vi.fn() },
     });
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
@@ -1486,7 +1489,8 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
-          id: "claude",
+          id: "claude-code",
+          brand: "claude",
           name: "Claude Code",
           description: "",
           installState: "available",
@@ -1496,7 +1500,29 @@ describe("composer permission mode picker", () => {
           bindingId: "claude-agent-acp",
         },
         {
+          id: "pi",
+          brand: "pi",
+          name: "Pi",
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-acp",
+        },
+        {
+          id: "pi-helper",
+          name: "Pi helper",
+          description: "",
+          installState: "available",
+          source: "custom",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-helper-acp",
+        },
+        {
           id: "codex",
+          brand: "codex",
           name: "Codex",
           description: "",
           installState: "available",
@@ -1507,6 +1533,7 @@ describe("composer permission mode picker", () => {
         },
         {
           id: "opencode",
+          brand: "opencode",
           name: "OpenCode",
           description: "",
           installState: "available",
@@ -1517,7 +1544,7 @@ describe("composer permission mode picker", () => {
         },
       ],
     });
-    renderControls({ selectedHarnessId: "claude" });
+    renderControls({ selectedHarnessId: "claude-code" });
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen
@@ -1540,11 +1567,23 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /OpenCode/ })
         .querySelector('[data-harness-icon="opencode"]'),
     ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("option", { name: /^Pi —/ })
+        .querySelector('[data-harness-icon="pi"]'),
+    ).not.toBeNull();
+    // A custom harness never borrows a built-in brand by its name.
+    expect(
+      screen
+        .getByRole("option", { name: /Pi helper/ })
+        .querySelector('[data-harness-icon="generic"]'),
+    ).not.toBeNull();
   });
 
   it("shows confirmed model subtitles without installation details and keeps reasons accessible", async () => {
     const claude = {
-      id: "claude",
+      id: "claude-code",
+      brand: "claude" as const,
       name: "Claude Code",
       description: "",
       installState: "available" as const,
@@ -1556,6 +1595,7 @@ describe("composer permission mode picker", () => {
     const codex = {
       ...claude,
       id: "codex",
+      brand: "codex" as const,
       name: "Codex",
       version: "0.146.0",
       bindingId: "codex-app-server",
@@ -1563,12 +1603,14 @@ describe("composer permission mode picker", () => {
     const opencode = {
       ...claude,
       id: "opencode",
+      brand: "opencode" as const,
       name: "OpenCode",
       bindingId: "opencode-acp",
     };
     const unavailable = {
       ...claude,
       id: "missing",
+      brand: null,
       name: "Missing",
       installState: "notInstalled" as const,
       bindingId: null,
@@ -1862,7 +1904,7 @@ describe("composer permission mode picker", () => {
 
   it("replaces the hard-coded chip with the live persisted mode", async () => {
     renderControls();
-    openOptions();
+    await openOptions();
     expect(screen.queryByText("Read-only policy")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Access options" }),
@@ -1874,7 +1916,7 @@ describe("composer permission mode picker", () => {
       modes: { fixture: "workspaceWrite" },
     });
     renderControls();
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
@@ -1886,7 +1928,7 @@ describe("composer permission mode picker", () => {
       "setSessionAccessModes",
     );
     renderControls();
-    openOptions();
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
@@ -1902,7 +1944,7 @@ describe("composer permission mode picker", () => {
 
   it("states when the chosen mode takes effect", async () => {
     renderControls();
-    openOptions();
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
       screen.getByText(/Applies from your next message with this harness./),
@@ -1947,14 +1989,14 @@ describe("composer permission mode picker", () => {
 
   it("hides the picker without an available binding", async () => {
     renderControls({ availableBinding: false });
-    openOptions();
+    await openOptions();
     expect(screen.queryByRole("button", { name: "Access options" })).toBeNull();
   });
 
   it("is not actionable before the persisted mode has been restored", async () => {
     useSessionAccessModeStore.setState({ ready: false });
     renderControls();
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toBeDisabled();
@@ -1966,7 +2008,7 @@ describe("composer permission mode picker", () => {
       "setSessionAccessModes",
     ).mockRejectedValue(new Error("nope"));
     renderControls();
-    openOptions();
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),

@@ -12,7 +12,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchScope";
-import { AgentWorkbenchBody } from "./AgentWorkbenchBody";
+import AgentWorkbenchBody from "./AgentWorkbenchBodyView";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 import { resetAgentRailViewPrefs } from "./agentRailViewPrefs";
 
@@ -45,6 +45,9 @@ function NavigationWorkbench() {
         drawerOpen={false}
         navigationCollapsed={collapsed}
         onExpandNavigation={() => setCollapsed(false)}
+        centerVisible
+        artifactMaximized={false}
+        onArtifactMaximizedChange={() => undefined}
         artifactExpanded={false}
         onArtifactExpandedChange={() => undefined}
         onAgentLeftRailWidthChange={() => undefined}
