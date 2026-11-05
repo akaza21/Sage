@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { BrowserClearData } from "../../features/browser/BrowserClearData";
+import { BrowserDownloadFolder } from "../../features/browser/BrowserDownloadFolder";
 import { BrowserSiteSettings } from "../../features/browser/BrowserSiteSettings";
 import {
   DEFAULT_BROWSER_PREFERENCES,
@@ -100,6 +101,16 @@ export function SettingsBrowserPage({ visible }: { visible: Set<string> }) {
           ) : null}
         </section>
       )}
+      {desktop && visible.has("browser.downloadFolder") ? (
+        <section
+          className="settings-surface__group"
+          role="group"
+          aria-labelledby="browser-downloads-heading"
+        >
+          <h3 id="browser-downloads-heading">Downloads</h3>
+          <BrowserDownloadFolder />
+        </section>
+      ) : null}
       {desktop && visible.has("browser.sitePermissions") ? (
         <section
           className="settings-surface__group"

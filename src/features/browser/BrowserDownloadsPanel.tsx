@@ -33,10 +33,13 @@ export default function BrowserDownloadsPanel({
               >
                 {download.fileName}
               </span>
-              <span className="browser-downloads__status">
+              <span
+                className="browser-downloads__status"
+                title={download.error}
+              >
                 {progressLabel(download)} · {sourceHost(download.source)}
               </span>
-              {isActiveDownload(download) ? (
+              {isActiveDownload(download) && download.state !== "publishing" ? (
                 <button
                   type="button"
                   aria-label={`Cancel ${download.fileName}`}
