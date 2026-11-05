@@ -426,6 +426,45 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   ).toBeEnabled();
 });
 
+it("records a discovery refresh that finishes while the window is minimized", async () => {
+  const oldInventory = useWorkbenchStore.getState().harnesses;
+  const freshInventory = [{ ...oldInventory[0], name: "Fresh discovery" }];
+  let finishRefresh!: (value: typeof oldInventory) => void;
+  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses").mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRefresh = resolve;
+      }),
+  );
+  useWorkbenchStore.setState({
+    applyHarnessDiscovery: async (harnesses) => {
+      useWorkbenchStore.setState({ harnesses });
+    },
+  });
+  let visibility: DocumentVisibilityState = "visible";
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => visibility,
+  );
+  const setVisibility = (next: DocumentVisibilityState) => {
+    visibility = next;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const { act } = await import("@testing-library/react");
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
+  expect(
+    screen.getByRole("button", { name: "Checking harnesses..." }),
+  ).toBeDisabled();
+  await act(async () => setVisibility("hidden"));
+  await act(async () => finishRefresh(freshInventory));
+  await act(async () => setVisibility("visible"));
+  expect(screen.getByText("Fresh discovery")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Refresh discovery" }),
+  ).toBeEnabled();
+});
+
 it("allows Escape from a checkbox but keeps text-entry edits open", () => {
   render(<AgentSettingsSurface />);
   const dialog = screen.getByRole("dialog", { name: "Agent settings" });
