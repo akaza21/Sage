@@ -6,6 +6,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { Activity } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
@@ -260,6 +261,80 @@ it("drops a reveal the OS confirmed after the vault was reloaded", async () => {
   );
   await act(async () => confirm("old-secret"));
   expect(screen.queryByText("old-secret")).toBeNull();
+});
+
+function Suspendable({ mode }: { mode: "visible" | "hidden" }) {
+  return (
+    <Activity mode={mode}>
+      <SettingsPasswordsPage visible={all()} />
+    </Activity>
+  );
+}
+
+it("forgets revealed passwords and a reveal still at the OS prompt while Settings is suspended", async () => {
+  native.overview.mockResolvedValue(ready());
+  native.reveal.mockResolvedValueOnce("shown-secret");
+  const view = render(<Suspendable mode="visible" />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  await act(async () => {
+    fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  });
+  expect(screen.getByText("shown-secret")).toBeInTheDocument();
+  await act(async () => view.rerender(<Suspendable mode="hidden" />));
+  expect(screen.queryByText("shown-secret")).toBeNull();
+  await act(async () => view.rerender(<Suspendable mode="visible" />));
+  expect(screen.queryByText("shown-secret")).toBeNull();
+
+  let confirm: (password: string) => void = () => {};
+  native.reveal.mockReturnValueOnce(
+    new Promise<string>((resolve) => {
+      confirm = resolve;
+    }),
+  );
+  fireEvent.click(
+    within(
+      await screen.findByRole("group", { name: "ada on example.com" }),
+    ).getByRole("button", { name: "Show" }),
+  );
+  await act(async () => view.rerender(<Suspendable mode="hidden" />));
+  await act(async () => confirm("late-secret"));
+  await act(async () => view.rerender(<Suspendable mode="visible" />));
+  expect(screen.queryByText("late-secret")).toBeNull();
+});
+
+it("shows an import that finished while Settings was suspended, with Import available again", async () => {
+  let finish: (report: unknown) => void = () => {};
+  native.importCsv.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  native.cancelImport.mockResolvedValue(false);
+  const view = render(<Suspendable mode="visible" />);
+  await screen.findByText("No saved passwords");
+  fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
+  expect(
+    await screen.findByRole("button", { name: "Cancel import" }),
+  ).toBeVisible();
+  await act(async () => view.rerender(<Suspendable mode="hidden" />));
+  // Hiding asks Rust to cancel, but the commit had already won.
+  expect(native.cancelImport).toHaveBeenCalledTimes(1);
+  native.overview.mockResolvedValue(ready());
+  await act(async () =>
+    finish({
+      added: 1,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      fileName: "passwords.csv",
+    }),
+  );
+  await act(async () => view.rerender(<Suspendable mode="visible" />));
+  expect(
+    await screen.findByText(/Imported passwords.csv: 1 added\./),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Cancel import" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
 });
 
 it("edits a username", async () => {

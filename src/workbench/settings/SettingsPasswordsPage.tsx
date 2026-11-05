@@ -52,7 +52,6 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const hideTimers = useRef(new Map<string, number>());
   // Counts reloads of vault data; a reveal answered after one is stale.
   const vaultEpoch = useRef(0);
-  const mounted = useRef(false);
 
   useEffect(() => {
     if (!desktop) return;
@@ -111,17 +110,25 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     return () => window.clearTimeout(timer);
   }, [search, refreshVault]);
 
-  useEffect(() => {
-    const timers = hideTimers.current;
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      // Leaving the page stops an import nobody is waiting on.
-      if (activeImport.current) void passwordsCancelImport();
-      for (const timer of timers.values()) window.clearTimeout(timer);
-      timers.clear();
-    };
-  }, []);
+  // Settings can stay alive under React Activity, which keeps this page's
+  // state while it is hidden and runs effect cleanups on every hide as well
+  // as on close. So the cleanup, not a mounted flag, is where nothing secret
+  // or waiting on the user outlives the page being out of sight: revealed
+  // passwords and their timers go, a reveal still at the OS prompt is
+  // dropped, and a running import is cancelled. State that only reports
+  // results, such as an import that finishes meanwhile, is kept for wake.
+  useEffect(
+    () => () => {
+      const request = activeImport.current;
+      if (request) {
+        request.cancelRequested = true;
+        void passwordsCancelImport();
+      }
+      vaultEpoch.current += 1;
+      hideAll();
+    },
+    [hideAll],
+  );
 
   async function run(action: () => Promise<void>): Promise<boolean> {
     setBusy(true);
@@ -142,9 +149,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     void run(async () => {
       const epoch = vaultEpoch.current;
       const password = await revealPassword(id);
-      // A page closed during the OS prompt keeps nothing it returns, and a
-      // reload since then may have replaced the password.
-      if (!mounted.current || vaultEpoch.current !== epoch) return;
+      // A page hidden or closed during the OS prompt keeps nothing it
+      // returns, and a reload since then may have replaced the password.
+      if (vaultEpoch.current !== epoch) return;
       setRevealed((current) => new Map(current).set(id, password));
       window.clearTimeout(hideTimers.current.get(id));
       hideTimers.current.set(
@@ -197,9 +204,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
       } else if (request.cancelRequested) {
         setNotice("Import cancelled. Nothing was saved.");
       }
-    }).finally(() => {
-      if (mounted.current) setImporting(false);
-    });
+    }).finally(() => setImporting(false));
   };
 
   const cancelImport = () => {
@@ -208,19 +213,14 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     request.cancelRequested = true;
     void passwordsCancelImport().then(
       (accepted) => {
-        if (
-          mounted.current &&
-          activeImport.current === request &&
-          accepted === false
-        ) {
+        if (activeImport.current === request && accepted === false) {
           setNotice(
             "The import can no longer be cancelled. Its results will appear when it finishes.",
           );
         }
       },
       (cause: unknown) => {
-        if (mounted.current && activeImport.current === request)
-          setError(errorText(cause));
+        if (activeImport.current === request) setError(errorText(cause));
       },
     );
   };
