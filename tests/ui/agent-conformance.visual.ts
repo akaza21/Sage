@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { openAgentSnapshotDiff } from "./resourceVisualHelpers";
+import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import {
   expectLiveThinkingFixtureLine,
   openComposerOptions,
@@ -939,6 +940,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
+    await advertiseAlternativeModel(page);
     const form = composer(page);
     const toolbar = form.locator(".composer__toolbar");
     await expect(toolbar).toBeVisible();
@@ -977,6 +979,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
 
   test("pins the closed composer's interactive inventory", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
+    await advertiseAlternativeModel(page);
     await expect(
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
@@ -1023,6 +1026,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
+    await advertiseAlternativeModel(page);
     await expect(
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
@@ -1047,6 +1051,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
 
   test("keeps the closed toolbar on one line", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
+    await advertiseAlternativeModel(page);
     await expect(
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();

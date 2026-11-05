@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -12,6 +13,19 @@ import {
 } from "./cargo-features.mjs";
 
 const workflowPath = path.join(process.cwd(), ".github/workflows/ci.yml");
+
+function runBash(script) {
+  const bash =
+    process.platform === "win32"
+      ? path.join(process.env.ProgramFiles, "Git", "bin", "bash.exe")
+      : "bash";
+  return spawnSync(bash, ["-s"], {
+    input: script,
+    encoding: "utf8",
+    timeout: 10_000,
+    maxBuffer: 1024 * 1024,
+  });
+}
 
 function jobBlock(workflow, jobId) {
   const marker = `  ${jobId}:\n`;
@@ -145,11 +159,20 @@ test("CI keeps hosted-runner spend bounded", async () => {
     );
   }
 
-  // Windows and macOS run only when requested through workflow_dispatch.
-  const smokeCli = jobBlock(workflow, "smoke-cli");
-  assert.match(smokeCli, /if: needs\.plan\.outputs\.windows == 'true'/);
-  const workflowOutsideSmokeCli = workflow.replace(smokeCli, "");
-  for (const line of workflowOutsideSmokeCli.split("\n")) {
+  // Windows budgets and non-Linux Rust run only on workflow_dispatch.
+  let workflowOutsideWindowsLanes = workflow;
+  for (const jobId of ["smoke-cli", "playwright"]) {
+    const windowsLane = jobBlock(workflow, jobId);
+    const output = jobId === "playwright" ? "playwright" : "windows";
+    assert.ok(
+      windowsLane.includes(`if: needs.plan.outputs.${output} == 'true'`),
+    );
+    workflowOutsideWindowsLanes = workflowOutsideWindowsLanes.replace(
+      windowsLane,
+      "",
+    );
+  }
+  for (const line of workflowOutsideWindowsLanes.split("\n")) {
     if (/windows-latest|macos-latest/.test(line)) {
       assert.match(
         line,
@@ -207,16 +230,75 @@ test("CI plans Rust from both sides of every changed path", async () => {
   }
 });
 
-test("draft pull requests and schedules start only the security job", async () => {
+test("every PR plans lanes and gates Playwright, including drafts and ready_for_review", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const notScheduled = "github.event_name != 'schedule'";
-  const notDraft =
-    "github.event_name != 'pull_request' || !github.event.pull_request.draft";
   assert.doesNotMatch(jobBlock(workflow, "security"), /^ {4}if:/m);
-  assert.ok(
-    jobBlock(workflow, "plan").includes(`if: ${notScheduled} && (${notDraft})`),
-  );
+  assert.ok(jobBlock(workflow, "plan").includes(`if: ${notScheduled}\n`));
   const mergeGate = jobBlock(workflow, "merge-gate");
-  assert.ok(mergeGate.includes(`always() && ${notScheduled} &&`));
-  assert.ok(mergeGate.includes(`(${notDraft})`));
+  assert.ok(mergeGate.includes(`if: always() && ${notScheduled}\n`));
+  assert.match(workflow, /- ready_for_review\n/);
+  assert.match(mergeGate, /^ {6}- playwright$/m);
+  assert.match(
+    mergeGate,
+    /PLAYWRIGHT_PLANNED: \$\{\{ needs\.plan\.outputs\.playwright \}\}/,
+  );
+});
+
+test("PRs and main pushes always plan Playwright independently of optional Windows lanes", async () => {
+  const plan = jobBlock(await readFile(workflowPath, "utf8"), "plan");
+  const selection = plan.match(/ {10}windows=false\n([\s\S]*?) {10}rust_os=/);
+  assert.ok(selection, "the planner must select platform lanes");
+  for (const [event, platforms, expected] of [
+    ["pull_request", "", "false false true"],
+    ["pull_request", "linux", "false false true"],
+    ["push", "", "false false true"],
+    ["workflow_dispatch", "linux", "false false false"],
+    ["workflow_dispatch", "windows", "true false true"],
+    ["workflow_dispatch", "macos", "false true false"],
+    ["workflow_dispatch", "all", "true true true"],
+  ]) {
+    const result = runBash(
+      `set -euo pipefail\nEVENT=${event}\nPLATFORMS='${platforms}'\nwindows=false\n${selection[1]}\nprintf '%s %s %s' "$windows" "$macos" "$playwright"\n`,
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, expected, `${event}: ${platforms}`);
+  }
+  assert.match(
+    plan,
+    /playwright: \$\{\{ steps\.plan\.outputs\.playwright \}\}/,
+  );
+  assert.match(plan, /echo "playwright=\$playwright"/);
+});
+
+test("Merge gate rejects a skipped, cancelled or failed required Playwright lane", async () => {
+  const gate = jobBlock(await readFile(workflowPath, "utf8"), "merge-gate");
+  const body = gate.split("        run: |\n")[1];
+  assert.ok(body, "the Merge gate must enforce lane results");
+  for (const [playwright, expectedStatus] of [
+    ["success", 0],
+    ["skipped", 1],
+    ["failure", 1],
+    ["cancelled", 1],
+  ]) {
+    const result = runBash(`
+      SECURITY=success
+      PLAN=success
+      FRONTEND=success
+      FRONTEND_PLANNED=true
+      SMOKE_CLI=skipped
+      SMOKE_CLI_PLANNED=false
+      PLAYWRIGHT=${playwright}
+      PLAYWRIGHT_PLANNED=true
+      RUST=success
+      RUST_PLANNED=true
+      RUST_OS='["ubuntu-latest"]'
+      GITHUB_STEP_SUMMARY=/dev/null
+      ${body}
+    `);
+    assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
+    if (expectedStatus !== 0) {
+      assert.match(result.stdout, /::error::Windows Playwright:/);
+    }
+  }
 });

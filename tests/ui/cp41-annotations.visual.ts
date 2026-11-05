@@ -5,6 +5,25 @@ import {
 } from "./shared/transcriptSelection";
 
 test.use({ deviceScaleFactor: 1 });
+
+test("CP-41: annotation selection waits for deferred Markdown text", async ({
+  page,
+}) => {
+  await page.route("**/ChatMarkdown.tsx*", async (route) => {
+    // Simulate a cold renderer import that outlasts the fixture's layout frames.
+    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page.getByRole("button", { name: "Add to chat", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Annotation comment", exact: true }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Annotation 1", exact: true }),
+  ).toBeVisible();
+});
 test("CP-41: create, comment, inspect, edit, send and retain read-only annotations", async ({
   page,
 }) => {

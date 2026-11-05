@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
+  settleRendering,
 } from "./shared/visualBrowserPrimitives";
 
 for (const command of ["title-bar toggle", "Ctrl+B"] as const) {
@@ -97,6 +98,8 @@ test("selected overflow tab stays fully visible on selection, keyboard navigatio
   await selected.press("ArrowLeft");
   await expect(selected).toHaveAccessibleName("Browser Browser page 8");
   await page.setViewportSize({ width: 400, height: 700 });
+  // ResizeObserver reveals the selected tab on the next rendered frame.
+  await settleRendering(page);
   await expect
     .poll(async () =>
       selected.evaluate((tab) => tab.closest(".tab-strip__scroll")!.scrollLeft),

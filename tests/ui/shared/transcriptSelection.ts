@@ -24,6 +24,7 @@ export async function dragAnswerPhrase(
   scroll = true,
 ) {
   const answer = page.locator("[data-selectable-answer]").first();
+  await expect(answer).toContainText(phrase);
   if (scroll) await answer.scrollIntoViewIfNeeded();
   const rect = await answer.evaluate((element, text) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);

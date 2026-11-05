@@ -35,6 +35,31 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
+for (const { label, cap, count } of [
+  { label: "3 MiB", cap: 3_145_728, count: 96 },
+  { label: "2.5 MiB", cap: 2_621_440, count: 80 },
+]) {
+  test(`configured ${label} aggregate source cap accepts exact and fails closed just over`, async () => {
+    const limits = { aggregateBytes: cap };
+    const last = `src/f${String(count - 1).padStart(3, "0")}.ts`;
+    const files = Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `src/f${String(index).padStart(3, "0")}.ts`,
+        " ".repeat(index === count - 1 ? 32_767 : 32_768),
+      ]),
+    );
+    await withFixture(files, async (root) => {
+      assert.deepEqual(await scan(root, limits), []);
+      await writeFile(path.join(root, last), " ".repeat(32_768));
+      assert.deepEqual(await scan(root, limits), []);
+      await writeFile(path.join(root, last), " ".repeat(32_769));
+      assert.deepEqual(await scan(root, limits), [
+        `Q02 aggregate limit ${cap} exceeded at ${last}`,
+      ]);
+    });
+  });
+}
+
 test("a tree past the scanner's former totals is still checked in full", async () => {
   // 1,100 modules, 1,300 entries and over 3 MiB, all above the totals that
   // used to stop the scan, with a violation in the last module read.

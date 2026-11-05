@@ -236,16 +236,6 @@ for (const width of [480, 720]) {
           const { fileResource, visualDiff } =
             await import("/tests/ui/fixtures/visualDocumentFixtures.ts");
           const { diffCacheKey } = await import("/src/domain/diffIdentity.ts");
-          await useWorkbenchStore.getState().openDiff(fileResource);
-          useWorkbenchStore.setState((state) => ({
-            diffs: {
-              ...state.diffs,
-              [diffCacheKey(undefined, fileResource)]: {
-                phase: "ready",
-                value: visualDiff,
-              },
-            },
-          }));
           let visible = false;
           Object.defineProperty(window, "__TAURI_INTERNALS__", {
             configurable: true,
@@ -264,8 +254,21 @@ for (const width of [480, 720]) {
               },
             },
           });
+          await useWorkbenchStore.getState().openDiff(fileResource);
+          useWorkbenchStore.setState((state) => ({
+            diffs: {
+              ...state.diffs,
+              [diffCacheKey(undefined, fileResource)]: {
+                phase: "ready",
+                value: visualDiff,
+              },
+            },
+          }));
         });
-        await page.getByRole("button", { name: "Hide left sidebar" }).click();
+        // Resource navigation dismisses the covering compact drawer.
+        await expect(
+          page.getByRole("dialog", { name: "Explorer project tools" }),
+        ).toBeHidden();
         const surface = page.locator(".diff-surface");
         const surfaceBefore = await expectContained(surface, page);
         const scroll = surface.locator(".diff-editor");

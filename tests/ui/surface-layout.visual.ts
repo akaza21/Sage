@@ -117,8 +117,11 @@ test("settings loading and persistence errors stay in the content flow", async (
       await expect(workbench).toHaveClass(/workbench--compact/);
     else await expect(workbench).not.toHaveClass(/workbench--compact/);
     const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
-    if (await drawer.isVisible())
+    if (width === 480) {
+      await expect(drawer).toBeVisible();
       await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    }
+    await expect(drawer).toBeHidden();
     await expect(page.locator(".settings-surface")).toBeVisible();
     const headerGap = await page
       .locator(".settings-surface__nav")

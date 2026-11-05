@@ -29,6 +29,7 @@ work/
 local-evidence/
 /.playwright-cli/
 /output/playwright/
+/playwright-report/
 
 # Environment and secrets
 .env

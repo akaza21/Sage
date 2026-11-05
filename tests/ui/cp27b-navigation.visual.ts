@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import {
   openScenario,
   settleChatProjections,
@@ -147,6 +148,7 @@ for (const geometry of geometries) {
         const ownerId = two
           ? "visual-chat-primary"
           : "visual-chat-agent-single";
+        await advertiseAlternativeModel(page);
         const navigation = page.locator(".project-sidebar");
         const center = page.locator(".center-region");
         const trigger = page.getByRole("button", {

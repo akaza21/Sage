@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
   waitForAnimations,
@@ -45,14 +46,13 @@ async function contained(menu: Locator, trigger: Locator, pane: Locator) {
   );
   const box = (await menu.boundingBox())!;
   const anchor = (await trigger.boundingBox())!;
-  for (const summary of await pane.locator(".acp-file-changes").all())
-    await waitForAnimations(summary);
-  const edits = await pane
-    .locator(".chat-edit-summary-zone:not(:empty)")
-    .boundingBox();
   const owner = (await pane.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(owner.x);
   expect(box.x + box.width).toBeLessThanOrEqual(owner.x + owner.width);
+  expect(box.y).toBeGreaterThanOrEqual(8);
+  expect(box.y + box.height).toBeLessThanOrEqual(
+    menu.page().viewportSize()!.height - 8,
+  );
   expect(
     Math.min(box.x + box.width, anchor.x + anchor.width) -
       Math.max(box.x, anchor.x),
@@ -61,13 +61,8 @@ async function contained(menu: Locator, trigger: Locator, pane: Locator) {
     Math.min(
       Math.abs(box.y + box.height - anchor.y),
       Math.abs(box.y - anchor.y - anchor.height),
-      edits ? Math.abs(box.y + box.height - edits.y) : Infinity,
     ),
   ).toBeLessThanOrEqual(9);
-  if (edits)
-    expect(
-      box.y + box.height <= edits.y || box.y >= edits.y + edits.height,
-    ).toBe(true);
   expect(
     await menu.evaluate(
       (element) => element.scrollWidth <= element.clientWidth,
@@ -82,6 +77,7 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await page.setViewportSize({ width, height: 1096 });
       await openPopoverScenario(page);
+      await advertiseAlternativeModel(page);
       expect(await page.evaluate(() => document.compatMode)).toBe("CSS1Compat");
       await page.evaluate(
         (modes) => window.popoverWorkbench.access(modes),

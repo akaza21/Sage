@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
   openScenario,
@@ -39,6 +40,7 @@ for (const width of [1888, 720, 480]) {
       await page.setViewportSize({ width, height: 1096 });
       await openScenario(page, "agent-single", "agent");
       await settleChatProjections(page);
+      await advertiseAlternativeModel(page);
       await page.evaluate(async (config) => {
         const fixture =
           await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
@@ -140,17 +142,13 @@ for (const width of [1888, 720, 480]) {
       expect(box.x + box.width).toBeLessThanOrEqual(width - 8);
       expect(box.y).toBeGreaterThanOrEqual(8);
       expect(box.y + box.height).toBeLessThanOrEqual(anchor.y);
-      const composer = (await page
-        .locator("form.composer")
-        .first()
-        .boundingBox())!;
+      const dock = (await page.locator(".chat-dock").first().boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(pane.x);
       expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width);
       if (width >= 720) {
-        expect(box.x).toBeGreaterThanOrEqual(composer.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(
-          composer.x + composer.width,
-        );
+        // Popovers share the dock boundary; the composer sits inside its border.
+        expect(box.x).toBeGreaterThanOrEqual(dock.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(dock.x + dock.width);
       }
       await expectNoViewportOverflow(page);
       await page.keyboard.press("Escape");
