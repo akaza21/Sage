@@ -226,7 +226,9 @@ export function Workbench() {
           load={loadRailStatus}
           fallback={null}
           render={(Observer) => (
-            <Observer visible={agentVisible && !agentNavigationCollapsed} />
+            <Observer
+              visible={agentVisible && !agentLayout.navigationCollapsed}
+            />
           )}
         />
       ) : null}
