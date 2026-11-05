@@ -1,14 +1,13 @@
 name: CI
 
-# Hosted minutes are billed per platform: a macOS minute costs about ten Linux
-# minutes and a Windows minute about two. Pull requests and main therefore run
-# the Linux lanes only. The Windows and macOS lanes run when someone asks for
-# them on a branch:
+# Pull requests and pushes to main require Windows Playwright alongside the
+# Linux lanes. Draft pull requests run Security and Windows Playwright; the
+# remaining lanes start when the pull request is ready for review.
+# Windows budgets and Windows/macOS Rust remain opt-in on a branch:
 #
 #   gh workflow run ci.yml --ref <branch> -f platforms=windows|macos|all
 #
-# Their checks land on the branch's head commit, so they show on its pull
-# request next to the Linux ones.
+# Requested checks land on the branch's head commit, next to its PR checks.
 
 on:
   schedule:
@@ -69,8 +68,8 @@ jobs:
 
   plan:
     name: Plan lanes
-    # Only the security job runs on schedules and draft pull requests.
-    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    # Schedules run Security only; every PR must plan Windows Playwright.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -82,6 +81,7 @@ jobs:
       rust-os: ${{ steps.plan.outputs.rust-os }}
       rust-matrix: ${{ steps.plan.outputs.rust-matrix }}
       windows: ${{ steps.plan.outputs.windows }}
+      playwright: ${{ steps.plan.outputs.playwright }}
     steps:
       - uses: actions/checkout@v4
       - name: Choose the lanes this change needs
@@ -89,6 +89,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BEFORE: ${{ github.event.before }}
           FORCED: ${{ github.event.forced }}
@@ -126,6 +127,10 @@ jobs:
             && ! grep -Eq "$RUST_PATHS" changed-files; then
             rust=false
           fi
+          if [ "$DRAFT" = "true" ]; then
+            frontend=false
+            rust=false
+          fi
 
           windows=false
           macos=false
@@ -133,6 +138,11 @@ jobs:
             windows) windows=true ;;
             macos) macos=true ;;
             all) windows=true; macos=true ;;
+          esac
+
+          playwright=$windows
+          case "$EVENT" in
+            pull_request|push) playwright=true ;;
           esac
 
           rust_os='["ubuntu-latest"'
@@ -149,12 +159,14 @@ jobs:
               console.log(JSON.stringify(JSON.parse(process.argv[1]).map(runnerFeatures)));
             ' "$rust_os")"
             echo "windows=$windows"
+            echo "playwright=$playwright"
           } >> "$GITHUB_OUTPUT"
           {
             echo "### Lanes"
             echo "- Frontend and policy: $frontend"
             echo "- Rust: $rust on $rust_os"
-            echo "- Windows budget and Playwright lanes: $windows"
+            echo "- Windows budget lane: $windows"
+            echo "- Windows Playwright: $playwright"
           } >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
@@ -204,7 +216,7 @@ jobs:
   playwright:
     name: Windows Playwright
     needs: plan
-    if: needs.plan.outputs.windows == 'true'
+    if: needs.plan.outputs.playwright == 'true'
     runs-on: windows-latest
     # Leave room for Chromium provisioning and the full two-worker suite.
     timeout-minutes: 45
@@ -339,9 +351,7 @@ jobs:
 
   merge-gate:
     name: Merge gate
-    if: >-
-      always() && github.event_name != 'schedule' &&
-      (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    if: always() && github.event_name != 'schedule'
     needs:
       - security
       - plan
@@ -361,7 +371,7 @@ jobs:
           SMOKE_CLI: ${{ needs.smoke-cli.result }}
           SMOKE_CLI_PLANNED: ${{ needs.plan.outputs.windows }}
           PLAYWRIGHT: ${{ needs.playwright.result }}
-          PLAYWRIGHT_PLANNED: ${{ needs.plan.outputs.windows }}
+          PLAYWRIGHT_PLANNED: ${{ needs.plan.outputs.playwright }}
           RUST: ${{ needs.rust.result }}
           RUST_PLANNED: ${{ needs.plan.outputs.rust }}
           RUST_OS: ${{ needs.plan.outputs.rust-os }}
