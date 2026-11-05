@@ -137,9 +137,10 @@
   align-items: center;
   justify-content: space-between;
   overflow-x: auto;
-  padding: 0 8px 0 8px;
+  padding: 0 var(--space-2);
+  border-top: var(--border-width) solid var(--agent-shell-title-divider);
   color: var(--color-text-muted);
-  background: var(--color-canvas);
+  background: var(--status-bar-fill);
   font-size: var(--font-size-xs);
   user-select: none;
 }
@@ -168,6 +169,17 @@
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
+}
+
+.status-bar__terminal {
+  display: inline-flex;
+  gap: 5px;
+  padding: 0 6px;
+}
+
+.status-bar__terminal[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-border-subtle);
 }
 
 .status-bar__button:hover {

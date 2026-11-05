@@ -1,6 +1,29 @@
 use std::sync::Mutex;
 
-use super::DownloadRegistry;
+use super::{DownloadRegistry, DownloadView, is_cancelable};
+
+pub(super) fn cancel_after_native(
+    downloads: &Mutex<DownloadRegistry>,
+    tab_id: &str,
+    id: u64,
+    native: impl FnOnce() -> Result<(), String>,
+) -> Result<Vec<DownloadView>, String> {
+    let cancelable = downloads
+        .lock()
+        .map_err(|error| error.to_string())?
+        .entries
+        .get(&id)
+        .is_some_and(|entry| entry.tab_id == tab_id && is_cancelable(entry.state));
+    if !cancelable {
+        return Err("browser download unavailable".into());
+    }
+    native()?;
+    let mut registry = downloads.lock().map_err(|error| error.to_string())?;
+    if !registry.cancel(tab_id, id) {
+        return Err("browser download unavailable".into());
+    }
+    Ok(registry.views(tab_id))
+}
 
 pub(crate) fn cancel_tab_after_native(
     downloads: &Mutex<DownloadRegistry>,
@@ -13,7 +36,7 @@ pub(crate) fn cancel_tab_after_native(
         .entries
         .iter()
         .filter_map(|(id, entry)| {
-            (entry.tab_id == tab_id && super::is_active(entry.state)).then_some(*id)
+            (entry.tab_id == tab_id && is_cancelable(entry.state)).then_some(*id)
         })
         .collect::<Vec<_>>();
     let result = if ids.is_empty() {
@@ -26,7 +49,15 @@ pub(crate) fn cancel_tab_after_native(
         registry.cancel_tab(tab_id);
     } else {
         for id in ids {
-            registry.settle(id, "error");
+            // A queued worker can claim publication while native close runs.
+            // Its filesystem result now owns the final outcome.
+            if registry
+                .entries
+                .get(&id)
+                .is_some_and(|entry| is_cancelable(entry.state))
+            {
+                registry.settle(id, "error");
+            }
         }
         registry.forget_tab(tab_id);
     }

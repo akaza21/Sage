@@ -100,6 +100,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::set_session_access_modes,
         settings_commands::get_ui_appearance,
         settings_commands::set_ui_appearance,
+        settings_commands::get_terminal_dock_visible,
+        settings_commands::set_terminal_dock_visible,
         commands::acp::get_acp_chat_page,
         commands::acp::chat_status::get_acp_chat_status,
         commands::acp::file_snapshot::get_acp_file_snapshot,
@@ -164,6 +166,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::navigation::browser_status,
         browser::state_query::browser_live_tabs,
         browser::state_query::browser_history,
+        browser::browsing_history::commands::browser_history_page,
+        browser::browsing_history::commands::browser_history_remove,
         browser::state_query::browser_suggested_sites,
         browser::page_context::browser_page_context,
         browser::user_screenshot::browser_capture_screenshot,
@@ -177,7 +181,10 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::agent_rail_view::agent_rail_view,
         settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
-        settings_commands::browser_preferences::browser_set_preferences
+        settings_commands::browser_preferences::browser_set_preferences,
+        settings_commands::browser_download_folder::browser_download_folder,
+        settings_commands::browser_download_folder::browser_choose_download_folder,
+        settings_commands::browser_download_folder::browser_reset_download_folder
     ];
     handle(invoke)
 }

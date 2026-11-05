@@ -64,7 +64,7 @@ unsafe extern "C" {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn open_parent(
+pub(crate) fn open_parent(
     root: &Path,
     expected_root: super::super::RootIdentity,
     parent: &str,

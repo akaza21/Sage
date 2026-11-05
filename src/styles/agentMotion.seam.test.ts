@@ -34,8 +34,8 @@ describe("Agent motion style seams", () => {
     expect(activity).toMatch(
       /\.acp-tool-rollup > summary\s*\{[^}]*transition:\s*color var\(--motion-duration-fast\) ease;/s,
     );
-    expect(transcript).toMatch(
-      /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*opacity var\(--motion-duration-fast\) ease,\s*transform var\(--motion-duration-chevron\) ease-out;/s,
+    expect(activity).toMatch(
+      /\.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*opacity var\(--motion-duration-fast\) ease,\s*transform var\(--motion-duration-chevron\) ease-out;/s,
     );
     expect(transcript).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.chat-transcript-actions[\s\S]*animation:\s*none;/,
@@ -245,7 +245,7 @@ describe("Codex live motion (parity spec section 10)", () => {
       /\.chat-transcript-work__chevron\s*\{[^}]*transition:\s*transform var\(--motion-duration-chevron\) ease-out;/s,
     );
     expect(activity).toMatch(
-      /\.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*transform var\(--motion-duration-chevron\) ease-out;/s,
+      /\.acp-tool-rollup__chevron\s*\{[^}]*transition:\s*opacity var\(--motion-duration-fast\) ease,\s*transform var\(--motion-duration-chevron\) ease-out;/s,
     );
     // Collapse is instant: no rule animates a closed disclosure.
     expect(transcript).not.toMatch(/:not\(\[open\]\)[^{]*\{[^}]*animation/);

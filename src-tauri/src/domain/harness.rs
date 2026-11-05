@@ -19,6 +19,9 @@ pub struct HarnessDefinition {
     pub characterisation: Option<HarnessCharacterisation>,
     pub unavailable_reason: Option<HarnessUnavailableReason>,
     pub sign_in: Option<HarnessSignIn>,
+    /// The brand mark of a curated harness; `None` for any other harness.
+    #[serde(default)]
+    pub brand: Option<HarnessBrand>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +72,16 @@ pub enum HarnessUnavailableReason {
     CapabilityProjectionUnavailable,
     NoNativeAcpEndpoint,
     AcpProbeUncharacterised,
+}
+
+/// Brand identity is curated install metadata, never inferred from a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HarnessBrand {
+    Claude,
+    Codex,
+    OpenCode,
+    Pi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

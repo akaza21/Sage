@@ -397,9 +397,7 @@ describe("AgentTaskHeader working status", () => {
         sessionChrome={chrome}
       />,
     );
-    expect(screen.getByLabelText("Harness status: Live")).toHaveTextContent(
-      "Live",
-    );
+    expect(screen.queryByLabelText("Harness status: Live")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Chat actions for/ }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
@@ -982,7 +980,7 @@ describe("AgentTaskHeader working status", () => {
     );
   }
 
-  it("spins a glyph beside the label while a turn is working", () => {
+  it("announces the running turn without a keyboard stop", () => {
     renderHeader({
       chatId: "chat:a",
       statusLabel: "Running",
@@ -996,16 +994,16 @@ describe("AgentTaskHeader working status", () => {
     const status = screen.getByRole("status", { name: "Chat status: Running" });
 
     expect(status).toHaveTextContent("Running");
-    expect(status.querySelector(".agent-chat-chip__spinner")).not.toBeNull();
+    expect(status).not.toHaveAttribute("tabindex");
   });
 
-  it("leaves the idle status without a spinner", () => {
+  it("announces the idle status without a keyboard stop", () => {
     renderHeader(null);
 
     const status = screen.getByRole("status", { name: "Chat status: Idle" });
 
     expect(status).toHaveTextContent("Idle");
-    expect(status.querySelector(".agent-chat-chip__spinner")).toBeNull();
+    expect(status).not.toHaveAttribute("tabindex");
   });
 });
 
@@ -1254,7 +1252,13 @@ it("keeps a parent's rename text and focus when pairing and unpairing its side c
     pairedId: null,
   });
   render(<AgentChatPanes />);
-  fireEvent.click(screen.getByRole("button", { name: "Rename chat" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /Chat actions for .* task/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in A" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename chat" }));
   const input = await screen.findByRole("textbox", { name: "New chat name" });
   fireEvent.change(input, { target: { value: "Uncommitted rename" } });
   input.focus();

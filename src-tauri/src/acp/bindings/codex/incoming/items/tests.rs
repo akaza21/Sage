@@ -6,6 +6,8 @@ use crate::acp::intent::{
 
 use super::*;
 
+mod file_change_tests;
+
 const PNG_1X1: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 

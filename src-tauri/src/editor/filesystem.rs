@@ -1,7 +1,6 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
+    fs::{self, File},
+    io::{Read, Write},
     time::UNIX_EPOCH,
 };
 
@@ -13,8 +12,17 @@ use crate::{
     editor_persistence::PersistedEditorBuffer,
     error::{AppError, AppResult},
     persistence::Database,
-    workspace::Workspace,
+    workspace::{RootIdentity, Workspace, leaf_identity, open_workspace_text_file},
 };
+
+pub(super) use self::platform::HeldParent;
+
+/// One byte past the editor cap, so a read that fills it proves the file is
+/// too large whatever earlier metadata reported.
+const EDITABLE_READ_PROBE_BYTES: u64 = MAX_EDITABLE_BYTES + 1;
+/// Leading bytes inspected for a NUL before a file is treated as binary.
+const BINARY_SNIFF_BYTES: usize = 8_192;
+const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
 
 pub(super) struct DiskDocument {
     pub(super) version: DocumentVersion,
@@ -22,26 +30,33 @@ pub(super) struct DiskDocument {
     pub(super) line_ending: String,
 }
 
+/// Reads a document through one handle opened by the held-root walk.
 pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult<DiskDocument> {
-    let absolute_path = workspace.resolve_existing_file(path)?;
-    let metadata = absolute_path.metadata()?;
+    let file = open_workspace_text_file(workspace.root(), workspace.root_identity(), path, None)?;
+    disk_document_from(&file)
+}
+
+/// Builds the disk projection from an opened handle. The type check, the size
+/// check and the read all use this handle; the size check only rejects early,
+/// and the bounded read decides.
+fn disk_document_from(file: &File) -> AppResult<DiskDocument> {
+    let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(AppError::InvalidRequest("resource is not a file".into()));
     }
     if metadata.len() > MAX_EDITABLE_BYTES {
-        return Err(AppError::ResourceLimit(format!(
-            "file exceeds the {} MiB editor limit",
-            MAX_EDITABLE_BYTES / 1024 / 1024
-        )));
+        return Err(oversize_error());
     }
 
-    let bytes = fs::read(&absolute_path)?;
-    if bytes.iter().take(8_192).any(|byte| *byte == 0) {
+    let bytes = read_editable_bytes(file)?;
+    if bytes.iter().take(BINARY_SNIFF_BYTES).any(|byte| *byte == 0) {
         return Err(AppError::InvalidRequest(
             "binary files cannot be opened in the editor".into(),
         ));
     }
-    let raw_content = String::from_utf8(bytes.clone())
+    let byte_len = bytes.len() as u64;
+    let disk_fingerprint = fingerprint(&bytes);
+    let raw_content = String::from_utf8(bytes)
         .map_err(|_| AppError::InvalidRequest("file is not valid UTF-8".into()))?;
     let line_ending = detect_line_ending(&raw_content)?;
     let canonical_content = if line_ending == "crlf" {
@@ -52,8 +67,8 @@ pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult
 
     Ok(DiskDocument {
         version: DocumentVersion {
-            fingerprint: fingerprint(&bytes),
-            byte_len: metadata.len(),
+            fingerprint: disk_fingerprint,
+            byte_len,
             modified_at: modified_at_millis(&metadata),
         },
         canonical_content,
@@ -61,8 +76,32 @@ pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult
     })
 }
 
+/// Reads at most one byte past the editor cap and rejects anything larger.
+pub(super) fn read_editable_bytes(reader: impl Read) -> AppResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader
+        .take(EDITABLE_READ_PROBE_BYTES)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_EDITABLE_BYTES {
+        return Err(oversize_error());
+    }
+    Ok(bytes)
+}
+
+fn oversize_error() -> AppError {
+    AppError::ResourceLimit(format!(
+        "file exceeds the {} MiB editor limit",
+        MAX_EDITABLE_BYTES / BYTES_PER_MEBIBYTE
+    ))
+}
+
+/// Splits a contract path into its parent directory and its final name.
+pub(super) fn split_contract_path(path: &str) -> (&str, &str) {
+    path.rsplit_once('/').unwrap_or(("", path))
+}
+
 pub(super) fn temporary_contract_path(path: &str) -> AppResult<String> {
-    let (parent, file_name) = path.rsplit_once('/').map_or(("", path), |parts| parts);
+    let (parent, file_name) = split_contract_path(path);
     if file_name.is_empty() {
         return Err(AppError::InvalidRequest(
             "file name must not be empty".into(),
@@ -88,20 +127,86 @@ pub(super) fn cleanup_recorded_temp(
             "recorded editor temporary path is invalid".into(),
         ));
     }
-    let absolute_temp = workspace.resolve_for_write(temp_path)?;
-    match fs::remove_file(absolute_temp) {
+    let (parent, temp_name) = split_contract_path(temp_path);
+    match HeldParent::open(workspace, parent)?.remove(temp_name) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
     }
 }
 
-pub(super) fn write_temporary_file(target: &Path, temp: &Path, content: &[u8]) -> AppResult<()> {
-    let permissions = target.metadata()?.permissions();
-    let mut file = OpenOptions::new().write(true).create_new(true).open(temp)?;
-    file.write_all(content)?;
-    file.set_permissions(permissions)?;
-    file.sync_all()?;
+impl HeldParent {
+    /// Reads the document `name` and returns it with the identity of the file
+    /// read and the still open handle it was read through. On Windows that
+    /// handle denies delete sharing, so while it is open the file cannot be
+    /// deleted, replaced or renamed.
+    pub(super) fn read_document_with_identity(
+        &self,
+        name: &str,
+    ) -> AppResult<(DiskDocument, RootIdentity, File)> {
+        let file = self.open_file(name)?;
+        let identity = leaf_identity(&file, &file.metadata()?)?;
+        Ok((disk_document_from(&file)?, identity, file))
+    }
+
+    /// Fails unless `name` is still the regular file with identity `expected`.
+    pub(super) fn ensure_entry_is(&self, name: &str, expected: RootIdentity) -> AppResult<()> {
+        let file = self.open_file(name)?;
+        if leaf_identity(&file, &file.metadata()?)? != expected {
+            return Err(AppError::InvalidRequest(
+                "the file was replaced while it was being saved".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Fails unless `parent`, walked again from the verified root, still
+    /// names this held directory.
+    pub(super) fn ensure_named_by(&self, workspace: &Workspace, parent: &str) -> AppResult<()> {
+        let still_named = HeldParent::open(workspace, parent)
+            .and_then(|fresh| Ok(fresh.identity()? == self.identity()?));
+        if !matches!(still_named, Ok(true)) {
+            return Err(AppError::InvalidRequest(
+                "the file's folder was moved or replaced while it was being saved".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Creates the temporary file `temp_name` inside this directory with the
+    /// given permissions, makes its content durable and returns its identity.
+    /// `before_sync` runs once the content is written and can abandon the
+    /// write.
+    pub(super) fn write_temporary_file(
+        &self,
+        temp_name: &str,
+        permissions: fs::Permissions,
+        content: &[u8],
+        before_sync: impl FnOnce() -> std::io::Result<()>,
+    ) -> AppResult<RootIdentity> {
+        let mut file = self.create_new(temp_name)?;
+        let identity = leaf_identity(&file, &file.metadata()?)?;
+        file.write_all(content)?;
+        before_sync()?;
+        file.set_permissions(permissions)?;
+        file.sync_all()?;
+        Ok(identity)
+    }
+}
+
+/// Fails unless the canonical `path`, walked from the verified root, opens
+/// the file with identity `expected`.
+pub(super) fn ensure_path_names(
+    workspace: &Workspace,
+    path: &str,
+    expected: RootIdentity,
+) -> AppResult<()> {
+    open_workspace_text_file(
+        workspace.root(),
+        workspace.root_identity(),
+        path,
+        Some(expected),
+    )?;
     Ok(())
 }
 
@@ -109,9 +214,10 @@ pub(super) fn cleanup_failed_save(
     database: &Database,
     project_id: &str,
     resource: &ResourceRef,
-    temp: &Path,
+    parent: &HeldParent,
+    temp_name: &str,
 ) {
-    finish_failed_save_cleanup(database, project_id, resource, fs::remove_file(temp));
+    finish_failed_save_cleanup(database, project_id, resource, parent.remove(temp_name));
 }
 
 #[cfg(test)]
@@ -119,8 +225,8 @@ pub(super) fn cleanup_failed_save_with(
     database: &Database,
     project_id: &str,
     resource: &ResourceRef,
-    temp: &Path,
-    remove: impl FnOnce(&Path) -> std::io::Result<()>,
+    temp: &std::path::Path,
+    remove: impl FnOnce(&std::path::Path) -> std::io::Result<()>,
 ) {
     finish_failed_save_cleanup(database, project_id, resource, remove(temp));
 }
@@ -150,68 +256,20 @@ fn modified_at_millis(metadata: &fs::Metadata) -> Option<u64> {
         .map(|duration| duration.as_millis() as u64)
 }
 
-#[cfg(windows)]
-pub(super) fn atomic_replace(target: &Path, temp: &Path) -> AppResult<()> {
-    use std::{os::windows::ffi::OsStrExt, ptr};
-    use windows_sys::Win32::Storage::FileSystem::{REPLACEFILE_WRITE_THROUGH, ReplaceFileW};
-
-    let target_wide = target
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let temp_wide = temp
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    // SAFETY: both path buffers are valid, NUL-terminated UTF-16 and live for the call.
-    let replaced = unsafe {
-        ReplaceFileW(
-            target_wide.as_ptr(),
-            temp_wide.as_ptr(),
-            ptr::null(),
-            REPLACEFILE_WRITE_THROUGH,
-            ptr::null_mut(),
-            ptr::null_mut(),
-        )
-    };
-    if replaced == 0 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-pub(super) fn atomic_replace(target: &Path, temp: &Path) -> AppResult<()> {
-    fs::rename(temp, target)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-pub(super) fn sync_parent_directory(target: &Path) -> AppResult<()> {
-    use std::fs::File;
-
-    let parent = target
-        .parent()
-        .ok_or_else(|| AppError::InvalidRequest("file has no parent directory".into()))?;
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-pub(super) fn sync_parent_directory(_target: &Path) -> AppResult<()> {
-    Ok(())
-}
-
 fn recorded_temp_is_valid(document_path: &str, temp_path: &str) -> bool {
-    let (document_parent, file_name) = document_path
-        .rsplit_once('/')
-        .map_or(("", document_path), |parts| parts);
-    let (temp_parent, temp_name) = temp_path
-        .rsplit_once('/')
-        .map_or(("", temp_path), |parts| parts);
+    let (document_parent, file_name) = split_contract_path(document_path);
+    let (temp_parent, temp_name) = split_contract_path(temp_path);
     document_parent == temp_parent
         && temp_name.starts_with(&format!(".{file_name}.sage-"))
         && temp_name.ends_with(".tmp")
 }
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "filesystem/unix.rs"]
+mod platform;
+#[cfg(windows)]
+#[path = "filesystem/windows.rs"]
+mod platform;
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+#[path = "filesystem/other.rs"]
+mod platform;

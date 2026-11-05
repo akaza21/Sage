@@ -26,6 +26,7 @@ use crate::{error::AppError, persistence::Database, state::AppState};
 mod browser_mcp_tests;
 mod fork_tests;
 mod model_identity;
+mod saved_diff_tests;
 
 struct Mapper;
 

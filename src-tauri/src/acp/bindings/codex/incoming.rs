@@ -51,6 +51,10 @@ pub(crate) trait ResourceMapper {
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         None
     }
+
+    fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
+        None
+    }
 }
 
 pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
@@ -110,6 +114,11 @@ pub(crate) enum IncomingEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
         update_mode: ItemUpdateMode,
+    },
+    FilePair {
+        id: ScopedExternalId,
+        old_text: String,
+        new_text: String,
     },
     ChildThreadItem {
         id: ScopedExternalId,

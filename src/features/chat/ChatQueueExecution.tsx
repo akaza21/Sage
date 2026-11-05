@@ -5,7 +5,7 @@ import type {
   ChatTurnOrder,
   QueuedChatPrompt,
 } from "../../domain/chatOwnership";
-import { laterTurnOrder } from "./useBoundChatComposer";
+import { laterTurnOrder } from "./useChatQueueState";
 
 const QUEUED_TURN_START_TIMEOUT_MS = 30_000;
 

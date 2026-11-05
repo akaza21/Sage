@@ -2,12 +2,12 @@
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 44px;
+  min-height: calc(var(--chrome-row-height) + var(--space-2));
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-panel);
+  border-bottom: var(--border-width) solid var(--agent-shell-divider);
+  background: var(--agent-shell-center);
 }
 
 .agent-task-header__breadcrumb {
@@ -15,38 +15,39 @@
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-sm);
 }
 
 .agent-task-header__title {
   min-width: 0;
   overflow: hidden;
-  color: var(--color-text-primary);
+  color: var(--color-text-emphasis);
   font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.agent-task-header__breadcrumb > svg {
+.agent-task-header__folder {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
   flex: none;
+  background: currentColor;
+  mask: url("../features/chat/chat-folder.svg") center / contain no-repeat;
+  color: color-mix(
+    in srgb,
+    var(--color-text-emphasis) 50%,
+    var(--color-text-primary)
+  );
 }
-.agent-task-header__pencil {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-}
-.agent-task-header__pencil:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
+.agent-task-header__resources > button::before {
+  display: block;
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  background: currentColor;
+  mask: url("../features/chat/chat-resources.svg") center / contain no-repeat;
+  content: "";
 }
 
 .agent-header-more > button:focus-visible,
@@ -62,15 +63,15 @@
      scrolls the menu sideways; pin the single column to the menu instead. */
   grid-template-columns: minmax(0, 1fr);
   margin-left: 36px;
-  padding: 8px;
+  padding: var(--space-2);
   gap: 0;
   border-radius: var(--radius-xl);
   background: var(--color-panel-raised);
 }
 .agent-header-more__menu .menu-item {
   min-height: 28px;
-  gap: 12px;
-  padding: 4px 12px;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
   color: var(--color-text-primary);
 }
 .agent-header-more__project {
@@ -78,8 +79,8 @@
   min-height: 28px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 4px 0 12px;
+  gap: var(--space-3);
+  padding: 0 var(--space-1) 0 var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
@@ -100,23 +101,16 @@
   white-space: nowrap;
 }
 @media (forced-colors: active) {
+  .agent-task-header__folder,
+  .agent-task-header__resources > button::before {
+    forced-color-adjust: none;
+    color: ButtonText;
+  }
+
   .agent-header-more > button[aria-expanded="true"],
-  .agent-header-more > button:focus-visible,
-  .agent-task-header__pencil:focus-visible {
+  .agent-header-more > button:focus-visible {
     outline: 2px solid Highlight;
   }
-}
-
-.agent-task-header__status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.agent-task-header__status.agent-chat-chip--working {
-  animation: none;
 }
 
 .agent-task-header__harness-status {
@@ -151,26 +145,9 @@
 }
 
 .agent-task-header__harness-icon {
-  display: none;
-  width: 16px;
-  height: 16px;
-}
-
-.agent-task-header__harness-icon > :is(svg, img) {
-  width: 100%;
-  height: 100%;
-}
-
-@container chat-center (max-width: 800px) {
-  .agent-task-header__harness-status
-    summary
-    > span:not(.agent-task-header__harness-icon) {
-    display: none;
-  }
-
-  .agent-task-header__harness-icon {
-    display: block;
-  }
+  display: block;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 @container chat-center (max-width: 400px) {
@@ -180,20 +157,7 @@
   }
 
   .agent-task-header__breadcrumb {
-    gap: 4px;
-  }
-
-  .agent-task-header__status:not(.agent-chat-chip--idle)
-    .agent-task-header__status-label {
-    display: none;
-  }
-
-  .agent-task-header__status {
-    gap: 0;
-  }
-
-  .agent-task-header__status.agent-chat-chip--idle {
-    display: none;
+    gap: var(--space-1);
   }
 
   .agent-task-header__title {

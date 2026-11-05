@@ -11,11 +11,11 @@ import { useAgentSettingsState } from "./agentSettingsState";
 import { AgentBrowserSettings } from "./AgentBrowserSettings";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import {
-  browserHistory,
   browserLiveTabs,
   browserPermissionStatus,
   browserSiteSettingReset,
 } from "../../ports/nativeBrowserPort";
+import { browserHistory } from "../../ports/nativeBrowserHistoryPort";
 import {
   browserDownloads,
   browserCancelDownload,
@@ -32,10 +32,12 @@ vi.mock("../../ports/nativeInvoke", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => vi.fn()),
 }));
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserHistory: vi.fn(async () => ["https://example.com/visited"]),
+}));
 vi.mock("../../ports/nativeBrowserPort", () => ({
   browserLiveTabs: vi.fn(async () => ["browser-a", "browser-b"]),
   closeBrowser: vi.fn(async () => undefined),
-  browserHistory: vi.fn(async () => ["https://example.com/visited"]),
   browserPermissionStatus: vi.fn(async (tabId: string) => ({
     tabId,
     pending: [],

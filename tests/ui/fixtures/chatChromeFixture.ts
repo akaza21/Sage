@@ -9,6 +9,7 @@ import type {
 } from "../../../src/domain/acp";
 import { capabilitySetFixture } from "../../../src/domain/acpProjection.fixture";
 import { acpDesktop } from "../../../src/services/acpDesktop";
+import { mirrorAgentRailStatus } from "../../../src/workbench/useAgentRailProjection";
 import { popoverProfiles } from "./popoverProfiles";
 
 export const chatChromePrompt =
@@ -173,6 +174,7 @@ export function installChatChromeFixture(
       BigInt(page.projectionRevision) + 1n,
     ) as typeof page.projectionRevision;
     projection.applyAuthoritativePage(projection.scope, page);
+    mirrorAgentRailStatus({ ...page, latestTurn: page.turns.at(-1) ?? null });
     return page;
   });
   acpDesktop.getChatPage = async (request) => {

@@ -1,9 +1,19 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import {
+  createElement,
+  useEffect,
+  useEffectEvent,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
+import { DISCONNECTED_TERMINAL } from "./terminalDockProjection";
+import { isTauriRuntime } from "../ports/nativeInvoke";
 import { useWorkbenchStore } from "../app/store";
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
+  closeQuickOpen,
   openCommandPalette,
   openQuickOpen,
 } from "../features/quickOpen/quickOpenState";
@@ -22,6 +32,10 @@ export function useWorkbenchKeys({
   toggleAgentNavigation: () => void;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
+  // Own the Editor lifetime even while its deferred UI is still loading.
+  useEffect(() => {
+    if (windowMode === "editor") return closeQuickOpen;
+  }, [windowMode]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (resourceModal) return;
@@ -62,4 +76,38 @@ export function useWorkbenchKeys({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [resourceModal, toggleAgentNavigation, setWindowMode, windowMode]);
+}
+
+/** The terminal controller loads when a native workbench is available. */
+export function useTerminalDock(blocked: boolean) {
+  const [terminal, setTerminal] = useState(DISCONNECTED_TERMINAL);
+  const isBlocked = useEffectEvent(() => blocked);
+  const native = isTauriRuntime();
+  useEffect(() => {
+    if (!native) return;
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void import("./terminalDockCommands").then(
+      ({ connectTerminalDock }) => {
+        if (!cancelled)
+          dispose = connectTerminalDock(() => isBlocked(), setTerminal);
+      },
+      () => {
+        if (!cancelled)
+          setTerminal({
+            ...DISCONNECTED_TERMINAL,
+            controls: createElement(
+              "span",
+              { role: "status" },
+              "Terminal failed to load.",
+            ),
+          });
+      },
+    );
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
+  }, [native]);
+  return terminal;
 }

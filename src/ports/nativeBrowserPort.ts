@@ -81,14 +81,6 @@ export function browserPopupAbandon(
   });
 }
 
-export function browserSuggestedSites(): Promise<string[]> {
-  return invokeNative("browser_suggested_sites");
-}
-
-export function browserHistory(tabId: string): Promise<string[]> {
-  return invokeNative("browser_history", { tabId });
-}
-
 export function closeBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_close", { tabId });
 }
