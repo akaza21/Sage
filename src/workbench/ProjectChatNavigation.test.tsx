@@ -9,7 +9,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
@@ -19,7 +19,7 @@ const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   resetAgentRailViewPrefs();
   useSideChatState.setState({ sides: [] });
   vi.restoreAllMocks();

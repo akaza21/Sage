@@ -1,16 +1,7 @@
 import type { SessionStatus } from "../../../domain/workbench";
 import { currentLocalBranchName } from "../../git/localBranches";
-import { createUnreadAcks, unreadDotVisible } from "./chatUnread";
 
-export const MAX_SESSION_RAIL_ACK_SLOTS = 64;
 export const MAX_SESSION_RAIL_GIT_CHARS = 24;
-
-export const {
-  pin: pinSessionRailIds,
-  ack: ackSessionRailUnread,
-  seen: seenSessionRailFingerprint,
-  clear: clearSessionRailAcks,
-} = createUnreadAcks(MAX_SESSION_RAIL_ACK_SLOTS);
 
 export function sessionRailRelativeTime(
   updatedAtMs: number,
@@ -78,24 +69,21 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
   );
 }
 
-export function sessionRailFingerprint(
-  status: SessionStatus | undefined,
-  updatedAt?: number,
-): string {
-  const label = sessionRailStatusLabel(status);
-  return label && updatedAt ? `${label}:${updatedAt}` : label;
-}
-
+/**
+ * A finished chat shows Unread until its latest update has been seen: the
+ * stored read mark (chatReadMarks) covers its update time.
+ */
 export function sessionRailUnreadVisible(input: {
   focused: boolean;
   status: SessionStatus | undefined;
   updatedAt?: number;
-  seenFingerprint: string | undefined;
+  readThrough: number | undefined;
 }): boolean {
-  return unreadDotVisible({
-    focused: input.focused,
-    live: sessionRailLive(input.status),
-    activityFingerprint: sessionRailFingerprint(input.status, input.updatedAt),
-    seenFingerprint: input.seenFingerprint,
-  });
+  if (input.focused) return false;
+  if (sessionRailLive(input.status)) return true;
+  if (!sessionRailStatusLabel(input.status)) return false;
+  return (
+    input.readThrough === undefined ||
+    (input.updatedAt ?? 0) > input.readThrough
+  );
 }

@@ -9,14 +9,14 @@ import { afterEach, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import {
-  ackSessionRailUnread,
-  clearSessionRailAcks,
-} from "../features/chat/acp/sessionRail";
+  markChatRead,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { AgentRecentChats } from "./AgentRecentChats";
 const initialState = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   clearAgentChatOwner();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -26,7 +26,7 @@ it.each(["chat-current", "diff:current"])(
   (activeTabId) => {
     useWorkbenchStore.setState({ activeTabId });
     pinAgentChatOwner("chat-current");
-    ackSessionRailUnread("chat-current", "Done:100");
+    markChatRead("chat-current", 100);
     const item = {
       projectId: "project",
       projectName: "Project",

@@ -12,10 +12,8 @@ import { lazyParts } from "../features/chat/lazyParts";
 import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import type { AgentRailChat } from "../domain/workbench";
-import {
-  seenSessionRailFingerprint,
-  sessionRailUnreadVisible,
-} from "../features/chat/acp/sessionRail";
+import { useChatReadMarks } from "../features/chat/acp/chatReadMarks";
+import { sessionRailUnreadVisible } from "../features/chat/acp/sessionRail";
 import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
 import {
   MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS,
@@ -195,6 +193,7 @@ function useCollapsedProjectState(
     useWorkbenchStore((state) => state.activeTabId),
   );
   const viewedChatId = useRailChatId(usePinnedAgentChatOwner() ?? activeTabId);
+  const readMarks = useChatReadMarks();
   if (chats.length === 0) return null;
   const running = chats.some((chat) => {
     const status = parentChatStatus(chat.id, chat.status);
@@ -208,7 +207,7 @@ function useCollapsedProjectState(
         focused: selected && chat.id === viewedChatId,
         status: chat.status,
         updatedAt: chat.updatedAt,
-        seenFingerprint: seenSessionRailFingerprint(chat.id),
+        readThrough: readMarks.get(chat.id),
       }),
   );
   return unread ? { kind: "unread", label: "Unread" } : null;

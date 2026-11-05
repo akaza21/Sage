@@ -16,9 +16,12 @@ import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import {
-  ackSessionRailUnread,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
+  markChatRead,
+  markChatUnread,
+  useChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
+import {
+  sessionRailLive,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -107,6 +110,25 @@ export function ProjectChatNavigation({
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
   const hoverChat = chatTabs.find((tab) => tab.id === hoverCard.card?.chatId);
   const awaitingApprovalIds = useChatsAwaitingApproval();
+  const readMarks = useChatReadMarks();
+  // The viewed chat's finished update is seen; record it once it settles.
+  const viewedTab = selected
+    ? chatTabs.find((tab) => tab.id === viewedChatId)
+    : undefined;
+  const viewedStatus = viewedTab
+    ? parentChatStatus(viewedTab.id, viewedTab.status)
+    : undefined;
+  const viewedSeenThrough =
+    viewedTab &&
+    sessionRailStatusLabel(viewedStatus) &&
+    !sessionRailLive(viewedStatus)
+      ? (viewedTab.updatedAt ?? 0)
+      : null;
+  const viewedId = viewedTab?.id;
+  useEffect(() => {
+    if (viewedId && viewedSeenThrough !== null)
+      markChatRead(viewedId, viewedSeenThrough);
+  }, [viewedId, viewedSeenThrough]);
 
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
@@ -175,17 +197,13 @@ export function ProjectChatNavigation({
         const viewed = selected && tab.id === viewedChatId;
         const focused = !suppressActive && selected && tab.id === activeTabId;
         const status = parentChatStatus(tab.id, tab.status);
-        const fingerprint = sessionRailFingerprint(status, tab.updatedAt);
-        if (viewed && fingerprint.length > 0) {
-          ackSessionRailUnread(tab.id, fingerprint);
-        }
         const unread =
           interactions.unread.has(tab.id) ||
           sessionRailUnreadVisible({
             focused: viewed,
             status: tab.status,
             updatedAt: tab.updatedAt,
-            seenFingerprint: seenSessionRailFingerprint(tab.id),
+            readThrough: readMarks.get(tab.id),
           });
         const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
@@ -233,7 +251,8 @@ export function ProjectChatNavigation({
               aria-current={focused ? "page" : undefined}
               onClick={() => {
                 clearAgentRailUnread(tab.id);
-                ackSessionRailUnread(tab.id, fingerprint);
+                if (sessionRailStatusLabel(status) && !sessionRailLive(status))
+                  markChatRead(tab.id, tab.updatedAt ?? 0);
                 if (selected) {
                   void activateTab(tab.id);
                   return;
@@ -305,7 +324,10 @@ export function ProjectChatNavigation({
                   setRenameDraft(displayTitle);
                   setRenamingChatId(tab.id);
                 }}
-                onMarkUnread={() => markAgentRailUnread(tab.id)}
+                onMarkUnread={() => {
+                  markAgentRailUnread(tab.id);
+                  markChatUnread(tab.id);
+                }}
                 onArchive={archive}
                 triggerRef={(node) => {
                   if (node) renameTriggerRefs.current.set(tab.id, node);

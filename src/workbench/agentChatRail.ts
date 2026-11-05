@@ -278,28 +278,6 @@ export function deriveAgentRailSections(
   };
 }
 
-export function collectAgentRailPinIds(
-  groups: ReadonlyArray<AgentRailProjectGroup>,
-  currentProjectId: string | null,
-): string[] {
-  const ids: string[] = [];
-  const current = groups.find((group) => group.id === currentProjectId);
-  if (current) {
-    for (const chat of current.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  for (const group of groups) {
-    if (group.id === currentProjectId) continue;
-    for (const chat of group.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  return ids;
-}
-
 export type AgentChatMoveKind = "folder" | "local";
 
 export interface AgentChatMoveDestination {

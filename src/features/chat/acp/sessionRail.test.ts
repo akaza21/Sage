@@ -1,28 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  ackChatUnread,
-  clearUnreadAcks,
-  seenChatUnreadFingerprint,
-} from "./chatUnread";
+import { describe, expect, it } from "vitest";
 
 import {
-  MAX_SESSION_RAIL_ACK_SLOTS,
-  ackSessionRailUnread,
-  clearSessionRailAcks,
-  pinSessionRailIds,
-  seenSessionRailFingerprint,
-  sessionRailFingerprint,
   sessionRailGitLabel,
   sessionRailLive,
   sessionRailRelativeTime,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "./sessionRail";
-
-afterEach(() => {
-  clearSessionRailAcks();
-  clearUnreadAcks();
-});
 
 describe("sessionRailStatusLabel", () => {
   it("uses Devin session-card status lines", () => {
@@ -47,7 +31,7 @@ describe("sessionRailUnreadVisible", () => {
       sessionRailUnreadVisible({
         focused: true,
         status: "working",
-        seenFingerprint: undefined,
+        readThrough: undefined,
       }),
     ).toBe(false);
   });
@@ -59,44 +43,39 @@ describe("sessionRailUnreadVisible", () => {
       sessionRailUnreadVisible({
         focused: false,
         status: "working",
-        seenFingerprint: undefined,
+        readThrough: undefined,
       }),
     ).toBe(true);
     expect(
       sessionRailUnreadVisible({
         focused: false,
         status: "waiting",
-        seenFingerprint: "Working…",
+        readThrough: 100,
       }),
     ).toBe(true);
   });
 
   it("hides the rail dot on a never-started idle session", () => {
-    expect(sessionRailFingerprint("idle")).toBe("");
     expect(
       sessionRailUnreadVisible({
         focused: false,
         status: "idle",
-        seenFingerprint: undefined,
+        readThrough: undefined,
       }),
     ).toBe(false);
   });
 
-  it("keeps the rail dot after Done until that session is seen", () => {
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "complete",
-        seenFingerprint: undefined,
-      }),
-    ).toBe(true);
-    expect(
-      sessionRailUnreadVisible({
-        focused: false,
-        status: "complete",
-        seenFingerprint: "Done",
-      }),
-    ).toBe(false);
+  it("keeps the rail dot after Done until that update is seen", () => {
+    const done = {
+      focused: false,
+      status: "complete" as const,
+      updatedAt: 200,
+    };
+    expect(sessionRailUnreadVisible({ ...done, readThrough: undefined })).toBe(
+      true,
+    );
+    expect(sessionRailUnreadVisible({ ...done, readThrough: 200 })).toBe(false);
+    expect(sessionRailUnreadVisible({ ...done, readThrough: 100 })).toBe(true);
   });
 });
 
@@ -129,32 +108,4 @@ describe("sessionRailGitLabel", () => {
     expect(sessionRailGitLabel("main (detached)")).toBe("");
     expect(sessionRailGitLabel(null)).toBe("");
   });
-});
-
-describe("session rail ack slots", () => {
-  it("caps rail acks at the attached-chat bound", () => {
-    expect(MAX_SESSION_RAIL_ACK_SLOTS).toBe(64);
-    pinSessionRailIds(["chat-a", "chat-b"]);
-    ackSessionRailUnread("chat-a", "Working…");
-    ackSessionRailUnread("chat-b", "Done");
-    expect(seenSessionRailFingerprint("chat-a")).toBe("Working…");
-    pinSessionRailIds(["chat-b"]);
-    expect(seenSessionRailFingerprint("chat-a")).toBeUndefined();
-    expect(seenSessionRailFingerprint("chat-b")).toBe("Done");
-  });
-});
-
-it("keeps the 64-slot rail registry independent from the two-pane registry", () => {
-  const ids = Array.from({ length: 64 }, (_, index) => `chat-${index}`);
-  pinSessionRailIds(ids);
-  for (const id of ids) ackSessionRailUnread(id, "Done");
-  ackChatUnread(ids[0], "Pane seen");
-  ackSessionRailUnread("overflow", "Waiting");
-  expect(seenSessionRailFingerprint(ids[0])).toBeUndefined();
-  expect(seenSessionRailFingerprint(ids[1])).toBe("Done");
-  expect(seenSessionRailFingerprint(ids[63])).toBe("Done");
-  expect(seenSessionRailFingerprint("overflow")).toBe("Waiting");
-  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
-  clearSessionRailAcks();
-  expect(seenChatUnreadFingerprint(ids[0])).toBe("Pane seen");
 });
