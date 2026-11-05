@@ -9,6 +9,26 @@ const MAX_SUBSECTION_CHARS: usize = 64;
 /// listing, or `None` when no listed key runs a command. Keys are classified
 /// as bytes: Git accepts subsections that are not UTF-8.
 pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
+    let named = named_keys(listing)?;
+    Some(format!(
+        "Sage did not run Git here because this repository's Git config sets keys that run \
+         programs ({named}). Remove them from the repository config, or use the terminal for \
+         Git in this folder."
+    ))
+}
+
+/// The same refusal for the config of a submodule Git would open.
+pub(super) fn submodule_refusal_message(listing: &[u8]) -> Option<String> {
+    let named = named_keys(listing)?;
+    Some(format!(
+        "Sage did not run Git here because a submodule's Git config sets keys that run \
+         programs ({named}). Remove them from that submodule's config, or use the terminal \
+         for Git in this folder."
+    ))
+}
+
+/// The bounded, redacted list of command-running keys, or `None`.
+fn named_keys(listing: &[u8]) -> Option<String> {
     let keys = listing
         .split(|byte| *byte == 0)
         .filter_map(ConfigKey::parse)
@@ -28,11 +48,7 @@ pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
     if remaining > 0 {
         let _ = write!(named, " and {remaining} more");
     }
-    Some(format!(
-        "Sage did not run Git here because this repository's Git config sets keys that run \
-         programs ({named}). Remove them from the repository config, or use the terminal for \
-         Git in this folder."
-    ))
+    Some(named)
 }
 
 /// A `section[.subsection].name` key as `git config --name-only` prints it.

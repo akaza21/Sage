@@ -5,7 +5,9 @@
 //! program Git runs: content filters, diff and merge drivers, transport
 //! commands, credential helpers. A folder that ships its own `.git` directory
 //! would otherwise run code as soon as Sage refreshes status, so Sage refuses
-//! to run Git for a root whose repository config sets any of them.
+//! to run Git for a root whose repository config sets any of them. The
+//! submodules Git would open from that repository get the same check (see
+//! [`submodules`]).
 //!
 //! The verdict is cached per root against the exact bytes of every file that
 //! decides which config Git reads. Each call re-reads those few small files
@@ -35,8 +37,6 @@
 
 use std::{
     collections::HashMap,
-    fs,
-    io::{self, Read as _},
     path::{Component, Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, PoisonError},
 };
@@ -48,17 +48,19 @@ use crate::{
 
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority};
 
+mod fingerprint;
 mod policy;
+mod submodules;
 
+use fingerprint::{Fingerprint, watch};
 use policy::refusal_message;
+use submodules::Scan;
 
 const GIT_DIR_NAME: &str = ".git";
 /// Files inside a git dir that make Git read repository data from elsewhere.
 const POINTER_FILES: [&str; 2] = ["commondir", "gitdir"];
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
-/// Larger watched files are refused rather than read on every call.
-const MAX_WATCHED_FILE_BYTES: u64 = 256 * 1024;
 /// Idle entries are dropped once this many roots are cached.
 const MAX_CACHED_ROOTS: usize = 256;
 
@@ -123,12 +125,17 @@ pub(super) async fn admit(
     let slot = admission_slot(root);
     // Holding the per-root lock makes concurrent first reads share one probe.
     let mut cached = slot.lock().await;
-    if let Some(admission) = cached.as_ref().filter(|admission| admission.is_current()) {
+    if let Some(admission) = cached.as_mut().filter(|admission| admission.is_current()) {
+        admission.check_submodules(root, authority).await?;
         return admission.verdict();
     }
-    let probed = Probe::run(root, authority).await?;
-    let verdict = probed.admission.verdict();
-    *cached = probed.cacheable.then_some(probed.admission);
+    let Probe {
+        mut admission,
+        cacheable,
+    } = Probe::run(root, authority).await?;
+    admission.check_submodules(root, authority).await?;
+    let verdict = admission.verdict();
+    *cached = cacheable.then_some(admission);
     verdict
 }
 
@@ -161,6 +168,7 @@ pub(crate) fn trust_for_test(root: &Path) {
         watched: Vec::new(),
         refusal: None,
         repository: None,
+        submodules: None,
     })));
     ADMISSIONS
         .lock()
@@ -172,6 +180,8 @@ struct Admission {
     watched: Vec<(PathBuf, Fingerprint)>,
     refusal: Option<Refusal>,
     repository: Option<AdmittedRepository>,
+    /// The submodules Git would open from `repository`, checked lazily.
+    submodules: Option<Scan>,
 }
 
 #[derive(Clone)]
@@ -198,10 +208,27 @@ impl Admission {
     }
 
     fn verdict(&self) -> AppResult<Option<AdmittedRepository>> {
-        match &self.refusal {
+        let submodules = self.submodules.as_ref().and_then(Scan::refusal);
+        match self.refusal.as_ref().or(submodules) {
             Some(refusal) => Err(refusal.clone().into()),
             None => Ok(self.repository.clone()),
         }
+    }
+
+    /// Scans the submodules of an admitted repository again once anything the
+    /// last scan relied on has changed.
+    async fn check_submodules(
+        &mut self,
+        root: &Path,
+        authority: Option<&GitRootAuthority>,
+    ) -> AppResult<()> {
+        let Some(repository) = self.repository.as_ref().filter(|_| self.refusal.is_none()) else {
+            return Ok(());
+        };
+        if !self.submodules.as_ref().is_some_and(Scan::is_current) {
+            self.submodules = Some(Scan::run(root, authority, repository).await?);
+        }
+        Ok(())
     }
 }
 
@@ -256,6 +283,7 @@ impl Probe {
                     watched: ancestors,
                     refusal: None,
                     repository: None,
+                    submodules: None,
                 },
                 cacheable,
             });
@@ -270,6 +298,7 @@ impl Probe {
                         watched,
                         refusal: Some(Refusal::Layout(layout)),
                         repository: None,
+                        submodules: None,
                     },
                     cacheable,
                 });
@@ -334,6 +363,7 @@ impl Probe {
                 watched,
                 refusal,
                 repository: Some(repository),
+                submodules: None,
             },
             cacheable,
         })
@@ -345,6 +375,7 @@ impl Probe {
                 watched,
                 refusal: Some(Refusal::Config(message.to_owned())),
                 repository: None,
+                submodules: None,
             },
             cacheable: false,
         }
@@ -389,11 +420,6 @@ async fn probe_git(
         repository,
     )
     .await
-}
-
-fn watch(path: PathBuf) -> (PathBuf, Fingerprint) {
-    let fingerprint = Fingerprint::of(&path);
-    (path, fingerprint)
 }
 
 /// Keeps the `.git` entries from the root up to the one Git used. The verdict
@@ -467,90 +493,6 @@ impl Location {
             )),
         }
     }
-}
-
-/// What a watched path held when the verdict was reached. Regular files are
-/// compared by their bytes, which no timestamp or size trick can forge.
-/// Directories record only their kind: the files inside them that matter are
-/// watched on their own, and a directory's timestamps move on every index or
-/// ref update.
-#[derive(Debug, PartialEq, Eq)]
-enum Fingerprint {
-    Missing,
-    Unreadable(io::ErrorKind),
-    Directory,
-    Contents(Vec<u8>),
-    /// Too large to re-read on every call; such a config is refused.
-    Oversized,
-    /// A FIFO, device or socket, which Git could block on; refused.
-    Special,
-    /// A symlink or reparse point, which could lead outside the root; refused.
-    Link,
-}
-
-impl Fingerprint {
-    fn of(path: &Path) -> Self {
-        match fs::symlink_metadata(path) {
-            Ok(metadata) if is_link(&metadata) => return Self::Link,
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Self::Missing,
-            Err(error) => return Self::Unreadable(error.kind()),
-        }
-        match fs::metadata(path) {
-            Ok(metadata) if metadata.is_dir() => Self::Directory,
-            Ok(metadata) if !metadata.is_file() => Self::Special,
-            Ok(metadata) if metadata.len() > MAX_WATCHED_FILE_BYTES => Self::Oversized,
-            Ok(_) => match read_regular_file(path) {
-                Ok(fingerprint) => fingerprint,
-                Err(error) => Self::Unreadable(error.kind()),
-            },
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Self::Missing,
-            Err(error) => Self::Unreadable(error.kind()),
-        }
-    }
-
-    fn is_unverifiable(&self) -> bool {
-        matches!(self, Self::Oversized | Self::Special)
-    }
-}
-
-/// A symlink, or on Windows any reparse point (junctions, mount points and
-/// placeholders alike), since Sage cannot tell where one leads.
-fn is_link(metadata: &fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
-
-        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return true;
-        }
-    }
-    metadata.file_type().is_symlink()
-}
-
-/// Reads a file that was regular when checked. The handle is checked again so
-/// a swap to a FIFO cannot block the caller.
-fn read_regular_file(path: &Path) -> io::Result<Fingerprint> {
-    let mut options = fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
-    }
-    let file = options.open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file() {
-        return Ok(Fingerprint::Special);
-    }
-    let mut bytes = Vec::new();
-    file.take(MAX_WATCHED_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_WATCHED_FILE_BYTES {
-        return Ok(Fingerprint::Oversized);
-    }
-    Ok(Fingerprint::Contents(bytes))
 }
 
 #[cfg(test)]

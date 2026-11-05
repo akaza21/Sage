@@ -749,3 +749,67 @@ fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
     assert!(message.contains("filter.sentinel.clean"), "{message}");
     assert!(!root.join("filter-ran").exists());
 }
+
+const IDENTITY: [&str; 4] = [
+    "-c",
+    "user.name=Sage Test",
+    "-c",
+    "user.email=sage@example.invalid",
+];
+
+#[test]
+fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
+    let scratch = Scratch::new();
+    let source = scratch.repository("source");
+    fs::write(source.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+    fs::write(source.join("a.txt"), "a\n").unwrap();
+    git(&source, &["add", "."]);
+    git(
+        &source,
+        &[&IDENTITY[..], &["commit", "-q", "-m", "source"]].concat(),
+    );
+    let root = scratch.repository("repo");
+    git(
+        &root,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "--quiet",
+            "add",
+            "../source",
+            "sub",
+        ],
+    );
+    git(
+        &root,
+        &[&IDENTITY[..], &["commit", "-q", "-m", "submodule"]].concat(),
+    );
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded(),
+        "an ordinary submodule is admitted"
+    );
+
+    let submodule = root.join("sub");
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    git(&submodule, &["config", "filter.sentinel.clean", &filter]);
+    // The checked-out bytes (line endings included) with a new timestamp:
+    // only cleaning the file again tells Git whether it changed.
+    let checked_out = fs::read(submodule.join("a.txt")).unwrap();
+    fs::write(submodule.join("a.txt"), checked_out).unwrap();
+    for args in [
+        &["status", "--porcelain=v2", "-z", "--untracked-files=all"][..],
+        &["diff", "--no-ext-diff"][..],
+    ] {
+        let message = refusal(sage_git(&root, args));
+        assert!(message.contains("a submodule's Git config"), "{message}");
+        assert!(message.contains("filter.sentinel.clean"), "{message}");
+    }
+    assert!(!sentinel.exists());
+
+    // Control: plain Git status in the parent runs the submodule's filter.
+    git(&root, &["status", "--porcelain"]);
+    assert!(sentinel.exists(), "fixture filter is not live");
+}
