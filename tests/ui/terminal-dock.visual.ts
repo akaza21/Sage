@@ -136,9 +136,18 @@ for (const mode of ["Agent", "Editor"] as const) {
           ? ".agent-chat-center"
           : ".workbench--editor > .workbench__body > .center-region.surface--card:visible",
       );
-      const geometry = await dock.boundingBox();
-      const canvas = await card.boundingBox();
-      expect(geometry!.x).toBeCloseTo(canvas!.x, 0);
+      const terminal = await dock.elementHandle();
+      // Resize can collapse the rail; sample both edges in the same frame.
+      await expect
+        .poll(() =>
+          card.evaluate(
+            (card, terminal) =>
+              terminal!.getBoundingClientRect().x -
+              card.getBoundingClientRect().x,
+            terminal,
+          ),
+        )
+        .toBeCloseTo(0, 0);
       const selected = dock.getByRole("tab", { selected: true });
       await expect(selected).toHaveCSS("border-top-width", "0px");
       await expect(
