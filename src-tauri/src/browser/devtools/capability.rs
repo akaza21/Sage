@@ -257,9 +257,9 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                 let evaluate = method == "Runtime.evaluate";
                 let mut params = params.clone();
                 if evaluate {
-                    // Results come back by value, in Sage's own group, which
-                    // is released below whatever the outcome.
-                    params.insert("returnByValue".into(), true.into());
+                    // Objects stay remote until CdpPort serializes within its
+                    // byte budget. Release our group on every outcome.
+                    params.insert("returnByValue".into(), false.into());
                     params.insert(
                         "objectGroup".into(),
                         crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP.into(),

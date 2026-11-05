@@ -175,6 +175,12 @@ it("offers developer mode off by default, names its risk, and saves through Rust
   });
   expect(group).toContainElement(toggle);
   expect(group).toHaveTextContent("Elevated risk");
+  expect(group).toHaveTextContent(
+    "Runtime.evaluate is limited to explicitly approved agents; results over 256 KiB are rejected.",
+  );
+  expect(group).toHaveTextContent(
+    "CDP can allocate inline strings before Sage can check their size.",
+  );
   expect(toggle).not.toBeChecked();
   expect(toggle).toHaveAccessibleDescription(
     /Runtime.evaluate, Page.reload, Page.getLayoutMetrics.*Scripts can access data available to the page.*Default: Off$/,

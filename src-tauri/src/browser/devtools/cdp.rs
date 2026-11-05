@@ -9,7 +9,6 @@ use std::{
 
 use super::developer_session::Session;
 use tauri::{Manager, Webview};
-use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     ICoreWebView2_11, ICoreWebView2CallDevToolsProtocolMethodCompletedHandler,
 };
@@ -25,6 +24,8 @@ use crate::acp::browser::BrowserFailure;
 use crate::acp::browser::permission::BrowserDispatchPermit;
 
 use super::super::BrowserState;
+
+mod response;
 
 const QUEUED: u8 = 0;
 const ISSUED: u8 = 1;
@@ -91,15 +92,26 @@ pub(super) fn call_with_permit(
     permit: Option<BrowserDispatchPermit>,
     dispatch: Dispatch,
 ) -> Result<String, BrowserFailure> {
-    // Developer-mode params are admitted up to `cdp_params_bytes` of JSON.
     if method.len() > 128 || params.len() > 16_384 {
         return Err(BrowserFailure::Capacity);
     }
-    // A developer-mode evaluation releases its object group from the
-    // completion callback itself, so a result or exception that arrives
-    // after Sage stopped waiting (revoke, timeout) is not left pinned.
+    // Keep a successful evaluation's handle until the serializer finishes.
+    // Failed and late completions release even if the caller stopped waiting.
     let release_on_completion =
         crate::acp::browser::developer::releases_on_completion(method, params);
+    let defer_release = method == "Runtime.evaluate"
+        && serde_json::from_str::<serde_json::Value>(params)
+            .is_ok_and(|params| params["returnByValue"] == false);
+    let capture_clip = if dispatch.session.is_some() && method == "Page.captureScreenshot" {
+        let params = serde_json::from_str(params).map_err(|_| BrowserFailure::InvalidRequest)?;
+        Some(
+            crate::acp::browser::developer::ScreenshotCapture::parse(&params)?
+                .clip
+                .ok_or(BrowserFailure::InvalidRequest)?,
+        )
+    } else {
+        None
+    };
     let method = wide(method);
     let params = wide(params);
     let attempt = IssueAttempt::new();
@@ -117,33 +129,40 @@ pub(super) fn call_with_permit(
                 let completed_sender = sender.clone();
                 let release_core =
                     (release_on_completion && dispatch.session.is_none()).then(|| core.clone());
+                let release_session = dispatch.session.as_ref().map(Arc::downgrade);
                 let completion = dispatch
                     .session
                     .as_ref()
                     .map(Session::begin_completion)
                     .transpose()?;
-                let completed = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-                    move |outcome, json| {
-                        let result = if json.len() > max_result_bytes {
-                            Err(BrowserFailure::Capacity)
-                        } else if outcome.is_ok() {
-                            Ok(json)
-                        } else {
-                            Err(BrowserFailure::Unavailable)
-                        };
-                        if let Some(mut completion) = completion {
-                            if release_on_completion {
-                                completion.release_objects();
+                let completed = response::handler(
+                    max_result_bytes,
+                    Box::new(move |result| {
+                        let release = || {
+                            if let Some(session) =
+                                release_session.as_ref().and_then(std::sync::Weak::upgrade)
+                            {
+                                session.release_objects();
                             }
+                            if let Some(core) = &release_core {
+                                release_developer_objects(core);
+                            }
+                        };
+                        if release_on_completion && (!defer_release || result.is_err()) {
+                            release();
+                        }
+                        if let Some(mut completion) = completion {
                             completion.acknowledge();
                         }
-                        if let Some(core) = release_core {
-                            release_developer_objects(&core);
+                        if completed_sender.try_send(result).is_err()
+                            && release_on_completion
+                            && defer_release
+                        {
+                            release();
                         }
-                        let _ = completed_sender.try_send(result);
                         Ok(())
-                    },
-                ));
+                    }),
+                );
                 let issue = || {
                     if let Some(session) = &dispatch.session {
                         return session.with_id(|id| {
@@ -170,16 +189,30 @@ pub(super) fn call_with_permit(
                     }
                     .map_err(|_| BrowserFailure::Unavailable)
                 };
-                match permit {
+                let issue_marked = || {
+                    callback_attempt.issue(dispatch.issued.as_deref(), || {
+                        if let Some(permit) = &permit {
+                            permit.mark_issued();
+                        }
+                        issue()
+                    })
+                };
+                let issue_admitted = || match capture_clip {
+                    Some(clip) => {
+                        super::native::capture_scale::with_scale(&platform.controller(), |scale| {
+                            clip.admit(scale)?;
+                            issue_marked()
+                        })
+                    }
+                    None => issue_marked(),
+                };
+                match permit.as_ref() {
                     Some(permit) => permit.with_live_lock(|| {
                         app.state::<BrowserState>()
                             .mark_agent_download_provenance(&tab_id);
-                        callback_attempt.issue(dispatch.issued.as_deref(), || {
-                            permit.mark_issued();
-                            issue()
-                        })
+                        issue_admitted()
                     }),
-                    None => callback_attempt.issue(dispatch.issued.as_deref(), issue),
+                    None => issue_admitted(),
                 }
             })();
             if let Err(error) = result {

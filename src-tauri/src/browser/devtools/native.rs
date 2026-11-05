@@ -126,6 +126,7 @@ pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<Pi
     })
 }
 
+pub(super) mod capture_scale;
 mod dispatch;
 
 pub(crate) type NativePort = CdpPort<NativeTransport>;
@@ -141,6 +142,10 @@ pub(crate) struct NativeTransport {
 }
 
 impl CdpTransport for NativeTransport {
+    fn screenshot_scale(&self, timeout: Duration) -> Result<f64, BrowserFailure> {
+        capture_scale::read(&self.webview, timeout)
+    }
+
     fn call(
         &self,
         method: &str,
@@ -184,9 +189,13 @@ impl CdpTransport for NativeTransport {
         )
     }
 
-    // Native evaluations release on completion, including late completions.
-    // Session detach additionally releases unresolved promises and objects.
-    fn release_raw_objects(&self) {}
+    // The evaluation and serializer share the group until the whole operation
+    // finishes. Late completions and detach also clean up after timeouts.
+    fn release_raw_objects(&self) {
+        if let Some(session) = &self.developer {
+            session.release_objects();
+        }
+    }
 
     fn observe(
         &self,

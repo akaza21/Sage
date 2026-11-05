@@ -32,12 +32,22 @@ const DOCUMENTS: usize = 64;
 const OVERLAY_EVENTS: usize = 64;
 const SETUP_TIMEOUT: Duration = Duration::from_secs(20);
 
+struct Waiting(Arc<AtomicBool>);
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 pub(super) struct Chromium {
     child: Child,
     link: Mutex<Link>,
     session: String,
     documents: Mutex<Vec<String>>,
     issued: AtomicBool,
+    /// This lane pins native density to 1; overrides belong to its page session.
+    capture_scale: Mutex<f64>,
     /// How many times each command method was sent to the page, with or
     /// without the dispatch permit.
     calls: Mutex<HashMap<String, usize>>,
@@ -83,6 +93,7 @@ impl Chromium {
             .arg(&binary)
             .args([
                 "--headless=new",
+                "--force-device-scale-factor=1",
                 "--remote-debugging-pipe",
                 "--disable-gpu",
                 "--no-first-run",
@@ -114,6 +125,7 @@ impl Chromium {
             session: String::new(),
             documents: Mutex::new(Vec::new()),
             issued: AtomicBool::new(false),
+            capture_scale: Mutex::new(1.0),
             calls: Mutex::new(HashMap::new()),
             held_stamp: Mutex::new(None),
             overlay_events,
@@ -208,10 +220,25 @@ impl Chromium {
     ) -> Result<String, BrowserFailure> {
         let params: Value =
             serde_json::from_str(params).map_err(|_| BrowserFailure::InvalidRequest)?;
+        let capture_scale = match method {
+            "Emulation.clearDeviceMetricsOverride" => Some(1.0),
+            "Emulation.setDeviceMetricsOverride" => params["deviceScaleFactor"]
+                .as_f64()
+                .map(|scale| if scale == 0.0 { 1.0 } else { scale }),
+            _ => None,
+        };
         let link = self.link.lock().map_err(|_| BrowserFailure::Unavailable)?;
         let release =
             crate::acp::browser::developer::releases_on_completion(method, &params.to_string());
-        let id = self.wire.write(session, method, params, release)?;
+        let waiting = (release && method == "Runtime.evaluate" && params["returnByValue"] == false)
+            .then(|| Waiting(Arc::new(AtomicBool::new(true))));
+        let id = self.wire.write_waiting(
+            session,
+            method,
+            params,
+            release,
+            waiting.as_ref().map(|waiting| waiting.0.clone()),
+        )?;
         let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -233,6 +260,12 @@ impl Chromium {
                 .to_string();
             if result.len() > max_result_bytes {
                 return Err(BrowserFailure::Capacity);
+            }
+            if let Some(scale) = capture_scale {
+                *self
+                    .capture_scale
+                    .lock()
+                    .map_err(|_| BrowserFailure::Unavailable)? = scale;
             }
             return Ok(result);
         }
@@ -279,6 +312,13 @@ impl Chromium {
 }
 
 impl CdpTransport for Chromium {
+    fn screenshot_scale(&self, _: Duration) -> Result<f64, BrowserFailure> {
+        self.capture_scale
+            .lock()
+            .map(|scale| *scale)
+            .map_err(|_| BrowserFailure::Unavailable)
+    }
+
     fn call(
         &self,
         method: &str,

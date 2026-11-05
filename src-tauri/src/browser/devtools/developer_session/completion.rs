@@ -26,14 +26,6 @@ impl<T: CompletionTarget> Completion<T> {
     }
 }
 
-impl Completion {
-    pub(in crate::browser::devtools) fn release_objects(&self) {
-        if let Some(owner) = self.owner.as_ref().and_then(Weak::upgrade) {
-            owner.release_objects();
-        }
-    }
-}
-
 impl<T: CompletionTarget> Drop for Completion<T> {
     fn drop(&mut self) {
         self.acknowledge();

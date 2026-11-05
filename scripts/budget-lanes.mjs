@@ -44,6 +44,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
   "browser-test-policy.node-test.mjs",
+  "bounded-cdp-evaluate.node-test.mjs",
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
   "capture-native-chat-catalog.node-test.mjs",
@@ -512,6 +513,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "browser-test-policy.node-test.mjs",
     reason:
       "Portable browser no-bypass and reference-backed UI rule policy tests over in-memory sources; no native capability required.",
+  },
+  {
+    file: "bounded-cdp-evaluate.node-test.mjs",
+    reason:
+      "Portable CDP result budget regressions execute the shipped serializer through Node's V8 inspector; no native app or browser required.",
   },
   {
     file: "check-policy.node-test.mjs",

@@ -24,8 +24,8 @@ mod switch;
 pub(crate) use switch::{switch_generation, switch_is_current, with_switch_change};
 
 /// `Runtime.evaluate` parameters the Agent may set. Sage itself sets
-/// `returnByValue: true` and its own `objectGroup`, and releases that group
-/// after every call, so no result stays pinned in the page; previews and
+/// `returnByValue: false` and its own `objectGroup`. Objects are serialized
+/// within a byte budget and the group is released after every call; previews and
 /// `serializationOptions` (whose `idOnly` overrides `returnByValue`) would
 /// keep remote objects alive, so they are not accepted.
 const EVALUATE: &[&str] = &[
@@ -47,11 +47,11 @@ pub const DEVELOPER_OBJECT_GROUP: &str = "sage-developer-mode";
 /// `awaitPromise` can outlive V8's limit; native timeout detaches its session.
 pub const EVALUATE_TIMEOUT_MS: u64 = 25_000;
 
-/// Whether this command's completion, whenever it arrives and whether or
-/// not anyone still waits for it, must release `DEVELOPER_OBJECT_GROUP`:
-/// a late result or exception would otherwise stay pinned in the page.
+/// Whether this completion owns developer objects and needs cleanup. A timely
+/// by-reference evaluation keeps its handle until the fixed serializer finishes;
+/// failed/late evaluations and serializer completions release the group.
 pub fn releases_on_completion(method: &str, params: &str) -> bool {
-    method == "Runtime.evaluate"
+    matches!(method, "Runtime.evaluate" | "Runtime.callFunctionOn")
         && serde_json::from_str::<Value>(params)
             .is_ok_and(|params| params["objectGroup"] == DEVELOPER_OBJECT_GROUP)
 }

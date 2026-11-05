@@ -106,6 +106,9 @@ fn any_method_not_listed_is_refused() {
         "Fetch.enable",
         "Debugger.enable",
         "Emulation.setUserAgentOverride",
+        // Scoped screenshots use native density, never a grant-owned override.
+        "Emulation.setDeviceMetricsOverride",
+        "Emulation.clearDeviceMetricsOverride",
         "Network.setExtraHTTPHeaders",
         "Network.enable",
         "Runtime.enable",
@@ -203,10 +206,12 @@ fn a_listed_method_refuses_any_parameter_it_does_not_list() {
 }
 
 #[test]
-fn only_an_evaluation_in_sages_group_releases_when_it_completes() {
+fn only_developer_evaluations_and_serializers_own_the_group_on_completion() {
     let ours = json!({"expression": "1", "objectGroup": DEVELOPER_OBJECT_GROUP}).to_string();
     let other = json!({"expression": "1", "objectGroup": "page"}).to_string();
     assert!(releases_on_completion("Runtime.evaluate", &ours));
+    assert!(releases_on_completion("Runtime.callFunctionOn", &ours));
+    assert!(!releases_on_completion("Runtime.callFunctionOn", &other));
     assert!(!releases_on_completion("Runtime.evaluate", &other));
     assert!(!releases_on_completion("Runtime.evaluate", "{}"));
     assert!(!releases_on_completion("Page.reload", &ours));

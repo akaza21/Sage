@@ -57,7 +57,9 @@ export function BrowserDeveloperModeSetting() {
               you approve it for that tab and site. Allowed commands:{" "}
               {mode.allowedMethods?.join(", ")}. Scripts can access data
               available to the page as the signed-in user. Stop or Take over
-              ends it.
+              ends it. Runtime.evaluate is limited to explicitly approved
+              agents; results over 256 KiB are rejected. CDP can allocate inline
+              strings before Sage can check their size.
             </p>
             <small id={`${TOGGLE}-default`}>Default: Off</small>
             {error ? (

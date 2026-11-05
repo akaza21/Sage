@@ -14,6 +14,13 @@ pub(crate) struct Settled {
 /// every parameter and parses every result; a transport only moves bytes and
 /// reports which document the page currently shows.
 pub(crate) trait CdpTransport {
+    /// Bitmap scale for the raw command's session, including its own device
+    /// override, excluding browser zoom and other sessions' overrides.
+    /// Unknown or changing capture settings fail closed.
+    fn screenshot_scale(&self, _timeout: Duration) -> Result<f64, BrowserFailure> {
+        Err(BrowserFailure::Unavailable)
+    }
+
     /// Issues one Agent command, under the dispatch permit when one is held.
     /// The result is the CDP `result` object as JSON, at most
     /// `max_result_bytes` long.

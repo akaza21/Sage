@@ -1,5 +1,5 @@
 //! Developer-mode evaluations never leave results pinned in the page
-//! (ADR-0009b): by value, in Sage's group, released after every call.
+//! (ADR-0009b): in Sage's group, released after every call.
 use super::*;
 use crate::acp::browser::developer::{DEVELOPER_OBJECT_GROUP, EVALUATE_TIMEOUT_MS};
 use std::time::Duration;
@@ -7,7 +7,8 @@ use std::time::Duration;
 #[derive(Clone, Default)]
 struct RecordingPort {
     raw: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
-    releases: Arc<Mutex<usize>>,
+    held: Arc<Mutex<Option<Arc<Vec<u8>>>>>,
+    weak: Arc<Mutex<std::sync::Weak<Vec<u8>>>>,
     fail: Option<BrowserFailure>,
 }
 
@@ -25,6 +26,11 @@ impl DevtoolsPort for RecordingPort {
         Ok(false)
     }
     fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
+        // Model the renderer group's ownership, so cleanup is observed through
+        // the payload's lifetime rather than a release-call counter.
+        let payload = Arc::new(vec![7; 1024]);
+        *self.weak.lock().unwrap() = Arc::downgrade(&payload);
+        *self.held.lock().unwrap() = Some(payload);
         self.raw
             .lock()
             .unwrap()
@@ -35,7 +41,7 @@ impl DevtoolsPort for RecordingPort {
         }
     }
     fn release_developer_objects(&mut self) {
-        *self.releases.lock().unwrap() += 1;
+        self.held.lock().unwrap().take();
     }
 }
 
@@ -57,7 +63,7 @@ fn evaluate_with(scope: &BrowserScope, params: serde_json::Value) -> BrowserRequ
 }
 
 #[test]
-fn an_evaluation_runs_by_value_in_sages_group_and_is_released_whatever_happens() {
+fn an_evaluation_runs_by_reference_in_sages_group_and_is_released_whatever_happens() {
     let scope = BrowserScope {
         session_id: "session-1".into(),
         tab_id: 1,
@@ -67,6 +73,8 @@ fn an_evaluation_runs_by_value_in_sages_group_and_is_released_whatever_happens()
         None,
         Some(BrowserFailure::Denied),
         Some(BrowserFailure::OutcomeUnknown),
+        Some(BrowserFailure::Capacity),
+        Some(BrowserFailure::Unavailable),
     ] {
         let port = RecordingPort {
             fail,
@@ -78,10 +86,10 @@ fn an_evaluation_runs_by_value_in_sages_group_and_is_released_whatever_happens()
         let raw = port.raw.lock().unwrap();
         assert_eq!(raw.len(), 1);
         assert_eq!(raw[0].0, "Runtime.evaluate");
-        assert_eq!(raw[0].1["returnByValue"], true);
+        assert_eq!(raw[0].1["returnByValue"], false);
         assert_eq!(raw[0].1["objectGroup"], DEVELOPER_OBJECT_GROUP);
         assert_eq!(raw[0].1["timeout"], EVALUATE_TIMEOUT_MS);
-        assert_eq!(*port.releases.lock().unwrap(), 1, "{fail:?}");
+        assert!(port.weak.lock().unwrap().upgrade().is_none(), "{fail:?}");
     }
 }
 

@@ -40,16 +40,12 @@ impl<T: CdpTransport> CdpPort<T> {
             }
         };
         clip.admit(1.0)?;
-        // This trusted isolated-world read cannot be replaced by page script.
-        // Device emulation and zoom can multiply the bitmap beyond CSS size.
-        let ratio = self.evaluate_in_agent_world(
-            Some(before.navigation_id),
-            "window.devicePixelRatio",
-            4096,
-            deadline.min(Instant::now() + Duration::from_secs(5)),
-        )?;
-        let ratio = ratio.as_f64().ok_or(BrowserFailure::Unavailable)?;
-        clip.admit(ratio)?;
+        // Browser zoom changes JS devicePixelRatio without changing bitmap
+        // scale. Use the capture session's native/emulated scale instead.
+        let scale = self
+            .transport
+            .screenshot_scale(left(deadline)?.min(Duration::from_secs(5)))?;
+        clip.admit(scale)?;
         if self.stamp()? != before {
             return Err(BrowserFailure::StaleHandle);
         }

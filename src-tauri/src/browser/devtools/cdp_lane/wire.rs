@@ -8,8 +8,8 @@ use std::{
     io::Write,
     process::ChildStdin,
     sync::{
-        Mutex,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -22,8 +22,13 @@ pub(super) struct Wire {
     pub(super) commands: Mutex<Option<ChildStdin>>,
     next_id: AtomicU64,
     /// Developer evaluations in flight, by command id, with their session.
-    release_on_answer: Mutex<HashMap<u64, Option<String>>>,
+    release_on_answer: Mutex<HashMap<u64, Release>>,
     pub(super) late_releases: AtomicUsize,
+}
+
+struct Release {
+    session: Option<String>,
+    waiting: Option<Arc<AtomicBool>>,
 }
 
 impl Wire {
@@ -36,9 +41,26 @@ impl Wire {
         params: Value,
         release_on_answer: bool,
     ) -> Result<u64, BrowserFailure> {
+        self.write_waiting(session, method, params, release_on_answer, None)
+    }
+
+    pub(super) fn write_waiting(
+        &self,
+        session: Option<&str>,
+        method: &str,
+        params: Value,
+        release_on_answer: bool,
+        waiting: Option<Arc<AtomicBool>>,
+    ) -> Result<u64, BrowserFailure> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         if release_on_answer && let Ok(mut pending) = self.release_on_answer.lock() {
-            pending.insert(id, session.map(str::to_owned));
+            pending.insert(
+                id,
+                Release {
+                    session: session.map(str::to_owned),
+                    waiting,
+                },
+            );
         }
         let mut frame = json!({"id": id, "method": method, "params": params});
         if let Some(session) = session {
@@ -63,12 +85,21 @@ impl Wire {
             .lock()
             .ok()
             .and_then(|mut pending| pending.remove(&id));
-        if let Some(session) = session {
+        if let Some(release) = session {
+            // Timely object handles belong to the serializer until its finally
+            // cleanup. A late evaluation answer must release its own group.
+            if release
+                .waiting
+                .as_ref()
+                .is_some_and(|waiting| waiting.load(Ordering::SeqCst))
+            {
+                return;
+            }
             let params = serde_json::from_str(&crate::acp::browser::developer::release_params())
                 .unwrap_or_default();
             if self
                 .write(
-                    session.as_deref(),
+                    release.session.as_deref(),
                     "Runtime.releaseObjectGroup",
                     params,
                     false,

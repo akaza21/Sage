@@ -125,7 +125,7 @@ impl Session {
         });
     }
 
-    pub(super) fn release_objects(self: &Arc<Self>) {
+    pub(in crate::browser::devtools) fn release_objects(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
         let _ = self.webview.with_webview(move |platform| {
             let Some(session) = weak.upgrade() else {

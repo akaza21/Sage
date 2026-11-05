@@ -42,6 +42,45 @@ fn a_script_runs_in_the_page_and_its_value_comes_back() {
 }
 
 #[test]
+fn developer_evaluation_preserves_lexical_declarations_across_calls() {
+    let mut lane = Lane::open("/form.html");
+    evaluate(&mut lane, "let sageLet = 19; const sageConst = 23;").unwrap();
+    assert_eq!(
+        evaluate(&mut lane, "sageLet + sageConst").unwrap(),
+        json!(42)
+    );
+    evaluate(&mut lane, "sageLet += 1").unwrap();
+    assert_eq!(
+        evaluate(&mut lane, "sageLet + sageConst").unwrap(),
+        json!(43)
+    );
+}
+
+#[test]
+fn completed_object_results_are_collectible_on_every_outcome() {
+    let mut lane = Lane::open("/form.html");
+    for (body, capacity) in [
+        ("({ answer: 42 })", false),
+        ("({ text: 'x'.repeat(300 * 1024) })", true),
+        (
+            "({ get text() { throw new Error('serialization failed'); } })",
+            false,
+        ),
+    ] {
+        let expression = format!(
+            "(() => {{ const held = {body}; window.__completed = {{ ref: new WeakRef(held) }}; return held; }})()"
+        );
+        let result = evaluate(&mut lane, &expression);
+        if capacity {
+            assert_eq!(result, Err(BrowserFailure::Capacity));
+        } else {
+            result.unwrap();
+        }
+        assert!(collected(&mut lane, "__completed"));
+    }
+}
+
+#[test]
 fn a_raw_command_ends_the_handles_a_snapshot_issued() {
     let mut lane = Lane::open("/form.html");
     let (_, _, nodes) = lane.snapshot();

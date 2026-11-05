@@ -14,6 +14,7 @@ use super::{
 };
 
 mod act;
+pub(super) mod evaluate;
 pub(super) mod highlight;
 pub(super) mod inspect;
 pub(super) mod outcome;
@@ -187,6 +188,9 @@ pub(in crate::browser::devtools) fn release_developer_objects<T: CdpTransport>(t
 impl<T: CdpTransport> DevtoolsPort for CdpPort<T> {
     fn raw(&mut self, method: &str, params: &str) -> Result<String, BrowserFailure> {
         let deadline = Instant::now() + Duration::from_secs(30);
+        if method == "Runtime.evaluate" {
+            return self.bounded_evaluate(params, deadline);
+        }
         let bounded;
         let params = if method == "Page.captureScreenshot" {
             bounded = self.bounded_screenshot(params, deadline)?;
