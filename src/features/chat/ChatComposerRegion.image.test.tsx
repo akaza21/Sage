@@ -77,6 +77,34 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("unmounts hidden toolbar controls while preserving the draft", () => {
+    const { container, rerenderComposer } = renderComposer();
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    rerenderComposer({
+      hidden: true,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 0,
+        totalTokens: 1000,
+        contextWindow: 272000,
+      },
+    });
+    expect(container.querySelector(".composer__context")).toBeNull();
+    expect(container.querySelector(".composer__controls")).toBeNull();
+    rerenderComposer({ hidden: false });
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+      "A prompt",
+    );
+  });
+  it("leaves prompt paths and code uncorrected", () => {
+    renderComposer({ text: "src/loong_file.ts npm --flag" });
+    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    expect(prompt).toHaveAttribute("spellcheck", "false");
+    expect(prompt).toHaveAttribute("autocorrect", "off");
+    expect(prompt).toHaveAttribute("autocapitalize", "off");
+    expect(prompt).toHaveValue("src/loong_file.ts npm --flag");
+  });
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
     const prompt = screen.getByRole("textbox", { name: "Message agent" });

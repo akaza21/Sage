@@ -1909,7 +1909,10 @@ describe("ChatSurface ACP resource integration", () => {
             name: "Model",
             type: "select",
             currentValue: "sonnet",
-            options: [{ value: "sonnet", name: "Sonnet 5" }],
+            options: [
+              { value: "sonnet", name: "Sonnet 5" },
+              { value: "other", name: "Other model" },
+            ],
           },
         ],
       },
@@ -5127,7 +5130,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Voice input unavailable" }),
     ).toBeDisabled();
   });
-  it("cancels active dictation on a chat switch and ignores late speech", () => {
+  it("cancels active dictation on a chat switch and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -5178,6 +5181,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     act(() =>
@@ -5196,7 +5200,7 @@ describe("ChatSurface composer context", () => {
     expect(useWorkbenchStore.getState().composerText).toBe("Second draft");
   });
 
-  it("aborts active dictation on unmount and ignores late speech", () => {
+  it("aborts active dictation on unmount and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -5228,6 +5232,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     const view = render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     view.unmount();
@@ -5297,6 +5302,7 @@ describe("ChatSurface composer context", () => {
       expect.stringMatching(/online service/i),
     );
     fireEvent.click(mic);
+    await screen.findByRole("button", { name: "Stop dictation" });
     expect(FakeRecognition.current.start).toHaveBeenCalledOnce();
     act(() =>
       FakeRecognition.current.onresult?.({
@@ -5314,6 +5320,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Start dictation" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const disabling = FakeRecognition.current;
     useWorkbenchStore.setState({ projectTransitioning: true });
     view.rerender(<ChatSurface />);
@@ -5333,6 +5340,7 @@ describe("ChatSurface composer context", () => {
       ).toBeVisible(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const previous = FakeRecognition.current;
     act(() =>
       previous.onresult?.({

@@ -28,7 +28,7 @@ import {
   browserMenuKeyDown,
   useDismissOnOutsidePointer,
 } from "./browserPopover";
-import { useToolbarOverflow } from "./useToolbarOverflow";
+import { useBrowserToolbarOverflow } from "./useBrowserToolbarOverflow";
 import { useNativePageLayer } from "../../ui/nativePageLayers";
 
 export interface BrowserNavigationProps {
@@ -87,7 +87,7 @@ export function BrowserNavigationControls({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const addressText = useAddressText(editing, page, address);
-  const overflow = useToolbarOverflow(menuOpen, pageControls);
+  const overflow = useBrowserToolbarOverflow(menuOpen, pageControls);
   useLayoutEffect(() => {
     if (editing) addressField.current?.select();
   }, [editing, addressField]);
@@ -127,12 +127,14 @@ export function BrowserNavigationControls({
     action: () => void,
     disabled = false,
     title?: string,
+    overflowKey?: string,
   ) => (
     <button
       role="menuitem"
       type="button"
       disabled={disabled}
       title={title}
+      data-overflow-control={overflowKey}
       onClick={() => run(action)}
     >
       {label}
@@ -283,7 +285,7 @@ export function BrowserNavigationControls({
             )}
           </div>
           <div className="browser-surface__menu-group">
-            {menuItem("Downloads", onDownloads)}
+            {menuItem("Downloads", onDownloads, false, undefined, "downloads")}
             {menuItem("History", onHistory)}
             {clearDataControl}
           </div>

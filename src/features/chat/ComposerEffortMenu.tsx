@@ -12,6 +12,7 @@ import type {
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
 import { Brain, ChevronDown, RotateCcw } from "../../ui/leanIcons";
+import "./composer-effort-menu.css";
 import { MenuPopover } from "../../ui/MenuPopover";
 
 export default function ComposerEffortMenu({
@@ -32,7 +33,7 @@ export default function ComposerEffortMenu({
   anchorRef?: RefObject<HTMLButtonElement | null>;
   triggerRef: RefObject<HTMLButtonElement | null>;
   panelId: string;
-  fallbackRef: RefObject<HTMLButtonElement | null>;
+  fallbackRef: RefObject<HTMLElement | null>;
   option: Extract<AcpConfigOption, { type: "select" }>;
   modelLabel: string;
   open: boolean;
@@ -64,7 +65,12 @@ export default function ComposerEffortMenu({
           trigger?.isConnected && !trigger.disabled
             ? trigger
             : fallbackRef.current;
-        if (fallback && !fallback.disabled) fallback.focus();
+        if (
+          fallback &&
+          fallback.tabIndex >= 0 &&
+          !fallback.matches(":disabled")
+        )
+          fallback.focus();
         else
           fallback
             ?.closest("form")
@@ -102,6 +108,7 @@ export default function ComposerEffortMenu({
         id={panelId}
         ariaLabel="Thinking level"
         role="dialog"
+        placement="above-start"
         open={open}
         triggerRef={panelTriggerRef}
         onDismiss={onDismiss}
@@ -113,14 +120,17 @@ export default function ComposerEffortMenu({
             <span className="composer-effort__level">
               {capitalizeLabel(label)}
             </span>
-            <button
-              type="button"
-              disabled={!modelAvailable}
-              aria-label={`Select model: ${modelLabel}`}
-              onClick={onOpenModel}
-            >
-              {modelLabel} <ChevronDown size={10} aria-hidden="true" />
-            </button>
+            {modelAvailable ? (
+              <button
+                type="button"
+                aria-label={`Select model: ${modelLabel}`}
+                onClick={onOpenModel}
+              >
+                {modelLabel} <ChevronDown size={10} aria-hidden="true" />
+              </button>
+            ) : (
+              <span className="composer-effort__model-label">{modelLabel}</span>
+            )}
           </div>
           {defaultLevel ? (
             <button
@@ -155,7 +165,7 @@ export default function ComposerEffortMenu({
             ref={sliderRef}
             type="range"
             aria-label="Thinking level"
-            aria-valuetext={levels[position].name}
+            aria-valuetext={capitalizeLabel(levels[position].name)}
             aria-disabled={disabled || pending}
             min={0}
             max={levels.length - 1}

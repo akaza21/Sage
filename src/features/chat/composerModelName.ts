@@ -1,9 +1,3 @@
-import { useMemo } from "react";
-
-export function useComposerModelName(name: string): string {
-  return useMemo(() => composerModelName(name), [name]);
-}
-
 export function composerModelName(name: string): string {
   const claude =
     /^claude[- ](sonnet|opus|haiku)[- ](\d+)(?:[- .](\d{1,2}))?(?:[- ]\d{8})?$/i.exec(
