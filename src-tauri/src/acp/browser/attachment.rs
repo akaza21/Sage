@@ -27,6 +27,7 @@ mod developer;
 mod popup;
 mod resources;
 pub(crate) use control::AgentControl;
+#[cfg(windows)]
 pub(crate) use developer::DeveloperCommand;
 pub(crate) use popup::AgentAction;
 #[cfg(windows)]

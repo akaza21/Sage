@@ -11,6 +11,7 @@ use super::*;
 use crate::acp::browser::developer;
 mod command;
 mod session;
+#[cfg(windows)]
 pub(crate) use command::DeveloperCommand;
 
 pub(crate) type GrantAudit = Arc<dyn Fn(developer::CdpAuditOutcome) -> bool + Send + Sync>;
