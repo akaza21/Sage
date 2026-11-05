@@ -213,6 +213,9 @@ pub fn run() {
                 .map_err(std::io::Error::other)?;
             app.manage(browser_state);
             app.manage(project_create_commands::ProjectSourcePicks::default());
+            app.manage(browser::passwords::PasswordsState::new(
+                profile.durable_dir(),
+            ));
             #[cfg(all(windows, feature = "acp-fixture"))]
             let state = match fixture_mode {
                 DesktopFixtureMode::GenericCharacterization(binding) => {

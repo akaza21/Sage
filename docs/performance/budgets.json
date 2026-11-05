@@ -118,7 +118,8 @@
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
         "maxGzipBytes": 1385,
-        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager."
+        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager.",
+        "maxCssGzipBytes": 180
       },
       {
         "entry": "src/features/chat/acp/TurnFileActivity.tsx",
@@ -362,8 +363,8 @@
       },
       {
         "entry": "src/workbench/SettingsSurface.tsx",
-        "maxGzipBytes": 2453,
-        "reason": "Editor Settings with EP-06 files.exclude pattern controls and array-value default checks; loads only for Settings. Merge measured 2323 B plus 7%; Agent path and core caps unchanged."
+        "maxGzipBytes": 2779,
+        "reason": "Editor Settings with EP-06 exclude controls and the BF-7b-1 Passwords entries and lazy page loader; loads only for Settings. Measured 2597 B plus 7%; Agent and core caps unchanged."
       },
       {
         "entry": "src/workbench/SourceControlView.tsx",
@@ -375,6 +376,16 @@
         "maxGzipBytes": 8160,
         "maxCssGzipBytes": 800,
         "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
+      },
+      {
+        "entry": "src/features/chat/composerDictationRuntime.ts",
+        "maxGzipBytes": 1100,
+        "reason": "Native speech event handling loads only on a dictation request; inactive composers retain no speech subscriptions."
+      },
+      {
+        "entry": "src/features/chat/ComposerUsageContext.tsx",
+        "maxGzipBytes": 700,
+        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter."
       }
     ],
     "windowsInstallerMb": 45,

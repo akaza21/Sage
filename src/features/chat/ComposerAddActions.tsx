@@ -1,23 +1,66 @@
 import { Check, Sparkles, Target } from "../../ui/leanIcons";
-import type { ComponentProps, ReactNode, RefObject } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
-import { sessionModeActions } from "../../domain/acpSessionConfigControls";
+import {
+  sessionConfigControls,
+  sessionModeActions,
+  flattenChoices,
+} from "../../domain/acpSessionConfigControls";
 
 export function ComposerOptionsMenu({
   id,
   triggerRef,
   onDismiss,
+  selectionKey,
+  canSelectEffort,
+  focused,
+  onModeRemoved,
   ...actions
 }: ComponentProps<typeof ComposerAddActions> & {
   id: string;
+  selectionKey: string;
+  canSelectEffort: boolean;
+  focused: boolean;
+  onModeRemoved: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
 }) {
+  const actionsKey = JSON.stringify([
+    selectionKey,
+    actions.sessionConfig?.sageAgentSessionId,
+    Boolean(actions.imageAction),
+    Boolean(actions.onOpenGoal),
+    canSelectEffort,
+    sessionModeActions(actions.sessionConfig).map((mode) => mode.id),
+    sessionConfigControls(actions.sessionConfig, "other").map((option) => [
+      option.id,
+      option.type,
+      flattenChoices(option).map((choice) => choice.value),
+    ]),
+  ]);
+  const previousActionsKey = useRef(actionsKey);
+  useLayoutEffect(() => {
+    if (previousActionsKey.current !== actionsKey) {
+      const element = document.activeElement;
+      const menuHadFocus =
+        element === document.body ||
+        Boolean(element && document.getElementById(id)?.contains(element));
+      onDismiss();
+      if (focused && menuHadFocus) onModeRemoved();
+    }
+    previousActionsKey.current = actionsKey;
+  }, [actionsKey, focused, id, onDismiss, onModeRemoved]);
   return (
     <MenuPopover
       id={id}
@@ -110,6 +153,7 @@ export function ComposerAddActions({
           className="menu-item"
           tabIndex={-1}
           onClick={onOpenEffort}
+          data-overflow-control="effort"
         >
           Thinking level
         </button>

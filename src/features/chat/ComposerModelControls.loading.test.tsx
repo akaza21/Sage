@@ -43,7 +43,10 @@ it("cancels a cold model import without stealing focus and unmounts a closed men
           onToggle={() => setOpen(!open)}
           onToggleEffort={() => {}}
           onDismiss={() => setOpen(false)}
-          choices={[{ id: "actual", name: "Actual model" }]}
+          choices={[
+            { id: "actual", name: "Actual model" },
+            { id: "other", name: "Other model" },
+          ]}
           selectedId="actual"
           modelLabel="Actual model"
           effortLabel={null}

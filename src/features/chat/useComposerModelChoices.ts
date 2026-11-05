@@ -3,13 +3,14 @@ import type { AcpConfigOption } from "../../domain/acpSessionConfig";
 import type { ComposerModelChoice } from "./ChatModelPicker";
 
 export function useComposerModelChoices(
-  option: AcpConfigOption | undefined,
-  models: readonly ComposerModelChoice[],
+  source:
+    | readonly ComposerModelChoice[]
+    | Extract<AcpConfigOption, { type: "select" }>,
 ) {
   return useMemo(
     () =>
-      option?.type === "select"
-        ? option.options.flatMap((entry) =>
+      "type" in source
+        ? source.options.flatMap((entry) =>
             "group" in entry
               ? entry.options.map((choice) => ({
                   id: choice.value,
@@ -18,7 +19,7 @@ export function useComposerModelChoices(
                 }))
               : [{ id: entry.value, name: entry.name || entry.value }],
           )
-        : models,
-    [option, models],
+        : source,
+    [source],
   );
 }

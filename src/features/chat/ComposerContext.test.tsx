@@ -22,8 +22,9 @@ describe("ComposerContext", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
-  it("renders reported usage against a known runtime context window", () => {
+  it("renders reported usage against a known runtime context window", async () => {
     render(<ComposerContext usage={usage(6_000, 272_000)} />);
+    await screen.findByRole("progressbar");
 
     expect(screen.getByLabelText("Composer context")).toHaveTextContent(
       "6K context",
@@ -50,8 +51,9 @@ describe("ComposerContext", () => {
     expect(meter).not.toHaveTextContent("%");
   });
 
-  it("clamps only the visual and numeric progressbar value when usage is over capacity", () => {
+  it("clamps only the visual and numeric progressbar value when usage is over capacity", async () => {
     render(<ComposerContext usage={usage(300_000, 272_000)} />);
+    await screen.findByRole("progressbar");
 
     expect(screen.getByLabelText("Composer context")).toHaveTextContent(
       "300K context",

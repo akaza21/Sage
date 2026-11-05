@@ -2,7 +2,10 @@ import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
-import { expectCompactComposerTargets } from "./shared/composerGeometry";
+import {
+  expectCompactComposerTargets,
+  settledComposerFit,
+} from "./shared/composerGeometry";
 
 let script: string;
 let styles: string;
@@ -51,6 +54,28 @@ async function render(page: Page, name: string, state: ParityState) {
   );
   await expect(page.locator("form.composer")).toBeVisible();
 }
+/** Opens Thinking level from the toolbar, or from the options menu when the
+ * toolbar has moved it there to keep the model name readable. */
+async function openEffort(page: Page, level: string) {
+  const composer = page.locator("form.composer");
+  const effort = composer.getByRole("button", {
+    name: `Thinking level: ${level}`,
+  });
+  await expect(
+    composer.locator(".composer__effort-picker[data-overflow-control]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu")) {
+    await expect(effort.locator(".lucide-brain")).toHaveCount(1);
+    return effort.click();
+  }
+  await composer
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Composer options menu" })
+    .getByRole("menuitem", { name: "Thinking level", exact: true })
+    .click();
+}
 async function noClip(page: Page, selector: string) {
   for (const element of await page.locator(selector).all()) {
     const geometry = await element.evaluate((element) => ({
@@ -78,18 +103,11 @@ for (const width of [1888, 720, 480]) {
         const composer = page.locator("form.composer");
         await expectCompactComposerTargets(composer);
         await render(page, name, "stopped");
-        const model = composer.getByRole("button", {
-          name: "Model",
-          exact: true,
-        });
-        const effort = composer.getByRole("button", {
-          name: "Thinking level: High",
-        });
+        const model = composer.getByLabel("Model", { exact: true });
         await expect(model).toHaveText("Confirmed session model");
         await expect(model.locator(".lucide-sparkles")).toHaveCount(1);
-        await expect(effort.locator(".lucide-brain")).toHaveCount(1);
         await expectCompactComposerTargets(composer);
-        await effort.click();
+        await openEffort(page, "High");
         const reset = page.getByRole("button", { name: "Reset effort" });
         await expect(reset).toBeVisible();
         await reset.click();
@@ -262,9 +280,9 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await render(page, "Claude Code", "pre-turn");
       const composer = page.locator("form.composer");
-      await expect(
-        composer.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Model");
+      await expect(composer.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
       const effort = composer.getByRole("button", {
         name: "Thinking level",
         exact: true,
@@ -283,7 +301,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await render(page, "Pi", "models");
-      await page.getByRole("button", { name: "Model", exact: true }).click();
+      await page.getByLabel("Model", { exact: true }).click();
       const recommended = page.getByRole("group", {
         name: "Recommended by harness",
       });
@@ -298,9 +316,9 @@ for (const width of [1888, 720, 480]) {
         .getByRole("option", { name: "GPT-5.4 Mini", exact: true });
       await expect(other).toHaveAttribute("data-option-id", "gpt-5.4-mini");
       await other.click();
-      await expect(
-        page.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("GPT-5.4 Mini");
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "GPT-5.4 Mini",
+      );
     });
     test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
       page,
@@ -348,10 +366,7 @@ for (const width of [1888, 720, 480]) {
         await page.emulateMedia({ forcedColors });
         expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
         await render(page, "Claude Code", "model-collisions");
-        const trigger = page.getByRole("button", {
-          name: "Model",
-          exact: true,
-        });
+        const trigger = page.getByLabel("Model", { exact: true });
         await trigger.focus();
         await page.keyboard.press("Enter");
         const menu = page.locator(".composer__model-menu");
@@ -406,16 +421,16 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await render(page, "Pi", "no-default");
-      await page.getByRole("button", { name: "Thinking level: High" }).click();
+      await openEffort(page, "High");
       await expect(
         page.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(0);
       await render(page, "OpenCode", "no-effort");
       await expect(page.locator(".composer__effort-picker")).toHaveCount(0);
       await render(page, "Pi", "unknown");
-      await expect(
-        page.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Model");
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
       await page.getByRole("button", { name: "Harness", exact: true }).click();
       await expect(page.locator(".searchable-picker__subtitle")).toHaveCount(0);
     });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { errorMessage } from "../../domain/errors";
@@ -17,13 +17,10 @@ export function AgentHarnessSettings() {
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  // A refresh finishes whether or not Settings is still on screen: hidden
+  // while the window is minimized, React keeps this page's state, so the
+  // result and the end of refreshing are recorded for wake. Only a newer
+  // inventory, from discovery or another refresh, supersedes it.
   async function refresh() {
     const initialInventory = useWorkbenchStore.getState().harnesses;
     setRefreshing(true);
@@ -31,12 +28,12 @@ export function AgentHarnessSettings() {
     try {
       const inventory = await getWorkbenchPorts().agent.listHarnesses();
       const current = useWorkbenchStore.getState();
-      if (mounted.current && current.harnesses === initialInventory)
+      if (current.harnesses === initialInventory)
         await current.applyHarnessDiscovery(inventory);
     } catch (cause) {
-      if (mounted.current) setError(errorMessage(cause));
+      setError(errorMessage(cause));
     } finally {
-      if (mounted.current) setRefreshing(false);
+      setRefreshing(false);
     }
   }
   const disabled =

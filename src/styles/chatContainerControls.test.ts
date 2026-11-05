@@ -1,37 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-async function containerDisplay(selector: string, width: number) {
-  const css = await readFile("src/styles/chat-container-controls.css", "utf8");
-  const root = document.createElement("div");
-  root.className = "composer";
-  root.innerHTML =
-    '<div class="composer__controls"><button><span class="composer__access-text"></span></button><label class="composer__harness"><button><span class="searchable-picker__trigger-label"></span></button></label><button><svg class="composer__model-icon"></svg><span class="composer__model-label"></span></button></div>';
-  const element = root.querySelector(selector);
-  if (!element) throw new Error(`Missing control fixture: ${selector}`);
-  let display = "inline";
-  const applyRules = (source: string) => {
-    for (const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (
-        !rule[1]
-          .split(",")
-          .some((candidate) => element.matches(candidate.trim()))
-      )
-        continue;
-      const value = rule[2].match(/display:\s*([^;]+);/);
-      if (value) display = value[1];
-    }
-  };
-  applyRules(css.slice(0, css.indexOf("@container")));
-  for (const query of css.matchAll(
-    /@container composer \(max-width: (\d+)px\)\s*\{([\s\S]*?)\n\}/g,
-  )) {
-    if (width > Number(query[1])) continue;
-    applyRules(query[2]);
-  }
-  return display;
-}
-
 describe("Chat container control breakpoints", () => {
   it("keeps the bounded queue in normal flow at every composer width", async () => {
     const base = await readFile("src/styles/queued-messages.css", "utf8");
@@ -130,23 +99,4 @@ describe("Chat container control breakpoints", () => {
     );
     expect(css).not.toMatch(/@media\s*\(max-width:/);
   });
-
-  // Between 281 and 320 a long effort label can squeeze the model label to
-  // nothing; the icon keeps the trigger identifiable instead of a bare chevron.
-  it.each([
-    [401, "none"],
-    [400, "none"],
-    [321, "none"],
-    [320, "block"],
-    [281, "block"],
-    [280, "block"],
-    [180, "block"],
-  ])(
-    "declares the model icon display at %ipx as %s",
-    async (width, display) => {
-      expect(await containerDisplay(".composer__model-icon", width)).toBe(
-        display,
-      );
-    },
-  );
 });

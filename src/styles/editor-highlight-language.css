@@ -3,11 +3,6 @@
  * last and Editor-owned so Agent surfaces and shared resource defaults retain
  * their independent presentation.
  */
-.workbench--editor .activity-rail__button--active {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
 @media (forced-colors: none) {
   /* Persistent selection: quiet fill, local hairline, no glow. */
   .workbench--editor .tree__row--selected,
@@ -19,10 +14,6 @@
   .workbench--editor .tab--active {
     background: var(--editor-selection-fill);
     box-shadow: inset 0 1px 0 var(--editor-selection-edge);
-  }
-
-  .workbench--editor .activity-rail__button--active {
-    background: var(--editor-active-fill);
   }
 
   .workbench--editor .title-bar__mode--active {
@@ -130,10 +121,6 @@
   .workbench--editor .sidebar:focus-visible {
     outline: 0;
     box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
-  }
-
-  .workbench--editor .workbench-sidebar-splitter:focus-visible {
-    outline: 0;
   }
 
   /* File and Diff share document syntax; these overrides belong to Editor. */

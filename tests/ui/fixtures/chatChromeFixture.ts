@@ -13,7 +13,7 @@ import { mirrorAgentRailStatus } from "../../../src/workbench/useAgentRailProjec
 import { popoverProfiles } from "./popoverProfiles";
 
 export const chatChromePrompt =
-  "Please inspect the chat chrome carefully.\nKeep every wrapped user prompt rectangular.\nCheck all supported harnesses at narrow widths.";
+  "Please inspect the chat chrome carefully and explain how its controls behave in a detailed response.\nKeep every wrapped user prompt rectangular as the reading column and composer adapt together.\nCheck all supported harnesses at narrow and wide widths before finishing the review.";
 export function chatChromeAnswer(): string {
   return Array.from(
     { length: 60 },

@@ -72,12 +72,15 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
 
 const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAccessMenu.tsx",
+  "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/acp/ChatMarkdown.tsx",
   "src/features/files/FileMarkdownPreview.tsx",
+  "src/features/chat/ComposerUsageContext.tsx",
+  "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
@@ -95,7 +98,6 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/files/FileGoToLineBar.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
-  "src/features/chat/ComposerAddActions.tsx",
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
@@ -197,6 +199,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
+  // So does the Passwords settings page (BF-7b-1).
+  "src/workbench/settings/SettingsPasswordsPage.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",

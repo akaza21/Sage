@@ -1379,6 +1379,19 @@ test("browser DOM contract selects the Codex option by its id and exposes exact 
       composer.nextElementSibling.remove();
       assert.equal(eval(ui.codexReady), true);
 
+      // A single-model catalog renders the model as a read-only label.
+      const label = document.createElement("span");
+      label.setAttribute("aria-label", "Model");
+      label.dataset.selectedId = "gpt-5.6";
+      label.textContent = "gpt-5.6";
+      model.replaceWith(label);
+      assert.equal(eval(ui.codexReady), true);
+      assert.deepEqual(eval(ACP04_SNAPSHOT_EXPRESSION).model, {
+        id: "gpt-5.6",
+        text: "gpt-5.6",
+      });
+      label.replaceWith(model);
+
       let sends = 0;
       const send = document.querySelector('button[aria-label="Send message"]');
       send.addEventListener("click", (event) => {

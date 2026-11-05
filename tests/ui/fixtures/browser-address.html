@@ -119,7 +119,10 @@
               : visible
                 ? React.createElement(
                     "button",
-                    { "aria-label": "Attach page" },
+                    {
+                      "aria-label": "Attach page",
+                      "data-overflow-control": "attach",
+                    },
                     "▣",
                   )
                 : null,

@@ -8,12 +8,21 @@ import {
 } from "./settingsNavigation";
 
 describe("settings navigation", () => {
-  it("orders the pages so Editor comes before Keyboard and Browser", () => {
+  it("orders the pages Editor, Keyboard, Browser, then Passwords", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",
       "keyboard",
       "browser",
+      "passwords",
     ]);
+  });
+
+  it("finds the Passwords page by import and saved-password searches", () => {
+    expect(admitSettingsPageId("passwords")).toBe("passwords");
+    expect(pagesWithMatches("csv")).toEqual(new Set(["passwords"]));
+    expect(matchingSettingsEntryIds("delete all", "passwords")).toEqual(
+      new Set(["passwords.deleteAll"]),
+    );
   });
 
   it("finds the Browser settings by their Codex labels", () => {
