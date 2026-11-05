@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { resetAgentChatHistory } from "./agentChatHistory";
@@ -74,6 +75,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetAgentChatHistory();
+  clearAgentChatOwner();
   useWorkbenchStore.setState(initialState, true);
 });
 
@@ -110,4 +112,42 @@ it("keeps the way back while a pending send holds the project, then takes it", a
   await settle();
   expect(shown()).toBe("project-a/a1");
   expect(screen.getByRole("button", { name: "Forward" })).toBeEnabled();
+});
+
+it("keeps Back when a refused switch leaves the retained chat showing", async () => {
+  render(<AgentWindow />);
+  act(() => {
+    useWorkbenchStore.setState({ activeTabId: "a2" });
+    pinAgentChatOwner("a2");
+  });
+  // A file opens beside the chat; the Agent body keeps showing a2.
+  act(() =>
+    useWorkbenchStore.setState({
+      tabs: [
+        ...layouts["project-a"],
+        {
+          id: "file:notes",
+          kind: "file",
+          title: "notes.md",
+          position: 2,
+          pinned: false,
+          dirty: false,
+          resource: { rootId: "root-a", relativePath: "notes.md" },
+        },
+      ],
+      activeTabId: "file:notes",
+      // The real activation flushes the editor first and stops when it fails.
+      activateTab: initialState.activateTab,
+      flushActiveEditor: async () => {
+        throw new Error("disk unavailable");
+      },
+    }),
+  );
+
+  fireEvent.keyDown(document.body, { key: "ArrowLeft", altKey: true });
+  await settle();
+
+  expect(useWorkbenchStore.getState().activeTabId).toBe("file:notes");
+  expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
 });

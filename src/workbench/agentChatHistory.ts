@@ -5,7 +5,7 @@
 import { create } from "zustand";
 
 import { useWorkbenchStore } from "../app/store";
-import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
+import { currentShownAgentChatId } from "./shownAgentChat";
 
 export interface AgentChatPlace {
   projectId: string;
@@ -117,11 +117,11 @@ export function goForwardInAgentChats(open: OpenAgentChat) {
   return travel(forward, back, open);
 }
 
-/** The chat the Agent window shows, by the same rule as the title bar. */
+/** The chat the Agent window shows, by the title bar's rule. */
 function shownInWorkbench(): AgentChatPlace | null {
-  const { project, tabs, activeTabId } = useWorkbenchStore.getState();
-  const chatId = focusedAgentChatId(collectChatTabIds(tabs), activeTabId, null);
-  return project && chatId ? { projectId: project.id, chatId } : null;
+  const projectId = useWorkbenchStore.getState().project?.id;
+  const chatId = currentShownAgentChatId();
+  return projectId && chatId ? { projectId, chatId } : null;
 }
 
 const hasChat = (chatId: string) =>

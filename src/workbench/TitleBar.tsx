@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
-import { useAgentChatFocus } from "../app/agentChatOwner";
 import {
   formatKeymapChords,
   keymapBinding,
@@ -25,10 +24,8 @@ import {
   noteAgentChatVisit,
   useAgentChatHistory,
 } from "./agentChatHistory";
-import { useRailChatId } from "./sideChatState";
+import { useShownAgentChatId } from "./shownAgentChat";
 import {
-  collectChatTabIds,
-  focusedAgentChatId,
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -51,9 +48,6 @@ export function TitleBar({
   agentNavigationCollapsed?: boolean;
   onToggleAgentNavigation?: () => void;
 }) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const agentChatId = useAgentChatFocus();
   const project = useWorkbenchStore((state) => state.project);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -91,10 +85,7 @@ export function TitleBar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inert, chatSearchDisabled, isAgent, openChatSearch]);
-  // A side chat belongs to its parent's place in the history.
-  const focusedId = useRailChatId(
-    focusedAgentChatId(collectChatTabIds(tabs), activeTabId, agentChatId),
-  );
+  const focusedId = useShownAgentChatId();
   const projectId = project?.id ?? null;
   useEffect(() => {
     if (!isAgent || !projectId || !focusedId || projectTransitioning) return;

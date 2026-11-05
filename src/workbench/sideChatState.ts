@@ -29,13 +29,17 @@ export const useSideChatState = create<{
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 
+/** The rail chat for `activeId`: a side chat's parent, else itself. */
+export function railChatIdIn(
+  sides: readonly SideChatEntry[],
+  activeId: string | null,
+) {
+  return sides.find((side) => side.id === activeId)?.parentChatId ?? activeId;
+}
+
 /** A focused side chat isn't in the rail; its parent retains window title/highlight. */
 export function useRailChatId(activeId: string | null) {
-  return (
-    useSideChatState(
-      (state) => state.sides.find((side) => side.id === activeId)?.parentChatId,
-    ) ?? activeId
-  );
+  return useSideChatState((state) => railChatIdIn(state.sides, activeId));
 }
 
 /** A parent Chat reads as working while one of its side chats runs. */
