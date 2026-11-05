@@ -223,6 +223,45 @@ it("hides a revealed password once an import may have replaced it", async () => 
   ).toHaveTextContent("new-secret");
 });
 
+it("hides a revealed password when Refresh may bring a newer one from another window", async () => {
+  native.overview.mockResolvedValue(ready());
+  native.reveal.mockResolvedValue("old-secret");
+  render(<SettingsPasswordsPage visible={all()} />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  await act(async () => {
+    fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  });
+  expect(screen.getByText("old-secret")).toBeVisible();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  });
+  expect(screen.queryByText("old-secret")).toBeNull();
+  expect(native.overview).toHaveBeenCalledTimes(2);
+});
+
+it("drops a reveal the OS confirmed after the vault was reloaded", async () => {
+  native.overview.mockResolvedValue(ready());
+  let confirm: (password: string) => void = () => {};
+  native.reveal.mockReturnValue(
+    new Promise<string>((resolve) => {
+      confirm = resolve;
+    }),
+  );
+  render(<SettingsPasswordsPage visible={all()} />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  // Another window's change arrives while the OS prompt is open.
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search passwords" }),
+    { target: { value: "ada" } },
+  );
+  await vi.waitFor(() =>
+    expect(native.overview).toHaveBeenLastCalledWith("ada"),
+  );
+  await act(async () => confirm("old-secret"));
+  expect(screen.queryByText("old-secret")).toBeNull();
+});
+
 it("edits a username", async () => {
   native.overview.mockResolvedValue(ready());
   native.update.mockResolvedValue(undefined);

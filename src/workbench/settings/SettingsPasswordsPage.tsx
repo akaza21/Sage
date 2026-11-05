@@ -50,16 +50,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   );
   const [reloads, setReloads] = useState(0);
   const hideTimers = useRef(new Map<string, number>());
+  // Counts reloads of vault data; a reveal answered after one is stale.
+  const vaultEpoch = useRef(0);
   const mounted = useRef(false);
-  const reload = () => setReloads((count) => count + 1);
-
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => setQuery(search.trim()),
-      SEARCH_DEBOUNCE_MS,
-    );
-    return () => window.clearTimeout(timer);
-  }, [search]);
 
   useEffect(() => {
     if (!desktop) return;
@@ -90,12 +83,33 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     });
   }, []);
 
-  // After a change that can replace any password, nothing shown may be stale.
   const hideAll = useCallback(() => {
     for (const timer of hideTimers.current.values()) window.clearTimeout(timer);
     hideTimers.current.clear();
     setRevealed((current) => (current.size === 0 ? current : new Map()));
   }, []);
+
+  // Every reload of vault data goes through here. Rust may now hold a newer
+  // password than one revealed, changed by this page or by another Sage
+  // window, so revealed passwords, their timers and any reveal still waiting
+  // on the OS prompt are dropped first. A search reloads with `nextQuery`.
+  const refreshVault = useCallback(
+    (nextQuery?: string) => {
+      vaultEpoch.current += 1;
+      hideAll();
+      if (nextQuery === undefined) setReloads((count) => count + 1);
+      else setQuery(nextQuery);
+    },
+    [hideAll],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => refreshVault(search.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [search, refreshVault]);
 
   useEffect(() => {
     const timers = hideTimers.current;
@@ -126,9 +140,11 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
 
   const reveal = (id: string) =>
     void run(async () => {
+      const epoch = vaultEpoch.current;
       const password = await revealPassword(id);
-      // A page closed during the OS prompt keeps nothing it returns.
-      if (!mounted.current) return;
+      // A page closed during the OS prompt keeps nothing it returns, and a
+      // reload since then may have replaced the password.
+      if (!mounted.current || vaultEpoch.current !== epoch) return;
       setRevealed((current) => new Map(current).set(id, password));
       window.clearTimeout(hideTimers.current.get(id));
       hideTimers.current.set(
@@ -148,23 +164,20 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const save = (id: string, username: string, password: string | null) =>
     run(async () => {
       await passwordsUpdate(id, username, password);
-      hide(id);
-      reload();
+      refreshVault();
     });
 
   const remove = (entry: SavedPassword) => {
     void run(async () => {
       await passwordsDelete(entry.id);
-      hide(entry.id);
-      reload();
+      refreshVault();
     });
   };
 
   const removeAll = () => {
     void run(async () => {
       await passwordsDeleteAll();
-      hideAll();
-      reload();
+      refreshVault();
       setNotice("All saved passwords were deleted.");
     });
   };
@@ -179,10 +192,8 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
         setNotice(null);
       });
       if (report) {
-        // The import may have replaced a password that is showing.
-        hideAll();
         setImported(report);
-        reload();
+        refreshVault();
       } else if (request.cancelRequested) {
         setNotice("Import cancelled. Nothing was saved.");
       }
@@ -312,7 +323,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
                   className="button button--compact"
                   type="button"
                   disabled={busy}
-                  onClick={reload}
+                  onClick={() => refreshVault()}
                 >
                   Refresh
                 </button>
