@@ -12,10 +12,20 @@ import {
 async function withFixture(files, run) {
   const root = await mkdtemp(path.join(tmpdir(), "q02-policy-"));
   try {
-    for (const [name, contents] of Object.entries(files)) {
-      const target = path.join(root, name);
-      await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(target, contents);
+    const entries = Object.entries(files);
+    const folders = new Set(entries.map(([name]) => path.dirname(name)));
+    for (const folder of folders)
+      await mkdir(path.join(root, folder), { recursive: true });
+    // Written in bounded batches so wide fixtures stay quick without
+    // exhausting file handles.
+    for (let start = 0; start < entries.length; start += 64) {
+      await Promise.all(
+        entries
+          .slice(start, start + 64)
+          .map(([name, contents]) =>
+            writeFile(path.join(root, name), contents),
+          ),
+      );
     }
     return await run(root);
   } finally {
@@ -25,35 +35,12 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
-test("default production file cap accepts 700 and fails closed at 701", async () => {
-  const files = Array.from({ length: 701 }, (_, index) => [
-    `src/f${String(index).padStart(3, "0")}.${index % 2 === 0 ? "ts" : "tsx"}`,
-    "export {};",
-  ]);
-  await withFixture(Object.fromEntries(files.slice(0, 700)), async (root) => {
-    assert.deepEqual(await scan(root), []);
-  });
-  await withFixture(Object.fromEntries(files), async (root) => {
-    assert.deepEqual(await scan(root), [
-      "Q02 file limit 700 exceeded at src/f700.ts",
-    ]);
-  });
-});
-
-test("default visited-entry cap is 1280", () => {
-  assert.equal(Q02_LIMITS.visitedEntries, 1280);
-});
-
-for (const { label, cap, count, limits } of [
-  { label: "default 3 MiB", cap: 3_145_728, count: 96, limits: undefined },
-  {
-    label: "configured 2.5 MiB",
-    cap: 2_621_440,
-    count: 80,
-    limits: { aggregateBytes: 2_621_440 },
-  },
+for (const { label, cap, count } of [
+  { label: "3 MiB", cap: 3_145_728, count: 96 },
+  { label: "2.5 MiB", cap: 2_621_440, count: 80 },
 ]) {
-  test(`${label} aggregate source cap accepts exact and fails closed just over`, async () => {
+  test(`configured ${label} aggregate source cap accepts exact and fails closed just over`, async () => {
+    const limits = { aggregateBytes: cap };
     const last = `src/f${String(count - 1).padStart(3, "0")}.ts`;
     const files = Object.fromEntries(
       Array.from({ length: count }, (_, index) => [
@@ -72,6 +59,68 @@ for (const { label, cap, count, limits } of [
     });
   });
 }
+
+test("a tree past the scanner's former totals is still checked in full", async () => {
+  // 1,100 modules, 1,300 entries and over 3 MiB, all above the totals that
+  // used to stop the scan, with a violation in the last module read.
+  const files = Object.fromEntries(
+    Array.from({ length: 1_100 }, (_, index) => [
+      `src/m${index % 2}/f${String(index).padStart(4, "0")}.ts`,
+      index === 1_099 ? "function isRecord() {}" : " ".repeat(3_000),
+    ]),
+  );
+  for (let index = 0; index < 200; index += 1)
+    files[`src/m0/f${String(index).padStart(4, "0")}.test.ts`] = "";
+  await withFixture(files, async (root) => {
+    assert.deepEqual(await scan(root), [
+      "Q02 forbidden isRecord at src/m1/f1099.ts",
+    ]);
+  });
+});
+
+test("one directory's listing is bounded and fails closed past its cap", async () => {
+  const files = (count) =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `src/f${String(index).padStart(4, "0")}.ts`,
+        "",
+      ]),
+    );
+  await withFixture(files(1_024), async (root) => {
+    assert.deepEqual(await scan(root), []);
+  });
+  await withFixture(files(1_025), async (root) => {
+    assert.match(
+      (await scan(root))[0],
+      /^Q02 directory-entry limit 1024 exceeded at src\//u,
+    );
+  });
+});
+
+test("wide fan-out of files the policy ignores still exhausts the entry budget", async () => {
+  // Ten directories, each under its listing cap, of tests and scripts that are
+  // never read as modules, so no module or byte total grows. Listing them is
+  // still work, and the scan stops once the entry budget is spent.
+  const files = {};
+  for (let folder = 0; folder < 10; folder += 1)
+    for (let index = 0; index < 1_000; index += 1)
+      files[
+        `src/d${folder}/f${String(index).padStart(4, "0")}.${index % 2 ? "test.ts" : "js"}`
+      ] = "";
+  await withFixture(files, async (root) => {
+    // src lists 10 entries and d0 to d8 list 9,000 more, so the budget
+    // runs out partway through d9, in whatever order the filesystem lists it.
+    const errors = await scan(root);
+    assert.equal(errors.length, 1);
+    assert.match(
+      errors[0],
+      new RegExp(
+        `^Q02 entry limit ${Q02_LIMITS.entries} exceeded at src/d9/`,
+        "u",
+      ),
+    );
+  });
+});
 
 test("clean scope admits exact owners and ignores test/spec/fixture/JS", async () => {
   await withFixture(
@@ -131,19 +180,21 @@ test("lexical traversal uses stable code-unit order and stops at every bound", a
     { "src/a.ts": "", "src/b.ts": "", "src/c.ts": "function isRecord() {}" },
     async (root) => {
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, files: 2 }))[0],
-        /c\.ts$/u,
+        // The budget runs out while src is still being listed, in the
+        // filesystem's order, so any of its entries may be the one named.
+        (await scan(root, { ...Q02_LIMITS, entries: 2 }))[0],
+        /^Q02 entry limit 2 exceeded at src\/[abc]\.ts$/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, files: 3 }))[0],
+        (await scan(root, { ...Q02_LIMITS, entries: 3 }))[0],
         /forbidden isRecord at src\/c/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, visitedEntries: 2 }))[0],
-        /visited-entry/u,
+        (await scan(root, { ...Q02_LIMITS, directoryEntries: 2 }))[0],
+        /directory-entry/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, visitedEntries: 3 }))[0],
+        (await scan(root, { ...Q02_LIMITS, directoryEntries: 3 }))[0],
         /forbidden isRecord/u,
       );
     },
@@ -287,7 +338,7 @@ test("observed source directories reject replacement during enumeration or child
     await rm(root, { recursive: true, force: true, maxRetries: 3 });
   }
   await withFixture({ "src/a.ts": "", "src/b.ts": "" }, async (root) => {
-    assert.deepEqual(await scan(root, { ...Q02_LIMITS, files: 2 }), []);
+    assert.deepEqual(await scan(root, { ...Q02_LIMITS, entries: 2 }), []);
   });
 });
 test("current repository is clean", async () => {
