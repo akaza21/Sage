@@ -24,14 +24,14 @@ import type {
 } from "../../ports/nativeBrowserPort";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
-import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
 import {
   browserMenuKeyDown,
   useDismissOnOutsidePointer,
 } from "./browserPopover";
+import { useToolbarOverflow } from "./useToolbarOverflow";
 import { useNativePageLayer } from "../../ui/nativePageLayers";
 
-interface Props {
+export interface BrowserNavigationProps {
   navigation: BrowserNavigation | null;
   page: BrowserPageIdentity | null;
   address: string;
@@ -53,7 +53,7 @@ interface Props {
   onCopy: () => void;
   onExternal: () => void;
   clearDataControl: ReactNode;
-  pageControls?: ReactNode;
+  pageControls?: (visible: boolean) => ReactNode;
   downloadsControl?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
 }
@@ -83,10 +83,11 @@ export function BrowserNavigationControls({
   pageControls,
   downloadsControl,
   onMenuOpenChange,
-}: Props) {
+}: BrowserNavigationProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const addressText = useAddressText(editing, page, address);
+  const overflow = useToolbarOverflow(menuOpen, pageControls);
   useLayoutEffect(() => {
     if (editing) addressField.current?.select();
   }, [editing, addressField]);
@@ -106,10 +107,43 @@ export function BrowserNavigationControls({
     menuTrigger.current?.focus();
     action?.();
   };
+  const navigationButton = (
+    label: string,
+    action: BrowserControlAction,
+    disabled: boolean,
+    Icon: typeof ArrowLeft,
+  ) => (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onControl(action)}
+    >
+      <Icon size={16} aria-hidden="true" />
+    </button>
+  );
+  const menuItem = (
+    label: string,
+    action: () => void,
+    disabled = false,
+    title?: string,
+  ) => (
+    <button
+      role="menuitem"
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={() => run(action)}
+    >
+      {label}
+    </button>
+  );
   const onMenuClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    if (!event.target.closest(".browser-clear-data--menu button")) return;
-    run();
+    if (
+      event.target instanceof Element &&
+      event.target.closest(".browser-clear-data--menu button")
+    )
+      run();
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (menuOpen) browserMenuKeyDown(event, menu.current, run);
@@ -117,34 +151,19 @@ export function BrowserNavigationControls({
   return (
     <>
       <div className="browser-surface__nav-group">
-        <button
-          type="button"
-          aria-label="Back"
-          disabled={!navigation?.canGoBack}
-          onClick={() => onControl("back")}
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label="Forward"
-          disabled={!navigation?.canGoForward}
-          onClick={() => onControl("forward")}
-        >
-          <ArrowRight size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label={navigation?.loading ? "Stop loading" : "Reload"}
-          disabled={!navigation?.url && !navigation?.loading}
-          onClick={() => onControl(navigation?.loading ? "stop" : "reload")}
-        >
-          {navigation?.loading ? (
-            <X size={16} aria-hidden="true" />
-          ) : (
-            <RotateCw size={16} aria-hidden="true" />
-          )}
-        </button>
+        {navigationButton("Back", "back", !navigation?.canGoBack, ArrowLeft)}
+        {navigationButton(
+          "Forward",
+          "forward",
+          !navigation?.canGoForward,
+          ArrowRight,
+        )}
+        {navigationButton(
+          navigation?.loading ? "Stop loading" : "Reload",
+          navigation?.loading ? "stop" : "reload",
+          !navigation?.url && !navigation?.loading,
+          navigation?.loading ? X : RotateCw,
+        )}
       </div>
       <BrowserAnnotateControl
         navigation={navigation}
@@ -190,7 +209,7 @@ export function BrowserNavigationControls({
         />
       </form>
       <div className="browser-surface__right-group" onKeyDown={onMenuKeyDown}>
-        {pageControls}
+        {overflow.toolbarActions}
         {downloadsControl}
         <button
           ref={menuTrigger}
@@ -210,36 +229,18 @@ export function BrowserNavigationControls({
           aria-label="Browser menu"
           onClickCapture={onMenuClickCapture}
         >
+          {overflow.menuActions}
           <div className="browser-surface__menu-group">
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page}
-              onClick={() => run(onFind)}
-            >
-              Find in page
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page || Boolean(navigation?.printUnavailableReason)}
-              title={
-                page
-                  ? (navigation?.printUnavailableReason ?? undefined)
-                  : "Open a page to print"
-              }
-              onClick={() => run(onPrint)}
-            >
-              Print
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page}
-              onClick={() => run(onScreenshot)}
-            >
-              Take a screenshot
-            </button>
+            {menuItem("Find in page", onFind, !page)}
+            {menuItem(
+              "Print",
+              onPrint,
+              !page || Boolean(navigation?.printUnavailableReason),
+              page
+                ? (navigation?.printUnavailableReason ?? undefined)
+                : "Open a page to print",
+            )}
+            {menuItem("Take a screenshot", onScreenshot, !page)}
             <div className="browser-surface__menu-zoom">
               <span>Zoom</span>
               <button
@@ -271,58 +272,28 @@ export function BrowserNavigationControls({
                 ↺
               </button>
             </div>
-            <button
-              role="menuitem"
-              type="button"
-              disabled={
-                !deviceOpen &&
-                (!page || Boolean(navigation?.deviceUnavailableReason))
-              }
-              title={
-                page
-                  ? (navigation?.deviceUnavailableReason ?? undefined)
-                  : "Open a page to emulate a device"
-              }
-              onClick={() => run(onDevice)}
-            >
-              {deviceOpen ? "Hide device toolbar" : "Show device toolbar"}
-            </button>
+            {menuItem(
+              deviceOpen ? "Hide device toolbar" : "Show device toolbar",
+              onDevice,
+              !deviceOpen &&
+                (!page || Boolean(navigation?.deviceUnavailableReason)),
+              page
+                ? (navigation?.deviceUnavailableReason ?? undefined)
+                : "Open a page to emulate a device",
+            )}
           </div>
           <div className="browser-surface__menu-group">
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => run(onDownloads)}
-            >
-              Downloads
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => run(onHistory)}
-            >
-              History
-            </button>
+            {menuItem("Downloads", onDownloads)}
+            {menuItem("History", onHistory)}
             {clearDataControl}
           </div>
           <div className="browser-surface__menu-group">
-            <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
+            {menuItem("Browser settings", () => onSettings("browser"))}
+            {menuItem("Site settings", () => onSettings("site"))}
             {page ? (
               <>
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => run(onCopy)}
-                >
-                  Copy URL
-                </button>
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => run(onExternal)}
-                >
-                  Open externally
-                </button>
+                {menuItem("Copy URL", onCopy)}
+                {menuItem("Open externally", onExternal)}
               </>
             ) : null}
           </div>

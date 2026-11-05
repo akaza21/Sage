@@ -237,3 +237,5 @@ export function TabStrip({
     </nav>
   );
 }
+
+export default TabStrip;

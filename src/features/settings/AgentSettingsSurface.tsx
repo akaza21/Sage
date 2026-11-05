@@ -50,7 +50,11 @@ const icons: Record<AgentSettingsPage, typeof Archive> = {
   "Archived chats": Archive,
 };
 
-export function AgentSettingsSurface() {
+export function AgentSettingsSurface({
+  chatRuntimeOwned = false,
+}: {
+  chatRuntimeOwned?: boolean;
+}) {
   const page = useAgentSettingsState((state) => state.page) ?? "Appearance";
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
@@ -126,12 +130,14 @@ export function AgentSettingsSurface() {
           {!matching.length ? <p role="status">No matching sections.</p> : null}
         </nav>
         <div className="agent-settings__content">
-          <LazyModuleBoundary
-            label="Chat execution"
-            load={loadExecution}
-            fallback={null}
-            render={(Execution) => <Execution />}
-          />
+          {chatRuntimeOwned ? null : (
+            <LazyModuleBoundary
+              label="Chat execution"
+              load={loadExecution}
+              fallback={null}
+              render={(Execution) => <Execution />}
+            />
+          )}
           <header className="agent-settings__header">
             <span>Settings</span>
             <ChevronRight size={14} aria-hidden="true" />

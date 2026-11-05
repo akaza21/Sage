@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
+import { COMPACT_WORKBENCH_QUERY } from "./workbenchViewport";
 
-const compactWorkbenchQuery = "(max-width: 760px)";
-
-export function useCompactWorkbenchLayout(query = compactWorkbenchQuery) {
+export function useCompactWorkbenchLayout(query = COMPACT_WORKBENCH_QUERY) {
   const [compact, setCompact] = useState(
     () => window.matchMedia(query).matches,
   );

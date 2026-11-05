@@ -75,6 +75,7 @@ pub(super) fn definition(
         characterisation: None,
         unavailable_reason: None,
         sign_in: None,
+        brand: None,
     };
     definition
         .validate_transport_contract()

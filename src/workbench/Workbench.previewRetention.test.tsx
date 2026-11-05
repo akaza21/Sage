@@ -48,7 +48,7 @@ vi.mock("./ActiveEditorCanvas", () => ({ default: () => null }));
 vi.mock("./DirtyTabDialog", () => ({ default: () => null }));
 vi.mock("./RightSidebar", () => ({ RightSidebar: () => null }));
 vi.mock("./StatusBar", () => ({ StatusBar: () => null }));
-vi.mock("./TabStrip", () => ({ TabStrip: () => null }));
+vi.mock("./TabStrip", () => ({ default: () => null }));
 vi.mock("./useCompactWorkbenchLayout", () => ({
   useCompactWorkbenchLayout: () => false,
 }));

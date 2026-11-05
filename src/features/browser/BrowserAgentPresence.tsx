@@ -27,13 +27,19 @@ export function BrowserAgentPresence({
     : pending
       ? "Agent has a browser action pending"
       : "Agent attached";
+  const description = `${label} · ${chatTitle}`;
   return (
     <div
       className="browser-surface__agent-presence"
       data-control={userControl ? "user" : "agent"}
     >
-      <span className="browser-surface__agent-presence-label" role="status">
-        {`${label} · ${chatTitle}`}
+      {/* The label truncates; its title keeps the whole text reachable. */}
+      <span
+        className="browser-surface__agent-presence-label"
+        role="status"
+        title={description}
+      >
+        {description}
       </span>
       <button
         type="button"
