@@ -12,6 +12,10 @@ use crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP;
 use crate::acp::browser::{BrowserAction, BrowserCommand, BrowserFailure, BrowserResult};
 use crate::browser::devtools::transport::CdpTransport;
 
+fn object_marker() -> Value {
+    json!({"kind":"object", "preview":false, "reason":"not-inspectable-within-budget"})
+}
+
 fn cdp(lane: &mut Lane, method: &str, params: Value) -> Result<BrowserResult, BrowserFailure> {
     lane.run(BrowserCommand::Cdp {
         method: method.into(),
@@ -39,7 +43,7 @@ fn a_script_runs_in_the_page_and_its_value_comes_back() {
     );
     assert_eq!(
         evaluate(&mut lane, "({nested: {answer: 42}})").unwrap(),
-        json!({"nested": {"answer": 42}})
+        object_marker()
     );
     evaluate(&mut lane, "window.__developerMark = 'set'").unwrap();
     assert_eq!(lane.evaluate("window.__developerMark"), json!("set"));
@@ -83,13 +87,10 @@ fn result_serialization_preserves_page_state_even_for_proxies() {
         let BrowserResult::Cdp { result } = result else {
             panic!("expected CDP result");
         };
-        assert_eq!(
-            result["result"]["value"],
-            json!({"answer": 42, "change": "[getter]"})
-        );
+        assert_eq!(result["result"]["value"], object_marker());
         for expression in [
             "window.__proxyDeveloperResult",
-            "({nested: window.__pureProxyDeveloperResult})",
+            "[window.__pureProxyDeveloperResult]",
             "Object.create(window.__pureProxyDeveloperResult)",
         ] {
             let result = cdp(
@@ -113,7 +114,7 @@ fn completed_object_results_are_collectible_on_every_outcome() {
     for (body, capacity) in [
         ("({ answer: 42 })", false),
         ("({ nested: { answer: 42 } })", false),
-        ("({ text: 'x'.repeat(300 * 1024) })", true),
+        ("['x'.repeat(300 * 1024)]", true),
         (
             "({ get text() { throw new Error('serialization failed'); } })",
             false,
@@ -150,10 +151,10 @@ fn secrets_in_a_raw_result_are_redacted_before_the_agent_sees_them() {
     let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
     let value = evaluate(
         &mut lane,
-        &format!("({{ password: 'hunter2-canary', note: 'Bearer {jwt}' }})"),
+        &format!("['password=hunter2-canary', 'Bearer {jwt}']"),
     )
     .unwrap();
-    assert_eq!(value["password"], "[redacted]");
+    assert_eq!(value, json!(["password=[redacted]", "Bearer [redacted]"]));
     lane.assert_never_leaked(&["hunter2-canary", jwt]);
 }
 

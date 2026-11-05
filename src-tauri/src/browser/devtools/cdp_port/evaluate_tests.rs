@@ -3,7 +3,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::Mutex,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
@@ -147,13 +147,13 @@ fn a_thousand_typed_arrays_fit_native_requests() {
 }
 
 #[test]
-fn deep_wide_results_fit_native_requests() {
+fn deep_wide_collections_fit_native_requests() {
     let mut port = CdpPort::new(Page::open());
-    let value = evaluate(&mut port, "(() => { let value = Array.from({length: 1000}, () => ({answer:42})); for (let i=0; i<12; i++) value = {next:value, answer:42}; return value; })()").unwrap();
+    let value = evaluate(&mut port, "(() => { let value = Array.from({length: 1000}, () => [42]); for (let i=0; i<12; i++) value = [value,42]; return value; })()").unwrap();
     let mut nested = &value;
     for _ in 0..12 {
-        assert_eq!(nested["answer"], 42);
-        nested = &nested["next"];
+        assert_eq!(nested[1], 42);
+        nested = &nested[0];
     }
     assert_eq!(nested.as_array().unwrap().len(), 1000);
     assert!(
@@ -161,17 +161,14 @@ fn deep_wide_results_fit_native_requests() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|item| item == &json!({"answer":42}))
+            .all(|item| item == &json!([42]))
     );
 }
 
 #[test]
 fn a_stale_serializer_is_replaced_without_repeating_the_expression() {
     let mut port = CdpPort::new(Page::open());
-    assert_eq!(
-        evaluate(&mut port, "({answer:42})").unwrap(),
-        json!({"answer":42})
-    );
+    assert_eq!(evaluate(&mut port, "[42]").unwrap(), json!([42]));
     // Destroy just the installed function, as a navigation would. Evaluation
     // groups are independently released by the same entry point every time.
     port.transport
@@ -185,17 +182,14 @@ fn a_stale_serializer_is_replaced_without_repeating_the_expression() {
     assert_eq!(
         evaluate(
             &mut port,
-            "globalThis.evaluations = (globalThis.evaluations || 0) + 1; ({answer:42})"
+            "globalThis.evaluations = (globalThis.evaluations || 0) + 1; [42]"
         )
         .unwrap(),
-        json!({"answer":42})
+        json!([42])
     );
     assert_eq!(evaluate(&mut port, "evaluations").unwrap(), json!(1));
     // Reuse across a successful per-evaluation group release as well.
-    assert_eq!(
-        evaluate(&mut port, "({answer:43})").unwrap(),
-        json!({"answer":43})
-    );
+    assert_eq!(evaluate(&mut port, "[43]").unwrap(), json!([43]));
 }
 
 #[test]
@@ -213,8 +207,30 @@ fn page_function_call_overrides_cannot_replace_the_serializer() {
     "#,
     )
     .unwrap();
+    assert_eq!(evaluate(&mut port, "[42]").unwrap(), json!([42]));
+}
+
+#[test]
+fn plain_objects_fail_closed_and_selected_paths_remain_available() {
+    let mut port = CdpPort::new(Page::open());
+    evaluate(
+        &mut port,
+        "globalThis.largeRecord = {}; for (let i=0; i<5000000; i++) largeRecord[i]=i; true",
+    )
+    .unwrap();
+    let marker = json!({
+        "kind": "object", "preview": false, "reason": "not-inspectable-within-budget"
+    });
+    let started = Instant::now();
+    assert_eq!(evaluate(&mut port, "largeRecord").unwrap(), marker);
+    assert!(started.elapsed() < Duration::from_millis(750));
+    assert_eq!(evaluate(&mut port, "({answer:42})").unwrap(), marker);
     assert_eq!(
-        evaluate(&mut port, "({answer:42})").unwrap(),
-        json!({"answer":42})
+        evaluate(&mut port, "[largeRecord[42],largeRecord[4999999]]").unwrap(),
+        json!([42, 4999999])
+    );
+    assert_eq!(
+        evaluate(&mut port, "[largeRecord]").unwrap(),
+        json!([marker])
     );
 }

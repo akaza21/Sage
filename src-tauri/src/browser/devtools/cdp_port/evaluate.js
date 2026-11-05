@@ -168,8 +168,8 @@ export default function serializeDeveloperResult(
         // their contents. Admitted contents are traversed lazily.
         if (collection && collection.length > entries - visited) throw capacity;
         if (!collection) {
-          // for-in and native brand reads can consult prototypes. Verify
-          // the current chain synchronously before either operation; an
+          // Native brand reads can consult prototypes. Verify
+          // the current chain synchronously before unboxing; an
           // unknown prototype is never inspected by JavaScript.
           let prototype = value;
           let customTag = false;
@@ -228,25 +228,13 @@ export default function serializeDeveloperResult(
         }
         append(collection.typed ? "}" : "]");
       } else {
-        append("{");
-        let comma = "";
-        // Plain-object for-in materialises keys in the page's own renderer
-        // process, bounded by that page's memory. Like inline strings, this
-        // is reachable only by an explicitly approved agent; Sage's native
-        // process receives only the capped result, never the full key list.
-        for (const key in value) {
-          visit();
-          const property = descriptor(value, key);
-          if (!property || !property.enumerable) continue;
-          const item = hasOwn(property, "value") ? property.value : "[getter]";
-          if (omitted(item)) continue;
-          append(comma);
-          append(quote(key));
-          append(":");
-          encode(item, depth + 1);
-          comma = ",";
-        }
-        append("}");
+        // Neither JS enumeration nor V8's inspector preview is bounded:
+        // DebugPropertyIterator collects all keys before its preview
+        // accumulator can stop. This marker replaces even small records,
+        // including collection members. Read selected paths via evaluate.
+        append(
+          '{"kind":"object","preview":false,"reason":"not-inspectable-within-budget"}',
+        );
       }
       ancestors.delete(value);
     };

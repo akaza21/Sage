@@ -1,4 +1,6 @@
-//! Objects cross CDP only through a byte-budgeted serializer. CDP sends string
+//! Collections cross CDP only through a byte-budgeted serializer; plain objects
+//! become typed markers without enumerating keys (even V8 previews collect all
+//! keys before applying their property limit). CDP sends string
 //! primitives inline even with returnByValue:false: the explicitly approved
 //! agent grant is the trust boundary for that transient allocation. Reject it
 //! immediately on receipt, before parsing or copying, and never log payloads.

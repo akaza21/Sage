@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { Session } from "node:inspector/promises";
+import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -10,6 +11,27 @@ import serializeDeveloperResult from "../src-tauri/src/browser/devtools/cdp_port
 const serializer = serializeDeveloperResult.toString();
 const limit = 256 * 1024;
 const functions = new WeakMap();
+const uninspectable = {
+  kind: "object",
+  preview: false,
+  reason: "not-inspectable-within-budget",
+};
+
+test("five million plain-object keys return a bounded marker promptly", async () => {
+  await page(async (session) => {
+    const { result } = await evaluate(
+      session,
+      "(() => { const value = {}; for (let i = 0; i < 5000000; i++) value[i] = i; return value; })()",
+    );
+    const started = performance.now();
+    const bounded = await serialize(session, result.objectId);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 750, `serialization took ${elapsed} ms`);
+    assert.deepEqual(JSON.parse(bounded.result.value), {
+      result: { type: "object", value: uninspectable },
+    });
+  });
+});
 
 async function page(run) {
   const session = new Session();
@@ -172,17 +194,17 @@ test("admitted collections preserve indexed values and iterator order", async ()
       [
         "new Map([[42, {answer: true}], ['next', [7]]])",
         [
-          [42, { answer: true }],
+          [42, uninspectable],
           ["next", [7]],
         ],
       ],
       ["new Set([42, 'next', null])", [42, "next", null]],
       ["new Map()", []],
       ["new Set()", []],
-      ["new DataView(new ArrayBuffer(8))", {}],
+      ["new DataView(new ArrayBuffer(8))", uninspectable],
       [
-        "({group: [new Map([[{key: 42}, new Set([7, 9])]])], view: new Uint8Array([3])})",
-        { group: [[[{ key: 42 }, [7, 9]]]], view: { 0: 3 } },
+        "[new Map([[{key: 42}, new Set([7, 9])]]), new Uint8Array([3])]",
+        [[[uninspectable, [7, 9]]], { 0: 3 }],
       ],
     ]) {
       const { result } = await evaluate(session, expression);
@@ -295,7 +317,7 @@ test("collection sizes cannot be hidden by page accessors or forged by records",
       {
         result: {
           type: "object",
-          value: { length: 10000000, size: 1000000, answer: 42 },
+          value: uninspectable,
         },
       },
     );
@@ -306,10 +328,9 @@ test("an object over the cap never transfers its full value", async () => {
   await page(async (session) => {
     const { result } = await evaluate(
       session,
-      `({
-      large: Array(100000).fill('xxxxxxxxxxxxxxxx'),
-      get later() { throw new Error('must not visit beyond the budget'); }
-    })`,
+      `Object.defineProperty([Array(100000).fill('xxxxxxxxxxxxxxxx')], 1, {
+        get() { throw new Error('must not visit beyond the budget'); }
+      })`,
     );
     assert.ok(result.objectId);
     assert.equal(result.value, undefined);
@@ -326,7 +347,7 @@ test("an object over the cap never transfers its full value", async () => {
   });
 });
 
-test("visited entries are bounded even when their values are omitted", async () => {
+test("plain objects omit all properties without running accessors", async () => {
   await page(async (session) => {
     for (const value of ["undefined", "function() {}", "Symbol('omitted')"]) {
       for (const count of [4096, 4097]) {
@@ -337,9 +358,7 @@ test("visited entries are bounded even when their values are omitted", async () 
         const bounded = await serialize(session, result.objectId);
         assert.equal(
           bounded.result.value,
-          count === 4096
-            ? '{"result":{"type":"object","value":{}}}'
-            : "capacity",
+          JSON.stringify({ result: { type: "object", value: uninspectable } }),
         );
       }
     }
@@ -359,7 +378,7 @@ test("visited entries are bounded even when their values are omitted", async () 
     );
     assert.equal(
       (await serialize(session, result.objectId)).result.value,
-      "capacity",
+      JSON.stringify({ result: { type: "object", value: uninspectable } }),
     );
     assert.equal((await evaluate(session, "sageGetterCalls")).result.value, 0);
   });
@@ -388,13 +407,13 @@ test("direct evaluation preserves top-level let and const across calls", async (
   });
 });
 
-test("objects preserve ordinary values and count JSON escapes and UTF-8", async () => {
+test("indexed values count JSON escapes and UTF-8", async () => {
   await page(async (session) => {
     for (const expression of [
-      "({ text: '\\u0000'.repeat(60000) })",
-      "({ text: '\\u{1f600}'.repeat(70000) })",
-      "({ ['x'.repeat(300000)]: 1 })",
-      "({ text: new String('x'.repeat(300000)) })",
+      "['\\u0000'.repeat(60000)]",
+      "['\\u{1f600}'.repeat(70000)]",
+      "['x'.repeat(300000)]",
+      "[new String('x'.repeat(300000))]",
     ]) {
       const { result } = await evaluate(session, expression);
       assert.equal(
@@ -409,7 +428,7 @@ test("objects preserve ordinary values and count JSON escapes and UTF-8", async 
     assert.deepEqual(
       JSON.parse((await serialize(session, result.objectId)).result.value),
       {
-        result: { type: "object", value: { answer: 42, text: "hello" } },
+        result: { type: "object", value: uninspectable },
       },
     );
   });
@@ -419,7 +438,7 @@ test("serializer failures remain bounded and the group can still be released", a
   await page(async (session) => {
     const { result } = await evaluate(
       session,
-      "(() => { const value = {}; value.self = value; return value; })()",
+      "(() => { const value = []; value[0] = value; return value; })()",
     );
     const bounded = await serialize(session, result.objectId);
     assert.ok(JSON.parse(bounded.result.value).exceptionDetails);
@@ -433,37 +452,31 @@ test("serializer failures remain bounded and the group can still be released", a
   });
 });
 
-test("normal nested data keeps JSON values, omissions, array holes and own keys", async () => {
+test("indexed data keeps primitives and holes while records fail closed", async () => {
   await page(async (session) => {
     const { result } = await evaluate(
       session,
-      `Object.assign(Object.create({inherited: 'not a result'}), {
-        answer: 42, text: 'hello', nil: null, yes: true,
-        nested: {missing: undefined, fn() {}, symbol: Symbol('omit'), kept: false},
-        array: ['text', , undefined, function() {}, Symbol('null'), null, NaN, Infinity],
-        ['__proto__']: {ordinary: 'data'}
-      })`,
+      `[42, 'hello', null, true,
+        Object.assign(Object.create({inherited: 'not a result'}), {
+          missing: undefined, fn() {}, symbol: Symbol('omit'), kept: false,
+          ['__proto__']: {ordinary: 'data'}
+        }),
+        ['text', , undefined, function() {}, Symbol('null'), null, NaN, Infinity]]`,
     );
-    // Define __proto__ as data; Object.assign otherwise uses its legacy setter.
-    await session.post("Runtime.callFunctionOn", {
-      objectId: result.objectId,
-      functionDeclaration:
-        "function() { Object.defineProperty(this, '__proto__', {value: {ordinary: 'data'}, enumerable: true}); }",
-    });
     assert.deepEqual(
       JSON.parse((await serialize(session, result.objectId)).result.value),
       {
         result: {
           type: "object",
-          value: {
-            answer: 42,
-            text: "hello",
-            nil: null,
-            yes: true,
-            nested: { kept: false },
-            array: ["text", null, null, null, null, null, null, null],
-            ["__proto__"]: { ordinary: "data" },
-          },
+          subtype: "array",
+          value: [
+            42,
+            "hello",
+            null,
+            true,
+            uninspectable,
+            ["text", null, null, null, null, null, null, null],
+          ],
         },
       },
     );
@@ -489,7 +502,7 @@ test("side-effect-free evaluation never runs getters or toJSON during serializat
     });
     assert.deepEqual(
       JSON.parse((await serialize(session, result.objectId)).result.value),
-      { result: { type: "object", value: { answer: 42, change: "[getter]" } } },
+      { result: { type: "object", value: uninspectable } },
     );
     assert.equal(
       (await evaluate(session, "sageSerializationState")).result.value,
@@ -529,7 +542,7 @@ test("boxed primitives keep their values without calling conversion overrides", 
   });
 });
 
-test("a wide normal result preserves its values across native classification", async () => {
+test("a wide result bounds each record across native classification", async () => {
   await page(async (session) => {
     const { result } = await evaluate(
       session,
@@ -539,7 +552,7 @@ test("a wide normal result preserves its values across native classification", a
       (await serialize(session, result.objectId)).result.value,
     );
     assert.equal(bounded.result.value.length, 1000);
-    assert.ok(bounded.result.value.every((item) => item.answer === 42));
+    assert.deepEqual(bounded.result.value, Array(1000).fill(uninspectable));
   });
 });
 
@@ -573,10 +586,10 @@ test("proxy traps cannot run during serialization, including nested proxies", as
     );
     for (const expression of [
       "sageSerializationProxy",
-      "({ nested: sageSerializationProxy })",
+      "[sageSerializationProxy]",
       "Object.create(sageSerializationProxy)",
       "new Proxy({answer: 42}, {ownKeys() { return ['answer']; }})",
-      "({ nested: new Proxy({answer: 42}, {ownKeys() { return ['answer']; }}) })",
+      "[new Proxy({answer: 42}, {ownKeys() { return ['answer']; }})]",
       "Object.create(new Proxy({}, {ownKeys() { return []; }}))",
       "Object.create(new Proxy(function() {}, {ownKeys() { return []; }}))",
       "new Proxy([42], {getOwnPropertyDescriptor() { return {value: 1}; }})",
