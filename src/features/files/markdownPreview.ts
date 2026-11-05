@@ -1,28 +1,15 @@
 import { truncateUtf8, utf8Bytes } from "../../domain/text";
-import * as lists from "./markdownList";
-import {
-  atxHeading,
-  isMarkdownRule,
-  quoteMarker,
-  fenceOpener,
-  fenceCloser,
-  indentation,
-  setextUnderline,
-  startsLeafBlock,
-  readFencedCode,
-} from "./markdownSyntax";
+import { adaptMarkdownTokens } from "./markdownTokens";
+import type { MarkdownListBlock } from "./markdownListTypes";
 
 import {
-  MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
   MAX_MARKDOWN_PREVIEW_SOURCE_BYTES,
-  MAX_MARKDOWN_TABLE_ROWS,
-  MAX_MARKDOWN_TABLE_COLUMNS,
   MAX_MARKDOWN_INLINE_FORMATS,
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
-export type { ListItemShape } from "./markdownList";
+export type { ListItemShape } from "./markdownListTypes";
 export {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
@@ -40,7 +27,7 @@ export type MarkdownPreviewBlock =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "quote"; text: string }
-  | lists.MarkdownListBlock
+  | MarkdownListBlock
   | { kind: "code"; text: string; language: string; fenceClosed: boolean }
   | {
       kind: "table";
@@ -92,14 +79,17 @@ function delimiterFlanks(value: string, index: number, marker: string) {
   ];
 }
 
-export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
+export function renderMarkdownPreview(
+  source: string,
+  prefix?: MarkdownPreviewDocument,
+  sourceOffset = 0,
+): MarkdownPreviewDocument {
   const windowed = truncateUtf8(source, MAX_MARKDOWN_PREVIEW_SOURCE_BYTES);
-  const lines = windowed.replace(/\r\n/gu, "\n").split("\n");
   const document: MarkdownPreviewDocument = {
-    blocks: [],
-    formats: [],
-    fileLinks: [],
-    truncated: false,
+    blocks: [...(prefix?.blocks ?? [])],
+    formats: [...(prefix?.formats ?? [])],
+    fileLinks: [...(prefix?.fileLinks ?? [])],
+    truncated: prefix?.truncated ?? false,
     sourceLimitExceeded: windowed.length < source.length,
   };
   const blocks = document.blocks as MarkdownPreviewBlock[];
@@ -213,143 +203,18 @@ export function renderMarkdownPreview(source: string): MarkdownPreviewDocument {
     return text;
   };
 
-  let contentIndent = 0;
-  for (let cursor = 0; cursor < lines.length;) {
-    const line = lines[cursor].trimEnd();
-    if (!line) {
-      cursor++;
-      continue;
-    }
-    if (blocks.length === MAX_MARKDOWN_PREVIEW_BLOCKS) {
-      document.truncated = true;
-      break;
-    }
-    remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
-    formatCount = 0;
-    scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
-    const fence = readFencedCode(lines, cursor, contentIndent);
-    contentIndent = 0;
-    if (fence) {
-      const { text } = fence.block;
-      if (text.length > remaining) document.truncated = true;
-      blocks.push({
-        ...fence.block,
-        text: text.slice(0, remaining),
-      });
-      cursor = fence.cursor;
-      continue;
-    }
-    if (isMarkdownRule(line)) {
-      blocks.push({ kind: "rule" });
-      cursor++;
-      continue;
-    }
-    const heading = atxHeading.exec(line);
-    if (heading) {
-      blocks.push({
-        kind: "heading",
-        level: heading[1].length as 1,
-        text: inline(heading[2] ?? ""),
-      });
-      cursor++;
-      continue;
-    }
-    const header = tableCells(line);
-    const separator = tableCells(lines[cursor + 1] ?? "");
-    if (
-      header.length &&
-      separator.length === header.length &&
-      separator.every((cell) => /^:?-+:?$/u.test(cell))
-    ) {
-      const align = separator
-        .slice(0, MAX_MARKDOWN_TABLE_COLUMNS)
-        .map((cell) =>
-          cell.endsWith(":")
-            ? cell.startsWith(":")
-              ? ("center" as const)
-              : ("right" as const)
-            : cell.startsWith(":")
-              ? ("left" as const)
-              : undefined,
-        );
-      const rows: string[][] = [];
-      cursor += 2;
-      let cells = header;
-      do {
-        if (rows.length <= MAX_MARKDOWN_TABLE_ROWS) {
-          if (cells.length > MAX_MARKDOWN_TABLE_COLUMNS)
-            document.truncated = true;
-          const rowIndex = rows.length;
-          rows.push(
-            align.map((_, column) =>
-              inline(cells[column] ?? "", rowIndex * align.length + column),
-            ),
-          );
-        } else document.truncated = true;
-        cells = tableCells(lines[cursor] ?? "");
-        if (cells.length) cursor++;
-      } while (cells.length);
-      blocks.push({ kind: "table", align, rows });
-      continue;
-    }
-    const list = lists.readMarkdownList(lines, cursor, (text, itemIndex) => {
-      // Empty items still consume a rendered list slot.
-      if (remaining > 0 && itemIndex < MAX_MARKDOWN_PREVIEW_BLOCK_CHARS)
-        return inline(text, itemIndex);
-      document.truncated = true;
-      return null;
-    });
-    if (list) {
-      blocks.push(list.block);
-      cursor = list.cursor;
-      contentIndent = list.contentIndent;
-      continue;
-    }
-    const quoted = quoteMarker.test(line);
-    const parts = quoted ? [] : [line];
-    if (!quoted) cursor++;
-    let paragraph = false;
-    let closing: RegExp | null = null;
-    while (cursor < lines.length && lines[cursor].trim()) {
-      let part = lines[cursor];
-      if (quoted && quoteMarker.test(part)) {
-        part = part.replace(quoteMarker, "");
-        // Literal quote children admit lazy lines only while a paragraph is
-        // open. A marked code line cannot reopen one inside a fence.
-        if (closing) {
-          if (closing.test(part)) closing = null;
-          paragraph = false;
-        } else {
-          const fence = fenceOpener(part);
-          closing = fence && fenceCloser(fence);
-          paragraph =
-            !!part.trim() &&
-            (paragraph || indentation(part) < 4) &&
-            !startsLeafBlock(part);
-        }
-      } else if (
-        startsLeafBlock(part) ||
-        lists.interruptsParagraph(part) ||
-        (quoted
-          ? !paragraph
-          : setextUnderline.test(part) || part.startsWith("|"))
-      )
-        break;
-      parts.push(part);
-      cursor++;
-    }
-    const text = inline(parts.join(" "));
-    const underline = !quoted && setextUnderline.exec(lines[cursor] ?? "");
-    if (underline) {
-      blocks.push({
-        kind: "heading",
-        level: underline[1][0] === "=" ? 1 : 2,
-        text,
-      });
-      cursor++;
-    } else if (text || quoted)
-      blocks.push({ kind: quoted ? "quote" : "paragraph", text });
-  }
+  adaptMarkdownTokens(
+    windowed,
+    document,
+    inline,
+    () => {
+      remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
+      formatCount = 0;
+      scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
+    },
+    prefix,
+    sourceOffset,
+  );
   return document;
 }
 
@@ -362,15 +227,6 @@ function webLink(destination: string): string | null {
   return /^(?:https?:\/\/|mailto:)[^\s<>\p{Cc}\p{Cf}]+$/iu.test(url)
     ? url
     : null;
-}
-
-function tableCells(line: string): string[] {
-  if (!line.includes("|")) return [];
-  return line
-    .trim()
-    .replace(/^\||(?<!\\)\|$/gu, "")
-    .split(/(?<!\\)\|/u)
-    .map((cell) => cell.trim().replace(/\\\|/gu, "|"));
 }
 
 function fileLinkCandidate(destination: string): boolean {

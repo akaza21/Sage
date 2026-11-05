@@ -1,5 +1,4 @@
 import "@testing-library/jest-dom/vitest";
-import "./markdownCorpus";
 
 import { beforeAll, beforeEach, vi } from "vitest";
 

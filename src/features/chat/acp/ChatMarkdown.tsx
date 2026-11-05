@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import { renderMarkdownPreview } from "../../files/markdownPreview";
+import {
+  renderMarkdownStream,
+  type MarkdownStream,
+} from "../../files/markdownStream";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import type { ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
@@ -52,7 +56,25 @@ export function ChatMarkdown({
   streaming?: boolean;
   fileReferenceOwner?: AgentArtifactOwner;
 }) {
-  const document = useMemo(() => renderMarkdownPreview(text), [text]);
+  const [parsed, setParsed] = useState<MarkdownStream & { input: string }>(
+    () => ({
+      input: text,
+      ...(streaming
+        ? renderMarkdownStream(text)
+        : { source: text, document: renderMarkdownPreview(text) }),
+    }),
+  );
+  let current = parsed;
+  if (parsed.input !== text) {
+    current = {
+      input: text,
+      ...(streaming
+        ? renderMarkdownStream(text, parsed)
+        : { source: text, document: renderMarkdownPreview(text) }),
+    };
+    setParsed(current);
+  }
+  const document = current.document;
   // One record per answer/chunk; retain appended spans so older fades finish while new words trail.
   const [stream, setStream] = useState<{
     text: string;

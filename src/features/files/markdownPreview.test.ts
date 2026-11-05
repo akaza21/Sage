@@ -420,6 +420,16 @@ describe("renderMarkdownPreview", () => {
     ]);
   });
 
+  it("decorates a task whose label starts on the next continuation line", () => {
+    expect(renderMarkdownPreview("- [ ]\n  continued label").blocks).toEqual([
+      {
+        kind: "list",
+        items: ["continued label"],
+        shape: [{ depth: 0, ordered: false, checked: false }],
+      },
+    ]);
+  });
+
   it("keeps a list item that interrupts a paragraph", () => {
     expect(
       renderMarkdownPreview("Steps:\n  + first\n  + second").blocks,
@@ -546,7 +556,16 @@ describe("CommonMark block syntax", () => {
     "does not turn %s into a rule",
     (source) => {
       expect(renderMarkdownPreview(source).blocks).toEqual([
-        { kind: "paragraph", text: source.trim() },
+        ...(source.startsWith("    ")
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: source.trim(),
+                fenceClosed: true,
+              },
+            ]
+          : [{ kind: "paragraph", text: source.trim() }]),
       ]);
     },
   );
@@ -662,7 +681,8 @@ describe("fence indentation and empty list precedence", () => {
     "does not open a four-space %s fence or interrupt a paragraph",
     (fence) => {
       expect(renderMarkdownPreview(`    ${fence}js\ncode`).blocks).toEqual([
-        { kind: "paragraph", text: `${fence}js code` },
+        { kind: "code", language: "", text: `${fence}js`, fenceClosed: true },
+        { kind: "paragraph", text: "code" },
       ]);
       expect(
         renderMarkdownPreview(`Before\n    ${fence}js\ncode`).blocks,
@@ -732,10 +752,20 @@ describe("ATX classification before setext", () => {
     ]);
   });
   it.each(["####### Title", "#Title", "    # Title"])(
-    "keeps non-ATX %s as paragraph text eligible for setext",
+    "classifies non-ATX %s using CommonMark indentation before setext",
     (source) => {
       expect(renderMarkdownPreview(`${source}\n---`).blocks).toEqual([
-        { kind: "heading", level: 2, text: source.trim() },
+        ...(source.startsWith("    ")
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: source.trim(),
+                fenceClosed: true,
+              },
+              { kind: "rule" },
+            ]
+          : [{ kind: "heading", level: 2, text: source.trim() }]),
       ]);
     },
   );
@@ -757,15 +787,17 @@ describe("shared list interruption classification", () => {
     (source, text, outside) => {
       expect(renderMarkdownPreview(source).blocks.slice(0, 2)).toEqual([
         { kind: "quote", text },
-        { kind: "paragraph", text: outside },
+        ...(source.startsWith(">     ")
+          ? [{ kind: "code", language: "", text: outside, fenceClosed: true }]
+          : [{ kind: "paragraph", text: outside }]),
       ]);
     },
   );
 
   it("does not collect a fenced list child's code as paragraph continuation", () => {
     expect(renderMarkdownPreview("- ```\n  code\n").blocks).toEqual([
-      { kind: "list", items: ["```"] },
-      { kind: "paragraph", text: "code" },
+      { kind: "list", items: [""] },
+      { kind: "code", language: "", text: "code\n", fenceClosed: false },
     ]);
   });
 
@@ -854,7 +886,7 @@ describe("shared list interruption classification", () => {
     [" 1.\t", 4, true],
     ["-\t ", 5, false],
   ] as const)(
-    "uses %j to nest at column %i and keeps the preceding column as a sibling",
+    "uses %j to nest at column %i and classifies the preceding column by its indentation",
     (prefix, column, ordered) => {
       const source = [
         `${prefix}parent`,
@@ -862,22 +894,35 @@ describe("shared list interruption classification", () => {
         `${" ".repeat(column - 1)}${ordered ? "2." : "-"} sibling`,
       ].join("\n");
       const changesDelimiter = prefix.includes(")");
+      const indentedCode = column > 4;
       expect(renderMarkdownPreview(source).blocks).toEqual([
         {
           kind: "list",
-          items: changesDelimiter
-            ? ["parent", "child"]
-            : ["parent", "child", "sibling"],
+          items:
+            changesDelimiter || indentedCode
+              ? ["parent", "child"]
+              : ["parent", "child", "sibling"],
           ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
           shape: [
             { depth: 0, ordered },
             { depth: 1, ordered: false },
-            ...(!changesDelimiter ? [{ depth: 0, ordered }] : []),
+            ...(!changesDelimiter && !indentedCode
+              ? [{ depth: 0, ordered }]
+              : []),
           ],
         },
-        ...(changesDelimiter
-          ? [{ kind: "list", items: ["sibling"], ordered: true, start: 2 }]
-          : []),
+        ...(indentedCode
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: `${" ".repeat(column - 5)}${ordered ? "2." : "-"} sibling`,
+                fenceClosed: true,
+              },
+            ]
+          : changesDelimiter
+            ? [{ kind: "list", items: ["sibling"], ordered: true, start: 2 }]
+            : []),
       ]);
     },
   );
@@ -913,18 +958,24 @@ describe("shared list interruption classification", () => {
   });
 
   it.each(["-     ", "-\t\t", "- \t\t"])(
-    "uses one column of list padding when %j separates more than four columns",
+    "keeps an overpadded %j item as indented code beside its nested list",
     (prefix) => {
       expect(
         renderMarkdownPreview(`${prefix}parent\n  - child`).blocks,
       ).toEqual([
         {
           kind: "list",
-          items: ["parent", "child"],
+          items: ["", "child"],
           shape: [
             { depth: 0, ordered: false },
             { depth: 1, ordered: false },
           ],
+        },
+        {
+          kind: "code",
+          language: "",
+          text: prefix === "-     " ? "parent" : "  parent",
+          fenceClosed: true,
         },
       ]);
     },

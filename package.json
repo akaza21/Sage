@@ -55,6 +55,7 @@
     "@tauri-apps/api": "2.11.1",
     "@xterm/xterm": "6.0.0",
     "lucide-react": "1.27.0",
+    "markdown-it": "15.0.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "style-mod": "4.1.3",
