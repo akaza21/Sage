@@ -211,15 +211,18 @@
   place-items: center;
   border-radius: var(--radius-pill);
   color: var(--color-text-primary);
-  background: var(--color-plane-raised);
+  background: var(--count-badge-fill, var(--color-plane-raised));
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 .workspace-search__preview mark {
   padding: 0;
   color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--color-warning) 40%, transparent);
-  box-shadow: inset 0 -1px 0 var(--color-warning);
+  background: var(
+    --search-match-fill,
+    color-mix(in srgb, var(--color-warning) 40%, transparent)
+  );
+  box-shadow: var(--search-match-shadow, inset 0 -1px 0 var(--color-warning));
 }
 
 .workspace-search__summary {

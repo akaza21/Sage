@@ -61,7 +61,8 @@ describe("Editor highlight language seam", () => {
 
   it("projects the highlight roles across every Editor control family", async () => {
     // The activity rail and its splitter are read from computed styles in
-    // tests/ui/sidebar-rail-states.visual.ts.
+    // tests/ui/sidebar-rail-states.visual.ts; row selection, search matches
+    // and count badges in tests/ui/editor-highlight-roles.visual.ts.
     const [css, visualCss] = await Promise.all([
       readFile(resolve("src/styles/editor-highlight-language.css"), "utf8"),
       readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
@@ -74,13 +75,10 @@ describe("Editor highlight language seam", () => {
       'button[aria-pressed="true"]',
       ".title-bar__mode--active",
       ".tab--active",
-      ".tree__row--selected",
       ".explorer-action-menu__item",
       ".outline-card",
-      ".source-change--selected",
       ".repository-commit__label",
       "textarea:focus-visible",
-      ".sidebar:focus-visible",
       ".editor-input .cm-editor.cm-focused",
       ".editor-input .cm-content:focus-visible",
       ".editor-find__query input:focus-visible",
