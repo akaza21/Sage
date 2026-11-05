@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 for (const forcedColors of ["none", "active"] as const) {
   test(`asserts no harness pointer or blur focus ring and preserves keyboard focus (${forcedColors})`, async ({
@@ -175,6 +178,7 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   const card = listbox.locator(
     "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
   );
+  await waitForAnimations(card);
   const cardBox = await card.boundingBox();
   expect(cardBox).not.toBeNull();
   expect(cardBox!.width).toBeGreaterThanOrEqual(228);
@@ -216,6 +220,11 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
     }),
   ).toBeVisible();
   await expect(modelCard.locator('[aria-selected="true"]')).toHaveCount(0);
+  await waitForAnimations(
+    modelCard.locator(
+      "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
+    ),
+  );
   const modelBox = await modelCard
     .locator("xpath=ancestor::div[contains(@class, 'menu-popover')][1]")
     .boundingBox();

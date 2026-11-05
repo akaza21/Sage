@@ -2,28 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::limits::LIMITS;
-
-pub fn validate_limits_document(document: &str) -> Result<(), String> {
-    let parsed: Value = serde_json::from_str(document).map_err(|error| error.to_string())?;
-    let expected = serde_json::to_value(LIMITS).map_err(|error| error.to_string())?;
-    for section in [
-        "wire",
-        "queues",
-        "process",
-        "deadlinesMs",
-        "durable",
-        "nativeThreadProjection",
-        "migration",
-        "fixture",
-    ] {
-        if parsed.get(section) != expected.get(section) {
-            return Err(format!("numeric limit section {section} differs from Rust"));
-        }
-    }
-    Ok(())
-}
-
 pub fn validate_limit_fixture_coverage(
     limits_document: &str,
     coverage_document: &str,

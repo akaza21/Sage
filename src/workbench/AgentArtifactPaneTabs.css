@@ -1,0 +1,119 @@
+.workbench--agent .agent-artifact-surface {
+  --agent-pane-summary-height: 44px;
+  --agent-pane-tab-height: var(--control-height-compact);
+  --agent-pane-tab-min-width: 96px;
+  --agent-pane-tab-max-width: 214px;
+  --agent-pane-tab-close-width: 20px;
+  --radius-agent-pane-tab: var(--radius-sm);
+  --radius-agent-pane-summary-end: 0 var(--radius-pill) var(--radius-pill) 0;
+  --agent-pane-summary-fill: var(--color-panel-raised);
+  --agent-pane-additions: var(--rail-approval-text);
+  --agent-pane-summary-text: var(--color-text-emphasis);
+}
+
+.workbench--agent .agent-artifact-pane .tab-strip {
+  align-items: center;
+  background: var(--agent-shell-center);
+}
+.workbench--agent .agent-artifact-pane .tab {
+  overflow: clip;
+  height: var(--agent-pane-tab-height);
+  min-width: var(--agent-pane-tab-min-width);
+  max-width: var(--agent-pane-tab-max-width);
+  /* Size each tab to its own title so a filename gets room before the strip
+     shrinks; when space runs out, tabs shrink in proportion to that width. */
+  flex: 0 1 auto;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-agent-pane-tab);
+  background: transparent;
+}
+.workbench--agent .agent-artifact-pane .tab__activate {
+  justify-content: flex-start;
+  gap: var(--space-1);
+  padding: 0 var(--space-1) 0 var(--space-2);
+}
+.workbench--agent .agent-artifact-pane .tab button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
+}
+.workbench--agent .agent-artifact-pane .tab__close {
+  display: none;
+  width: var(--agent-pane-tab-close-width);
+  min-width: var(--agent-pane-tab-close-width);
+}
+.workbench--agent
+  .agent-artifact-pane
+  .tab:is(:hover, :focus-within, .tab--active)
+  .tab__close {
+  display: grid;
+}
+.workbench--agent .agent-artifact-pane .tab--active {
+  min-width: var(--agent-pane-tab-min-width);
+  background: var(--color-plane-raised);
+  border: var(--border-width) solid var(--agent-shell-tab-border);
+  box-shadow: none;
+}
+.agent-artifact-pane .tab[data-resource-kind="changes"] {
+  width: var(--agent-pane-tab-max-width);
+  flex-basis: var(--agent-pane-tab-max-width);
+}
+
+.agent-artifact-pane .changes-surface__toolbar {
+  height: var(--agent-pane-summary-height);
+  gap: 0;
+  padding: var(--agent-pane-summary-inset);
+  border-bottom-color: var(--agent-shell-divider);
+}
+
+.agent-artifact-pane .changes-surface__toolbar select {
+  height: 100%;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--agent-pane-summary-text);
+  background: var(--agent-pane-summary-fill);
+  font-size: var(--font-size-xs);
+}
+
+.agent-artifact-pane
+  .changes-surface__toolbar:has(.diff-header__counts)
+  select {
+  border-start-end-radius: var(--radius-none);
+  border-end-end-radius: var(--radius-none);
+}
+
+.agent-artifact-pane .changes-surface__toolbar > .diff-header__counts {
+  height: 100%;
+  align-items: center;
+  gap: var(--space-1);
+  padding-inline-end: var(--space-2);
+  border-radius: var(--radius-agent-pane-summary-end);
+  background: var(--agent-pane-summary-fill);
+  font-size: var(--font-size-xs);
+}
+
+.agent-artifact-pane .changes-surface__toolbar button {
+  height: 100%;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: var(--agent-pane-summary-fill);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.agent-artifact-pane .changes-surface__toolbar button:hover:not(:disabled) {
+  background: var(--color-panel-raised-hover);
+}
+
+.agent-artifact-pane .changes-surface__hint {
+  margin: var(--space-2) 0;
+  padding-inline: var(--space-3);
+}
+
+.agent-artifact-pane .changes-surface__file {
+  padding: var(--space-2) var(--space-3);
+  border-bottom-color: var(--agent-shell-divider);
+  background: var(--agent-shell-center);
+  font-size: var(--font-size-sm);
+}

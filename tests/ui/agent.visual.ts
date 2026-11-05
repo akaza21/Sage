@@ -7,6 +7,7 @@ import {
   openSelectionScenario,
 } from "./shared/transcriptSelection";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   settleChatProjections,
@@ -36,6 +37,7 @@ async function expectOpenPickerContained(
   await expect(input).toBeFocused();
   await expect(popup).toBeVisible();
   await expect(choices).toBeVisible();
+  await waitForAnimations(popup);
   const [inputBox, choicesBox, popupBox, viewport] = await Promise.all([
     input.boundingBox(),
     choices.boundingBox(),

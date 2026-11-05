@@ -141,6 +141,122 @@ fn portable_v5_dispatch_rolls_back_v6_v7_failpoint_then_retries() {
 }
 
 #[test]
+fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constraints() {
+    let directory = TestDir::new();
+    create_v4(&directory.database(), true);
+    let mut connection = Connection::open(directory.database()).unwrap();
+    apply_v5(&mut connection).unwrap();
+    connection
+        .pragma_update(None, "foreign_keys", true)
+        .unwrap();
+
+    assert_eq!(
+        super::fingerprint::classify_connection(&connection).unwrap(),
+        SchemaClass::CurrentV5
+    );
+    let rows = |sql: &str| -> Vec<String> {
+        let mut statement = connection.prepare(sql).unwrap();
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    let retained = || {
+        [
+            rows("SELECT id||'|'||project_id||'|'||ordinal||'|'||title FROM chats"),
+            rows("SELECT project_id||'|'||chat_id||'|'||tab_id FROM chat_tabs"),
+            rows(
+                "SELECT id||'|'||chat_id||'|'||ordinal||'|'||binding_id||'|'||state||'|'||residency||'|'||legacy
+                 FROM agent_sessions",
+            ),
+            rows("SELECT id||'|'||session_id||'|'||ordinal||'|'||kind||'|'||payload_json FROM items"),
+        ]
+    };
+    let migrated = retained();
+    assert_eq!(migrated[0], ["chat-a|project-a|0|Chat"]);
+    assert_eq!(migrated[1], ["project-a|chat-a|chat-a"]);
+    assert_eq!(migrated[2], ["session-a|chat-a|0|simulator|closed|cold|1"]);
+    assert_eq!(
+        migrated[3],
+        [r#"event-1|session-a|1|text|{"role":"assistant","text":"hello"}"#]
+    );
+    assert!(rows("SELECT name FROM sqlite_master WHERE name LIKE 'legacy_%'").is_empty());
+    assert_eq!(
+        rows("SELECT CAST(version AS TEXT) FROM schema_migrations WHERE version = 5"),
+        ["5"]
+    );
+
+    let rejected = |sql: &str| {
+        let error = connection.execute_batch(sql).unwrap_err();
+        let rusqlite::Error::SqliteFailure(failure, _) = error else {
+            panic!("{sql} failed outside SQLite: {error:?}");
+        };
+        failure.extended_code
+    };
+    // Chat ordinals are unique per project.
+    assert_eq!(
+        rejected(
+            "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
+             VALUES ('chat-b','project-a',0,'Second',3,3)"
+        ),
+        rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    );
+    // A chat belongs to an existing project.
+    assert_eq!(
+        rejected(
+            "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
+             VALUES ('chat-b','project-missing',0,'Second',3,3)"
+        ),
+        rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+    );
+    // Titles are bounded and non-empty.
+    assert_eq!(
+        rejected(
+            "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
+             VALUES ('chat-b','project-a',1,'',3,3)"
+        ),
+        rusqlite::ffi::SQLITE_CONSTRAINT_CHECK
+    );
+    // A legacy session can only be closed and cold.
+    assert_eq!(
+        rejected(&format!(
+            "INSERT INTO agent_sessions(
+               id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,
+               state,residency,legacy,created_at,updated_at
+             ) VALUES (
+               'session-b','project-a','chat-a',1,'simulator','{}','{PENDING_CAPABILITIES}',
+               'ready','cold',1,3,3
+             )",
+            "a".repeat(64)
+        )),
+        rusqlite::ffi::SQLITE_CONSTRAINT_CHECK
+    );
+    // The migrated legacy session is terminal and immutable.
+    assert_eq!(
+        rejected(
+            "UPDATE agent_sessions SET state='active', residency='hot', terminal_at=NULL WHERE id='session-a'"
+        ),
+        rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER
+    );
+    // Migrated history cannot be deleted.
+    for delete in [
+        "DELETE FROM items WHERE id='event-1'",
+        "DELETE FROM agent_sessions WHERE id='session-a'",
+        "DELETE FROM chats WHERE id='chat-a'",
+    ] {
+        assert_eq!(
+            rejected(delete),
+            rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER,
+            "{delete}"
+        );
+    }
+
+    assert_eq!(retained(), migrated);
+    assert!(rows("SELECT \"table\" FROM pragma_foreign_key_check").is_empty());
+}
+
+#[test]
 fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_rollback() {
     let directory = TestDir::new();
     create_v4(&directory.database(), true);
