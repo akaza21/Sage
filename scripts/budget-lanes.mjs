@@ -96,6 +96,7 @@ export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
   "beta0001-installed-smoke-settlement.node-test.mjs",
   "beta0001-installed-smoke.node-test.mjs",
   "beta0001-windows-locked-loader.node-test.mjs",
+  "capture-native-chat-ui.node-test.mjs",
   "check-lanes.native-windows.node-test.mjs",
   "hr6-live-run.node-test.mjs",
   "installed-smoke-identity.node-test.mjs",
@@ -533,6 +534,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "app-smoke-cli.node-test.mjs",
     reason:
       "Browser-dependent smoke CLI regression lane; drives the real app-smoke entrypoint with bundled Playwright Chromium and asserts exit status, dev-server PID death, and port release.",
+  },
+  {
+    file: "capture-native-chat-ui.node-test.mjs",
+    reason:
+      "Browser-dependent NC-4 capture conformance lane; drives the visual fixture Chats in an owned Vite server and bundled Playwright Chromium with the native capture CDP client, actions and named-state probe.",
   },
   {
     file: "check-lanes.portable.node-test.mjs",

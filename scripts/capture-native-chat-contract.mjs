@@ -64,6 +64,14 @@ export function assertPrivacy(value) {
   )
     fail("privacy");
 }
+/**
+ * Base states take every capture width. The composer hides its context meter
+ * only once its toolbar fit compacts to the dense step (useComposerToolbarFit),
+ * which the 480 window's chat column does not reach, so 480 is captured.
+ */
+export function captureWidths(state) {
+  return parityWidths(state);
+}
 export function parseArgs(args) {
   const values = {};
   if (args.length !== 6) fail("arguments");
@@ -91,7 +99,7 @@ export function parseArgs(args) {
   if (responsiveWidth && responsiveWidth !== width)
     fail("responsive-width-mismatch");
   // A surface the product hides below a pane width is not captured there.
-  if (!parityWidths(state).includes(width)) fail("state-width-unsupported");
+  if (!captureWidths(state).includes(width)) fail("state-width-unsupported");
   return {
     harness,
     state,
