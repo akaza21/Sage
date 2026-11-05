@@ -11,16 +11,14 @@ use crate::browser::BrowserState;
 
 mod completion;
 mod native;
+mod slot;
 pub(super) use completion::Completion;
 use completion::CompletionTarget;
+pub(in crate::browser) use slot::Slot;
+use slot::{SharedSlot, TabSession};
 
-#[derive(Clone, Default)]
-pub(in crate::browser) struct Slot(Arc<SharedSlot>);
-type SharedSlot = Mutex<Option<Arc<Session>>>;
-
-pub(super) struct Session {
+pub(in crate::browser) struct Session {
     webview: Webview,
-    owner: DeveloperScope,
     slot: Weak<SharedSlot>,
     state: Mutex<State>,
     pub(super) serializer: super::cdp_port::evaluate::Serializer,
@@ -45,6 +43,18 @@ enum Phase {
 }
 
 impl State {
+    fn reserve(&mut self) -> Result<(), BrowserFailure> {
+        if !matches!(self.phase, Phase::Ready(_))
+            || self.busy
+            || self.pending_completion
+            || self.sleep
+        {
+            return Err(BrowserFailure::Unavailable);
+        }
+        self.busy = true;
+        Ok(())
+    }
+
     fn close(&mut self, force: bool) -> Option<String> {
         self.sleep = true;
         if !force && self.busy {
@@ -118,7 +128,7 @@ impl Drop for Work {
 impl Session {
     pub(super) fn acquire(
         webview: &Webview,
-        owner: DeveloperScope,
+        grant: DeveloperScope,
         permit: &BrowserDispatchPermit,
     ) -> Result<Work, BrowserFailure> {
         let slot = webview
@@ -132,50 +142,17 @@ impl Session {
             .ok_or(BrowserFailure::Unavailable)?
             .developer
             .clone();
-        let mut current = slot.0.lock().map_err(|_| BrowserFailure::Unavailable)?;
-        let (session, opening) = match current.as_ref() {
-            Some(session) => {
-                if session.owner != owner {
-                    return Err(BrowserFailure::Unavailable);
-                }
-                let mut state = session
-                    .state
-                    .lock()
-                    .map_err(|_| BrowserFailure::Unavailable)?;
-                if !matches!(state.phase, Phase::Ready(_)) || state.busy || state.pending_completion
-                {
-                    return Err(BrowserFailure::Unavailable);
-                }
-                state.busy = true;
-                (session.clone(), false)
-            }
-            None => {
-                let session = Arc::new(Self {
-                    webview: webview.clone(),
-                    owner: owner.clone(),
-                    slot: Arc::downgrade(&slot.0),
-                    state: Mutex::new(State {
-                        busy: true,
-                        ..State::default()
-                    }),
-                    serializer: Default::default(),
-                });
-                *current = Some(session.clone());
-                (session, true)
-            }
-        };
-        drop(current);
+        let (session, opening) = slot.acquire(webview.label(), &grant, |slot| Self {
+            webview: webview.clone(),
+            slot,
+            state: Mutex::new(State {
+                busy: true,
+                ..State::default()
+            }),
+            serializer: Default::default(),
+        })?;
         let work = Work(session.clone());
         if opening {
-            let weak = Arc::downgrade(&session);
-            if let Err(error) = owner.bind(Arc::new(move |force| {
-                if let Some(session) = weak.upgrade() {
-                    session.close(force);
-                }
-            })) {
-                session.finished();
-                return Err(error);
-            }
             session.start(permit.clone());
         }
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -272,6 +249,19 @@ impl Session {
     }
 }
 
+impl TabSession for Session {
+    fn reserve(&self) -> Result<(), BrowserFailure> {
+        self.state
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .reserve()
+    }
+
+    fn close(self: &Arc<Self>, force: bool) {
+        Session::close(self, force);
+    }
+}
+
 impl CompletionTarget for Session {
     fn complete(self: &Arc<Self>) {
         let clear = self.state.lock().is_ok_and(|mut state| state.completed());
@@ -281,5 +271,7 @@ impl CompletionTarget for Session {
     }
 }
 
+#[cfg(test)]
+mod handoff_tests;
 #[cfg(test)]
 mod tests;

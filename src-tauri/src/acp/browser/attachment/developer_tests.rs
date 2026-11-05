@@ -487,7 +487,6 @@ fn late_privileged_cleanup_cannot_end_a_reapproved_session() {
     let (registry, lease) = attached();
     assert!(lease.grant_developer_mode(SESSION, ORIGIN));
     let old = lease.developer_scope();
-    let old_generation = lease.grant_generation();
     registry.end_developer_mode();
     assert!(lease.grant_developer_mode(SESSION, ORIGIN));
     let state = Arc::new(String::from("replacement session"));
@@ -503,7 +502,7 @@ fn late_privileged_cleanup_cannot_end_a_reapproved_session() {
         old.bind(Arc::new(|_| {})),
         Err(crate::acp::browser::BrowserFailure::Denied)
     );
-    lease.release_developer_resources(None, Some(old_generation));
+    lease.release_developer_resources();
     assert_eq!(&**weak.upgrade().unwrap(), "replacement session");
     registry.end_developer_mode();
     assert!(weak.upgrade().is_none());

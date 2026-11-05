@@ -2,6 +2,10 @@
 use super::*;
 
 impl BrowserDispatchPermit {
+    pub(super) fn authority_live(&self, state: &AuthorityState) -> bool {
+        state.active || (state.handing_off && self.elevated_is_current.is_some())
+    }
+
     pub fn with_live_lock<T>(
         &self,
         issue: impl FnOnce() -> Result<T, BrowserFailure>,
@@ -14,7 +18,7 @@ impl BrowserDispatchPermit {
             .0
             .lock()
             .map_err(|_| BrowserFailure::Unavailable)?;
-        if !state.active
+        if !self.authority_live(&state)
             || state.scope != self.scope
             || state.revision != self.revision
             || state.owner_generation != self.owner_generation
@@ -32,7 +36,7 @@ impl BrowserDispatchPermit {
 
     pub(crate) fn is_live(&self) -> bool {
         self.authority.0.lock().is_ok_and(|state| {
-            state.active
+            self.authority_live(&state)
                 && state.scope == self.scope
                 && state.revision == self.revision
                 && state.owner_generation == self.owner_generation

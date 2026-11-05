@@ -76,7 +76,10 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: opener.map(|(label, _)| label.to_owned()),
-                developer: Arc::new(developer::DeveloperAccess::new(self.control_events.clone())),
+                developer: Arc::new(developer::DeveloperAccess::new(
+                    self.developer_registry.clone(),
+                    tab_label,
+                )),
                 resources: Arc::default(),
             },
         );
@@ -118,7 +121,7 @@ impl BrowserAttachments {
                 tab_number,
             );
             // As with user detach, revoke before unpublishing the grant.
-            entries.get(&key)?.stop();
+            entries.get(&key)?.stop_or_hand_off();
             entries.remove(&key)
         });
         if let Some(lease) = lease {

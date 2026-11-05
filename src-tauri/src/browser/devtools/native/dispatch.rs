@@ -1,4 +1,4 @@
-//! Worker dispatch and scoped developer-session ownership through the owned result.
+//! Worker dispatch keeps the tab session busy through the owned result.
 use super::*;
 
 impl BrowserCapabilityDispatch for &mut NativeDevtools {

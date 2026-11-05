@@ -9,25 +9,62 @@
 
 use super::*;
 use crate::acp::browser::developer;
+mod command;
+mod session;
+pub(crate) use command::DeveloperCommand;
 
 pub(crate) type GrantAudit = Arc<dyn Fn(developer::CdpAuditOutcome) -> bool + Send + Sync>;
 
 pub(crate) type AgentControlEmitter = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Default)]
-pub(super) struct ControlEvents(Mutex<Option<AgentControlEmitter>>);
+pub(super) struct DeveloperRegistry {
+    emit: Mutex<Option<AgentControlEmitter>>,
+    tabs: Mutex<HashMap<String, std::sync::Weak<Mutex<TabGrants>>>>,
+}
+
+#[derive(Default)]
+struct TabGrants {
+    grants: HashMap<usize, DeveloperGrant>,
+    release: Option<resources::DeveloperRelease>,
+}
 
 pub(super) struct DeveloperAccess {
-    grant: Mutex<Option<DeveloperGrant>>,
-    events: Arc<ControlEvents>,
+    tab: Arc<Mutex<TabGrants>>,
+    key: Arc<()>,
+    label: String,
+    events: Arc<DeveloperRegistry>,
 }
 
 impl DeveloperAccess {
-    pub(super) fn new(events: Arc<ControlEvents>) -> Self {
+    pub(super) fn new(events: Arc<DeveloperRegistry>, label: &str) -> Self {
+        let tab = {
+            let mut tabs = events
+                .tabs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            // Weak entries never retain tabs or native state. Prune on creation
+            // so this index stays bounded by currently attached tabs.
+            tabs.retain(|_, tab| tab.strong_count() != 0);
+            match tabs.get(label).and_then(std::sync::Weak::upgrade) {
+                Some(tab) => tab,
+                None => {
+                    let tab = Arc::new(Mutex::new(TabGrants::default()));
+                    tabs.insert(label.to_owned(), Arc::downgrade(&tab));
+                    tab
+                }
+            }
+        };
         Self {
-            grant: Mutex::new(None),
+            tab,
+            key: Arc::new(()),
+            label: label.to_owned(),
             events,
         }
+    }
+
+    fn key(&self) -> usize {
+        Arc::as_ptr(&self.key) as usize
     }
 
     /// The only writer of the grant. Notify under its lock so a command
@@ -36,22 +73,51 @@ impl DeveloperAccess {
     fn transition(
         &self,
         tab: &str,
-        grant: &mut Option<DeveloperGrant>,
+        tab_grants: &mut TabGrants,
         next: Option<DeveloperGrant>,
     ) -> Option<DeveloperGrant> {
-        let changed = grant.is_some() || next.is_some();
-        let previous = std::mem::replace(grant, next);
-        if changed && let Some(emit) = self.events.0.lock().ok().and_then(|slot| slot.clone()) {
+        let previous = tab_grants.grants.remove(&self.key());
+        let changed = previous.is_some() || next.is_some();
+        if let Some(next) = next {
+            tab_grants.grants.insert(self.key(), next);
+        }
+        if changed && let Some(emit) = self.events.emit.lock().ok().and_then(|slot| slot.clone()) {
             emit(tab);
         }
+        tab_grants.release_ungranted();
         previous
     }
 }
 
 struct DeveloperGrant {
+    identity: Arc<()>,
     session: String,
     origin: String,
     audit: GrantAudit,
+    active: std::sync::Weak<AtomicBool>,
+    retiring: std::sync::Weak<AtomicBool>,
+    user_control: std::sync::Weak<AtomicBool>,
+    commands: usize,
+    draining: bool,
+    revoked: bool,
+}
+
+impl DeveloperGrant {
+    fn is_live(&self) -> bool {
+        !self.revoked
+            && self
+                .active
+                .upgrade()
+                .is_some_and(|active| active.load(Ordering::Acquire))
+            && self
+                .retiring
+                .upgrade()
+                .is_some_and(|retiring| !retiring.load(Ordering::Acquire))
+            && self
+                .user_control
+                .upgrade()
+                .is_some_and(|paused| !paused.load(Ordering::Acquire))
+    }
 }
 
 impl Drop for DeveloperGrant {
@@ -113,7 +179,7 @@ impl AttachmentLease {
         {
             return false;
         }
-        let Ok(mut grant) = self.developer.grant.lock() else {
+        let Ok(mut grant) = self.developer.tab.lock() else {
             return false;
         };
         if !developer::switch_is_current(generation)
@@ -129,9 +195,16 @@ impl AttachmentLease {
             &self.tab_label,
             &mut grant,
             Some(DeveloperGrant {
+                identity: Arc::new(()),
                 session: session.to_owned(),
                 origin: origin.to_owned(),
                 audit,
+                active: Arc::downgrade(&self.active),
+                retiring: Arc::downgrade(&self.retiring),
+                user_control: Arc::downgrade(&self.user_control),
+                commands: 0,
+                draining: false,
+                revoked: false,
             }),
         );
         drop(grant);
@@ -140,12 +213,14 @@ impl AttachmentLease {
         true
     }
 
+    #[cfg(test)]
     pub(crate) fn developer_granted(&self, session: &str, origin: &str) -> bool {
         self.is_live()
             && !self.user_controls()
-            && self.developer.grant.lock().is_ok_and(|grant| {
+            && self.developer.tab.lock().is_ok_and(|grant| {
                 grant
-                    .as_ref()
+                    .grants
+                    .get(&self.developer.key())
                     .is_some_and(|grant| grant.session == session && grant.origin == origin)
             })
     }
@@ -157,20 +232,20 @@ impl AttachmentLease {
             && !self.user_controls()
             && self
                 .developer
-                .grant
+                .tab
                 .lock()
-                .is_ok_and(|grant| grant.is_some())
+                .is_ok_and(|grant| grant.grants.contains_key(&self.developer.key()))
     }
 
     pub(super) fn end_developer_mode(&self) -> bool {
-        let ended = self.developer.grant.lock().ok().and_then(|mut grant| {
+        let ended = self.developer.tab.lock().ok().and_then(|mut grant| {
             self.developer
                 .transition(&self.tab_label, &mut grant, None)
                 .map(|grant| (grant, self.invalidate_grant()))
         });
         let had_grant = ended.is_some();
-        if let Some((_, generation)) = &ended {
-            self.release_developer_resources(None, Some(*generation));
+        if ended.is_some() {
+            self.release_developer_resources();
         }
         drop(ended);
         had_grant
@@ -180,10 +255,11 @@ impl AttachmentLease {
     pub(super) fn end_developer_mode_unless_on(&self, url: &str) {
         let incoming = origin_of(url);
         let changed = origin_of(&self.url) != incoming;
-        let ended = self.developer.grant.lock().ok().and_then(|mut grant| {
+        let ended = self.developer.tab.lock().ok().and_then(|mut grant| {
             if changed
                 || grant
-                    .as_ref()
+                    .grants
+                    .get(&self.developer.key())
                     .is_some_and(|grant| incoming.as_deref() != Some(grant.origin.as_str()))
             {
                 Some((
@@ -194,8 +270,8 @@ impl AttachmentLease {
                 None
             }
         });
-        if let Some((_, generation)) = &ended {
-            self.release_developer_resources(None, Some(*generation));
+        if ended.is_some() {
+            self.release_developer_resources();
         }
         drop(ended);
     }
@@ -204,7 +280,7 @@ impl AttachmentLease {
 impl BrowserAttachments {
     #[cfg(any(windows, test))]
     pub(crate) fn set_agent_control_emitter(&self, emit: AgentControlEmitter) {
-        if let Ok(mut slot) = self.control_events.0.lock() {
+        if let Ok(mut slot) = self.developer_registry.emit.lock() {
             *slot = Some(emit);
         }
     }

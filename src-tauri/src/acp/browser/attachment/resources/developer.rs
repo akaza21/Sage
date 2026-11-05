@@ -1,5 +1,5 @@
-//! Revocable ownership of the privileged native session, independently of
-//! ordinary handles and diagnostics. `force=false` lets owned work finish.
+//! A grant-scoped capability to use the tab-owned privileged native session.
+//! Ordinary handles and diagnostics have independent lifetimes.
 use super::*;
 
 pub(crate) type DeveloperRelease = Arc<dyn Fn(bool) + Send + Sync>;
@@ -10,25 +10,34 @@ pub(crate) struct DeveloperScope {
     resources: std::sync::Weak<Resources>,
     lane: u64,
     grant: u64,
+    access: std::sync::Weak<super::super::developer::DeveloperAccess>,
 }
-
-impl PartialEq for DeveloperScope {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.identity, &other.identity)
-            && self.lane == other.lane
-            && self.grant == other.grant
-    }
-}
-impl Eq for DeveloperScope {}
 
 impl DeveloperScope {
+    pub(crate) fn with_live<T>(
+        &self,
+        label: &str,
+        issue: impl FnOnce() -> Result<T, crate::acp::browser::BrowserFailure>,
+    ) -> Result<T, crate::acp::browser::BrowserFailure> {
+        self.with_access(|access| access.with_live(label, issue))
+    }
+
     pub(crate) fn bind(
         &self,
         release: DeveloperRelease,
     ) -> Result<(), crate::acp::browser::BrowserFailure> {
+        self.with_access(|access| access.bind(release))
+    }
+
+    fn with_access<T>(
+        &self,
+        issue: impl FnOnce(
+            &super::super::developer::DeveloperAccess,
+        ) -> Result<T, crate::acp::browser::BrowserFailure>,
+    ) -> Result<T, crate::acp::browser::BrowserFailure> {
         use crate::acp::browser::BrowserFailure;
         let resources = self.resources.upgrade().ok_or(BrowserFailure::Denied)?;
-        let mut state = resources
+        let _state = resources
             .state
             .lock()
             .map_err(|_| BrowserFailure::Unavailable)?;
@@ -38,12 +47,8 @@ impl DeveloperScope {
         {
             return Err(BrowserFailure::Denied);
         }
-        let previous = state.developer.replace((self.lane, self.grant, release));
-        drop(state);
-        if let Some((_, _, release)) = previous {
-            release(true);
-        }
-        Ok(())
+        let access = self.access.upgrade().ok_or(BrowserFailure::Denied)?;
+        issue(&access)
     }
 }
 
@@ -54,38 +59,17 @@ impl AttachmentLease {
             resources: Arc::downgrade(&self.resources),
             lane: self.resource_generation(),
             grant: self.grant_generation(),
+            access: Arc::downgrade(&self.developer),
         }
     }
 
-    pub(in crate::acp::browser::attachment) fn release_developer_resources(
-        &self,
-        lane: Option<u64>,
-        grant: Option<u64>,
-    ) {
-        let release = self.resources.state.lock().ok().and_then(|mut state| {
-            if state.developer.as_ref().is_some_and(|(l, g, _)| {
-                lane.is_none_or(|lane| lane == *l) && grant.is_none_or(|grant| grant == *g)
-            }) {
-                state.developer.take()
-            } else {
-                None
-            }
-        });
-        if let Some((_, _, release)) = release {
-            release(true);
-        }
+    pub(in crate::acp::browser::attachment) fn release_developer_resources(&self) {
+        self.developer.release_ungranted();
     }
 
     pub(in crate::acp::browser::attachment) fn sleep_developer_resources(&self, lane: Option<u64>) {
-        let release = self.resources.state.lock().ok().and_then(|state| {
-            state
-                .developer
-                .as_ref()
-                .filter(|(l, _, _)| lane.is_none_or(|lane| lane == *l))
-                .map(|(_, _, release)| release.clone())
-        });
-        if let Some(release) = release {
-            release(false);
+        if lane.is_none_or(|lane| lane == self.resource_generation()) {
+            self.developer.sleep();
         }
     }
 }

@@ -1,12 +1,12 @@
 //! The developer-mode policy an attached tab's gate runs under (ADR-0009b):
 //! the Settings switch and the audit log live in the settings store; the
-//! grant lives on the attachment, in memory only.
+//! tab grant registry holds attachment approvals and command leases in memory.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{
     acp::browser::{
-        attachment::AttachmentLease,
+        attachment::{AttachmentLease, DeveloperCommand},
         developer::{self, CdpAuditEntry, DeveloperModePolicy},
     },
     settings_store::SettingsStore,
@@ -20,6 +20,7 @@ pub(crate) struct LeaseDeveloperPolicy {
     generation: u64,
     resource_generation: u64,
     grant_generation: u64,
+    command: Mutex<Option<DeveloperCommand>>,
 }
 
 impl LeaseDeveloperPolicy {
@@ -32,6 +33,7 @@ impl LeaseDeveloperPolicy {
             generation: developer::switch_generation(),
             resource_generation,
             grant_generation,
+            command: Mutex::new(None),
         })
     }
 }
@@ -47,7 +49,15 @@ impl DeveloperModePolicy for LeaseDeveloperPolicy {
     }
 
     fn granted(&self, session: &str, origin: &str) -> bool {
-        self.lease.developer_granted(session, origin)
+        let Ok(mut command) = self.command.lock() else {
+            return false;
+        };
+        if command.is_none() {
+            *command = self.lease.developer_command(session, origin);
+        }
+        command
+            .as_ref()
+            .is_some_and(|command| command.is_live(session, origin))
     }
 
     fn grant(&self, session: &str, origin: &str) -> bool {

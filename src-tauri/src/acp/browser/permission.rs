@@ -80,6 +80,7 @@ struct AuthorityState {
     owner_generation: u64,
     revision: u64,
     active: bool,
+    handing_off: bool,
     grant_origin: Option<String>,
     navigation_invalidation: bool,
 }
@@ -96,6 +97,7 @@ impl BrowserAuthority {
             owner_generation,
             revision: 1,
             active: true,
+            handing_off: false,
             grant_origin: None,
             navigation_invalidation: false,
         }))))
@@ -123,15 +125,27 @@ impl BrowserAuthority {
     pub fn stop(&self) {
         if let Ok(mut state) = self.0.lock() {
             state.active = false;
+            state.handing_off = false;
             state.revision = state.revision.saturating_add(1);
             state.grant_origin = None;
             state.navigation_invalidation = false;
         }
     }
 
+    /// Ends admission while an already admitted developer command drains.
+    /// Its command lease is checked on every dispatch and completion.
+    pub(crate) fn hand_off(&self) {
+        if let Ok(mut state) = self.0.lock() {
+            state.active = false;
+            state.handing_off = true;
+            state.grant_origin = None;
+        }
+    }
+
     pub fn navigation_started(&self) {
         if let Ok(mut state) = self.0.lock() {
             state.active = false;
+            state.handing_off = false;
             state.revision = state.revision.saturating_add(1);
             state.grant_origin = None;
             state.navigation_invalidation = true;
@@ -329,7 +343,7 @@ impl<P: BrowserCapabilityDispatch, D: BrowserPermissionDecider> BrowserPermissio
             .0
             .lock()
             .map_err(|_| BrowserFailure::Unavailable)?;
-        if !state.active
+        if !permit.authority_live(&state)
             || state.scope != request.scope
             || state.revision != revision
             || state.owner_generation != owner_generation

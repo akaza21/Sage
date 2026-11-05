@@ -27,6 +27,7 @@ mod developer;
 mod popup;
 mod resources;
 pub(crate) use control::AgentControl;
+pub(crate) use developer::DeveloperCommand;
 pub(crate) use popup::AgentAction;
 #[cfg(windows)]
 pub(crate) use resources::DeveloperScope;
@@ -171,7 +172,7 @@ impl AttachmentLease {
 
 #[derive(Default)]
 pub(crate) struct BrowserAttachments {
-    control_events: Arc<developer::ControlEvents>,
+    developer_registry: Arc<developer::DeveloperRegistry>,
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
     /// Tabs an Agent-driven tab opened, by child label, until they join.
@@ -224,7 +225,7 @@ impl BrowserAttachments {
             return Err(());
         }
         if let Some(previous) = entries.remove(&key) {
-            previous.stop();
+            previous.stop_or_hand_off();
             // Keep replacement unpublished until its old family is gone.
             // Registry lock order is user entries, then Agent entries.
             self.drop_joined_popups(&previous.tab_label);
@@ -244,7 +245,10 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: None,
-                developer: Arc::new(developer::DeveloperAccess::new(self.control_events.clone())),
+                developer: Arc::new(developer::DeveloperAccess::new(
+                    self.developer_registry.clone(),
+                    tab_label,
+                )),
                 resources: Arc::default(),
             },
         );
@@ -278,7 +282,7 @@ impl BrowserAttachments {
         let lease = self.entries.lock().ok().and_then(|mut entries| {
             let key = (project.clone(), chat.clone());
             // Keep the grant discoverable until its authority is stopped.
-            entries.get(&key)?.stop();
+            entries.get(&key)?.stop_or_hand_off();
             entries.remove(&key)
         })?;
         self.drop_joined_popups(&lease.tab_label);

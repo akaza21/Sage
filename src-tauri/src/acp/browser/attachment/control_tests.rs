@@ -387,3 +387,35 @@ fn revoking_one_of_two_live_grants_keeps_the_indicator_until_the_last_grant_ends
         assert!(!registry.agent_control(TAB).unwrap().developer_mode);
     }
 }
+
+#[test]
+fn detaching_the_original_grant_keeps_the_tabs_session_for_the_new_grant() {
+    let registry = BrowserAttachments::default();
+    let agent = agent_attached(&registry);
+    assert!(agent.grant_developer_mode(SESSION, ORIGIN));
+    let session = Arc::new(String::from("tab-session"));
+    let weak = Arc::downgrade(&session);
+    let held = Mutex::new(Some(session));
+    agent
+        .developer_scope()
+        .bind(Arc::new(move |force| {
+            if force {
+                held.lock().unwrap().take();
+            }
+        }))
+        .unwrap();
+    attach_user(&registry);
+    let (project, chat) = ids();
+    let user = registry.resolve(&project, &chat).unwrap();
+    user.authority_for(&scope()).unwrap();
+    assert!(user.grant_developer_mode(SESSION, ORIGIN));
+    registry.agent_detach(&project, &chat, SESSION, 7);
+    assert_eq!(
+        weak.upgrade().as_deref().map(String::as_str),
+        Some("tab-session")
+    );
+    assert!(registry.agent_control(TAB).unwrap().developer_mode);
+    registry.end_developer_mode();
+    assert!(weak.upgrade().is_none());
+    assert!(!registry.agent_control(TAB).unwrap().developer_mode);
+}

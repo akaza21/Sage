@@ -2,7 +2,7 @@
 //! Sleeping drops listeners and history; revocation also cancels work and handles.
 use super::*;
 mod developer;
-use developer::DeveloperRelease;
+pub(super) use developer::DeveloperRelease;
 #[cfg(windows)]
 pub(crate) use developer::DeveloperScope;
 
@@ -70,7 +70,6 @@ struct ResourceState {
     sleep_requested: Option<u64>,
     release: Option<(u64, Release)>,
     diagnostics: Option<(u64, Release)>,
-    developer: Option<(u64, u64, DeveloperRelease)>,
 }
 
 impl AttachmentLease {
@@ -148,7 +147,6 @@ impl AttachmentLease {
     }
 
     pub(super) fn release_invalidated_resources(&self, generation: u64) {
-        self.release_developer_resources(Some(generation), None);
         let releases = self.resources.state.lock().ok().map(|mut state| {
             if state.sleep_requested == Some(generation) {
                 state.sleep_requested = None;
@@ -240,9 +238,6 @@ impl Drop for Resources {
         }
         if let Some((_, diagnostics)) = state.diagnostics.take() {
             diagnostics();
-        }
-        if let Some((_, _, release)) = state.developer.take() {
-            release(true);
         }
     }
 }
