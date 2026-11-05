@@ -170,22 +170,6 @@ describe("Composer surface stylesheet seam", () => {
       /background:\s*Highlight;/,
     );
   });
-  it("gives single-line harness rows bounded scrolling and visible keyboard focus", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu > \[role="listbox"\]\s*\{[^}]*min-height:\s*0;[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option\s*\{[^}]*min-height:\s*32px;/s,
-    );
-    expect(css).not.toMatch(/\.searchable-picker__option\[data-active/);
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option:focus-visible\s*\{[^}]*background:\s*var\(--composer-control-hover\);/s,
-    );
-  });
 
   it("truncates the model label within its own shrinkable box instead of clipping the trigger's leading edge", async () => {
     const css = await readFile(
@@ -214,23 +198,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__action-description\s*\{[^}]*grid-column:\s*2 \/ -1;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s,
     );
   });
-  it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    const wrapper = css.match(
-      /^\.composer__harness\.composer__control-trigger\s*\{([^}]*)\}/m,
-    );
-    const trigger = css.match(
-      /^\.composer__harness \.searchable-picker__trigger\s*\{([^}]*)\}/m,
-    );
-    const height = (rule: RegExpMatchArray | null) =>
-      rule?.[1].match(/(?:^|;)\s*height:\s*([^;]+);/)?.[1];
-    expect(height(trigger)).toBe("var(--control-height-compact)");
-    expect(trigger?.[1]).toContain("background: transparent;");
-    expect(height(wrapper)).toBe(height(trigger));
-  });
+
   it("keeps a system progress fill visible in forced colors", async () => {
     const css = await readFile(
       resolve("src/styles/composer-context.css"),

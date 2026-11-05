@@ -1,4 +1,5 @@
 .workbench--agent .agent-artifact-pane__header > .tab-strip {
+  flex: 0 1 auto;
   overflow: hidden;
 }
 

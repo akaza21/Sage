@@ -58,6 +58,7 @@ it("checks visible harnesses once while their cached status is fresh", async () 
 
 it("signs in through the harness's own flow and polls until signed in", async () => {
   vi.useFakeTimers();
+  const unsubscribe = subscribeHarnessSignIn(() => undefined);
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
   desktop.getClaudeAuthStatus
     .mockResolvedValueOnce({ loggedIn: false })
@@ -76,6 +77,7 @@ it("signs in through the harness's own flow and polls until signed in", async ()
   expect(harnessSignInAction("claude-code", "Claude Code", "signedIn")).toBe(
     undefined,
   );
+  unsubscribe();
 });
 
 it("decorates picker rows with the sign-in label and action", async () => {
@@ -125,4 +127,57 @@ it("does not let a stale refresh replace a later check", async () => {
   complete({ loggedIn: false });
   await older;
   expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
+});
+
+it("preserves the bounded login check budget across repeated suspension and wake", async () => {
+  vi.useFakeTimers();
+  desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  await refreshHarnessSignIn("claude-code");
+  const observed: string[] = [];
+  const observe = () => observed.push(harnessSignInStatus("claude-code").state);
+  let unsubscribe = subscribeHarnessSignIn(observe);
+  await startHarnessSignIn("claude-code");
+  await vi.advanceTimersByTimeAsync(3000);
+  for (let attempt = 1; attempt < 40; attempt += 1) {
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(observed).toHaveLength(attempt);
+    unsubscribe = subscribeHarnessSignIn(observe);
+    await vi.advanceTimersByTimeAsync(0);
+  }
+  expect(observed).toHaveLength(40);
+  unsubscribe();
+  unsubscribe = subscribeHarnessSignIn(observe);
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(observed).toHaveLength(40);
+  unsubscribe();
+});
+
+it("keeps a newer sign-in check started by a status notification", async () => {
+  desktop.getClaudeAuthStatus
+    .mockResolvedValueOnce({ loggedIn: false })
+    .mockResolvedValue({ loggedIn: true });
+  let newer: Promise<unknown> | undefined;
+  const unsubscribe = subscribeHarnessSignIn(() => {
+    if (harnessSignInStatus("claude-code").state === "signedOut" && !newer)
+      newer = refreshHarnessSignIn("claude-code");
+  });
+  await refreshHarnessSignIn("claude-code");
+  await newer;
+  expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
+  unsubscribe();
+});
+
+it("waits for a visible picker before checking a login started without subscribers", async () => {
+  vi.useFakeTimers();
+  desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  await startHarnessSignIn("claude-code");
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect(harnessSignInStatus("claude-code").state).toBe("unknown");
+  const unsubscribe = subscribeHarnessSignIn(() => undefined);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
+  unsubscribe();
 });

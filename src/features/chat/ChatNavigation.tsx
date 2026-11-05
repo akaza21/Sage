@@ -66,4 +66,7 @@ export function ChatNavigation({
   );
 }
 
-export { AcpHistoryNotices } from "./AcpHistoryNotices";
+export {
+  AcpHistoryNotices,
+  WorkspaceTrackingNotice,
+} from "./AcpHistoryNotices";

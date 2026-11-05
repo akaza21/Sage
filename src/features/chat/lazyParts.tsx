@@ -19,6 +19,7 @@ import type * as ForkChunk from "./ForkChat";
 import type * as HandoffChunk from "./ChatHandoffDialog";
 import type * as QueuedChunk from "./ComposerQueuedPrompts";
 import type * as EditSummaryChunk from "./acp/TurnEditSummary";
+import type * as ComposerOptionsChunk from "./ComposerAddActions";
 import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- keyed re-export of components
@@ -132,3 +133,7 @@ export function LazyHarnessNotice(
     />
   );
 }
+
+export const ComposerOptionsPart = lazyParts<
+  Pick<typeof ComposerOptionsChunk, "ComposerOptionsMenu">
+>(() => import("./ComposerAddActions"));

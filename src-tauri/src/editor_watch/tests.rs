@@ -31,7 +31,6 @@ fn cancelled_watches_cannot_emit_and_generations_do_not_repeat() {
     let _guard = WATCH_TEST_LOCK.lock().unwrap();
     let file = resource("notes.md");
     watches().clear();
-    generations().clear();
     let first = start_watch(&file).unwrap();
     let cancelled = watch_control(&file, first).unwrap();
     assert!(can_emit(&file, first, &cancelled));
@@ -67,7 +66,6 @@ fn cancelled_watches_cannot_emit_and_generations_do_not_repeat() {
 fn global_watch_limit_rejects_overflow_and_releases_stopped_slots() {
     let _guard = WATCH_TEST_LOCK.lock().unwrap();
     watches().clear();
-    generations().clear();
     let first = resource("first.md");
     let first_generation = start_watch(&first).unwrap();
     let first_cancelled = watch_control(&first, first_generation).unwrap();

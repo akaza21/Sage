@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -35,9 +36,7 @@ async function subtleSelection(menu: Locator) {
 
 async function contained(menu: Locator, trigger: Locator, pane: Locator) {
   await expect(menu).toBeVisible();
-  await menu.evaluate((element) =>
-    Promise.all(element.getAnimations().map((motion) => motion.finished)),
-  );
+  await waitForAnimations(menu, { subtree: false });
   await menu.evaluate(
     () =>
       new Promise<void>((resolve) =>
@@ -46,6 +45,8 @@ async function contained(menu: Locator, trigger: Locator, pane: Locator) {
   );
   const box = (await menu.boundingBox())!;
   const anchor = (await trigger.boundingBox())!;
+  for (const summary of await pane.locator(".acp-file-changes").all())
+    await waitForAnimations(summary);
   const edits = await pane
     .locator(".chat-edit-summary-zone:not(:empty)")
     .boundingBox();
@@ -274,6 +275,7 @@ for (const width of [1888, 720, 480]) {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
+    await waitForAnimations(surface);
     const box = (await surface.boundingBox())!;
     const pane = (await page.locator(".agent-chat-pane").boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(pane.x);
@@ -311,6 +313,7 @@ for (const height of [320, 400]) {
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
+      await waitForAnimations(menu, { subtree: false });
       const box = (await menu.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(8);
       expect(box.y + box.height).toBeLessThanOrEqual(height - 8);

@@ -5,6 +5,7 @@ import type {
   VisualScenarioName,
 } from "./fixtures/visualScenarioTypes";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   settleTranscriptAtEnd,
@@ -185,6 +186,7 @@ export async function expectAgentImageContained(page: Page) {
     )
     .toBe(true);
   await image.evaluate((node) => (node as HTMLImageElement).decode());
+  await waitForAnimations(page.locator(".acp-image"));
   expect(
     await image.evaluate((node) => {
       const element = node as HTMLImageElement;
@@ -341,6 +343,8 @@ export async function runAgentCanonicalTest(
     );
     await expect(page.locator('[data-activity-kind="thought"]')).toHaveCount(0);
     await settleTranscriptAtEnd(page);
+    await waitForAnimations(execution);
+    await waitForAnimations(fetch);
     const command = page.locator(".acp-tool-command--line");
     await expect(command).toBeVisible();
     expect(

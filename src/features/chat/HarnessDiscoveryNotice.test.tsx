@@ -62,13 +62,9 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Running build 0.99.0, which Sage has not characterised.",
+      "Build 0.99.0 hasn't been characterised. Some features are unavailable.",
     );
-    expect(
-      screen.getByText(
-        /Optional features stay hidden until Sage verifies them for this build\. The core conversation still runs\./,
-      ),
-    ).toBeVisible();
+    expect(screen.getByText(/Some features are unavailable\./)).toBeVisible();
   });
 
   it("stays silent once the bound build is characterised", () => {

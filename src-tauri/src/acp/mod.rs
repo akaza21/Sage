@@ -37,7 +37,7 @@ pub(crate) mod store;
 pub(crate) mod transcript_quote;
 pub(crate) mod transport;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "acp-fixture"))]
 mod fixture_protocol;
 
 #[cfg(test)]

@@ -120,12 +120,18 @@ it("prewarms on pointer intent and keeps inline rename focused and authoritative
   useWorkbenchStore.setState({ renameChat, error: "Rename refused" });
   const preload = vi.spyOn(AgentTaskResourcesPart, "preload");
   mountHeader();
-  const trigger = screen.getByRole("button", { name: "Rename chat" });
+  const trigger = screen.getByRole("button", {
+    name: "Chat actions for Lazy header task",
+  });
   await act(async () => {
     fireEvent.pointerEnter(trigger);
     await preload.mock.results[0]!.value;
   });
   fireEvent.click(trigger);
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename chat" }));
   const input = screen.getByRole("textbox", { name: "New chat name" });
   expect(input).toHaveFocus();
   fireEvent.change(input, { target: { value: "Renamed" } });

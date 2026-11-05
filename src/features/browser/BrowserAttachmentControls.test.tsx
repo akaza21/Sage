@@ -41,6 +41,7 @@ it("does not let a stale initial status erase a successful attachment", async ()
       projectId="project-1"
       tabId="browser-7"
       ready
+      onError={vi.fn()}
       chats={[{ id: "chat-1", title: "First" }]}
     />,
   );
@@ -58,6 +59,7 @@ it("only attaches a settled tab to the chat the user chose and can detach it", a
       projectId="project-1"
       tabId="browser-7"
       ready
+      onError={vi.fn()}
       chats={[
         { id: "chat-1", title: "First" },
         { id: "chat-2", title: "Second" },

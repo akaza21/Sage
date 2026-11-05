@@ -7,6 +7,7 @@ import {
   openSelectionScenario,
 } from "./shared/transcriptSelection";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   settleChatProjections,
@@ -36,6 +37,7 @@ async function expectOpenPickerContained(
   await expect(input).toBeFocused();
   await expect(popup).toBeVisible();
   await expect(choices).toBeVisible();
+  await waitForAnimations(popup);
   const [inputBox, choicesBox, popupBox, viewport] = await Promise.all([
     input.boundingBox(),
     choices.boundingBox(),
@@ -637,14 +639,13 @@ test.describe("ED02 picker visual states", () => {
     );
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // CP-27b keeps navigation at 720px, so the Chat lane is under 400px and
-    // CP-27a's container rule collapses the harness trigger to its icon; the
-    // value remains in the accessible text.
+    // The content-sized trigger keeps its complete label when the measured
+    // toolbar has room, even in this narrow Chat lane.
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
     await expect(harnessTrigger).toHaveText("Codex");
     await expect(
       harnessTrigger.locator(".searchable-picker__trigger-label"),
-    ).toBeHidden();
+    ).toBeVisible();
     await expectComposerPickerValue(
       page.getByRole("button", { name: "Model", exact: true }),
       "Model",

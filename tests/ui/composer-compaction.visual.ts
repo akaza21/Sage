@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -294,11 +295,7 @@ for (const width of [1888, 720, 480]) {
         "aria-valuetext",
         "Medium",
       );
-      await effort.evaluate((element) =>
-        Promise.all(
-          element.getAnimations().map((animation) => animation.finished),
-        ),
-      );
+      await waitForAnimations(effort);
       const anchor = (await effortAnchor.boundingBox())!;
       const panel = (await effort.boundingBox())!;
       expect(panel.x).toBeGreaterThanOrEqual(8);
