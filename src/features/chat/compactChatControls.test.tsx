@@ -116,7 +116,10 @@ describe("Compact chat controls", () => {
         onToggle={() => {}}
         onToggleEffort={() => {}}
         onDismiss={() => {}}
-        choices={[{ id: "model", name: "Advertised long model" }]}
+        choices={[
+          { id: "model", name: "Advertised long model" },
+          { id: "other", name: "Other model" },
+        ]}
         selectedId="model"
         modelLabel="Advertised long model"
         effortLabel={null}
