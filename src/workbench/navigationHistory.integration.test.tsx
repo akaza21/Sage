@@ -1,3 +1,10 @@
+import {
+  pinAgentChatOwner,
+  pinnedAgentChatOwner,
+  clearAgentChatOwner,
+  releaseAgentChatOwner,
+  useAgentChatFocus,
+} from "../app/agentChatOwner";
 import "./navigationPaneHistory";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -31,6 +38,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   cleanup();
+  clearAgentChatOwner();
   useAgentArtifactFollowStore.getState().clear();
   useAgentChangesState.getState().close();
   useSubagentPaneStore.getState().clear();
@@ -365,4 +373,49 @@ it("does not retain subscriptions after an immediate unmount", async () => {
   await Promise.resolve();
   await useWorkbenchStore.getState().createChat();
   expect(navigationHistory.getState().entries).toEqual([]);
+});
+
+it("restores the owning chat when returning to its artifact from another chat", async () => {
+  connect();
+  const state = useWorkbenchStore.getState();
+  const owner = {
+    projectId: state.project!.id,
+    chatId: state.activeTabId!,
+    sessionId: "session-history",
+  } as AgentArtifactOwner;
+  pinAgentChatOwner(owner.chatId);
+  await state.openFile({
+    rootId: state.project!.roots[0].id,
+    relativePath: "src/workbench/Workbench.tsx",
+  });
+  const tabId = useWorkbenchStore.getState().activeTabId!;
+  useAgentArtifactFollowStore.getState().pin(owner, { kind: "tab", tabId });
+  await Promise.resolve();
+  await useWorkbenchStore.getState().createChat();
+  const other = useWorkbenchStore.getState().activeTabId!;
+  pinAgentChatOwner(other);
+  await navigateWorkbenchBack();
+  expect(useWorkbenchStore.getState().activeTabId).toBe(tabId);
+  expect(pinnedAgentChatOwner()).toBe(owner.chatId);
+});
+
+it("retains the underlying chat when replaying Settings with the Agent pin withdrawn", async () => {
+  connect();
+  const state = useWorkbenchStore.getState();
+  const chatId = state.activeTabId!;
+  pinAgentChatOwner(chatId);
+  await state.openFile({
+    rootId: state.project!.roots[0].id,
+    relativePath: "src/workbench/Workbench.tsx",
+  });
+  useAgentSettingsState.getState().open("Appearance");
+  releaseAgentChatOwner();
+  await Promise.resolve();
+  useAgentSettingsState.getState().close();
+  await useWorkbenchStore.getState().createChat();
+  pinAgentChatOwner(useWorkbenchStore.getState().activeTabId);
+  await navigateWorkbenchBack();
+  expect(useAgentSettingsState.getState().page).toBe("Appearance");
+  expect(pinnedAgentChatOwner()).toBeNull();
+  expect(renderHook(() => useAgentChatFocus()).result.current).toBe(chatId);
 });

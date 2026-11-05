@@ -1,3 +1,8 @@
+import {
+  pinAgentChatOwner,
+  pinnedAgentChatOwner,
+  releaseAgentChatOwner,
+} from "../app/agentChatOwner";
 import { createStore } from "zustand/vanilla";
 import { useWorkbenchStore, type SidebarView } from "../app/store";
 import {
@@ -33,6 +38,7 @@ export const MAX_NAVIGATION_ENTRIES = 50;
 export interface NavigationEntry {
   projectId: string | null;
   tabId: string | null;
+  chatId?: string | null;
   mode: WorkbenchWindowMode;
   settingsPage: AgentSettingsPage | null;
   sidebarView: SidebarView;
@@ -48,6 +54,7 @@ interface HistoryState {
 const same = (a: NavigationEntry | undefined, b: NavigationEntry) =>
   a?.projectId === b.projectId &&
   a.tabId === b.tabId &&
+  (a.chatId ?? null) === (b.chatId ?? null) &&
   a.mode === b.mode &&
   a.settingsPage === b.settingsPage &&
   a.sidebarView === b.sidebarView &&
@@ -65,12 +72,21 @@ export function createNavigationHistory() {
       const { entries, index } = get();
       if (same(entries[index], entry)) return;
       // Copy only destination fields, never retain an upstream object or content.
-      const { projectId, tabId, mode, settingsPage, sidebarView, pane } = entry;
+      const {
+        projectId,
+        tabId,
+        chatId,
+        mode,
+        settingsPage,
+        sidebarView,
+        pane,
+      } = entry;
       const next = [
         ...entries.slice(0, index + 1),
         {
           projectId,
           tabId,
+          ...(chatId ? { chatId } : {}),
           mode,
           settingsPage,
           sidebarView,
@@ -125,8 +141,19 @@ export function connectNavigationHistory(
   let navigating = false;
   const capture = (): NavigationEntry => {
     const state = useWorkbenchStore.getState();
+    const history = navigationHistory.getState();
+    const previous = history.entries[history.index];
+    const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+    const chatId =
+      active?.kind === "chat"
+        ? active.id
+        : (pinnedAgentChatOwner() ??
+          (previous?.projectId === state.project?.id
+            ? (previous.chatId ?? null)
+            : null));
     return {
       projectId: state.project?.id ?? null,
+      chatId: getMode() === "agent" ? chatId : null,
       tabId: state.activeTabId,
       mode: getMode(),
       settingsPage: useAgentSettingsState.getState().page,
@@ -139,6 +166,14 @@ export function connectNavigationHistory(
     // Only the current Project's authoritative inventory proves deletion.
     if (state.projectTransitioning || entry.projectId !== state.project?.id)
       return true;
+    if (
+      entry.chatId &&
+      (!state.tabs.some(
+        (tab) => tab.kind === "chat" && tab.id === entry.chatId,
+      ) ||
+        state.archivedChats.some((chat) => chat.id === entry.chatId))
+    )
+      return false;
     if (
       entry.pane &&
       (!state.tabs.some(
@@ -185,14 +220,25 @@ export function connectNavigationHistory(
     }
     if (!valid(entry) || (entry.tabId === null && state.activeTabId !== null))
       return "missing";
+    const chatId =
+      entry.mode === "agent" ? (entry.chatId ?? entry.pane?.chatId) : null;
+    if (chatId && state.activeTabId !== chatId) {
+      await state.activateTab(chatId);
+      if (disposed) return "blocked";
+      state = useWorkbenchStore.getState();
+      if (state.activeTabId !== chatId) return "blocked";
+    }
     if (entry.tabId === "settings:appearance") await state.openSettings();
     else if (entry.tabId) await state.activateTab(entry.tabId);
     if (disposed) return "blocked";
     state = useWorkbenchStore.getState();
     if (state.activeTabId !== entry.tabId) return "blocked";
+    if (!valid(entry)) return "missing";
+    if (chatId) pinAgentChatOwner(chatId);
     if (entry.settingsPage)
       useAgentSettingsState.getState().open(entry.settingsPage);
     else useAgentSettingsState.getState().close();
+    if (entry.settingsPage) releaseAgentChatOwner();
     // Selecting a tool must not force open a sidebar the user collapsed.
     useWorkbenchStore.setState({ sidebarView: entry.sidebarView });
     if (entry.mode === "agent") paneAdapter?.restore(entry.pane ?? null);
