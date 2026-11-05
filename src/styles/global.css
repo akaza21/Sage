@@ -559,6 +559,13 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The user agent gives these a bare monospace, which WebKit on macOS maps
+   to Courier. 1em keeps the surrounding size. */
+:where(code, kbd, samp, pre) {
+  font-family: var(--font-family-mono);
+  font-size: 1em;
+}
+
 :where(
   a,
   button,
