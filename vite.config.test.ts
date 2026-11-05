@@ -197,6 +197,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
+  // So does the Passwords settings page (BF-7b-1).
+  "src/workbench/settings/SettingsPasswordsPage.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
