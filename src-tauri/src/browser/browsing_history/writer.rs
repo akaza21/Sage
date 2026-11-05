@@ -53,6 +53,16 @@ pub(super) struct Writer {
 }
 
 impl Writer {
+    /// The worker discarded these visits. Later updates must not fall back
+    /// to the tab's previous committed visit, even though rollback kept it.
+    pub(super) fn invalidate_visits(&mut self, batch: &[Write]) {
+        for write in batch {
+            if let Write::Visit { tab, .. } = write {
+                self.last.retain(|last| last.tab != tab.as_str());
+            }
+        }
+    }
+
     /// Writes a batch in one transaction and prunes when due. `now` is the
     /// current time, for the age bound.
     pub(super) fn apply(

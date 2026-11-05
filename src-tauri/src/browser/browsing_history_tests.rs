@@ -121,3 +121,99 @@ fn a_write_the_full_queue_drops_reports_that_it_was_not_queued() {
     assert!(history.record_same_document("browser-1", "https://a.example/#c", None));
     assert!(!BrowsingHistory::default().record_visit("browser-1", "https://a.example/", None));
 }
+
+#[test]
+fn a_failed_visit_never_retargets_its_later_updates_to_the_previous_visit() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-history-failure-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join(FILE_NAME);
+    let control = store::open(path.to_str().unwrap()).unwrap();
+    let history = BrowsingHistory::open(path.clone());
+    let (sender, receiver) = sync_channel(QUEUE);
+    history.0.as_ref().unwrap().queue.set(sender).ok().unwrap();
+    let worker = std::thread::spawn(move || run(&path, &receiver));
+    history.record_visit("browser-1", "https://a.example/", Some("Alpha"));
+    let original = history.page(String::new(), None, 10).unwrap().visits;
+    control
+        .execute_batch(
+            "CREATE TRIGGER fail_visit BEFORE INSERT ON browser_visits
+         BEGIN SELECT RAISE(ABORT, 'history storage failure'); END;",
+        )
+        .unwrap();
+    history.record_visit("browser-1", "https://b.example/", None);
+    assert_eq!(
+        history.page(String::new(), None, 10).unwrap().visits,
+        original
+    );
+    control.execute_batch("DROP TRIGGER fail_visit;").unwrap();
+    history.record_title("browser-1", "Bravo");
+    let after_title = history.page(String::new(), None, 10).unwrap().visits;
+    history.record_same_document("browser-1", "https://b.example/#moved", Some("Bravo moved"));
+    let after_move = history.page(String::new(), None, 10).unwrap().visits;
+    drop(control);
+    drop(history);
+    worker.join().unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert_eq!(after_title, original);
+    assert_eq!(after_move.len(), 2);
+    assert_eq!(after_move[1], original[0]);
+    assert_eq!(after_move[0].url, "https://b.example/#moved");
+    assert_eq!(after_move[0].title.as_deref(), Some("Bravo moved"));
+}
+
+#[test]
+fn an_idle_worker_releases_sqlite_and_reopens_with_attribution_and_ordering() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-history-idle-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join(FILE_NAME);
+    let wal = directory.join(format!("{FILE_NAME}-wal"));
+    let history = BrowsingHistory::open(path.clone());
+    let (sender, receiver) = sync_channel(QUEUE);
+    history.0.as_ref().unwrap().queue.set(sender).ok().unwrap();
+    let worker = std::thread::spawn(move || run(&path, &receiver));
+    history.record_visit("browser-1", "https://a.example/", Some("Alpha"));
+    history.record_visit("browser-2", "https://b.example/", Some("Beta"));
+    let mut expected = history.page(String::new(), None, 10).unwrap().visits;
+    let opened = wal.exists();
+    // SQLite removes its WAL when its last connection closes. Observe the
+    // real file, without adding a resource counter to the production handle.
+    let deadline = std::time::Instant::now() + Duration::from_secs(40);
+    while wal.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let released = !wal.exists();
+    history.record_title("browser-1", "Alpha resumed");
+    history.record_title("browser-2", "Beta resumed");
+    let reopened = history.page(String::new(), None, 10).unwrap().visits;
+    let reopened_file = wal.exists();
+    history.record_visit("browser-1", "https://before-clear.example/", None);
+    let cleared = history.clear().unwrap();
+    history.record_visit("browser-1", "https://after-clear.example/", None);
+    let after_clear = urls(&history, "");
+    drop(history);
+    worker.join().unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+
+    assert!(opened, "the first visit must open the real SQLite file");
+    assert!(
+        released,
+        "inactivity must release the SQLite connection and WAL"
+    );
+    assert!(reopened_file, "later writes must reopen the SQLite file");
+    assert_eq!(expected.len(), 2);
+    for visit in &mut expected {
+        visit.title = Some(
+            match visit.url.as_str() {
+                "https://a.example/" => "Alpha resumed",
+                "https://b.example/" => "Beta resumed",
+                _ => panic!("unexpected stored visit"),
+            }
+            .into(),
+        );
+    }
+    assert_eq!(reopened, expected);
+    assert_eq!(cleared, 3);
+    assert_eq!(after_clear, ["https://after-clear.example/"]);
+}

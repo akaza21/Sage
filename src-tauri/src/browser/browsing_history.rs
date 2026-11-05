@@ -37,6 +37,8 @@ const QUEUE: usize = 256;
 const MAX_BATCH: usize = 64;
 /// How long a reader waits for the worker before giving up.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Release SQLite's page and statement caches once browsing activity is quiet.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const UNAVAILABLE: &str = "browsing history is unavailable";
 
 type Reply<T> = SyncSender<Result<T, String>>;
@@ -228,7 +230,23 @@ fn run(path: &std::path::Path, receiver: &Receiver<Request>) {
     let mut connection: Option<Connection> = None;
     let mut writer = Writer::default();
     let mut writes = Vec::with_capacity(MAX_BATCH);
-    while let Ok(first) = receiver.recv() {
+    loop {
+        let received = if connection.is_some() {
+            receiver.recv_timeout(IDLE_TIMEOUT)
+        } else {
+            receiver.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        };
+        let first = match received {
+            Ok(first) => first,
+            Err(RecvTimeoutError::Timeout) => {
+                connection = None;
+                writes = Vec::new();
+                // Keep only the bounded visit attribution: late titles must
+                // still name their own committed rows when the database wakes.
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         let mut next = Some(first);
         while let Some(request) = next.take() {
             match request {
@@ -279,9 +297,13 @@ fn flush(
     if writes.is_empty() {
         return;
     }
-    if let Ok(connection) = connect(path, connection)
-        && let Err(error) = writer.apply(connection, writes, now_ms())
-    {
+    let result = connect(path, connection).and_then(|connection| {
+        writer
+            .apply(connection, writes, now_ms())
+            .map_err(|error| error.to_string())
+    });
+    if let Err(error) = result {
+        writer.invalidate_visits(writes);
         eprintln!("browsing history write failed: {error}");
     }
     writes.clear();
