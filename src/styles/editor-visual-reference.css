@@ -152,12 +152,6 @@
   .workbench--editor {
     --workbench-card-margin: var(--space-1);
   }
-
-  /* While the floating tool sidebar covers it, the center steps aside. */
-  .workbench--editor .center-region[aria-hidden="true"] {
-    --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1)
-      min(280px, calc(100% - 160px));
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

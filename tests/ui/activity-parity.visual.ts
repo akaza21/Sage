@@ -1,3 +1,4 @@
+import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test, type Page } from "@playwright/test";
 import os from "node:os";
 import path from "node:path";
@@ -119,6 +120,7 @@ for (const width of [1888, 720, 480]) {
       const group = page.locator(
         ".chat-transcript-work__groups > .acp-tool-rollup",
       );
+      await waitForAnimations(group);
       const row = await group.boundingBox();
       const first = await cards.first().boundingBox();
       const answer = await page
@@ -373,6 +375,7 @@ for (const width of [1888, 720, 480]) {
       await page.locator(".chat-transcript-work > summary").click();
       const row = page.locator(".acp-compaction-notice");
       await expect(row.locator(":scope > svg")).toHaveCount(1);
+      await waitForAnimations(row);
       expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(28);
       expect(
         await row.evaluate((element) => getComputedStyle(element).color),
@@ -396,6 +399,7 @@ for (const width of [1888, 720, 480]) {
       await expect(
         page.getByText("Reviewer and Builder finished", { exact: true }),
       ).toBeVisible();
+      await waitForAnimations(page.locator(".acp-subagent-row"));
       const avatars = await page
         .locator(".acp-subagent-row__glyph")
         .evaluateAll((elements) =>

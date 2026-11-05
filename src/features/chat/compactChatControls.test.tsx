@@ -133,6 +133,7 @@ describe("Compact chat controls", () => {
       "aria-description",
       "Advertised long model",
     );
+    expect(trigger).toHaveAttribute("data-selected-id", "model");
     expect(
       trigger.querySelector(".composer__model-icon.lucide-sparkles"),
     ).toHaveAttribute("aria-hidden", "true");

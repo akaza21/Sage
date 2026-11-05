@@ -567,4 +567,37 @@ mod tests {
             std::fs::remove_dir_all(root).unwrap();
         });
     }
+
+    #[test]
+    fn committed_project_transition_stops_the_previous_epoch_preview_but_a_failed_one_does_not() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let root =
+                std::env::temp_dir().join(format!("sage-transition-preview-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+            let failed = execute_committed_transition(&state, 0, || -> AppResult<()> {
+                Err(AppError::InvalidRequest("injected mutation failure".into()))
+            })
+            .await;
+            assert!(!failed.committed);
+            assert!(
+                preview.is_serving(),
+                "a transition that did not commit must not stop the current Preview"
+            );
+
+            let database = state.database.clone();
+            let operation_root = root.clone();
+            let committed = execute_committed_transition(&state, 0, move || {
+                database.create_project_from_root(&operation_root)
+            })
+            .await;
+            assert!(committed.committed);
+            assert_eq!(committed.transition_epoch, 1);
+            assert!(!preview.is_serving());
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
 }

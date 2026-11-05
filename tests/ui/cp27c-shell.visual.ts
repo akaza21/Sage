@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
 } from "./shared/visualBrowserPrimitives";
@@ -141,6 +142,7 @@ async function editorControlsReachable(page: Page) {
   // The title-bar pill opens Quick Open (EP-08), which stays in the window.
   await search.click();
   const quickOpen = page.getByRole("dialog", { name: "Quick Open" });
+  await waitForAnimations(quickOpen);
   await expectContained(quickOpen, page);
   await page.keyboard.press("Escape");
   await expect(quickOpen).toHaveCount(0);

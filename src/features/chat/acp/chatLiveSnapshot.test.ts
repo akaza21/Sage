@@ -62,6 +62,34 @@ function turn(
 }
 
 describe("bounded Agent chat live snapshot", () => {
+  it.each([
+    ["queued", { statusTone: "working", working: true, waiting: false }],
+    ["cancelling", { statusTone: "working", working: true, waiting: false }],
+    ["waitingUser", { statusTone: "waiting", working: false, waiting: true }],
+    [
+      "deliveryUnknown",
+      { statusTone: "failed", working: false, waiting: false },
+    ],
+  ] as const)("keeps the projected status of a %s turn", (state, expected) => {
+    expect(
+      projectChatLiveSnapshot("chat-1", page([turn(state, 1)])),
+    ).toMatchObject(expected);
+  });
+
+  it("keeps terminal status independent of an item that is still settling", () => {
+    expect(
+      projectChatLiveSnapshot(
+        "chat-1",
+        page([turn("completed", 1, [item("Final output", 1)])]),
+      ),
+    ).toMatchObject({
+      statusLabel: "Completed",
+      statusTone: "idle",
+      streaming: true,
+      working: false,
+    });
+  });
+
   it("labels working and waiting turns without keeping the full transcript", () => {
     const long = "x".repeat(MAX_LIVE_SNAPSHOT_TEXT + 80);
     const snapshot = projectChatLiveSnapshot(
@@ -91,7 +119,7 @@ describe("bounded Agent chat live snapshot", () => {
       waiting: true,
       working: false,
       statusTone: "waiting",
-      statusLabel: "Waiting for approval",
+      statusLabel: "Awaiting approval",
       latestText: "Need a decision",
     });
     expect(

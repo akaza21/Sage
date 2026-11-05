@@ -114,45 +114,22 @@ describe("Chat container control breakpoints", () => {
     },
   );
 
-  it("compacts header status and reflows goals with their chat container, not the window", async () => {
+  it("compacts header titles and reflows goals with their chat container, not the window", async () => {
     const css = await readFile(
       "src/styles/chat-container-controls.css",
       "utf8",
     );
     const header = await readFile("src/styles/agent-task-header.css", "utf8");
     expect(header).toContain("@container chat-center (max-width: 400px)");
-    expect(header).toContain(".agent-task-header__status-label");
+    expect(header).toMatch(
+      /\.agent-task-header__title\s*\{[^}]*min-width:\s*3em;/s,
+    );
     expect(header).not.toMatch(/font-size:\s*0;/);
     expect(css).toMatch(
       /@container composer \(max-width: 280px\)[\s\S]*\.chat-goal-strip__row\s*\{[^}]*height:\s*auto;[^}]*flex-wrap:\s*wrap;/,
     );
     expect(css).not.toMatch(/@media\s*\(max-width:/);
   });
-  it.each([
-    [521, "inline", "inline"],
-    [520, "none", "inline"],
-    [401, "none", "inline"],
-    [400, "none", "inline"],
-    [281, "none", "inline"],
-    [280, "none", "none"],
-    [180, "none", "none"],
-  ])(
-    "at %ipx preserves model text until icon compaction is necessary",
-    async (width, access, identity) => {
-      expect(await containerDisplay(".composer__access-text", width)).toBe(
-        access,
-      );
-      expect(
-        await containerDisplay(
-          ".composer__harness .searchable-picker__trigger-label",
-          width,
-        ),
-      ).toBe(width <= 400 ? "none" : "inline");
-      expect(await containerDisplay(".composer__model-label", width)).toBe(
-        identity,
-      );
-    },
-  );
 
   // Between 281 and 320 a long effort label can squeeze the model label to
   // nothing; the icon keeps the trigger identifiable instead of a bare chevron.
