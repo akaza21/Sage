@@ -30,7 +30,7 @@ it("maps a match crossing markdown nodes without including chrome or another pan
 
 it("indexes list items, table cells and code in render order", () => {
   document.body.innerHTML =
-    '<article class="acp-message" data-item-id="answer"><div class="acp-markdown"><ul><li>one</li><li>two</li></ul><div class="markdown-table"><table><thead><tr><th>head</th></tr></thead><tbody><tr><td>cell</td></tr></tbody></table></div><div><section><pre><code>code</code></pre></section></div><p>Chat preview truncated</p></div></article>';
+    '<article class="acp-message" data-item-id="answer"><div class="acp-markdown"><ul><li><span data-markdown-inline="">one</span></li><li><span data-markdown-inline="">two</span></li></ul><div class="markdown-table"><table><thead><tr><th>head</th></tr></thead><tbody><tr><td>cell</td></tr></tbody></table></div><div><section><pre><code>code</code></pre></section></div><p>Chat preview truncated</p></div></article>';
   const ranges = chatMatchRanges(document.body, [
     match("answer", 1, 0, 3),
     match("answer", 3, 0, 4),

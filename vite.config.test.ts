@@ -77,6 +77,8 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/features/chat/acp/ChatMarkdown.tsx",
+  "src/features/files/FileMarkdownPreview.tsx",
   "src/features/chat/ComposerUsageContext.tsx",
   "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
@@ -985,6 +987,8 @@ describe("desktop-native chunk topology", () => {
     );
     for (const snapshotModule of [
       ...REQUEST_ONLY_DYNAMIC_FACADES.map((file) => `/${file}`),
+      "/src/features/files/markdownPreview.ts",
+      "/src/features/files/markdownTokens.ts",
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",
       "/src/app/agentDiffAdmission.ts",
@@ -1024,6 +1028,21 @@ describe("desktop-native chunk topology", () => {
     ).toBe(false);
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);
+
+    const fileClosure = closureForModule(
+      groupedGraph,
+      "src/features/files/FileSurface.tsx",
+    );
+    expect(fileClosure).toBeDefined();
+    for (const module of [
+      "markdownPreview.ts",
+      "markdownTokens.ts",
+      "MarkdownBlocks.tsx",
+    ]) {
+      expect(
+        fileClosure!.some((id) => id.endsWith(`/src/features/files/${module}`)),
+      ).toBe(false);
+    }
 
     const editorRuntimeClosure = closureForModule(
       groupedGraph,
