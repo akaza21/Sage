@@ -28,6 +28,12 @@ impl<T> BrowserTabs<T> {
         if tab.title == title {
             return false;
         }
+        // Only the visit to this page takes its title, never an earlier one.
+        if let Some(title) = &title
+            && tab.visited_url.as_deref() == Some(url)
+        {
+            self.browsing_history.record_title(label, title);
+        }
         tab.title = title;
         tab.revision = tab.revision.wrapping_add(1);
         true
