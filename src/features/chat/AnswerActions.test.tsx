@@ -236,7 +236,7 @@ it("pitches action buttons 24 px apart, fills the open menu trigger and reveals 
   const transcript = css("src/features/chat/chat-transcript-polish.css");
   expect(transcript).toMatch(/\.chat-transcript-actions\s*\{[^}]*gap:\s*0;/s);
   expect(transcript).toMatch(
-    /\.chat-transcript-actions > button\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*padding:\s*0;/s,
+    /\.chat-transcript-actions > button\s*\{[^}]*width:\s*var\(--space-6\);[^}]*height:\s*var\(--space-6\);[^}]*padding:\s*0;/s,
   );
   expect(transcript).toMatch(
     /\.chat-transcript-actions > button\[aria-expanded="true"\]\s*\{[^}]*background:\s*var\(--color-surface-hover\);/s,

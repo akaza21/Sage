@@ -51,6 +51,7 @@ export function installChatContainmentFixture(
         id: store.selectedModelId!,
         name: "Advertised model " + "long-model-".repeat(20),
       },
+      { id: "alternative-model", name: "Alternative model" },
     ],
     chatUiById: Object.fromEntries(
       chatTabs.map((tab) => [

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Link2, MessageCircleQuestion, Unlink2 } from "../../ui/leanIcons";
 import {
-  pinnedAgentChatOwner,
-  usePinnedAgentChatOwner,
-} from "../../app/agentChatOwner";
+  Link2,
+  MessageCircleQuestion,
+  MessageSquare,
+  Unlink2,
+} from "../../ui/leanIcons";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import { parseBrowserPageContext } from "../../domain/attachedContext";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import { clearBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import { BrowserAgentPresence } from "./BrowserAgentPresence";
@@ -13,8 +14,6 @@ import {
   attachBrowserTab,
   browserAgentControl,
   browserAttachmentStatus,
-  browserPageContext,
-  browserStatus,
   detachBrowserTab,
   stopBrowserTab,
   type BrowserAgentControl,
@@ -31,19 +30,25 @@ interface ChatChoice {
  * change, and attaching or detaching. Rust answers Take over and Hand back
  * with the state after them, so nothing here is a mirror that can go stale.
  */
-function useBrowserAgentControl(tabId: string, refreshKey: string) {
+function useBrowserAgentControl(
+  tabId: string,
+  refreshKey: string,
+  visible: boolean,
+) {
   const [control, setControl] = useState<BrowserAgentControl | null>(null);
   const sequence = useRef(0);
   useEffect(() => {
     const current = ++sequence.current;
+    if (!visible) return;
     void browserAgentControl(tabId, "agentControl")
+      .catch(() => null)
       .then((next) => {
-        if (current === sequence.current) setControl(next ?? null);
-      })
-      .catch(() => {
-        if (current === sequence.current) setControl(null);
+        if (current === sequence.current) setControl(next);
       });
-  }, [tabId, refreshKey]);
+    return () => {
+      sequence.current += 1;
+    };
+  }, [tabId, refreshKey, visible]);
   return {
     control,
     apply(next: BrowserAgentControl | null) {
@@ -54,6 +59,7 @@ function useBrowserAgentControl(tabId: string, refreshKey: string) {
 }
 
 export function BrowserToolbarPageActions({
+  visible = true,
   projectId,
   tabId,
   ready,
@@ -64,6 +70,7 @@ export function BrowserToolbarPageActions({
   onStopped,
   onError,
 }: {
+  visible?: boolean;
   projectId: string | null;
   tabId: string;
   ready: boolean;
@@ -72,16 +79,16 @@ export function BrowserToolbarPageActions({
   operation: BrowserOperationProjection | null;
   attachmentEpoch: number;
   onStopped: () => void;
-  onError: (message: string) => void;
+  onError: (message: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [attachments, setAttachments] = useState(0);
   const { control, apply } = useBrowserAgentControl(
     tabId,
     `${attachmentEpoch}\0${attachments}\0${pageRevision}\0${operation?.operationId ?? ""}\0${operation?.updatedAt ?? ""}`,
+    visible,
   );
-  const agent =
-    control && projectId && control.projectId === projectId ? control : null;
+  const agent = control?.projectId === projectId ? control : null;
   function run<T>(command: () => Promise<T>, after: (result: T) => void) {
     if (busy) return;
     setBusy(true);
@@ -90,17 +97,20 @@ export function BrowserToolbarPageActions({
       .catch((cause) => onError(String(cause).slice(0, 512)))
       .finally(() => setBusy(false));
   }
-  if (!ready && !agent) return null;
+  const attachmentControls = useBrowserAttachmentControls({
+    visible: visible && (ready || Boolean(agent)),
+    projectId,
+    tabId,
+    ready,
+    chats,
+    attachmentEpoch,
+    onChanged: () => setAttachments((current) => current + 1),
+    onError,
+  });
+  if (!visible || (!ready && !agent)) return null;
   return (
     <div className="browser-surface__page-actions">
-      <BrowserAttachmentControls
-        key={attachmentEpoch}
-        projectId={projectId}
-        tabId={tabId}
-        ready={ready}
-        chats={chats}
-        onChanged={() => setAttachments((current) => current + 1)}
-      />
+      {attachmentControls}
       {agent ? (
         <BrowserAgentPresence
           pending={
@@ -133,115 +143,123 @@ export function BrowserToolbarPageActions({
   );
 }
 
-export function BrowserAttachmentControls({
+function useBrowserAttachmentControls({
+  visible = true,
+  attachmentEpoch = 0,
   projectId,
   tabId,
   ready,
   chats,
   onChanged,
+  onError: setError,
 }: {
+  visible?: boolean;
+  attachmentEpoch?: number;
   projectId: string | null;
   tabId: string;
   ready: boolean;
   chats: readonly ChatChoice[];
   onChanged?: () => void;
+  /**
+   * Reports a failure, or null to clear one. The surface shows it in its
+   * error row, which takes layout space above the page, because the page is
+   * a native window that would cover anything drawn over it.
+   */
+  onError: (message: string | null) => void;
 }) {
+  const [pagePending, setPagePending] = useState(false);
   const [chatId, setChatId] = useState("");
   const [attachedChat, setAttachedChat] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const attachmentRevision = useRef(0);
   const chosen = chats.some((chat) => chat.id === chatId)
     ? chatId
     : (chats[0]?.id ?? "");
 
   useEffect(() => {
-    if (!projectId || !chosen) return;
+    if (!visible || !projectId || !chosen) return;
     let active = true;
     const revision = attachmentRevision.current;
     void browserAttachmentStatus(projectId, chosen)
+      .catch(() => null)
       .then((status) => {
         if (active && revision === attachmentRevision.current)
           setAttachedChat(status?.tabId === tabId ? chosen : null);
-      })
-      .catch(() => {
-        if (active && revision === attachmentRevision.current)
-          setAttachedChat(null);
       });
     return () => {
       active = false;
     };
-  }, [projectId, chosen, tabId]);
+  }, [projectId, chosen, tabId, visible, attachmentEpoch]);
 
-  async function attach() {
-    if (!projectId || !chosen || !ready || busy) return;
+  async function changeAttachment(action: "attach" | "detach") {
+    const attaching = action === "attach";
+    const target = attaching ? chosen : attachedChat;
+    if (!projectId || !target || (attaching && !ready) || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await attachBrowserTab(projectId, chosen, tabId);
+      if (attaching) await attachBrowserTab(projectId, target, tabId);
+      else await detachBrowserTab(projectId, target);
       attachmentRevision.current += 1;
-      setAttachedChat(chosen);
+      setAttachedChat(attaching ? target : null);
       onChanged?.();
     } catch {
-      setError("Could not attach this tab to the selected chat.");
+      setError(
+        attaching
+          ? "Could not attach this tab to the selected chat."
+          : "Could not detach this tab.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function detach() {
-    if (!projectId || !attachedChat || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await detachBrowserTab(projectId, attachedChat);
-      attachmentRevision.current += 1;
-      setAttachedChat(null);
-      onChanged?.();
-    } catch {
-      setError("Could not detach this tab.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  const attached = attachedChat === chosen;
+  const attachmentLabel = attached
+    ? "Detach tab from chat"
+    : "Attach tab to chat";
+  const AttachmentIcon = attached ? Unlink2 : Link2;
+  if (!visible) return null;
   return (
     <div className="browser-surface__attachment">
-      <BrowserAskPageButton tabId={tabId} ready={ready} onError={setError} />
-      <select
-        aria-label="Chat for browser tab"
-        value={chosen}
-        onChange={(event) => setChatId(event.target.value)}
-        disabled={!chats.length || busy}
+      <BrowserAskPageButton
+        tabId={tabId}
+        ready={ready}
+        onError={setError}
+        pending={pagePending}
+        setPending={setPagePending}
+      />
+      <span className="browser-surface__chat-picker">
+        <MessageSquare
+          className="browser-surface__chat-icon"
+          size={16}
+          aria-hidden="true"
+        />
+        <select
+          data-overflow-control="chat"
+          aria-label="Chat for browser tab"
+          title={chats.find((chat) => chat.id === chosen)?.title}
+          value={chosen}
+          onChange={(event) => setChatId(event.target.value)}
+          disabled={!chats.length || busy}
+        >
+          {chats.map((chat) => (
+            <option key={chat.id} value={chat.id}>
+              {chat.title}
+            </option>
+          ))}
+        </select>
+      </span>
+      <button
+        type="button"
+        aria-label={attachmentLabel}
+        data-overflow-control="attachment"
+        title={attachmentLabel}
+        onClick={() => void changeAttachment(attached ? "detach" : "attach")}
+        disabled={busy || (!attached && (!projectId || !chosen || !ready))}
       >
-        {chats.map((chat) => (
-          <option key={chat.id} value={chat.id}>
-            {chat.title}
-          </option>
-        ))}
-      </select>
-      {attachedChat === chosen ? (
-        <button
-          type="button"
-          aria-label="Detach tab from chat"
-          title="Detach tab from chat"
-          onClick={() => void detach()}
-          disabled={busy}
-        >
-          <Unlink2 size={16} aria-hidden="true" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          aria-label="Attach tab to chat"
-          title="Attach tab to chat"
-          onClick={() => void attach()}
-          disabled={!projectId || !chosen || !ready || busy}
-        >
-          <Link2 size={16} aria-hidden="true" />
-        </button>
-      )}
-      {error ? <span role="alert">{error}</span> : null}
+        <AttachmentIcon size={16} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -250,13 +268,16 @@ function BrowserAskPageButton({
   tabId,
   ready,
   onError,
+  pending,
+  setPending,
 }: {
+  pending: boolean;
+  setPending: (pending: boolean) => void;
   tabId: string;
   ready: boolean;
   onError: (message: string) => void;
 }) {
   const focusedChatId = usePinnedAgentChatOwner();
-  const [pending, setPending] = useState(false);
 
   async function attach() {
     const state = useWorkbenchStore.getState();
@@ -266,31 +287,9 @@ function BrowserAskPageButton({
     if (!intent || !ready || pending || state.activeTabId !== tabId) return;
     setPending(true);
     try {
-      const before = await browserStatus(tabId);
-      if (useWorkbenchStore.getState().activeTabId !== tabId)
-        throw new Error("Browser page or focused Chat changed; try again.");
-      if (before.loading || before.error || !before.url)
-        throw new Error("Browser page unavailable; try again.");
-      const captured = parseBrowserPageContext(
-        await browserPageContext(tabId, before.revision),
-      );
-      if (useWorkbenchStore.getState().activeTabId !== tabId)
-        throw new Error("Browser page or focused Chat changed; try again.");
-      const current = await browserStatus(tabId);
-      if (
-        !captured ||
-        captured.tabId !== tabId ||
-        current.loading ||
-        current.error ||
-        current.url !== before.url ||
-        current.revision !== before.revision ||
-        useWorkbenchStore.getState().activeTabId !== tabId ||
-        pinnedAgentChatOwner() !== focusedChatId
-      )
-        throw new Error("Browser page or focused Chat changed; try again.");
-      if (!useWorkbenchStore.getState().attachChatContext(intent, captured)) {
-        throw new Error("Could not attach the page to the focused Chat.");
-      }
+      const { attachBrowserPageContext } =
+        await import("./attachBrowserPageContext");
+      await attachBrowserPageContext(tabId, focusedChatId, intent);
     } catch (error) {
       onError(String(error).slice(0, 512));
     } finally {
@@ -302,11 +301,18 @@ function BrowserAskPageButton({
     <button
       type="button"
       aria-label={pending ? "Attaching page…" : "Ask about this page"}
+      data-overflow-control="ask"
       disabled={!ready || !focusedChatId || pending}
       title={!focusedChatId ? "Focus a Chat to ask about this page" : undefined}
-      onClick={() => void attach()}
+      onClick={attach}
     >
       <MessageCircleQuestion size={16} aria-hidden="true" />
     </button>
   );
+}
+
+export function BrowserAttachmentControls(
+  props: Parameters<typeof useBrowserAttachmentControls>[0],
+) {
+  return useBrowserAttachmentControls(props);
 }

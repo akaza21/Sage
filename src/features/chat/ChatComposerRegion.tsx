@@ -14,7 +14,6 @@ import {
   composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
-import { ComposerContext } from "./ComposerContext";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { QueuedRows, lazyParts } from "./lazyParts";
@@ -115,7 +114,7 @@ export function ChatComposerRegion({
     text,
     onTextChange,
     dictationScope,
-    composerDisabled || activeTurn,
+    hidden || composerDisabled || activeTurn,
     composerRef,
   );
   return (
@@ -230,6 +229,9 @@ export function ChatComposerRegion({
               ref={composerRef}
               id={fieldId}
               aria-label="Message agent"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
               aria-description={
                 queueing
                   ? "Enter queues a message while this turn runs."
@@ -295,38 +297,40 @@ export function ChatComposerRegion({
               onChoose={imageInput.accept}
             />
           ) : null}
-          <ChatHarnessControls
-            modelLabelScope={JSON.stringify([dictationScope, sessionId])}
-            inheritScope={dictationScope}
-            accessBindingId={accessBindingId}
-            onOpenGoal={goalDetails.onOpen}
-            imageAction={imageInput.action}
-            availableBinding={availableBinding}
-            canPrompt={canPrompt}
-            discoveryPhase={discoveryPhase}
-            sessionHarnessId={sessionHarnessId}
-            sessionModelId={sessionModelId}
-            selectedHarnessId={selectedHarnessId}
-            selectedModelId={selectedModelId}
-            projectName={composerWorkspaceName(project)}
-            turnBusy={actionBusy || activeTurn}
-            sessionConfig={sessionConfig}
-            modePending={modePending}
-            modeError={modeError}
-            focused={focused}
-            onSetSessionMode={onSetSessionMode}
-            onSetSessionConfigOption={onSetSessionConfigOption}
-            onSelectHarness={onSelectHarness}
-            onSelectModel={onSelectModel}
-            onModeRemoved={() => composerRef.current?.focus()}
-          />
+          {!hidden && (
+            <ChatHarnessControls
+              modelLabelScope={JSON.stringify([dictationScope, sessionId])}
+              inheritScope={dictationScope}
+              accessBindingId={accessBindingId}
+              onOpenGoal={goalDetails.onOpen}
+              imageAction={imageInput.action}
+              availableBinding={availableBinding}
+              canPrompt={canPrompt}
+              discoveryPhase={discoveryPhase}
+              sessionHarnessId={sessionHarnessId}
+              sessionModelId={sessionModelId}
+              selectedHarnessId={selectedHarnessId}
+              selectedModelId={selectedModelId}
+              projectName={composerWorkspaceName(project)}
+              turnBusy={actionBusy || activeTurn}
+              sessionConfig={sessionConfig}
+              modePending={modePending}
+              modeError={modeError}
+              focused={focused}
+              onSetSessionMode={onSetSessionMode}
+              onSetSessionConfigOption={onSetSessionConfigOption}
+              onSelectHarness={onSelectHarness}
+              onSelectModel={onSelectModel}
+              onModeRemoved={() => composerRef.current?.focus()}
+              contextUsage={usage}
+            />
+          )}
           {!composerDisabled ? (
             <span className="composer__shortcut" aria-hidden="true">
               {shortcutLabel} to focus <span>/</span>{" "}
               {queueing ? "Enter to queue" : "Enter to send"}
             </span>
           ) : null}
-          <ComposerContext usage={usage} />
           <ComposerTurnControl
             dictation={dictation}
             disabled={composerDisabled}

@@ -72,6 +72,10 @@ impl super::super::ResourceMapper for MapperBridge<'_> {
     ) -> Option<crate::acp::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
+
+    fn read_diff_context(&self, resource: &crate::acp::intent::SafeResourceRef) -> Option<String> {
+        self.0.read_diff_context(resource)
+    }
 }
 
 pub(super) fn identity(value: ScopedExternalId) -> AdapterIdentity {

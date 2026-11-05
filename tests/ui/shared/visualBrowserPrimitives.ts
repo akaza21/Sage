@@ -123,6 +123,19 @@ export async function settleChatProjections(page: Page) {
     .toBe(true);
 }
 
+// Scope this to the measured surface. Panels with perpetual status indicators
+// can wait for their own entry animation without waiting for those descendants.
+export async function waitForAnimations(
+  locator: Locator,
+  { subtree = true }: { subtree?: boolean } = {},
+) {
+  await locator.evaluate(
+    (el, subtree) =>
+      Promise.all(el.getAnimations({ subtree }).map((a) => a.finished)),
+    subtree,
+  );
+}
+
 async function settleTranscriptScroll(page: Page, edge: "start" | "end") {
   await settleChatProjections(page);
   await page.evaluate(() => document.fonts.ready);

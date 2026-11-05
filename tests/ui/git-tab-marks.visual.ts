@@ -84,11 +84,11 @@ test("Agent artifact tabs still reveal Close on hover, focus and the active tab"
 }) => {
   await page.setViewportSize({ width: 1280, height: 400 });
   await page.setContent(
-    `<div class="workbench--agent"><aside class="agent-artifact-pane" style="width: 560px"><nav class="tab-strip"><div class="tab-strip__scroll">
+    `<div class="workbench--agent"><div class="agent-artifact-surface"><aside class="agent-artifact-pane" style="width: 560px"><nav class="tab-strip"><div class="tab-strip__scroll">
        <div class="tab" data-id="idle"><button class="tab__activate" type="button"><span>a.ts</span></button><button class="tab__close" type="button">×</button></div>
        <div class="tab" data-id="hover"><button class="tab__activate" type="button"><span>b.ts</span></button><button class="tab__close" type="button">×</button></div>
        <div class="tab tab--active" data-id="active"><button class="tab__activate" type="button"><span>c.ts</span></button><button class="tab__close" type="button">×</button></div>
-     </div></nav></aside></div>`,
+     </div></nav></aside></div></div>`,
     { waitUntil: "domcontentloaded" },
   );
   for (const path of [
@@ -96,6 +96,7 @@ test("Agent artifact tabs still reveal Close on hover, focus and the active tab"
     "src/styles/workbench-chrome.css",
     "src/workbench/workbench-window-mode.css",
     "src/styles/agent-right-pane.css",
+    "src/workbench/AgentArtifactPaneTabs.css",
     "src/features/git/git-decorations.css",
   ])
     await page.addStyleTag({ path });

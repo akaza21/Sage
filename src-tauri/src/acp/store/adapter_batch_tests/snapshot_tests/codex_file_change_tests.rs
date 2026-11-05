@@ -47,6 +47,10 @@ impl CodexMapping for Mapper {
     fn map_missing_display(&self, absolute_path: &str) -> Option<SafeResourceRef> {
         NativeMapping::map_missing_display(&self.0, absolute_path)
     }
+
+    fn read_diff_context(&self, resource: &SafeResourceRef) -> Option<String> {
+        NativeMapping::read_diff_context(&self.0, resource)
+    }
 }
 
 fn mapper(root: &Root) -> Mapper {
@@ -114,43 +118,121 @@ fn adapter(owner: &AdapterStoreOwner, mapper: &Mapper) -> CodexAdapter {
     adapter
 }
 
-fn persist_item(fixture: &mut Fixture, event: IncomingEvent) {
-    let IncomingEvent::Item {
-        id,
-        lifecycle,
-        tool_state,
-        payload,
-        ..
-    } = event
-    else {
-        panic!("file change item");
-    };
-    let encoded = serde_json::to_string(&payload).unwrap();
-    let command = ItemIngressCommand {
-        project_id: fixture.owner.project_id.clone(),
-        chat_id: fixture.owner.chat_id.clone(),
-        session_id: fixture.owner.session_id.clone(),
-        turn_id: fixture.owner.turn_id.clone(),
-        runtime_epoch: fixture.owner.runtime_epoch,
-        external_item_id: id.external_id,
-        activity_id: None,
-        payload,
-        payload_digest: facts::hex_digest(encoded.as_bytes()),
-        lifecycle,
-        tool_state,
-        now_millis: 6,
-    };
+fn persist_events(fixture: &mut Fixture, events: Vec<IncomingEvent>) {
+    let events = events
+        .into_iter()
+        .map(|event| match event {
+            IncomingEvent::Item {
+                id,
+                lifecycle,
+                tool_state,
+                payload,
+                ..
+            } => {
+                let encoded = serde_json::to_string(&payload).unwrap();
+                AdapterInboundEvent::Item(ItemIngressCommand {
+                    project_id: fixture.owner.project_id.clone(),
+                    chat_id: fixture.owner.chat_id.clone(),
+                    session_id: fixture.owner.session_id.clone(),
+                    turn_id: fixture.owner.turn_id.clone(),
+                    runtime_epoch: fixture.owner.runtime_epoch,
+                    external_item_id: id.external_id,
+                    activity_id: None,
+                    payload,
+                    payload_digest: facts::hex_digest(encoded.as_bytes()),
+                    lifecycle,
+                    tool_state,
+                    now_millis: 6,
+                })
+            }
+            IncomingEvent::FilePair {
+                id,
+                old_text,
+                new_text,
+            } => AdapterInboundEvent::FilePair(FilePairCommand {
+                project_id: fixture.owner.project_id.clone(),
+                chat_id: fixture.owner.chat_id.clone(),
+                session_id: fixture.owner.session_id.clone(),
+                turn_id: fixture.owner.turn_id.clone(),
+                runtime_epoch: fixture.owner.runtime_epoch,
+                external_item_id: id.external_id,
+                old_text,
+                new_text,
+                now_millis: 6,
+            }),
+            _ => panic!("file change event"),
+        })
+        .collect();
     apply_adapter_inbound_batch(
         &mut fixture.connection,
-        AdapterInboundBatchCommand::new(
-            fixture.owner.clone(),
-            4096,
-            4096,
-            vec![AdapterInboundEvent::Item(command)],
-        )
-        .unwrap(),
+        AdapterInboundBatchCommand::new(fixture.owner.clone(), 4096, 4096, events).unwrap(),
     )
     .unwrap();
+}
+fn saved_snapshot(fixture: &Fixture, relative_path: &str) -> crate::acp::file_diff::SnapshotData {
+    let change = projected_change(&fixture.connection);
+    let page = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
+    let item = page.turns.as_slice()[0]
+        .items
+        .as_slice()
+        .iter()
+        .find(|item| matches!(item.content, ItemContent::FileChangeDiff { .. }))
+        .unwrap();
+    let reference = crate::acp::file_diff::DiffRef {
+        project_id: fixture.owner.project_id.as_str().into(),
+        chat_id: fixture.owner.chat_id.as_str().into(),
+        session_id: fixture.owner.session_id.as_str().into(),
+        runtime_epoch: fixture.owner.runtime_epoch.get(),
+        turn_id: fixture.owner.turn_id.as_str().into(),
+        item_id: item.id.as_str().into(),
+        diff_ordinal: 0,
+        snapshot_revision: change.snapshot_revision,
+        root_id: "root-one".into(),
+        relative_path: relative_path.into(),
+        content_digest: change.content_digest.unwrap(),
+    };
+    read_snapshot(
+        &fixture.connection,
+        &reference,
+        &[SageRootId::parse("root-one").unwrap()],
+    )
+    .unwrap()
+}
+
+#[test]
+fn codex_fixture_file_change_retains_a_saved_diff_in_the_chat() {
+    let mut fixture = snapshot_fixture();
+    let root = Root::new();
+    fs::create_dir(root.0.join("src")).unwrap();
+    let path = root.0.join("src/example.ts");
+    // The QA fixture reports an edit without changing the working tree.
+    fs::write(&path, "export const example = 1;\n").unwrap();
+    let mapper = mapper(&root);
+    let mut adapter = adapter(&fixture.owner, &mapper);
+    let completed = json!({"method":"item/completed","params":{
+        "threadId":"adapter-session","turnId":"turn-1","item":{
+            "type":"fileChange","id":"fixture-edit","status":"completed",
+            "changes":[{"path":path.to_str().unwrap(),"kind":{"type":"update"},
+                "diff":"@@ -1 +1 @@\n-export const example = 1;\n+export const example = 2;\n"}]
+        }
+    }});
+    let IngressDisposition::Events(events) = adapter
+        .ingest(&serde_json::to_vec(&completed).unwrap(), &mapper)
+        .unwrap()
+    else {
+        panic!("completed file change");
+    };
+    persist_events(&mut fixture, events);
+    let change = projected_change(&fixture.connection);
+    assert_eq!(change.pair_state, FilePairState::Available);
+    assert_eq!(change.additions, Some(1));
+    assert_eq!(change.deletions, Some(1));
+    // Subsequent disk edits cannot replace the immutable agent change.
+    fs::write(path, "unrelated later edit\n").unwrap();
+    let snapshot = saved_snapshot(&fixture, "src/example.ts");
+    assert_eq!(snapshot.old_text, "export const example = 1;\n");
+    assert_eq!(snapshot.new_text, "export const example = 2;\n");
+    assert_ne!(snapshot.old_text, snapshot.new_text);
 }
 
 #[test]
@@ -189,7 +271,8 @@ fn codex_file_change_binds_only_final_disk_state_in_the_journal() {
             json!({"method":method,"params":{
                 "threadId":"adapter-session","turnId":"turn-1","item":{
                     "type":"fileChange","id":"file-1","status":status,
-                    "changes":[{"path":absolute,"kind":{"type":kind},"diff":"opaque"}]
+                    "changes":[{"path":absolute,"kind":{"type":kind},
+                        "diff": if kind == "add" { "created\n" } else { "opaque" }}]
                 }
             }})
         };
@@ -225,14 +308,19 @@ fn codex_file_change_binds_only_final_disk_state_in_the_journal() {
         else {
             panic!("completed file change");
         };
-        assert_eq!(completed.len(), 1);
-        persist_item(&mut fixture, completed.into_iter().next().unwrap());
+        assert_eq!(completed.len(), if kind == "add" { 2 } else { 1 });
+        persist_events(&mut fixture, completed);
         let change = projected_change(&fixture.connection);
         assert_eq!(
             matches!(change.resource, SafeResourceLocation::Resource { .. }),
             expected_resource
         );
         assert_eq!(change.operation, expected_operation);
+        if kind == "add" {
+            assert_eq!(change.pair_state, FilePairState::Available);
+            assert_eq!(change.additions, Some(1));
+            assert_eq!(change.deletions, Some(0));
+        }
         if kind == "delete" {
             assert!(matches!(
                 change.resource,
@@ -242,6 +330,43 @@ fn codex_file_change_binds_only_final_disk_state_in_the_journal() {
                     ..
                 } if display.relative_path.as_str() == "delete.md"
             ));
+        }
+    }
+}
+
+#[test]
+fn separated_codex_hunks_preserve_a_move_instead_of_cancelling_the_saved_diff() {
+    for disk in ["a\nb\nc\n", "b\nc\na\n", "stale\n"] {
+        let mut fixture = snapshot_fixture();
+        let root = Root::new();
+        let path = root.0.join("moved.txt");
+        fs::write(&path, disk).unwrap();
+        let mapper = mapper(&root);
+        let mut adapter = adapter(&fixture.owner, &mapper);
+        let frame = json!({"method":"item/completed","params":{
+            "threadId":"adapter-session","turnId":"turn-1","item":{
+                "type":"fileChange","id":"move","status":"completed",
+                "changes":[{"path":path.to_str().unwrap(),"kind":{"type":"update"},
+                    "diff":"@@ -1 +0,0 @@\n-a\n@@ -3,0 +3 @@\n+a\n"}]
+            }
+        }});
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&serde_json::to_vec(&frame).unwrap(), &mapper)
+            .unwrap()
+        else {
+            panic!("completed move");
+        };
+        persist_events(&mut fixture, events);
+        let change = projected_change(&fixture.connection);
+        assert_eq!(change.additions, Some(1));
+        assert_eq!(change.deletions, Some(1));
+        if disk == "stale\n" {
+            assert_eq!(change.pair_state, FilePairState::Unavailable);
+        } else {
+            assert_eq!(change.pair_state, FilePairState::Available);
+            let snapshot = saved_snapshot(&fixture, "moved.txt");
+            assert_eq!(snapshot.old_text, "a\nb\nc\n");
+            assert_eq!(snapshot.new_text, "b\nc\na\n");
         }
     }
 }

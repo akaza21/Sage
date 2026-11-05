@@ -65,6 +65,12 @@ pub(crate) trait ResourceMapper {
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         None
     }
+
+    /// Optional bounded UTF-8 context for reconstructing a reported edit.
+    /// Callers must validate the patch against it before retaining a snapshot.
+    fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

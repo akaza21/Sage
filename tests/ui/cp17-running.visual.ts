@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -65,6 +66,7 @@ test("CP-17(b) refs 08/15/17/19: running header and chronological rows fit a 560
     "Search workspace",
     "Progress follows the live tool row.",
   ]);
+  await waitForAnimations(rows.last());
   const headingBox = await work
     .locator(".chat-transcript-work__heading")
     .boundingBox();

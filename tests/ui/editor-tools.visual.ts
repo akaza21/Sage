@@ -529,6 +529,9 @@ for (const scale of [1, 1.25, 1.5, 2]) {
 
     test("keeps every line number level with its line", async ({ page }) => {
       await openScenario(page, "editor", "editor");
+      const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+      if (await drawer.isVisible())
+        await page.getByRole("button", { name: "Hide left sidebar" }).click();
       const editor = page.locator(".file-surface .cm-editor");
       await expect(editor.locator(".cm-line").first()).toBeVisible();
       const rows = await editor.evaluate((root) => {

@@ -27,17 +27,24 @@ export function BrowserAgentPresence({
     : pending
       ? "Agent has a browser action pending"
       : "Agent attached";
+  const description = `${label} · ${chatTitle}`;
   return (
     <div
       className="browser-surface__agent-presence"
       data-control={userControl ? "user" : "agent"}
     >
-      <span className="browser-surface__agent-presence-label" role="status">
-        {`${label} · ${chatTitle}`}
+      {/* The label truncates; its title keeps the whole text reachable. */}
+      <span
+        className="browser-surface__agent-presence-label"
+        role="status"
+        title={description}
+      >
+        {description}
       </span>
       <button
         type="button"
         className="browser-surface__agent-handoff"
+        data-overflow-control="handoff"
         title={
           userControl
             ? "Let this chat's Agent use the tab again. It asks permission first."
@@ -51,6 +58,7 @@ export function BrowserAgentPresence({
       <button
         type="button"
         className="browser-surface__agent-stop"
+        data-overflow-control="stop"
         aria-label="Stop agent"
         title="Stop the Agent's browser action and detach this tab from the chat."
         disabled={busy}

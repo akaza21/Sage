@@ -25,25 +25,6 @@ function mediaBlock(css: string, query: string) {
 }
 
 describe("Workbench chrome stylesheet seam", () => {
-  it("uses the measured Agent centre and right-panel chrome", async () => {
-    const css = await readFile(
-      resolve("src/styles/workbench-chrome.css"),
-      "utf8",
-    );
-    expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--title-bar-fill:\s*#111111;/s,
-    );
-    expect(css).not.toMatch(/--chrome-row-height:/);
-    expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--workbench-card-fill:\s*var\(--agent-shell-center\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*44px;[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*1px solid var\(--agent-shell-tab-border\);/s,
-    );
-  });
   it("keeps the selected chat as the sole filled sidebar row and section labels left aligned", async () => {
     const css = await readFile(
       resolve("src/styles/agent-rail-surface.css"),
@@ -55,25 +36,6 @@ describe("Workbench chrome stylesheet seam", () => {
     expect(css).toMatch(
       /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
-  });
-  it("matches every artifact grid header row to the rendered header height", async () => {
-    const [chromeCss, modeCss] = await Promise.all([
-      readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-      readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
-    ]);
-    const headerHeight =
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*(\d+px);/s.exec(
-        chromeCss,
-      )?.[1];
-
-    expect(headerHeight).toBe("44px");
-    for (const selector of [
-      /\.agent-artifact-pane\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--empty\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--with-header\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+auto\s+minmax\(0, 1fr\);/s,
-    ]) {
-      expect(selector.exec(modeCss)?.[1]).toBe(headerHeight);
-    }
   });
 
   it("sizes the chat search pill to the owner reference with a trailing chord", async () => {

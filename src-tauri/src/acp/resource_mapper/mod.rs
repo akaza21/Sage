@@ -16,6 +16,7 @@ const MAX_PROJECT_ROOTS: usize = MAX_ROOTS_PER_PROJECT as usize;
 const MAX_ROOT_PATH_BYTES_TOTAL: usize =
     MAX_PROJECT_ROOTS * LIMITS.wire.absolute_path_bytes_native_only as usize;
 
+mod diff_context;
 mod missing_display;
 
 /// Native-only configuration input. Absolute paths never cross the IPC or
@@ -272,6 +273,10 @@ impl ResourceMapper for NativeResourceMapper {
 
     fn map_missing_display(&self, absolute_path: &str) -> Option<SafeResourceRef> {
         self.try_map_missing_display(absolute_path).ok()
+    }
+
+    fn read_diff_context(&self, resource: &SafeResourceRef) -> Option<String> {
+        self.bounded_diff_context(resource)
     }
 }
 

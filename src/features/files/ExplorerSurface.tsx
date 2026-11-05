@@ -277,3 +277,5 @@ export function ExplorerSurface() {
     </ExplorerContextMenuContext.Provider>
   );
 }
+
+export default ExplorerSurface;

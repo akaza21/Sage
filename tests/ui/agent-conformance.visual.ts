@@ -534,17 +534,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // `Project /` segment; the project name lives in the header "…" menu.
     const location = header.locator('[aria-label="Chat location"]');
     await expect(location).toHaveCount(1);
-    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
+    const folder = location.locator(".agent-task-header__folder");
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveCSS("width", "16px");
+    await expect(folder).toHaveCSS("height", "16px");
+    await expect(folder).not.toHaveCSS("mask-image", "none");
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
       0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
-    // C2 — different. The status is announced, but renders as bare coloured
-    // text rather than the target's pill with a leading icon.
+    // Chat surface: status is announced without adding visible header chrome.
     const status = header.getByRole("status");
     await expect(status).toHaveCount(1);
     await expect(status).toHaveAccessibleName(/^Chat status: /);
+    await expect(status).toHaveClass("sr-only");
     await expect(
       status.locator("svg"),
       "C2: the status still has no leading icon",
