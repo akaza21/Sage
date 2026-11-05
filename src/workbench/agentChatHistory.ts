@@ -5,19 +5,29 @@
 import { create } from "zustand";
 
 import { useWorkbenchStore } from "../app/store";
+import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 
 export interface AgentChatPlace {
   projectId: string;
   chatId: string;
 }
 
-/** Opens a chat in its project; resolves once the attempt settles. */
-export type OpenAgentChat = (
-  projectId: string,
-  chatId: string,
-) => Promise<void>;
-/** The chat the Agent window shows now, if any. */
-export type ShownAgentChat = () => AgentChatPlace | null;
+/** How a trip to a place in the history ended. */
+export type AgentChatTrip =
+  /** The window shows the place. */
+  | { kind: "opened" }
+  /** Nothing moved (a turn holds the project, or a transition is running). */
+  | { kind: "blocked" }
+  /** The place no longer exists and nothing moved. */
+  | { kind: "missing" }
+  /**
+   * The project opened but not the chat, so the window shows `place`. When
+   * the chat is gone its entry goes; otherwise it stays to try again.
+   */
+  | { kind: "landedElsewhere"; place: AgentChatPlace; targetGone: boolean };
+
+/** Opens a place in its project and reports how far it got. */
+export type OpenAgentChat = (place: AgentChatPlace) => Promise<AgentChatTrip>;
 
 export const MAX_AGENT_CHAT_PLACES = 50;
 
@@ -53,7 +63,7 @@ function pushBounded(stack: AgentChatPlace[], place: AgentChatPlace) {
 /** Notes the chat the Agent window now shows. */
 export function noteAgentChatVisit(place: AgentChatPlace) {
   // A trip may pass through other chats (a project opens on its own active
-  // chat first); only where it lands counts.
+  // chat first); only where it ends counts.
   if (travelling || samePlace(current, place)) return;
   if (current) pushBounded(back, current);
   forward = [];
@@ -61,58 +71,90 @@ export function noteAgentChatVisit(place: AgentChatPlace) {
   publish();
 }
 
+/** Moves from `from` towards `to`, keeping the history true to the window. */
 async function travel(
   from: AgentChatPlace[],
   to: AgentChatPlace[],
   open: OpenAgentChat,
-  shown: ShownAgentChat,
 ) {
-  if (travelling) return;
-  const target = from.pop();
-  if (!target) return;
+  const target = from.at(-1);
+  if (travelling || !target) return;
   travelling = true;
+  let trip: AgentChatTrip;
   try {
-    await open(target.projectId, target.chatId);
+    trip = await open(target);
+  } catch {
+    trip = { kind: "blocked" };
   } finally {
     travelling = false;
   }
-  if (samePlace(shown(), target)) {
-    if (current) pushBounded(to, current);
-    current = target;
+  switch (trip.kind) {
+    case "blocked":
+      // The entry stays for when the window can move again.
+      return;
+    case "missing":
+      from.pop();
+      break;
+    case "opened":
+      from.pop();
+      if (current) pushBounded(to, current);
+      current = target;
+      break;
+    case "landedElsewhere":
+      if (trip.targetGone) from.pop();
+      if (current) pushBounded(to, current);
+      current = trip.place;
+      break;
   }
-  // Otherwise the chat is gone (archived, or its project removed): the
-  // place is dropped and the window stays where it was.
   publish();
 }
 
-export function goBackInAgentChats(open: OpenAgentChat, shown: ShownAgentChat) {
-  return travel(back, forward, open, shown);
+export function goBackInAgentChats(open: OpenAgentChat) {
+  return travel(back, forward, open);
 }
 
-export function goForwardInAgentChats(
-  open: OpenAgentChat,
-  shown: ShownAgentChat,
-) {
-  return travel(forward, back, open, shown);
+export function goForwardInAgentChats(open: OpenAgentChat) {
+  return travel(forward, back, open);
 }
 
-const openInWorkbench: OpenAgentChat = (projectId, chatId) =>
-  useWorkbenchStore.getState().openRailChat(projectId, chatId);
+/** The chat the Agent window shows, by the same rule as the title bar. */
+function shownInWorkbench(): AgentChatPlace | null {
+  const { project, tabs, activeTabId } = useWorkbenchStore.getState();
+  const chatId = focusedAgentChatId(collectChatTabIds(tabs), activeTabId, null);
+  return project && chatId ? { projectId: project.id, chatId } : null;
+}
 
-const shownInWorkbench: ShownAgentChat = () => {
-  const { project, activeTabId } = useWorkbenchStore.getState();
-  return project && activeTabId
-    ? { projectId: project.id, chatId: activeTabId }
-    : null;
+const hasChat = (chatId: string) =>
+  useWorkbenchStore
+    .getState()
+    .tabs.some((tab) => tab.id === chatId && tab.kind === "chat");
+
+/** Opens a place through the same native paths as the rail. */
+export const openInWorkbench: OpenAgentChat = async (target) => {
+  const store = useWorkbenchStore.getState;
+  if (store().projectTransitioning) return { kind: "blocked" };
+  const switching = store().project?.id !== target.projectId;
+  if (switching) {
+    if (!store().projects.some((project) => project.id === target.projectId))
+      return { kind: "missing" };
+    await store().switchProject(target.projectId);
+    if (store().project?.id !== target.projectId) return { kind: "blocked" };
+  }
+  const targetGone = !hasChat(target.chatId);
+  if (targetGone && !switching) return { kind: "missing" };
+  if (!targetGone) await store().activateTab(target.chatId);
+  const shown = shownInWorkbench();
+  if (samePlace(shown, target)) return { kind: "opened" };
+  return switching && shown
+    ? { kind: "landedElsewhere", place: shown, targetGone }
+    : { kind: "blocked" };
 };
 
 /** Title-bar Back: reopens the chat shown before this one. */
-export const goBackToPreviousChat = () =>
-  goBackInAgentChats(openInWorkbench, shownInWorkbench);
+export const goBackToPreviousChat = () => goBackInAgentChats(openInWorkbench);
 
 /** Title-bar Forward: undoes a Back. */
-export const goForwardToNextChat = () =>
-  goForwardInAgentChats(openInWorkbench, shownInWorkbench);
+export const goForwardToNextChat = () => goForwardInAgentChats(openInWorkbench);
 
 /** For tests: forgets every place. */
 export function resetAgentChatHistory() {

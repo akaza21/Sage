@@ -2,7 +2,6 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as history from "../app/editorHistory";
-import * as chatHistory from "./agentChatHistory";
 
 const apple = vi.hoisted(() => ({ value: false }));
 vi.mock("../ui/shortcutLabel", () => ({ usesMetaModifier: () => apple.value }));
@@ -25,8 +24,6 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 beforeEach(() => {
   vi.spyOn(history, "goBack").mockResolvedValue(undefined);
   vi.spyOn(history, "goForward").mockResolvedValue(undefined);
-  vi.spyOn(chatHistory, "goBackToPreviousChat").mockResolvedValue(undefined);
-  vi.spyOn(chatHistory, "goForwardToNextChat").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -35,7 +32,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("history keys", () => {
+describe("editor history keys (ED-2b)", () => {
   it("goes back and forward on Alt+Left and Alt+Right, before the editor sees them", async () => {
     renderHook(() => useHistoryKeys("editor"));
     const editor = document.createElement("div");
@@ -101,17 +98,6 @@ describe("history keys", () => {
       expect(history.goBack).toHaveBeenCalledTimes(1);
       expect(history.goForward).toHaveBeenCalledTimes(1);
     });
-  });
-
-  it("travels through chats, not File places, in the Agent window", async () => {
-    renderHook(() => useHistoryKeys("agent"));
-    press({ key: "ArrowLeft", altKey: true });
-    window.dispatchEvent(new MouseEvent("mouseup", { button: 4 }));
-    await settle();
-    expect(chatHistory.goBackToPreviousChat).toHaveBeenCalledTimes(1);
-    expect(chatHistory.goForwardToNextChat).toHaveBeenCalledTimes(1);
-    expect(history.goBack).not.toHaveBeenCalled();
-    expect(history.goForward).not.toHaveBeenCalled();
   });
 
   it("does nothing while Settings covers the window", async () => {
