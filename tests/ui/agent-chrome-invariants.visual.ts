@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { openComposerOptions } from "./agentVisualHelpers";
 import {
   openAgentScenario,
   openAgentSnapshotDiff,
@@ -442,4 +443,42 @@ test("keeps the masked wrap glyph visible in forced colours in every state", asy
   await expect(wrap).toHaveAttribute("aria-pressed", "true");
   await wrap.blur();
   await expectGlyph("HighlightText");
+});
+
+test("sets Add menu descriptions under their labels and wraps them in the item", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 800 });
+  await openScenario(page, "agent-session-mode-open", "agent");
+  await openComposerOptions(page);
+  const actions = page.locator(
+    ".composer__add-action:has(.composer__action-description)",
+  );
+  await expect(actions.first()).toBeVisible();
+  const layouts = await actions.evaluateAll((items) =>
+    items.map((item) => {
+      const label = item
+        .querySelector(":scope > span:not(.composer__action-description)")!
+        .getBoundingClientRect();
+      const note = item.querySelector(".composer__action-description")!;
+      const box = note.getBoundingClientRect();
+      const frame = item.getBoundingClientRect();
+      return {
+        text: item.getAttribute("aria-label"),
+        below: box.top >= label.bottom - 0.5,
+        aligned: Math.abs(box.left - label.left) <= 0.5,
+        contained:
+          box.right <= frame.right + 0.5 &&
+          note.scrollWidth <= note.clientWidth,
+      };
+    }),
+  );
+  expect(layouts.length).toBeGreaterThan(0);
+  for (const layout of layouts)
+    expect(layout).toEqual({
+      text: layout.text,
+      below: true,
+      aligned: true,
+      contained: true,
+    });
 });
