@@ -2,20 +2,26 @@ import { create } from "zustand";
 
 import { isShortId } from "../domain/guards";
 
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type {
+  AgentPaneOwner,
+  AgentSubagentTarget,
+} from "../domain/agentArtifact";
 import {
   sameAgentArtifactOwner,
-  validAgentArtifactOwner,
+  validAgentPaneOwner,
 } from "../domain/agentArtifact";
 
 export const MAX_AGENT_ARTIFACT_FOLLOW_OWNERS = 2;
-export const MAX_AGENT_ARTIFACT_TARGETS = 33;
+export const MAX_AGENT_ARTIFACT_TARGETS = 35;
 
 export type AgentArtifactTarget =
-  { kind: "tab"; tabId: string } | { kind: "preview" };
+  | { kind: "tab"; tabId: string }
+  | { kind: "preview" }
+  | { kind: "changes"; generation?: number }
+  | { kind: "subagents"; target?: AgentSubagentTarget; list?: boolean };
 
 export type AgentArtifactFollowRecord = {
-  owner: AgentArtifactOwner;
+  owner: AgentPaneOwner;
   mode: "follow" | "pinned";
   selected: AgentArtifactTarget | null;
   recent: readonly AgentArtifactTarget[];
@@ -32,15 +38,17 @@ export function agentArtifactPendingTargets(
 interface AgentArtifactFollowStore {
   records: readonly AgentArtifactFollowRecord[];
   observe: (
-    owner: AgentArtifactOwner,
+    owner: AgentPaneOwner,
     target: AgentArtifactTarget,
     previewRevision?: number,
   ) => void;
-  pin: (owner: AgentArtifactOwner, target: AgentArtifactTarget) => void;
-  followLatest: (owner: AgentArtifactOwner) => void;
+  pin: (owner: AgentPaneOwner, target: AgentArtifactTarget) => void;
+  dismiss: (owner: AgentPaneOwner, target: AgentArtifactTarget) => void;
+  followLatest: (owner: AgentPaneOwner) => void;
   reconcile: (
-    owner: AgentArtifactOwner,
+    owner: AgentPaneOwner,
     available: readonly AgentArtifactTarget[],
+    observed?: AgentArtifactFollowRecord | null,
   ) => void;
   forgetTab: (tabId: string) => void;
   clear: () => void;
@@ -52,6 +60,8 @@ export function validAgentArtifactTarget(
   return Boolean(
     target &&
     (target.kind === "preview" ||
+      target.kind === "subagents" ||
+      target.kind === "changes" ||
       (target.kind === "tab" && isShortId(target.tabId))),
   );
 }
@@ -61,17 +71,15 @@ export function sameAgentArtifactTarget(
   right: AgentArtifactTarget | null | undefined,
 ): boolean {
   if (!left || !right || left.kind !== right.kind) return false;
-  if (left.kind === "preview" && right.kind === "preview") return true;
-  return (
-    left.kind === "tab" && right.kind === "tab" && left.tabId === right.tabId
-  );
+  if (left.kind !== "tab") return true;
+  return right.kind === "tab" && left.tabId === right.tabId;
 }
 
 export function agentArtifactFollowRecordFor(
   records: readonly AgentArtifactFollowRecord[],
-  owner: AgentArtifactOwner | null | undefined,
+  owner: AgentPaneOwner | null | undefined,
 ): AgentArtifactFollowRecord | null {
-  if (!validAgentArtifactOwner(owner)) return null;
+  if (!validAgentPaneOwner(owner)) return null;
   return (
     records.find((record) => sameAgentArtifactOwner(record.owner, owner)) ??
     null
@@ -105,7 +113,7 @@ function replaceOwnerRecord(
     .slice(-MAX_AGENT_ARTIFACT_FOLLOW_OWNERS);
 }
 
-function initialRecord(owner: AgentArtifactOwner): AgentArtifactFollowRecord {
+function initialRecord(owner: AgentPaneOwner): AgentArtifactFollowRecord {
   return {
     owner,
     mode: "follow",
@@ -126,7 +134,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
   (set, get) => ({
     records: [],
     observe: (owner, target, previewRevision) => {
-      if (!validAgentArtifactOwner(owner) || !validAgentArtifactTarget(target))
+      if (!validAgentPaneOwner(owner) || !validAgentArtifactTarget(target))
         return;
       if (target.kind === "preview" && !validPreviewRevision(previewRevision))
         return;
@@ -160,7 +168,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
       });
     },
     pin: (owner, target) => {
-      if (!validAgentArtifactOwner(owner) || !validAgentArtifactTarget(target))
+      if (!validAgentPaneOwner(owner) || !validAgentArtifactTarget(target))
         return;
       const current =
         agentArtifactFollowRecordFor(get().records, owner) ??
@@ -177,7 +185,7 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
       });
     },
     followLatest: (owner) => {
-      if (!validAgentArtifactOwner(owner)) return;
+      if (!validAgentPaneOwner(owner)) return;
       const current = agentArtifactFollowRecordFor(get().records, owner);
       if (!current) return;
       set({
@@ -189,16 +197,25 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
         }),
       });
     },
-    reconcile: (owner, available) => {
+    dismiss: (owner, target) => {
+      const current = agentArtifactFollowRecordFor(get().records, owner);
+      if (!current) return;
+      get().reconcile(
+        owner,
+        current.recent.filter((item) => !sameAgentArtifactTarget(item, target)),
+      );
+    },
+    reconcile: (owner, available, observed) => {
       if (
-        !validAgentArtifactOwner(owner) ||
+        !validAgentPaneOwner(owner) ||
         available.length > MAX_AGENT_ARTIFACT_TARGETS ||
         available.some((target) => !validAgentArtifactTarget(target))
       ) {
         return;
       }
       const current = agentArtifactFollowRecordFor(get().records, owner);
-      if (!current) return;
+      // A child may publish a new target before this render's effect runs.
+      if (!current || (observed !== undefined && observed !== current)) return;
       const retainedRecent = current.recent.filter((target) =>
         available.some((candidate) =>
           sameAgentArtifactTarget(candidate, target),
@@ -257,32 +274,8 @@ export const useAgentArtifactFollowStore = create<AgentArtifactFollowStore>(
     },
     forgetTab: (tabId) => {
       if (!isShortId(tabId)) return;
-      const records = get().records.flatMap((record) => {
-        const recent = record.recent.filter(
-          (target) => target.kind !== "tab" || target.tabId !== tabId,
-        );
-        const pending = record.pending.filter(
-          (target) => target.kind !== "tab" || target.tabId !== tabId,
-        );
-        const selectedClosed =
-          record.selected?.kind === "tab" && record.selected.tabId === tabId;
-        if (!selectedClosed && recent.length === record.recent.length) {
-          return [record];
-        }
-        if (recent.length === 0) return [];
-        return [
-          {
-            ...record,
-            mode: selectedClosed ? ("follow" as const) : record.mode,
-            selected: selectedClosed
-              ? (recent.at(-1) ?? null)
-              : record.selected,
-            recent,
-            pending: selectedClosed ? [] : pending,
-          },
-        ];
-      });
-      set({ records });
+      for (const { owner } of get().records)
+        get().dismiss(owner, { kind: "tab", tabId });
     },
     clear: () => set({ records: [] }),
   }),

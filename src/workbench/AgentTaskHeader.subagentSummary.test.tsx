@@ -1,4 +1,9 @@
 import {
+  sameAgentArtifactTarget,
+  agentArtifactFollowRecordFor,
+} from "../app/agentArtifactFollowStore";
+import { useAgentArtifactFollowStore } from "../app/agentArtifactFollowStore";
+import {
   act,
   cleanup,
   fireEvent,
@@ -664,8 +669,26 @@ it("opens the observed child only after explicit resource selection", async () =
     itemId: "spawn-reviewer",
     agentKey: "private-reviewer",
   });
-  expect(useSubagentPaneStore.getState().selected).toBe(true);
-  expect(useAgentChangesState.getState().selected).toBe(false);
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useSubagentPaneStore.getState().open?.owner,
+      )?.selected,
+      {
+        kind: "subagents",
+      },
+    ),
+  ).toBe(true);
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useAgentChangesState.getState().owner,
+      )?.selected,
+      { kind: "changes" },
+    ),
+  ).toBe(false);
   expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
   expect(trigger).toHaveFocus();
 });

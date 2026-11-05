@@ -1,4 +1,8 @@
 import {
+  sameAgentArtifactTarget,
+  agentArtifactFollowRecordFor,
+} from "../app/agentArtifactFollowStore";
+import {
   cleanup,
   fireEvent,
   render,
@@ -82,8 +86,26 @@ it.each(["reported resource", "already admitted tab"])(
       screen.getByRole("button", { name: resource.relativePath }),
     );
     await waitFor(() => expect(dismiss).toHaveBeenCalledOnce());
-    expect(useAgentChangesState.getState().selected).toBe(false);
-    expect(useSubagentPaneStore.getState().selected).toBe(false);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useAgentChangesState.getState().owner,
+        )?.selected,
+        { kind: "changes" },
+      ),
+    ).toBe(false);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useSubagentPaneStore.getState().open?.owner,
+        )?.selected,
+        {
+          kind: "subagents",
+        },
+      ),
+    ).toBe(false);
     expect(
       kind === "reported resource" ? openFile : activateTab,
     ).toHaveBeenCalledOnce();

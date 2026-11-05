@@ -1,3 +1,4 @@
+import { sameAgentArtifactTarget } from "./agentArtifactFollowStore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -93,14 +94,39 @@ afterEach(() => {
 });
 
 describe("openAgentArtifact", () => {
+  it("pins a transcript file opened over automatically followed Changes when a newer resource arrives", async () => {
+    useAgentChangesState.getState().show(ownerA, 1, "follow");
+    useWorkbenchStore.setState({
+      openFile: async () => {
+        useWorkbenchStore.setState({
+          tabs: [fileTab()],
+          activeTabId: fileTab().id,
+        });
+      },
+    });
+    expect(
+      await openAgentArtifact({ owner: ownerA, target: "file", resource }),
+    ).toBe(true);
+    useAgentArtifactFollowStore
+      .getState()
+      .observe(ownerA, { kind: "preview" }, 1);
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        ownerA,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "tab", tabId: fileTab().id },
+      pending: [{ kind: "preview" }],
+    });
+  });
+
   it("reveals successful transcript resources over Changes and an earlier Subagent", async () => {
     useAgentChangesState.getState().show(ownerA, 1);
     useSubagentPaneStore
       .getState()
       .show({ owner: ownerA, itemId: "child", agentKey: "child-a" }, true);
-    useAgentArtifactFollowStore
-      .getState()
-      .pin(ownerA, { kind: "tab", tabId: "other-file" });
     useWorkbenchStore.setState({
       openFile: vi.fn(async () => {
         useWorkbenchStore.setState({
@@ -112,8 +138,26 @@ describe("openAgentArtifact", () => {
     expect(
       await openAgentArtifact({ owner: ownerA, target: "file", resource }),
     ).toBe(true);
-    expect(useAgentChangesState.getState().selected).toBe(false);
-    expect(useSubagentPaneStore.getState().selected).toBe(false);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useAgentChangesState.getState().owner,
+        )?.selected,
+        { kind: "changes" },
+      ),
+    ).toBe(false);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useSubagentPaneStore.getState().open?.owner,
+        )?.selected,
+        {
+          kind: "subagents",
+        },
+      ),
+    ).toBe(false);
     expect(
       agentArtifactFollowRecordFor(
         useAgentArtifactFollowStore.getState().records,
@@ -130,7 +174,15 @@ describe("openAgentArtifact", () => {
         resource,
       }),
     ).toBe(false);
-    expect(useAgentChangesState.getState().selected).toBe(true);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useAgentChangesState.getState().owner,
+        )?.selected,
+        { kind: "changes" },
+      ),
+    ).toBe(true);
   });
   it("shares one Editor tab while keeping independent Chat admissions", async () => {
     const openFile = vi.fn(async () => {

@@ -7,10 +7,6 @@ import { useAgentChangesState } from "../../workbench/agentChangesState";
 import { changesSnapshot, snapshotChanges } from "./changesSnapshot";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { agentArtifactOwnerIsCurrent } from "../../app/openAgentArtifact";
-import {
-  agentArtifactFollowRecordFor,
-  useAgentArtifactFollowStore,
-} from "../../app/agentArtifactFollowStore";
 
 /** Follows completed edits once per Turn; explicit selections stay put. */
 export function AgentChangesObserver({
@@ -74,14 +70,7 @@ export function AgentChangesObserver({
       !terminalTurnStates.has(latest.state)
     )
       return;
-    if (
-      agentArtifactFollowRecordFor(
-        useAgentArtifactFollowStore.getState().records,
-        owner,
-      )?.mode === "pinned"
-    )
-      return;
-    useAgentChangesState.getState().show(owner, generation);
+    useAgentChangesState.getState().show(owner, generation, "follow");
   }, [generation, ledger, page, snapshot, turn]);
   return null;
 }

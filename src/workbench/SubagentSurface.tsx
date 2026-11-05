@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
-import type { AcpChatPage, AcpItem } from "../domain/acp";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../app/agentArtifactFollowStore";
+import type { AcpChatPage } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
 import { AnswerActions } from "../features/chat/AnswerActions";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
 } from "../features/chat/transcriptSummary";
-import {
-  getAcpChildTranscript,
-  type ChildTranscript,
-} from "../services/acpChildTranscript";
+import { getAcpChildTranscript } from "../services/acpChildTranscript";
+import { childRows, type ChildReadState } from "./subagentTranscriptRows";
 import { ArrowLeft } from "../ui/leanIcons";
 import {
   liveAgent,
@@ -35,40 +37,20 @@ const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
 const MAX_STALE_RETRIES = 3;
 
-type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
-type ReadState = {
-  key: string;
-  value: ChildTranscript | "error";
-  /** The latest full read for this child, kept across later failures. */
-  good?: ChildRead;
-  stale: number;
-};
-
-/** One deduplicated run of child items without the spawn prompt bubble. */
-function childRows(read: ChildRead | undefined) {
-  const seen = new Set<string>();
-  const rows: AcpItem[] = [];
-  for (const [turnIndex, childTurn] of (read?.turns ?? []).entries())
-    for (const [index, child] of childTurn.items.entries()) {
-      const prompt =
-        turnIndex === 0 &&
-        index === 0 &&
-        child.kind === "text" &&
-        child.payload.role === "user";
-      if (prompt || seen.has(child.id)) continue;
-      seen.add(child.id);
-      rows.push(child);
-    }
-  return rows;
-}
-
 export function SubagentSurface(props: {
   page: AcpChatPage;
   projectGeneration?: string;
   itemId: string;
   agentKey?: string;
 }) {
-  const list = useSubagentPaneStore((state) => state.list);
+  const list = useAgentArtifactFollowStore(
+    (state) =>
+      agentArtifactFollowRecordFor(state.records, {
+        projectId: props.page.projectId,
+        chatId: props.page.chatId,
+        sessionId: props.page.currentSessionId,
+      })?.recent.find((target) => target.kind === "subagents")?.list,
+  );
   return list ? (
     <section className="subagent-surface" aria-label="Subagents">
       <SubagentList page={props.page} />
@@ -144,7 +126,7 @@ function SubagentChild({
     ? recent.find((agent) => agent.id === invocation)
     : null;
   const live = liveAgent(observed?.status);
-  const [read, setRead] = useState<ReadState | null>(null);
+  const [read, setRead] = useState<ChildReadState | null>(null);
   const sync = useRef(childRefresh());
   const current = read?.key === identity ? read : null;
   const good = current?.good;
@@ -305,7 +287,22 @@ function SubagentChild({
           <button
             type="button"
             aria-label="Back to subagents"
-            onClick={() => useSubagentPaneStore.setState({ list: true })}
+            onClick={() => {
+              const key = agentKey ?? attributedKey;
+              if (turn && key)
+                useSubagentPaneStore.getState().show(
+                  {
+                    owner: {
+                      projectId: page.projectId,
+                      chatId: page.chatId,
+                      sessionId: turn.sessionId,
+                    },
+                    itemId,
+                    agentKey: key,
+                  },
+                  true,
+                );
+            }}
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </button>

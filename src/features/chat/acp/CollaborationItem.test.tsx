@@ -8,6 +8,10 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../../../app/agentArtifactFollowStore";
 import { safeItem } from "../../../services/acpDesktopResponseItems";
 import {
   subagentPaneForPage,
@@ -431,8 +435,15 @@ describe("CollaborationItem", () => {
         itemId: "spawn-readme",
         agentKey: "readme",
       },
-      selected: true,
-      list: false,
+    });
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useSubagentPaneStore.getState().open?.owner,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "subagents", list: false },
     });
   });
 
@@ -533,9 +544,14 @@ describe("CollaborationItem", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show 3 more subagents" }),
     );
-    expect(useSubagentPaneStore.getState()).toMatchObject({
-      selected: true,
-      list: true,
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useSubagentPaneStore.getState().open?.owner,
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "subagents", list: true },
     });
   });
 });

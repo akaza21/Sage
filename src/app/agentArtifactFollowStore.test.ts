@@ -14,6 +14,35 @@ const ownerA = {
   chatId: "chat-a",
   sessionId: "session-a",
 } as AgentArtifactOwner;
+
+it("keeps a newly published target when an older availability render reconciles", () => {
+  const store = useAgentArtifactFollowStore.getState();
+  store.clear();
+  store.pin(ownerA, { kind: "subagents" });
+  const observed = agentArtifactFollowRecordFor(
+    useAgentArtifactFollowStore.getState().records,
+    ownerA,
+  );
+  store.observe(ownerA, { kind: "changes", generation: 1 });
+  store.reconcile(ownerA, [{ kind: "subagents" }], observed);
+  expect(
+    agentArtifactFollowRecordFor(
+      useAgentArtifactFollowStore.getState().records,
+      ownerA,
+    ),
+  ).toMatchObject({
+    mode: "pinned",
+    selected: { kind: "subagents" },
+    pending: [{ kind: "changes", generation: 1 }],
+  });
+  store.followLatest(ownerA);
+  expect(
+    agentArtifactFollowRecordFor(
+      useAgentArtifactFollowStore.getState().records,
+      ownerA,
+    )?.selected,
+  ).toEqual({ kind: "changes", generation: 1 });
+});
 const ownerB = {
   projectId: "project-a",
   chatId: "chat-b",

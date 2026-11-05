@@ -1,4 +1,8 @@
 import {
+  sameAgentArtifactTarget,
+  agentArtifactFollowRecordFor,
+} from "../app/agentArtifactFollowStore";
+import {
   act,
   cleanup,
   fireEvent,
@@ -15,6 +19,7 @@ import { AgentToolsContext, AgentToolsProvider } from "./AgentToolsProvider";
 import { useSideChatState } from "./sideChatState";
 import { BrowserNewTab } from "../features/browser/BrowserNewTab";
 import { useAgentChangesState } from "./agentChangesState";
+import { useAgentArtifactFollowStore } from "../app/agentArtifactFollowStore";
 
 vi.mock(import("../ports/nativeInvoke"), async (importOriginal) => ({
   ...(await importOriginal()),
@@ -72,11 +77,19 @@ it("routes Agent keybindings to the resource picker and the terminal menu to its
   fireEvent.keyDown(window, { key: "G", ctrlKey: true, shiftKey: true });
   await waitFor(() =>
     expect(useAgentChangesState.getState()).toMatchObject({
-      selected: true,
       generation: 7,
       owner: { projectId: "project-a", chatId: "chat-a", sessionId: null },
     }),
   );
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useAgentChangesState.getState().owner,
+      )?.selected,
+      { kind: "changes" },
+    ),
+  ).toBe(true);
   expect(screen.queryByRole("dialog", { name: "Changes" })).toBeNull();
   fireEvent.keyDown(window, { key: "p", ctrlKey: true });
   expect(await screen.findByRole("dialog", { name: "Files" })).toBeVisible();

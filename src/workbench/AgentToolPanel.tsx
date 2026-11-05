@@ -25,7 +25,6 @@ import { useSideChatState } from "./sideChatState";
 import type { AgentToolLaunch, AgentToolRequest } from "./AgentToolsProvider";
 import "./agent-tool-panel.css";
 import { useAgentChangesState } from "./agentChangesState";
-import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
 // Lazy tool launch host: scoped Changes/Files picker, bounded resources and side chat.
 
@@ -291,8 +290,6 @@ export function AgentToolPanel({
           .pin(owner, { kind: "tab", tabId: entry.tabId });
         await activateTab(entry.tabId);
       }
-      useAgentChangesState.getState().select(false);
-      useSubagentPaneStore.getState().select(false);
       onDismiss();
     } catch (cause) {
       setError(String(cause).slice(0, 512));

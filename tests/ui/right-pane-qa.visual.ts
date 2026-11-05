@@ -7,6 +7,76 @@ import { settleChatProjections } from "./shared/visualBrowserPrimitives";
 
 test.use({ deviceScaleFactor: 1 });
 
+test("Subagents selected mid-turn stays visible after the editing turn completes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 1080 });
+  await openAgentScenario(page, "diff");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const { installPopoverSubagents } =
+      await import("/tests/ui/fixtures/popoverSubagentsFixture.ts");
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const projection = acpProjectionStoreFor("visual-chat-diff");
+    const edits = projection.getState().page!.turns;
+    installPopoverSubagents("children");
+    const current = projection.getState().page!;
+    projection.setState({
+      page: {
+        ...current,
+        turns: [
+          {
+            ...edits[0],
+            state: "running",
+            items: [
+              ...edits[0].items,
+              ...current.turns
+                .at(-1)!
+                .items.filter((item) => item.kind === "collaboration")
+                .map((item) => ({
+                  ...item,
+                  turnId: edits[0].id,
+                  sessionId: edits[0].sessionId,
+                })),
+            ],
+          },
+        ],
+      },
+    });
+  });
+  await page.getByRole("button", { name: /^Show files and preview/ }).click();
+  const pane = page.getByLabel("Agent artifacts", { exact: true });
+  const tab = pane.getByRole("tab", { name: "Subagents", exact: true });
+  await tab.click();
+  await expect(
+    pane.getByRole("region", { name: "Subagents", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(async () => {
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const projection = acpProjectionStoreFor("visual-chat-diff");
+    const current = projection.getState().page!;
+    projection.setState({
+      page: {
+        ...current,
+        turns: current.turns.map((turn) => ({ ...turn, state: "completed" })),
+      },
+    });
+  });
+  // Changes arriving proves the completion observer ran, without a timed wait.
+  await expect(
+    pane.getByRole("tab", { name: "Changes", exact: true }),
+  ).toBeVisible();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    pane.getByRole("region", { name: "Subagents", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pane.getByRole("region", { name: "Chat changes", exact: true }),
+  ).toHaveCount(0);
+});
+
 for (const width of [1872, 800]) {
   test(`the compact Diff row opens its pinned resource in Editor at ${width}`, async ({
     page,
@@ -56,7 +126,7 @@ for (const newerTurn of [false, true]) {
     await page.setViewportSize({ width: 1872, height: 1080 });
     await openAgentScenario(page, "diff");
     await expect(
-      page.getByRole("button", { name: "Rename chat", exact: true }),
+      page.getByLabel("Chat location", { exact: true }),
     ).toBeVisible();
     await settleChatProjections(page);
     let release: (() => void) | undefined;
@@ -165,9 +235,7 @@ test("a completed shell-edit turn opens the native ledger's Changes without a fi
 }) => {
   await page.setViewportSize({ width: 1872, height: 1080 });
   await openAgentScenario(page, "diff");
-  await expect(
-    page.getByRole("button", { name: "Rename chat", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Chat location", { exact: true })).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
@@ -242,9 +310,7 @@ test("an empty working-tree Diff keeps its scope and notice above the content", 
 }) => {
   await page.setViewportSize({ width: 1872, height: 1080 });
   await openAgentScenario(page, "diff");
-  await expect(
-    page.getByRole("button", { name: "Rename chat", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Chat location", { exact: true })).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async () => {
     const { installVisualAgentLongPathFixture } =
@@ -319,9 +385,7 @@ test("approval remains a fully readable warning badge beside a clipped chat titl
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openAgentScenario(page, "waiting");
-  await expect(
-    page.getByRole("button", { name: "Rename chat", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Chat location", { exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const { setAgentRailApproval } =
       await import("/src/workbench/agentRailInteractions.ts");
@@ -443,9 +507,7 @@ test("a completed editing turn opens its Changes without a resource click", asyn
 }) => {
   await page.setViewportSize({ width: 1872, height: 1080 });
   await openAgentScenario(page, "diff");
-  await expect(
-    page.getByRole("button", { name: "Rename chat", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Chat location", { exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const { acpProjectionStoreFor } =
       await import("/src/app/acpProjectionRegistry.ts");
