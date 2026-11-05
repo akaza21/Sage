@@ -132,10 +132,13 @@ test("collapses the Agent sidebar at 480 and supports the sidebar shortcut", asy
     page.getByRole("button", { name: "Show projects and chats" }),
   ).toBeVisible();
   await expect(page.locator(".project-sidebar__scroll")).toHaveCount(0);
-  await expect(page.locator(".agent-task-header__harness-icon")).toBeVisible();
-  await expect(
-    page.locator(".agent-task-header__harness-icon use"),
-  ).toHaveAttribute("href", "/harness-codex.svg#mark");
+  const harnessStatus = page.locator(".agent-task-header__harness-status");
+  const info = harnessStatus.locator("summary");
+  await expect(info).toHaveAccessibleName("Harness status: Test simulator");
+  await expect(info.locator("svg.lucide-info")).toBeVisible();
+  await info.click();
+  await expect(harnessStatus.locator("p")).toHaveText("Test simulator");
+  await info.click();
   expect(
     (await page.locator(".agent-chat-pane").first().boundingBox())!.width,
   ).toBeGreaterThan(400);

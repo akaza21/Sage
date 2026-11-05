@@ -25,9 +25,7 @@ describe("Chat rich content layout", () => {
     expect(rule(".acp-mermaid svg")).toContain(
       "min-width: calc(var(--mermaid-width) * 0.75)",
     );
-    expect(rule(".acp-mermaid text")).toContain(
-      "font-size: var(--font-size-md)",
-    );
+    expect(rule(".acp-mermaid text")).toContain("font-size: inherit");
     expect(rule(".acp-mermaid :is(rect, polygon)")).toContain(
       "fill: var(--color-panel)",
     );

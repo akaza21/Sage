@@ -1,3 +1,4 @@
+import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
@@ -141,6 +142,7 @@ for (const width of [1888, 720, 480]) {
       });
       await expect(advertisedDefault).toHaveAttribute("aria-checked", "true");
       const plan = menu.getByRole("menuitemradio", { name: "Plan mode" });
+      await waitForAnimations(menu);
       const label = await plan.locator("span").first().boundingBox();
       const description = await plan
         .getByText("Plan mode is off")
@@ -170,6 +172,7 @@ for (const width of [1888, 720, 480]) {
       });
       const subtitle = selected.locator(".searchable-picker__subtitle");
       await expect(subtitle).toBeVisible();
+      await waitForAnimations(page.locator(".composer__harness-menu"));
       const label = await selected
         .locator(".searchable-picker__option-copy > span")
         .first()
@@ -232,7 +235,8 @@ for (const width of [1888, 720, 480]) {
       await render(page, "Codex", "files");
       const pill = page.locator(".acp-file-changes__header");
       await expect(pill).toBeVisible();
-      // Read both children in one frame while their shared pill animates in.
+      await waitForAnimations(page.locator(".acp-file-changes"));
+      // Read both children in one frame after the shared pill settles.
       const alignment = await pill.evaluate((element) => {
         const label = element.querySelector("strong")!.getBoundingClientRect();
         const counts = element

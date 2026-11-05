@@ -3,6 +3,7 @@ import {
   openScenario,
   settleChatProjections,
   settleTranscriptAtEnd,
+  waitForAnimations,
 } from "./shared/visualBrowserPrimitives";
 
 test.use({ deviceScaleFactor: 1 });
@@ -60,6 +61,7 @@ for (const width of [1888, 720, 480]) {
         0,
       );
       const column = await box(pane.locator(".acp-turn__items").last());
+      await waitForAnimations(summary);
       const bounds = await box(summary);
       const composer = await box(pane.locator("form.composer"));
       expect(
@@ -144,6 +146,7 @@ for (const width of [1888, 720, 480]) {
       const queue = composer.locator(".composer__queued");
       await expect(queue).toBeVisible();
       await expect(pill).toBeVisible();
+      await waitForAnimations(summary);
       const queueBounds = await box(queue);
       const pillBounds = await box(pill);
       expect(pillBounds.y + pillBounds.height).toBeLessThanOrEqual(
@@ -225,6 +228,7 @@ for (const width of [720, 480]) {
             exact: true,
           }),
         ).toBeEnabled();
+        await waitForAnimations(summary);
         const bounds = await box(summary);
         const surface = await box(pane.locator(".chat-surface"));
         const transcript = await box(pane.locator(".message-list"));

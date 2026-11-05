@@ -72,7 +72,7 @@
 
 .chat-transcript-work__groups {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-1);
   padding: var(--space-1) 0 0;
 }
 
@@ -135,6 +135,7 @@
   .acp-tool-rollup
   > summary {
   min-height: 20px;
+  line-height: 20px;
 }
 
 .chat-transcript-work__groups .acp-tool-rollup > summary:hover,
