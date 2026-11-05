@@ -250,7 +250,7 @@
 }
 
 .acp-mermaid text {
-  font-size: var(--font-size-md);
+  font-size: inherit;
   fill: currentColor;
   paint-order: stroke;
   stroke: var(--color-panel);

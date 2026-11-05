@@ -132,15 +132,7 @@ for (const geometry of geometries) {
         } = geometry;
         await page.setViewportSize({ width, height });
         await openScenario(page, two ? "agent-dual" : "agent-single", "agent");
-        // A known inherited reading measure keeps this geometry independent of fonts.
-        await page
-          .locator(".workbench")
-          .evaluate((element) =>
-            (element as HTMLElement).style.setProperty(
-              "--reading-measure",
-              "660px",
-            ),
-          );
+        // The chat surface owns its 42rem (672px) transcript/composer measure.
         await settleChatProjections(page);
         // agent-dual's secondary chat has an active turn, so its composer is
         // disabled by the fixture; the draft and resource owner use the
@@ -187,20 +179,20 @@ for (const geometry of geometries) {
           for (const item of await items.all()) {
             const reading = await item.boundingBox();
             expect(reading).not.toBeNull();
-            expect(reading!.width).toBeLessThanOrEqual(660);
+            expect(reading!.width).toBeLessThanOrEqual(672);
             expect(reading!.x).toBeGreaterThanOrEqual(lane.x);
             expect(reading!.x + reading!.width).toBeLessThanOrEqual(
               lane.x + lane.width,
             );
           }
           if (width === 1888 && resource === "closed")
-            expect((await items.first().boundingBox())!.width).toBe(660);
+            expect((await items.first().boundingBox())!.width).toBe(672);
         }
         for (const composer of await page.locator("form.composer").all()) {
           const bounds = await box(composer);
-          expect(bounds.width).toBeLessThanOrEqual(660);
+          expect(bounds.width).toBeLessThanOrEqual(672);
           if (width === 1888 && resource === "closed")
-            expect(bounds.width).toBe(658);
+            expect(bounds.width).toBe(670);
           expect(bounds.x).toBeGreaterThanOrEqual(chat.x);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(
             chat.x + chat.width,

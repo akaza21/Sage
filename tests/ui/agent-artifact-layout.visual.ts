@@ -132,6 +132,7 @@ test("mixed resource and browser tabs share a 560 px pane without clipping contr
     `
     <div class="workbench--agent">
       <div class="workbench__body" style="width: 1920px; display: block">
+        <div class="agent-artifact-surface">
         <aside class="agent-artifact-pane" style="width: 560px">
           <header class="agent-artifact-pane__header">
             <nav class="tab-strip" aria-label="Agent artifact tabs">
@@ -148,6 +149,7 @@ test("mixed resource and browser tabs share a 560 px pane without clipping contr
             <button class="agent-artifact-pane__collapse">▣</button>
           </header>
         </aside>
+        </div>
       </div>
     </div>
   `,
@@ -157,6 +159,7 @@ test("mixed resource and browser tabs share a 560 px pane without clipping contr
   await page.addStyleTag({ path: "src/styles/workbench-chrome.css" });
   await page.addStyleTag({ path: "src/workbench/workbench-window-mode.css" });
   await page.addStyleTag({ path: "src/styles/agent-right-pane.css" });
+  await page.addStyleTag({ path: "src/workbench/AgentArtifactPaneTabs.css" });
 
   const pane = page.locator(".agent-artifact-pane");
   const strip = page.locator(".tab-strip__scroll");

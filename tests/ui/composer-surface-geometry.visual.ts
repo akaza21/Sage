@@ -241,7 +241,8 @@ for (const viewport of [
         })
         .map((element) => element.className || element.tagName);
     });
-    expect(rules).toEqual([]);
+    // Window chrome owns the single status-bar divider below the inset cards.
+    expect(rules).toEqual(["status-bar"]);
 
     await page
       .getByRole("button", { name: "Expand resource pane", exact: true })

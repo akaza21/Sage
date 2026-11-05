@@ -166,10 +166,8 @@ test("edited files and saved diffs stay usable when approval replaces the compos
   });
   await expect(summary).toBeVisible();
   await summary.getByRole("button", { name: /^1 file changed/ }).click();
-  const viewChanges = page
-    .getByRole("region", { name: "Edited files", exact: true })
-    .getByRole("button", { name: "View changes" });
-  await expect(viewChanges).toBeVisible();
+  const openDiff = summary.getByRole("button", { name: /^Open diff / });
+  await expect(openDiff).toBeVisible();
   await expect(
     summary.getByRole("button", { name: /^Preview saved diff/ }),
   ).toBeVisible();
@@ -188,8 +186,8 @@ test("edited files and saved diffs stay usable when approval replaces the compos
     summary.getByRole("table", { name: "Inline saved diff" }),
   ).toBeVisible();
   await preview.click();
-  await expect(viewChanges).toBeVisible();
-  await viewChanges.click();
+  await expect(openDiff).toBeVisible();
+  await openDiff.click();
   await expect(
     page.getByRole("table", { name: "Unified file diff" }),
   ).toBeVisible();
