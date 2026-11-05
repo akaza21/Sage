@@ -1,13 +1,11 @@
 import { useCallback, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import type { TurnProjection } from "../../domain/acp";
+import { type TurnProjection } from "../../domain/acp";
 import { ChatFindController } from "./ChatFindController";
 import { TurnNavigator } from "./TurnNavigator";
 import { jumpToChatTurn, type TurnListHost } from "./chatScroll";
 import { useChatViewport } from "./useChatViewport";
 import { useTurnListNavigation } from "./useTurnListNavigation";
-
-export { AcpHistoryNotices } from "./AcpHistoryNotices";
 
 export interface ChatNavigationProps {
   turns: readonly TurnProjection[];
@@ -67,3 +65,8 @@ export function ChatNavigation({
     </>
   );
 }
+
+export {
+  AcpHistoryNotices,
+  WorkspaceTrackingNotice,
+} from "./AcpHistoryNotices";

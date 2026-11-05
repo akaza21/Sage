@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import {
-  NEW_TASK,
+  NEW_CHAT,
   clickExpression,
   openExpression,
   observationFor,
 } from "./capture-native-chat-dom.mjs";
 import { ownedPaneNodes, paneSelector } from "./capture-native-chat-pane.mjs";
 
-test("New task stays document-scoped: it lives in Agent navigation, not a pane", () => {
+test("New chat stays document-scoped: it lives in Agent navigation, not a pane", () => {
   // paneSelector is serialized into page expressions, so it keeps a literal.
-  assert.equal(paneSelector(NEW_TASK), NEW_TASK);
+  assert.equal(paneSelector(NEW_CHAT), NEW_CHAT);
 });
 
 test("owner traversal rejects oversized result, control, and artifact collections before copying", () => {

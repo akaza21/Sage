@@ -27,9 +27,14 @@ import type { AcpChatPage, AcpItem } from "../../domain/acp";
 import type { ResourceRef } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
+import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { useSideChatState } from "../../workbench/sideChatState";
+import { Workbench } from "../../workbench/Workbench";
+import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
+import { AgentChatPanes } from "../../workbench/AgentChatPanes";
+import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
 
 const hooks = vi.hoisted(() => ({
@@ -59,7 +64,22 @@ vi.mock("./acp", async () => {
   };
 });
 
-import { ChatSurface } from "./ChatSurface";
+import { ChatSurface as ChatPresentation } from "./ChatSurface";
+import { ChatQueueOwner } from "./ChatQueueOwner";
+
+// Exercise the same runtime/presentation boundary as the Agent host.
+function ChatSurface(props: { chatId?: string }) {
+  const pending = useWorkbenchStore((state) => {
+    const chat = state.chatUiById[props.chatId ?? state.activeTabId ?? ""];
+    return Boolean(chat?.queuedPrompts?.length || chat?.queuedTurnBarrier);
+  });
+  return (
+    <>
+      {pending ? <ChatQueueOwner chatId={props.chatId} /> : null}
+      <ChatPresentation {...props} />
+    </>
+  );
+}
 
 const initialState = useWorkbenchStore.getState();
 const nativeReadOnly = [
@@ -71,8 +91,12 @@ const nativeReadOnly = [
   },
 ];
 
-function openComposerOptions() {
-  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+async function openComposerOptions() {
+  const options = screen.queryByRole("button", { name: "Composer options" });
+  if (options && !options.hasAttribute("disabled")) {
+    fireEvent.click(options);
+    await screen.findByRole("menu", { name: "Composer options menu" });
+  }
 }
 
 function openComposerModel() {
@@ -274,6 +298,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useAgentSettingsState.getState().close();
   useWorkbenchStore.setState(initialState, true);
   clearAcpProjectionRegistry();
   clearAgentChatOwner();
@@ -373,6 +398,110 @@ describe("ChatSurface approval slot", () => {
 });
 
 describe("ChatSurface ACP resource integration", () => {
+  it("keeps a restored unavailable binding selected and blocks sending after discovery", async () => {
+    const current = useWorkbenchStore.getState().harnesses;
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      sessions: projection().sessions.map((session) => ({
+        ...session,
+        bindingId: "absent-binding" as never,
+        runtimeEpoch: null,
+        state: "created" as const,
+      })),
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Older chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+      harnesses: [
+        ...current,
+        {
+          id: "unavailable-binding:absent-binding",
+          name: "Unavailable harness",
+          description:
+            "The harness bound to this Chat is not available in this build.",
+          source: "custom",
+          transport: "acp",
+          installState: "unavailable",
+          bindingId: "absent-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    render(<ChatSurface chatId="chat-a" />);
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeDisabled();
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"].harnessId).toBe(
+      "unavailable-binding:absent-binding",
+    );
+    await act(async () => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "unavailable-binding:absent-binding",
+        harnessDiscoveryPhase: "idle",
+      });
+      await useWorkbenchStore.getState().applyHarnessDiscovery(current);
+    });
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Message agent" }),
+    ).toBeDisabled();
+    expect(useWorkbenchStore.getState().selectedHarnessId).toBe(
+      "unavailable-binding:absent-binding",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+    expect(
+      screen.getByRole("option", { name: /Unavailable harness/ }),
+    ).toBeDisabled();
+  });
+
+  it("attaches the full project name above the input only for an established empty chat", () => {
+    hooks.page = { ...projection(), turns: [], nextCursor: null };
+    const name =
+      "Sage parity project with a long but authoritative workspace name";
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name, roots: [] },
+    });
+    const { rerender, container } = render(<ChatSurface />);
+    const row = screen.getByRole("group", { name: "Project scope" });
+    expect(row).toHaveTextContent(name);
+    expect(container.querySelector("form.composer")).toContainElement(row);
+    expect(
+      screen.getByRole("region", { name: "New chat" }),
+    ).not.toContainElement(row);
+    expect(
+      container.querySelector(".chat-edit-summary-zone"),
+    ).not.toContainElement(row);
+    hooks.page = projection();
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+  });
+
+  it("adds no project scope row above an empty side chat's input (Codex s2/f0244)", () => {
+    hooks.page = {
+      ...projection(),
+      turns: [],
+      nextCursor: null,
+      chatId: "side-1" as never,
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+    });
+    render(<ChatSurface chatId="side-1" />);
+    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+  });
+
   it("retains composer project scope while an empty retained page is not the new-chat home", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
     useWorkbenchStore.setState({
@@ -633,6 +762,172 @@ describe("ChatSurface ACP resource integration", () => {
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
   });
 
+  it("starts a queued prompt after the active turn finishes with Chat hidden by a maximized artifact", async () => {
+    hooks.actions.submit.mockResolvedValue("applied");
+    matchConfiguredSession();
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "Chat",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
+    vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
+      async () => hooks.page!,
+    );
+    const view = render(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes />
+      </AgentChatRuntimeHarness>,
+    );
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Message agent" }),
+      {
+        target: { value: "Continue behind the artifact" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts?.[0]
+          ?.status,
+      ).toBe("queued"),
+    );
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes visible={false} />
+      </AgentChatRuntimeHarness>,
+    );
+    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    setTurnState("completed");
+    act(() => {
+      const store = acpProjectionStoreFor("chat-a");
+      store
+        .getState()
+        .applyAuthoritativePage(store.getState().scope!, hooks.page!);
+    });
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes visible={false} />
+      </AgentChatRuntimeHarness>,
+    );
+    await waitFor(() =>
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
+      ).toEqual([]),
+    );
+    expect(screen.queryByRole("textbox", { name: "Message agent" })).toBeNull();
+    view.rerender(
+      <AgentChatRuntimeHarness>
+        <AgentChatPanes />
+      </AgentChatRuntimeHarness>,
+    );
+    await screen.findByRole("textbox", { name: "Message agent" });
+    expect(screen.queryByText("Continue behind the artifact")).toBeNull();
+  });
+
+  it.each(["Settings", "Editor", "hidden document"])(
+    "drains a queued follow-up while %s sleeps the real Chat surface",
+    async (hiddenBy) => {
+      localStorage.clear();
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: false,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        })),
+      );
+      hooks.actions.submit.mockResolvedValue("applied");
+      matchConfiguredSession();
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "A", roots: [] },
+        tabs: [
+          {
+            id: "chat-a",
+            kind: "chat",
+            title: "Chat",
+            position: 0,
+            pinned: false,
+            dirty: false,
+          },
+        ],
+        activeTabId: "chat-a",
+      });
+      vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
+        async () => hooks.page!,
+      );
+      const view = render(<Workbench />);
+      fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+      await settleLazyModules();
+      fireEvent.change(
+        await screen.findByRole("textbox", { name: "Message agent" }),
+        {
+          target: { value: "Continue while settings is open" },
+        },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+      await waitFor(() =>
+        expect(
+          useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts?.[0]
+            ?.status,
+        ).toBe("queued"),
+      );
+      if (hiddenBy === "Settings") {
+        fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+        await act(async () => {
+          await vi.dynamicImportSettled();
+        });
+        await screen.findByRole("dialog", { name: "Agent settings" });
+      } else if (hiddenBy === "Editor") {
+        fireEvent.click(screen.getByRole("radio", { name: "Editor" }));
+        await settleLazyModules();
+      } else {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+        fireEvent(document, new Event("visibilitychange"));
+      }
+      expect(
+        screen.queryByRole("textbox", { name: "Message agent" }),
+      ).toBeNull();
+      setTurnState("completed");
+      view.rerender(<Workbench />);
+      await waitFor(() =>
+        expect(hooks.actions.submit).toHaveBeenCalledWith(
+          "Continue while settings is open",
+          [],
+          "codex-app-server",
+          null,
+        ),
+      );
+      await waitFor(() =>
+        expect(
+          useWorkbenchStore.getState().chatUiById["chat-a"].queuedPrompts,
+        ).toEqual([]),
+      );
+      if (hiddenBy === "Settings") {
+        expect(
+          screen.getByRole("dialog", { name: "Agent settings" }),
+        ).toBeVisible();
+        fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+      } else if (hiddenBy === "Editor") {
+        expect(screen.getByRole("radio", { name: "Editor" })).toBeChecked();
+        fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+      } else {
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+        fireEvent(document, new Event("visibilitychange"));
+      }
+      await screen.findByRole("textbox", { name: "Message agent" });
+      expect(hooks.actions.submit).toHaveBeenCalledOnce();
+    },
+  );
+
   it("keeps one send-slot control while a cancellable Turn can queue by Enter", async () => {
     hooks.actions.cancellableTurnId = "turn-a";
     matchConfiguredSession();
@@ -712,7 +1007,9 @@ describe("ChatSurface ACP resource integration", () => {
       expect.objectContaining({ text: "Follow up", status: "queued" }),
     ]);
     expect(composer).toHaveValue("Follow up");
-    expect(screen.getByText("Saving…")).toBeVisible();
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveFocus();
+    expect(await screen.findByText("Saving…")).toBeVisible();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
 
     acknowledge();
@@ -756,6 +1053,8 @@ describe("ChatSurface ACP resource integration", () => {
 
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(hooks.actions.submit).not.toHaveBeenCalled();
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveFocus();
     acknowledge();
     await waitFor(() => expect(composer).toHaveValue(""));
     await waitFor(() => expect(hooks.actions.submit).toHaveBeenCalledTimes(1));
@@ -1251,7 +1550,8 @@ describe("ChatSurface ACP resource integration", () => {
       await waitFor(() => expect(composer).toHaveValue(""));
     }
     expect(screen.getByLabelText("Queued messages").children).toHaveLength(8);
-    expect(composer).toBeDisabled();
+    expect(composer).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(screen.getByText("Queue is full (8 messages).")).toBeVisible();
     fireEvent.click(
       screen.getByRole("button", { name: "Delete queued message: Message 1" }),
@@ -1480,7 +1780,7 @@ describe("ChatSurface ACP resource integration", () => {
     }
   });
 
-  it("renders only provider-advertised session modes and preserves their order", () => {
+  it("renders only provider-advertised session modes and preserves their order", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1500,7 +1800,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const modes = screen.getByRole("group", { name: "Session mode" });
     expect(
@@ -1519,13 +1819,13 @@ describe("ChatSurface ACP resource integration", () => {
     );
   });
 
-  it("does not render a session mode picker without advertised modes", () => {
+  it("does not render a session mode picker without advertised modes", async () => {
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     expect(screen.queryByRole("button", { name: "Session mode" })).toBeNull();
   });
 
-  it("renders advertised config options without restating the mode picker", () => {
+  it("renders advertised config options without restating the mode picker", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1573,7 +1873,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByRole("group", { name: "Session mode" })).toBeTruthy();
     expect(
@@ -1583,10 +1883,12 @@ describe("ChatSurface ACP resource integration", () => {
       screen.getByRole("menuitemcheckbox", { name: "Session fast mode" }),
     ).not.toBeChecked();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: /Sonnet 5/ }),
+    ).toBeTruthy();
   });
 
-  it("omits unsupported config actions instead of enabling an inert Add menu", () => {
+  it("omits unsupported config actions instead of enabling an inert Add menu", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1607,19 +1909,22 @@ describe("ChatSurface ACP resource integration", () => {
             name: "Model",
             type: "select",
             currentValue: "sonnet",
-            options: [{ value: "sonnet", name: "Sonnet 5" }],
+            options: [
+              { value: "sonnet", name: "Sonnet 5" },
+              { value: "other", name: "Other model" },
+            ],
           },
         ],
       },
     } as AcpChatPage;
     matchConfiguredSession();
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.queryByText("Thinking budget")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -1627,10 +1932,12 @@ describe("ChatSurface ACP resource integration", () => {
       screen.queryByRole("checkbox", { name: "Session thinking budget" }),
     ).toBeNull();
     openComposerModel();
-    expect(screen.getByRole("option", { name: /Sonnet 5/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: /Sonnet 5/ }),
+    ).toBeTruthy();
   });
 
-  it("lets a prompt-capable harness without a model catalog use its own default", () => {
+  it("lets a prompt-capable harness without a model catalog use its own default", async () => {
     hooks.page = {
       ...projection(),
       turns: [],
@@ -1671,7 +1978,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(
       screen.getByRole("textbox", { name: "Message agent" }),
@@ -1812,7 +2119,7 @@ describe("ChatSurface ACP resource integration", () => {
     } as AcpChatPage;
     matchConfiguredSession();
     const { rerender } = render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     const modeInput = screen.getByRole("menuitemradio", {
       name: "Review changes",
     });
@@ -1888,7 +2195,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(foregroundDraft).toHaveFocus();
   });
 
-  it("announces pending mode state and errors outside the action menu", () => {
+  it("announces pending mode state and errors outside the action menu", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -1911,7 +2218,7 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.modeError = "Mode change was rejected";
     hooks.actions.error = "Prompt dispatch failed";
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const modeTrigger = screen.getByRole("menuitemradio", {
       name: "Review changes",
@@ -1976,7 +2283,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Open Claude sign-in" }),
+      await screen.findByRole("button", { name: "Open Claude sign-in" }),
     );
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
@@ -2056,7 +2363,7 @@ describe("ChatSurface ACP resource integration", () => {
         </section>
       </main>,
     );
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
   });
@@ -2159,7 +2466,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", () => {
+  it("keeps selected not-installed Codex truthful and hides later built-in harnesses", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2219,7 +2526,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
@@ -2254,7 +2561,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBe(true);
   });
 
-  it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", () => {
+  it("shows present-but-not-admitted Codex as unavailable without hiding the simulator", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2294,7 +2601,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const harness = screen.getByRole("button", { name: "Harness" });
     fireEvent.click(harness);
@@ -2303,7 +2610,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — installed but not drivable. Sage did not admit this harness and will not start it.",
+      "Codex — unavailable. Sage did not admit this harness and will not start it.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
@@ -2312,7 +2619,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[2]).toBeDisabled();
   });
 
-  it("keeps the available development fallback visible when the selected harness is absent", () => {
+  it("keeps the available development fallback visible when the selected harness is absent", async () => {
     hooks.page = null;
     useWorkbenchStore.setState({
       harnesses: [
@@ -2341,7 +2648,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("No harness")).toBeInTheDocument();
     const harness = screen.getByRole("button", { name: "Harness" });
@@ -2393,10 +2700,10 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeNull();
   });
 
-  it("shows an available ACP binding as ready before a session starts", () => {
+  it("shows an available ACP binding as ready before a session starts", async () => {
     hooks.page = { ...hooks.page!, turns: [] };
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText("Live")).toBeNull();
@@ -2405,7 +2712,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toHaveTextContent("Read-only");
   });
 
-  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", () => {
+  it("keeps Ask unavailable for fresh characterised Codex 0.146 without native approval proof", async () => {
     hooks.page = {
       ...projection(),
       currentSessionId: null,
@@ -2437,7 +2744,7 @@ describe("ChatSurface ACP resource integration", () => {
     });
 
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
       screen.queryByRole("menuitemradio", { name: "Ask each time" }),
@@ -3138,7 +3445,7 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.cancellableTurnId = null;
     setTurnState("cancelling");
     rerender(<ChatSurface />);
-    expect(composer).toBeDisabled();
+    expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(composer).not.toHaveFocus();
   });
@@ -3363,7 +3670,7 @@ describe("ChatSurface ACP resource integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen.getByRole("option", {
-        name: "Unavailable harness — installed but not drivable. Sage did not admit this harness and will not start it.",
+        name: "Unavailable harness — unavailable. Sage did not admit this harness and will not start it.",
       }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("option", { name: "Codex — available" }));
@@ -3514,7 +3821,7 @@ describe("ChatSurface ACP resource integration", () => {
 
   it("requires consent before starting bounded browser sign-in", () => {
     const start = vi
-      .spyOn(acpDesktop, "startCodexAuth")
+      .spyOn(acpHarnessDesktop, "startCodexAuth")
       .mockReturnValue(new Promise(() => {}));
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Project A", roots: [] },
@@ -4087,18 +4394,12 @@ describe("ChatSurface per-chat composer", () => {
     });
     if (!left || !right) throw new Error("Missing mounted Chats");
 
-    fireEvent.click(
-      within(right).getByRole("button", { name: "Composer options" }),
-    );
     fireEvent.click(within(right).getByRole("button", { name: "Harness" }));
     fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
     await waitFor(() =>
       expect(
         within(right).getByRole("button", { name: "Harness" }),
       ).toHaveTextContent("Claude"),
-    );
-    fireEvent.click(
-      within(left).getByRole("button", { name: "Composer options" }),
     );
     expect(
       within(left).getByRole("button", { name: "Harness" }),
@@ -4696,8 +4997,8 @@ describe("ChatSurface composer focus hotkey", () => {
     expect(composer).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
     expect(composer).toHaveAttribute("placeholder", "Do anything");
     composer.blur();
     expect(composer).not.toHaveFocus();
@@ -4829,7 +5130,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Voice input unavailable" }),
     ).toBeDisabled();
   });
-  it("cancels active dictation on a chat switch and ignores late speech", () => {
+  it("cancels active dictation on a chat switch and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -4880,6 +5181,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     act(() =>
@@ -4898,7 +5200,7 @@ describe("ChatSurface composer context", () => {
     expect(useWorkbenchStore.getState().composerText).toBe("Second draft");
   });
 
-  it("aborts active dictation on unmount and ignores late speech", () => {
+  it("aborts active dictation on unmount and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -4930,6 +5232,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     const view = render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     view.unmount();
@@ -4999,6 +5302,7 @@ describe("ChatSurface composer context", () => {
       expect.stringMatching(/online service/i),
     );
     fireEvent.click(mic);
+    await screen.findByRole("button", { name: "Stop dictation" });
     expect(FakeRecognition.current.start).toHaveBeenCalledOnce();
     act(() =>
       FakeRecognition.current.onresult?.({
@@ -5016,6 +5320,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Start dictation" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const disabling = FakeRecognition.current;
     useWorkbenchStore.setState({ projectTransitioning: true });
     view.rerender(<ChatSurface />);
@@ -5035,6 +5340,7 @@ describe("ChatSurface composer context", () => {
       ).toBeVisible(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const previous = FakeRecognition.current;
     act(() =>
       previous.onresult?.({
@@ -5069,7 +5375,7 @@ describe("ChatSurface composer context", () => {
     );
     expect(useWorkbenchStore.getState().composerText).toBe(sentDraft);
   });
-  it("shows only the compact plus action when no context chips are attached", () => {
+  it("omits an inert plus action when no context chips are attached", () => {
     const chatId = "chat-empty-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5092,11 +5398,11 @@ describe("ChatSurface composer context", () => {
     expect(document.querySelector(".composer__attachment-row")).toBeNull();
     expect(screen.queryByLabelText("Composer actions")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Composer options" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "Composer options" }),
+    ).toBeNull();
   });
 
-  it("names the active project in the composer scope control", () => {
+  it("names the active project in the composer scope control", async () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "  micrograd  ", roots: [] },
       harnesses: [
@@ -5114,7 +5420,7 @@ describe("ChatSurface composer context", () => {
       selectedHarnessId: "sage-simulator",
     });
     render(<ChatSurface />);
-    openComposerOptions();
+    await openComposerOptions();
 
     const scope = document.querySelector(".project-scope");
     expect(scope).not.toBeNull();

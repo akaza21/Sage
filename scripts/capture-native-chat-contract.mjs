@@ -65,14 +65,12 @@ export function assertPrivacy(value) {
     fail("privacy");
 }
 /**
- * Base states whose witness the product hides at a capture width. The composer
- * drops its context meter in containers up to 280 px wide
- * (chat-container-controls.css), and the 480 window's chat column is one.
- * Codex hides it there too (CODEX-PARITY/reference/37-narrow-window-480-*).
+ * Base states take every capture width. The composer hides its context meter
+ * only once its toolbar fit compacts to the dense step (useComposerToolbarFit),
+ * which the 480 window's chat column does not reach, so 480 is captured.
  */
-const BASE_STATE_WIDTHS = Object.freeze({ "context-meter": [1888, 720] });
 export function captureWidths(state) {
-  return BASE_STATE_WIDTHS[state] ?? parityWidths(state);
+  return parityWidths(state);
 }
 export function parseArgs(args) {
   const values = {};

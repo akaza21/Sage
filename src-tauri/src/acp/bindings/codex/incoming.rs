@@ -51,13 +51,42 @@ pub(crate) trait ResourceMapper {
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         None
     }
+
+    fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
+        None
+    }
 }
 
 pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
     "Codex emitted a message Sage does not project";
 
 pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
-    tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+    if reports_diagnostics() {
+        tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+    }
+}
+
+thread_local! {
+    static TRIAL_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `read` as a trial read of native frames: the diagnostics ingestion
+/// would report stay unreported, because only the real read reports them.
+pub(in crate::acp::bindings::codex) fn trial_read<T>(read: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TRIAL_READ.with(|trial| trial.set(self.0));
+        }
+    }
+    let _restore = Restore(TRIAL_READ.with(|trial| trial.replace(true)));
+    read()
+}
+
+/// False inside `trial_read`; every diagnostic on the ingestion path checks
+/// it before it reports.
+pub(in crate::acp::bindings::codex) fn reports_diagnostics() -> bool {
+    !TRIAL_READ.with(std::cell::Cell::get)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +139,11 @@ pub(crate) enum IncomingEvent {
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
         update_mode: ItemUpdateMode,
+    },
+    FilePair {
+        id: ScopedExternalId,
+        old_text: String,
+        new_text: String,
     },
     ChildThreadItem {
         id: ScopedExternalId,
@@ -165,7 +199,7 @@ pub(crate) enum IngressDisposition {
     Events(Vec<IncomingEvent>),
     IgnoredLate,
     /// Raw reasoning text: validated for identity and deliberately never
-    /// projected (Codex shows the reasoning summary only).
+    /// projected.
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,

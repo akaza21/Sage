@@ -1,4 +1,31 @@
+/* Compact list geometry for the Editor's Explorer, Search, Source Control
+   and Outline views, after VS Code's 22px tree rows and 8px indent. The
+   commit field is one 26px line that grows to a bounded number of lines. */
 .sidebar {
+  --editor-list-row-height: 22px;
+  --editor-list-icon-size: var(--icon-size-md);
+  --editor-list-gap: var(--space-1);
+  --editor-list-inline-padding: var(--space-2);
+  --editor-tree-indent: var(--space-2);
+  --editor-tree-twisty-size: var(--icon-size-md);
+  --editor-tree-guide-width: 1px;
+  --editor-tree-guide-color: color-mix(
+    in srgb,
+    var(--color-text-muted) 40%,
+    transparent
+  );
+  --editor-tree-guide-duration: var(--motion-duration-fast);
+  --editor-search-input-height: 26px;
+  --editor-search-option-size: 20px;
+  --editor-count-badge-min-size: 19px;
+  --editor-scm-input-min-height: 26px;
+  --editor-scm-input-line-height: 18px;
+  --editor-scm-input-padding-block: 3px;
+  --editor-scm-input-border: 1px;
+  --editor-scm-input-max-lines: 10;
+  --editor-scm-action-size: 20px;
+  --editor-scm-decoration-size: var(--icon-size-md);
+
   min-width: 0;
   overflow: auto;
   border-right: 1px solid var(--color-border-subtle);
@@ -6,7 +33,7 @@
 
 .sidebar:focus-visible {
   outline: 0;
-  box-shadow: var(--focus-ring-inset);
+  box-shadow: var(--region-focus-shadow, var(--focus-ring-inset));
 }
 
 .sidebar__heading {
@@ -14,7 +41,7 @@
   height: 40px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
@@ -26,7 +53,7 @@
 .sidebar__heading-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .sidebar__heading-actions button {
@@ -51,22 +78,63 @@
   opacity: 0.5;
 }
 
-.sidebar__empty {
-  max-width: 210px;
-  margin: 20px auto;
+.sidebar__heading > button {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.55;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar__heading > button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.sidebar__heading > button:disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+/* Messages wrap, so they sit outside the fixed-height row treatment. */
+.sidebar__empty,
+.sidebar__notice,
+.sidebar__error {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.sidebar__empty,
+.sidebar__notice {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.sidebar__error {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .tree__limit {
-  margin: 8px;
+  margin: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.45;
 }
 
 @media (forced-colors: active) {
+  .repository-commit__label textarea {
+    border-color: ButtonText;
+  }
+
   .sidebar:focus-visible {
     outline: var(--focus-ring);
     outline-offset: -2px;
@@ -75,26 +143,35 @@
 }
 
 .source-control-list {
-  padding: 8px 4px;
+  padding: var(--space-1);
 }
 
+/* The repository picker takes the sidebar's width, with room after the
+   label for the picker's chevron. */
+.source-control-selector {
+  --picker-field-padding: 0 var(--space-6) 0 var(--space-2);
+
+  display: block;
+  margin: 0 2px var(--space-1);
+}
+
+/* Name and actions on the first line, branch and tracking on the second;
+   the start padding lines the name up with the group labels and changes. */
 .source-root__summary {
   display: grid;
   min-width: 0;
-  min-height: 32px;
-  grid-template-columns:
-    minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.4fr)
-    auto;
+  min-height: var(--row-height-default);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  padding: 4px 4px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
 }
 
 .source-root + .source-root {
-  margin-top: 8px;
-  padding-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -109,18 +186,22 @@
 }
 
 .source-root__name {
+  grid-column: 1;
   font-weight: var(--font-weight-semibold);
 }
 
 .source-root__branch {
+  grid-column: 1;
+  grid-row: 2;
   color: var(--color-text-primary);
 }
 
 .source-root__identity {
   display: flex;
-  min-width: 0;
+  grid-column: 2;
+  grid-row: 2;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -133,7 +214,7 @@
 .source-root__primary {
   flex: 0 0 auto;
   min-height: 24px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -154,7 +235,7 @@
 }
 
 .source-root__action-reason {
-  margin: 0 4px 8px;
+  margin: 0 var(--space-1) var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
@@ -168,7 +249,7 @@
   min-height: 28px;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-text-muted);
   cursor: pointer;
   font-size: var(--font-size-xs);
@@ -182,18 +263,18 @@
 .source-change-group > summary span:last-child {
   padding: 2px 4px;
   border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
+  background: var(--count-badge-fill, var(--color-plane-raised));
   font-variant-numeric: tabular-nums;
 }
 
 .source-branches {
-  margin: 0 8px 4px;
+  margin: 0 var(--space-2) var(--space-1);
   padding: 0;
   list-style: none;
 }
 
 .source-branch {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
@@ -222,7 +303,7 @@
 .source-branch__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -243,9 +324,9 @@
 
 .source-branch-create {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
-  margin: 0 8px 4px;
+  margin: 0 var(--space-2) var(--space-1);
 }
 
 .source-branch-create__label,
@@ -255,10 +336,14 @@
   flex: 1;
 }
 
-.source-branch-create__label input,
-.source-branch-create__label .searchable-picker__trigger {
+.source-branch-create__label .searchable-picker {
+  --picker-field-padding: var(--space-1) var(--space-2);
+  --picker-field-border-color: var(--color-border-subtle);
+}
+
+.source-branch-create__label input {
   width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -267,11 +352,11 @@
   font-size: var(--font-size-xs);
 }
 
-.source-branch-create button {
+.source-branch-create > button {
   flex: 0 0 auto;
   border: 0;
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface));
   color: var(--color-text-primary);
   cursor: pointer;
@@ -280,7 +365,7 @@
   font-weight: 650;
 }
 
-.source-branch-create button:disabled {
+.source-branch-create > button:disabled {
   cursor: default;
   opacity: 0.6;
 }
@@ -290,14 +375,12 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .source-commits {
   display: grid;
-  gap: 4px;
-  margin: 0 8px 8px;
+  gap: var(--space-1);
+  margin: 0 var(--space-2) var(--space-2);
   padding: 0;
   list-style: none;
 }
@@ -306,8 +389,8 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -333,8 +416,8 @@
 
 .source-remotes {
   display: grid;
-  gap: 4px;
-  margin: 0 8px 8px;
+  gap: var(--space-1);
+  margin: 0 var(--space-2) var(--space-2);
   padding: 0;
   list-style: none;
 }
@@ -343,8 +426,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -360,7 +443,7 @@
 
 .source-remote__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .source-remote__action {
@@ -379,8 +462,8 @@
 
 .repository-commit {
   display: grid;
-  gap: 4px;
-  margin: 0 4px 8px;
+  gap: var(--space-1);
+  margin: 0 var(--space-1) var(--space-1);
 }
 
 .repository-commit__label,
@@ -388,43 +471,56 @@
   width: 100%;
 }
 
+/* Starts one line tall and grows with the message, up to a bounded height;
+   RepositoryCommitControl sets the height from the content. */
 .repository-commit__label textarea {
-  min-height: 48px;
-  resize: vertical;
-  padding: 8px 8px;
-  border: 1px solid var(--color-border-subtle);
+  display: block;
+  box-sizing: border-box;
+  min-height: var(--editor-scm-input-min-height);
+  max-height: calc(
+    var(--editor-scm-input-max-lines) * var(--editor-scm-input-line-height) +
+      2 *
+      (var(--editor-scm-input-padding-block) + var(--editor-scm-input-border))
+  );
+  padding: var(--editor-scm-input-padding-block) var(--space-2);
+  overflow-y: auto;
+  resize: none;
+  border: var(--editor-scm-input-border) solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   background: var(--color-surface);
   font: inherit;
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
+  font-size: var(--font-size-sm);
+  line-height: var(--editor-scm-input-line-height);
 }
 
 .repository-commit__label textarea:focus-visible {
   border-color: var(--color-accent);
 }
 
-.repository-commit__label textarea:disabled,
-.repository-commit__footer button:disabled {
+.repository-commit__label textarea:disabled {
   opacity: 0.5;
 }
 
+/* Full-width actions above the help line, for the narrow tool sidebar. */
 .repository-commit__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "actions"
+    "help";
+  gap: var(--space-1);
 }
 
 .repository-commit__actions {
   display: flex;
-  gap: 4px;
-  flex: 0 0 auto;
+  width: 100%;
+  gap: var(--space-1);
+  grid-area: actions;
 }
 
-.repository-commit__help,
-.repository-commit__error {
+.repository-commit__help {
+  grid-area: help;
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
@@ -432,7 +528,9 @@
 }
 
 .repository-commit__footer button {
-  padding: 4px 8px;
+  min-height: var(--control-height-compact);
+  flex: 1 1 auto;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -448,6 +546,28 @@
   background: var(--color-surface-hover);
 }
 
+.repository-commit__footer button[type="submit"]:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready.
+   Full opacity instead of the global disabled fade, which is too faint. */
+.repository-commit__footer button:disabled {
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: default;
+  opacity: 1;
+}
+
 .repository-commit__error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-danger);
   color: var(--color-danger);
+  background: var(--color-danger-muted);
+  font-size: var(--font-size-xs);
 }

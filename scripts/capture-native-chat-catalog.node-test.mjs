@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
 import {
+  accessibleName,
   actionsFor,
   namedState,
   isExpandable,
@@ -13,77 +13,6 @@ import { observationFor, HARNESS } from "./capture-native-chat-dom.mjs";
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 import { JSDOM } from "jsdom";
 import { waitForComposerIdle } from "./capture-native-chat-drive.mjs";
-
-test("capture accessible selectors stay anchored to product controls", () => {
-  const source = (file) =>
-    readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
-  const effort = readFileSync(
-    new URL("../src/features/chat/ComposerEffortControl.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(effort.includes('title="Select effort"'));
-  assert.ok(effort.includes('aria-haspopup="dialog"'));
-  const header = readFileSync(
-    new URL("../src/workbench/AgentTaskHeader.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(header.includes('aria-label="Show chat resources"'));
-  assert.ok(header.includes('from "./agentTaskHeaderLazy"'));
-  assert.ok(header.includes('part="AgentTaskResources"'));
-  const headerLazy = source("workbench/agentTaskHeaderLazy.ts");
-  assert.ok(headerLazy.includes('() => import("./AgentTaskResources")'));
-  const resources = source("workbench/AgentTaskResources.tsx");
-  assert.ok(resources.includes('ariaLabel="Chat resources"'));
-  const subagentSummary = readFileSync(
-    new URL("../src/workbench/AgentTaskSubagentSummary.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(resources.includes("<AgentTaskSubagentSummary"));
-  assert.ok(resources.includes("aria-label={`Recent subagents working:"));
-  assert.ok(subagentSummary.includes('aria-label="Subagents"'));
-  const composer = source("features/chat/ChatHarnessControls.tsx");
-  assert.ok(composer.includes('aria-label="Composer options"'));
-  assert.ok(composer.includes('ariaLabel="Composer options menu"'));
-  assert.ok(composer.includes("<ComposerAddActions"));
-  const addActions = source("features/chat/ComposerAddActions.tsx");
-  assert.ok(
-    addActions.includes('<div role="group" aria-label="Session mode">'),
-  );
-  assert.ok(addActions.includes('role="menuitemradio"'));
-  const access = source("features/chat/ComposerAccessControl.tsx");
-  assert.ok(access.includes('aria-label="Access options"'));
-  assert.ok(access.includes('ariaLabel="Access mode"'));
-  const edits = source("features/chat/acp/TurnEditSummary.tsx");
-  assert.ok(edits.includes('aria-label="Files edited in this chat"'));
-  assert.ok(
-    edits.includes("aria-label={`Preview saved diff ${qualifiedLabel}`}"),
-  );
-  assert.ok(
-    edits.includes(
-      'aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}',
-    ),
-  );
-  assert.ok(
-    source("features/chat/acp/InlineSavedDiff.tsx").includes(
-      'label="Inline saved diff"',
-    ),
-  );
-  assert.ok(
-    source("workbench/AgentArtifactPane.tsx").includes(
-      'aria-label="Agent artifacts"',
-    ),
-  );
-  assert.ok(
-    source("features/diff/DiffSurface.tsx").includes(
-      'label="Unified file diff"',
-    ),
-  );
-  const tabs = source("workbench/AgentArtifactTabStrip.tsx");
-  assert.ok(tabs.includes('aria-label="Agent artifact tabs"'));
-  assert.ok(
-    tabs.includes("const accessibleName = `${kindLabel} ${fullPath}`;"),
-  );
-});
 
 test("CP-29d/e composer menus: access is its own menu, plan is a named Session mode item", async () => {
   const menu = (items) =>
@@ -335,7 +264,7 @@ async function observeMarkup(markup, outsideMarkup = "", state = "completed") {
 
 test("observation sees the current effort slider and shared Access options trigger", async () => {
   const observation = await observeMarkup(
-    '<button aria-haspopup="dialog" title="Select effort">Medium</button><div class="composer__effort-menu" role="dialog"><input type="range" aria-label="Thinking level"></div><button aria-label="Access options">Read-only</button>',
+    '<button aria-haspopup="dialog" title="Select effort" aria-label="Thinking level: Medium">Medium</button><div class="composer__effort-menu" role="dialog"><input type="range" aria-label="Thinking level"></div><button aria-label="Access options">Read-only</button>',
   );
   assert.equal(observation.controls.effort, true);
   assert.equal(observation.controls.effortEnabled, true);
@@ -343,10 +272,68 @@ test("observation sees the current effort slider and shared Access options trigg
   assert.equal(observation.visible.effortMenu, true);
   assert.equal(observation.visible.effortSlider, true);
   const withdrawn = await observeMarkup(
-    '<button aria-haspopup="dialog" title="Select effort" disabled>Medium</button><div class="composer__effort-menu" role="dialog"></div>',
+    '<button aria-haspopup="dialog" title="Select effort" aria-label="Thinking level: Medium" disabled>Medium</button><div class="composer__effort-menu" role="dialog"></div>',
   );
   assert.equal(withdrawn.controls.effortEnabled, false);
   assert.equal(withdrawn.visible.effortSlider, false);
+  // A title alone no longer names the trigger; the "Thinking level: <level>"
+  // accessible name does. The disabled placeholder has no level and is not it.
+  for (const stale of [
+    '<button aria-haspopup="dialog" title="Select effort">Medium</button>',
+    '<button aria-label="Thinking level" disabled>Thinking level</button>',
+  ])
+    assert.equal((await observeMarkup(stale)).controls.effort, false);
+});
+
+test("observation names the harness and model listboxes, including aria-labelledby", async () => {
+  const harness =
+    '<button aria-label="Harness" aria-controls="h-list" aria-haspopup="listbox"></button>';
+  const model =
+    '<button aria-label="Model" aria-controls="m-list" aria-haspopup="listbox"></button>';
+  const harnessOpen = await observeMarkup(
+    harness + model,
+    '<div class="menu-popover"><div id="h-list" role="listbox" aria-label="Harness"><div role="option" data-option-id="codex">Codex</div></div></div>',
+  );
+  assert.equal(harnessOpen.visible.harnessMenu, true);
+  assert.equal(harnessOpen.visible.modelMenu, false);
+  const modelOpen = await observeMarkup(
+    harness + model,
+    '<div class="menu-popover"><p id="m-title">Select   model</p><div id="m-list" role="listbox" aria-labelledby="m-title"><div role="option">Opus</div></div></div>',
+  );
+  assert.equal(modelOpen.visible.modelMenu, true);
+  assert.equal(modelOpen.visible.harnessMenu, false);
+  // A listbox whose label resolves to another name is neither menu.
+  const other = await observeMarkup(
+    harness + model,
+    '<div class="menu-popover"><p id="m-title">Pick one</p><div id="m-list" role="listbox" aria-labelledby="m-title" aria-label="Select model"></div></div>',
+  );
+  assert.equal(other.visible.modelMenu, false);
+});
+
+test("accessibleName follows aria-labelledby, then aria-label, then text", () => {
+  const { document } = new JSDOM(
+    '<p id="a">Select</p><p id="b"> model </p><div id="both" aria-labelledby="a b" aria-label="Ignored">x</div><div id="dangling" aria-labelledby="missing" aria-label="Harness"></div><div id="text"> Plan\n mode </div><div id="bound" aria-labelledby="a a a a a"></div>',
+  ).window;
+  const name = (id) => accessibleName(document.getElementById(id));
+  assert.equal(name("both"), "Select model");
+  assert.equal(name("dangling"), "Harness");
+  assert.equal(name("text"), "Plan mode");
+  assert.throws(() => name("bound"), /capture-name-bound/u);
+});
+
+test("observation sees the meter only inside the named Composer context", async () => {
+  const meter =
+    '<span role="progressbar" aria-label="6,000 used / 272,000 total tokens"></span>';
+  const named = await observeMarkup(
+    `<p class="composer__context" aria-label="Composer context">${meter}</p>`,
+  );
+  assert.equal(named.visible.meter, true);
+  assert.equal(named.controls.meter, true);
+  const unnamed = await observeMarkup(
+    `<p class="composer__context">${meter}</p>`,
+  );
+  assert.equal(unnamed.visible.meter, false);
+  assert.equal(unnamed.controls.meter, false);
 });
 
 test("observation distinguishes CP-32c header counts and loaded rows from the child pane", async () => {
@@ -635,7 +622,7 @@ test("every admitted harness captures its advertised effort slider", () => {
         `${harness}-effort-menu`,
       );
     assert.deepEqual(actionsFor("effort-menu", harness), [
-      'button[aria-haspopup="dialog"][title="Select effort"]',
+      'button[aria-haspopup="dialog"][aria-label^="Thinking level: "]',
     ]);
     const observation = {
       state: "completed",

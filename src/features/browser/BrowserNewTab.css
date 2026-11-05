@@ -3,14 +3,14 @@
   min-height: 0;
   overflow-y: auto;
   background: var(--browser-start-fill);
-  /* Codex 67: a 692 px column whose heading sits 28 px under the toolbar. */
+
   padding: 28px max(16px, calc((100% - 692px) / 2));
 }
 .browser-new-tab section + section {
   margin-top: 36px;
 }
 .browser-new-tab h2 {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-4);
   color: var(--browser-bright-text);
   font-size: 12px;
   font-weight: 600;
@@ -18,7 +18,7 @@
 .browser-new-tab__tools {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 16px;
+  gap: var(--space-1) var(--space-4);
 }
 .browser-new-tab__tool {
   display: flex;
@@ -33,13 +33,13 @@
 .browser-new-tab__tools button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 36px;
   border: 0;
   border-radius: var(--radius-md);
   color: var(--browser-bright-text);
   background: var(--browser-chrome-fill);
-  padding: 8px;
+  padding: var(--space-2);
   text-align: left;
   font-size: 12px;
 }
@@ -47,10 +47,19 @@
   flex: none;
   color: var(--browser-muted-text);
 }
+/* In a narrow pane the label truncates first; the shortcut chip keeps its
+   width and never spills past its button onto the neighbouring options button. */
+.browser-new-tab__tools button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .browser-new-tab__tools kbd {
+  flex: none;
   margin-left: auto;
   border-radius: var(--radius-pill);
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   background: var(--browser-address-fill);
   color: var(--browser-muted-text);
   font: inherit;
@@ -98,7 +107,7 @@
 .browser-new-tab__suggestions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 .browser-new-tab__suggestions button {
   display: block;
@@ -117,7 +126,7 @@
   place-items: center;
   width: 36px;
   height: 36px;
-  margin: 0 auto 12px;
+  margin: 0 auto var(--space-3);
   font-size: 25px;
 }
 .browser-new-tab__suggestions img {

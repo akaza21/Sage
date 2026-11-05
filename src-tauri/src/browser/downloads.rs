@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Mutex};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -6,9 +6,17 @@ use tauri::{AppHandle, Emitter, State};
 use super::{BrowserState, admit_url};
 
 mod close;
+pub(crate) mod folder;
+pub(crate) mod io;
 #[cfg(windows)]
 mod native;
+pub(crate) mod placeholder;
+pub(crate) mod reservation;
 pub(crate) mod show;
+#[cfg(windows)]
+mod staging;
+pub(crate) mod worker;
+use close::cancel_after_native;
 pub(super) use close::cancel_tab_after_native;
 #[cfg(windows)]
 pub(super) use native::{cancel_native, register_native};
@@ -32,6 +40,8 @@ pub(crate) struct DownloadView {
     pub(super) state: &'static str,
     pub(super) received_bytes: u64,
     pub(super) total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) error: Option<String>,
 }
 
 pub(super) struct DownloadRegistry {
@@ -152,6 +162,7 @@ impl DownloadRegistry {
                 state: "choosingDestination",
                 received_bytes: 0,
                 total_bytes: None,
+                error: None,
             },
         );
         while self.entries.len() > MAX_DOWNLOADS {
@@ -260,7 +271,9 @@ impl DownloadRegistry {
         let Some(entry) = self.entries.get_mut(&id) else {
             return false;
         };
-        if !is_active(entry.state) {
+        if !is_active(entry.state)
+            || (entry.state == "publishing" && !matches!(state, "completed" | "error"))
+        {
             return false;
         }
         entry.state = state;
@@ -284,7 +297,7 @@ impl DownloadRegistry {
             .entries
             .iter_mut()
             .filter_map(|(id, entry)| {
-                if entry.tab_id == tab_id && is_active(entry.state) {
+                if entry.tab_id == tab_id && is_cancelable(entry.state) {
                     entry.state = "canceled";
                     Some(*id)
                 } else {
@@ -302,7 +315,7 @@ impl DownloadRegistry {
         let Some(entry) = self.entries.get_mut(&id) else {
             return false;
         };
-        if entry.tab_id != tab_id || !is_active(entry.state) {
+        if entry.tab_id != tab_id || !is_cancelable(entry.state) {
             return false;
         }
         entry.state = "canceled";
@@ -329,6 +342,10 @@ fn admitted_file_name(name: &str) -> Option<String> {
 }
 
 fn is_active(state: &str) -> bool {
+    is_cancelable(state) || state == "publishing"
+}
+
+fn is_cancelable(state: &str) -> bool {
     matches!(state, "choosingDestination" | "downloading")
 }
 
@@ -406,29 +423,6 @@ pub(crate) async fn browser_cancel_download(
         }),
     );
     Ok(())
-}
-
-fn cancel_after_native(
-    downloads: &Mutex<DownloadRegistry>,
-    tab_id: &str,
-    id: u64,
-    native: impl FnOnce() -> Result<(), String>,
-) -> Result<Vec<DownloadView>, String> {
-    let active = downloads
-        .lock()
-        .map_err(|error| error.to_string())?
-        .entries
-        .get(&id)
-        .is_some_and(|entry| entry.tab_id == tab_id && is_active(entry.state));
-    if !active {
-        return Err("browser download unavailable".into());
-    }
-    native()?;
-    let mut registry = downloads.lock().map_err(|error| error.to_string())?;
-    if !registry.cancel(tab_id, id) {
-        return Err("browser download unavailable".into());
-    }
-    Ok(registry.views(tab_id))
 }
 
 #[cfg(test)]

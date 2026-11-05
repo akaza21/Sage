@@ -6,7 +6,7 @@ export function paneSelector(selector) {
   // Self-contained: serialized into page expressions.
   const FOCUSED_CHAT_RESOURCES = 'button[aria-label="Show chat resources"]';
   if (
-    ['button[aria-label="New task"]', FOCUSED_CHAT_RESOURCES].includes(selector)
+    ['button[aria-label="New chat"]', FOCUSED_CHAT_RESOURCES].includes(selector)
   )
     return selector;
   return selector

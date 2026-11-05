@@ -25,7 +25,7 @@ import {
   isExpandable,
   expandExpression,
   COMPOSER_IDLE_CONTROL,
-  NEW_TASK,
+  NEW_CHAT,
   HARNESS_PICKER,
   harnessOption,
   ACCESS_OPTIONS,
@@ -76,8 +76,8 @@ export async function prepareCaptureChat(
     return true;
   }, deadline);
   record("fresh-chat-start", previous);
-  // Agent navigation has no drawer at any capture width: New task is direct.
-  await click(cdp, NEW_TASK, deadline, record);
+  // Agent navigation has no drawer at any capture width: New chat is direct.
+  await click(cdp, NEW_CHAT, deadline, record);
   let captureChat;
   await waitForState(async () => {
     const observation = await observe();

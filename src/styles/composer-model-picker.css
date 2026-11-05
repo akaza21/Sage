@@ -1,6 +1,5 @@
 .composer__model-group {
   display: flex;
-  min-width: 60px;
   align-items: center;
   gap: 4px;
   margin-left: auto;
@@ -13,8 +12,6 @@
   gap: 4px;
   padding: 0 4px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__model-label {
@@ -51,15 +48,14 @@
 
 .composer__model-group .composer__effort-picker {
   min-width: 28px;
-  overflow: hidden;
-  height: 28px;
   gap: 4px;
   padding: 0 4px;
-  border: 0;
-  color: var(--composer-control-text);
-  background: transparent;
-  font-size: 11px;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+span.composer__model-trigger {
+  cursor: default;
 }
 
 .composer__effort-menu.menu-popover {

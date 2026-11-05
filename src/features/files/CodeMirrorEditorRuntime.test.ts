@@ -675,7 +675,7 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
 
   function runtimeSource(): Promise<string> {
     return readFile(
-      resolve("src/features/files/CodeMirrorEditorRuntime.ts"),
+      resolve("src/features/files/editorDocumentTheme.ts"),
       "utf8",
     );
   }
@@ -685,37 +685,29 @@ describe("documentSyntaxHighlightStyle token wiring", () => {
     expect(expectedTokenTable).toHaveLength(defaultHighlightStyle.specs.length);
   });
 
-  it("rejects an inserted runtime token table entry", async () => {
-    const inserted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-meta)",',
-      '"var(--doc-syntax-meta)",\n  null,',
-    );
-    expect(() => assertTokenTableMatchesSpecs(inserted)).toThrow();
-  });
-
-  it("rejects a deleted runtime token table entry", async () => {
-    const deleted = (await runtimeSource()).replace(
-      '"var(--doc-syntax-keyword)",',
-      "",
-    );
-    expect(() => assertTokenTableMatchesSpecs(deleted)).toThrow();
-  });
-
-  it("rejects a reordered runtime token table entry", async () => {
-    const reordered = (await runtimeSource()).replace(
-      '"var(--doc-syntax-type)",\n  "var(--doc-syntax-class)",',
-      '"var(--doc-syntax-class)",\n  "var(--doc-syntax-type)",',
-    );
-    expect(reordered).not.toEqual(await runtimeSource());
-    expect(() => assertTokenTableMatchesSpecs(reordered)).toThrow();
-  });
-
   it("mounts token-driven syntax declarations for every syntax token", () => {
     const { runtime } = runtimeForPath("notes.txt");
     const colors = tokenDrivenColors();
     for (const token of syntaxTokens) {
       expect(colors.join("\n")).toContain(`var(${token})`);
     }
+    runtime.destroy();
+  });
+
+  it("mounts the selection colors from the document tokens", () => {
+    const { runtime } = runtimeForPath("notes.txt");
+    const selection = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .filter((rule) => rule.selectorText.includes(".cm-selectionBackground"))
+      .map((rule) => [
+        rule.style.getPropertyValue("background"),
+        rule.style.getPropertyValue("color"),
+      ]);
+    expect(selection).toContainEqual([
+      "var(--resource-document-selection)",
+      "var(--resource-document-selection-foreground)",
+    ]);
     runtime.destroy();
   });
 

@@ -1,0 +1,188 @@
+.browser-history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--browser-start-fill);
+  color: var(--browser-bright-text);
+  /* The New tab page's 692 px column, so the two pages line up. */
+  padding: 28px max(16px, calc((100% - 692px) / 2));
+  font-size: 12px;
+}
+.browser-history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.browser-history h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.browser-history h2 {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  color: var(--browser-muted-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.browser-history button {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.browser-history button:hover:not(:disabled) {
+  background: var(--browser-control-hover);
+}
+.browser-history button:focus-visible,
+.browser-history input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.browser-history button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.browser-history__close,
+.browser-history__remove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--browser-muted-text);
+}
+.browser-history__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.browser-history__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--browser-address-fill);
+  padding: 0 12px;
+  color: var(--browser-muted-text);
+}
+.browser-history__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--browser-bright-text);
+  font: inherit;
+}
+.browser-history__search input:focus-visible {
+  outline: none;
+}
+.browser-history__search:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+.browser-history__search input::placeholder {
+  color: var(--browser-muted-text);
+}
+.browser-history__day + .browser-history__day {
+  margin-top: 20px;
+}
+.browser-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-history__visit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-md);
+}
+.browser-history__visit:hover,
+.browser-history__visit:focus-within {
+  background: var(--browser-chrome-fill);
+}
+.browser-history__remove {
+  visibility: hidden;
+}
+.browser-history__visit:hover .browser-history__remove,
+.browser-history__visit:focus-within .browser-history__remove {
+  visibility: visible;
+}
+.browser-history__open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  text-align: left;
+}
+.browser-history__open time {
+  flex: none;
+  width: 64px;
+  color: var(--browser-muted-text);
+  font-variant-numeric: tabular-nums;
+}
+.browser-history__open svg {
+  flex: none;
+  color: var(--browser-muted-text);
+}
+.browser-history__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-history__host {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--browser-muted-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-history__status,
+.browser-history__error {
+  margin: 8px;
+  color: var(--browser-muted-text);
+}
+.browser-history__error {
+  color: var(--color-danger);
+}
+.browser-history__more {
+  margin: 12px 0 0 4px;
+  padding: 4px 12px;
+  background: var(--browser-chrome-fill);
+}
+@container (max-width: 430px) {
+  .browser-history__host {
+    display: none;
+  }
+}
+@media (hover: none) {
+  .browser-history__remove {
+    visibility: visible;
+  }
+}
+@media (forced-colors: active) {
+  .browser-history button {
+    border: 1px solid ButtonText;
+  }
+  .browser-history button:disabled {
+    color: GrayText;
+    opacity: 1;
+  }
+  .browser-history button:focus-visible,
+  .browser-history__search:focus-within {
+    outline-color: Highlight;
+  }
+}

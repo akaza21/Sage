@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import {
@@ -36,6 +43,10 @@ export function RepositoryCommitControl({
   const [submitting, setSubmitting] = useState(false);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const focusAfterSubmit = useRef(false);
+  useLayoutEffect(() => {
+    const field = messageRef.current;
+    if (field) fitToContent(field);
+  }, [message]);
   const helpId = useId();
   const validationId = useId();
   const errorId = useId();
@@ -170,7 +181,7 @@ export function RepositoryCommitControl({
         <span className="sr-only">Commit message for {rootLabel}</span>
         <textarea
           ref={messageRef}
-          rows={2}
+          rows={1}
           maxLength={MAX_GIT_COMMIT_MESSAGE_BYTES}
           value={message}
           placeholder="Commit message"
@@ -313,4 +324,14 @@ export function RepositoryCommitControl({
       ) : null}
     </form>
   );
+}
+
+/**
+ * Sizes the field to its content; the stylesheet's min- and max-height bound
+ * it, and a longer message scrolls inside the field.
+ */
+function fitToContent(field: HTMLTextAreaElement) {
+  field.style.height = "auto";
+  const borders = field.offsetHeight - field.clientHeight;
+  field.style.height = `${field.scrollHeight + borders}px`;
 }

@@ -40,9 +40,10 @@ describe("browser chrome shortcuts", () => {
       [{ key: "0", ctrlKey: true }, "zoomReset"],
       [{ key: "t", ctrlKey: true }, "newTab"],
       [{ key: "w", ctrlKey: true }, "closeTab"],
+      [{ key: "h", ctrlKey: true }, "history"],
       [{ key: "Escape" }, "stop"],
     ] as const) {
-      const event = press(root, address, init);
+      const event = press(root, init.key === "Escape" ? root : address, init);
       expect(event.defaultPrevented).toBe(true);
       expect(dispatch).toHaveBeenLastCalledWith(action);
     }
@@ -59,6 +60,9 @@ describe("browser chrome shortcuts", () => {
       press(root, address, { key: "Escape" }),
       press(root, composer, { key: "l", ctrlKey: true }),
       press(root, address, { key: "t", ctrlKey: true, shiftKey: true }),
+      press(root, address, { key: "r", ctrlKey: true, shiftKey: true }),
+      press(root, address, { key: "ArrowLeft", altKey: true, shiftKey: true }),
+      press(root, address, { key: "t", metaKey: true }),
       press(root, address, { key: "=", code: "Equal" }),
       press(root, address, { key: "=", ctrlKey: true, altKey: true }),
       press(root, address, { key: "=", ctrlKey: true, metaKey: true }),

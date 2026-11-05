@@ -39,7 +39,7 @@ const elementTip = ({ url, selector }: BrowserElementContext) =>
   `${url}\n${selector}`;
 
 /**
- * Annotate's elements (Codex ref 63): one chip per element until there are
+ * Annotate's elements: one chip per element until there are
  * several, then one "N annotations" chip whose hover or focus opens a card
  * of each element's role, name, comment and page. With `onRemove` it is the
  * composer's draft row; without, the read-only row above a sent turn, which

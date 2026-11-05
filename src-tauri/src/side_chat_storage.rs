@@ -11,17 +11,17 @@ pub(crate) fn validate_parent(
 ) -> AppResult<()> {
     crate::chat_lifecycle::validate_chat_identifier("Parent Chat ID", parent)?;
     let count: i64 = transaction.query_row(
-        "SELECT COUNT(*) FROM chats WHERE id GLOB 'side-*'",
+        "SELECT COUNT(*) FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)",
         [],
         |row| row.get(0),
     )?;
     let exists: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2 AND id NOT GLOB 'side-*')",
+        "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2 AND id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1))",
         params![project, parent],
         |row| row.get(0),
     )?;
     let project_has_side: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id GLOB 'side-*')",
+        "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1))",
         [project],
         |row| row.get(0),
     )?;
@@ -31,8 +31,15 @@ pub(crate) fn validate_parent(
     Ok(())
 }
 
-pub(crate) fn refuse_persistence(chat_id: &str) -> AppResult<()> {
-    if chat_id.starts_with("side-") {
+pub(crate) fn is_temporary(connection: &rusqlite::Connection, chat_id: &str) -> AppResult<bool> {
+    Ok(connection.query_row("SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE id=?1 AND kind='chat' AND json_extract(metadata_json,'$.ephemeral')=1)", [chat_id], |row| row.get(0))?)
+}
+
+pub(crate) fn refuse_persistence(
+    connection: &rusqlite::Connection,
+    chat_id: &str,
+) -> AppResult<()> {
+    if is_temporary(connection, chat_id)? {
         return Err(AppError::InvalidRequest(
             "Side chats are temporary and cannot be persisted".into(),
         ));
@@ -46,7 +53,7 @@ pub(crate) fn refuse_parent_removal(
     chat: &str,
 ) -> AppResult<()> {
     let owns_side: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE project_id=?1 AND id GLOB 'side-*' AND json_extract(metadata_json,'$.parentChatId')=?2)",
+        "SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) AND json_extract(metadata_json,'$.parentChatId')=?2)",
         params![project, chat], |row| row.get(0),
     )?;
     if owns_side {
@@ -61,7 +68,7 @@ pub(crate) fn validate_layout(
     connection: &rusqlite::Connection,
     layout: &crate::domain::ProjectLayoutRequest,
 ) -> AppResult<()> {
-    let rows = connection.prepare("SELECT id,json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE project_id=?1 AND id GLOB 'side-*' LIMIT 9")?
+    let rows = connection.prepare("SELECT id,json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) LIMIT 9")?
         .query_map([&layout.project_id], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))?
         .collect::<Result<Vec<_>,_>>()?;
     if rows.len() > 8
@@ -118,7 +125,7 @@ impl Database {
     pub(crate) fn purge_side_chats(&self) -> AppResult<()> {
         let rows = self
             .connection()
-            .prepare("SELECT project_id,id FROM chats WHERE id GLOB 'side-*' ORDER BY id LIMIT 9")?
+            .prepare("SELECT project_id,id FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) ORDER BY id LIMIT 9")?
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
@@ -177,12 +184,6 @@ impl Database {
     }
 
     pub(crate) fn remove_side_chat(&self, project: &str, chat: &str) -> AppResult<()> {
-        if !chat.starts_with("side-")
-            || !uuid::Uuid::parse_str(&chat[5..])
-                .is_ok_and(|uuid| uuid.to_string().as_str() == &chat[5..])
-        {
-            return Err(AppError::InvalidRequest("not a temporary Chat".into()));
-        }
         let exists: bool = self.connection().query_row(
             "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)",
             params![project, chat],
@@ -190,6 +191,9 @@ impl Database {
         )?;
         if !exists {
             return Ok(());
+        }
+        if !is_temporary(&self.connection(), chat)? {
+            return Err(AppError::InvalidRequest("not a temporary Chat".into()));
         }
         // Refuse before touching anything when a guard is already missing.
         history_guards(&self.connection())?;
@@ -233,7 +237,7 @@ impl Database {
         )?;
         transaction.execute("UPDATE acp_project_usage SET chat_count=chat_count-1,session_count=session_count-?2,turn_count=turn_count-?3,fact_count=fact_count-?4,payload_bytes=payload_bytes-?5,revision=revision+1 WHERE project_id=?1", params![project,sessions,turns,facts,bytes])?;
         transaction.execute("UPDATE acp_store_usage SET chat_count=chat_count-1,session_count=session_count-?1,turn_count=turn_count-?2,fact_count=fact_count-?3,fact_bytes=fact_bytes-?4,shared_payload_bytes=shared_payload_bytes-?4,revision=revision+1 WHERE singleton=1", params![sessions,turns,facts,bytes])?;
-        let fallback: Option<String> = transaction.query_row("SELECT id FROM workbench_tabs WHERE project_id=?1 AND kind='chat' AND id NOT GLOB 'side-*' ORDER BY position LIMIT 1", [project], |row| row.get(0)).optional()?;
+        let fallback: Option<String> = transaction.query_row("SELECT id FROM workbench_tabs WHERE project_id=?1 AND kind='chat' AND id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) ORDER BY position LIMIT 1", [project], |row| row.get(0)).optional()?;
         transaction.execute(
             "UPDATE project_layouts SET active_tab_id=?3 WHERE project_id=?1 AND active_tab_id=?2",
             params![project, chat, fallback],
@@ -367,7 +371,7 @@ mod tests {
             reopened
                 .connection()
                 .query_row(
-                    "SELECT COUNT(*) FROM chats WHERE id GLOB 'side-*'",
+                    "SELECT COUNT(*) FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)",
                     [],
                     |row| row.get::<_, i64>(0)
                 )

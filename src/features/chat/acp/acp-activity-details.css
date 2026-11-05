@@ -2,17 +2,20 @@
   display: grid;
   gap: var(--space-1);
   max-height: 220px;
-  margin-top: var(--space-1);
+  margin-top: calc(var(--space-1) / 2);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
-/* Codex rows (33px / 22px measured) on the 4px scale; 13px muted. */
 .acp-tool-rollup > summary {
-  min-height: 32px;
+  min-height: var(--row-height-compact);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-right: var(--space-1);
+  list-style: none;
+  transition: color var(--motion-duration-fast) ease;
 }
 
 .acp-tool-rollup__items .acp-tool-rollup > summary {
@@ -24,7 +27,6 @@
   overflow: auto;
 }
 
-/* Codex labels a tool result by its bare, lowercase id: "json" (s5/f0390). */
 .acp-tool-result .acp-code-block__language {
   text-transform: lowercase;
 }
@@ -59,13 +61,7 @@
 
 .acp-tool-running > svg {
   flex: 0 0 auto;
-  animation: acp-tool-spin 1s linear infinite;
-}
-
-@keyframes acp-tool-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 .acp-activity-card.acp-activity-card--tool-rollup {
@@ -74,21 +70,12 @@
   background: transparent;
 }
 
-.acp-tool-rollup > summary {
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: var(--row-height-compact);
-  padding-right: var(--space-1);
-  list-style: none;
-  transition: color var(--motion-duration-fast) ease;
-}
-
 .acp-tool-rollup > summary::-webkit-details-marker {
   display: none;
 }
 
 .acp-tool-rollup__summary-copy,
-.acp-tool-rollup__meta,
-.acp-tool-rollup__duration {
+.acp-tool-rollup__meta {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -97,7 +84,7 @@
 
 .acp-tool-rollup__summary-copy {
   overflow: hidden;
-  align-items: baseline;
+  align-items: center;
 }
 
 .acp-tool-rollup__summary-copy > svg {
@@ -108,27 +95,12 @@
 .acp-tool-rollup__label {
   flex: 0 1 auto;
   max-width: 100%;
-  /* One line clipped at the column edge (Codex refs 08 and 20). */
+
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/*
- * Codex s8/f0123-f0128, f0174-f0177: a white band crosses the label left to
- * right at about 0.6 px/ms, then the label idles until the next 4 s period.
- * The band has a fixed size, a 56 px white core between 60 px soft edges, so
- * a short label shimmers as brightly as a long one (a percentage band only
- * grazes a short label). It travels 840 px, from just off the left edge to
- * past the widest (660 px) label, over 35% of the period: 1.4 s at 0.6 px/ms.
- * Cost: background-position is not compositable, so the running animation
- * is ticked on the main thread for the whole period and each sweep repaints
- * the label's text every frame; while idle the value is constant, so there
- * is style work but nothing to repaint. A composited variant (transform on a
- * masked overlay) needs a second, text-clipped copy of every live label that
- * stays aligned under ellipsis, which costs more DOM and layout than the few
- * short labels this paints, so the background sweep stays.
- */
 .acp-live-shimmer {
   background:
     linear-gradient(
@@ -160,7 +132,6 @@
   }
 }
 
-/* Codex's row glyphs are thin strokes (s5/f0405: ⌘, terminal-square). */
 .acp-tool-rollup__summary-copy > svg:first-child {
   color: var(--color-text-muted);
   stroke-width: 1.5;
@@ -172,24 +143,20 @@
   white-space: nowrap;
 }
 
-.acp-tool-rollup[data-activity-state="completed"] .acp-tool-rollup__duration,
 .acp-tool-rollup[data-activity-state="completed"]
   .acp-tool-rollup__meta
   > .acp-state {
   display: none;
 }
 
-.acp-tool-rollup__duration {
-  font-variant-numeric: tabular-nums;
-}
-
 .acp-tool-rollup__chevron {
   flex: 0 0 auto;
   opacity: 0;
-  transition: transform var(--motion-duration-chevron) ease-out;
+  transition:
+    opacity var(--motion-duration-fast) ease,
+    transform var(--motion-duration-chevron) ease-out;
 }
 
-/* Group open (Codex s2/f0018-f0021): rows fade in top to bottom. */
 .acp-tool-rollup__items > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
@@ -201,7 +168,6 @@
   opacity: 1;
 }
 
-/* Open turns > into a down chevron (Codex s5/f0390, s2/f0015). */
 .acp-tool-rollup[open] > summary .acp-tool-rollup__chevron {
   transform: rotate(90deg);
 }
@@ -227,12 +193,17 @@
 }
 
 .acp-tool-command-frame {
+  --chat-tool-foreground: color-mix(
+    in srgb,
+    var(--color-text-primary) 80%,
+    var(--color-text-secondary)
+  );
   max-width: 100%;
   margin-top: var(--space-2);
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--color-canvas);
+  border: var(--border-width) solid var(--agent-shell-tab-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
 }
 
 .acp-tool-command-frame .acp-tool-command__disclosure {
@@ -241,21 +212,24 @@
   justify-content: space-between;
   gap: var(--space-2);
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
-  background: var(--color-panel);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 0;
+  color: var(--chat-tool-foreground);
+  background: transparent;
   font-family: var(--font-family-ui);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   white-space: normal;
 }
 
 .acp-tool-command__outcome {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--color-border-subtle);
+  padding: var(--space-1) var(--space-2);
+  border-top: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  text-align: right;
 }
 
 .acp-tool-compact[data-activity-state="failed"] .acp-tool-command__outcome {
@@ -272,9 +246,9 @@
   padding: var(--space-3);
   overflow: auto;
   border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-canvas);
-  font-family: var(--font-family-mono);
+  color: var(--chat-tool-foreground, var(--color-text-primary));
+  background: transparent;
+  font-family: var(--chat-font-family-mono, var(--font-family-mono));
   font-size: var(--font-size-sm);
   line-height: 1.6;
   tab-size: 2;
@@ -282,7 +256,7 @@
 }
 
 .acp-tool-command--line {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2) 0;
   max-height: 14rem;
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
@@ -295,7 +269,7 @@
 
 .acp-tool-command--output {
   max-height: 14rem;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
   word-break: break-word;
@@ -315,7 +289,6 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;

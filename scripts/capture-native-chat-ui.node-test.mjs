@@ -27,7 +27,7 @@ import {
   COMPOSER_FILL,
   HARNESS,
   HARNESS_PICKER,
-  NEW_TASK,
+  NEW_CHAT,
   SEND_MESSAGE,
   accessModeOption,
   clickExpression,
@@ -39,6 +39,7 @@ import {
 import { runCaptureActions } from "./capture-native-chat-drive.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
+import { resolveUiPort } from "./lib/ui-test-port.mjs";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,7 +52,9 @@ const WIDTHS = [1888, 720, 480];
 /**
  * [fixture scenario, harness, capture state]. Each state runs at every width
  * the capture CLI admits for it. Codex has no model picker without an account
- * (a catalogued product gap), so the model menu is driven as Claude.
+ * (a catalogued product gap), so the model menu is driven as Claude. A single
+ * advertised model renders no picker, so the model menu needs the fixture
+ * whose harness advertises many models once selected and ready.
  */
 const CELLS = Object.freeze([
   ["agent-single", "codex", "turn-completed"],
@@ -60,7 +63,7 @@ const CELLS = Object.freeze([
   ["agent-single", "codex", "responsive-720"],
   ["agent-single", "codex", "responsive-480"],
   ["agent-single", "codex", "harness-menu"],
-  ["agent-single", "claude", "model-menu"],
+  ["agent-picker-harness-model", "claude", "model-menu"],
   ["agent-single", "codex", "access-menu"],
   ["agent-single", "codex", "files-pill"],
   ["agent-command-rollup", "codex", "worked-expanded"],
@@ -71,20 +74,16 @@ const CELLS = Object.freeze([
   ["agent-composer-context-known", "codex", "context-meter"],
 ]);
 
-/** Two distinct free loopback ports; both probes stay bound until both are read. */
-async function reserveFreePorts() {
-  const listen = () =>
-    new Promise((done, fail) => {
-      const probe = createServer();
-      probe.once("error", fail);
-      probe.listen(0, "127.0.0.1", () => done(probe));
-    });
-  const probes = [await listen(), await listen()];
-  const ports = probes.map((probe) => probe.address().port);
-  await Promise.all(
-    probes.map((probe) => new Promise((done) => probe.close(done))),
-  );
-  return ports;
+/** A free loopback port for the Chromium CDP endpoint. */
+async function reserveFreePort() {
+  const probe = await new Promise((done, fail) => {
+    const server = createServer();
+    server.once("error", fail);
+    server.listen(0, "127.0.0.1", () => done(server));
+  });
+  const { port } = probe.address();
+  await new Promise((done) => probe.close(done));
+  return port;
 }
 
 /** The capture options the CLI would admit, or null for a refused width. */
@@ -111,10 +110,13 @@ function admitted(harness, state, width) {
 
 let lane = null;
 test.before(async () => {
-  const [vitePort, cdpPort] = await reserveFreePorts();
-  const url = `http://127.0.0.1:${vitePort}/`;
+  // The UI port has one owner per run: SAGE_UI_PORT (default 1431), as for
+  // Playwright, so concurrent UI lanes take distinct ports by configuration.
+  const url = `http://127.0.0.1:${resolveUiPort()}/`;
   const server = await startDevServer(repositoryRoot, url);
   try {
+    // Reserved once Vite holds the UI port, so the two cannot coincide.
+    const cdpPort = await reserveFreePort();
     const browser = await chromium.launch({
       headless: true,
       args: [
@@ -205,6 +207,7 @@ async function openCapture(t, scenario, options) {
     );
   }, deadline);
   return {
+    page,
     cdp,
     evaluate,
     observe,
@@ -247,15 +250,45 @@ function drive(capture, options, deadline = Date.now() + DRIVE_MS) {
   });
 }
 
+/**
+ * Fixture setup a scenario needs before its state is reachable. The picker
+ * fixture starts on an unavailable harness: the capture's own harness controls
+ * select the advertised one, then the fixture releases its readiness gate, as
+ * a native harness reports ready, and its 128 models enable the Model picker.
+ */
+const PREPARE = Object.freeze({
+  "agent-picker-harness-model": async (capture) => {
+    await settled(() => capture.evaluate(clickExpression(HARNESS_PICKER)));
+    await settled(() =>
+      capture.evaluate(clickExpression(harnessOption("visual-acp"))),
+    );
+    await settled(
+      async () => (await capture.observe()).selected === "visual-acp",
+      "harness selection",
+    );
+    assert.equal(
+      await capture.evaluate(
+        "(()=>{const release=window.__releaseVisualPickerHarnessReady;if(!release)return false;release();return true})()",
+      ),
+      true,
+    );
+    await settled(
+      async () => (await capture.observe()).controls.modelEnabled === true,
+      "model picker",
+    );
+  },
+});
+
 for (const [scenario, harness, state] of CELLS)
   for (const width of WIDTHS) {
     const options = admitted(harness, state, width);
     if (!options) continue;
     test(
       `${harness} ${state} at ${width} is driven and witnessed on the rendered ${scenario} Chat`,
-      { timeout: OPEN_MS + DRIVE_MS + SETTLE_MS },
+      { timeout: OPEN_MS + DRIVE_MS + SETTLE_MS * 4 },
       async (t) => {
         const capture = await openCapture(t, scenario, options);
+        await PREPARE[scenario]?.(capture);
         await drive(capture, options);
         const predicates = await reached(capture, options);
         assert.equal(predicates.namedState, true, JSON.stringify(predicates));
@@ -296,8 +329,8 @@ for (const width of WIDTHS)
         "agent-single",
         admitted("codex", "composer-idle", width),
       );
-      // New task is reachable without a navigation drawer at every width.
-      for (const control of [NEW_TASK, HARNESS_PICKER, ACCESS_OPTIONS])
+      // New chat is reachable without a navigation drawer at every width.
+      for (const control of [NEW_CHAT, HARNESS_PICKER, ACCESS_OPTIONS])
         await settled(() => clickable(capture, control), control);
       const { selected } = await capture.observe();
       await settled(() => capture.evaluate(clickExpression(HARNESS_PICKER)));
@@ -368,19 +401,28 @@ for (const [drift, mutation] of [
   );
 
 test(
-  "the composer still hides its context meter at 480, which is why the CLI refuses it there",
-  { timeout: OPEN_MS },
+  "the context meter follows the toolbar fit: hidden at its dense step, shown again at 480",
+  { timeout: OPEN_MS + SETTLE_MS },
   async (t) => {
-    // parseArgs refuses context-meter at 480; open the Chat at that size.
-    const options = admitted("codex", "turn-completed", 480);
-    const capture = await openCapture(
-      t,
-      "agent-composer-context-known",
-      options,
+    // 320 is below every capture width: there the composer toolbar compacts
+    // to its dense step and drops the meter while the usage data stays known.
+    const options = admitted("codex", "context-meter", 480);
+    const capture = await openCapture(t, "agent-composer-context-known", {
+      ...options,
+      width: 320,
+    });
+    const narrow = await capture.observe();
+    assert.equal(narrow.visible.meter, false);
+    assert.equal(narrow.controls.meter, false);
+    assert.equal(narrow.controls.send, true);
+    // Widening the same Chat to the admitted 480 refits the toolbar.
+    await capture.page.setViewportSize({
+      width: options.width,
+      height: options.height,
+    });
+    await settled(
+      async () => (await capture.observe()).controls.meter === true,
+      "context meter at 480",
     );
-    const observation = await capture.observe();
-    assert.equal(observation.visible.meter, false);
-    assert.equal(observation.controls.send, true);
-    assert.equal(admitted("codex", "context-meter", 480), null);
   },
 );

@@ -292,7 +292,7 @@ fn combine_warnings(left: Option<String>, right: Option<String>) -> Option<Strin
     }
 }
 
-mod platform;
+pub(super) mod platform;
 
 mod folder;
 

@@ -25,24 +25,6 @@ function mediaBlock(css: string, query: string) {
 }
 
 describe("Workbench chrome stylesheet seam", () => {
-  it("uses the measured Agent centre and right-panel chrome", async () => {
-    const css = await readFile(
-      resolve("src/styles/workbench-chrome.css"),
-      "utf8",
-    );
-    expect(css).toMatch(
-      /\.workbench--agent\s*\{[^}]*--chrome-row-height:\s*48px;[^}]*--title-bar-fill:\s*#111111;/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-chat-center,\s*\.workbench--agent \.agent-artifact-pane\s*\{[^}]*background:\s*var\(--agent-shell-center\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*44px;[^}]*border-bottom:\s*1px solid var\(--agent-shell-divider\);/s,
-    );
-    expect(css).toMatch(
-      /\.workbench--agent \.agent-artifact-pane \.tab--active\s*\{[^}]*background:\s*var\(--color-plane-raised\);[^}]*border:\s*1px solid var\(--agent-shell-tab-border\);/s,
-    );
-  });
   it("keeps the selected chat as the sole filled sidebar row and section labels left aligned", async () => {
     const css = await readFile(
       resolve("src/styles/agent-rail-surface.css"),
@@ -52,40 +34,8 @@ describe("Workbench chrome stylesheet seam", () => {
       /\.workbench--agent \.project-row--active\s*\{[^}]*background:\s*transparent;/s,
     );
     expect(css).toMatch(
-      /\.agent-rail-section__disclosure > svg\s*\{[^}]*position:\s*absolute;[^}]*inset-inline-end:\s*var\(--space-1\);[^}]*opacity:\s*0;/s,
+      /\.agent-rail-section__chevron\s*\{[^}]*opacity:\s*0;/s,
     );
-  });
-  it("matches every artifact grid header row to the rendered header height", async () => {
-    const [chromeCss, modeCss] = await Promise.all([
-      readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-      readFile(resolve("src/workbench/workbench-window-mode.css"), "utf8"),
-    ]);
-    const headerHeight =
-      /\.workbench--agent \.agent-artifact-pane__header\s*\{[^}]*height:\s*(\d+px);/s.exec(
-        chromeCss,
-      )?.[1];
-
-    expect(headerHeight).toBe("44px");
-    for (const selector of [
-      /\.agent-artifact-pane\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--empty\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+minmax\(0, 1fr\);/s,
-      /\.agent-artifact-pane--with-header\s*\{[^}]*grid-template-rows:\s*(\d+px)\s+auto\s+minmax\(0, 1fr\);/s,
-    ]) {
-      expect(selector.exec(modeCss)?.[1]).toBe(headerHeight);
-    }
-  });
-  it("loads title and tab chrome from a focused stylesheet", async () => {
-    const [entry, shellCss, chromeCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/workbench-chrome.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(/import ["']\.\/styles\/workbench-chrome\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.title-bar\b/m);
-    expect(shellCss).not.toMatch(/^\.tab-strip\b/m);
-    expect(chromeCss).toMatch(/^\.title-bar\b/m);
-    expect(chromeCss).toMatch(/^\.tab-strip\b/m);
   });
 
   it("sizes the chat search pill to the owner reference with a trailing chord", async () => {
@@ -123,7 +73,7 @@ describe("Workbench chrome stylesheet seam", () => {
       /@media \(max-width: 760px\)\s*\{[^@]*\.title-bar\s*\{/,
     );
     expect(narrow).toMatch(
-      /\.title-bar__wordmark,\s*\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
+      /\.title-bar__chat-search-label,\s*\.title-bar__chord\s*\{[^}]*display:\s*none;/,
     );
     expect(narrow).toMatch(/\.title-bar__start\s*\{[^}]*\}/);
     expect(narrow.match(/\.title-bar__start\s*\{([^}]*)\}/)?.[1]).not.toMatch(

@@ -1,0 +1,13 @@
+:host {
+  --window-control-width: 46px;
+  --window-control-icon-size: 10px;
+  --window-control-hover: rgb(255 255 255 / 10%);
+  --window-control-pressed: rgb(255 255 255 / 6%);
+  --window-control-close-hover: #c42b1c;
+  --window-control-close-pressed: #b52a1c;
+  position: fixed;
+  display: block;
+  width: calc(3 * var(--window-control-width));
+  visibility: hidden;
+  pointer-events: none;
+}

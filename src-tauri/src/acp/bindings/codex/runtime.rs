@@ -270,6 +270,19 @@ impl CodexRuntime {
                 },
                 None,
             ),
+            IncomingEvent::FilePair {
+                id,
+                old_text,
+                new_text,
+            } => (
+                AdapterEvent::FilePair {
+                    external_item_id: id.external_id.clone(),
+                    id: identity(id),
+                    old_text,
+                    new_text,
+                },
+                None,
+            ),
             IncomingEvent::ChildThreadItem {
                 id,
                 lifecycle,

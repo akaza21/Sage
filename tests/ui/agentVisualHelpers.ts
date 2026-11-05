@@ -1,10 +1,12 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 import type {
   VisualScenarioMode,
   VisualScenarioName,
 } from "./fixtures/visualScenarioTypes";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   settleTranscriptAtEnd,
@@ -17,48 +19,46 @@ export async function assertAgentLandmarks(page: Page) {
   });
   await expect(
     projectSidebar.getByRole("button", {
-      name: "New task",
+      name: "New chat",
       exact: true,
     }),
   ).toBeVisible();
   await expect(
-    projectSidebar.getByRole("button", { name: "Filter tasks", exact: true }),
+    projectSidebar.getByRole("button", { name: "Search chats", exact: true }),
   ).toBeVisible();
 }
 
 export async function expectLiveThinkingFixtureLine(page: Page) {
   const thought = page.locator('[data-activity-kind="thought"]');
   await expect(thought).toHaveCount(1);
-  await expect(thought).toHaveClass("acp-thought");
-  await expect(thought).toHaveText(
-    `Reviewing ${"updated workspace state ".repeat(20)}`.slice(0, 256),
+  await expect(thought).toHaveClass("acp-thought acp-live-shimmer");
+  await expect(thought).toHaveText("Thinking");
+  const reducedMotion = await page.evaluate(
+    () => matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
+  if (!reducedMotion) {
+    await expect(thought).toHaveCSS("color", "rgba(0, 0, 0, 0)");
+    // Both shimmer layers (sweep and muted base) clip to the glyphs.
+    await expect(thought).toHaveCSS("background-clip", "text, text");
+    await expect(thought).toHaveCSS("animation-name", "acp-live-shimmer");
+  }
   await expect(thought.locator("summary, button, .acp-state")).toHaveCount(0);
   expect(
     await thought.evaluate((node) => {
       const element = node as HTMLElement;
       const style = getComputedStyle(element);
-      const color = style.color;
-      const originalColor = element.style.color;
-      element.style.color = "var(--color-text-muted)";
-      const mutedColor = getComputedStyle(element).color;
-      element.style.color = originalColor;
       return {
-        muted: color === mutedColor,
         clipped: element.scrollWidth > element.clientWidth,
         overflow: style.overflow,
         textOverflow: style.textOverflow,
         whiteSpace: style.whiteSpace,
-        animation: style.animationName,
       };
     }),
   ).toEqual({
-    muted: true,
-    clipped: true,
+    clipped: false,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    animation: "none",
   });
 }
 
@@ -116,6 +116,8 @@ export async function openComposerOptions(page: Page) {
     name: "Composer options",
     exact: true,
   });
+  // The open menu holds the toolbar's steps, so let the row settle first.
+  await settledComposerFit(form);
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
@@ -131,12 +133,17 @@ export async function openComposerOptions(page: Page) {
 export async function expectFocusedChatIndicator(
   page: Page,
   forcedColors = false,
+  paneCount: 1 | 2 = 1,
 ) {
-  const panes = page.locator(".agent-chat-panes--split .agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  const panes = page.locator(".agent-chat-pane");
+  await expect(panes).toHaveCount(paneCount);
   const focused = panes.and(page.locator(".agent-chat-pane--focused"));
   await expect(focused).toHaveCount(1);
   await expect(focused).toBeVisible();
+  if (paneCount === 1) {
+    await expect(focused).toHaveCSS("outline-style", "none");
+    return;
+  }
   expect(
     await focused.evaluate((node, forced) => {
       const style = getComputedStyle(node);
@@ -182,6 +189,7 @@ export async function expectAgentImageContained(page: Page) {
     )
     .toBe(true);
   await image.evaluate((node) => (node as HTMLImageElement).decode());
+  await waitForAnimations(page.locator(".acp-image"));
   expect(
     await image.evaluate((node) => {
       const element = node as HTMLImageElement;
@@ -303,8 +311,10 @@ export async function runAgentCanonicalTest(
     // by the live child; the plan, error and unsupported cards stay apart.
     const cards = page.locator(".acp-activity-card");
     await expect(cards).toHaveCount(4);
-    const group = page.locator(".acp-tool-rollup");
-    await expect(group).toHaveCount(1);
+    const groups = page.locator(".acp-tool-rollup");
+    await expect(groups).toHaveCount(1);
+    // Opening the outer rollup mounts nested rollups; keep its locator stable.
+    const group = groups.first();
     await expect(group).toHaveAttribute("data-activity-state", "inProgress");
     await expect(
       group.locator(":scope > summary .acp-tool-rollup__label"),
@@ -336,6 +346,8 @@ export async function runAgentCanonicalTest(
     );
     await expect(page.locator('[data-activity-kind="thought"]')).toHaveCount(0);
     await settleTranscriptAtEnd(page);
+    await waitForAnimations(execution);
+    await waitForAnimations(fetch);
     const command = page.locator(".acp-tool-command--line");
     await expect(command).toBeVisible();
     expect(
@@ -356,13 +368,33 @@ export async function runAgentCanonicalTest(
       commandStaysInside: true,
       commandWraps: true,
     });
+    // Opening a nested disclosure can scroll its bounded parent before the
+    // new content lays out. Keep the fetch label at the canonical bottom.
+    const itemList = group.locator(":scope > .acp-tool-rollup__items");
+    await expect
+      .poll(() =>
+        itemList.evaluate((list) => {
+          const result = list.querySelector<HTMLElement>(
+            ':scope > [data-activity-kind="fetch"] [role="group"] > header > strong',
+          )!;
+          const offset =
+            result.getBoundingClientRect().bottom -
+            list.getBoundingClientRect().bottom;
+          list.scrollTop += offset;
+          return Math.abs(
+            result.getBoundingClientRect().bottom -
+              list.getBoundingClientRect().bottom,
+          );
+        }),
+      )
+      .toBeLessThanOrEqual(1);
     await expectNoViewportOverflow(page);
   }
   if (name === "agent-thinking-live") {
     await expectLiveThinkingFixtureLine(page);
   }
   if (name === "agent-image") {
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expectAgentImageContained(page);
   }
   if (name === "agent-child-activity") {

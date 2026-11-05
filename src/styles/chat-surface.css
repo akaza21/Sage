@@ -1,9 +1,9 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
-  --reading-measure: 660px;
-  --chat-column-gutter: var(--space-4);
-  --chat-column-trailing: calc(var(--scrollbar-size) + var(--space-3));
+  --chat-column-measure: 42rem;
+  --chat-column-gutter: var(--space-1);
+  --chat-column-trailing: var(--scrollbar-size);
   position: relative;
   container-name: chat;
   container-type: inline-size;
@@ -12,15 +12,18 @@
   min-width: 0;
   height: 100%;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--color-canvas);
+  background: var(--agent-shell-center);
 }
 
 .chat-surface--agent {
-  grid-template-areas: "notice" "transcript" "edits" "composer";
-  grid-template-rows: auto minmax(120px, 1fr) minmax(0, auto) fit-content(60%);
+  grid-template-areas: "notice" "transcript" "composer";
+  grid-template-rows: auto minmax(0, 1fr) fit-content(60%);
+  padding-block-end: var(--chat-column-inset-block-end);
 }
 
-.chat-surface--agent > .composer__notice {
+.chat-surface--agent > .composer__notice,
+.chat-surface--agent > .build-notice,
+.chat-surface--agent > .composer__error {
   grid-area: notice;
 }
 
@@ -28,35 +31,25 @@
   grid-area: transcript;
 }
 
-.chat-surface--agent > .composer {
+.chat-surface--agent > .chat-dock {
   grid-area: composer;
 }
 
-.chat-surface--agent > .chat-edit-summary-zone {
-  grid-area: edits;
-  display: flex;
+/* The dock owns the edit summary slot; the transcript only supplies content. */
+.chat-edit-summary-zone {
+  --edit-summary-width: 100%;
+  --edit-summary-margin: 0;
+  --edit-summary-border: 0;
+  --radius-edit-summary: var(--radius-none);
+  --edit-summary-collapsed-radius: var(--radius-none);
+  --edit-summary-fill: transparent;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-  padding-inline: var(--chat-column-gutter)
-    calc(var(--chat-column-gutter) + var(--chat-column-trailing));
+  overflow-y: auto;
 }
 
 .chat-edit-summary-zone:empty {
   display: none;
-}
-
-@container chat (max-width: 520px) {
-  .chat-surface--agent > .chat-edit-summary-zone {
-    padding-inline: var(--chat-column-gutter);
-  }
-}
-
-.chat-edit-summary-zone > .acp-file-changes {
-  min-height: 0;
-  margin: 0 auto var(--space-2);
-  max-height: 40vh;
-  overflow-y: auto;
 }
 
 .surface-header {
@@ -153,16 +146,13 @@
 
 .project-intro__icon {
   display: grid;
-  place-items: center;
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.project-intro__icon {
   width: var(--control-height-compact);
   height: var(--control-height-compact);
   flex: 0 0 var(--control-height-compact);
+  place-items: center;
   border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .project-intro strong {
@@ -235,10 +225,6 @@
 }
 
 @media (max-width: 760px) and (max-height: 320px) {
-  .surface-header .eyebrow {
-    display: none;
-  }
-
   .surface-header h1 {
     margin: 0;
     font-size: var(--font-size-md);
@@ -256,9 +242,9 @@
   }
 }
 
-.composer__control-trigger:hover,
-.composer__control-trigger:has([aria-expanded="true"]),
-.composer__control-trigger[aria-expanded="true"] {
+button.composer__control-trigger:hover,
+button.composer__control-trigger:has([aria-expanded="true"]),
+button.composer__control-trigger[aria-expanded="true"] {
   color: var(--color-status-foreground);
   background: var(--composer-control-hover);
 }
@@ -340,17 +326,6 @@
 
 .composer__access-label--write {
   color: var(--composer-access-write);
-}
-
-.composer__model-trigger {
-  max-width: 155px;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__plus:hover,

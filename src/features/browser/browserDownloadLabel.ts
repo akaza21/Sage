@@ -1,4 +1,12 @@
-import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
+import { type BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
+
+export function sourceHost(source: string): string {
+  try {
+    return new URL(source).host || source;
+  } catch {
+    return source;
+  }
+}
 
 export function progressLabel(download: BrowserDownload): string {
   switch (download.state) {
@@ -8,11 +16,13 @@ export function progressLabel(download: BrowserDownload): string {
       return download.totalBytes && download.totalBytes > 0
         ? `${Math.min(100, Math.round((download.receivedBytes / download.totalBytes) * 100))}%`
         : "Downloading";
+    case "publishing":
+      return "Saving";
     case "completed":
       return "Downloaded";
     case "interrupted":
     case "error":
-      return "Download failed";
+      return download.error || "Download failed";
     case "canceled":
       return "Canceled";
   }

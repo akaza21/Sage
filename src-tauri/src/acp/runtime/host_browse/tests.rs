@@ -1,6 +1,11 @@
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
+use crate::acp::bindings::standard_acp::{
+    PROFILES, StandardAcpProfile,
+    translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
+};
+use crate::acp::intent::{SafeResourceRef, ToolCategory, UnavailableResourceReason};
 
 #[test]
 fn curated_host_tools_advertise_browse_without_harness_names() {
@@ -15,10 +20,83 @@ fn curated_host_tools_advertise_browse_without_harness_names() {
     assert!(!is_advertised_host_tool("sage.browse"));
     assert!(!is_advertised_host_tool("sage_browse"));
     assert!(!is_advertised_host_tool("claude.browse"));
-    let source = include_str!("../host_browse.rs");
-    assert!(!source.to_ascii_lowercase().contains("codex"));
-    assert!(!source.to_ascii_lowercase().contains("claude"));
-    assert!(!source.to_ascii_lowercase().contains("oh-my-pi"));
+}
+
+struct NoResources;
+
+impl ResourceMapper for NoResources {
+    fn map_absolute(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+        Err(UnavailableResourceReason::Foreign)
+    }
+}
+
+/// The browse URL a standard ACP binding retains for a `tool_call` update.
+fn retained_browse_input(profile: &'static StandardAcpProfile, update: Value) -> Option<String> {
+    let mut translator = StandardAcpTranslator::new(profile, "session-1").unwrap();
+    translator.begin_prompt("prompt-browse").unwrap();
+    let frame = json!({
+        "method": "session/update",
+        "params": {"sessionId": "session-1", "update": update},
+    });
+    let events = translator
+        .translate_notification(&serde_json::to_vec(&frame).unwrap(), &NoResources)
+        .unwrap();
+    let rendered = format!("{events:?}");
+    assert!(
+        !rendered.contains("example.com"),
+        "{}: {rendered}",
+        profile.harness_id
+    );
+    events.into_iter().find_map(|event| match event {
+        AdapterEvent::Item {
+            payload:
+                NormalizedPayload::ToolCall {
+                    category: ToolCategory::Fetch,
+                    input_summary,
+                    ..
+                },
+            ..
+        } => Some(input_summary.map(|summary| summary.as_str().to_owned())),
+        _ => None,
+    })?
+}
+
+#[test]
+fn every_standard_acp_binding_retains_the_same_admitted_browse_url() {
+    let update = |title: &str, url: &str| {
+        json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "browse-1",
+            "kind": "fetch",
+            "title": title,
+            "status": "pending",
+            "locations": [{"url": url}],
+            "rawInput": {"url": "https://example.com/secret"}
+        })
+    };
+    for profile in PROFILES {
+        let harness = profile.harness_id;
+        // The curated tool keeps only the admitted loopback location.
+        assert_eq!(
+            retained_browse_input(profile, update("_sage/browse", "http://127.0.0.1:5173/app")),
+            Some("http://127.0.0.1:5173/app".into()),
+            "{harness}"
+        );
+        // A harness-named title gains nothing over any other title.
+        for title in ["claude.browse", "codex.browse", "gemini.browse", "fetch"] {
+            assert_eq!(
+                retained_browse_input(profile, update(title, "http://[::1]:8443/docs")),
+                Some("http://[::1]:8443/docs".into()),
+                "{harness} {title}"
+            );
+        }
+        // A remote location is never retained, whichever binding saw it.
+        assert_eq!(
+            retained_browse_input(profile, update("_sage/browse", "https://example.com/docs")),
+            None,
+            "{harness}"
+        );
+    }
 }
 
 #[test]

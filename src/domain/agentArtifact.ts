@@ -11,14 +11,14 @@ export type AgentArtifactOwner = {
 
 export type AgentArtifactOpenIntent = {
   owner: AgentArtifactOwner;
-  target: "file" | "diff";
+  target: "file" | "diff" | "workingTreeDiff";
   resource: ResourceRef;
   diffRef?: AgentDiffRef;
 };
 
 export type AgentArtifactOpenHandler = (
   resource: ResourceRef,
-  target: "file" | "diff",
+  target: AgentArtifactOpenIntent["target"],
   origin?: AgentArtifactOwner,
   diffRef?: AgentDiffRef,
 ) => void;

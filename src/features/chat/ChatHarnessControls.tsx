@@ -1,41 +1,47 @@
+import { IconButton } from "../../ui/IconButton";
+import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { Plus, Settings } from "../../ui/leanIcons";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
+import type { ChatUsage } from "./acp/chatUsage";
+import { ComposerContext } from "./ComposerContext";
 
-import { useWorkbenchStore } from "../../app/store";
 import {
   cachedHarnessModels,
   harnessModelIdentity,
 } from "../../app/harnessModelCache";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { useWorkbenchStore } from "../../app/store";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import {
-  flattenChoices,
+  selectedConfigChoice,
   sessionConfigControls,
   sessionModeActions,
 } from "../../domain/acpSessionConfigControls";
-import { SearchablePicker } from "../../ui/SearchablePicker";
-import { MenuPopover } from "../../ui/MenuPopover";
-import { formatContextWindow } from "./composerModelContext";
-import { ComposerModelControls } from "./ComposerModelControls";
-import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ComposerAddActions } from "./ComposerAddActions";
-import { ProjectScopeChip } from "./ProjectScopeChip";
-import { composerOptionLabel } from "./composerChrome";
-import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
-import { useInheritedComposerModel } from "./inheritedComposerModel";
-import { useComposerCompaction } from "./useComposerCompaction";
-import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 import { capitalizeLabel } from "../../domain/text";
+import "../../styles/harness-picker.css";
+import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
+import { ComposerAccessControl } from "./ComposerAccessControl";
+import { composerOptionLabel } from "./composerChrome";
+import { useComposerToolbarFit } from "./useComposerToolbarFit";
+import { formatContextWindow } from "./composerModelContext";
+import { ComposerOptionsPart } from "./lazyParts";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
+import { ComposerModelControls } from "./ComposerModelControls";
+import { composerModelName } from "./composerModelName";
+import { useInheritedComposerModel } from "./inheritedComposerModelState";
+import { ProjectScopeChip } from "./ProjectScopeChip";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
 } from "./useChatHarnessSelection";
-import "../../styles/harness-picker.css";
+import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
+
 interface Props {
+  contextUsage?: ChatUsage | null;
   accessBindingId?: string | null;
   imageAction?: { disabled: boolean; onChoose: () => void };
   onOpenGoal?: () => void;
@@ -66,6 +72,7 @@ interface Props {
 }
 
 export function ChatHarnessControls({
+  contextUsage,
   accessBindingId,
   imageAction,
   onOpenGoal,
@@ -104,9 +111,8 @@ export function ChatHarnessControls({
     optionsTrigger: optionsTriggerRef,
     toggle,
     dismiss,
+    setHarnessOpen,
   } = useComposerPopovers(turnBusy || projectTransitioning);
-  const { effort: compactEffort, project: compactProject } =
-    useComposerCompaction(optionsTriggerRef);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -132,18 +138,13 @@ export function ChatHarnessControls({
       ? sessionConfig
       : null;
   const configOptions = sessionConfigControls(selectedSessionConfig);
-  const modelOption = configOptions.find(
-    (option) => (option.category ?? option.id).toLocaleLowerCase() === "model",
-  );
-  const effortOption =
+  const findOption = (category: string) =>
     configOptions.find(
       (option) =>
-        (option.category ?? option.id).toLocaleLowerCase() === "effort",
-    ) ??
-    configOptions.find(
-      (option) =>
-        (option.category ?? option.id).toLocaleLowerCase() === "thought_level",
+        (option.category ?? option.id).toLocaleLowerCase() === category,
     );
+  const modelOption = findOption("model");
+  const effortOption = findOption("effort") ?? findOption("thought_level");
   const hasSessionModel = modelOption?.type === "select";
   const confirmedModelLabel = useConfirmedModelLabel(
     JSON.stringify([
@@ -157,32 +158,23 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  const knownModelLabel =
-    !confirmedModelLabel && sessionHarnessId !== selectedHarnessId
-      ? models.find((model) => model.id === selectedModelId)?.name
-      : confirmedModelLabel;
   // A side chat or fork shows its parent's confirmed model and effort until
   // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
-    !knownModelLabel &&
+    !confirmedModelLabel &&
     !selectedSessionConfig?.removed &&
     (!inherited?.id || inherited.id === selectedModelId)
       ? inherited
       : undefined;
-  const modelLabel = knownModelLabel ?? inheriting?.model ?? "Model";
+  const modelLabel = composerModelName(
+    confirmedModelLabel ?? inheriting?.model ?? "Model",
+  );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
-  const effortLabel =
-    composerOptionLabel(effortOption) ??
-    (confirmedEffort
-      ? capitalizeLabel(confirmedEffort)
-      : (inheriting?.effort ?? null));
-  const modelChoices = hasSessionModel
-    ? flattenChoices(modelOption).map((choice) => ({
-        id: choice.value,
-        name: choice.name || choice.value,
-      }))
-    : models;
+  const effortName =
+    composerOptionLabel(effortOption) ?? confirmedEffort ?? inheriting?.effort;
+  const effortLabel = effortName ? capitalizeLabel(effortName) : null;
+  const modelChoices = hasSessionModel ? modelOption : models;
   const currentModelId = hasSessionModel
     ? modelOption.currentValue
     : (selectedSessionConfig?.confirmedModel?.id ?? selectedModelId);
@@ -198,173 +190,166 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(harnesses).map(
-    (candidate) => ({
-      ...candidate,
-      subtitle:
-        candidate.id === selectedHarnessId && confirmedModelLabel
-          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-          : undefined,
-    }),
+  const harnessCandidates = harnessPickerCandidates(
+    harnesses,
+    selectedHarnessId,
+    confirmedModelLabel
+      ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+      : undefined,
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
-  const hasModes = modeOptions.length > 0;
-  const modeCandidates = modeOptions.map((mode) => ({
-    id: mode.id,
-    label: mode.name || mode.id,
-  }));
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
-  const canSelectEffort =
-    canPrompt &&
-    effortOption?.type === "select" &&
-    flattenChoices(effortOption).some(
-      (choice) => choice.value === effortOption.currentValue,
+  const canSelectEffort = !!selectedConfigChoice(effortOption);
+  const { controls, effortInMenu, projectInMenu, contextVisible } =
+    useComposerToolbarFit(
+      canSelectEffort,
+      Boolean(projectName),
+      active !== null && active !== "options",
     );
+  // The options trigger appears once a control moves into its menu; that
+  // refits the row with the trigger in place, so the controls only return to
+  // the toolbar once they fit beside it.
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
-    (compactProject && projectName) ||
-    (canSelectEffort && compactEffort) ||
-    hasModes ||
+    effortInMenu ||
+    projectInMenu ||
+    modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
-  const actionsKey = JSON.stringify([
-    selectedHarnessId,
-    selectedModelId,
-    selectedSessionConfig?.sageAgentSessionId,
-    Boolean(imageAction),
-    Boolean(onOpenGoal),
-    canSelectEffort,
-    compactEffort,
-    compactProject,
-    modeCandidates.map((mode) => mode.id),
-    otherOptions.map((option) => [
-      option.id,
-      option.type,
-      flattenChoices(option).map((choice) => choice.value),
-    ]),
-  ]);
-  const previousActionsKey = useRef(actionsKey);
-  useLayoutEffect(() => {
-    if (previousActionsKey.current !== actionsKey && active === "options") {
-      const element = document.activeElement;
-      const menuHadFocus =
-        element === document.body ||
-        Boolean(
-          element && document.getElementById(optionsId)?.contains(element),
-        );
-      dismiss();
-      if (focused && menuHadFocus) onModeRemoved();
-    }
-    previousActionsKey.current = actionsKey;
-  }, [actionsKey, active, dismiss, focused, onModeRemoved, optionsId]);
   const closeActions = () => {
     dismiss();
     optionsTriggerRef.current?.focus();
   };
   return (
-    <div className="composer__controls">
-      <button
-        ref={optionsTriggerRef}
-        className="composer__plus"
-        type="button"
-        aria-label="Composer options"
-        aria-controls={optionsId}
-        aria-haspopup="menu"
-        aria-expanded={active === "options"}
-        disabled={turnBusy || projectTransitioning || !hasActions}
-        onClick={(event) => {
-          optionsTriggerRef.current = event.currentTarget;
-          toggle("options");
+    <>
+      <div
+        ref={controls}
+        className="composer__controls"
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && active === "options") {
+            event.preventDefault();
+            dismiss();
+          }
         }}
       >
-        <Plus size={16} aria-hidden="true" />
-      </button>
-      {availableBinding && accessHarness?.bindingId ? (
-        <ComposerAccessControl
-          bindingId={accessHarness.bindingId}
-          capabilities={accessHarness.accessModes}
-          disabled={turnBusy || projectTransitioning}
-          open={active === "access"}
-          onToggle={() => toggle("access")}
-          onDismiss={dismiss}
-        />
-      ) : null}
-      <label
-        className="composer__control-trigger composer__harness"
-        data-keyboard-focus={keyboardFocus}
-      >
-        <SearchablePicker
-          ariaLabel="Harness"
-          open={active === "harness"}
-          onOpenChange={(open) => (open ? toggle("harness") : dismiss())}
-          triggerIcon={<Settings size={16} aria-hidden="true" />}
-          candidates={harnessCandidates}
-          popoverClassName="composer__popover composer__harness-menu"
-          popoverGap={8}
-          triggerClassName="composer__control-trigger composer__picker-trigger"
-          sectionLabel="Harnesses"
-          searchable={false}
-          disabled={projectTransitioning || turnBusy}
-          state={harnessesPending ? "loading" : undefined}
-          stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
-          onSelect={(id) => void onSelectHarness(id)}
-          selectedId={selectedHarnessId}
-        />
-      </label>
-      <ComposerModelControls
-        triggerRef={modelTrigger}
-        panelId={modelId}
-        open={active === "model"}
-        effortOpen={active === "effort"}
-        onToggle={() => toggle("model")}
-        onToggleEffort={() => {
-          setEffortFromAdd(false);
-          toggle("effort");
-        }}
-        effortAnchorRef={effortFromAdd ? optionsTriggerRef : undefined}
-        onDismiss={dismiss}
-        choices={modelChoices}
-        selectedId={currentModelId}
-        modelLabel={modelLabel}
-        effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
-        contextWindow={contextWindow}
-        effortOption={effortOption}
-        disabled={turnBusy || projectTransitioning || !canPrompt}
-        pending={modePending}
-        readOnlyLabel={
-          !projectTransitioning &&
-          (!!inheriting || (turnBusy && modelChoices.length > 0))
-        }
-        onSelectModel={chooseModel}
-        onSetOption={onSetSessionConfigOption}
-      />
-      {projectName && !compactProject ? (
-        <ProjectScopeChip
-          projectName={projectName}
-          disabled={projectTransitioning || turnBusy}
-          open={active === "project"}
-          onOpenChange={(open) => {
-            if (open && active !== "project") toggle("project");
-            else if (!open && active === "project") dismiss();
-          }}
-        />
-      ) : null}
-      {active === "options" && hasActions ? (
-        <MenuPopover
-          id={optionsId}
-          className="composer__popover composer__options"
-          ariaLabel="Composer options menu"
-          focusKey={active}
-          restoreFocusOnTab
-          open
-          triggerRef={optionsTriggerRef}
-          onDismiss={dismiss}
-          gap={8}
+        {hasActions || active === "options" ? (
+          <IconButton
+            ref={optionsTriggerRef}
+            className="composer__plus"
+            aria-label="Composer options"
+            aria-controls={optionsId}
+            aria-haspopup="menu"
+            aria-expanded={active === "options"}
+            disabled={turnBusy || projectTransitioning}
+            onClick={() => toggle("options")}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </IconButton>
+        ) : null}
+        {availableBinding && accessHarness?.bindingId ? (
+          <ComposerAccessControl
+            bindingId={accessHarness.bindingId}
+            capabilities={accessHarness.accessModes}
+            disabled={turnBusy || projectTransitioning}
+            open={active === "access"}
+            onToggle={() => toggle("access")}
+            onDismiss={dismiss}
+          />
+        ) : null}
+        <label
+          className="composer__control-trigger composer__harness"
+          data-keyboard-focus={keyboardFocus}
         >
-          <ComposerAddActions
+          <HarnessSignInPicker
+            harnesses={harnesses}
+            ariaLabel="Harness"
+            open={active === "harness"}
+            onOpenChange={setHarnessOpen}
+            triggerIcon={<Settings size={16} aria-hidden="true" />}
+            candidates={harnessCandidates}
+            popoverClassName="composer__popover composer__harness-menu"
+            popoverGap={8}
+            triggerClassName="composer__control-trigger composer__picker-trigger"
+            sectionLabel="Harnesses"
+            searchable={false}
+            disabled={projectTransitioning || turnBusy}
+            state={harnessesPending ? "loading" : undefined}
+            stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
+            onSelect={onSelectHarness}
+            selectedId={selectedHarnessId}
+          />
+        </label>
+        <ComposerModelControls
+          triggerRef={modelTrigger}
+          panelId={modelId}
+          open={active === "model"}
+          effortOpen={active === "effort"}
+          effortSuspended={effortInMenu}
+          onToggle={() => toggle("model")}
+          onToggleEffort={() => {
+            setEffortFromAdd(false);
+            toggle("effort");
+          }}
+          effortAnchorRef={effortFromAdd ? optionsTriggerRef : undefined}
+          onDismiss={dismiss}
+          choices={modelChoices}
+          selectedId={currentModelId}
+          modelLabel={modelLabel}
+          effortLabel={confirmedModelLabel || inheriting ? effortLabel : null}
+          contextWindow={contextWindow}
+          effortOption={effortOption}
+          awaitingSession={
+            sessionHarnessId === null &&
+            selectedHarnessId !== null &&
+            availableBinding
+          }
+          disabled={turnBusy || projectTransitioning || !canPrompt}
+          effortDisabled={turnBusy || projectTransitioning}
+          pending={modePending}
+          readOnlyLabel={
+            !projectTransitioning &&
+            (!!inheriting ||
+              (turnBusy && (hasSessionModel || models.length > 0)))
+          }
+          onSelectModel={chooseModel}
+          onSetOption={onSetSessionConfigOption}
+        />
+        {projectName && projectInMenu ? (
+          <span
+            className="project-scope"
+            data-overflow-control="project"
+            data-suspended
+          />
+        ) : projectName ? (
+          <ProjectScopeChip
+            projectName={projectName}
+            disabled={projectTransitioning || turnBusy}
+            open={active === "project"}
+            onOpenChange={(open) => {
+              if (open && active !== "project") toggle("project");
+              else if (!open && active === "project") dismiss();
+            }}
+          />
+        ) : null}
+        {active === "options" ? (
+          <ComposerOptionsPart
+            part="ComposerOptionsMenu"
+            fallback={
+              <ComposerMenuLoading
+                triggerRef={optionsTriggerRef}
+                onDismiss={dismiss}
+              />
+            }
+            id={optionsId}
+            selectionKey={JSON.stringify([selectedHarnessId, selectedModelId])}
+            canSelectEffort={canSelectEffort}
+            focused={focused}
+            onModeRemoved={onModeRemoved}
+            triggerRef={optionsTriggerRef}
+            onDismiss={dismiss}
             projectAction={
-              compactProject && projectName ? (
+              projectInMenu && projectName ? (
                 <ProjectScopeChip projectName={projectName} menuItem />
               ) : undefined
             }
@@ -374,7 +359,7 @@ export function ChatHarnessControls({
             imageAction={imageAction}
             onOpenGoal={onOpenGoal}
             onOpenEffort={
-              canSelectEffort && compactEffort
+              effortInMenu
                 ? () => {
                     setEffortFromAdd(true);
                     toggle("effort");
@@ -385,18 +370,25 @@ export function ChatHarnessControls({
             onSetSessionMode={onSetSessionMode}
             onSetSessionConfigOption={onSetSessionConfigOption}
           />
-        </MenuPopover>
-      ) : null}
-      {modePending ? (
-        <span className="select-control__reason" role="status">
-          Changing session settings…
-        </span>
-      ) : null}
-      {modeError ? (
-        <span className="select-control__reason" role="alert">
-          {modeError}
-        </span>
-      ) : null}
-    </div>
+        ) : null}
+        {modePending ? (
+          <span className="select-control__reason" role="status">
+            Changing session settings…
+          </span>
+        ) : null}
+        {modeError ? (
+          <span
+            className="select-control__reason"
+            role="alert"
+            title={modeError}
+          >
+            {modeError}
+          </span>
+        ) : null}
+      </div>
+      {contextUsage && (
+        <ComposerContext usage={contextUsage} visible={contextVisible} />
+      )}
+    </>
   );
 }

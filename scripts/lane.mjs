@@ -30,6 +30,9 @@ const defaultRepo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const WORK_DIR_NAME = "SageWork";
+const CACHE_DIR_NAME = ".cache";
+const CARGO_TARGET_DIR_NAME = "sage-target";
 
 function parseArguments(argv) {
   const [command, ticket, ...rest] = argv;
@@ -46,20 +49,15 @@ function parseArguments(argv) {
 
 function configuration(options) {
   const platform = options.platform ?? process.platform;
-  const win = platform === "win32";
   const env = options.env ?? process.env;
   const repo = options.repo ?? defaultRepo;
   return {
     repo,
     platform,
-    workRoot:
-      env.SAGE_WORK_DIR ??
-      (win ? "C:\\SageWork" : path.join(homedir(), "SageWork")),
+    workRoot: env.SAGE_WORK_DIR ?? path.join(homedir(), WORK_DIR_NAME),
     cargoRoot:
       env.SAGE_CARGO_DIR ??
-      (win
-        ? "C:\\SageCaches\\cargo-target"
-        : path.join(homedir(), ".cache", "sage-target")),
+      path.join(homedir(), CACHE_DIR_NAME, CARGO_TARGET_DIR_NAME),
   };
 }
 

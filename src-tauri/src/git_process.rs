@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     process::Command,
-    task::JoinHandle,
     time::timeout,
 };
 
@@ -19,7 +18,9 @@ use crate::{
 };
 
 mod containment;
+mod readers;
 mod root_authority;
+use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
@@ -33,6 +34,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(test)]
 type GitProcessHook = Arc<dyn Fn() + Send + Sync>;
+#[cfg(test)]
+type GitSpawnHook = Arc<dyn Fn(u32) + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct GitProcessPolicy {
@@ -55,6 +58,8 @@ pub(crate) struct GitProcessPolicy {
     before_spawn_hook: Option<GitProcessHook>,
     #[cfg(test)]
     after_process_hook: Option<GitProcessHook>,
+    #[cfg(test)]
+    spawned_hook: Option<GitSpawnHook>,
     #[cfg(test)]
     deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
 }
@@ -82,6 +87,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             after_process_hook: None,
             #[cfg(test)]
+            spawned_hook: None,
+            #[cfg(test)]
             deadline_wait_gate: None,
         }
     }
@@ -108,6 +115,8 @@ impl GitProcessPolicy {
             #[cfg(test)]
             after_process_hook: None,
             #[cfg(test)]
+            spawned_hook: None,
+            #[cfg(test)]
             deadline_wait_gate: None,
         }
     }
@@ -133,6 +142,8 @@ impl GitProcessPolicy {
             before_spawn_hook: None,
             #[cfg(test)]
             after_process_hook: None,
+            #[cfg(test)]
+            spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
         }
@@ -187,14 +198,6 @@ struct PostSpawnFailure {
     reaped: bool,
 }
 
-type ReaderTask = JoinHandle<std::io::Result<BoundedBytes>>;
-
-#[derive(Default)]
-struct ReaderTasks {
-    stdout: Option<ReaderTask>,
-    stderr: Option<ReaderTask>,
-}
-
 pub(crate) async fn run(
     root: &Path,
     args: &[&str],
@@ -240,6 +243,10 @@ async fn run_inner(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    #[cfg(test)]
+    if let (Some(hook), Some(pid)) = (&policy.spawned_hook, child.id()) {
+        hook(pid);
+    }
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
@@ -266,6 +273,7 @@ async fn run_inner(
                 ReaderTasks {
                     stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
                     stderr: None,
+                    ..ReaderTasks::default()
                 },
                 reaper_lease,
                 PostSpawnFailure {
@@ -282,6 +290,7 @@ async fn run_inner(
     let mut readers = ReaderTasks {
         stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
         stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
+        ..ReaderTasks::default()
     };
     #[cfg(test)]
     if policy.post_spawn_failure {
@@ -317,6 +326,7 @@ async fn run_inner(
         }
         let stdout = await_reader(
             &mut readers.stdout,
+            &mut readers.failed,
             "stdout",
             #[cfg(test)]
             policy.stdout_reader_failure,
@@ -324,7 +334,8 @@ async fn run_inner(
             false,
         )
         .await?;
-        let stderr = await_reader(&mut readers.stderr, "stderr", false).await?;
+        let stderr =
+            await_reader(&mut readers.stderr, &mut readers.failed, "stderr", false).await?;
         Ok::<GitOutput, PostSpawnFailure>(GitOutput {
             status,
             stdout: stdout.bytes,
@@ -406,6 +417,7 @@ fn configured_command(
 
 async fn await_reader(
     slot: &mut Option<ReaderTask>,
+    failed: &mut bool,
     stream: &str,
     inject_read_failure: bool,
 ) -> Result<BoundedBytes, PostSpawnFailure> {
@@ -414,6 +426,7 @@ async fn await_reader(
         .expect("reader slots are consumed exactly once")
         .await;
     let _completed = slot.take();
+    *failed |= !matches!(&result, Ok(Ok(_)));
     let output = result
         .map_err(|error| PostSpawnFailure {
             message: format!("Git {stream} task failed: {error}"),
@@ -453,3 +466,6 @@ async fn read_bounded<R: AsyncRead + Unpin>(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod descendant_tests;

@@ -14,3 +14,6 @@ docs/work-items/BETA-0001-primary-beta-path/evidence/
 src-tauri/testdata/acp/codex/security-policy-v1.json
 src-tauri/tests/fixtures/harness-traces/
 tools/footprint-control/gen
+
+# Generated validation output and local test fixtures.
+output/

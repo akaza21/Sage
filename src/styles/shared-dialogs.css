@@ -11,8 +11,6 @@
   background: var(--color-overlay);
 }
 
-/* Codex's in-chat dialogs (s2/f0055, s2/f0352): one #2a2a2a surface over a
-   light 12% scrim. */
 .dialog--scrim {
   width: min(378px, calc(100vw - 32px));
   background: var(--color-plane-raised);
@@ -23,7 +21,7 @@
 }
 
 .dirty-dialog h2 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: var(--font-size-lg);
 }
 
@@ -42,7 +40,7 @@
 .dirty-dialog__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 20px;
 }
 
@@ -54,7 +52,7 @@
 .new-file-dialog__form,
 .new-file-dialog__field {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .new-file-dialog__form > h2 {
@@ -62,14 +60,14 @@
 }
 
 .new-file-dialog__field {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
 }
 
 .new-file-dialog__field input {
   width: 100%;
-  padding: 8px 8px;
+  padding: var(--space-2) var(--space-2);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -99,12 +97,12 @@
 
 .handoff-control__error {
   position: absolute;
-  z-index: 60;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   width: max-content;
   max-width: min(360px, calc(100vw - 32px));
-  padding: 8px 8px;
+  padding: var(--space-2) var(--space-2);
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-sm);
   color: var(--color-danger);
@@ -121,12 +119,12 @@
 
 .handoff-dialog__form {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .handoff-dialog__field {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
@@ -134,7 +132,7 @@
 .handoff-dialog__field .searchable-picker__trigger,
 .handoff-dialog__field textarea {
   width: 100%;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -155,6 +153,7 @@
 
 .chat-search-dialog {
   width: min(620px, calc(100vw - 32px));
+  height: 100%;
   max-height: min(720px, calc(100vh - 32px));
   padding: 20px;
   border: 1px solid var(--search-dialog-border);
@@ -174,8 +173,14 @@
 }
 
 .chat-search-dialog__form {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chat-search-dialog__form > * {
+  flex: none;
 }
 
 .chat-search-dialog__form > h2,
@@ -189,7 +194,7 @@
 
 .chat-search-dialog__query {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--search-dialog-text);
 }
@@ -202,7 +207,7 @@
   border-radius: var(--radius-sm);
   background: var(--search-dialog-control-fill);
   color: var(--search-dialog-text-primary);
-  padding: 8px 8px;
+  padding: var(--space-2) var(--space-2);
 }
 
 .chat-search-dialog__query input:focus,
@@ -214,8 +219,9 @@
 
 .chat-search-dialog__actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .chat-search-dialog__actions .button {
@@ -247,27 +253,28 @@
 }
 
 .chat-search-dialog__results {
-  min-height: 48px;
+  min-height: 0;
   max-height: 420px;
+  flex: 1 1 0;
   overflow: auto;
   border-top: 1px solid var(--color-border-subtle);
-  padding-top: 8px;
+  padding-top: var(--space-2);
 }
 
 .chat-search-dialog__results [role="listbox"] {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .chat-search-result {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   width: 100%;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--search-dialog-text-primary);
-  padding: 8px;
+  padding: var(--space-2);
   text-align: left;
 }
 
@@ -281,7 +288,7 @@
 .chat-search-result__heading {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .chat-search-result__heading > span,

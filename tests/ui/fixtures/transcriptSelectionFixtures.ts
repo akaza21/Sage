@@ -16,6 +16,20 @@ import { buildVisualScenario } from "./visualScenarioShell";
 export const selectionAnswer =
   "The preceding explanation introduces the selected phrase and its behavior for null.\n\nA second paragraph provides another selection for review.";
 
+export function selectionAnswerText(longAnswer: boolean): string {
+  return (
+    selectionAnswer +
+    (longAnswer
+      ? "\n\n" +
+        Array.from(
+          { length: 40 },
+          (_, index) =>
+            `Additional paragraph ${index + 1} makes room for a flipped selection toolbar.`,
+        ).join("\n\n")
+      : "")
+  );
+}
+
 let completeSide: (() => void) | null = null;
 export function completeSideChatFixture() {
   if (!completeSide) throw new Error("Send a side chat prompt first");
@@ -43,16 +57,7 @@ export function installTranscriptSelectionFixture(
   );
   if (!answer || answer.kind !== "text")
     throw new Error("Missing assistant fixture");
-  answer.payload.text =
-    selectionAnswer +
-    (longAnswer
-      ? "\n\n" +
-        Array.from(
-          { length: 40 },
-          (_, index) =>
-            `Additional paragraph ${index + 1} makes room for a flipped selection toolbar.`,
-        ).join("\n\n")
-      : "");
+  answer.payload.text = selectionAnswerText(longAnswer);
   answer.lifecycle = "completed";
   turn.state = "completed";
   turn.items = turn.items.filter((item) => item.kind === "text");

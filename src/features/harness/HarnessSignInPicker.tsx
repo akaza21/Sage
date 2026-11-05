@@ -1,0 +1,59 @@
+import { useState, type ComponentProps } from "react";
+
+import { SearchablePicker } from "../../ui/SearchablePicker";
+import { HarnessSignInPart } from "../chat/lazyParts";
+import type { HarnessSignInDecoration } from "./harnessSignIn";
+
+type Props = ComponentProps<typeof SearchablePicker> & {
+  harnesses: readonly { id: string; name: string; installState: string }[];
+};
+
+export function HarnessSignInPicker({
+  harnesses,
+  candidates,
+  open: controlledOpen,
+  onOpenChange,
+  ...props
+}: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const expanded = open && !props.disabled;
+  const [signIn, setSignIn] = useState<
+    ReadonlyMap<string, HarnessSignInDecoration>
+  >(() => new Map());
+  if (!expanded && signIn.size) setSignIn(new Map());
+  return (
+    <>
+      <SearchablePicker
+        {...props}
+        open={open}
+        onOpenChange={onOpenChange ?? setInternalOpen}
+        candidates={candidates.map((row) => {
+          const decoration = signIn.get(row.id);
+          return decoration
+            ? {
+                ...row,
+                subtitle: [row.subtitle, decoration.label]
+                  .filter(Boolean)
+                  .join(" \u00b7 "),
+                accessibleLabel: [
+                  row.accessibleLabel ?? row.label,
+                  decoration.label,
+                ]
+                  .filter(Boolean)
+                  .join(". "),
+                action: decoration.action,
+              }
+            : row;
+        })}
+      />
+      {expanded ? (
+        <HarnessSignInPart
+          part="HarnessSignInStatus"
+          harnesses={harnesses}
+          onChange={setSignIn}
+        />
+      ) : null}
+    </>
+  );
+}

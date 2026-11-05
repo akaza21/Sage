@@ -7,7 +7,7 @@ import {
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
 
-test("CP-28 regular tool summary computes to Codex's a3a3a3 400 text", async ({
+test("CP-28 regular tool summary uses the chat surface's adadad 400 text", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 720, height: 880 });
@@ -32,15 +32,15 @@ test("CP-28 regular tool summary computes to Codex's a3a3a3 400 text", async ({
     return { color, muted, fontWeight };
   });
   expect(typography.fontWeight).toBe("400");
-  // Round 3 (verdict s5/f0378, f0405): group labels read Codex's #a3a3a3,
-  // lighter than the muted token, and the summary copy inherits it.
+  // The chat surface uses the shared secondary #adadad for group labels,
+  // lighter than muted text, and the summary copy inherits it.
   expect(typography.color).not.toBe(typography.muted);
   const channels = (color: string) =>
     (color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
   const [red, green, blue] = channels(typography.color);
   const scale = typography.color.startsWith("color(") ? 255 : 1;
   for (const channel of [red, green, blue])
-    expect(Math.round(channel * scale)).toBe(163);
+    expect(Math.round(channel * scale)).toBe(173);
   const summaryTypography = await row
     .locator(":scope > summary .acp-tool-rollup__summary-copy")
     .evaluate((node) => {
@@ -53,7 +53,7 @@ test("CP-28 regular tool summary computes to Codex's a3a3a3 400 text", async ({
 
 for (const layout of [
   { width: 720, scenario: "agent-command-rollup" as const, panes: 1 },
-  { width: 1888, scenario: "agent-dual" as const, panes: 2 },
+  { width: 1888, scenario: "agent-dual" as const, panes: 1 },
 ]) {
   test(`CP-28 long native command stays one line at ${layout.width}px in ${layout.panes} pane(s)`, async ({
     page,

@@ -4,7 +4,8 @@
 // catalog test pins them to the source.
 import { parityOwner } from "./capture-native-chat-parity.mjs";
 
-const SIDE_CHAT_TAB = ".agent-chat-center__side-tab .side-chat-tab";
+const SIDE_CHAT_TAB =
+  ".agent-chat-center__header .agent-chat-center__side-tab .side-chat-tab";
 
 /** Pane-owned witnesses (queried inside the focused pane and its owned roots). */
 export const PARITY_PANE_SELECTORS = Object.freeze({

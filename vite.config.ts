@@ -15,6 +15,12 @@ const desktopWorkbenchRuntime = path.join(
   root,
   "src/ports/workbenchRuntime.desktop.ts",
 );
+const devWatchIgnoredRoots = new Set([
+  "src-tauri",
+  "work",
+  "output",
+  "local-evidence",
+]);
 
 export const DESKTOP_NATIVE_BUILD_MODE = "desktop-native";
 
@@ -34,12 +40,27 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "workbench-deps",
     priority: 1,
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|app[\\/]snapshotProjection\.ts)$/,
+    // Shared page-layer state belongs to the shell, not Agent UI.
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
+  },
+  {
+    name: "modal-dialog",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Shared confirmations must not pull Agent UI into an Editor resource.
+    test: /src[\\/]ui[\\/]ModalDialog\.tsx$/,
+  },
+  {
+    name: "file-kind-icons",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Resource icons are shared by the deferred Agent and Editor tab strips.
+    test: /src[\\/]features[\\/]files[\\/](?:FileKindIcon\.tsx|fileKind\.ts)$/,
   },
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|streamTail))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",
@@ -50,7 +71,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownList|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
   },
   {
     name: "diff-rendering",
@@ -140,7 +161,12 @@ export default defineConfig(({ command, mode }) => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: (file: string) => {
+        const directory = path.relative(root, file).split(path.sep)[0] ?? "";
+        return devWatchIgnoredRoots.has(
+          process.platform === "win32" ? directory.toLowerCase() : directory,
+        );
+      },
     },
   },
   build: {

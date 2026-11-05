@@ -5,7 +5,7 @@ use std::{
 
 use uuid::Uuid;
 
-use super::filesystem::{cleanup_failed_save_with, temporary_contract_path};
+use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
 use crate::{
     domain::BufferSnapshotRequest,
@@ -524,6 +524,510 @@ fn oversized_file_and_buffer_are_rejected() {
         Err(AppError::ResourceLimit(_))
     ));
     assert!(fixture.buffer(path).is_none());
+}
+
+#[test]
+fn bounded_read_accepts_the_cap_and_rejects_one_byte_more() {
+    let exact = vec![b'a'; MAX_EDITABLE_BYTES as usize];
+    assert_eq!(
+        read_editable_bytes(exact.as_slice()).unwrap().len(),
+        exact.len()
+    );
+    let over = vec![b'a'; MAX_EDITABLE_BYTES as usize + 1];
+    assert!(matches!(
+        read_editable_bytes(over.as_slice()),
+        Err(AppError::ResourceLimit(_))
+    ));
+}
+
+#[test]
+fn held_read_rejects_a_file_that_grows_after_its_metadata_check() {
+    use std::io::Write;
+
+    let fixture = Fixture::new();
+    let path = "growing.txt";
+    fixture.write(path, b"small\n");
+    let file = fs::File::open(fixture.root.join(path)).unwrap();
+    assert!(file.metadata().unwrap().len() <= MAX_EDITABLE_BYTES);
+
+    fs::OpenOptions::new()
+        .append(true)
+        .open(fixture.root.join(path))
+        .unwrap()
+        .write_all(&vec![b'a'; MAX_EDITABLE_BYTES as usize])
+        .unwrap();
+
+    assert!(matches!(
+        read_editable_bytes(&file),
+        Err(AppError::ResourceLimit(_))
+    ));
+}
+
+fn dirty_fixture(path: &str, base: &[u8], dirty: &str) -> Fixture {
+    let fixture = Fixture::new();
+    fixture.write(path, base);
+    let opened = open_document(fixture.database(), &fixture.workspace, path).unwrap();
+    snapshot_buffer(
+        fixture.database(),
+        &fixture.workspace,
+        snapshot_request(&opened, dirty, 1),
+    )
+    .unwrap();
+    fixture
+}
+
+fn temp_entries(directory: &Path) -> usize {
+    fs::read_dir(directory)
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".sage-")
+        })
+        .count()
+}
+
+/// The save failed without losing the edit: the buffer is still dirty and no
+/// temporary file is left behind or still recorded.
+fn assert_failed_save_kept_buffer(fixture: &Fixture, path: &str, dirty: &str, directory: &Path) {
+    let buffer = fixture.buffer(path).expect("the dirty buffer is kept");
+    assert_eq!(buffer.content, dirty);
+    assert!(buffer.pending_temp_path.is_none());
+    assert_eq!(temp_entries(directory), 0);
+}
+
+fn fail_at(stage: SaveStage) -> impl FnMut(SaveStage) -> std::io::Result<()> {
+    move |current| {
+        if current == stage {
+            Err(std::io::Error::other("injected save failure"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn save_failing_partway_through_the_temp_write_removes_it_and_keeps_the_target() {
+    let path = "partial.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        fail_at(SaveStage::TempWritten),
+    );
+
+    assert!(matches!(result, Err(AppError::Io(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"base\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[test]
+fn save_whose_replace_fails_after_the_temp_exists_removes_it_and_keeps_the_target() {
+    let path = "replace-fails.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let mut temp_existed = false;
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage != SaveStage::BeforeReplace {
+                return Ok(());
+            }
+            temp_existed = temp_entries(&fixture.root) == 1;
+            Err(std::io::Error::other("injected replace failure"))
+        },
+    );
+
+    assert!(temp_existed);
+    assert!(matches!(result, Err(AppError::Io(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"base\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[cfg(unix)]
+#[test]
+fn read_refuses_a_target_or_parent_swapped_for_a_symlink_after_resolution() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new();
+    let outside = fixture.root.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("doc.txt"), b"outside\n").unwrap();
+    fixture.write("doc.txt", b"inside\n");
+    fixture.write("dir/doc.txt", b"inside\n");
+    fixture.resource("doc.txt");
+    fixture.resource("dir/doc.txt");
+
+    fs::remove_file(fixture.root.join("doc.txt")).unwrap();
+    symlink(outside.join("doc.txt"), fixture.root.join("doc.txt")).unwrap();
+    assert!(read_disk_document(&fixture.workspace, "doc.txt").is_err());
+
+    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-old")).unwrap();
+    symlink(&outside, fixture.root.join("dir")).unwrap();
+    assert!(read_disk_document(&fixture.workspace, "dir/doc.txt").is_err());
+
+    fs::remove_dir_all(outside).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn save_refuses_a_target_swapped_for_a_symlink_just_before_the_replace() {
+    use std::os::unix::fs::symlink;
+
+    let path = "target.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let outside = fixture.root.with_extension("outside.txt");
+    fs::write(&outside, b"base\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeReplace {
+                fs::remove_file(fixture.root.join(path))?;
+                symlink(&outside, fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&outside).unwrap(), b"base\n");
+    assert_eq!(fs::read_link(fixture.root.join(path)).unwrap(), outside);
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+    fs::remove_file(outside).unwrap();
+}
+
+/// Moves `dir` aside to `dir-held` and puts a link to `outside` in its place.
+#[cfg(unix)]
+fn swap_parent_for_link(root: &Path, outside: &Path) -> std::io::Result<()> {
+    fs::rename(root.join("dir"), root.join("dir-held"))?;
+    std::os::unix::fs::symlink(outside, root.join("dir"))
+}
+
+#[cfg(unix)]
+#[test]
+fn save_refuses_a_parent_swapped_after_it_is_held() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let outside = fixture.root.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("doc.txt"), b"base\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::ParentHeld {
+                swap_parent_for_link(&fixture.root, &outside)?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(outside.join("doc.txt")).unwrap(), b"base\n");
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 1);
+    assert_eq!(
+        fs::read(fixture.root.join("dir-held/doc.txt")).unwrap(),
+        b"base\n"
+    );
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-held"));
+    fs::remove_dir_all(outside).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn save_reports_a_parent_swapped_after_the_replace_and_keeps_the_buffer() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let outside = fixture.root.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("doc.txt"), b"base\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                swap_parent_for_link(&fixture.root, &outside)?;
+            }
+            Ok(())
+        },
+    );
+
+    // The bytes reached the held folder, and the save says so instead of
+    // reporting the requested resource as saved and clean.
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(
+        fs::read(fixture.root.join("dir-held/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert_eq!(fs::read(outside.join("doc.txt")).unwrap(), b"base\n");
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 1);
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-held"));
+    fs::remove_dir_all(outside).unwrap();
+}
+
+#[test]
+fn save_keeps_the_buffer_when_the_target_is_replaced_after_the_replace() {
+    let path = "replaced.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::remove_file(fixture.root.join(path))?;
+                fs::write(fixture.root.join(path), b"other\n")?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"other\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[test]
+fn save_keeps_the_buffer_when_identical_bytes_replace_the_installed_file() {
+    let path = "same-content.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    // Create the replacement first so it cannot reuse the saved file's identity.
+    let replacement = fixture.root.join("replacement.txt");
+    fs::write(&replacement, b"dirty\n").unwrap();
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::rename(&replacement, fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[test]
+fn save_keeps_the_buffer_when_the_target_is_deleted_after_the_replace() {
+    let path = "deleted.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::remove_file(fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert!(!fixture.root.join(path).exists());
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+}
+
+#[cfg(unix)]
+#[test]
+fn save_keeps_the_buffer_when_the_parent_is_renamed_before_verification() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::AfterReplace {
+                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
+            }
+            Ok(())
+        },
+    );
+
+    assert!(matches!(result, Err(AppError::InvalidRequest(_))));
+    assert_eq!(
+        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root.join("dir-moved"));
+}
+
+/// Documents the accepted Unix semantics: once the saved bytes are verified
+/// at the requested path, renaming the folder before the recovery buffer is
+/// cleared is the user moving a saved file, so the save stands.
+#[cfg(unix)]
+#[test]
+fn post_verification_parent_rename_on_unix_is_accepted_as_a_user_move() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved"))?;
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "saved");
+    assert!(!result.document.dirty);
+    assert_eq!(result.document.buffer.content, "dirty\n");
+    assert_eq!(
+        fs::read(fixture.root.join("dir-moved/doc.txt")).unwrap(),
+        b"dirty\n"
+    );
+    assert!(fixture.buffer(path).is_none());
+}
+
+/// Documents the accepted Unix semantics: once the saved bytes are verified
+/// at the requested path, deleting the file before the recovery buffer is
+/// cleared is the user removing a saved file, so the save stands.
+#[cfg(unix)]
+#[test]
+fn post_verification_target_delete_on_unix_is_accepted_as_a_user_move() {
+    let path = "deleted-after.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                fs::remove_file(fixture.root.join(path))?;
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(result.document.buffer.content, "dirty\n");
+    assert!(!fixture.root.join(path).exists());
+    assert!(fixture.buffer(path).is_none());
+}
+
+/// On Windows the verified target handle and the parent guards stay open
+/// until the recovery buffer is cleared, so the saved file cannot be
+/// deleted, replaced or moved in that window.
+#[cfg(windows)]
+#[test]
+fn held_handles_block_changes_to_the_saved_file_until_recovery_is_cleared() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let target = fixture.root.join(path);
+    let replacement = fixture.root.join("dir/replacement.txt");
+    fs::write(&replacement, b"other\n").unwrap();
+    let mut refused = (false, false, false);
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::BeforeRecoveryClear {
+                refused = (
+                    fs::remove_file(&target).is_err(),
+                    fs::rename(&replacement, &target).is_err(),
+                    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved")).is_err(),
+                );
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(refused, (true, true, true));
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(fs::read(&target).unwrap(), b"dirty\n");
+    assert_eq!(fs::read(&replacement).unwrap(), b"other\n");
+    assert!(fixture.buffer(path).is_none());
+}
+
+#[cfg(windows)]
+#[test]
+fn held_parent_cannot_be_renamed_while_a_save_holds_it() {
+    let path = "dir/doc.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let mut rename_refused = false;
+
+    let result = save_document_with(
+        fixture.database(),
+        &fixture.workspace,
+        &fixture.resource(path),
+        |stage| {
+            if stage == SaveStage::ParentHeld {
+                rename_refused =
+                    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved")).is_err();
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert!(rename_refused);
+    assert_eq!(result.outcome, "saved");
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
+    assert!(fixture.buffer(path).is_none());
+    // Once the save releases its hold, the same rename succeeds.
+    fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved")).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn save_reports_a_target_held_open_without_delete_sharing_and_removes_the_temp() {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+
+    let path = "held.txt";
+    let fixture = dirty_fixture(path, b"base\n", "dirty\n");
+    let holder = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .open(fixture.root.join(path))
+        .unwrap();
+
+    let result = save_document(fixture.database(), &fixture.workspace, path);
+
+    assert!(matches!(result, Err(AppError::Io(_))));
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"base\n");
+    assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
+    drop(holder);
+
+    // The durable edit can be saved once the external sharing lock is released.
+    let saved = save_document(fixture.database(), &fixture.workspace, path).unwrap();
+    assert_eq!(saved.outcome, "saved");
+    assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
+    assert!(fixture.buffer(path).is_none());
+    assert_eq!(temp_entries(&fixture.root), 0);
 }
 
 #[test]

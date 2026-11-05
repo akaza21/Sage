@@ -4,12 +4,19 @@
   height: 100%;
   --control-target: var(--control-height-compact);
   --control-gap: var(--space-1);
-  grid-template-rows: var(--chrome-row-height) minmax(0, 1fr) 24px;
+  --title-bar-fill: var(--agent-shell-rail);
+  --status-bar-height: var(--space-6);
+  --status-bar-fill: #1f1f1f;
+  --agent-pane-deletions: #fa423e;
+  grid-template-rows:
+    var(--chrome-row-height) minmax(0, 1fr)
+    var(--status-bar-height);
   background: var(--color-canvas);
 }
 .workbench--agent {
-  --chrome-row-height: 48px;
-  --title-bar-fill: #111111;
+  --workbench-card-radius: var(--radius-xl);
+  --workbench-card-fill: var(--agent-shell-center);
+  --workbench-card-margin: var(--space-2);
 }
 .title-bar {
   display: grid;
@@ -17,23 +24,11 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--agent-shell-title-divider);
+  border-bottom: var(--border-width) solid var(--agent-shell-title-divider);
   background: var(--title-bar-fill);
   user-select: none;
 }
 
-.title-bar__brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.title-bar__mark {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  color: var(--color-text-primary);
-}
 .title-bar__chat-search-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -47,19 +42,12 @@
   letter-spacing: 0.02em;
 }
 
-.title-bar__wordmark {
-  color: var(--color-text-primary);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.01em;
-}
-
 .title-bar__start {
   display: flex;
   min-width: 0;
   grid-area: start;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .title-bar__center {
@@ -86,10 +74,10 @@
   max-width: 280px;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 12px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-title-bar-search);
   color: var(--color-text-primary);
   background: var(--title-bar-control-fill);
   font-size: var(--font-size-sm);
@@ -151,56 +139,27 @@
 .title-bar__chat-search--pill:hover:not(:disabled) {
   background: var(--title-bar-control-hover);
 }
-.workbench--agent .agent-chat-center,
-.workbench--agent .agent-artifact-pane {
-  background: var(--agent-shell-center);
-}
-.workbench--agent .agent-task-header {
-  min-height: 44px;
-  border-bottom-color: var(--agent-shell-divider);
-  background: var(--agent-shell-center);
-}
 .workbench--agent .agent-artifact-pane__header {
-  height: 44px;
-  border-bottom: 1px solid var(--agent-shell-divider);
+  height: var(--agent-pane-header-height);
+  padding-inline: var(--agent-pane-summary-inset);
+  border-bottom: var(--border-width) solid var(--agent-shell-divider);
 }
-.workbench--agent .agent-artifact-pane .tab-strip {
-  align-items: center;
-  background: var(--agent-shell-center);
-}
-.workbench--agent .agent-artifact-pane .tab {
-  height: 28px;
-  min-width: 96px;
-  /* Codex 67: a ~208 px tab that shrinks when many share the strip. */
-  flex: 0 1 208px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-.workbench--agent .agent-artifact-pane .tab__activate {
-  gap: 4px;
-  padding: 0 4px 0 8px;
-}
-.workbench--agent .agent-artifact-pane .tab__close {
-  display: none;
-  width: 20px;
-  min-width: 20px;
-}
-.workbench--agent
-  .agent-artifact-pane
-  .tab:is(:hover, :focus-within, .tab--active)
-  .tab__close {
-  display: grid;
-}
-.workbench--agent .agent-artifact-pane .tab--active {
-  min-width: 112px;
-  background: var(--color-plane-raised);
-  border: 1px solid var(--agent-shell-tab-border);
-  box-shadow: none;
-}
+/* Window modes recolour tabs through --tab-strip-fill, --tab-fill and
+   --tab-active-fill, and opt into motion through --tab-motion-duration. */
 .workbench__tabs {
   min-width: 0;
   border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--tab-strip-fill, transparent);
+}
+
+/* No empty strip above the Editor welcome; retain the canvas's grid row. */
+.center-region:has(.tab-strip__scroll:empty) {
+  grid-template-rows: 0 minmax(0, 1fr);
+}
+
+.workbench__tabs:has(.tab-strip__scroll:empty) {
+  visibility: hidden;
+  border: 0;
 }
 
 .tab-strip {
@@ -208,7 +167,7 @@
   width: 100%;
   height: 100%;
   align-items: stretch;
-  background: var(--color-canvas);
+  background: var(--tab-strip-fill, var(--color-canvas));
 }
 
 .tab-strip__scroll {
@@ -229,12 +188,22 @@
   max-width: 240px;
   border-right: 1px solid var(--color-border-subtle);
   color: var(--color-text-muted);
-  background: var(--color-canvas);
+  background: var(--tab-fill, var(--color-canvas));
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--tab-motion-duration, 0s);
+  transition-timing-function: ease;
+}
+
+/* The tab reveals its close button through one property, which the button's
+   own hover then overrides without competing on selector weight. */
+.tab:hover {
+  --tab-close-color: var(--color-text-muted);
 }
 
 .tab--active {
+  --tab-close-color: var(--color-text-muted);
   color: var(--color-text-primary);
-  background: var(--color-surface);
+  background: var(--tab-active-fill, var(--color-surface));
   box-shadow: inset 0 2px 0 var(--color-accent);
 }
 
@@ -243,8 +212,8 @@
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 12px;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
   border: 0;
   color: inherit;
   background: transparent;
@@ -263,10 +232,23 @@
   object-fit: contain;
 }
 
-.tab__activate span:not(.tab__status, .tab__dirty, .tab__count) {
+.tab__activate
+  span:not(.tab__status, .tab__dirty, .tab__count, .git-badge, .tab__git-slot) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
+ * while the decoration chunk loads, so the mark never shifts the strip.
+ */
+.tab__activate .git-badge,
+.tab__git-slot {
+  width: 1.25em;
+  flex: none;
+  margin-left: 0;
+  font-size: var(--font-size-xs);
 }
 
 .tab__close {
@@ -276,18 +258,13 @@
   padding: 0;
   place-items: center;
   border: 0;
-  color: transparent;
+  color: var(--tab-close-color, transparent);
   background: transparent;
   cursor: pointer;
 }
 
-.tab:hover .tab__close,
-.tab--active .tab__close {
-  color: var(--color-text-muted);
-}
-
 .tab__close:hover {
-  color: var(--color-text-primary) !important;
+  --tab-close-color: var(--color-text-primary);
   background: var(--color-surface-hover);
 }
 
@@ -373,7 +350,7 @@
 
   .right-region .sidebar {
     position: absolute;
-    z-index: 10;
+    z-index: var(--z-sidebar-overlay);
     top: 0;
     right: 46px;
     width: min(272px, calc(100vw - 92px));
@@ -382,21 +359,32 @@
     background: var(--color-panel);
     box-shadow: var(--elevation-floating);
   }
+}
 
-  .right-region--leading .sidebar {
-    right: auto;
-    left: 46px;
-    border-left: none;
-    border-right: 1px solid var(--color-border-subtle);
-    box-shadow: var(--elevation-floating);
-  }
+/* Overlay geometry and center sleep share the Workbench layout decision. */
+.workbench__body[data-editor-tools="overlay"] {
+  position: relative;
+  grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading {
+  position: static;
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading .sidebar {
+  position: absolute;
+  z-index: var(--z-sidebar-overlay);
+  inset: 0 0 0 var(--editor-activity-width);
+  width: auto;
+  height: auto;
+  margin: var(--space-1);
 }
 
 @media (max-width: 640px) {
   .title-bar {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    column-gap: 8px;
-    padding-inline: 8px;
+    column-gap: var(--space-2);
+    padding-inline: var(--space-2);
   }
 
   .title-bar__center {
@@ -415,10 +403,9 @@
   }
 
   .title-bar__start {
-    gap: 8px;
+    gap: var(--space-2);
   }
 
-  .title-bar__wordmark,
   .title-bar__chat-search-label,
   .title-bar__chord {
     display: none;

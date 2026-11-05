@@ -9,7 +9,7 @@ use crate::acp::{
 impl AcpService {
     #[cfg(test)]
     pub(crate) fn goal_channel_for_test(&self) -> std::sync::Arc<crate::acp::goal::GoalChannel> {
-        std::sync::Arc::clone(&self.runtime.goal)
+        std::sync::Arc::clone(&self.lane_at(0).runtime.goal)
     }
     #[cfg(test)]
     pub(crate) fn install_goal_test_runtime(
@@ -18,22 +18,26 @@ impl AcpService {
         host: std::sync::Arc<crate::acp::runtime::RuntimeHost>,
         goal: GoalState,
     ) {
-        self.runtime.reserve_start(owner.clone()).unwrap();
-        self.runtime.goal.update(&owner, goal);
-        self.runtime.finish_start(&owner, host).unwrap();
-        self.runtime.publish_start(&owner).unwrap();
+        let lane = self.lane_at(0);
+        lane.runtime.reserve_start(owner.clone()).unwrap();
+        lane.runtime.goal.update(&owner, goal);
+        lane.runtime.finish_start(&owner, host).unwrap();
+        lane.runtime.publish_start(&owner).unwrap();
     }
     pub(crate) fn mutate_existing_goal(
         &self,
         owner: RuntimeOwner,
         action: GoalAction,
     ) -> Result<(), crate::acp::runtime::HostError> {
-        let host = self
+        let lane = self
+            .lane_for(&owner)
+            .ok_or(crate::acp::runtime::HostError::Intent)?;
+        let host = lane
             .runtime
             .for_owner(&owner)
             .map_err(|_| crate::acp::runtime::HostError::Intent)?;
         if !matches!(
-            self.runtime.goal.snapshot(&owner),
+            lane.runtime.goal.snapshot(&owner),
             Some(GoalState::Goal { .. })
         ) {
             return Err(crate::acp::runtime::HostError::Intent);
@@ -55,7 +59,9 @@ impl AcpService {
         goal_reply(result)
     }
     pub(crate) fn set_goal_notice_sink(&self, sink: GoalNoticeSink) {
-        self.runtime.goal.set_sink(sink);
+        for lane in self.lanes() {
+            lane.runtime.goal.set_sink(sink.clone());
+        }
     }
 
     pub(super) fn compose_goal(&self, page: &mut AcpChatPage) {
@@ -83,13 +89,13 @@ impl AcpService {
             session_id: session.id.clone(),
             runtime_epoch,
         };
-        page.goal = if self.runtime.for_owner(&owner).is_ok() {
-            self.runtime
+        page.goal = match self.lane_for(&owner) {
+            Some(lane) if lane.runtime.for_owner(&owner).is_ok() => lane
+                .runtime
                 .goal
                 .snapshot(&owner)
-                .unwrap_or(GoalState::Loading)
-        } else {
-            GoalState::Offline
+                .unwrap_or(GoalState::Loading),
+            _ => GoalState::Offline,
         };
     }
 

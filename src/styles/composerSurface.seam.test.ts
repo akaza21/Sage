@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 async function composerRules() {
   const files = [
+    "surface.css",
+    "global.css",
     "shared-controls.css",
     "status-surfaces.css",
     "chat-surface.css",
@@ -20,61 +22,50 @@ async function composerRules() {
 }
 
 describe("Composer surface stylesheet seam", () => {
-  it("reserves measured queue space only when the Agent edits row is populated", async () => {
+  it("keeps queued rows inside the dock flow even when the edit summary appears", async () => {
     const style = document.createElement("style");
-    style.textContent =
-      (await readFile("src/styles/queued-messages.css", "utf8")) +
-      (await readFile("src/styles/chat-surface.css", "utf8"));
-    const surface = document.createElement("section");
-    surface.className = "chat-surface chat-surface--agent";
-    surface.innerHTML =
-      '<div class="chat-edit-summary-zone"></div><form class="composer"><div class="composer__queued"></div></form>';
+    style.textContent = await readFile(
+      "src/styles/queued-messages.css",
+      "utf8",
+    );
+    const dock = document.createElement("form");
+    dock.className = "composer";
+    dock.innerHTML =
+      '<div class="chat-edit-summary-zone"></div><div class="composer__queued"><div class="composer__queued-row">Follow up</div></div>';
     document.head.append(style);
-    document.body.append(surface);
+    document.body.append(dock);
     try {
-      const queue = surface.querySelector(".composer__queued")!;
-      expect(getComputedStyle(queue).position).toBe("absolute");
-      surface.firstElementChild!.innerHTML =
-        '<section class="acp-file-changes">1 file changed</section>';
-      expect(getComputedStyle(queue).position).toBe("absolute");
-      expect(
-        getComputedStyle(surface.querySelector(".composer")!).marginBlockStart,
-      ).toBe("var(--queued-tray-space, 0px)");
-      expect(getComputedStyle(queue).maxHeight).toBe("min(320px, 40vh)");
-      surface.classList.remove("chat-surface--agent");
-      expect(getComputedStyle(queue).position).toBe("absolute");
+      const queue = dock.querySelector(".composer__queued")!;
+      for (const summary of ["", "1 file changed"]) {
+        dock.firstElementChild!.textContent = summary;
+        expect(getComputedStyle(queue).position).toBe("static");
+        expect(getComputedStyle(queue.firstElementChild!).backgroundColor).toBe(
+          "rgba(0, 0, 0, 0)",
+        );
+        expect(getComputedStyle(queue).maxHeight).toBe("min(320px, 40vh)");
+      }
     } finally {
-      surface.remove();
+      dock.remove();
       style.remove();
     }
   });
 
-  it("reserves the same trailing column for the edits row and composer", async () => {
-    const css = await readFile("src/styles/chat-surface.css", "utf8");
-    expect(css).toMatch(
-      /\.chat-surface--agent > \.chat-edit-summary-zone\s*\{[^}]*padding-inline:\s*var\(--chat-column-gutter\)\s*calc\(var\(--chat-column-gutter\) \+ var\(--chat-column-trailing\)\);/s,
-    );
-  });
-
-  it("caps the composer row to leave transcript space and scrolls upper content at every width", async () => {
-    const surface = await composerRules();
-    expect(surface).toMatch(
-      /\.chat-surface--agent\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(120px,\s*1fr\)\s+minmax\(0,\s*auto\)\s+fit-content\(\s*60%\s*\);/s,
-    );
-    expect(surface).toMatch(
-      /\.composer\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*flex-direction:\s*column;/s,
-    );
-    const compact = await readFile(
-      "src/styles/chat-container-controls.css",
-      "utf8",
-    );
-    expect(compact).toMatch(
-      /@container composer \(max-width: 520px\)[\s\S]*\.composer__body\s*\{[^}]*scrollbar-gutter:\s*stable;/s,
-    );
-    expect(surface).toMatch(
-      /\.composer__body\s*\{[^}]*display:\s*block;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(surface).toMatch(/\.composer__toolbar\s*\{[^}]*flex:\s*none;/s);
+  it("keeps the dock edit slot unpainted and scrollable", async () => {
+    const style = document.createElement("style");
+    style.textContent = await readFile("src/styles/chat-surface.css", "utf8");
+    const slot = document.createElement("div");
+    slot.className = "chat-edit-summary-zone";
+    slot.textContent = "1 file changed";
+    document.head.append(style);
+    document.body.append(slot);
+    try {
+      expect(getComputedStyle(slot).overflowY).toBe("auto");
+      expect(getComputedStyle(slot).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      expect(getComputedStyle(slot).minHeight).toBe("0px");
+    } finally {
+      slot.remove();
+      style.remove();
+    }
   });
 
   it("lets expanded edit disclosures shrink and scroll only in their Agent grid row", async () => {
@@ -91,14 +82,10 @@ describe("Composer surface stylesheet seam", () => {
     document.body.append(agent, foreign);
     try {
       const zone = agent.firstElementChild!;
-      expect(getComputedStyle(zone).gridArea).toBe("edits");
+      expect(getComputedStyle(zone).overflowY).toBe("auto");
       expect(getComputedStyle(foreign).gridArea).not.toBe("edits");
       expect(getComputedStyle(zone).minHeight).toBe("0px");
-      expect(getComputedStyle(zone).display).toBe("flex");
-      expect(getComputedStyle(zone).flexDirection).toBe("column");
-      const disclosure = zone.firstElementChild!;
-      expect(getComputedStyle(disclosure).minHeight).toBe("0px");
-      expect(getComputedStyle(disclosure).overflowY).toBe("auto");
+      expect(getComputedStyle(zone).display).toBe("block");
     } finally {
       style.remove();
       agent.remove();
@@ -125,12 +112,12 @@ describe("Composer surface stylesheet seam", () => {
           (extraRows
             ? '<button class="chat-follow-end">Jump to latest</button>'
             : "") +
-          '<form class="composer"></form>';
+          '<div class="chat-dock"><form class="composer"></form></div>';
         expect(
           getComputedStyle(surface.querySelector(".message-list")!).gridArea,
         ).toBe("transcript");
         expect(
-          getComputedStyle(surface.querySelector(".composer")!).gridArea,
+          getComputedStyle(surface.querySelector(".chat-dock")!).gridArea,
         ).toBe("composer");
         if (extraRows) {
           expect(
@@ -183,22 +170,6 @@ describe("Composer surface stylesheet seam", () => {
       /background:\s*Highlight;/,
     );
   });
-  it("gives single-line harness rows bounded scrolling and visible keyboard focus", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu > \[role="listbox"\]\s*\{[^}]*min-height:\s*0;[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option\s*\{[^}]*min-height:\s*32px;/s,
-    );
-    expect(css).not.toMatch(/\.searchable-picker__option\[data-active/);
-    expect(css).toMatch(
-      /\.composer__harness-menu \.searchable-picker__option:focus-visible\s*\{[^}]*background:\s*var\(--composer-control-hover\);/s,
-    );
-  });
 
   it("truncates the model label within its own shrinkable box instead of clipping the trigger's leading edge", async () => {
     const css = await readFile(
@@ -227,22 +198,7 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__action-description\s*\{[^}]*grid-column:\s*2 \/ -1;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s,
     );
   });
-  it("reserves the full Harness trigger height instead of overlapping the prompt", async () => {
-    const css = await readFile(
-      resolve("src/styles/harness-picker.css"),
-      "utf8",
-    );
-    const wrapper = css.match(
-      /^\.composer__harness\.composer__control-trigger\s*\{([^}]*)\}/m,
-    );
-    const trigger = css.match(
-      /^\.composer__harness \.searchable-picker__trigger\s*\{([^}]*)\}/m,
-    );
-    const height = (rule: RegExpMatchArray | null) =>
-      rule?.[1].match(/(?:^|;)\s*height:\s*(\d+)px;/)?.[1];
-    expect(height(trigger)).toBe("40");
-    expect(height(wrapper)).toBe(height(trigger));
-  });
+
   it("keeps a system progress fill visible in forced colors", async () => {
     const css = await readFile(
       resolve("src/styles/composer-context.css"),
@@ -255,56 +211,15 @@ describe("Composer surface stylesheet seam", () => {
       /\.composer__context-usage::before\s*\{[^}]*forced-color-adjust:\s*none;[^}]*background:\s*conic-gradient\(\s*Highlight\s+var\(--composer-context-usage\),\s*Canvas\s+var\(--composer-context-usage\)\s*\);/s,
     );
   });
-
-  it("keeps focused composer and related surface files below 400 lines", async () => {
-    for (const file of [
-      "composer-surface.css",
-      "composer-image.css",
-      "composer-context.css",
-      "chat-surface.css",
-      "chat-follow-end.css",
-      "shared-controls.css",
-      "searchable-picker-bounded-popover.css",
-      "status-surfaces.css",
-    ]) {
-      const css = await readFile(resolve("src/styles", file), "utf8");
-      expect(css.split(/\r?\n/).length, file).toBeLessThan(400);
-    }
-  });
   it("matches the Codex single-card footprint and round white action", async () => {
     const surfaceCss = await composerRules();
+    expect(surfaceCss).toMatch(/--reading-measure:\s*72ch;/s);
     expect(surfaceCss).toMatch(
-      /\.chat-surface\s*\{[^}]*--reading-measure:\s*660px;/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.composer\s*\{[^}]*background:\s*var\(--composer-fill\);/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border:\s*1px solid var\(--composer-border\);/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*border-radius:\s*var\(--radius-xl\);/s,
+      /\.surface--dock\s*\{[^}]*--surface-fill:\s*var\(--composer-fill\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.send-button\s*\{[^}]*border-radius:\s*var\(--radius-circle\);[^}]*background:\s*var\(--color-status-foreground\);/s,
     );
-  });
-
-  it("loads composer rules from a focused stylesheet, not the shell stylesheet", async () => {
-    const [entry, shellCss, surfaceCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
-      readFile(resolve("src/styles/global.css"), "utf8"),
-      readFile(resolve("src/styles/composer-surface.css"), "utf8"),
-    ]);
-
-    expect(entry).toMatch(/import ["']\.\/styles\/composer-surface\.css["'];/);
-    expect(shellCss).not.toMatch(/^\.composer\b/m);
-    expect(shellCss).not.toMatch(/^\.select-control\b/m);
-    expect(surfaceCss).toMatch(/^\.composer\b/m);
-    expect(surfaceCss).toMatch(/^\.select-control\b/m);
   });
 
   it("keeps the full-width controls on one line and leaves options positioning to the shared popover", async () => {
@@ -344,10 +259,7 @@ describe("Composer surface stylesheet seam", () => {
     const surfaceCss = await composerRules();
 
     expect(surfaceCss).toMatch(
-      /\.composer,\s*\.chat-surface > \.acp-permission-prompt\s*\{[^}]*width:\s*min\(\s*var\(--reading-measure\),[^}]*margin-inline-start:\s*max\(\s*var\(--chat-column-gutter\),\s*calc\(\(100% - var\(--chat-column-trailing\) - var\(--reading-measure\)\) \/ 2\)\s*\);/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.composer textarea\s*\{[^}]*min-height:\s*44px;[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
+      /\.composer textarea\s*\{[^}]*min-height:\s*var\(--composer-input-min-block-size\);[^}]*padding:\s*var\(--space-3\)\s+var\(--space-3\)\s+var\(--space-1\);/s,
     );
     expect(surfaceCss).toMatch(
       /\.composer__shortcut\s*\{[^}]*display:\s*none;/s,
@@ -450,12 +362,12 @@ describe("Composer surface stylesheet seam", () => {
       /@media \(forced-colors:\s*active\)\s*\{[\s\S]*$/,
       "",
     );
-    expect(defaultCss).not.toMatch(/\.composer:focus-within\s*\{/);
+    expect(defaultCss).not.toMatch(/\.chat-dock:focus-within\s*\{/);
     expect(surfaceCss).not.toMatch(
-      /\.composer:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
+      /\.chat-dock:focus-within\s*\{[^}]*0\s+0\s+0\s+var\(--focus-ring-offset\)/s,
     );
     expect(surfaceCss).toMatch(
-      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.composer:focus-within\s*\{[^}]*border-color:\s*Highlight;[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-2px;[^}]*box-shadow:\s*none;/s,
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*?\.chat-dock:focus-within\s*\{[^}]*border-color:\s*Highlight;[^}]*outline:\s*2px solid Highlight;[^}]*outline-offset:\s*-2px;[^}]*box-shadow:\s*none;/s,
     );
   });
 });

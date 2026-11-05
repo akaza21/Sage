@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import { renderMarkdownPreview } from "../../files/markdownPreview";
 import { ChatMarkdown } from "./ChatMarkdown";
-import nextStreamRuns, { MAX_STREAM_RUNS } from "./streamTail";
+import nextStreamRuns from "./streamTail";
 import { loadStreamRuns, streamRunTracker } from "./ChatMarkdown";
 
 // The run tracker is a lazy chunk that starts loading with ChatMarkdown.
@@ -88,6 +88,21 @@ it.each(["**bold** tail more", "[file](src/main.ts) tail more"])(
 );
 
 describe("nextStreamRuns target", () => {
+  it.each(["- Before\n  - Child\n\n  Tail", "> Before\n>\n> Tail"])(
+    "trails a growing paragraph in its original container: %j",
+    (source) => {
+      const { container, rerender } = render(
+        <ChatMarkdown text={source} streaming />,
+      );
+      rerender(<ChatMarkdown text={source + " more"} streaming />);
+      expect(tails(container)).toEqual([" more"]);
+      expect(
+        container
+          .querySelector(".acp-stream-new")
+          ?.closest(source.startsWith(">") ? "blockquote" : "li"),
+      ).toBeTruthy();
+    },
+  );
   it("resets empty, shortened, retyped and structurally new targets", () => {
     expect(newestRuns(doc(""), doc(""))).toBeNull();
     expect(newestRuns(doc("long text"), doc("long"))).toBeNull();
@@ -182,13 +197,6 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(tails(container)).toEqual([" e"]);
   });
 
-  it("keeps a run for 16 chunks, longer than its 300 ms fade at any cadence slower than 19 ms", async () => {
-    const css = readFileSync(resolve("src/styles/global.css"), "utf8");
-    expect(css).toMatch(/--motion-duration-stream:\s*300ms;/);
-    expect(MAX_STREAM_RUNS).toBe(16);
-    expect(300 / MAX_STREAM_RUNS).toBeLessThan(19);
-  });
-
   it("drops a run whose text re-rendered and bounds the runs that fade at once", () => {
     const { container, rerender } = render(
       <ChatMarkdown text="Say **hi" streaming />,
@@ -200,12 +208,12 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     expect(tails(container)).toEqual([]);
     let text = "Go";
     rerender(<ChatMarkdown text={text} streaming />);
-    for (let chunk = 0; chunk < MAX_STREAM_RUNS + 4; chunk++) {
+    for (let chunk = 0; chunk < 20; chunk++) {
       text += ` w${chunk}`;
       rerender(<ChatMarkdown text={text} streaming />);
     }
-    expect(tails(container)).toHaveLength(MAX_STREAM_RUNS);
-    expect(tails(container).at(-1)).toBe(` w${MAX_STREAM_RUNS + 3}`);
+    expect(tails(container)).toHaveLength(16);
+    expect(tails(container).at(-1)).toBe(" w19");
     expect(container.querySelector("p")).toHaveTextContent(text);
   });
 
@@ -268,3 +276,131 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     );
   });
 });
+
+it("does not track a textless rule while streaming its marker", () => {
+  const previous = doc("Intro\n\n---");
+  const next = doc("Intro\n\n----");
+  expect(next.blocks.at(-1)).toEqual({ kind: "rule" });
+  expect(newestRuns(previous, next)).toBeNull();
+  const { container } = render(
+    <ChatMarkdown text={"Intro\n\n---"} streaming />,
+  );
+  expect(container.querySelector("hr")).not.toBeNull();
+});
+
+it.each(["~~~", "```"])(
+  "keeps incomplete and over-indented %s closers literal while streaming",
+  (fence) => {
+    const { container, rerender } = render(
+      <ChatMarkdown text={`${fence}js\ncode\n    ~`} streaming />,
+    );
+    const sources = [
+      `${fence}js\ncode\n    ${fence}\nAfter`,
+      `${fence}js\ncode\n    ${fence}\nAfter\n  ${fence.slice(0, 2)}`,
+    ];
+    for (const source of sources) {
+      rerender(<ChatMarkdown text={source} streaming />);
+      const expected = source.slice(source.indexOf("\n") + 1);
+      expect(doc(source).blocks).toEqual([
+        { kind: "code", language: "js", text: expected, fenceClosed: false },
+      ]);
+      expect(
+        [...container.querySelectorAll("pre code")].map(
+          (node) => node.textContent,
+        ),
+      ).toEqual([expected]);
+      expect([...container.querySelectorAll(".acp-markdown > p")]).toEqual([]);
+      expect(tails(container)).toEqual([]);
+    }
+    const source = `${fence}js\ncode\n    ${fence}\nAfter\n  ${fence}\nDone`;
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(doc(source).blocks).toEqual([
+      {
+        kind: "code",
+        language: "js",
+        text: `code\n    ${fence}\nAfter`,
+        fenceClosed: true,
+      },
+      { kind: "paragraph", text: "Done" },
+    ]);
+    expect(
+      [...container.querySelectorAll("pre code")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual([`code\n    ${fence}\nAfter`]);
+    expect(
+      [...container.querySelectorAll(".acp-markdown > p")].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["Done"]);
+  },
+);
+
+it("reclassifies streaming setext text while keeping an empty list separate from a rule", () => {
+  const { container, rerender } = render(
+    <ChatMarkdown text="Title" streaming />,
+  );
+  const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+  expect(surface()).toBe("<p>Title</p>");
+  for (const [source, expected] of [
+    ["Title\n=", "<h1>Title</h1>"],
+    ["Title\n===", "<h1>Title</h1>"],
+    ["Title\n-", "<h2>Title</h2>"],
+    ["Title\n---", "<h2>Title</h2>"],
+    ["-", "<ul><li></li></ul>"],
+    ["-\n-", "<ul><li></li><li></li></ul>"],
+    ["-\n---", "<ul><li></li></ul><hr>"],
+  ]) {
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(surface()).toBe(expected);
+    expect(tails(container)).toEqual([]);
+  }
+});
+
+it.each([
+  ["#", "<h1></h1>"],
+  ["   # Title", "<h1>Title</h1>"],
+])(
+  "keeps streamed ATX %s separate from a growing rule",
+  (heading, expected) => {
+    const { container, rerender } = render(
+      <ChatMarkdown text={heading} streaming />,
+    );
+    const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+    expect(surface()).toBe(expected);
+    rerender(<ChatMarkdown text={`${heading}\n--`} streaming />);
+    expect(surface()).toBe(`${expected}<p>--</p>`);
+    rerender(<ChatMarkdown text={`${heading}\n---`} streaming />);
+    expect(surface()).toBe(`${expected}<hr>`);
+    expect(tails(container)).toEqual([]);
+    rerender(<ChatMarkdown text={`Intro\n${heading}\n---`} streaming />);
+    expect(surface()).toBe(`<p>Intro</p>${expected}<hr>`);
+    expect(tails(container)).toEqual([]);
+  },
+);
+
+it.each(["-", "+", "*", "1.", "2)"])(
+  "classifies a streaming tab-separated %s marker before an underline",
+  (marker) => {
+    const source = `Intro\n${marker}\titem`;
+    const list = /^\d/u.test(marker)
+      ? `<ol start="${marker[0]}"><li><span data-markdown-inline="">item</span></li></ol>`
+      : '<ul><li><span data-markdown-inline="">item</span></li></ul>';
+    const { container, rerender } = render(
+      <ChatMarkdown text="Intro" streaming />,
+    );
+    const surface = () => container.querySelector(".acp-markdown")!.innerHTML;
+    expect(surface()).toBe("<p>Intro</p>");
+    rerender(<ChatMarkdown text={source} streaming />);
+    expect(surface()).toBe(
+      marker === "2)"
+        ? '<p>Intro<span class="acp-stream-new"> 2) item</span></p>'
+        : `<p>Intro</p>${list}`,
+    );
+    rerender(<ChatMarkdown text={`${source}\n---`} streaming />);
+    expect(surface()).toBe(
+      marker === "2)" ? "<h2>Intro 2) item</h2>" : `<p>Intro</p>${list}<hr>`,
+    );
+    expect(tails(container)).toEqual([]);
+  },
+);

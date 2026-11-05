@@ -1,214 +1,258 @@
 use super::turn_failures::Reopened;
 use super::*;
-use crate::acp::bindings::pi::runtime::support::ATTEMPT_FAILURE_CODE;
 use crate::acp::{
     intent::ErrorKind, lifecycle::TurnState, projection::ItemContent, store::load_chat_page,
 };
 
 #[tokio::test]
 async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
+    // Whole-page scans include random UUIDs; canaries must be distinctive non-hex values.
     for (detail, expected, canaries) in [
         (
-            r#"{"user":"Bob Smith","token":"multiword-canary"}"#,
+            r#"{"user":"Bob Smith","token":"pi-canary-Q7z9-multiword-value"}"#,
             r#"{"user":"Bob Smith","token":[redacted]}"#,
-            &["multiword-canary"][..],
+            &["pi-canary-Q7z9-multiword-value"][..],
         ),
         (
-            r#"{"credentials":["canary-one","canary-two"],"count":4}"#,
+            r#"{"credentials":["pi-canary-Q7z9-array-value-one","pi-canary-Q7z9-array-value-two"],"count":4}"#,
             r#"{"credentials":[redacted],"count":4}"#,
-            &["canary-one", "canary-two"][..],
+            &[
+                "pi-canary-Q7z9-array-value-one",
+                "pi-canary-Q7z9-array-value-two",
+            ][..],
         ),
         (
-            r#"{"to\u006ben":"unicode-canary"}"#,
+            r#"{"to\u006ben":"pi-canary-Q7z9-unicode-key-value"}"#,
             r#"{"to\u006ben":[redacted]}"#,
-            &["unicode-canary"][..],
+            &["pi-canary-Q7z9-unicode-key-value"][..],
         ),
         (
-            r#"{\"token\":\"prefix\\\"tail-canary\"}"#,
+            r#"{\"token\":\"pi-canary-Q7z9-escaped-quote-prefix\\\"pi-canary-Q7z9-attached-tail-value\"}"#,
             r#"{\"token\":[redacted]}"#,
-            &["prefix", "tail-canary"][..],
+            &[
+                "pi-canary-Q7z9-escaped-quote-prefix",
+                "pi-canary-Q7z9-attached-tail-value",
+            ][..],
         ),
         (
-            r#"{"token":"token-canary","message":"https://user:secret@host/ failed"}"#,
+            r#"{"token":"pi-canary-Q7z9-json-token-value","message":"https://pi-canary-Q7z9-url-user:pi-canary-Q7z9-url-password@host/ failed"}"#,
             r#"{"token":[redacted],"message":"https://[redacted]@host/ failed"}"#,
-            &["token-canary", "user:secret"][..],
+            &[
+                "pi-canary-Q7z9-json-token-value",
+                "pi-canary-Q7z9-url-user:pi-canary-Q7z9-url-password",
+            ][..],
         ),
         (
-            r"C:\Users\John Paul Smith\.ssh\id failed",
+            r"C:\Users\pi-canary-Q7z9-John pi-canary-Q7z9-Paul pi-canary-Q7z9-Smith\.ssh\id failed",
             "[path] failed",
-            &["John", "Paul", "Smith"][..],
+            &[
+                "pi-canary-Q7z9-John",
+                "pi-canary-Q7z9-Paul",
+                "pi-canary-Q7z9-Smith",
+            ][..],
         ),
         (
-            "Bearer  private-token",
+            "Bearer  pi-canary-Q7z9-private-token-value",
             "Bearer  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Bearer private\u{0000}token",
+            "Bearer pi-canary-Q7z9-private\u{0000}token-value",
             "Bearer [redacted]",
-            &["privatetoken"][..],
+            &["pi-canary-Q7z9-privatetoken-value"][..],
         ),
         (
-            "Bearer\r\rprivate-token",
+            "Bearer\r\rpi-canary-Q7z9-private-token-value",
             "Bearer  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "--token\r\rprivate-token",
+            "--token\r\rpi-canary-Q7z9-private-token-value",
             "--token  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Bearer\u{000b}\u{000c}private-token",
+            "Bearer\u{000b}\u{000c}pi-canary-Q7z9-private-token-value",
             "Bearer  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Authorization: Basic private-token",
+            "Authorization: Basic pi-canary-Q7z9-private-token-value",
             "Authorization: [redacted] [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Authorization:Basic private-token",
+            "Authorization:Basic pi-canary-Q7z9-private-token-value",
             "[redacted] [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            r#""failed Bearer private-token""#,
+            r#""failed Bearer pi-canary-Q7z9-private-token-value""#,
             r#""failed Bearer [redacted]""#,
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Bearer \t\n private-token",
+            "Bearer \t\n pi-canary-Q7z9-private-token-value",
             "Bearer \t\n [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Bearer \"private multi word\" denied",
+            "Bearer \"pi-canary-Q7z9-private multi word value\" denied",
             "Bearer [redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "Authorization:  Bearer  private-token",
+            "Authorization:  Bearer  pi-canary-Q7z9-private-token-value",
             "Authorization:  [redacted]  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Authorization:Bearer private-token",
+            "Authorization:Bearer pi-canary-Q7z9-private-token-value",
             "[redacted] [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "Authorization: \"Bearer private token\" denied",
+            "Authorization: \"Bearer pi-canary-Q7z9-private token value\" denied",
             "Authorization: [redacted] denied",
-            &["Bearer private token"][..],
+            &["Bearer pi-canary-Q7z9-private token value"][..],
         ),
         (
-            "--token  private-token denied",
+            "--token  pi-canary-Q7z9-private-token-value denied",
             "--token  [redacted] denied",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "--password 'private multi word' denied",
+            "--password 'pi-canary-Q7z9-private multi word value' denied",
             "--password [redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "--secret \"private multi word\" denied",
+            "--secret \"pi-canary-Q7z9-private multi word value\" denied",
             "--secret [redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "--api-key  private-token denied",
+            "--api-key  pi-canary-Q7z9-private-token-value denied",
             "--api-key  [redacted] denied",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            "KEY=\"private multi word\" denied",
+            "KEY=\"pi-canary-Q7z9-private multi word value\" denied",
             "[redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "KEY='private multi word' denied",
+            "KEY='pi-canary-Q7z9-private multi word value' denied",
             "[redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "spring.datasource.password=hunter2",
+            "spring.datasource.password=pi-canary-Q7z9-password-value",
             "[redacted]",
-            &["hunter2"][..],
+            &["pi-canary-Q7z9-password-value"][..],
         ),
-        ("env:TOKEN=abc", "[redacted]", &["abc"][..]),
-        ("key[0]=abc", "[redacted]", &["abc"][..]),
-        ("api.key=abc", "[redacted]", &["abc"][..]),
         (
-            "Authorization :  private-token",
+            "env:TOKEN=pi-canary-Q7z9-api-key-value",
+            "[redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "key[0]=pi-canary-Q7z9-api-key-value",
+            "[redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "api.key=pi-canary-Q7z9-api-key-value",
+            "[redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "Authorization :  pi-canary-Q7z9-private-token-value",
             "Authorization :  [redacted]",
-            &["private-token"][..],
+            &["pi-canary-Q7z9-private-token-value"][..],
         ),
         (
-            r#"{"Authorization": "Basic dXNlcjpwYXNz"}"#,
+            r#"{"Authorization": "Basic cGktY2FuYXJ5LVE3ejktYmFzaWMtdXNlcjpwYXNzd29yZA=="}"#,
             r#"{"Authorization": [redacted]}"#,
-            &["dXNlcjpwYXNz"][..],
+            &["cGktY2FuYXJ5LVE3ejktYmFzaWMtdXNlcjpwYXNzd29yZA=="][..],
         ),
         (
-            r#""x-api-key": "abc""#,
+            r#""x-api-key": "pi-canary-Q7z9-api-key-value""#,
             r#""x-api-key": [redacted]"#,
-            &["abc"][..],
+            &["pi-canary-Q7z9-api-key-value"][..],
         ),
         (
-            r#"{"token":"abc123"}"#,
+            r#"{"token":"pi-canary-Q7z9-compact-token-value"}"#,
             r#"{"token":[redacted]}"#,
-            &["abc123"][..],
+            &["pi-canary-Q7z9-compact-token-value"][..],
         ),
         (
-            "password: hunter2",
+            "password: pi-canary-Q7z9-password-value",
             "password: [redacted]",
-            &["hunter2"][..],
-        ),
-        ("token:abc", "[redacted]", &["abc"][..]),
-        ("--token:abc", "[redacted]", &["abc"][..]),
-        (
-            "--client-secret abc",
-            "--client-secret [redacted]",
-            &["abc"][..],
+            &["pi-canary-Q7z9-password-value"][..],
         ),
         (
-            "--access-token abc",
-            "--access-token [redacted]",
-            &["abc"][..],
-        ),
-        (
-            "curl -d @/home/u/secret",
-            "curl -d [path]",
-            &["/home/u/secret"][..],
-        ),
-        ("config:/home/u/x", "[path]", &["/home/u/x"][..]),
-        (
-            "https://user:secret@host/",
-            "https://[redacted]@host/",
-            &["user:secret"][..],
-        ),
-        (
-            r"C:\Users\John Smith\.ssh\id",
-            "[path]",
-            &["John", "Smith"][..],
-        ),
-        (
-            "--password 'hunter2 rejected; it isn't valid",
-            "--password [redacted]",
-            &["hunter2"][..],
-        ),
-        (
-            r#"error: expected "KEY=" but got "x""#,
-            r#"error: expected "KEY=" but got "x""#,
-            &[][..],
-        ),
-        (r#"Bearer ""secret"#, "Bearer [redacted]", &["secret"][..]),
-        (
-            r#"KEY="attached-canary"tail-canary"#,
+            "token:pi-canary-Q7z9-api-key-value",
             "[redacted]",
-            &["attached-canary", "tail-canary"][..],
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "--token:pi-canary-Q7z9-api-key-value",
+            "[redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "--client-secret pi-canary-Q7z9-api-key-value",
+            "--client-secret [redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "--access-token pi-canary-Q7z9-api-key-value",
+            "--access-token [redacted]",
+            &["pi-canary-Q7z9-api-key-value"][..],
+        ),
+        (
+            "curl -d @/home/pi-canary-Q7z9-user/secret-value",
+            "curl -d [path]",
+            &["/home/pi-canary-Q7z9-user/secret-value"][..],
+        ),
+        (
+            "config:/home/pi-canary-Q7z9-user/config-value",
+            "[path]",
+            &["/home/pi-canary-Q7z9-user/config-value"][..],
+        ),
+        (
+            "https://pi-canary-Q7z9-url-user:pi-canary-Q7z9-url-password@host/",
+            "https://[redacted]@host/",
+            &["pi-canary-Q7z9-url-user:pi-canary-Q7z9-url-password"][..],
+        ),
+        (
+            r"C:\Users\pi-canary-Q7z9-John pi-canary-Q7z9-Smith\.ssh\id",
+            "[path]",
+            &["pi-canary-Q7z9-John", "pi-canary-Q7z9-Smith"][..],
+        ),
+        (
+            "--password 'pi-canary-Q7z9-password-value rejected; it isn't valid",
+            "--password [redacted]",
+            &["pi-canary-Q7z9-password-value"][..],
+        ),
+        (
+            r#"error: expected "KEY=" but got "x""#,
+            r#"error: expected "KEY=" but got "x""#,
+            &[][..],
+        ),
+        (
+            r#"Bearer ""pi-canary-Q7z9-unclosed-bearer-value"#,
+            "Bearer [redacted]",
+            &["pi-canary-Q7z9-unclosed-bearer-value"][..],
+        ),
+        (
+            r#"KEY="pi-canary-Q7z9-attached-quoted-value"pi-canary-Q7z9-attached-tail-value"#,
+            "[redacted]",
+            &[
+                "pi-canary-Q7z9-attached-quoted-value",
+                "pi-canary-Q7z9-attached-tail-value",
+            ][..],
         ),
         (
             "risk-free task-runner disk-full",
@@ -216,54 +260,60 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
             &[][..],
         ),
         (
-            "KEY=  \"private multi word\" denied",
+            "KEY=  \"pi-canary-Q7z9-private multi word value\" denied",
             "[redacted]  [redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            "KEY = \"private multi word\" denied",
+            "KEY = \"pi-canary-Q7z9-private multi word value\" denied",
             "KEY = [redacted] denied",
-            &["private multi word"][..],
+            &["pi-canary-Q7z9-private multi word value"][..],
         ),
         (
-            r#"{"user":"bob","token":"compact-canary"}"#,
+            r#"{"user":"bob","token":"pi-canary-Q7z9-compact-json-value"}"#,
             r#"{"user":"bob","token":[redacted]}"#,
-            &["compact-canary"][..],
+            &["pi-canary-Q7z9-compact-json-value"][..],
         ),
         (
-            r#"{"error":{"message":"x","authorization":"Bearer nested-canary"}}"#,
+            r#"{"error":{"message":"x","authorization":"Bearer pi-canary-Q7z9-nested-auth-value"}}"#,
             r#"{"error":{"message":"x","authorization":[redacted]}}"#,
-            &["nested-canary"][..],
+            &["pi-canary-Q7z9-nested-auth-value"][..],
         ),
         (
-            r#""headers":{"Authorization":"Bearer header-canary"}"#,
+            r#""headers":{"Authorization":"Bearer pi-canary-Q7z9-header-auth-value"}"#,
             r#""headers":{"Authorization":[redacted]}"#,
-            &["header-canary"][..],
+            &["pi-canary-Q7z9-header-auth-value"][..],
         ),
         (
-            r#"{\"token\":\"escaped-canary\"}"#,
+            r#"{\"token\":\"pi-canary-Q7z9-escaped-json-value\"}"#,
             r#"{\"token\":[redacted]}"#,
-            &["escaped-canary"][..],
+            &["pi-canary-Q7z9-escaped-json-value"][..],
         ),
         (
-            "Proxy-Authorization: Basic proxy-canary",
+            "Proxy-Authorization: Basic pi-canary-Q7z9-proxy-auth-value",
             "Proxy-Authorization: [redacted] [redacted]",
-            &["proxy-canary"][..],
+            &["pi-canary-Q7z9-proxy-auth-value"][..],
         ),
         (
-            "--password 'it's quoted-canary' denied",
+            "--password 'it's pi-canary-Q7z9-quoted-password-value' denied",
             "--password [redacted] denied",
-            &["it's quoted-canary"][..],
+            &["it's pi-canary-Q7z9-quoted-password-value"][..],
         ),
         (
-            "--password 'it's unclosed-canary continues",
+            "--password 'it's pi-canary-Q7z9-unclosed-password-value pi-canary-Q7z9-unclosed-tail-value",
             "--password [redacted]",
-            &["unclosed-canary", "continues"][..],
+            &[
+                "pi-canary-Q7z9-unclosed-password-value",
+                "pi-canary-Q7z9-unclosed-tail-value",
+            ][..],
         ),
         (
-            r"Cannot open C:\a\b because C:\c is locked",
+            r"Cannot open C:\pi-canary-Q7z9-directory\file-value because C:\pi-canary-Q7z9-locked-file-value is locked",
             "Cannot open [path] because [path] is locked",
-            &[r"C:\a\b", r"C:\c"][..],
+            &[
+                r"C:\pi-canary-Q7z9-directory\file-value",
+                r"C:\pi-canary-Q7z9-locked-file-value",
+            ][..],
         ),
     ] {
         for retry in [false, true] {
@@ -311,7 +361,7 @@ async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {
                             ..
                         } => {
                             assert_eq!(*kind, Some(ErrorKind::Attempt));
-                            assert_eq!(code.as_str(), ATTEMPT_FAILURE_CODE);
+                            assert_eq!(code.as_str(), "Attempt failed (attempt 1)");
                             Some(message.as_str())
                         }
                         _ => None,

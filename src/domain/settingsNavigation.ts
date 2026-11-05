@@ -1,6 +1,10 @@
 import { EDITOR_SETTINGS } from "./editorSettingsCatalogue";
 import { EDITOR_SETTING_COPY } from "./editorSettingsCopy";
-import { KEYMAP_BINDINGS, type KeymapBinding } from "./keymapRegistry";
+import {
+  KEYMAP_BINDINGS,
+  type KeymapBinding,
+  type KeymapScope,
+} from "./keymapRegistry";
 
 /**
  * Shortcuts CodeMirror handles (EP-03), kept out of the startup bundle's
@@ -133,7 +137,7 @@ export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
   ...FIND_BAR_BINDINGS,
 ];
 
-export type SettingsPageId = "editor" | "keyboard" | "browser";
+export type SettingsPageId = "editor" | "keyboard" | "browser" | "passwords";
 
 export interface SettingsEntry {
   id: string;
@@ -167,19 +171,24 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
 ]);
 
+/** The Editor's Keyboard page lists app-wide and Editor shortcuts only. */
+export const EDITOR_KEYMAP_SCOPES: readonly KeymapScope[] = [
+  "Global",
+  "Editor",
+];
+
 const KEYBOARD_ENTRIES: readonly SettingsEntry[] = Object.freeze(
-  SETTINGS_KEYMAP_BINDINGS.filter((binding) => !binding.reservedFor).map(
-    (binding) => ({
-      id: binding.id,
-      label: binding.label,
-      description: binding.description,
-      group: binding.scope,
-    }),
-  ),
+  SETTINGS_KEYMAP_BINDINGS.filter(
+    (binding) =>
+      !binding.reservedFor && EDITOR_KEYMAP_SCOPES.includes(binding.scope),
+  ).map((binding) => ({
+    id: binding.id,
+    label: binding.label,
+    description: binding.description,
+    group: binding.scope,
+  })),
 );
 
-// BF-7d: only the Codex Browser settings (refs 45, 47, 65) that Sage's browser
-// backend supports today. The Browser page renders these ids and no others.
 const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   {
     id: "browser.showFullUrl",
@@ -194,6 +203,43 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
       "Clear browsing history, cookies, site data, and cache from the built-in browser.",
     group: "General",
   },
+  {
+    id: "browser.downloadFolder",
+    label: "Download location",
+    description:
+      "The folder downloads save to without asking. Programs and scripts always ask.",
+    group: "Downloads",
+  },
+  {
+    id: "browser.sitePermissions",
+    label: "Site permissions",
+    description: "Camera, microphone, location, notifications, clipboard",
+    group: "Site permissions",
+  },
+]);
+
+// BF-7b-1: the saved-password vault (Codex ref 48). Import is CSV only here.
+const PASSWORD_ENTRIES: readonly SettingsEntry[] = Object.freeze([
+  {
+    id: "passwords.saved",
+    label: "Saved passwords",
+    description:
+      "Search, show, copy, edit, and delete the passwords saved for websites.",
+    group: "Passwords",
+  },
+  {
+    id: "passwords.import",
+    label: "Import passwords",
+    description:
+      "Import passwords from a CSV file exported by a browser or password manager.",
+    group: "Passwords",
+  },
+  {
+    id: "passwords.deleteAll",
+    label: "Delete all saved passwords",
+    description: "Remove every saved password from Sage.",
+    group: "Passwords",
+  },
 ]);
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
@@ -206,7 +252,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
   {
     id: "keyboard",
     label: "Keyboard",
-    description: "Every shortcut Sage listens for today.",
+    description: "Shortcuts for the Editor and for all of Sage.",
     entries: KEYBOARD_ENTRIES,
   },
   {
@@ -214,6 +260,12 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
     label: "Browser",
     description: "Manage the built-in browser's preferences and data.",
     entries: BROWSER_ENTRIES,
+  },
+  {
+    id: "passwords",
+    label: "Passwords",
+    description: "Passwords you've saved for websites.",
+    entries: PASSWORD_ENTRIES,
   },
 ]);
 

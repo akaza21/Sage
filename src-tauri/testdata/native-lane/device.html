@@ -1,0 +1,38 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body {
+    margin: 0;
+    background: #00aa77;
+    font: 16px sans-serif;
+  }
+  div {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+  }
+  #tr {
+    right: 0;
+    top: 0;
+    background: blue;
+  }
+  #br {
+    right: 0;
+    bottom: 0;
+    background: red;
+  }
+  #bl {
+    left: 0;
+    bottom: 0;
+    background: yellow;
+  }
+</style>
+<h1>Device viewport</h1>
+<p id="metrics"></p>
+<div id="tr"></div>
+<div id="br"></div>
+<div id="bl"></div>
+<script>
+  document.getElementById("metrics").textContent =
+    `${innerWidth}x${innerHeight} dpr ${devicePixelRatio}`;
+</script>

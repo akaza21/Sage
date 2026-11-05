@@ -716,7 +716,7 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
   }
 });
 
-test("context-meter is refused where the narrow composer hides its meter", () => {
+test("context-meter is admitted at 480, where the toolbar fit keeps its meter", () => {
   const args = (width) => [
     "--harness",
     "codex",
@@ -725,9 +725,9 @@ test("context-meter is refused where the narrow composer hides its meter", () =>
     "--width",
     String(width),
   ];
-  for (const width of [1888, 720])
+  for (const width of [1888, 720, 480])
     assert.equal(parseArgs(args(width)).caseId, "codex-context-meter");
-  assert.throws(() => parseArgs(args(480)), /state-width-unsupported/u);
+  assert.deepEqual(captureWidths("context-meter"), [1888, 720, 480]);
   assert.deepEqual(captureWidths("turn-completed"), [1888, 720, 480]);
 });
 

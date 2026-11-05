@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser History interaction fixture</title>
+  </head>
+  <body>
+    <div id="root" style="width: 720px; height: 640px; margin: 20px"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserSurface } from "/src/features/browser/BrowserSurface.tsx";
+      import "/src/styles/global.css";
+
+      const now = Date.now();
+      let visits = [
+        {
+          id: 1,
+          url: "https://alpha.example/guide",
+          title: "Alpha guide",
+          visitedAt: now,
+        },
+        {
+          id: 2,
+          url: "https://beta.example/handbook",
+          title: "Beta handbook",
+          visitedAt: now - 1000,
+        },
+      ];
+      let status = {
+        tabId: "browser-1",
+        url: "https://current.example/start",
+        title: "Current page",
+        revision: "1",
+        loading: false,
+        canGoBack: false,
+        canGoForward: false,
+        zoomPercent: 100,
+      };
+      const callbacks = new Map();
+      const listeners = new Map();
+      let nextId = 0;
+      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+        unregisterListener: (_event, id) => listeners.delete(id),
+      };
+      window.__TAURI_INTERNALS__ = {
+        transformCallback: (callback) => {
+          const id = ++nextId;
+          callbacks.set(id, callback);
+          return id;
+        },
+        unregisterCallback: (id) => callbacks.delete(id),
+        invoke: async (command, args = {}) => {
+          if (command === "plugin:event|listen") {
+            const id = ++nextId;
+            listeners.set(id, { event: args.event, callback: args.handler });
+            return id;
+          }
+          if (command === "plugin:event|unlisten") {
+            listeners.delete(args.eventId);
+            return;
+          }
+          if (command === "browser_status") return status;
+          if (command === "browser_preferences") return { showFullUrl: true };
+          if (command === "browser_downloads") return [];
+          if (command === "browser_permission_status")
+            return {
+              tabId: status.tabId,
+              origin: "https://current.example",
+              pending: [],
+              decisions: [],
+              staleAccess: false,
+            };
+          if (
+            ["browser_set_bounds", "browser_hide", "browser_cover"].includes(
+              command,
+            )
+          )
+            return;
+          if (command === "browser_history_page") {
+            const search = args.query.search.toLowerCase();
+            return {
+              visits: visits
+                .filter((visit) =>
+                  `${visit.url} ${visit.title}`.toLowerCase().includes(search),
+                )
+                .slice(0, args.query.limit),
+              next: null,
+            };
+          }
+          if (command === "browser_history_remove") {
+            const previous = visits.length;
+            visits = visits.filter((visit) => !args.ids.includes(visit.id));
+            return previous - visits.length;
+          }
+          if (command === "browser_navigate") {
+            status = {
+              ...status,
+              url: args.url,
+              revision: String(Number(status.revision) + 1),
+            };
+            for (const [id, listener] of listeners) {
+              if (listener.event === "browser:navigation")
+                callbacks.get(listener.callback)?.({
+                  event: listener.event,
+                  id,
+                  payload: status,
+                });
+            }
+            return;
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        },
+      };
+      createRoot(document.getElementById("root")).render(
+        React.createElement(BrowserSurface, {
+          tab: {
+            id: "browser-1",
+            kind: "browser",
+            title: "Current page",
+            position: 0,
+          },
+        }),
+      );
+    </script>
+  </body>
+</html>

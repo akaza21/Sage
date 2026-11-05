@@ -8,9 +8,9 @@
 
 import { validPathGlob } from "./pathGlob";
 
+/** Each setting's owning ticket is recorded in the Rust registry only. */
 interface EntryShape {
   key: `${"editor" | "explorer" | "files" | "git" | "search"}.${string}`;
-  ticket: `EP-${number}`;
 }
 
 export interface BooleanSettingSpec extends EntryShape {
@@ -57,25 +57,21 @@ export const EDITOR_SETTINGS = [
     min: 12,
     max: 16,
     choices: [12, 13, 14, 16],
-    ticket: "EP-02",
   },
   {
     key: "editor.lineNumbers",
     kind: "boolean",
     default: true,
-    ticket: "EP-02",
   },
   {
     key: "editor.wordWrap",
     kind: "boolean",
     default: false,
-    ticket: "EP-02",
   },
   {
     key: "editor.renderWhitespace",
     kind: "boolean",
     default: false,
-    ticket: "EP-02",
   },
   {
     key: "editor.tabSize",
@@ -84,51 +80,43 @@ export const EDITOR_SETTINGS = [
     min: 2,
     max: 8,
     choices: [2, 4, 8],
-    ticket: "EP-02",
   },
   {
     key: "editor.matchBrackets",
     kind: "boolean",
     default: true,
-    ticket: "EP-03",
   },
   {
     key: "editor.autoClosingBrackets",
     kind: "boolean",
     default: true,
-    ticket: "EP-03",
   },
   {
     key: "editor.folding",
     kind: "boolean",
     default: true,
-    ticket: "EP-03",
   },
   {
     key: "editor.occurrencesHighlight",
     kind: "boolean",
     default: true,
-    ticket: "EP-03",
   },
   {
     key: "editor.multiCursorModifier",
     kind: "choice",
     default: "alt",
     choices: ["alt", "ctrlCmd"],
-    ticket: "EP-03",
   },
   {
     key: "search.useIgnoreFiles",
     kind: "boolean",
     default: true,
-    ticket: "EP-06",
   },
   {
     key: "explorer.showIgnored",
     kind: "choice",
     default: "dimmed",
     choices: ["dimmed", "hidden"],
-    ticket: "EP-06",
   },
   {
     key: "files.exclude",
@@ -141,13 +129,21 @@ export const EDITOR_SETTINGS = [
       "**/.DS_Store",
       "**/Thumbs.db",
     ],
-    ticket: "EP-06",
   },
   {
     key: "git.autoRefresh",
     kind: "boolean",
     default: true,
-    ticket: "EP-12",
+  },
+  {
+    key: "git.decorations",
+    kind: "boolean",
+    default: true,
+  },
+  {
+    key: "editor.gitGutter",
+    kind: "boolean",
+    default: true,
   },
 ] as const satisfies readonly EditorSettingSpec[];
 

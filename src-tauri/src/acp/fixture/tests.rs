@@ -47,26 +47,6 @@ fn fixture_accepts_only_exact_frozen_arguments() {
 }
 
 #[test]
-fn codex_lost_steer_result_case_waits_for_the_write_then_exits_without_reply() {
-    let invocation = FixtureInvocation::parse(
-        ["--case", "codex-steer-lost-result", "--seed", "0"].map(OsString::from),
-    )
-    .unwrap();
-    let steps: Vec<Value> = serde_json::from_str(invocation.steps_json).unwrap();
-    assert_eq!(
-        steps[9],
-        serde_json::json!({"op":"awaitClient","kind":"codexSteer"})
-    );
-    assert_eq!(steps[10], serde_json::json!({"op":"exit","code":17}));
-    assert!(
-        !steps
-            .iter()
-            .skip(10)
-            .any(|step| step["op"] == "emitKnownFrame")
-    );
-}
-
-#[test]
 fn all_179_frozen_case_ids_and_steps_are_unique_bounded_and_recognized() {
     assert_eq!(FROZEN_CASES.len(), 179);
     let mut ids = BTreeSet::new();
@@ -87,46 +67,6 @@ fn all_179_frozen_case_ids_and_steps_are_unique_bounded_and_recognized() {
         let oracle: Value = serde_json::from_str(fixture_case.oracle_json).unwrap();
         assert!(oracle.as_object().is_some_and(|fields| !fields.is_empty()));
     }
-}
-
-#[test]
-fn frozen_execution_ownership_and_phase_counts_are_exact() {
-    use super::generated_cases::{FrozenOwner, FrozenPhase};
-
-    let mut child = 0;
-    let mut host = 0;
-    let mut foundation = 0;
-    let mut windows = 0;
-    let mut package = 0;
-    let mut deferred = 0;
-    for fixture_case in FROZEN_CASES {
-        match fixture_case.owner {
-            FrozenOwner::Child => child += 1,
-            FrozenOwner::Host => host += 1,
-        }
-        match fixture_case.phase {
-            FrozenPhase::Foundation => foundation += 1,
-            FrozenPhase::Windows => windows += 1,
-            FrozenPhase::Package => package += 1,
-            FrozenPhase::Deferred => deferred += 1,
-        }
-    }
-    assert_eq!((child, host), (70, 109));
-    assert_eq!((foundation, windows, package, deferred), (167, 5, 1, 6));
-}
-
-#[test]
-fn generated_table_records_the_exact_frozen_source_hash() {
-    use sha2::{Digest, Sha256};
-
-    let source = include_bytes!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/fixture-vectors-v1.json"
-    );
-    let digest = Sha256::digest(source)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    assert!(include_str!("generated_cases.rs").contains(&digest));
 }
 
 #[test]

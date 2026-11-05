@@ -66,7 +66,7 @@ test("absence reasons stay grounded in shipped product boundaries", () => {
   );
   assert.doesNotMatch(source("src/workbench/TabStrip.tsx"), /tab\.preview/u);
   assert.match(
-    source("src/workbench/useCompactWorkbenchLayout.ts"),
+    source("src/workbench/workbenchViewport.ts"),
     /max-width: 760px/u,
   );
   assert.match(

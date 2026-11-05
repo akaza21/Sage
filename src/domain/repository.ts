@@ -12,6 +12,19 @@ export interface DiscoverProjectRepositoriesRequest {
   expectedTransitionEpoch: number;
 }
 
+export interface ResolveResourceRepositoryRequest {
+  projectId: string;
+  projectGeneration: number;
+  expectedTransitionEpoch: number;
+  resource: ResourceRef;
+}
+
+export interface ResolveResourceRepositoryResult {
+  projectId: string;
+  transitionEpoch: number;
+  repository: RepositoryRef | null;
+}
+
 export interface DiscoverProjectRepositoriesResult {
   projectId: string;
   transitionEpoch: number;
@@ -96,6 +109,8 @@ export interface RootRepositoryStatus {
   revertInProgress?: boolean;
   changes: FileChange[];
   truncated: boolean;
+  /** More changes exist than `changes` lists; absent for old snapshots. */
+  changesOverflowed?: boolean;
   elapsedMs: number;
   message: string | null;
 }

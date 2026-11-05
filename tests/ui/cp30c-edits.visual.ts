@@ -3,6 +3,7 @@ import {
   openScenario,
   settleChatProjections,
   settleTranscriptAtEnd,
+  waitForAnimations,
 } from "./shared/visualBrowserPrimitives";
 
 test.use({ deviceScaleFactor: 1 });
@@ -60,6 +61,7 @@ for (const width of [1888, 720, 480]) {
         0,
       );
       const column = await box(pane.locator(".acp-turn__items").last());
+      await waitForAnimations(summary);
       const bounds = await box(summary);
       const composer = await box(pane.locator("form.composer"));
       expect(
@@ -100,6 +102,7 @@ for (const width of [1888, 720, 480]) {
         page.getByRole("tab", { name: "Review", exact: true }),
       ).toHaveCount(0);
       await collapseArtifactPane(page);
+      await expect(pill).toHaveAttribute("aria-expanded", "true");
       await pill.click();
       await edit(page, "completed");
       await expect(pane.locator(".acp-editing-files")).toHaveCount(0);
@@ -144,6 +147,7 @@ for (const width of [1888, 720, 480]) {
       const queue = composer.locator(".composer__queued");
       await expect(queue).toBeVisible();
       await expect(pill).toBeVisible();
+      await waitForAnimations(summary);
       const queueBounds = await box(queue);
       const pillBounds = await box(pill);
       expect(pillBounds.y + pillBounds.height).toBeLessThanOrEqual(
@@ -159,9 +163,14 @@ for (const width of [1888, 720, 480]) {
       const column = await box(composer);
       expect(Math.abs(expanded.x - column.x)).toBeLessThanOrEqual(1);
       expect(Math.abs(expanded.width - column.width)).toBeLessThanOrEqual(1);
-      expect(expanded.y + expanded.height).toBeLessThanOrEqual(
+      const summarySlot = await box(pane.locator(".chat-edit-summary-zone"));
+      expect(summarySlot.y + summarySlot.height).toBeLessThanOrEqual(
         (await box(queue)).y,
       );
+      await summary
+        .getByRole("button", { name: /^Open diff Review / })
+        .last()
+        .click({ trial: true });
       await composer
         .getByRole("button", { name: /^Delete queued message:/ })
         .click({ trial: true });
@@ -215,8 +224,12 @@ for (const width of [720, 480]) {
           .locator("li")
           .filter({ has: page.getByText("disclosure-0.tsx", { exact: true }) });
         await expect(
-          current.getByRole("button", { name: /Open file/ }),
+          current.getByRole("button", {
+            name: "Open diff Sage / src/disclosure-0.tsx",
+            exact: true,
+          }),
         ).toBeEnabled();
+        await waitForAnimations(summary);
         const bounds = await box(summary);
         const surface = await box(pane.locator(".chat-surface"));
         const transcript = await box(pane.locator(".message-list"));
@@ -227,7 +240,10 @@ for (const width of [720, 480]) {
         expect(transcript.y + transcript.height).toBeLessThanOrEqual(
           bounds.y + 1,
         );
-        expect(bounds.y + bounds.height).toBeLessThanOrEqual(composer.y + 1);
+        const summarySlot = await box(pane.locator(".chat-edit-summary-zone"));
+        expect(summarySlot.y + summarySlot.height).toBeLessThanOrEqual(
+          composer.y + 1,
+        );
         expect(composer.y + composer.height).toBeLessThanOrEqual(
           surface.y + surface.height + 1,
         );
@@ -266,16 +282,15 @@ for (const width of [720, 480]) {
   );
 }
 
-test("CP-30c two visible chats keep disclosure and activity isolated", async ({
+test("CP-30c switching open chats keeps disclosure and activity isolated", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "agent-dual", "agent");
   await settleChatProjections(page);
   const panes = page.locator(".agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  await expect(panes).toHaveCount(1);
   const first = panes.first();
-  const second = panes.nth(1);
   const owner = await first
     .locator(".acp-chat-projection")
     .getAttribute("data-chat-id");
@@ -284,14 +299,20 @@ test("CP-30c two visible chats keep disclosure and activity isolated", async ({
   await expect(first.locator(".acp-editing-files")).toBeVisible();
   await first.getByRole("button", { name: /^2 files changed/ }).click();
   await expect(first.locator(".acp-file-changes li")).toHaveCount(2);
-  await expect(second.locator(".acp-file-changes")).toHaveCount(0);
-  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: /^Open chat Editor consistency pass/ })
+    .click();
+  await expect(panes).toHaveCount(1);
+  await expect(panes.first().locator(".acp-file-changes")).toHaveCount(0);
+  await expect(panes.first().locator(".acp-editing-files")).toHaveCount(0);
   await edit(page, "completed", owner!);
+  await page
+    .getByRole("button", { name: /^Open chat Agent navigation polish/ })
+    .click();
   await expect(first.locator(".acp-editing-files")).toHaveCount(0);
-  await expect(second.locator(".acp-editing-files")).toHaveCount(0);
 });
 
-test("CP-30d two selected chats keep edit zones and queued trays free of resize loops", async ({
+test("CP-30d the selected chat keeps edit zones and queued trays free of resize loops", async ({
   page,
 }) => {
   // Chromium reports ResizeObserver loops as a window error event without an
@@ -319,7 +340,7 @@ test("CP-30d two selected chats keep edit zones and queued trays free of resize 
   await settleChatProjections(page);
   await collapseArtifactPane(page);
   const panes = page.locator(".agent-chat-pane");
-  await expect(panes).toHaveCount(2);
+  await expect(panes).toHaveCount(1);
   for (const pane of await panes.all()) {
     const owner = await pane
       .locator(".acp-chat-projection")
@@ -342,6 +363,13 @@ test("CP-30d two selected chats keep edit zones and queued trays free of resize 
     ).toBeVisible();
   }
   for (let cycle = 0; cycle < 3; cycle += 1) {
+    await page.setViewportSize(
+      [
+        { width: 1888, height: 1096 },
+        { width: 720, height: 800 },
+        { width: 480, height: 560 },
+      ][cycle]!,
+    );
     for (const pane of await panes.all()) {
       const queue = pane.locator(".composer__queued");
       const composer = pane.locator("form.composer");
@@ -350,31 +378,27 @@ test("CP-30d two selected chats keep edit zones and queued trays free of resize 
       });
       const pill = summary.getByRole("button", { name: /files? changed/ });
       await pill.click();
-      const height = cycle % 2 ? 160 : 80;
-      await queue.evaluate((element, height) => {
-        (element as HTMLElement).style.height = height + "px";
-      }, height);
-      await expect(queue).toHaveCSS("position", "absolute");
-      await expect.poll(async () => (await box(queue)).height).toBe(height);
-      // The reservation is the measured distance from the tray top to the
-      // composer top (tray height plus its offset above the border box).
-      await expect
-        .poll(() =>
-          composer.evaluate((form) => {
-            const tray = form.querySelector<HTMLElement>(".composer__queued")!;
-            const expected =
-              form.getBoundingClientRect().top -
-              tray.getBoundingClientRect().top;
-            return (
-              form.style.getPropertyValue("--queued-tray-space") ===
-                expected + "px" && expected >= tray.offsetHeight
-            );
-          }),
-        )
-        .toBe(true);
+      const input = composer.getByRole("textbox", { name: "Message agent" });
+      await input.fill("A retained draft. ".repeat(cycle % 2 ? 80 : 1));
       const tray = await box(queue);
-      for (const zone of [await box(pill), await box(summary)])
+      expect(tray.height).toBeGreaterThan(0);
+      expect(tray.height).toBeLessThanOrEqual(320);
+      for (const zone of [
+        await box(pill),
+        await box(pane.locator(".chat-edit-summary-zone")),
+      ])
         expect(zone.y + zone.height).toBeLessThanOrEqual(tray.y);
+      expect(tray.y + tray.height).toBeLessThanOrEqual((await box(input)).y);
+      await queue
+        .getByRole("button", { name: /^Delete queued message:/ })
+        .last()
+        .click({ trial: true });
+      const toolbar = await box(composer.locator(".composer__toolbar"));
+      const dock = await box(pane.locator(".chat-dock"));
+      expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
+        dock.y + dock.height,
+      );
+      await input.click({ trial: true });
     }
     await page.evaluate(
       () =>
