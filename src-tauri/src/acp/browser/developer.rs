@@ -21,7 +21,9 @@ use super::BrowserFailure;
 mod screenshot;
 pub(crate) use screenshot::ScreenshotCapture;
 mod switch;
-pub(crate) use switch::{switch_generation, switch_is_current, with_switch_change};
+#[cfg(any(windows, test))]
+pub(crate) use switch::switch_generation;
+pub(crate) use switch::{switch_is_current, with_switch_change};
 
 /// `Runtime.evaluate` parameters the Agent may set. Sage itself sets
 /// `returnByValue: false` and its own `objectGroup`. Objects are serialized
