@@ -363,8 +363,8 @@
       },
       {
         "entry": "src/workbench/SettingsSurface.tsx",
-        "maxGzipBytes": 2453,
-        "reason": "Editor Settings with EP-06 files.exclude pattern controls and array-value default checks; loads only for Settings. Merge measured 2323 B plus 7%; Agent path and core caps unchanged."
+        "maxGzipBytes": 2779,
+        "reason": "Editor Settings with EP-06 exclude controls and the BF-7b-1 Passwords entries and lazy page loader; loads only for Settings. Measured 2597 B plus 7%; Agent and core caps unchanged."
       },
       {
         "entry": "src/workbench/SourceControlView.tsx",
