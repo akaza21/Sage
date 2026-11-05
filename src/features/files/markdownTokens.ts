@@ -21,6 +21,33 @@ const parser = new MarkdownIt({
   // Each list level owns a list and an item; admit their leaf paragraph.
   maxNesting: MAX_MARKDOWN_LIST_DEPTH * 2 + 2,
 });
+
+interface BlockBudget {
+  limit: number;
+  count: number;
+  cursor: number;
+  truncated: boolean;
+}
+
+// Run before any allocating rule. Container recursion shares the environment,
+// but only completed top-level blocks consume the visible block allowance.
+parser.block.ruler.before(
+  "table",
+  "sage_blocks",
+  (state, _start, end, silent) => {
+    if (silent || state.level !== 0) return false;
+    const budget = state.env.sageBlockBudget as BlockBudget;
+    for (; budget.cursor < state.tokens.length; budget.cursor++) {
+      const token = state.tokens[budget.cursor];
+      if (token.level === 0 && token.nesting >= 0) budget.count++;
+    }
+    if (budget.count < budget.limit) return false;
+    budget.truncated = true;
+    state.line = end;
+    return true;
+  },
+);
+
 // Preserve Sage's bounded inline presentation and file-link admission rules.
 // markdown-it owns block classification, never HTML rendering.
 parser.core.ruler.disable([
@@ -76,6 +103,20 @@ const positions = new WeakMap<
 export const markdownBlockOffsets = (document: MarkdownPreviewDocument) =>
   positions.get(document)?.offsets ?? [];
 
+export function parseMarkdownTokens(
+  source: string,
+  blockLimit = MAX_MARKDOWN_PREVIEW_BLOCKS,
+) {
+  const sageBlockBudget: BlockBudget = {
+    limit: blockLimit,
+    count: 0,
+    cursor: 0,
+    truncated: false,
+  };
+  const tokens = parser.parse(source, { sageBlockBudget });
+  return { tokens, truncated: sageBlockBudget.truncated };
+}
+
 export function retainMarkdownPrefix(
   document: MarkdownPreviewDocument,
   count: number,
@@ -104,7 +145,10 @@ export function adaptMarkdownTokens(
   sourceOffset = 0,
 ) {
   const normalized = source.replace(/\r\n?/gu, "\n");
-  const tokens = parser.parse(normalized, {});
+  const { tokens, truncated: tokenLimitExceeded } = parseMarkdownTokens(
+    normalized,
+    MAX_MARKDOWN_PREVIEW_BLOCKS - document.blocks.length,
+  );
   const offsets = [0];
   for (let i = 0; i < normalized.length; i++)
     if (normalized[i] === "\n") offsets.push(i + 1);
@@ -304,4 +348,7 @@ export function adaptMarkdownTokens(
     }
     cursor = end + 1;
   }
+  // Keep parser overflow out of per-block prefix snapshots: a later streaming
+  // suffix may replace the truncated tail while retaining the earlier blocks.
+  document.truncated ||= tokenLimitExceeded;
 }

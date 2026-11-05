@@ -3,6 +3,18 @@ import { renderMarkdownPreview } from "./markdownPreview";
 import { renderMarkdownStream } from "./markdownStream";
 
 describe("streamed markdown document", () => {
+  it("bounds a large appended suffix by the allowance left after frozen blocks", () => {
+    const source = "# x\n".repeat(64);
+    const before = renderMarkdownStream(source);
+    const appended = source + "# **skipped** [link](tail.ts)\n".repeat(5000);
+    const after = renderMarkdownStream(appended, before);
+    expect(after.document.blocks[0]).toBe(before.document.blocks[0]);
+    expect(after.document.blocks).toHaveLength(64);
+    expect(after.document.fileLinks).toEqual([]);
+    expect(after.document.truncated).toBe(true);
+    expect(after.document).toEqual(renderMarkdownPreview(appended));
+  });
+
   it("preserves newline tokens in unfinished code and removes only the consumed closer separator", () => {
     let source = "# Kept\n\np\n\nq\n\n~~~js\na";
     let state = renderMarkdownStream(source);
