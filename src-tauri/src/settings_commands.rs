@@ -1,6 +1,7 @@
 use tauri::State;
 
 pub(crate) mod agent_rail_view;
+pub(crate) mod browser_download_folder;
 pub(crate) mod browser_preferences;
 
 use crate::{

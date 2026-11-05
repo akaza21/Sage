@@ -112,6 +112,10 @@ test("settings loading and persistence errors stay in the content flow", async (
   });
   for (const width of [1280, 480]) {
     await page.setViewportSize({ width, height: 800 });
+    const workbench = page.locator("main.workbench");
+    if (width === 480)
+      await expect(workbench).toHaveClass(/workbench--compact/);
+    else await expect(workbench).not.toHaveClass(/workbench--compact/);
     const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
     if (width === 480) {
       await expect(drawer).toBeVisible();
