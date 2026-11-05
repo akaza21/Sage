@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { Session } from "node:inspector/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import serializeDeveloperResult from "../src-tauri/src/browser/devtools/cdp_port/evaluate.js";
 
@@ -42,6 +45,7 @@ async function serialize(session, objectId) {
     throwOnSideEffect: true,
   });
   if (root.subtype === "proxy") return failure();
+  const kinds = [root.subtype ?? ""];
   let known = 1;
   let receiver = objectId;
   let resume = false;
@@ -51,7 +55,12 @@ async function serialize(session, objectId) {
       objectId: receiver,
       objectGroup: "bounded-test",
       functionDeclaration: serializer,
-      arguments: [{ value: limit }, { value: remaining }, { value: resume }],
+      arguments: [
+        { value: limit },
+        { value: remaining },
+        { value: resume },
+        { value: kinds },
+      ],
       returnByValue: false,
       throwOnSideEffect: true,
     });
@@ -70,11 +79,207 @@ async function serialize(session, objectId) {
       if (child.subtype === "proxy" || !child.objectId) return failure();
       if (known >= 4096) return capacity();
       known++;
+      kinds.push(child.subtype ?? "");
     }
     resume = true;
   }
   return capacity();
 }
+
+test("huge sized collections fail closed without transferring their contents", async (t) => {
+  // The heap fits the existing inputs, but not an eager numeric-key list.
+  // Keep this budget when the enclosing test runner has no heap limit.
+  if (!process.execArgv.includes("--max-old-space-size=128")) {
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        "--max-old-space-size=128",
+        "--test",
+        "--experimental-test-isolation=none",
+        "--test-concurrency=1",
+        `--test-name-pattern=^${t.name}$`,
+        fileURLToPath(import.meta.url),
+      ],
+      {
+        timeout: 60_000,
+        maxBuffer: 64 * 1024,
+        env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+      },
+    );
+    assert.match(stdout, /# tests 1\r?\n/);
+    assert.match(stdout, /# pass 1\r?\n/);
+    return;
+  }
+  await page(async (session) => {
+    for (const expression of [
+      "Array(10000000).fill(42)",
+      "new Uint8Array(10000000)",
+      `(() => {
+        const value = new Map();
+        for (let i = 0; i < 1000000; i++) value.set(i, i);
+        return value;
+      })()`,
+      `(() => {
+        const value = new Set();
+        for (let i = 0; i < 1000000; i++) value.add(i);
+        return value;
+      })()`,
+    ]) {
+      const { result } = await evaluate(session, expression);
+      try {
+        assert.ok(result.objectId);
+        assert.equal(
+          (await serialize(session, result.objectId)).result.value,
+          "capacity",
+          expression,
+        );
+      } finally {
+        await session.post("Runtime.releaseObjectGroup", {
+          objectGroup: "bounded-test",
+        });
+        await session.post("HeapProfiler.collectGarbage");
+      }
+    }
+  });
+});
+
+test("admitted collections preserve indexed values and iterator order", async () => {
+  await page(async (session) => {
+    for (const [expression, expected] of [
+      ["[42, , undefined]", [42, null, null]],
+      ["new Uint8Array([42, 7])", { 0: 42, 1: 7 }],
+      [
+        "new Map([[42, {answer: true}], ['next', [7]]])",
+        [
+          [42, { answer: true }],
+          ["next", [7]],
+        ],
+      ],
+      ["new Set([42, 'next', null])", [42, "next", null]],
+      ["new Map()", []],
+      ["new Set()", []],
+      ["new DataView(new ArrayBuffer(8))", {}],
+      [
+        "({group: [new Map([[{key: 42}, new Set([7, 9])]])], view: new Uint8Array([3])})",
+        { group: [[[{ key: 42 }, [7, 9]]]], view: { 0: 3 } },
+      ],
+    ]) {
+      const { result } = await evaluate(session, expression);
+      const bounded = await serialize(session, result.objectId);
+      assert.equal(bounded.exceptionDetails, undefined, expression);
+      assert.deepEqual(JSON.parse(bounded.result.value).result.value, expected);
+    }
+  });
+});
+
+test("sized collections admit the entry limit and reject one more", async () => {
+  await page(async (session) => {
+    for (const count of [4096, 4097]) {
+      for (const expression of [
+        `Array(${count}).fill(42)`,
+        `new Uint8Array(${count}).fill(42)`,
+        `new Map(Array.from({length: ${count}}, (_, i) => [i, 42]))`,
+        `new Set(Array.from({length: ${count}}, (_, i) => i))`,
+      ]) {
+        const { result } = await evaluate(session, expression);
+        const bounded = await serialize(session, result.objectId);
+        if (count === 4097) {
+          assert.equal(bounded.result.value, "capacity", expression);
+        } else {
+          const value = JSON.parse(bounded.result.value).result.value;
+          assert.equal(Object.keys(value).length, 4096, expression);
+          assert.deepEqual(
+            value[0],
+            expression.startsWith("new Map")
+              ? [0, 42]
+              : expression.startsWith("new Set")
+                ? 0
+                : 42,
+          );
+          assert.deepEqual(
+            value[4095],
+            expression.startsWith("new Map")
+              ? [4095, 42]
+              : expression.startsWith("new Set")
+                ? 4095
+                : 42,
+          );
+        }
+      }
+    }
+  });
+});
+
+test("Map entry pairs count toward the serialized nesting limit", async () => {
+  await page(async (session) => {
+    for (const position of [0, 1]) {
+      for (const count of [32, 33]) {
+        const { result } = await evaluate(
+          session,
+          `(() => {
+            let value = 42;
+            for (let i = 0; i < ${count}; i++)
+              value = new Map([${position === 0 ? "[value, 0]" : "[0, value]"}]);
+            return value;
+          })()`,
+        );
+        const bounded = await serialize(session, result.objectId);
+        if (count === 33) {
+          assert.equal(bounded.result.value, "capacity");
+        } else {
+          let value = JSON.parse(bounded.result.value).result.value;
+          for (let i = 0; i < count; i++) value = value[0][position];
+          assert.equal(value, 42);
+        }
+      }
+    }
+  });
+});
+
+test("collection sizes cannot be hidden by page accessors or forged by records", async () => {
+  await page(async (session) => {
+    for (const expression of [
+      "new Uint8Array(4097)",
+      "new Map(Array.from({length: 4097}, (_, i) => [i, i]))",
+      "new Set(Array.from({length: 4097}, (_, i) => i))",
+    ]) {
+      const { result } = await evaluate(
+        session,
+        `(() => {
+          globalThis.sageCollectionAccessors = 0;
+          const value = ${expression};
+          for (const name of ['length', 'size', 'entries', 'values', Symbol.toStringTag]) {
+            Object.defineProperty(value, name, {
+              get() { globalThis.sageCollectionAccessors++; return 0; }
+            });
+          }
+          return value;
+        })()`,
+      );
+      assert.equal(
+        (await serialize(session, result.objectId)).result.value,
+        "capacity",
+      );
+      assert.equal(
+        (await evaluate(session, "sageCollectionAccessors")).result.value,
+        0,
+      );
+    }
+    const { result } = await evaluate(
+      session,
+      "({length: 10000000, size: 1000000, answer: 42})",
+    );
+    assert.deepEqual(
+      JSON.parse((await serialize(session, result.objectId)).result.value),
+      {
+        result: {
+          type: "object",
+          value: { length: 10000000, size: 1000000, answer: 42 },
+        },
+      },
+    );
+  });
+});
 
 test("an object over the cap never transfers its full value", async () => {
   await page(async (session) => {

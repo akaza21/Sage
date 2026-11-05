@@ -1,4 +1,9 @@
-export default function serializeDeveloperResult(limit, entries, resume) {
+export default function serializeDeveloperResult(
+  limit,
+  entries,
+  resume,
+  kinds,
+) {
   // Fixed serializer; CDP classifies every object before it is traversed.
   "use strict";
   const capacity = {};
@@ -10,15 +15,53 @@ export default function serializeDeveloperResult(limit, entries, resume) {
     const hasOwn = Object.hasOwn;
     const objectTag = Object.prototype.toString;
     const tagKey = Symbol.toStringTag;
+    const typedLength = descriptor(
+      Object.getPrototypeOf(Uint8Array.prototype),
+      "length",
+    ).get;
+    const collections = {
+      map: {
+        size: descriptor(Map.prototype, "size").get,
+        iterate: Map.prototype.entries,
+        next: Object.getPrototypeOf(new Map().entries()).next,
+        pairs: true,
+      },
+      set: {
+        size: descriptor(Set.prototype, "size").get,
+        iterate: Set.prototype.values,
+        next: Object.getPrototypeOf(new Set().values()).next,
+        pairs: false,
+      },
+    };
+    const sizedCollection = (value, kind) => {
+      if (isArray(value))
+        return { length: descriptor(value, "length").value, indexed: true };
+      if (kind === "typedarray")
+        return { length: typedLength.call(value), indexed: true, typed: true };
+      const collection =
+        kind === "map" || kind === "set" ? collections[kind] : null;
+      if (collection)
+        return {
+          length: collection.size.call(value),
+          iterate: collection.iterate,
+          next: collection.next,
+          pairs: collection.pairs,
+        };
+      return null;
+    };
     const ancestors = new Set();
-    const approved = new Set();
+    const approved = new Map();
     const root = resume ? this.root : this;
-    approved.add(root);
-    approved.add(Object.prototype);
+    approved.set(Object.prototype, "");
+    approved.set(root, kinds[0]);
     // Previous states are immutable, serializer-owned records. Reuse their
-    // references without resending a growing argument list across CDP.
+    // references locally; only bounded native type labels cross CDP. Those
+    // labels avoid getter/tag reads and exception-based probes on records.
+    let kindOffset = kinds.length;
     for (let state = resume ? this : null; state; state = state.previous) {
-      for (let i = 1; i < state.length; i++) approved.add(state[i]);
+      kindOffset -= state.length - 1;
+      for (let i = 1; i < state.length; i++)
+        approved.set(state[i], kinds[kindOffset + i - 1]);
     }
     const pending = Object.create(null);
     const discovered = new Set();
@@ -83,9 +126,14 @@ export default function serializeDeveloperResult(limit, entries, resume) {
       typeof value === "symbol";
     const encode = (value, depth) => {
       if (depth > 64) throw capacity;
+      let collection = null;
       if (value !== null && typeof value === "object") {
         if (!approved.has(value)) return defer(value);
-        if (!isArray(value)) {
+        collection = sizedCollection(value, approved.get(value));
+        // O(1) native sizes reject huge collections before enumerating
+        // their contents. Admitted contents are traversed lazily.
+        if (collection && collection.length > entries - visited) throw capacity;
+        if (!collection) {
           // for-in and native brand reads can consult prototypes. Verify
           // the current chain synchronously before either operation; an
           // unknown prototype is never inspected by JavaScript.
@@ -113,26 +161,45 @@ export default function serializeDeveloperResult(limit, entries, resume) {
       }
       if (ancestors.has(value)) throw unsupported;
       ancestors.add(value);
-      if (isArray(value)) {
-        append("[");
-        const length = descriptor(value, "length").value;
-        for (let i = 0; i < length; i++) {
+      if (collection) {
+        append(collection.typed ? "{" : "[");
+        const iterator = collection.indexed
+          ? null
+          : collection.iterate.call(value);
+        for (let i = 0; i < collection.length; i++) {
           visit();
           if (i) append(",");
-          const property = descriptor(value, "" + i);
-          encode(
-            !property
-              ? null
-              : hasOwn(property, "value")
-                ? property.value
-                : "[getter]",
-            depth + 1,
-          );
+          if (collection.indexed) {
+            if (collection.typed) append(quote("" + i) + ":");
+            const property = descriptor(value, "" + i);
+            encode(
+              !property
+                ? null
+                : hasOwn(property, "value")
+                  ? property.value
+                  : "[getter]",
+              depth + 1,
+            );
+          } else {
+            const item = collection.next.call(iterator).value;
+            if (collection.pairs) {
+              append("[");
+              // The entry pair adds its own JSON array nesting level.
+              encode(item[0], depth + 2);
+              append(",");
+              encode(item[1], depth + 2);
+              append("]");
+            } else encode(item, depth + 1);
+          }
         }
-        append("]");
+        append(collection.typed ? "}" : "]");
       } else {
         append("{");
         let comma = "";
+        // Plain-object for-in materialises keys in the page's own renderer
+        // process, bounded by that page's memory. Like inline strings, this
+        // is reachable only by an explicitly approved agent; Sage's native
+        // process receives only the capped result, never the full key list.
         for (const key in value) {
           visit();
           const property = descriptor(value, key);

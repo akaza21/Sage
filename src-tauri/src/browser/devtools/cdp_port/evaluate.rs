@@ -57,8 +57,8 @@ impl<T: CdpTransport> CdpPort<T> {
         if evaluation.result.subtype.as_deref() == Some("proxy") {
             return Ok(SERIALIZATION_FAILURE.into());
         }
+        let mut kinds = vec![collection_kind(evaluation.result.subtype.as_deref())];
         let mut receiver = object_id.into_owned();
-        let mut approved = 1;
         let mut resume = false;
         drop(response);
         let mut remaining = ENTRY_LIMIT;
@@ -74,6 +74,7 @@ impl<T: CdpTransport> CdpPort<T> {
                     {"value": BROWSER_LIMITS.cdp_result_bytes},
                     {"value": remaining},
                     {"value": resume},
+                    {"value": kinds},
                 ],
                 "returnByValue": false,
                 "silent": true,
@@ -114,7 +115,7 @@ impl<T: CdpTransport> CdpPort<T> {
                 envelope_limit,
                 left(deadline)?,
             )?;
-            if !classify_pending(pending, &mut approved, &mut remaining)? {
+            if !classify_pending(pending, &mut kinds, &mut remaining)? {
                 return Ok(SERIALIZATION_FAILURE.into());
             }
             resume = true;
@@ -123,9 +124,18 @@ impl<T: CdpTransport> CdpPort<T> {
     }
 }
 
+fn collection_kind(subtype: Option<&str>) -> &'static str {
+    match subtype {
+        Some("map") => "map",
+        Some("set") => "set",
+        Some("typedarray") => "typedarray",
+        _ => "",
+    }
+}
+
 fn classify_pending(
     response: String,
-    approved: &mut usize,
+    kinds: &mut Vec<&'static str>,
     remaining: &mut usize,
 ) -> Result<bool, BrowserFailure> {
     if response.len() > 2 * BROWSER_LIMITS.cdp_result_bytes + 4096 {
@@ -153,6 +163,14 @@ fn classify_pending(
     *remaining = remaining
         .checked_sub(usize::try_from(visited).map_err(|_| BrowserFailure::Capacity)?)
         .ok_or(BrowserFailure::Capacity)?;
+    let kind_offset = kinds.len();
+    let count = usize::try_from(length - 1).map_err(|_| BrowserFailure::Capacity)?;
+    if kind_offset + count > ENTRY_LIMIT {
+        return Err(BrowserFailure::Capacity);
+    }
+    // Only fixed collection labels cross back into the renderer. Preserve
+    // numeric reference order even if CDP returns descriptors out of order.
+    kinds.resize(kind_offset + count, "");
     for property in properties {
         let name = property["name"]
             .as_str()
@@ -166,13 +184,15 @@ fn classify_pending(
         if remote["subtype"] == "proxy" {
             return Ok(false);
         }
-        if *approved >= ENTRY_LIMIT {
-            return Err(BrowserFailure::Capacity);
-        }
         remote["objectId"]
             .as_str()
             .ok_or(BrowserFailure::Unavailable)?;
-        *approved += 1;
+        let index = name
+            .parse::<usize>()
+            .ok()
+            .filter(|index| (1..=count).contains(index))
+            .ok_or(BrowserFailure::Unavailable)?;
+        kinds[kind_offset + index - 1] = collection_kind(remote["subtype"].as_str());
     }
     Ok(true)
 }
@@ -209,6 +229,28 @@ fn decode(response: String) -> Result<String, BrowserFailure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_labels_follow_reference_indices_not_descriptor_order() {
+        let response = json!({"result": [
+            {"name": "3", "value": {"objectId": "map", "subtype": "map"}},
+            {"name": "1", "value": {"objectId": "view", "subtype": "typedarray"}},
+            {"name": "2", "value": {"objectId": "set", "subtype": "set"}},
+            {"name": "0", "value": {"value": 3}},
+            {"name": "length", "value": {"value": 4}},
+            {"name": "root", "value": {"objectId": "root"}},
+            {"name": "previous", "value": {"type": "object", "subtype": "null"}}
+        ]})
+        .to_string();
+        let mut kinds = vec![""];
+        let mut remaining = ENTRY_LIMIT;
+        assert_eq!(
+            classify_pending(response, &mut kinds, &mut remaining),
+            Ok(true)
+        );
+        assert_eq!(kinds, ["", "typedarray", "set", "map"]);
+        assert_eq!(remaining, ENTRY_LIMIT - 3);
+    }
 
     #[test]
     fn renderer_capacity_and_values_become_browser_results() {
