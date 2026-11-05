@@ -7,7 +7,6 @@ use std::{
 };
 
 use tauri::{AppHandle, Emitter, Manager, Webview};
-use tauri_plugin_dialog::DialogExt;
 use webview2_com::{
     BytesReceivedChangedEventHandler, CoTaskMemPWSTR, DownloadStartingEventHandler,
     Microsoft::Web::WebView2::Win32::{
@@ -19,9 +18,12 @@ use webview2_com::{
 };
 use windows_core::{HSTRING, Interface, PWSTR};
 
-use super::{BrowserState, DownloadView};
+use super::{BrowserState, DownloadView, reservation::Reservation};
 
+mod ask;
 mod choice;
+mod planning;
+mod settlement;
 mod watchdog;
 
 struct PendingDownload {
@@ -32,12 +34,17 @@ struct PendingDownload {
     armed_at: Instant,
     app: AppHandle,
     tab_id: String,
+    /// Save the chosen file's folder as the download folder once it starts,
+    /// if the stored folder is still at this revision.
+    remember: Option<i64>,
 }
 
 thread_local! {
     // WebView2 interfaces are apartment-bound and must never enter BrowserState.
     static PENDING: RefCell<BTreeMap<u64, PendingDownload>> = const { RefCell::new(BTreeMap::new()) };
     static ACTIVE: RefCell<BTreeMap<u64, ICoreWebView2DownloadOperation>> = const { RefCell::new(BTreeMap::new()) };
+    // Public name claims and private destinations for silent saves.
+    static RESERVED: RefCell<BTreeMap<u64, Reservation>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 fn emit_views(app: &AppHandle, tab_id: &str) {
@@ -104,13 +111,19 @@ fn start_download(
         let source = CoTaskMemPWSTR::from(source).to_string();
         let mut suggested = PWSTR::null();
         unsafe { args.ResultFilePath(&mut suggested)? };
+        let mut mime = PWSTR::null();
+        let mime = unsafe { operation.MimeType(&mut mime) }
+            .ok()
+            .map(|()| CoTaskMemPWSTR::from(mime).to_string())
+            .filter(|mime| !mime.is_empty());
         Ok::<_, windows_core::Error>((
             operation,
             source,
             CoTaskMemPWSTR::from(suggested).to_string(),
+            mime,
         ))
     })();
-    let (operation, source, suggested) = match prepared {
+    let (operation, source, suggested, mime) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             let _ = unsafe { args.SetCancel(true) };
@@ -176,41 +189,15 @@ fn start_download(
                 armed_at,
                 app: app.clone(),
                 tab_id: tab_id.to_owned(),
+                remember: None,
             },
         );
     });
     emit_views(app, tab_id);
 
-    let picker_app = app.clone();
-    let picker_webview = webview.clone();
-    let picker_tab = tab_id.to_owned();
-    app.dialog()
-        .file()
-        .set_title("Save browser download")
-        .set_file_name(file_name)
-        .save_file(move |selected| {
-            let path = selected.and_then(|file| file.into_path().ok());
-            let dispatch_app = picker_app.clone();
-            let dispatch_tab = picker_tab.clone();
-            if picker_webview
-                .with_webview(move |_| {
-                    complete_choice(&dispatch_app, &dispatch_tab, id, path);
-                })
-                .is_err()
-            {
-                let fallback_app = picker_app.clone();
-                let fallback_tab = picker_tab.clone();
-                if let Err(error) = picker_app.run_on_main_thread(move || {
-                    complete_choice(&fallback_app, &fallback_tab, id, None);
-                }) {
-                    if let Ok(mut registry) = picker_app.state::<BrowserState>().downloads.lock() {
-                        registry.settle(id, "error");
-                    }
-                    emit_views(&picker_app, &picker_tab);
-                    eprintln!("browser download picker dispatch failed: {error}");
-                }
-            }
-        });
+    // Folder checks and the name reservation touch the file system, which
+    // can block (an offline network share), so they run off this thread.
+    ask::plan_off_thread(app, webview, tab_id, id, file_name, mime);
     Ok(())
 }
 
@@ -229,20 +216,32 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
                     choice::accept_destination(
                         &mut registry,
                         id,
-                        path,
+                        RESERVED
+                            .with_borrow(|reserved| {
+                                reserved
+                                    .get(&id)
+                                    .map(|reservation| reservation.path().to_owned())
+                            })
+                            .unwrap_or(path),
                         pending.armed_at,
                         Instant::now(),
                     )
                 });
             if allowed {
-                let configured =
-                    unsafe { pending.args.SetResultFilePath(&HSTRING::from(path_text)) }
-                        .and_then(|()| unsafe { pending.args.SetHandled(true) })
-                        .is_ok();
+                let configured = unsafe {
+                    pending
+                        .args
+                        .SetResultFilePath(&HSTRING::from(path_text.as_str()))
+                }
+                .and_then(|()| unsafe { pending.args.SetHandled(true) })
+                .is_ok();
                 if configured {
                     if install_progress(app.clone(), tab_id.to_owned(), id, &pending.operation)
                         .is_ok()
                     {
+                        if let Some(revision) = pending.remember {
+                            choice::remember_choice(app, revision, Path::new(&path_text));
+                        }
                         ACTIVE.with_borrow_mut(|active| {
                             active.insert(id, pending.operation);
                         });
@@ -274,7 +273,16 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
         }
         let _ = unsafe { pending.deferral.Complete() };
     }
+    if !ACTIVE.with_borrow(|active| active.contains_key(&id)) {
+        release_reserved(id);
+    }
     emit_views(app, tab_id);
+}
+
+/// Unstarted/canceled silent saves release their claim and private staging
+/// destination on its isolated destination lane.
+fn release_reserved(id: u64) {
+    RESERVED.with_borrow_mut(|reserved| reserved.remove(&id));
 }
 
 fn install_progress(
@@ -327,16 +335,14 @@ fn install_progress(
                             .ResultFilePath(&mut raw)
                             .ok()
                             .map(|()| CoTaskMemPWSTR::from(raw).to_string());
-                        if let Ok(mut registry) = app.state::<BrowserState>().downloads.lock() {
-                            if let Some(saved) = saved.filter(|saved| !saved.is_empty()) {
-                                registry.saved_as(id, Path::new(&saved));
-                            }
-                            registry.settle(id, terminal);
-                        }
-                        ACTIVE.with_borrow_mut(|active| {
-                            active.remove(&id);
-                        });
-                        emit_views(&app, &tab_id);
+                        let saved = saved.filter(|saved| !saved.is_empty());
+                        settlement::finish(
+                            &app,
+                            &tab_id,
+                            id,
+                            terminal,
+                            saved.map(std::path::PathBuf::from),
+                        );
                     }
                 }
                 Ok(())
@@ -364,7 +370,14 @@ pub(crate) fn cancel_native(webview: &Webview, ids: Vec<u64>) -> Result<(), Stri
                 } else if let Some(operation) =
                     ACTIVE.with_borrow(|entries| entries.get(&id).cloned())
                 {
-                    if unsafe { operation.Cancel() }.is_err() {
+                    // Completed silent downloads stay tracked while publication
+                    // waits on the worker. The registry cancellation below is
+                    // enough to prevent that queued publication from running.
+                    let mut state = COREWEBVIEW2_DOWNLOAD_STATE::default();
+                    if unsafe { operation.State(&mut state) }.is_err()
+                        || (state != COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED
+                            && unsafe { operation.Cancel() }.is_err())
+                    {
                         result = Err("browser download cancellation failed".into());
                     }
                 } else {

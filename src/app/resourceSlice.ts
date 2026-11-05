@@ -16,6 +16,7 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { editorNavigationUpdate } from "./editorNavigation";
 import {
   issueRequestIntent,
   matchesRequestIntent,
@@ -134,7 +135,10 @@ export const createResourceSlice: StateCreator<
     ) {
       return;
     }
-    set({ activeEditor: null });
+    set({
+      activeEditor: null,
+      ...editorNavigationUpdate(),
+    });
     void get().loadDiff(resource, tab.repository ?? repository, tab.diffRef);
     void get().revealFile(resource);
   },
@@ -158,6 +162,14 @@ export const createResourceSlice: StateCreator<
     );
     if (existing) {
       await get().activateTab(existing.id);
+      if (
+        !get().projectTransitioning &&
+        matchesResourceIntent(get(), generation, projectId, resource) &&
+        get().activeTabId === existing.id
+      ) {
+        const navigation = editorNavigationUpdate();
+        if (navigation) set(navigation);
+      }
       return;
     }
     try {
@@ -181,7 +193,10 @@ export const createResourceSlice: StateCreator<
     if (tab?.kind !== "file" || !sameResource(tab.resource, resource)) {
       return;
     }
-    set({ activeEditor: null });
+    set({
+      activeEditor: null,
+      ...editorNavigationUpdate(),
+    });
     await get().loadEditor(resource);
     void get().revealFile(resource);
   },

@@ -12,6 +12,7 @@ const labels: Record<BrowserShortcut, string> = {
   closeTab: "Close browser tab",
   reload: "Reload browser page",
   find: "Find in browser page",
+  history: "Open browser history",
   back: "Browser back",
   forward: "Browser forward",
   zoomIn: "Browser zoom in",

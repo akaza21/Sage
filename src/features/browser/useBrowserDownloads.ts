@@ -8,7 +8,9 @@ import { subscribeBrowserTab } from "./browserTabEvents";
 
 export function isActiveDownload(download: BrowserDownload): boolean {
   return (
-    download.state === "choosingDestination" || download.state === "downloading"
+    download.state === "choosingDestination" ||
+    download.state === "downloading" ||
+    download.state === "publishing"
   );
 }
 

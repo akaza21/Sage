@@ -211,6 +211,13 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
     group: "Developer mode",
   },
   {
+    id: "browser.downloadFolder",
+    label: "Download location",
+    description:
+      "The folder downloads save to without asking. Programs and scripts always ask.",
+    group: "Downloads",
+  },
+  {
     id: "browser.sitePermissions",
     label: "Site permissions",
     description: "Camera, microphone, location, notifications, clipboard",
