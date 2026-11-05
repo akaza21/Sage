@@ -79,18 +79,8 @@
     display: none;
   }
 
-  .composer .composer__harness .searchable-picker__trigger-label,
-  .composer .composer__harness .searchable-picker__chevron {
-    display: none;
-  }
-
-  .composer__controls .composer__harness.composer__control-trigger {
-    flex: 0 1 28px;
-  }
-
-  .composer__controls .composer__harness .searchable-picker__trigger {
-    justify-content: center;
-    padding: 0;
+  .composer .composer__harness {
+    --picker-chevron-display: none;
   }
 
   .composer .composer__model-group {
@@ -187,13 +177,7 @@
   }
 
   .composer .composer__harness.composer__control-trigger {
-    min-width: 24px;
-    height: 28px;
-    flex-basis: 24px;
-  }
-
-  .composer .composer__harness .searchable-picker__trigger {
-    height: 28px;
+    min-width: var(--space-6);
   }
 
   .composer .project-scope,

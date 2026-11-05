@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useContext, useEffect } from "react";
 import { useStore } from "zustand";
 
 import {
@@ -18,6 +18,8 @@ import {
   subscribeGoalChanges,
 } from "../../../services/acpGoalDesktop";
 
+import { AcpProjectionOwnerContext } from "./AcpProjectionOwnerContext";
+
 export function useAcpRetentionIncomplete(boundChatId?: string | null) {
   return useStore(
     acpProjectionStoreFor(boundChatId),
@@ -36,6 +38,8 @@ export function useAcpChatProjection(
   enabled = true,
   boundChatId?: string | null,
 ) {
+  const owners = useContext(AcpProjectionOwnerContext);
+  const externallyOwned = !!boundChatId && owners?.has(boundChatId) === true;
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
@@ -76,6 +80,7 @@ export function useAcpChatProjection(
   }, [boundChatId]);
 
   useEffect(() => {
+    if (externallyOwned) return;
     if (!enabled || !projectId || !resolvedChatId || projectTransitioning) {
       clear();
       return;
@@ -172,6 +177,7 @@ export function useAcpChatProjection(
     completePageLoad,
     enqueueProjectionChange,
     enabled,
+    externallyOwned,
     failPageLoad,
     loadNonce,
     nativeTransitionEpoch,

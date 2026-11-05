@@ -112,6 +112,10 @@ test("settings loading and persistence errors stay in the content flow", async (
   });
   for (const width of [1280, 480]) {
     await page.setViewportSize({ width, height: 800 });
+    const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+    if (await drawer.isVisible())
+      await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    await expect(page.locator(".settings-surface")).toBeVisible();
     const headerGap = await page
       .locator(".settings-surface__nav")
       .evaluate((nav) => ({

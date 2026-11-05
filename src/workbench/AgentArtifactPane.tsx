@@ -22,7 +22,7 @@ import {
 import { orderedTabs } from "../app/tabState";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
-import { RetainedActivity } from "../ui/LazyModuleBoundary";
+import { RetainedActivity } from "../ui/RetainedActivity";
 import { useRetainedElement } from "../ui/useRetainedElement";
 import {
   agentArtifactAdmitted,

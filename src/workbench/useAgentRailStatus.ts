@@ -123,7 +123,11 @@ export function useAgentRailStatus(visible: boolean) {
 }
 
 /** Desktop status transport stays outside the ready workbench path and Activity. */
-export function AgentRailStatusObserver({ visible }: { visible: boolean }) {
+export default function AgentRailStatusObserver({
+  visible,
+}: {
+  visible: boolean;
+}) {
   useAgentRailStatus(visible);
   return null;
 }

@@ -102,6 +102,7 @@ for (const width of [1888, 720, 480]) {
         page.getByRole("tab", { name: "Review", exact: true }),
       ).toHaveCount(0);
       await collapseArtifactPane(page);
+      await expect(pill).toHaveAttribute("aria-expanded", "true");
       await pill.click();
       await edit(page, "completed");
       await expect(pane.locator(".acp-editing-files")).toHaveCount(0);

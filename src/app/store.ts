@@ -276,7 +276,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         return;
       }
       const source = get();
-      const { openEditorSettings } =
+      const { default: openEditorSettings } =
         await import("../features/settings/openEditorSettings");
       return openEditorSettings(
         set,

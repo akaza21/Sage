@@ -1,3 +1,4 @@
+import { IconButton } from "../../ui/IconButton";
 import { Plus, Settings } from "../../ui/leanIcons";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
@@ -22,7 +23,8 @@ import { capitalizeLabel } from "../../domain/text";
 import "../../styles/harness-picker.css";
 import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
 import { ComposerAccessControl } from "./ComposerAccessControl";
-import { ComposerOptionsMenu } from "./ComposerAddActions";
+import { ComposerOptionsPart } from "./lazyParts";
+import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { composerOptionLabel } from "./composerChrome";
 import { formatContextWindow } from "./composerModelContext";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -193,14 +195,12 @@ export function ChatHarnessControls({
     dismiss();
     modelTrigger.current?.focus();
   };
-  const harnessCandidates = harnessPickerCandidates(harnesses).map(
-    (candidate) => ({
-      ...candidate,
-      subtitle:
-        candidate.id === selectedHarnessId && confirmedModelLabel
-          ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
-          : undefined,
-    }),
+  const harnessCandidates = harnessPickerCandidates(
+    harnesses,
+    selectedHarnessId,
+    confirmedModelLabel
+      ? `${confirmedModelLabel}${effortLabel ? ` ${effortLabel}` : ""}`
+      : undefined,
   );
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const modeCandidates = modeOptions.map((mode) => ({
@@ -259,22 +259,18 @@ export function ChatHarnessControls({
   return (
     <div className="composer__controls">
       {hasActions ? (
-        <button
+        <IconButton
           ref={optionsTriggerRef}
           className="composer__plus"
-          type="button"
           aria-label="Composer options"
           aria-controls={optionsId}
           aria-haspopup="menu"
           aria-expanded={active === "options"}
           disabled={turnBusy || projectTransitioning}
-          onClick={(event) => {
-            optionsTriggerRef.current = event.currentTarget;
-            toggle("options");
-          }}
+          onClick={() => toggle("options")}
         >
           <Plus size={16} aria-hidden="true" />
-        </button>
+        </IconButton>
       ) : null}
       {availableBinding && accessHarness?.bindingId ? (
         <ComposerAccessControl
@@ -305,7 +301,7 @@ export function ChatHarnessControls({
           disabled={projectTransitioning || turnBusy}
           state={harnessesPending ? "loading" : undefined}
           stateTitle={harnessesPending ? "Detecting harnesses…" : undefined}
-          onSelect={(id) => void onSelectHarness(id)}
+          onSelect={onSelectHarness}
           selectedId={selectedHarnessId}
         />
       </label>
@@ -353,7 +349,14 @@ export function ChatHarnessControls({
         />
       ) : null}
       {active === "options" && hasActions ? (
-        <ComposerOptionsMenu
+        <ComposerOptionsPart
+          part="ComposerOptionsMenu"
+          fallback={
+            <ComposerMenuLoading
+              triggerRef={optionsTriggerRef}
+              onDismiss={dismiss}
+            />
+          }
           id={optionsId}
           triggerRef={optionsTriggerRef}
           onDismiss={dismiss}
