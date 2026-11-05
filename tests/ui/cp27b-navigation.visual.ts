@@ -277,7 +277,7 @@ for (const geometry of geometries) {
 }
 
 for (const width of [720, 480]) {
-  test(`Preview iframe Tab stays inside resources at ${width}px`, async ({
+  test(`Preview iframe Tab follows the resources layout at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -299,7 +299,21 @@ for (const width of [720, 480]) {
     });
     await target.focus();
     await page.keyboard.press("Tab");
-    await expect(pane).toBeFocused();
+    if (width === 480) {
+      // The overlay keeps Tab inside its own region.
+      await expect(pane).toBeFocused();
+    } else {
+      // Docked beside Chat, the pane is part of the page's Tab order, so
+      // Tab leaves the Preview frame without wrapping back into the pane.
+      await expect(
+        page.locator("iframe[title='Sage browser']"),
+      ).not.toBeFocused();
+      await expect
+        .poll(() =>
+          pane.evaluate((node) => node.contains(document.activeElement)),
+        )
+        .toBe(false);
+    }
     await target.focus();
     await page.keyboard.press("Shift+Tab");
     await expect
@@ -413,7 +427,13 @@ for (const forcedColors of ["none", "active"] as const) {
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
       expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height);
-      if (viewport.width < 1280) await expect(pane).toBeFocused();
+      // Only an overlay that covers Chat takes focus; docked resources keep
+      // Chat reachable and leave focus where the person was working.
+      if (viewport.width === 480) await expect(pane).toBeFocused();
+      else
+        await expect(page.locator(".center-region")).not.toHaveAttribute(
+          "inert",
+        );
     }
     await page.keyboard.press("Escape");
     const trigger = page.getByRole("button", {
