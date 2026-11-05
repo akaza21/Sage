@@ -70,6 +70,9 @@ impl NativeRuntime {
 }
 
 impl HarnessAdapter for NativeRuntime {
+    fn frames_repeat_terminal(&self, frames: &[Frame], resources: &dyn ResourceMapper) -> bool {
+        self.0.frames_repeat_terminal(frames, resources)
+    }
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,

@@ -236,6 +236,7 @@ function useBrowserAttachmentControls({
           aria-hidden="true"
         />
         <select
+          data-overflow-control="chat"
           aria-label="Chat for browser tab"
           title={chats.find((chat) => chat.id === chosen)?.title}
           value={chosen}
@@ -252,6 +253,7 @@ function useBrowserAttachmentControls({
       <button
         type="button"
         aria-label={attachmentLabel}
+        data-overflow-control="attachment"
         title={attachmentLabel}
         onClick={() => void changeAttachment(attached ? "detach" : "attach")}
         disabled={busy || (!attached && (!projectId || !chosen || !ready))}
@@ -299,6 +301,7 @@ function BrowserAskPageButton({
     <button
       type="button"
       aria-label={pending ? "Attaching page…" : "Ask about this page"}
+      data-overflow-control="ask"
       disabled={!ready || !focusedChatId || pending}
       title={!focusedChatId ? "Focus a Chat to ask about this page" : undefined}
       onClick={attach}

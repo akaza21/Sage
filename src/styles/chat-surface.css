@@ -331,17 +331,6 @@ button.composer__control-trigger[aria-expanded="true"] {
   color: var(--composer-access-write);
 }
 
-.composer__model-trigger {
-  max-width: 155px;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer__plus:hover,
 .composer__model-trigger:hover {
   color: var(--color-status-foreground);

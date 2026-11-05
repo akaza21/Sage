@@ -118,7 +118,8 @@
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
         "maxGzipBytes": 1385,
-        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager."
+        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager.",
+        "maxCssGzipBytes": 180
       },
       {
         "entry": "src/features/chat/acp/TurnFileActivity.tsx",
@@ -375,6 +376,16 @@
         "maxGzipBytes": 8160,
         "maxCssGzipBytes": 800,
         "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
+      },
+      {
+        "entry": "src/features/chat/composerDictationRuntime.ts",
+        "maxGzipBytes": 1100,
+        "reason": "Native speech event handling loads only on a dictation request; inactive composers retain no speech subscriptions."
+      },
+      {
+        "entry": "src/features/chat/ComposerUsageContext.tsx",
+        "maxGzipBytes": 700,
+        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter."
       }
     ],
     "windowsInstallerMb": 45,

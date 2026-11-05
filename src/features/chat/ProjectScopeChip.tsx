@@ -39,6 +39,7 @@ export function ProjectScopeChip({
   );
   return (
     <span
+      data-overflow-control="project"
       role={candidates.length === 0 ? "img" : undefined}
       aria-label={
         candidates.length === 0 ? `Project: ${projectName}` : undefined

@@ -69,6 +69,7 @@ export function BrowserDownloadsControl({
         ref={trigger}
         type="button"
         className="browser-downloads__trigger"
+        data-overflow-control="downloads"
         aria-label={active ? `Downloads, ${active} active` : "Downloads"}
         aria-haspopup="dialog"
         aria-expanded={open}

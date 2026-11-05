@@ -31,6 +31,27 @@
   --radius-title-bar-search: var(--radius-sm);
   --placeholder-title-gap: var(--space-2);
   --placeholder-body-font-size: var(--font-size-sm);
+  /* A canvas-coloured activity rail whose buttons fill its width. */
+  --activity-rail-gap: calc(var(--space-1) / 2);
+  --activity-rail-width: var(--editor-activity-width);
+  --activity-rail-fill: var(--color-canvas);
+  --activity-button-width: 100%;
+  --radius-activity-button: var(--radius-sm);
+  --activity-button-active-fill: var(
+    --editor-active-fill,
+    var(--color-surface-hover)
+  );
+  --activity-button-active-hover-fill: var(--activity-button-active-fill);
+  /* A hairline tool-rail splitter that lights with the highlight roles,
+     which global.css also defines for forced colours. Hover and drag take
+     the focus-ring width: a hairline normally, 2px in forced colours. */
+  --sidebar-splitter-width: var(--border-width);
+  --sidebar-splitter-state-width: var(--focus-ring-width);
+  --sidebar-splitter-fill: transparent;
+  --sidebar-splitter-hover-fill: var(--highlight-selection-edge);
+  --sidebar-splitter-hover-shadow: 0 0 4px var(--highlight-focus-halo);
+  --sidebar-splitter-active-fill: var(--highlight-focus-edge);
+  --sidebar-splitter-active-shadow: var(--highlight-focus-halo-shadow);
 }
 
 @media (forced-colors: none) {

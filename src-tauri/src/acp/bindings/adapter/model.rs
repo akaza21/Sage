@@ -114,6 +114,13 @@ pub(crate) trait HarnessAdapter {
     fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
         Ok(None)
     }
+    /// True only when ingesting `frames` in order would read each one as a
+    /// repeat of the terminal of the Turn this adapter last finished, and
+    /// would leave the adapter unchanged. Harnesses that cannot prove that
+    /// answer false.
+    fn frames_repeat_terminal(&self, _frames: &[Frame], _resources: &dyn ResourceMapper) -> bool {
+        false
+    }
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }

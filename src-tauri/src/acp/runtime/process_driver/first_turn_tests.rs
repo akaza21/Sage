@@ -56,6 +56,9 @@ mod model_catalog_tests;
 #[path = "first_turn_tests/cancel_shutdown_tests.rs"]
 mod cancel_shutdown_tests;
 
+#[path = "first_turn_tests/cancel_handoff_tests.rs"]
+mod cancel_handoff_tests;
+
 mod write_observation_tests;
 
 struct Authority(IntentSnapshot);

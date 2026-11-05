@@ -102,7 +102,8 @@ const CURRENT_RAIL_CHATS =
 const HARNESS_TRIGGERS =
   '[...s.querySelectorAll(\'button[aria-label="Harness"][aria-haspopup="listbox"]\')]';
 const MODEL_TRIGGERS =
-  '[...s.querySelectorAll(\'button[aria-label="Model"][aria-haspopup="listbox"]\')]';
+  // A model picker, or the read-only label a single-model catalog renders.
+  '[...s.querySelectorAll(\':is(button[aria-haspopup="listbox"],span)[aria-label="Model"]\')]';
 const HARNESS_STATUS =
   "(()=>{const x=[...document.querySelectorAll('[aria-label^=\"Harness status: \"]')];return x.length===1?x[0].getAttribute('aria-label').slice(16).trim():''})()";
 const AGENT_MODE =

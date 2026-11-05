@@ -1,17 +1,11 @@
 /* Codex-style plain control: brand mark and name on the composer fill, with
    the shared control hover. The name shows whole or not at all:
-   useComposerCompaction hides it when the toolbar has no room, leaving the mark. */
+   the measured toolbar steps hide it when only the mark fits. */
 .composer__harness.composer__control-trigger {
   --picker-trigger-icon-size: var(--icon-size-md);
   height: var(--control-height-compact);
   min-width: var(--control-height-compact);
-  flex: 0 1 auto;
-}
-
-.composer__harness[data-name-hidden] {
-  --picker-trigger-justify: center;
-  --picker-label-display: none;
-  --picker-chevron-display: none;
+  flex: none;
 }
 
 .composer__popover.menu-popover {

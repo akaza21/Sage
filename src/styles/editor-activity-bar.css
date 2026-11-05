@@ -1,20 +1,29 @@
+/*
+ * The rail and its buttons read role tokens; a mode sets the tokens (Editor
+ * in editor-visual-reference.css) and never restyles the parts by selector.
+ * Each fallback is the shared look.
+ */
 .activity-rail {
+  --activity-rail-inset: var(--space-1);
+
   display: flex;
   align-items: center;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: var(--activity-rail-gap, var(--space-1));
+  width: var(--activity-rail-width, auto);
+  padding: var(--activity-rail-inset);
+  background: var(--activity-rail-fill, transparent);
 }
 
 .activity-rail__button {
   position: relative;
   display: grid;
-  width: var(--control-height-emphasis);
+  width: var(--activity-button-width, var(--control-height-emphasis));
   height: var(--control-height-emphasis);
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-activity-button);
   color: var(--color-text-muted);
   background: transparent;
   cursor: pointer;
@@ -27,25 +36,39 @@
 
 .activity-rail__button--active {
   color: var(--color-text-primary);
-  background: var(--color-surface-active);
+  background: var(--activity-button-active-fill, var(--color-surface-active));
 }
 
+/* Hovering the active button shows the hover fill unless a mode keeps the
+   active fill. */
+.activity-rail__button--active:hover {
+  background: var(
+    --activity-button-active-hover-fill,
+    var(--color-surface-hover)
+  );
+}
+
+/* The indicator sits on the rail edge, one rail inset outside the button. */
 .activity-rail__button--active::after {
   position: absolute;
-  right: -4px;
-  width: 2px;
+  right: calc(-1 * var(--activity-rail-inset));
+  width: var(--activity-indicator-width, 2px);
   height: 24px;
-  border-radius: var(--radius-pill);
-  background: var(--color-accent);
+  border-radius: var(--radius-activity-indicator);
+  background: var(--activity-indicator-fill, var(--color-accent));
   content: "";
 }
 
 .right-region--leading .activity-rail__button--active::after {
   right: auto;
-  left: -4px;
+  left: calc(-1 * var(--activity-rail-inset));
 }
 
 .workbench--editor .right-region--leading {
+  --activity-indicator-width: var(--border-width);
+  --radius-activity-indicator: var(--radius-none);
+  --activity-indicator-fill: var(--highlight-active-edge);
+
   width: 100%;
   grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
   border-right: 0;
@@ -54,30 +77,6 @@
 
 .workbench--editor .right-region--leading.right-region--collapsed {
   grid-template-columns: var(--editor-activity-width);
-}
-
-.workbench--editor .activity-rail {
-  gap: 2px;
-  width: var(--editor-activity-width);
-  border-right: 0;
-  background: var(--color-canvas);
-}
-
-.workbench--editor .activity-rail__button {
-  width: 40px;
-  border-radius: var(--radius-sm);
-  transition:
-    color var(--motion-duration-fast) ease,
-    background-color var(--motion-duration-fast) ease,
-    border-color var(--motion-duration-fast) ease;
-}
-
-.workbench--editor
-  .right-region--leading
-  .activity-rail__button--active::after {
-  width: 2px;
-  height: 24px;
-  border-radius: var(--radius-none);
 }
 
 .workbench--editor .sidebar {
@@ -96,59 +95,13 @@
   text-transform: none;
 }
 
-.workbench--editor .workbench-sidebar-splitter::after {
-  left: 3px;
-  width: 1px;
-  background: transparent;
-}
-
-.workbench--editor .workbench-sidebar-splitter:hover::after,
-.workbench--editor .workbench-sidebar-splitter--active::after,
-.workbench--editor .workbench-sidebar-splitter:focus-visible::after {
-  width: 2px;
-  background: var(--color-focus-ring);
-}
-
-@media (forced-colors: none) {
-  .workbench--editor
-    .right-region--leading
-    .activity-rail__button--active::after {
-    width: 1px;
-    height: 24px;
-    background: var(--editor-active-edge);
-  }
-
-  .workbench--editor .workbench-sidebar-splitter::after,
-  .workbench--editor .workbench-sidebar-splitter:hover::after,
-  .workbench--editor .workbench-sidebar-splitter--active::after,
-  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
-    width: 1px;
-  }
-
-  .workbench--editor .workbench-sidebar-splitter:hover::after {
-    background: var(--editor-selection-edge);
-    box-shadow: 0 0 4px var(--editor-focus-halo);
-  }
-
-  .workbench--editor .workbench-sidebar-splitter--active::after,
-  .workbench--editor .workbench-sidebar-splitter:focus-visible::after {
-    background: var(--editor-focus-edge);
-    box-shadow: var(--editor-focus-halo-shadow);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workbench--editor .activity-rail__button {
-    transition-duration: 0ms;
-  }
-}
-
 @media (forced-colors: active) {
   .workbench--editor .sidebar {
     border-color: CanvasText;
   }
 
   .activity-rail__button--active::after {
+    width: 2px;
     background: Highlight;
   }
 }

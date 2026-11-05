@@ -333,6 +333,7 @@ describe("Continued from chat", () => {
     const history = await screen.findByRole("group", {
       name: "History from the parent chat",
     });
+    await settleLazyModules();
     // Each inherited Turn is inert itself, so its answer row stays usable.
     expect(history).not.toHaveAttribute("inert");
     expect(

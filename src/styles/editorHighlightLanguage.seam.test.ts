@@ -60,9 +60,10 @@ describe("Editor highlight language seam", () => {
   });
 
   it("projects the highlight roles across every Editor control family", async () => {
-    const [css, activityCss, visualCss] = await Promise.all([
+    // The activity rail and its splitter are read from computed styles in
+    // tests/ui/sidebar-rail-states.visual.ts.
+    const [css, visualCss] = await Promise.all([
       readFile(resolve("src/styles/editor-highlight-language.css"), "utf8"),
-      readFile(resolve("src/styles/editor-activity-bar.css"), "utf8"),
       readFile(resolve("src/styles/editor-visual-reference.css"), "utf8"),
     ]);
 
@@ -94,8 +95,6 @@ describe("Editor highlight language seam", () => {
     expect(css).toContain(
       ".menu-popover--editor .searchable-picker__input:focus-visible",
     );
-    expect(css).toContain(".activity-rail__button--active");
-    expect(activityCss).toContain(".workbench-sidebar-splitter--active::after");
     expect(visualCss).toContain(".new-file-dialog--editor");
     expect(visualCss).toContain(".dirty-dialog--editor");
   });
