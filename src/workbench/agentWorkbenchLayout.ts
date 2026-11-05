@@ -63,8 +63,9 @@ export function agentWorkbenchLayout({
   // Files sit beside the expanded rail only when the chat keeps its floor
   // and the Files keep their share. Otherwise opening them folds the rail to
   // its icon strip, as the Codex desktop app does, and closing them brings
-  // the rail back. A Files width the person chose only needs the floor:
-  // the splitters trade width between the rail and the Files from there.
+  // the rail back. Once the person drags either splitter, the Files only
+  // need their floor: the allocator trades width between the rail and the
+  // Files by resize priority, so a drag never folds the rail it is sizing.
   const filesRoomBesideNavigation =
     viewportWidth -
     clampWorkbenchSidebarWidth(
@@ -76,7 +77,8 @@ export function agentWorkbenchLayout({
   const navigationFits =
     desktop &&
     filesRoomBesideNavigation >=
-      (requestedWidths?.artifactWidth === undefined
+      (requestedWidths?.artifactWidth === undefined &&
+      requestedWidths?.leftRailWidth === undefined
         ? Math.max(AGENT_ARTIFACT_WIDTH.minWidth, artifactShare)
         : AGENT_ARTIFACT_WIDTH.minWidth);
   const navigationCollapsed =

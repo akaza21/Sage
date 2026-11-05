@@ -149,6 +149,20 @@ describe("Agent navigation allocation", () => {
     },
   );
 
+  it("keeps the rail while dragging it wider leaves Files their floor", () => {
+    const layout = agentWorkbenchLayout({
+      viewportWidth: 1280,
+      artifactExpanded: true,
+      requestedWidths: { leftRailWidth: 340 },
+      prioritize: "left",
+    });
+    expect(layout.navigationCollapsed).toBe(false);
+    expect(layout.navigationResizable).toBe(true);
+    expect(layout.leftRailWidth).toBe(340);
+    expect(layout.artifactWidth).toBe(564);
+    expect(layout.chatWidth).toBe(360);
+  });
+
   it("keeps narrow navigation reference-sized even with wide splitter overrides", () => {
     const layout = agentWorkbenchLayout({
       viewportWidth: 480,
