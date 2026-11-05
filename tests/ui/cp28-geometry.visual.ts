@@ -4,7 +4,6 @@ import {
   orderedGeometryAnswer,
 } from "./fixtures/markdownAnswerInputs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import {
   openScenario,
   settleChatProjections,
@@ -173,7 +172,6 @@ for (const paneWidth of [360, 384]) {
     await page.setViewportSize({ width: 1380, height: 880 });
     await openScenario(page, "file", "agent");
     await settleChatProjections(page);
-    await advertiseAlternativeModel(page);
     await expect(
       page.getByLabel("Agent artifacts", { exact: true }),
     ).toBeVisible();
@@ -228,7 +226,6 @@ for (const width of [1888, 720, 480]) {
       await page.setViewportSize({ width, height: 1096 });
       await openScenario(page, scenario, "agent");
       await settleChatProjections(page);
-      await advertiseAlternativeModel(page);
       const panes = page.locator(".agent-chat-pane");
       await expect(panes).toHaveCount(1);
       await installAnswers(page, geometryAnswers.short);
