@@ -67,8 +67,6 @@ test.describe("Editor layout invariants", () => {
     const longName = "SomethingVeryLongComponentName.tsx";
     for (const path of ["docs/api.md", "README.md", `src/features/${longName}`])
       await openFile(page, path);
-    // At this width the tool drawer covers the editor; close it.
-    await page.getByRole("button", { name: "Hide left sidebar" }).click();
     const longTab = page.locator(`.tab__activate[title$="${longName}"]`);
     await expect(longTab).toBeVisible();
     // The strip is crowded enough that this title is cut short.
