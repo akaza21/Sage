@@ -96,11 +96,12 @@ impl Request {
         let Some(record) = &self.record else {
             return self.fallback();
         };
-        let step = match folder::plan(
+        let step = match folder::plan_before(
             record.path.as_deref(),
             &self.suggested,
             self.mime.as_deref(),
             |path| self.claimed.contains(path),
+            deadline,
         ) {
             Plan::Silent(placeholder) => {
                 let mut reservation = Reservation::on_destination(

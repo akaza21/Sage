@@ -80,6 +80,7 @@ impl SettingsStore {
         read(&self.download_lock())
     }
 
+    #[cfg(test)]
     pub fn set_browser_download_folder(&self, folder: &Path) -> AppResult<()> {
         let text = admitted_text(folder)?;
         write(&self.download_lock(), Some(text))

@@ -99,7 +99,7 @@ impl Reservation {
         let folder = self
             .path
             .parent()
-            .and_then(super::folder::admit_folder)
+            .and_then(|path| super::folder::admit_folder_before(path, deadline))
             .ok_or_else(|| std::io::Error::other("download folder unavailable"))?;
         deadline.check()?;
         // Report the same canonical, long folder spelling as Settings, even

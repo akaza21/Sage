@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 
 mod file_types;
 
-use super::placeholder::{self, Placeholder};
+use super::{
+    io::Deadline,
+    placeholder::{self, Placeholder},
+};
 
 use file_types::RESERVED_STEMS;
 pub(crate) use file_types::{is_dangerous, is_dangerous_mime};
@@ -39,21 +42,32 @@ pub(crate) enum Plan {
     },
 }
 
-/// Decides between saving silently and asking. `stored` is the saved
-/// download folder as Settings recorded it; `mime` is the server's content
-/// type; `taken` reports destinations already claimed by downloads still in
-/// flight. A `Silent` path has been reserved on disk (see
-/// [`unique_destination`]). This does file-system work, so it runs off the
-/// WebView2 UI thread.
+#[cfg(test)]
 pub(crate) fn plan(
     stored: Option<&Path>,
     suggested: &str,
     mime: Option<&str>,
     taken: impl Fn(&Path) -> bool,
 ) -> Plan {
+    plan_before(stored, suggested, mime, taken, super::io::test_deadline())
+}
+
+/// Decides between saving silently and asking. `stored` is the saved
+/// download folder as Settings recorded it; `mime` is the server's content
+/// type; `taken` reports destinations already claimed by downloads still in
+/// flight. A `Silent` path has been reserved on disk (see
+/// [`unique_destination`]). This does file-system work, so it runs off the
+/// WebView2 UI thread.
+pub(crate) fn plan_before(
+    stored: Option<&Path>,
+    suggested: &str,
+    mime: Option<&str>,
+    taken: impl Fn(&Path) -> bool,
+    deadline: Deadline,
+) -> Plan {
     let file_name = sanitize_file_name(suggested);
     let dangerous = is_dangerous(&file_name) || mime.is_some_and(is_dangerous_mime);
-    let Some(folder) = stored.and_then(admit_folder) else {
+    let Some(folder) = stored.and_then(|path| admit_folder_before(path, deadline)) else {
         return Plan::Ask {
             file_name,
             remember: stored.is_none() || !dangerous,
@@ -79,19 +93,34 @@ pub(crate) fn plan(
 
 /// The folder of a path the user picked in the Save dialog, admitted for
 /// storage, or `None` when it cannot be a download folder.
+#[cfg(test)]
 pub(crate) fn folder_of_choice(chosen: &Path) -> Option<PathBuf> {
     admit_folder(chosen.parent()?)
 }
 
 /// Canonical form of an existing, writable directory, or `None`.
+#[cfg(test)]
 pub(crate) fn admit_folder(path: &Path) -> Option<PathBuf> {
+    admit_folder_before(path, super::io::test_deadline())
+}
+
+/// Canonical form of an existing, writable directory with the caller's
+/// original deadline, including queue time. Stop between filesystem calls.
+pub(crate) fn admit_folder_before(path: &Path, deadline: Deadline) -> Option<PathBuf> {
+    deadline.check().ok()?;
     if !path.is_absolute() {
         return None;
     }
     let canonical = simplify_verbatim(std::fs::canonicalize(path).ok()?);
-    if !canonical.is_dir() || !is_writable(&canonical) {
+    deadline.check().ok()?;
+    if !canonical.is_dir() {
         return None;
     }
+    deadline.check().ok()?;
+    if !is_writable(&canonical) {
+        return None;
+    }
+    deadline.check().ok()?;
     Some(canonical)
 }
 

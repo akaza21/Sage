@@ -1,7 +1,8 @@
 //! Destination I/O never runs on the coordinator or UI thread. Each folder has
 //! one sleeping worker and a bounded queue. A lease is admitted before planning
 //! and retained through publication/cleanup, reserving room for disposal even
-//! when a native call never returns. Expiry never releases a stuck call's slot.
+//! when a native call never returns. Disposable folder probes release admission
+//! at their deadline; their blocked workers remain bounded and coalesced.
 
 use std::{
     io,
@@ -22,7 +23,9 @@ const TIMEOUT: Duration = Duration::from_secs(2);
 const STACK_BYTES: usize = 256 * 1024;
 type Job = Box<dyn FnOnce() + Send>;
 
-#[derive(Clone, Copy)]
+mod probe;
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Deadline(Instant);
 
 impl Deadline {
@@ -46,6 +49,7 @@ fn timed_out() -> io::Error {
 struct Lane {
     sender: SyncSender<Job>,
     active: Arc<AtomicUsize>,
+    probe: Mutex<Option<Arc<probe::Probe>>>,
 }
 
 #[derive(Debug)]
@@ -86,58 +90,69 @@ impl Executor {
     }
 
     pub(crate) fn acquire(&self, folder: &Path) -> Option<Destination> {
-        // Settings supplies canonical paths. Never resolve a path here: even
-        // canonicalization can block. Keep that original lane through handoff.
-        let key = folder.to_string_lossy().to_lowercase();
         let mut lanes = self.lanes.lock().ok()?;
+        let lane = self.lane(&mut lanes, folder)?;
+        let permit = self.permit(&lane)?;
+        Some(Destination {
+            permit,
+            lane,
+            timeout: self.timeout,
+        })
+    }
+
+    // The caller holds `lanes` while admitting a lease or coalescing a probe.
+    // Never resolve paths here: even canonicalization can block.
+    fn lane(&self, lanes: &mut Vec<(String, Weak<Lane>)>, folder: &Path) -> Option<Arc<Lane>> {
+        let key = folder.to_string_lossy().to_lowercase();
         lanes.retain(|(_, lane)| lane.strong_count() != 0);
-        if self.active.load(Ordering::Acquire) >= MAX_LEASES {
-            return None;
-        }
-        let existing = lanes
+        if let Some(lane) = lanes
             .iter()
             .find(|(path, _)| *path == key)
-            .and_then(|(_, lane)| lane.upgrade());
-        let lane = match existing {
-            Some(lane) => lane,
-            None => {
-                if self.workers.load(Ordering::Acquire) >= MAX_LEASES {
-                    return None;
+            .and_then(|(_, lane)| lane.upgrade())
+        {
+            return Some(lane);
+        }
+        if self.active.load(Ordering::Acquire) >= MAX_LEASES
+            || self.workers.load(Ordering::Acquire) >= MAX_LEASES
+        {
+            return None;
+        }
+        self.workers.fetch_add(1, Ordering::AcqRel);
+        let worker = WorkerPermit(Arc::clone(&self.workers));
+        // One disposable probe may outlive its admission after expiry. Keep
+        // its queue slot separate from the slots reserved by download leases.
+        let (sender, receiver) = mpsc::sync_channel::<Job>(MAX_PER_DESTINATION + 1);
+        std::thread::Builder::new()
+            .name("download-destination-io".into())
+            .stack_size(STACK_BYTES)
+            .spawn(move || {
+                let _worker = worker;
+                for job in receiver {
+                    let _ = catch_unwind(AssertUnwindSafe(job));
                 }
-                self.workers.fetch_add(1, Ordering::AcqRel);
-                let worker = WorkerPermit(Arc::clone(&self.workers));
-                let (sender, receiver) = mpsc::sync_channel::<Job>(MAX_PER_DESTINATION);
-                std::thread::Builder::new()
-                    .name("download-destination-io".into())
-                    .stack_size(STACK_BYTES)
-                    .spawn(move || {
-                        let _worker = worker;
-                        for job in receiver {
-                            let _ = catch_unwind(AssertUnwindSafe(job));
-                        }
-                    })
-                    .ok()?;
-                let lane = Arc::new(Lane {
-                    sender,
-                    active: Arc::new(AtomicUsize::new(0)),
-                });
-                lanes.push((key, Arc::downgrade(&lane)));
-                lane
-            }
-        };
-        if lane.active.load(Ordering::Acquire) >= MAX_PER_DESTINATION {
+            })
+            .ok()?;
+        let lane = Arc::new(Lane {
+            sender,
+            active: Arc::new(AtomicUsize::new(0)),
+            probe: Mutex::new(None),
+        });
+        lanes.push((key, Arc::downgrade(&lane)));
+        Some(lane)
+    }
+
+    fn permit(&self, lane: &Lane) -> Option<Arc<Permit>> {
+        if self.active.load(Ordering::Acquire) >= MAX_LEASES
+            || lane.active.load(Ordering::Acquire) >= MAX_PER_DESTINATION
+        {
             return None;
         }
         self.active.fetch_add(1, Ordering::AcqRel);
         lane.active.fetch_add(1, Ordering::AcqRel);
-        Some(Destination {
-            permit: Arc::new(Permit {
-                total: Arc::clone(&self.active),
-                destination: Arc::clone(&lane.active),
-            }),
-            lane,
-            timeout: self.timeout,
-        })
+        Some(Arc::new(Permit {
+            total: Arc::clone(&self.active),
+            destination: Arc::clone(&lane.active),
+        }))
     }
 }
 
@@ -149,7 +164,7 @@ impl Drop for WorkerPermit {
     }
 }
 
-fn executor() -> &'static Executor {
+pub(crate) fn executor() -> &'static Executor {
     static EXECUTOR: OnceLock<Executor> = OnceLock::new();
     EXECUTOR.get_or_init(|| Executor::new(TIMEOUT))
 }
