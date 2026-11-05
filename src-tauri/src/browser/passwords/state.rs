@@ -8,6 +8,7 @@ use std::{
 };
 
 use serde::Serialize;
+use tauri::async_runtime::JoinHandle;
 
 use super::{
     Cancellation, MAX_PASSWORD_BYTES, MAX_USERNAME_BYTES, VaultError, VaultResult,
@@ -52,6 +53,8 @@ struct Shared {
     idle_watch: AtomicBool,
     /// The copied password whose clipboard clear is still due.
     clipboard: Arc<PendingClear>,
+    /// The timer that clears the latest copy.
+    copy_expiry: Mutex<Option<(u64, JoinHandle<()>)>>,
     /// The CSV the last import read, kept so the page can offer to delete it.
     imported_file: Mutex<Option<ImportedFile>>,
     /// The running import's own cancel flag, if one is running. Only one
@@ -160,6 +163,7 @@ impl PasswordsState {
             vault: Mutex::new(None),
             idle_watch: AtomicBool::new(false),
             clipboard: Arc::default(),
+            copy_expiry: Mutex::new(None),
             imported_file: Mutex::new(None),
             running_import: Mutex::new(None),
         }))
@@ -263,16 +267,32 @@ impl PasswordsState {
         Arc::clone(&self.0.clipboard)
     }
 
-    /// Forgets `copied` once its own timed clear has run.
-    pub(super) fn settle_copy(&self, copied: &Arc<clipboard::CopiedText>) {
-        self.0.clipboard.settle(copied);
+    /// Keeps one timer, for the latest copy: `task` clears copy `generation`
+    /// and replaces the timer of an earlier copy. Copies can finish out of
+    /// order, so a timer for a copy older than the current one is stopped
+    /// instead.
+    pub(super) fn replace_copy_expiry(&self, generation: u64, task: JoinHandle<()>) {
+        let mut expiry = lock(&self.0.copy_expiry);
+        match expiry.as_ref() {
+            Some((current, _)) if *current > generation => task.abort(),
+            _ => {
+                if let Some((_, earlier)) = expiry.replace((generation, task)) {
+                    earlier.abort();
+                }
+            }
+        }
     }
 
     /// Clears a copied password whose 30 s clear has not run yet, if the
     /// clipboard still holds it. Called as Sage quits; failures are logged
     /// because no window is left to warn in.
     pub(crate) fn clear_clipboard_on_exit(&self) {
-        if let Err(error) = self.0.clipboard.clear_now(clipboard::clear_if_unchanged) {
+        if let Some((_, timer)) = lock(&self.0.copy_expiry).take() {
+            timer.abort();
+        }
+        if let Err(error) =
+            clipboard::clear_with_retries(|| clipboard::clear_due(&self.0.clipboard, None))
+        {
             clipboard::report_failure(&error.to_string(), |_| {});
         }
     }
