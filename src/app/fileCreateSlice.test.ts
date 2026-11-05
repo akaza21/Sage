@@ -107,10 +107,29 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("file creation store transaction", () => {
+  it.each([true, false])(
+    "reveals a created file and dismisses only compact tools (%s)",
+    async (compact) => {
+      vi.stubGlobal("matchMedia", () => ({ matches: compact }));
+      useWorkbenchStore.setState({ sidebarOpen: true });
+      vi.spyOn(projectPort, "createProjectFile").mockResolvedValue(result());
+
+      expect(
+        await useWorkbenchStore.getState().createProjectFile(parent, "new.ts"),
+      ).toBe(true);
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "ready",
+        resource: created,
+      });
+      expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+    },
+  );
+
   it("flushes and preserves a dirty editor, refreshes the exact parent, and opens the file", async () => {
     const oldDocument = document(oldResource, "dirty");
     useWorkbenchStore.setState({

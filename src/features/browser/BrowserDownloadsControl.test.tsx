@@ -121,6 +121,22 @@ it("sums only the active downloads with a known size into the ring", () => {
   ).toBeCloseTo(35 / 40);
 });
 
+it("shows the destination timeout and recovery guidance in the failed row", () => {
+  const error =
+    "Download destination I/O timed out. Downloaded bytes may be recovered from the private download folder";
+  render(
+    <BrowserDownloadsPanel
+      tabId="browser-1"
+      downloads={[{ ...download, state: "error", error }]}
+    />,
+  );
+  expect(screen.getByText(`${error} · example.com`)).toBeInTheDocument();
+  expect(screen.getByTitle(error)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel report.pdf" }),
+  ).toBeNull();
+});
+
 it("shows active progress on the toolbar button while the popover is shut", async () => {
   browserDownloads.mockResolvedValueOnce([download]);
   const view = render(<Harness />);
@@ -134,6 +150,23 @@ it("shows active progress on the toolbar button while the popover is shut", asyn
   expect(view.container.querySelector("[data-active]")).not.toBeNull();
   expect(view.container.querySelector("[data-indeterminate]")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("keeps saving downloads active without offering cancellation or a completed folder", async () => {
+  browserDownloads.mockResolvedValueOnce([
+    { ...download, state: "publishing" },
+  ]);
+  render(<Harness />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Downloads, 1 active" }),
+  );
+  expect(await screen.findByText("Saving · example.com")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel report.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Show report.pdf in folder" }),
+  ).toBeNull();
 });
 
 it("opens a popover listing downloads newest first instead of a bar", async () => {

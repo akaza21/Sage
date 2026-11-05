@@ -45,7 +45,10 @@ vi.mock("./TerminalDock", () => ({
     ) : null,
 }));
 
-import { TerminalDockShell } from "./TerminalDockShell";
+import TerminalDockForWorkbench, {
+  TerminalDockShell,
+} from "./TerminalDockShell";
+import { useWorkbenchStore } from "../app/store";
 
 const scope = {
   projectId: "project-1",
@@ -68,6 +71,30 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+it("releases the terminal placeholder while its host is covered and restores it on reveal", () => {
+  const original = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({ project: null, tabs: [] });
+  const props = {
+    container: document.body,
+    pinnedChatId: null,
+    setOpen: () => undefined,
+    open: true,
+  };
+  const { rerender, unmount } = render(
+    <TerminalDockForWorkbench {...props} visible />,
+  );
+  try {
+    expect(screen.getByText("Open a chat first.")).toBeVisible();
+    rerender(<TerminalDockForWorkbench {...props} visible={false} />);
+    expect(screen.queryByText("Open a chat first.")).not.toBeInTheDocument();
+    rerender(<TerminalDockForWorkbench {...props} visible />);
+    expect(screen.getByText("Open a chat first.")).toBeVisible();
+  } finally {
+    unmount();
+    useWorkbenchStore.setState(original, true);
+  }
+});
 
 it("opens a usable replacement after the last terminal tab was explicitly ended", async () => {
   function Host() {

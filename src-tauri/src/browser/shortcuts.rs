@@ -17,6 +17,7 @@ pub(super) enum BrowserShortcut {
     ZoomReset,
     NewTab,
     CloseTab,
+    History,
     Stop,
     /// Handled in Rust; never sent to the chrome.
     LeaveAnnotate,
@@ -43,6 +44,7 @@ pub(super) fn shortcut_for(chord: KeyChord) -> Option<BrowserShortcut> {
             0x46 => Some(BrowserShortcut::Find),
             0x54 => Some(BrowserShortcut::NewTab),
             0x57 => Some(BrowserShortcut::CloseTab),
+            0x48 => Some(BrowserShortcut::History),
             0x30 => Some(BrowserShortcut::ZoomReset),
             0xBB | 0x6B => Some(BrowserShortcut::ZoomIn),
             0xBD | 0x6D => Some(BrowserShortcut::ZoomOut),
@@ -223,6 +225,7 @@ mod tests {
             (b'F', BrowserShortcut::Find),
             (b'T', BrowserShortcut::NewTab),
             (b'W', BrowserShortcut::CloseTab),
+            (b'H', BrowserShortcut::History),
             (b'0', BrowserShortcut::ZoomReset),
             (0xBB, BrowserShortcut::ZoomIn),
             (0xBD, BrowserShortcut::ZoomOut),

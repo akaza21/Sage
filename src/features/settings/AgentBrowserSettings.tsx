@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
-import { browserHistory, browserLiveTabs } from "../../ports/nativeBrowserPort";
+import { browserLiveTabs } from "../../ports/nativeBrowserPort";
+import { browserHistory } from "../../ports/nativeBrowserHistoryPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { errorMessage } from "../../domain/errors";
 import { BrowserClearData } from "../browser/BrowserClearData";

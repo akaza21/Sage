@@ -36,6 +36,7 @@ interface BrowserShortcutActions {
   zoomPercent: number;
   newTab: () => void;
   closeTab: () => void;
+  history: () => void;
 }
 
 export function performBrowserShortcut(
@@ -71,6 +72,9 @@ export function performBrowserShortcut(
       break;
     case "closeTab":
       actions.closeTab();
+      break;
+    case "history":
+      actions.history();
       break;
   }
 }

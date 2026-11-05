@@ -774,7 +774,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           if (!drawer || !center) return null;
           const drawerBounds = drawer.getBoundingClientRect();
           const centerBounds = center.getBoundingClientRect();
-          return centerBounds.left >= drawerBounds.right;
+          return (
+            drawerBounds.left <= centerBounds.left &&
+            drawerBounds.top <= centerBounds.top &&
+            drawerBounds.right >= centerBounds.right &&
+            drawerBounds.bottom >= centerBounds.bottom
+          );
         }),
       )
       .toBe(true);
