@@ -411,6 +411,11 @@ for (const forcedColors of ["none", "active"] as const) {
       { width: 720, height: 1000 },
       { width: 480, height: 560 },
     ]) {
+      const docked = viewport.width !== 480;
+      // Work in Chat while the window narrows so a stolen focus shows up;
+      // the overlay step starts from the pane, as a person reading it would.
+      if (docked) await firstInput.focus();
+      else await pane.getByRole("tab").first().focus();
       await page.setViewportSize(viewport);
       await expect(panes).toHaveCount(1);
       await expect(panes.first()).toHaveAttribute("aria-label", ownerName!);
@@ -429,11 +434,12 @@ for (const forcedColors of ["none", "active"] as const) {
       expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height);
       // Only an overlay that covers Chat takes focus; docked resources keep
       // Chat reachable and leave focus where the person was working.
-      if (viewport.width === 480) await expect(pane).toBeFocused();
-      else
+      if (docked) {
+        await expect(firstInput).toBeFocused();
         await expect(page.locator(".center-region")).not.toHaveAttribute(
           "inert",
         );
+      } else await expect(pane).toBeFocused();
     }
     await page.keyboard.press("Escape");
     const trigger = page.getByRole("button", {
