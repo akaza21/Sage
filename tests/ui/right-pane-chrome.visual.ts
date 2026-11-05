@@ -3,11 +3,19 @@ import {
   openAgentScenario,
   openAgentSnapshotDiff,
 } from "./resourceVisualHelpers";
+import { settleRendering } from "./shared/visualBrowserPrimitives";
+import { screenshotChromiumArgs } from "./shared/visualBrowserOptions";
 
 test.use({
   deviceScaleFactor: 1,
   // Keep rounded-card edge coverage repeatable for exact DPR 1 captures.
-  launchOptions: { args: ["--disable-gpu"] },
+  launchOptions: {
+    args: [
+      ...screenshotChromiumArgs,
+      "--disable-gpu",
+      "--disable-partial-raster",
+    ],
+  },
 });
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
 
@@ -117,6 +125,7 @@ for (const viewport of [
       "height",
       "46px",
     );
+    await settleRendering(page);
     await expect(pane).toHaveScreenshot(
       `team-pane-${viewport.width}-changes.png`,
       pixelExact,

@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
+  settleRendering,
 } from "./shared/visualBrowserPrimitives";
 import { flowchartSource } from "./fixtures/cp22Answers";
 
@@ -175,6 +176,7 @@ async function expectScrollStop(
     await scroller.evaluate((element) => document.activeElement === element),
   ).toBe(overflowing);
   if (!overflowing) return;
+  await settleRendering(page);
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => scroller.evaluate((element) => element.scrollLeft))

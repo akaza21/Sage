@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import { resolveUiPort } from "./scripts/lib/ui-test-port.mjs";
+import { screenshotChromiumArgs } from "./tests/ui/shared/visualBrowserOptions";
 
 const port = resolveUiPort();
 const baseURL = `http://127.0.0.1:${port}`;
@@ -27,6 +28,12 @@ export default defineConfig({
   use: {
     baseURL,
     browserName: "chromium",
+    deviceScaleFactor: 1,
+    launchOptions: {
+      // LCD text uses machine-dependent subpixel coverage on Windows. Keep
+      // screenshot glyphs grayscale on both laptops and hosted runners.
+      args: [...screenshotChromiumArgs],
+    },
     colorScheme: "dark",
     locale: "en-US",
     timezoneId: "Asia/Calcutta",

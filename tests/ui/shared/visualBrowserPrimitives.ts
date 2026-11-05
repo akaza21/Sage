@@ -56,6 +56,12 @@ async function settleFontsAndReflow(page: Page) {
   await page.locator(".message-list").evaluateAll((lists) => {
     for (const list of lists) list.scrollTop = list.scrollHeight;
   });
+  await settleRendering(page);
+}
+
+// DOM focus and layout can be current before the compositor has painted them.
+// Let that frame finish before native keyboard input or an exact capture.
+export async function settleRendering(page: Page) {
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
