@@ -101,9 +101,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
-}));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 
 const tab: WorkbenchTab = {
   id: "browser-1",
@@ -179,6 +178,7 @@ it("shows a New page creation failure in the browser without changing composer f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   rustAgentControl = null;
   vi.stubGlobal(
     "ResizeObserver",

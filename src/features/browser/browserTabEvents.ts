@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import type {
   BrowserAnnotateChange,
   BrowserNavigation,
@@ -25,6 +24,8 @@ export function subscribeBrowserTab<Event extends keyof BrowserTabEvents>(
   let active = true;
   let remove: (() => void) | undefined;
   void (async () => {
+    const { listen } = await import("@tauri-apps/api/event");
+    if (!active) return;
     const stop = await listen<BrowserTabEvents[Event]>(name, ({ payload }) => {
       if (active && payload.tabId === tabId) accept(payload, false);
     });
