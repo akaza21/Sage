@@ -383,7 +383,7 @@
     "linuxDebMb": 45,
     "linuxAppImageMb": 90,
     "installedCoreMb": 150,
-    "webMarkdownLazyJsGzipBytes": 45169
+    "webMarkdownLazyJsGzipBytes": 46047
   },
   "runtime": {
     "backgroundHostRssP95Mb": 45,
@@ -450,7 +450,7 @@
       "package": "markdown-it 15.0.3 (MIT)",
       "impact": "About 41 KB gzip, demand-loaded with the first markdown render; about 0.3 ms per typical answer and about 0.2 MB retained for one shared parser. No HTML, linkify or typographer. No plugin packages.",
       "lifetime": "Only rules persist in the shared parser. Tokens and environments are released after each parse. Per-view bounded source, document and suffix offsets are collected on unmount; no per-message parser or global transcript cache.",
-      "budget": "markdown-rendering: 4392 B baseline + 40265 B measured increase + 512 B margin = 45169 B cap (44657 B measured). This dedicated lazy cap replaces its former core-total accounting; all existing caps remain unchanged."
+      "budget": "markdown-rendering: original 45169 B cap plus the ordered-container measured delta of 878 B = 46047 B cap. Identical desktop-native Vite builds with locked dependencies measure 44348 B gzip at 8e57ef5f and 45226 B with ordered list/quote children, shared text traversal and descendant limits. The cap increases only by that measured delta, preserving existing headroom. All other caps remain unchanged."
     }
   }
 }
