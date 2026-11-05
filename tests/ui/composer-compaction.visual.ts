@@ -297,10 +297,13 @@ for (const width of [1888, 720, 480]) {
 
 /**
  * Toolbar labels from lowest to highest priority. A label may compact only
- * after every lower-priority label that is present has compacted.
+ * after every lower-priority label that is present has compacted. The
+ * context meter beside the send action goes right after the disabled effort
+ * placeholder.
  */
 const LABEL_PRIORITY = [
   ".composer__effort-picker:not([aria-controls]) .composer__effort-label",
+  ".composer__context-slot",
   ".composer__capacity",
   ".project-scope .searchable-picker__trigger-label",
   ".composer__effort-picker[data-overflow-control] .composer__effort-label",
@@ -362,9 +365,11 @@ const toolbarStates = {
   },
 };
 
-// Each state sweeps 560px to 200px in 2px steps, in ranges short enough to
-// finish within the test timeout under CPU load.
+// Each state sweeps 640px to 200px in 2px steps, in ranges short enough to
+// finish within the test timeout under CPU load. The widest composer has room
+// for every label and the context meter.
 const SWEEP_RANGES = [
+  [640, 562],
   [560, 442],
   [440, 322],
   [320, 200],
@@ -376,11 +381,14 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
       page,
     }) => {
       await page.setViewportSize({ width: 1888, height: 1096 });
-      await openScenario(page, "agent-single", "agent");
+      await openScenario(page, "agent-composer-context-known", "agent");
       await settleChatProjections(page);
       await page.evaluate(install);
       const composer = page.locator("form.composer").first();
       await expect(ready(composer)).toHaveCount(1);
+      await expect(
+        composer.getByLabel("Composer context", { exact: true }),
+      ).toBeVisible();
       await expect(
         composer.locator(".composer__effort-label").first(),
       ).toBeVisible();
@@ -413,7 +421,7 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
               const box = label?.getBoundingClientRect();
               const shown = Boolean(box && box.width > 0);
               const host = label?.closest(
-                "button, .composer__model-trigger, .composer__capacity, label",
+                "button, .composer__model-trigger, .composer__capacity, .composer__context-slot, label",
               );
               const hostBox = host?.getBoundingClientRect();
               return {
@@ -458,7 +466,33 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
               steps.includes("model") &&
               (fitsBefore("model-shrink") || fitsBefore("model"));
             controls.setAttribute("data-fit", fit);
-            results.push({ width, labels, overflow, modelHiddenThoughItFits });
+            // With every control label shown, the meter is hidden only if
+            // giving its column back would overflow the measured row.
+            const slot = element.querySelector<HTMLElement>(
+              ".composer__context-slot",
+            );
+            let meterHiddenThoughItFits = false;
+            if (
+              slot &&
+              slot.getBoundingClientRect().width === 0 &&
+              labels
+                .slice(priority.indexOf(".composer__context-slot") + 1)
+                .every((label) => !label.present || label.shown)
+            ) {
+              slot.style.display = "block";
+              const right = controls.getBoundingClientRect().right + 0.5;
+              meterHiddenThoughItFits = ![...controls.children].some(
+                (child) => child.getBoundingClientRect().right > right,
+              );
+              slot.style.display = "";
+            }
+            results.push({
+              width,
+              labels,
+              overflow,
+              modelHiddenThoughItFits,
+              meterHiddenThoughItFits,
+            });
           }
           element.style.width = "";
           return results;
@@ -480,6 +514,10 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
         expect(
           step.modelHiddenThoughItFits,
           `model name hidden though it fits ${at}`,
+        ).toBe(false);
+        expect(
+          step.meterHiddenThoughItFits,
+          `context meter hidden though it fits ${at}`,
         ).toBe(false);
         step.labels.forEach((label, index) => {
           expect(label.clipped, `${LABEL_PRIORITY[index]} clipped ${at}`).toBe(

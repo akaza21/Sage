@@ -481,20 +481,24 @@ for (const profile of profiles) {
                 }),
               ).toBeVisible();
               // Like Codex refs 36/37, the context meter is the first thing a
-              // tight composer drops: it shows only while every control
-              // label still fits.
-              const fit = (
-                (await composer
-                  .locator(".composer__controls")
-                  .getAttribute("data-fit")) ?? ""
-              )
-                .split(" ")
-                .filter(Boolean);
-              await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context && fit.every((step) => step === "placeholder")
-                  ? 1
-                  : 0,
+              // tight composer drops: it never outlasts a control label.
+              // (The width sweep in composer-compaction checks it returns.)
+              const labelsCompacted = await composer.evaluate((element) =>
+                [
+                  ".composer__access-text",
+                  ".composer__harness .searchable-picker__trigger-label",
+                  ".composer__model-label",
+                  ".composer__effort-picker[aria-controls] .composer__effort-label",
+                  ".project-scope .searchable-picker__trigger-label",
+                ].some((selector) => {
+                  const label = element.querySelector(selector);
+                  return (
+                    label !== null && label.getBoundingClientRect().width === 0
+                  );
+                }),
               );
+              if (!profile.context || labelsCompacted)
+                await expect(composer.getByRole("progressbar")).toHaveCount(0);
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
               );
