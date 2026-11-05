@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { snapshotPage } from "../../app/agentDiff.fixture";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { AcpChatPresentation, InheritedTurns } from "./acp/AcpChatPresentation";
 import { page, textItem } from "./acp/acpProjection.fixture";
@@ -76,6 +77,27 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
   });
   expect(writeText).toHaveBeenCalledWith("Normalized answer");
   expect(within(row).getByRole("button", { name: "Copied" })).toBeVisible();
+});
+
+it("closes an earlier Turn with its action row, after its edited files, as the footer closes the latest", async () => {
+  const projection = snapshotPage();
+  const [edit] = projection.turns[0].items;
+  const answer = { ...textItem(), ordinal: 2 };
+  const latest = twoTurns().turns[1];
+  projection.turns = [
+    { ...projection.turns[0], items: [edit, answer] },
+    { ...latest, sessionId: projection.turns[0].sessionId },
+  ];
+  presentation(projection);
+  const turn = turnSection(1);
+  const files = await within(turn).findByRole("region", {
+    name: "Edited files",
+  });
+  const row = within(turn).getByRole("group", { name: "Message actions" });
+  expect(
+    files.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(turn.querySelector(".acp-turn__items")?.lastElementChild).toBe(row);
 });
 
 /** The menu a row's "…" opens, by its item labels. */
