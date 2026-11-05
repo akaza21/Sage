@@ -95,6 +95,35 @@ test("reports a rule repeated in one stylesheet and at-rule context", async () =
   ]);
 });
 
+test("treats each anonymous layer as its own context", () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      @layer {
+        .card { gap: var(--space-1); }
+      }
+      @layer {
+        .card { gap: var(--space-2); }
+      }
+      @layer base {
+        .card { gap: var(--space-1); }
+      }
+      @layer base {
+        .card { gap: var(--space-2); }
+      }
+    `,
+  });
+
+  assert.deepEqual(inventory.repeatedRules, [
+    {
+      context: "@layer base",
+      firstLine: 9,
+      line: 12,
+      relativePath: "src/styles/a.css",
+      selector: ".card",
+    },
+  ]);
+});
+
 test("does not treat keyframe steps as selectors", () => {
   const inventory = analyze({
     "src/styles/a.css": `

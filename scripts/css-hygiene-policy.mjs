@@ -461,9 +461,12 @@ function analyzeCss(source, relativePath) {
         }
       }
       if (prelude.startsWith("@") || kind === "declarations") {
-        context = `${frame.context} ${normalizeSelector(
-          source.slice(range.start, range.end),
-        )}`;
+        // Each anonymous layer is its own cascade layer, so it gets its own
+        // identity; merging rules across two of them could change precedence.
+        const label = /^@layer$/iu.test(prelude)
+          ? `@layer <anonymous at line ${lineAt(range.start)}>`
+          : normalizeSelector(source.slice(range.start, range.end));
+        context = `${frame.context} ${label}`;
       }
       stack.push({
         context,
