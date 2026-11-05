@@ -3,6 +3,30 @@ import { renderMarkdownPreview } from "./markdownPreview";
 import { renderMarkdownStream } from "./markdownStream";
 
 describe("streamed markdown document", () => {
+  it.each(["- x\n", "> x\n"])(
+    "keeps a huge single container (%j) truncated across streaming updates",
+    (line) => {
+      const source = line.repeat(65535);
+      const before = renderMarkdownStream(source);
+      const appended = source + line;
+      const after = renderMarkdownStream(appended, before);
+      expect(before.document.truncated).toBe(true);
+      expect(after.document.truncated).toBe(true);
+      expect(after.document.blocks).toHaveLength(1);
+      expect(after.document).toEqual(renderMarkdownPreview(appended));
+    },
+  );
+
+  it("bounds a huge container after a frozen streaming prefix", () => {
+    const source = "# Kept\n\n# Kept too\n\nTail\n\n- x\n";
+    const before = renderMarkdownStream(source);
+    const appended = source + "- x\n".repeat(65536);
+    const after = renderMarkdownStream(appended, before);
+    expect(after.document.blocks[0]).toBe(before.document.blocks[0]);
+    expect(after.document.truncated).toBe(true);
+    expect(after.document).toEqual(renderMarkdownPreview(appended));
+  });
+
   it("bounds a large appended suffix by the allowance left after frozen blocks", () => {
     const source = "# x\n".repeat(64);
     const before = renderMarkdownStream(source);

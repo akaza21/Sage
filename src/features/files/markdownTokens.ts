@@ -22,6 +22,10 @@ const parser = new MarkdownIt({
   maxNesting: MAX_MARKDOWN_LIST_DEPTH * 2 + 2,
 });
 
+// Five tokens per list item cover the character-sized item allowance, with
+// headroom for containers. Unwinding may add maxNesting closing tokens.
+const MAX_BLOCK_TOKENS = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS * 6;
+
 interface BlockBudget {
   limit: number;
   count: number;
@@ -29,21 +33,28 @@ interface BlockBudget {
   truncated: boolean;
 }
 
-// Run before any allocating rule. Container recursion shares the environment,
-// but only completed top-level blocks consume the visible block allowance.
+// Container recursion shares tokens and the environment. Check every level so
+// a single list cannot exhaust memory before the visible block allowance.
 parser.block.ruler.before(
   "table",
   "sage_blocks",
-  (state, _start, end, silent) => {
-    if (silent || state.level !== 0) return false;
+  (state, _start, _end, silent) => {
+    if (silent) return false;
     const budget = state.env.sageBlockBudget as BlockBudget;
     for (; budget.cursor < state.tokens.length; budget.cursor++) {
       const token = state.tokens[budget.cursor];
       if (token.level === 0 && token.nesting >= 0) budget.count++;
     }
-    if (budget.count < budget.limit) return false;
+    if (
+      !budget.truncated &&
+      state.tokens.length < MAX_BLOCK_TOKENS &&
+      (state.level !== 0 || budget.count < budget.limit)
+    )
+      return false;
     budget.truncated = true;
-    state.line = end;
+    // Let markdown-it emit container closers while unwinding. The sticky env
+    // flag also stops enclosing tokenizers after a quote restores lineMax.
+    state.line = state.lineMax;
     return true;
   },
 );

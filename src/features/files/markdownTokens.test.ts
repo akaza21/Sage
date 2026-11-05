@@ -4,6 +4,40 @@ import { renderMarkdownPreview } from "./markdownPreview";
 import { parseMarkdownTokens } from "./markdownTokens";
 
 describe("bounded markdown tokenization", () => {
+  it.each(["- x\n", "> - x\n", "> > - x\n"])(
+    "bounds a single huge container (%j) and closes it before skipping the tail",
+    (item) => {
+      const { tokens, truncated } = parseMarkdownTokens(
+        item.repeat(65536) + "\n# skipped\n\n- skipped",
+      );
+      expect(tokens.length).toBeLessThanOrEqual(24600);
+      const containers: string[] = [];
+      for (const token of tokens) {
+        if (token.nesting === 1) containers.push(token.tag);
+        if (token.nesting === -1) expect(containers.pop()).toBe(token.tag);
+      }
+      expect(containers).toEqual([]);
+      expect(tokens.some((token) => token.content.includes("skipped"))).toBe(
+        false,
+      );
+      expect(truncated).toBe(true);
+      expect(parseMarkdownTokens("# Next").truncated).toBe(false);
+    },
+  );
+
+  it("keeps a huge plain quote to five balanced tokens and reports display truncation", () => {
+    const source = "> x\n".repeat(65536);
+    const { tokens } = parseMarkdownTokens(source);
+    expect(tokens.map((token) => token.type)).toEqual([
+      "blockquote_open",
+      "paragraph_open",
+      "inline",
+      "paragraph_close",
+      "blockquote_close",
+    ]);
+    expect(renderMarkdownPreview(source).truncated).toBe(true);
+  });
+
   it("allocates tokens only for the admitted prefix of a 256 KiB answer", () => {
     const { tokens, truncated } = parseMarkdownTokens("# x\n".repeat(65536));
     expect(
