@@ -30,8 +30,13 @@ export default function AgentChatRuntime({
   const tabs = useWorkbenchStore((state) => state.tabs);
   const chats = useWorkbenchStore((state) => state.chatUiById);
   return ids.map((id) => {
+    const chat = chats[id];
+    // Only the FIFO head can advance; a blocked head needs explicit retry.
+    // A later item may still be sending through Steer.
     const pending = Boolean(
-      chats[id]?.queuedPrompts?.length || chats[id]?.queuedTurnBarrier,
+      chat?.queuedPrompts?.[0]?.status === "queued" ||
+      chat?.queuedPrompts?.some((prompt) => prompt.status === "sending") ||
+      chat?.queuedTurnBarrier,
     );
     return tabs.some((tab) => tab.id === id && tab.kind === "chat") &&
       (visible || pending) ? (
