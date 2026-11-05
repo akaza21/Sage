@@ -177,10 +177,24 @@ async function expectScrollStop(
   ).toBe(overflowing);
   if (!overflowing) return;
   await settleRendering(page);
-  await page.keyboard.press("ArrowRight");
-  await expect
-    .poll(() => scroller.evaluate((element) => element.scrollLeft))
-    .toBeGreaterThan(0);
+  // Native arrow scrolling can outlive its first positive offset. Finish it
+  // before the next media-mode pass resets this same scroller to zero.
+  await Promise.all([
+    scroller.evaluate(
+      (element) =>
+        new Promise<void>((resolve) => {
+          element.addEventListener("scrollend", () => resolve(), {
+            once: true,
+          });
+        }),
+    ),
+    (async () => {
+      await page.keyboard.press("ArrowRight");
+      await expect
+        .poll(() => scroller.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(0);
+    })(),
+  ]);
   await scroller.evaluate((element) => (element as HTMLElement).blur());
 }
 
