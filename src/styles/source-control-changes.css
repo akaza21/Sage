@@ -25,21 +25,22 @@
   text-align: left;
 }
 
-.source-change:hover {
+.source-change:hover:not(.source-change--selected) {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
-}
-
-.source-change--selected {
-  color: var(--color-text-primary);
-  background: var(--color-surface-selected);
-  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .source-change--conflicted {
   border: 1px solid
     color-mix(in srgb, var(--color-danger) 45%, var(--color-border-subtle));
   background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+}
+
+.source-change--selected {
+  /* Selection stays visible under hover and over the conflict fill. */
+  color: var(--color-text-primary);
+  background: var(--row-selected-fill, var(--color-surface-selected));
+  box-shadow: var(--row-selected-shadow, inset 2px 0 0 var(--color-accent));
 }
 
 .source-change__status {

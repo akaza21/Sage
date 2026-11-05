@@ -393,8 +393,12 @@ function analyzeCss(source, relativePath) {
   const rawZIndexes = [];
   const cornerRadii = [];
   const importants = [];
+  const repeatedRules = [];
+  const firstRuleLines = new Map();
   const stack = [
     {
+      context: "",
+      contextKey: "",
       importantAllowed: false,
       kind: "rules",
       openIndex: -1,
@@ -425,19 +429,55 @@ function analyzeCss(source, relativePath) {
       const range = trimmedRange(masked, frame.statementStart, index);
       const prelude = masked.slice(range.start, range.end);
       let kind;
+      let context = frame.context;
+      let contextKey = frame.contextKey;
       if (frame.kind === "keyframes") kind = "declarations";
       else if (frame.kind === "declarations" && CONDITIONAL_GROUP.test(prelude))
         kind = "declarations";
       else if (prelude.startsWith("@")) kind = atRuleBlockKind(prelude);
       else {
         kind = "declarations";
-        selectors.push(
-          ...selectorParts(source, masked, range.start, range.end, lineAt).map(
-            (selector) => ({ ...selector, relativePath }),
-          ),
+        const parts = selectorParts(
+          source,
+          masked,
+          range.start,
+          range.end,
+          lineAt,
         );
+        selectors.push(
+          ...parts.map((selector) => ({ ...selector, relativePath })),
+        );
+        const selector = parts.map((part) => part.selector).join(", ");
+        const key = `${frame.contextKey}\u0000${selector}`;
+        const line = lineAt(range.start);
+        const firstLine = firstRuleLines.get(key);
+        if (firstLine === undefined) firstRuleLines.set(key, line);
+        else {
+          repeatedRules.push({
+            context: frame.context.trim(),
+            firstLine,
+            line,
+            relativePath,
+            selector,
+          });
+        }
+      }
+      if (prelude.startsWith("@") || kind === "declarations") {
+        // Each anonymous layer is its own cascade layer, so it is keyed by
+        // its source offset; merging rules across two of them could change
+        // precedence. The diagnostic names it by line.
+        const anonymousLayer = /^@layer$/iu.test(prelude);
+        const label = anonymousLayer
+          ? `@layer <anonymous at line ${lineAt(range.start)}>`
+          : normalizeSelector(source.slice(range.start, range.end));
+        context = `${frame.context} ${label}`;
+        contextKey = `${frame.contextKey} ${
+          anonymousLayer ? `@layer <anonymous at offset ${range.start}>` : label
+        }`;
       }
       stack.push({
+        context,
+        contextKey,
         importantAllowed: frame.importantAllowed || accessibilityMedia(prelude),
         kind,
         openIndex: index,
@@ -470,6 +510,7 @@ function analyzeCss(source, relativePath) {
     rawColors,
     rawRadii,
     rawZIndexes,
+    repeatedRules,
     selectors,
   };
 }
@@ -488,6 +529,7 @@ export function analyzeCssInventory(files) {
   const rawZIndexes = [];
   const cornerRadii = [];
   const importants = [];
+  const repeatedRules = [];
   for (const file of [...files].sort((left, right) =>
     compareText(left.relativePath, right.relativePath),
   )) {
@@ -498,6 +540,7 @@ export function analyzeCssInventory(files) {
     rawZIndexes.push(...result.rawZIndexes);
     cornerRadii.push(...result.cornerRadii);
     importants.push(...result.importants);
+    repeatedRules.push(...result.repeatedRules);
     for (const occurrence of result.selectors) {
       const owners = ownership.get(occurrence.selector) ?? new Map();
       const current = owners.get(occurrence.relativePath);
@@ -533,6 +576,7 @@ export function analyzeCssInventory(files) {
   );
   cornerRadii.sort(compareLocation);
   importants.sort(compareLocation);
+  repeatedRules.sort(compareLocation);
   return {
     cornerRadii,
     duplicateSelectors,
@@ -541,6 +585,7 @@ export function analyzeCssInventory(files) {
     rawColors,
     rawRadii,
     rawZIndexes,
+    repeatedRules,
   };
 }
 
@@ -552,6 +597,12 @@ function inventoryErrors(inventory) {
         `selector "${selector}" is owned by ${owners
           .map(({ line, relativePath }) => `${relativePath}:${line}`)
           .join(", ")}.`,
+    ),
+    ...inventory.repeatedRules.map(
+      ({ context, firstLine, line, relativePath, selector }) =>
+        `${relativePath}:${line} repeats the rule "${selector}" from line ${firstLine}${
+          context ? ` in ${context}` : ""
+        }; merge the two rules.`,
     ),
     ...inventory.rawRadii.map(
       ({ line, relativePath, value }) =>

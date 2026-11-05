@@ -1,27 +1,20 @@
 import { expect, test } from "@playwright/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 import { expectScrollStop, installDiagrams } from "./cp31DiagramHelpers";
-import { flowchartSource } from "./fixtures/cp22Answers";
-
-const diagrams = [
-  ["short flowchart", "flowchart TD\nA --> B"],
-  ["wide flowchart", "flowchart LR\nBinding --> Pump\nPump --> SQLite"],
-  ["ref 55 flowchart", flowchartSource],
-  ["long flowchart edge", `graph TD\nA -->|${"W".repeat(64)}| B`],
-  [
-    "long class member",
-    `classDiagram\nExample : +${"W".repeat(63)}\nExample --> Other`,
-  ],
-  ["long sequence message", `sequenceDiagram\nAlice->>Bob: ${"W".repeat(64)}`],
-] as const;
+import {
+  diagramCases as diagrams,
+  returningDiagramDirections,
+  returningDiagramSource,
+  diagramDirections,
+  diagramLabelLengths,
+  diagramNodeShapes,
+  siblingDiagramSource,
+} from "./fixtures/markdownAnswerInputs";
 
 test.use({ deviceScaleFactor: 1 });
 
 for (const width of [480, 720, 1888]) {
-  for (const [direction, label] of [
-    ["TD", "A much longer label here ok"],
-    ["LR", "W".repeat(64)],
-  ]) {
+  for (const [direction, label] of returningDiagramDirections) {
     for (const sibling of [false, true]) {
       test(`CP-31 ${direction} narrow-wide-narrow return clears every spanned node (sibling=${sibling}) at ${width}px`, async ({
         page,
@@ -30,7 +23,7 @@ for (const width of [480, 720, 1888]) {
         await openScenario(page, "agent-single", "agent");
         await installDiagrams(
           page,
-          `flowchart ${direction}\nA[Go] --> B[${label}]\nB --> C[Done]\n${sibling ? `A --> D[${label}]\n` : ""}C -->|retry| A`,
+          returningDiagramSource(direction, label, sibling),
         );
         const figure = page.getByRole("figure", { name: /^Diagram:/u });
         const image = figure.getByRole("img");
@@ -99,13 +92,9 @@ for (const width of [480, 720, 1888]) {
 }
 
 for (const width of [480, 720, 1888]) {
-  for (const direction of ["TD", "LR"]) {
-    for (const length of [28, 64]) {
-      for (const [shape, open, close] of [
-        ["rect", "[", "]"],
-        ["round", "(", ")"],
-        ["diamond", "{", "}"],
-      ]) {
+  for (const direction of diagramDirections) {
+    for (const length of diagramLabelLengths) {
+      for (const [shape, open, close] of diagramNodeShapes) {
         test(`CP-31 long sibling labels have disjoint bounded ${shape} node boxes at ${width}px (${direction}, ${length} characters)`, async ({
           page,
         }) => {
@@ -114,7 +103,7 @@ for (const width of [480, 720, 1888]) {
           await openScenario(page, "agent-single", "agent");
           await installDiagrams(
             page,
-            `graph ${direction}\nStart --> Left${open}${label}${close}\nStart --> Right${open}${label}${close}\nRight --> End`,
+            siblingDiagramSource(direction, label, open, close),
           );
           const figure = page.getByRole("figure", { name: /^Diagram:/u });
           await expect(figure.getByRole("img")).toBeVisible();

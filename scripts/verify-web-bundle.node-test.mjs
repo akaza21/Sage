@@ -1014,6 +1014,38 @@ test("a lazy feature rejects initial and eager imports", async () => {
   }
 });
 
+test("shared markdown chunk has its own exact cap and stays outside both startup closures", async () => {
+  const { root, manifest, budgets, write } = await lazyFeatureCandidate();
+  try {
+    budgets.bundle.lazyFeatureChunks = [];
+    budgets.bundle.webMarkdownLazyJsGzipBytes = 1000;
+    manifest[featureKey].name = "markdown-rendering";
+    await write();
+    const measured = verifyWebBundle(root);
+    assert.ok(measured.markdownLazyGzipBytes > 0);
+    assert.equal(
+      measured.coreTotalGzipBytes,
+      measured.totalGzipBytes - measured.markdownLazyGzipBytes,
+    );
+    budgets.bundle.webMarkdownLazyJsGzipBytes = measured.markdownLazyGzipBytes;
+    await write();
+    assert.doesNotThrow(() => verifyWebBundle(root));
+    budgets.bundle.webMarkdownLazyJsGzipBytes--;
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown lazy gzip .* exceeds/);
+    budgets.bundle.webMarkdownLazyJsGzipBytes++;
+    manifest["index.html"].imports.push(featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown entered a startup/);
+    manifest["index.html"].imports.pop();
+    manifest["src/features/chat/ChatSurface.tsx"].imports.push(featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown entered a startup/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a lazy feature rejects a chunk shared with another entry", async () => {
   const { root, manifest, write } = await lazyFeatureCandidate();
   try {
