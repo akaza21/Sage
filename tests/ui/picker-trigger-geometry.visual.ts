@@ -21,14 +21,16 @@ async function triggerGeometry(trigger: Locator, labelSelector: string) {
     range.selectNodeContents(label);
     const text = range.getBoundingClientRect();
     const labelBox = label.getBoundingClientRect();
-    const arrow = element.lastElementChild!.getBoundingClientRect();
+    const arrow = element
+      .querySelector(":scope > svg:last-child")
+      ?.getBoundingClientRect();
     const style = getComputedStyle(element);
     const token = Number.parseFloat(style.getPropertyValue("--space-1"));
     const children = [...element.children]
       .map((child) => child.getBoundingClientRect())
       .filter((box) => box.width > 0 && box.height > 0);
     return {
-      gap: arrow.left - text.right,
+      gap: arrow ? arrow.left - text.right : 0,
       token,
       width: element.getBoundingClientRect().width,
       minimumWidth: Number.parseFloat(style.minWidth),
@@ -45,7 +47,7 @@ async function triggerGeometry(trigger: Locator, labelSelector: string) {
       labelWidth: labelBox.width,
       textWidth: text.width,
       labelVisible: labelBox.width > 0,
-      chevronVisible: arrow.width > 0,
+      chevronVisible: Boolean(arrow && arrow.width > 0),
     };
   }, labelSelector);
 }
@@ -152,10 +154,7 @@ for (const width of [1280, 960, 480]) {
           expect(geometry.chevronVisible).toBe(true);
         }
         if (!geometry.labelVisible) {
-          await expect(composer.locator(".composer__harness")).toHaveAttribute(
-            "data-name-hidden",
-            "",
-          );
+          await expect(trigger).toHaveAccessibleDescription(name);
           await expect(trigger.locator("[data-harness-icon]")).toBeVisible();
           expect(geometry.chevronVisible).toBe(false);
         }
@@ -208,7 +207,11 @@ for (const width of [1280, 960]) {
       await expect(control).toBeVisible();
       const geometry = await expectContentSizedTrigger(control, label);
       expect(geometry.labelVisible).toBe(true);
-      expect(geometry.chevronVisible).toBe(true);
+      if (selector === ".composer__model-trigger") {
+        await expect(control).toHaveJSProperty("tagName", "SPAN");
+        await expect(control).not.toHaveAttribute("aria-haspopup");
+        expect(geometry.chevronVisible).toBe(false);
+      } else expect(geometry.chevronVisible).toBe(true);
     }
   });
 }

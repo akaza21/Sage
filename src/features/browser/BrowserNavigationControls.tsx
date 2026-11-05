@@ -127,12 +127,14 @@ export function BrowserNavigationControls({
     action: () => void,
     disabled = false,
     title?: string,
+    overflowKey?: string,
   ) => (
     <button
       role="menuitem"
       type="button"
       disabled={disabled}
       title={title}
+      data-overflow-control={overflowKey}
       onClick={() => run(action)}
     >
       {label}
@@ -283,7 +285,7 @@ export function BrowserNavigationControls({
             )}
           </div>
           <div className="browser-surface__menu-group">
-            {menuItem("Downloads", onDownloads)}
+            {menuItem("Downloads", onDownloads, false, undefined, "downloads")}
             {menuItem("History", onHistory)}
             {clearDataControl}
           </div>

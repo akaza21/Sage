@@ -49,3 +49,7 @@
     mask: none;
   }
 }
+.composer__context-slot {
+  grid-area: meter;
+  width: 24px;
+}

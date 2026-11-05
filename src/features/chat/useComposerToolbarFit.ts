@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 
 /**
@@ -22,14 +22,6 @@ const TOOLBAR_STEPS = [
   "wrap",
 ] as const;
 
-function composerSteps(canSelectEffort: boolean, hasProject: boolean) {
-  return TOOLBAR_STEPS.filter(
-    (step) =>
-      (step !== "effort-menu" || canSelectEffort) &&
-      (step !== "project-menu" || hasProject),
-  );
-}
-
 /**
  * Fits the composer toolbar's controls row. Effort and the project chip move
  * into the options menu only when there is a menu item to take their place;
@@ -41,28 +33,49 @@ export function useComposerToolbarFit(
   paused: boolean,
 ) {
   const controls = useRef<HTMLDivElement>(null);
-  const steps = composerSteps(canSelectEffort, hasProject);
+  const steps = useMemo(
+    () =>
+      TOOLBAR_STEPS.filter(
+        (step) =>
+          (step !== "effort-menu" || canSelectEffort) &&
+          (step !== "project-menu" || hasProject),
+      ),
+    [canSelectEffort, hasProject],
+  );
   const widths = useRef({ project: [0, 0], effort: [0, 0] });
   const tier = useToolbarOverflow(
     useCallback(() => {
       const row = controls.current;
       if (!row || paused) return;
-      const names = composerSteps(canSelectEffort, hasProject);
+      const optionsTrigger = () =>
+        row.querySelector<HTMLButtonElement>(".composer__plus");
       return {
         row,
-        steps: names.length,
+        steps: steps.length,
         search: "binary" as const,
+        focus: {
+          trigger: optionsTrigger,
+          items: () => {
+            const menuId = optionsTrigger()?.getAttribute("aria-controls");
+            const menu = menuId ? document.getElementById(menuId) : null;
+            return [row, ...(menu ? [menu] : [])].flatMap((root) => [
+              ...root.querySelectorAll<HTMLElement>(
+                "[data-overflow-control] button, button[data-overflow-control]",
+              ),
+            ]);
+          },
+        },
         measure: (taken: number) => {
-          row.setAttribute("data-fit", names.slice(0, taken).join(" "));
+          row.dataset.fit = steps.slice(0, taken).join(" ");
           for (const slot of row.querySelectorAll<HTMLElement>(
             "[data-overflow-control]",
           )) {
             const name = slot.dataset
               .overflowControl as keyof typeof widths.current;
             const cached = widths.current[name];
-            const compacted = names.indexOf(name) < taken ? 1 : 0;
+            const compacted = steps.indexOf(name) < taken ? 1 : 0;
             if (slot.hasAttribute("data-suspended"))
-              slot.style.width = `${cached[compacted] ?? 0}px`;
+              slot.style.width = `${cached[compacted]}px`;
             else {
               const width = slot.getBoundingClientRect().width;
               if (width > 0) cached[compacted] = width;
@@ -74,12 +87,13 @@ export function useComposerToolbarFit(
           );
         },
       };
-    }, [canSelectEffort, hasProject, paused]),
+    }, [steps, paused]),
   );
-  const taken = steps.slice(0, tier);
+  const taken = steps.slice(0, Math.max(0, tier));
   return {
     controls,
     effortInMenu: taken.includes("effort-menu"),
     projectInMenu: taken.includes("project-menu"),
+    contextVisible: tier >= 0 && !taken.includes("dense"),
   };
 }

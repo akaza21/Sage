@@ -12,7 +12,7 @@ import {
   type KeymapChordEvent,
 } from "../../domain/keymapRegistry";
 import type { AcpConfigOption } from "../../domain/acpSessionConfig";
-import { flattenChoices } from "../../domain/acpSessionConfigControls";
+import { selectedConfigChoice } from "../../domain/acpSessionConfigControls";
 import { invokeNative, isTauriRuntime } from "../../ports/nativeInvoke";
 import type {
   createDictation,
@@ -129,9 +129,7 @@ export function composerOptionLabel(
   option: AcpConfigOption | undefined,
 ): string | null {
   return option?.type === "select"
-    ? flattenChoices(option).find(
-        (choice) => choice.value === option.currentValue,
-      )?.name || option.currentValue
+    ? selectedConfigChoice(option)?.name || option.currentValue
     : null;
 }
 

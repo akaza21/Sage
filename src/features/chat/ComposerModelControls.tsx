@@ -4,7 +4,10 @@ import {
   type AcpConfigOption,
   type AcpConfigValue,
 } from "../../domain/acpSessionConfig";
-import { flattenChoices } from "../../domain/acpSessionConfigControls";
+import {
+  flattenChoices,
+  selectedConfigChoice,
+} from "../../domain/acpSessionConfigControls";
 import { type ComposerModelChoice } from "./ChatModelPicker";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerEffortControl } from "./ComposerEffortControl";
@@ -29,6 +32,7 @@ export function ComposerModelControls({
   effortOption,
   awaitingSession = false,
   disabled,
+  effortDisabled = disabled,
   pending,
   readOnlyLabel,
   onSelectModel,
@@ -43,7 +47,9 @@ export function ComposerModelControls({
   onToggleEffort: () => void;
   effortAnchorRef?: RefObject<HTMLButtonElement | null>;
   onDismiss: () => void;
-  choices: readonly ComposerModelChoice[];
+  choices:
+    | readonly ComposerModelChoice[]
+    | Extract<AcpConfigOption, { type: "select" }>;
   selectedId: string | null;
   modelLabel: string;
   effortLabel: string | null;
@@ -51,19 +57,18 @@ export function ComposerModelControls({
   effortOption: AcpConfigOption | undefined;
   awaitingSession?: boolean;
   disabled: boolean;
+  effortDisabled?: boolean;
   pending: boolean;
   readOnlyLabel?: boolean;
   onSelectModel: (modelId: string) => void;
   onSetOption: (configId: string, value: AcpConfigValue) => Promise<unknown>;
 }) {
   const labelRef = useRef<HTMLSpanElement>(null);
-  const singleton = choices.length === 1;
-  const available = !disabled && !pending && choices.length > 1;
-  const hasEffortControl =
-    effortOption?.type === "select" &&
-    flattenChoices(effortOption).some(
-      (choice) => choice.value === effortOption.currentValue,
-    );
+  const count =
+    "type" in choices ? flattenChoices(choices).length : choices.length;
+  const singleton = count === 1;
+  const available = !disabled && !pending && count > 1;
+  const hasEffortControl = !!selectedConfigChoice(effortOption);
   const modelDescription =
     modelLabel === "Model"
       ? undefined
@@ -71,10 +76,17 @@ export function ComposerModelControls({
   useEffect(() => {
     if (
       (open && !available) ||
-      (effortOpen && (disabled || effortOption?.type !== "select"))
+      (effortOpen && (effortDisabled || !hasEffortControl))
     )
       onDismiss();
-  }, [available, disabled, effortOpen, effortOption?.type, onDismiss, open]);
+  }, [
+    available,
+    effortDisabled,
+    effortOpen,
+    hasEffortControl,
+    onDismiss,
+    open,
+  ]);
   const modelIdentity = (
     <>
       <Sparkles className="composer__model-icon" size={16} aria-hidden="true" />
@@ -119,7 +131,7 @@ export function ComposerModelControls({
             <ChevronDown size={12} aria-hidden="true" />
           </button>
         )}
-        {effortSuspended ? (
+        {effortSuspended && !effortOpen ? (
           <span
             className="composer__control-trigger composer__effort-picker"
             data-overflow-control="effort"
@@ -127,6 +139,7 @@ export function ComposerModelControls({
           />
         ) : effortOption?.type === "select" ? (
           <ComposerEffortControl
+            triggerVisible={!effortSuspended}
             anchorRef={effortAnchorRef}
             fallbackRef={singleton ? labelRef : triggerRef}
             option={effortOption}
@@ -136,7 +149,7 @@ export function ComposerModelControls({
             onDismiss={onDismiss}
             onOpenModel={onToggle}
             modelAvailable={available}
-            disabled={disabled}
+            disabled={effortDisabled}
             pending={pending}
             onSetOption={onSetOption}
           />

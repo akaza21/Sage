@@ -261,6 +261,85 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it("returns focus to the composer when the last open options action disappears", async () => {
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    try {
+      const config = confirmedModelConfig()!;
+      config.configOptions = [];
+      config.modes = {
+        currentModeId: "default",
+        availableModes: [
+          { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
+        ],
+      };
+      const props = {
+        sessionConfig: config,
+        focused: true,
+        onModeRemoved: () => composer.focus(),
+      };
+      const view = renderControls(props);
+      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      const plan = await screen.findByRole("menuitemradio", {
+        name: "Plan mode",
+      });
+      plan.focus();
+      view.rerenderControls({
+        ...props,
+        sessionConfig: {
+          ...config,
+          removed: true,
+          configOptions: [],
+          modes: null,
+        },
+      });
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Composer options" }),
+      ).toBeNull();
+      expect(composer).toHaveFocus();
+    } finally {
+      composer.remove();
+    }
+  });
+  it.each([1, 2])(
+    "keeps advertised effort editable after a completed turn with %i models and late catalog loading",
+    async (count) => {
+      const config = confirmedModelConfig()!;
+      const model = config.configOptions[0];
+      if (model.type !== "select") throw new Error("Expected model choices");
+      model.options = Array.from({ length: count }, (_, index) => ({
+        value: index ? "other" : "session-model",
+        name: index ? "Other model" : "Confirmed session model",
+      }));
+      const props = { sessionConfig: config, canPrompt: false };
+      const view = renderControls({ ...props, turnBusy: true });
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toBeDisabled();
+      act(() =>
+        useWorkbenchStore.setState({
+          models: Array.from({ length: count }, (_, index) => ({
+            id: index ? "other" : "session-model",
+            name: "Catalog model",
+          })),
+        }),
+      );
+      view.rerenderControls({ ...props, turnBusy: false });
+      const effort = screen.getByRole("button", {
+        name: "Thinking level: High",
+      });
+      expect(effort).toBeEnabled();
+      fireEvent.click(effort);
+      expect(await screen.findByRole("slider")).toBeEnabled();
+      fireEvent.keyDown(
+        screen.getByRole("dialog", { name: "Thinking level" }),
+        { key: "Escape" },
+      );
+      expect(effort).toHaveFocus();
+    },
+  );
   it("shows Pi's wire-confirmed model and effort after interrupt without inventing a reset default", async () => {
     const onSetSessionConfigOption = vi.fn();
     const view = renderControls({ onSetSessionConfigOption });
@@ -506,6 +585,11 @@ describe("last confirmed model label", () => {
     "keeps keyboard focus when an overflow control returns beside a disabled=%s fixed action",
     async (disabled) => {
       let width = 0;
+      vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
+        function (this: Element) {
+          return [this.getBoundingClientRect()] as unknown as DOMRectList;
+        },
+      );
       vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
         function (this: Element) {
           return DOMRect.fromRect({
@@ -531,13 +615,8 @@ describe("last confirmed model label", () => {
         ).toBeNull(),
       );
       expect(
-        disabled
-          ? screen.getByRole("menu")
-          : screen.getByRole("menuitem", { name: "Add images" }),
-      ).toHaveFocus();
-      expect(
         screen.getByRole("button", { name: "Thinking level: High" }),
-      ).toBeVisible();
+      ).toHaveFocus();
       fireEvent.keyDown(document.activeElement!, { key: "Escape" });
       expect(screen.queryByRole("menu")).toBeNull();
     },

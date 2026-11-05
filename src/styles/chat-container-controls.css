@@ -147,7 +147,7 @@
   padding-inline: 4px;
 }
 
-.composer__toolbar:has([data-fit~="dense"]) .composer__context {
+.composer__toolbar:has([data-fit~="dense"]) .composer__context-slot {
   display: none;
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 import { usePortalHost } from "../../ui/usePortalHost";
 
@@ -18,24 +18,6 @@ const LAST = STEPS.length;
 const POPOVERS = ".browser-downloads__popover";
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;
-
-/** Reparenting must preserve keyboard interaction with a moved control. */
-function moveActions(
-  host: HTMLElement,
-  target: HTMLElement,
-  focused = host.contains(document.activeElement)
-    ? (document.activeElement as HTMLElement)
-    : null,
-) {
-  if (host.parentElement !== target) target.append(host);
-  if (!focused || !host.contains(focused)) return null;
-  focused.focus({ preventScroll: true });
-  // A hidden row can retain activeElement until the next focus update.
-  return document.activeElement === focused &&
-    focused.getClientRects().length > 0
-    ? null
-    : focused;
-}
 
 /**
  * Compacts secondary toolbar actions, and moves them into the More menu,
@@ -59,7 +41,6 @@ export function useBrowserToolbarOverflow(
     "browser-surface__page-actions-host",
   );
   const actionWidths = useRef<number[]>([]);
-  const pendingFocus = useRef<HTMLElement | null>(null);
   const tier = useToolbarOverflow(
     useCallback(() => {
       const rowSlot = slot.current;
@@ -80,26 +61,29 @@ export function useBrowserToolbarOverflow(
       // sleep. No hidden control DOM or native reads are needed for measurement.
       const widths = actionWidths.current;
       let parent: HTMLElement | null;
-      let focused: HTMLElement | null;
       let live = false;
       let edge = 0;
       return {
         row: group,
         steps: LAST,
         targets: () => [toolbar],
+        focus: {
+          trigger: () =>
+            toolbar.querySelector<HTMLElement>('[aria-label="More options"]'),
+          items: () => [
+            ...toolbar.querySelectorAll<HTMLElement>("[data-overflow-control]"),
+          ],
+        },
         prepare: () => {
           edge =
             toolbar.getBoundingClientRect().right -
             parseFloat(getComputedStyle(toolbar).paddingRight) +
             SUBPIXEL;
           parent = host.parentElement;
-          focused = host.contains(document.activeElement)
-            ? (document.activeElement as HTMLElement)
-            : pendingFocus.current;
           live =
             (menuOpen || !toolbar.hasAttribute(STEPS[LAST - 1])) &&
             host.hasChildNodes();
-          moveActions(host, rowSlot);
+          if (host.parentElement !== rowSlot) rowSlot.append(host);
         },
         measure: (taken: number) => {
           apply(taken);
@@ -109,7 +93,7 @@ export function useBrowserToolbarOverflow(
           return group.getBoundingClientRect().right > edge;
         },
         finish: () => {
-          if (parent) pendingFocus.current = moveActions(host, parent, focused);
+          if (parent && host.parentElement !== parent) parent.append(host);
         },
         inRow: (record: MutationRecord) => {
           const node =
@@ -122,22 +106,12 @@ export function useBrowserToolbarOverflow(
     }, [host, menuOpen]),
   );
   const visible = menuOpen || tier < LAST;
-  useLayoutEffect(() => {
-    if (!visible) pendingFocus.current = null;
-  }, [visible]);
   const menuSlot = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
-      const relocate = (target: HTMLElement) => {
-        pendingFocus.current = moveActions(
-          host,
-          target,
-          pendingFocus.current ?? undefined,
-        );
-      };
-      relocate(node);
+      if (host.parentElement !== node) node.append(host);
       return () => {
-        if (slot.current) relocate(slot.current);
+        if (slot.current) slot.current.append(host);
       };
     },
     [host],

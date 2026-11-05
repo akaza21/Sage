@@ -14,7 +14,6 @@ import {
   composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
-import { ComposerContext } from "./ComposerContext";
 import { ComposerImageInput } from "./ComposerImageInput";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { QueuedRows, lazyParts } from "./lazyParts";
@@ -323,6 +322,7 @@ export function ChatComposerRegion({
               onSelectHarness={onSelectHarness}
               onSelectModel={onSelectModel}
               onModeRemoved={() => composerRef.current?.focus()}
+              contextUsage={usage}
             />
           )}
           {!composerDisabled ? (
@@ -331,7 +331,6 @@ export function ChatComposerRegion({
               {queueing ? "Enter to queue" : "Enter to send"}
             </span>
           ) : null}
-          {!hidden && <ComposerContext usage={usage} />}
           <ComposerTurnControl
             dictation={dictation}
             disabled={composerDisabled}

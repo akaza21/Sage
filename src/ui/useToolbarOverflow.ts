@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 export interface ToolbarLayout {
   row: HTMLElement;
@@ -10,6 +10,11 @@ export interface ToolbarLayout {
   finish?: () => void;
   targets?: () => Element[];
   inRow?: (record: MutationRecord) => boolean;
+  /** Items declare stable data-overflow-control identities across presentations. */
+  focus: {
+    items: () => HTMLElement[];
+    trigger: () => HTMLElement | null;
+  };
 }
 
 /**
@@ -20,11 +25,52 @@ export interface ToolbarLayout {
  * Unmounting (or returning no layout) disconnects all work.
  */
 export function useToolbarOverflow(setup: () => ToolbarLayout | undefined) {
-  const [tier, setTier] = useState(0);
+  const [tier, setTier] = useState(-1);
+  const remembered = useRef<{ key: string; element: HTMLElement } | null>(null);
+  const restore = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const layout = setup();
-    if (!layout) return;
-    const { row, steps, measure, prepare, finish, inRow } = layout;
+    if (!layout) {
+      remembered.current = null;
+      return;
+    }
+    const { row, steps, measure, prepare, finish, inRow, focus } = layout;
+    const key = (element: HTMLElement) =>
+      element.closest<HTMLElement>("[data-overflow-control]")?.dataset
+        .overflowControl;
+    const trackFocus = () => {
+      const active = document.activeElement;
+      const item = focus.items().find((element) => element === active);
+      if (item) remembered.current = { key: key(item)!, element: item };
+      else if (active !== remembered.current?.element)
+        remembered.current = null;
+    };
+    const clearPointerFocus = (event: PointerEvent) => {
+      if (
+        !event.defaultPrevented &&
+        !remembered.current?.element.contains(event.target as Node)
+      )
+        remembered.current = null;
+    };
+    const restoreFocus = (fitting = false) => {
+      const previous = remembered.current;
+      if (!previous) return;
+      const available = (element: HTMLElement | null) =>
+        element &&
+        !element.matches(":disabled") &&
+        element.getClientRects().length > 0;
+      const item = focus
+        .items()
+        .find((element) => key(element) === previous.key && available(element));
+      const target = item ?? focus.trigger();
+      if (available(target)) {
+        remembered.current = { key: previous.key, element: target! };
+        target!.focus({ preventScroll: true });
+      } else if (!fitting) remembered.current = null;
+    };
+    restore.current = restoreFocus;
+    document.addEventListener("focusin", trackFocus);
+    document.addEventListener("pointerdown", clearPointerFocus);
     const fitted = new Map<Element, string>();
     const size = (target: Element) => {
       const box = target.getBoundingClientRect();
@@ -45,6 +91,7 @@ export function useToolbarOverflow(setup: () => ToolbarLayout | undefined) {
     const fit = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
+      if (document.activeElement !== document.body) trackFocus();
       prepare?.();
       let next = 0;
       if (measure(0) && steps > 0) {
@@ -58,6 +105,7 @@ export function useToolbarOverflow(setup: () => ToolbarLayout | undefined) {
         measure(next);
       }
       finish?.();
+      restoreFocus(true);
       content.takeRecords();
       const targets = layout.targets?.() ?? [row, ...row.children];
       for (const target of fitted.keys())
@@ -82,7 +130,15 @@ export function useToolbarOverflow(setup: () => ToolbarLayout | undefined) {
       if (frame) cancelAnimationFrame(frame);
       resize?.disconnect();
       content.disconnect();
+      document.removeEventListener("focusin", trackFocus);
+      document.removeEventListener("pointerdown", clearPointerFocus);
+      restore.current = null;
     };
   }, [setup]);
+  // React may replace the focused presentation only after the fit publishes
+  // its tier. Restore again before paint, once the replacement has mounted.
+  useLayoutEffect(() => {
+    restore.current?.();
+  });
   return tier;
 }
