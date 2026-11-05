@@ -110,6 +110,7 @@ test("treats each anonymous layer as its own context", () => {
       @layer base {
         .card { gap: var(--space-2); }
       }
+      @layer { .tile { display: grid; } } @layer { .tile { display: block; } }
     `,
   });
 

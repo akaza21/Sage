@@ -398,6 +398,7 @@ function analyzeCss(source, relativePath) {
   const stack = [
     {
       context: "",
+      contextKey: "",
       importantAllowed: false,
       kind: "rules",
       openIndex: -1,
@@ -429,6 +430,7 @@ function analyzeCss(source, relativePath) {
       const prelude = masked.slice(range.start, range.end);
       let kind;
       let context = frame.context;
+      let contextKey = frame.contextKey;
       if (frame.kind === "keyframes") kind = "declarations";
       else if (frame.kind === "declarations" && CONDITIONAL_GROUP.test(prelude))
         kind = "declarations";
@@ -446,7 +448,7 @@ function analyzeCss(source, relativePath) {
           ...parts.map((selector) => ({ ...selector, relativePath })),
         );
         const selector = parts.map((part) => part.selector).join(", ");
-        const key = `${frame.context}\u0000${selector}`;
+        const key = `${frame.contextKey}\u0000${selector}`;
         const line = lineAt(range.start);
         const firstLine = firstRuleLines.get(key);
         if (firstLine === undefined) firstRuleLines.set(key, line);
@@ -461,15 +463,21 @@ function analyzeCss(source, relativePath) {
         }
       }
       if (prelude.startsWith("@") || kind === "declarations") {
-        // Each anonymous layer is its own cascade layer, so it gets its own
-        // identity; merging rules across two of them could change precedence.
-        const label = /^@layer$/iu.test(prelude)
+        // Each anonymous layer is its own cascade layer, so it is keyed by
+        // its source offset; merging rules across two of them could change
+        // precedence. The diagnostic names it by line.
+        const anonymousLayer = /^@layer$/iu.test(prelude);
+        const label = anonymousLayer
           ? `@layer <anonymous at line ${lineAt(range.start)}>`
           : normalizeSelector(source.slice(range.start, range.end));
         context = `${frame.context} ${label}`;
+        contextKey = `${frame.contextKey} ${
+          anonymousLayer ? `@layer <anonymous at offset ${range.start}>` : label
+        }`;
       }
       stack.push({
         context,
+        contextKey,
         importantAllowed: frame.importantAllowed || accessibilityMedia(prelude),
         kind,
         openIndex: index,
