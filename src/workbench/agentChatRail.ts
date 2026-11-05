@@ -59,6 +59,11 @@ export function admitAgentRailChat(
     ...(typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
       ? { updatedAt: value.updatedAt }
       : {}),
+    ...(typeof value.finishedAt === "number" &&
+    Number.isSafeInteger(value.finishedAt) &&
+    value.finishedAt > 0
+      ? { finishedAt: value.finishedAt }
+      : {}),
   };
 }
 

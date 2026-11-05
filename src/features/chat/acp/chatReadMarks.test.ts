@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
+  MAX_CHAT_READ_MARKS,
   chatReadThrough,
   markChatRead,
   markChatUnread,
@@ -11,19 +12,29 @@ import { sessionRailUnreadVisible } from "./sessionRail";
 
 // A stand-in for the Rust settings store: it keeps the marks across a reload
 // of this module's projection, so the tests observe what survives.
-const store = vi.hoisted(() => ({ marks: new Map<string, number>() }));
+const store = vi.hoisted(() => ({
+  marks: new Map<string, number>(),
+  failWrites: false,
+  writes: 0,
+  // Resolves the stored snapshot when the test says so.
+  holdLoad: null as Promise<void> | null,
+}));
 vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   invokeNative: async (
     command: string,
     args?: { mark?: { chatId: string; readThrough: number }; chatId?: string },
   ) => {
-    if (command === "chat_read_marks")
-      return [...store.marks].reverse().map(([chatId, readThrough]) => ({
-        chatId,
-        readThrough,
-      }));
+    if (command === "chat_read_marks") {
+      const snapshot = [...store.marks];
+      if (store.holdLoad) await store.holdLoad;
+      return snapshot
+        .reverse()
+        .map(([chatId, readThrough]) => ({ chatId, readThrough }));
+    }
     if (command === "chat_mark_read" && args?.mark) {
+      store.writes += 1;
+      if (store.failWrites) throw new Error("settings store is busy");
       const { chatId, readThrough } = args.mark;
       store.marks.set(
         chatId,
@@ -42,6 +53,9 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
 beforeEach(() => {
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   store.marks.clear();
+  store.failWrites = false;
+  store.writes = 0;
+  store.holdLoad = null;
   resetChatReadMarks();
 });
 
@@ -51,11 +65,11 @@ afterEach(() => {
 });
 
 /** What the rail shows for a finished chat that is not on screen. */
-const unread = (chatId: string, updatedAt: number) =>
+const unread = (chatId: string, finishedAt: number) =>
   sessionRailUnreadVisible({
     focused: false,
     status: "complete",
-    updatedAt,
+    finishedAt,
     readThrough: chatReadThrough(chatId),
   });
 
@@ -87,4 +101,41 @@ it("keeps a chat marked unread Unread after a reload", async () => {
   await vi.waitFor(() => expect(store.marks.has("chat-a")).toBe(false));
   await reload();
   expect(unread("chat-a", 1_000)).toBe(true);
+});
+
+it("writes a failed read mark again when the chat is viewed again", async () => {
+  store.failWrites = true;
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.writes).toBe(1));
+  // Let the rejected write settle.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  store.failWrites = false;
+  // Viewing the chat again records the same Turn.
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
+  await reload();
+  expect(unread("chat-a", 1_000)).toBe(false);
+});
+
+it("does not write a mark the store already holds", async () => {
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
+  markChatRead("chat-a", 1_000);
+  await Promise.resolve();
+  expect(store.writes).toBe(1);
+});
+
+it("keeps a mark made while a full stored snapshot loads", async () => {
+  for (let index = 0; index < MAX_CHAT_READ_MARKS; index += 1)
+    store.marks.set(`stored-${index}`, 1);
+  let release!: () => void;
+  store.holdLoad = new Promise((resolve) => (release = resolve));
+  const loading = restoreChatReadMarks();
+  markChatRead("chat-new", 2_000);
+  release();
+  await loading;
+  expect(chatReadThrough("chat-new")).toBe(2_000);
+  // The oldest stored mark gave way; the most recent stored one stayed.
+  expect(chatReadThrough("stored-0")).toBeUndefined();
+  expect(chatReadThrough(`stored-${MAX_CHAT_READ_MARKS - 1}`)).toBe(1);
 });

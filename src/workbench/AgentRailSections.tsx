@@ -206,7 +206,7 @@ function useCollapsedProjectState(
       sessionRailUnreadVisible({
         focused: selected && chat.id === viewedChatId,
         status: chat.status,
-        updatedAt: chat.updatedAt,
+        finishedAt: chat.finishedAt,
         readThrough: readMarks.get(chat.id),
       }),
   );

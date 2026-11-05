@@ -16,12 +16,10 @@ import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import {
-  markChatRead,
   markChatUnread,
   useChatReadMarks,
 } from "../features/chat/acp/chatReadMarks";
 import {
-  sessionRailLive,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -111,25 +109,6 @@ export function ProjectChatNavigation({
   const hoverChat = chatTabs.find((tab) => tab.id === hoverCard.card?.chatId);
   const awaitingApprovalIds = useChatsAwaitingApproval();
   const readMarks = useChatReadMarks();
-  // The viewed chat's finished update is seen; record it once it settles.
-  const viewedTab = selected
-    ? chatTabs.find((tab) => tab.id === viewedChatId)
-    : undefined;
-  const viewedStatus = viewedTab
-    ? parentChatStatus(viewedTab.id, viewedTab.status)
-    : undefined;
-  const viewedSeenThrough =
-    viewedTab &&
-    sessionRailStatusLabel(viewedStatus) &&
-    !sessionRailLive(viewedStatus)
-      ? (viewedTab.updatedAt ?? 0)
-      : null;
-  const viewedId = viewedTab?.id;
-  useEffect(() => {
-    if (viewedId && viewedSeenThrough !== null)
-      markChatRead(viewedId, viewedSeenThrough);
-  }, [viewedId, viewedSeenThrough]);
-
   useEffect(() => {
     if (renamingChatId !== null || pendingFocusChatId.current === null) return;
     const chatId = pendingFocusChatId.current;
@@ -202,7 +181,7 @@ export function ProjectChatNavigation({
           sessionRailUnreadVisible({
             focused: viewed,
             status: tab.status,
-            updatedAt: tab.updatedAt,
+            finishedAt: tab.finishedAt,
             readThrough: readMarks.get(tab.id),
           });
         const trailingState = agentRailTrailingState({ status, unread });
@@ -251,8 +230,6 @@ export function ProjectChatNavigation({
               aria-current={focused ? "page" : undefined}
               onClick={() => {
                 clearAgentRailUnread(tab.id);
-                if (sessionRailStatusLabel(status) && !sessionRailLive(status))
-                  markChatRead(tab.id, tab.updatedAt ?? 0);
                 if (selected) {
                   void activateTab(tab.id);
                   return;

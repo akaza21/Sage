@@ -70,13 +70,14 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
 }
 
 /**
- * A finished chat shows Unread until its latest update has been seen: the
- * stored read mark (chatReadMarks) covers its update time.
+ * A finished chat shows Unread until its latest Turn has been seen: the
+ * stored read mark (chatReadMarks) covers that Turn's finish time. Runtime
+ * bookkeeping, such as parking a session, never moves that time.
  */
 export function sessionRailUnreadVisible(input: {
   focused: boolean;
   status: SessionStatus | undefined;
-  updatedAt?: number;
+  finishedAt?: number;
   readThrough: number | undefined;
 }): boolean {
   if (input.focused) return false;
@@ -84,6 +85,6 @@ export function sessionRailUnreadVisible(input: {
   if (!sessionRailStatusLabel(input.status)) return false;
   return (
     input.readThrough === undefined ||
-    (input.updatedAt ?? 0) > input.readThrough
+    (input.finishedAt ?? 0) > input.readThrough
   );
 }

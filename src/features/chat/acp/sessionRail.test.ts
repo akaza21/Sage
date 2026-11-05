@@ -65,11 +65,11 @@ describe("sessionRailUnreadVisible", () => {
     ).toBe(false);
   });
 
-  it("keeps the rail dot after Done until that update is seen", () => {
+  it("keeps the rail dot after Done until that Turn is seen", () => {
     const done = {
       focused: false,
       status: "complete" as const,
-      updatedAt: 200,
+      finishedAt: 200,
     };
     expect(sessionRailUnreadVisible({ ...done, readThrough: undefined })).toBe(
       true,

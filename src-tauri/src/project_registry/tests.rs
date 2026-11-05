@@ -751,3 +751,67 @@ fn named_project_rejects_bad_names_and_duplicate_folders_without_mutation() {
             .is_ok()
     );
 }
+
+#[test]
+fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let project = database
+        .create_project_from_root(&folders.root("finished"))
+        .unwrap();
+    let chat = database
+        .bootstrap_snapshot()
+        .unwrap()
+        .active_tab_id
+        .unwrap();
+    {
+        let connection = database.connection();
+        connection.execute(
+            "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
+             capabilities_json,state,residency,legacy,revision,projection_revision,created_at,updated_at)
+             VALUES('finished-session',?1,?2,0,'codex-app-server',?3,'{}','ready','hot',0,0,0,1,1)",
+            rusqlite::params![project.id, chat, "a".repeat(64)],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,started_at)
+             VALUES(?1,?2,'finished-session',1,'running',1)",
+            rusqlite::params![project.id, chat],
+        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,
+                 item_bytes,fact_count,fact_bytes,payload_bytes,revision)
+                 VALUES(?1,?2,'finished-session',2,0,0,0,0,0,0)",
+                rusqlite::params![project.id, chat],
+            )
+            .unwrap();
+        for (ordinal, terminal_at) in [(0, 2_000), (1, 5_000)] {
+            connection.execute(
+                "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
+                 state,delivery_state,revision,created_at,updated_at,terminal_at)
+                 VALUES(?3,?1,?2,'finished-session',1,?4,?3,'completed','correlated',0,1,?5,?5)",
+                rusqlite::params![project.id, chat, format!("turn-{ordinal}"), ordinal, terminal_at],
+            ).unwrap();
+        }
+        // Parking the session later moves the chat's update time only.
+        connection
+            .execute(
+                "UPDATE chats SET updated_at=9000 WHERE project_id=?1 AND id=?2",
+                rusqlite::params![project.id, chat],
+            )
+            .unwrap();
+    }
+    let restored = database.bootstrap_snapshot().unwrap();
+    let tab = restored.tabs.iter().find(|tab| tab.id == chat).unwrap();
+    assert_eq!((tab.updated_at, tab.finished_at), (Some(9000), Some(5_000)));
+    database
+        .create_project_from_root(&folders.root("other"))
+        .unwrap();
+    let projects = database.project_list().unwrap();
+    let rail = projects.iter().find(|item| item.id == project.id).unwrap();
+    let rail_chat = rail.rail_chats.iter().find(|row| row.id == chat).unwrap();
+    assert_eq!(
+        (rail_chat.updated_at, rail_chat.finished_at),
+        (Some(9000), Some(5_000))
+    );
+}
