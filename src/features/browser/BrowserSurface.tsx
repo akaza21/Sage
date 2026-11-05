@@ -6,7 +6,6 @@ import type { WorkbenchTab } from "../../domain/workbench";
 import {
   browserControl,
   browserFind,
-  browserHistory,
   browserNavigate,
   browserOpenExternal,
   browserPrint,
@@ -19,6 +18,7 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { browserPageIdentity, resolveBrowserAddress } from "./browserAddress";
 import type { BrowserSuggestedSites } from "./browserSuggestions";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
+import { subscribeBrowserTab } from "./browserTabEvents";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
 import { BrowserDrawers } from "./BrowserSitePermissions";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
@@ -33,11 +33,7 @@ import { useBrowserPlacement } from "./useBrowserPlacement";
 import { useBrowserScreenshot } from "./useBrowserScreenshot";
 import "./browser.css";
 
-const ClosedBrowserSurface = lazy(() =>
-  import("./ClosedBrowserSurface").then((module) => ({
-    default: module.ClosedBrowserSurface,
-  })),
-);
+const ClosedBrowserSurface = lazy(() => import("./ClosedBrowserSurface"));
 const BrowserFindControls = lazy(() =>
   import("./BrowserFindControls").then((module) => ({
     default: module.BrowserFindControls,
@@ -77,9 +73,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const tools = useContext(AgentToolsContext);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const tabs = useWorkbenchStore((state) => state.tabs);
-  const chats = tabs
-    .filter((candidate) => candidate.kind === "chat")
-    .map((candidate) => ({ id: candidate.id, title: candidate.title }));
+  const chats = tabs.filter((candidate) => candidate.kind === "chat");
   const frame = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLElement>(null);
@@ -102,19 +96,15 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const [findOpen, setFindOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [findText, setFindText] = useState("");
   const [zoomPending, setZoomPending] = useState(false);
   const [attachmentEpoch, setAttachmentEpoch] = useState(0);
   const agentPresence = useBrowserAgentPresence(projectId, tab.id);
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
-  const page =
-    navigation && !navigation.loading
-      ? browserPageIdentity(navigation.url)
-      : null;
-  const newTab =
-    navigation?.loading === false && navigation.url === "" && !navigation.error;
+  const ready = navigation?.loading === false;
+  const page = ready ? browserPageIdentity(navigation.url) : null;
+  const newTab = ready && navigation.url === "" && !navigation.error;
   const suggestionScope = `${projectId ?? ""}\0${tab.id}\0${navigation?.revision ?? ""}`;
   const suggestions =
     suggestionResult?.scope === suggestionScope ? suggestionResult.sites : [];
@@ -138,52 +128,36 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     latestNavigationRevision.current = -1n;
-    let mounted = true;
-    let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        const dispose = await listen<BrowserNavigation>(
-          "browser:navigation",
-          (event) => {
-            if (!mounted || event.payload.tabId !== tab.id) return;
-            if (!/^(0|[1-9]\d{0,19})$/.test(event.payload.revision)) return;
-            const revision = BigInt(event.payload.revision);
-            if (revision <= latestNavigationRevision.current) return;
-            latestNavigationRevision.current = revision;
-            screenshotEpoch.current += 1;
-            setScreenshotStatus(null);
-            setNavigation(event.payload);
-            setError(event.payload.error ?? null);
-            if (document.activeElement !== addressField.current) {
-              setAddress(event.payload.url);
-            }
-            projectBrowserTabStatus(tab.id, event.payload);
-          },
-        );
-        if (!mounted) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-        const status = await browserStatus(tab.id);
-        if (mounted) {
-          if (!/^(0|[1-9]\d{0,19})$/.test(status.revision)) return;
-          const revision = BigInt(status.revision);
-          if (revision < latestNavigationRevision.current) return;
-          latestNavigationRevision.current = revision;
-          setNavigation(status);
-          setAddress(status.url);
-          setError(status.error ?? null);
-          projectBrowserTabStatus(tab.id, status);
-        }
-      })
-      .catch((cause) => {
-        if (mounted) setError(String(cause).slice(0, 512));
-      });
+    const acceptNavigation = (next: BrowserNavigation, bootstrap = false) => {
+      if (!/^(0|[1-9]\d{0,19})$/.test(next.revision)) return;
+      const revision = BigInt(next.revision);
+      if (
+        bootstrap
+          ? revision < latestNavigationRevision.current
+          : revision <= latestNavigationRevision.current
+      )
+        return;
+      latestNavigationRevision.current = revision;
+      if (!bootstrap) {
+        screenshotEpoch.current += 1;
+        setScreenshotStatus(null);
+      }
+      setNavigation(next);
+      setError(next.error ?? null);
+      if (bootstrap || document.activeElement !== addressField.current)
+        setAddress(next.url);
+      projectBrowserTabStatus(tab.id, next);
+    };
+    const stop = subscribeBrowserTab(
+      "browser:navigation",
+      tab.id,
+      acceptNavigation,
+      () => browserStatus(tab.id),
+      setError,
+    );
     return () => {
-      mounted = false;
       screenshotEpoch.current += 1;
-      unlisten?.();
+      stop();
     };
   }, [tab.id, screenshotEpoch, setScreenshotStatus]);
   useBrowserPlacement(tab.id, viewport, surface, setError);
@@ -219,6 +193,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       setError(String(cause).slice(0, 512));
     }
   }
+  function navigateTo(url: string) {
+    void pageAction(() => browserNavigate(tab.id, url));
+  }
   function changeZoom(delta: number) {
     const percent = Math.max(
       50,
@@ -243,13 +220,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     void pageAction(() => browserFind(tab.id, "stop"));
   }
 
-  function openHistory() {
-    setHistoryOpen(true);
-    void browserHistory(tab.id)
-      .then(setHistoryEntries)
-      .catch((cause) => setError(String(cause).slice(0, 512)));
-  }
-
   const openNewTab = () =>
     void openBrowser().then((message) => {
       if (message) setError(message);
@@ -258,7 +228,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     performBrowserShortcut(action, {
       address: addressField.current,
       find: () => findField.current,
-      control: (command) => void control(command),
+      control,
       findOpen: () => setFindOpen(true),
       zoom: changeZoom,
       zoomPercent: navigation?.zoomPercent ?? 100,
@@ -280,8 +250,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           address={address}
           addressField={addressField}
           onAddressChange={setAddress}
-          onNavigate={() => void navigate()}
-          onControl={(action) => void control(action)}
+          onNavigate={navigate}
+          onControl={control}
           onError={setError}
           onFind={() => setFindOpen(true)}
           onPrint={() => void pageAction(() => browserPrint(tab.id))}
@@ -291,7 +261,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           deviceOpen={device.open}
           onDevice={() => device.setOpen(!device.open)}
           onDownloads={() => setDownloadsOpen(true)}
-          onHistory={openHistory}
+          onHistory={() => setHistoryOpen(true)}
           onSettings={(target) =>
             useAgentSettingsState
               .getState()
@@ -309,19 +279,20 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
               onOpenChange={setDownloadsOpen}
             />
           }
-          pageControls={
+          pageControls={(visible) => (
             <BrowserToolbarPageActions
+              visible={visible}
               projectId={projectId}
               tabId={tab.id}
-              ready={page !== null}
+              ready={Boolean(page)}
               chats={chats}
-              pageRevision={String(navigation?.revision ?? "")}
+              pageRevision={navigation?.revision ?? ""}
               operation={agentPresence}
               attachmentEpoch={attachmentEpoch}
               onStopped={() => setAttachmentEpoch((current) => current + 1)}
               onError={setError}
             />
-          }
+          )}
         />
       </div>
       {device.loaded ? (
@@ -374,19 +345,15 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       <BrowserDrawers
         tabId={tab.id}
         historyOpen={historyOpen}
-        historyEntries={historyEntries}
+        onError={setError}
         onCloseHistory={() => setHistoryOpen(false)}
-        onNavigate={(url) =>
-          void pageAction(() => browserNavigate(tab.id, url))
-        }
+        onNavigate={navigateTo}
       />
       {newTab ? (
         <Suspense fallback={<p role="status">Loading new tab…</p>}>
           <BrowserNewTab
             suggestions={suggestions}
-            onNavigate={(url) =>
-              void pageAction(() => browserNavigate(tab.id, url))
-            }
+            onNavigate={navigateTo}
             onNewTab={openNewTab}
             onTool={tools.launch}
             chatAvailable={tools.chatAvailable}

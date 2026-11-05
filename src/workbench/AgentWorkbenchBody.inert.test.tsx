@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AgentWorkbenchBody } from "./AgentWorkbenchBody";
+import AgentWorkbenchBody from "./AgentWorkbenchBodyView";
 import { agentWorkbenchLayout } from "./agentWorkbenchLayout";
 vi.mock("./LeftSidebar", () => ({
   LeftSidebar: ({ inert }: { inert: boolean }) => (
@@ -32,6 +32,8 @@ afterEach(cleanup);
 it("releases the Chat and rail after an external collapse of maximized resources", () => {
   function WorkbenchBody() {
     const [expanded, setExpanded] = useState(true);
+    const [maximized, setMaximized] = useState(false);
+    if (!expanded && maximized) setMaximized(false);
     return (
       <AgentWorkbenchBody
         layout={agentWorkbenchLayout({
@@ -41,6 +43,9 @@ it("releases the Chat and rail after an external collapse of maximized resources
         style={undefined}
         drawerOpen={false}
         onExpandNavigation={() => undefined}
+        centerVisible={!expanded || !maximized}
+        artifactMaximized={maximized}
+        onArtifactMaximizedChange={setMaximized}
         artifactExpanded={expanded}
         onArtifactExpandedChange={setExpanded}
         onAgentLeftRailWidthChange={() => undefined}

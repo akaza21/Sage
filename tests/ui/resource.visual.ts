@@ -10,6 +10,7 @@ import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   installFixedClock,
   installLayoutMode,
@@ -1306,6 +1307,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(
       menu.getByRole("menuitem", { name: "Reload preview" }),
     ).toBeEnabled();
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const bounds = node.getBoundingClientRect();

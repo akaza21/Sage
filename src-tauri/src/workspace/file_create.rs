@@ -347,7 +347,7 @@ fn ensure_root_identity(
     Ok(())
 }
 
-mod platform;
+pub(super) mod platform;
 mod result;
 
 #[cfg(test)]

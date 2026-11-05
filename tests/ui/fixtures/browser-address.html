@@ -11,11 +11,15 @@
       style="position: relative; width: 560px; height: 400px"
     >
       <div id="toolbar" class="browser-surface__toolbar"></div>
+      <div id="error" class="browser-surface__error" role="alert" hidden></div>
     </div>
     <script type="module">
       import React from "react";
       import { createRoot } from "react-dom/client";
       import { BrowserNavigationControls } from "/src/features/browser/BrowserNavigationControls.tsx";
+      import { BrowserAttachmentControls } from "/src/features/browser/BrowserAttachmentControls.tsx";
+      import { BrowserDownloadsControl } from "/src/features/browser/BrowserDownloadsControl.tsx";
+      import { BrowserAgentPresence } from "/src/features/browser/BrowserAgentPresence.tsx";
       import { useAgentArtifactPaneFocus } from "/src/workbench/useAgentArtifactPaneFocus.ts";
       import { BrowserClearData } from "/src/features/browser/BrowserClearData.tsx";
       import "/src/styles/global.css";
@@ -23,13 +27,17 @@
       import "/src/features/browser/browser.css";
 
       const url = "https://en.wikipedia.org/wiki/Web_browser";
-      const newTab = new URLSearchParams(location.search).has("new-tab");
-      const artifactFocus = new URLSearchParams(location.search).has(
-        "artifact-focus",
-      );
+      const params = new URLSearchParams(location.search);
+      const newTab = params.has("new-tab");
+      const chatTitle = params.get("chat");
+      const width = params.get("width");
+      if (width)
+        document.querySelector(".browser-surface").style.width = `${width}px`;
+      const artifactFocus = params.has("artifact-focus");
       function Fixture() {
         const [address, setAddress] = React.useState(newTab ? "" : url);
         const addressField = React.useRef(null);
+        const [downloadsOpen, setDownloadsOpen] = React.useState(false);
         const [expanded, setExpanded] = React.useState(true);
         const paneRef = React.useRef(null);
         const triggerRef = React.useRef(null);
@@ -66,7 +74,7 @@
           onFind: () => {},
           onZoom: () => {},
           onZoomReset: () => {},
-          onDownloads: () => {},
+          onDownloads: () => setDownloadsOpen(true),
           onHistory: () => {},
           onSettings: () => {},
           onCopy: () => {},
@@ -74,11 +82,54 @@
           clearDataControl: React.createElement(BrowserClearData, {
             menuItem: true,
           }),
-          pageControls: React.createElement(
-            "button",
-            { "aria-label": "Attach page" },
-            "▣",
-          ),
+          pageControls: (visible) =>
+            chatTitle
+              ? React.createElement(
+                  "div",
+                  { className: "browser-surface__page-actions" },
+                  React.createElement(BrowserAttachmentControls, {
+                    visible,
+                    projectId: "project-visual",
+                    tabId: "browser-visual",
+                    ready: true,
+                    onError: (message) => {
+                      const row = document.getElementById("error");
+                      row.textContent = message ?? "";
+                      row.hidden = !message;
+                    },
+                    chats: [
+                      { id: "chat-visual", title: chatTitle },
+                      ...params.getAll("also").map((title, index) => ({
+                        id: `chat-also-${index}`,
+                        title,
+                      })),
+                    ],
+                  }),
+                  visible && params.has("agent")
+                    ? React.createElement(BrowserAgentPresence, {
+                        pending: false,
+                        userControl: false,
+                        chatTitle,
+                        onStop: () => {},
+                        onTakeOver: () => {},
+                        onHandBack: () => {},
+                      })
+                    : null,
+                )
+              : visible
+                ? React.createElement(
+                    "button",
+                    { "aria-label": "Attach page" },
+                    "▣",
+                  )
+                : null,
+          downloadsControl: chatTitle
+            ? React.createElement(BrowserDownloadsControl, {
+                tabId: "browser-visual",
+                open: downloadsOpen,
+                onOpenChange: setDownloadsOpen,
+              })
+            : undefined,
         });
         return artifactFocus
           ? React.createElement(

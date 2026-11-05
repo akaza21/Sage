@@ -11,8 +11,6 @@
 /// (`chat_commands::execute_chat_transition`, including archive/restore),
 /// file rename, and trash.
 pub(crate) fn on_committed_project_transition_epoch(new_epoch: u64) {
-    #[cfg(test)]
-    tests::note(new_epoch);
     stop_preview_children_before_epoch(new_epoch);
 }
 

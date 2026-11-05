@@ -4,6 +4,7 @@ import {
   type BrowserDownload,
 } from "../../ports/nativeBrowserDownloadsPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { subscribeBrowserTab } from "./browserTabEvents";
 
 export function isActiveDownload(download: BrowserDownload): boolean {
   return (
@@ -21,30 +22,17 @@ export function useBrowserDownloads(tabId: string): BrowserDownload[] {
   } | null>(null);
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    let mounted = true;
     let sawEvent = false;
-    let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        const stop = await listen<{
-          tabId: string;
-          downloads: BrowserDownload[];
-        }>("browser:downloads", (event) => {
-          if (mounted && event.payload.tabId === tabId) {
-            sawEvent = true;
-            setReported(event.payload);
-          }
-        });
-        if (!mounted) return stop();
-        unlisten = stop;
-        const initial = await browserDownloads(tabId);
-        if (mounted && !sawEvent) setReported({ tabId, downloads: initial });
-      })
-      .catch(() => undefined);
-    return () => {
-      mounted = false;
-      unlisten?.();
-    };
+    return subscribeBrowserTab(
+      "browser:downloads",
+      tabId,
+      (payload, initial) => {
+        if (initial && sawEvent) return;
+        sawEvent = true;
+        setReported(payload);
+      },
+      async () => ({ tabId, downloads: await browserDownloads(tabId) }),
+    );
   }, [tabId]);
   return reported?.tabId === tabId ? reported.downloads : NONE;
 }

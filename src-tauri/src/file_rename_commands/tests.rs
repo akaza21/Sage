@@ -580,3 +580,27 @@ fn stale_epoch_and_foreign_root_fail_before_filesystem_mutation() {
         assert!(!fixture.root.join("src/new.rs").exists());
     });
 }
+
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+#[test]
+fn committed_rename_stops_the_previous_epoch_preview_but_a_stale_one_does_not() {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new();
+        let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+        let mut stale = fixture.request("new.rs");
+        stale.expected_transition_epoch = 1;
+        assert!(execute(&fixture.state, stale).await.is_err());
+        assert!(
+            preview.is_serving(),
+            "a stale rename must not stop the current Preview"
+        );
+
+        let result = execute(&fixture.state, fixture.request("new.rs"))
+            .await
+            .unwrap();
+        assert_eq!(result.outcome, FileRenameOutcome::Committed);
+        assert_eq!(result.transition_epoch, 1);
+        assert!(!preview.is_serving());
+    });
+}

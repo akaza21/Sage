@@ -10,9 +10,9 @@ import { Square } from "../../ui/leanIcons";
 export function BrowserAgentPresence({
   pending,
   userControl,
-  developerMode = false,
+  developerMode,
   chatTitle,
-  busy = false,
+  busy,
   onStop,
   onTakeOver,
   onHandBack,
@@ -31,6 +31,7 @@ export function BrowserAgentPresence({
     : pending
       ? "Agent has a browser action pending"
       : "Agent attached";
+  const description = `${label} · ${chatTitle}`;
   return (
     <div
       className="browser-surface__agent-presence"
@@ -39,21 +40,26 @@ export function BrowserAgentPresence({
       {developerMode && !userControl ? (
         <span
           className="browser-surface__agent-developer"
-          title="Developer mode is on: the Agent has CDP access to this tab, including running scripts. Stop or Take over ends it."
+          title="CDP access includes scripts. Stop or Take over ends it."
         >
           Developer mode
         </span>
       ) : null}
-      <span className="browser-surface__agent-presence-label" role="status">
-        {`${label} · ${chatTitle}`}
+      {/* The label truncates; its title keeps the whole text reachable. */}
+      <span
+        className="browser-surface__agent-presence-label"
+        role="status"
+        title={description}
+      >
+        {description}
       </span>
       <button
         type="button"
         className="browser-surface__agent-handoff"
         title={
           userControl
-            ? "Let this chat's Agent use the tab again. It asks permission first."
-            : "Pause this chat's Agent on this tab while you use it."
+            ? "Resume Agent; asks permission first."
+            : "Pause Agent while you use this tab."
         }
         disabled={busy}
         onClick={userControl ? onHandBack : onTakeOver}
@@ -64,7 +70,7 @@ export function BrowserAgentPresence({
         type="button"
         className="browser-surface__agent-stop"
         aria-label="Stop agent"
-        title="Stop the Agent's browser action and detach this tab from the chat."
+        title="Stop and detach this tab from chat."
         disabled={busy}
         onClick={onStop}
       >

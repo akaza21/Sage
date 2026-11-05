@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
+import { utf8ByteLength } from "../../domain/text";
 import { subscribeWorkspaceNotifySearch } from "../files/workspaceNotifyCompose";
 import { sameSearchSettings, searchSettingFields } from "./searchSettings";
 import type {
@@ -49,12 +50,107 @@ const initialState = (): WorkspaceSearchState => ({
   error: null,
 });
 
-function filterPatterns(value: string): string[] {
-  return value
-    .split(",")
-    .map((pattern) => pattern.trim())
-    .filter(Boolean);
+/**
+ * Splits a field on the commas outside `{…}` groups. A brace that opens no
+ * whole group is an ordinary character, so the field still splits after it.
+ */
+function splitFilterField(value: string): string[] {
+  const pieces = value.match(/(?:[^,{]|\{[^{}]*\}|\{)+/g) ?? [];
+  return pieces.map((piece) => piece.trim()).filter(Boolean);
 }
+
+/**
+ * Expands each `{a,b}` group that holds no other brace, left to right, in one
+ * bounded pass; other braces stay literal. Returns `null` (overflow) once the
+ * distinct alternatives pass `limit` or one grows past `maxBytes`, so the
+ * caller refuses the whole field instead of sending part of it.
+ */
+function expandBraces(
+  piece: string,
+  limit: number,
+  maxBytes: number,
+): string[] | null {
+  const groups = /\{([^{}]*)\}/g;
+  let results = [""];
+  let end = 0;
+  for (let group = groups.exec(piece); group; group = groups.exec(piece)) {
+    const head = piece.slice(end, group.index);
+    const next = new Set<string>();
+    for (const prefix of results) {
+      for (const choice of group[1].split(",")) {
+        // UTF-16 length never exceeds the UTF-8 byte length.
+        const text = prefix + head + choice;
+        if (text.length > maxBytes || next.add(text).size > limit) return null;
+      }
+    }
+    results = [...next];
+    end = groups.lastIndex;
+  }
+  return results.map((prefix) => prefix + piece.slice(end));
+}
+
+/**
+ * Reads one include or exclude piece as VS Code does, in Sage's whole-path
+ * dialect: a name with no `/` matches at any depth (and, without wildcards,
+ * everything below it too), a trailing `/` means the folder's contents and a
+ * leading `./` anchors to the root. A piece that names a path is unchanged.
+ */
+function expandFilterPiece(piece: string): string[] {
+  const pattern = piece.replace(/^(?:\.\/)+/, "");
+  const anchored = pattern !== piece;
+  const folder = pattern.replace(/\/+$/, "");
+  if (folder !== pattern) return folder ? [`${folder}/**`] : [];
+  if (!pattern) return [];
+  if (pattern.includes("/") || pattern === "**") return [pattern];
+  const prefixed = anchored ? pattern : `**/${pattern}`;
+  return /[*?]/.test(pattern) ? [prefixed] : [prefixed, `${prefixed}/**`];
+}
+
+/** The expanded, deduplicated patterns, or `null` when they pass the limits. */
+function filterPatterns(value: string): string[] | null {
+  const { filterPatterns: limit, filterBytes } = WORKSPACE_SEARCH_LIMITS;
+  const patterns = new Set<string>();
+  for (const piece of splitFilterField(value)) {
+    const choices = expandBraces(piece, limit, filterBytes);
+    if (!choices) return null;
+    for (const choice of choices) {
+      for (const pattern of expandFilterPiece(choice.trim())) {
+        if (patterns.add(pattern).size > limit) return null;
+      }
+    }
+  }
+  return [...patterns];
+}
+
+/**
+ * Both expanded lists. Throws the request validator's invalid-filter message
+ * when they exceed the native limits, so a partial set is never sent.
+ */
+function searchFilters(includeText: string, excludeText: string) {
+  const includePatterns = filterPatterns(includeText);
+  const excludePatterns = filterPatterns(excludeText);
+  if (
+    !includePatterns ||
+    !excludePatterns ||
+    utf8ByteLength([...includePatterns, ...excludePatterns].join("")) >
+      WORKSPACE_SEARCH_LIMITS.filterBytes
+  ) {
+    throw new Error("workspace Search path filters are invalid");
+  }
+  return { includePatterns, excludePatterns };
+}
+
+type CriterionKey = Exclude<
+  keyof WorkspaceSearchState,
+  "phase" | "response" | "pages" | "error"
+>;
+
+const clearedResults = {
+  phase: "idle",
+  response: null,
+  pages: [],
+  error: null,
+} satisfies Partial<WorkspaceSearchState>;
 
 export function useWorkspaceSearch({
   projectId,
@@ -95,103 +191,45 @@ export function useWorkspaceSearch({
       useEditorSettingsStore.subscribe((store, previous) => {
         if (sameSearchSettings(store.settings, previous.settings)) return;
         retireCriteria();
-        setState((current) => ({
-          ...current,
-          phase: "idle",
-          response: null,
-          pages: [],
-          error: null,
-        }));
+        setState((current) => ({ ...current, ...clearedResults }));
       }),
     [retireCriteria],
   );
 
+  /** Each criterion change retires the shown results and any pending scan. */
+  const setCriterion = useCallback(
+    <K extends CriterionKey>(key: K, value: WorkspaceSearchState[K]) => {
+      retireCriteria();
+      setState((current) => ({ ...current, ...clearedResults, [key]: value }));
+    },
+    [retireCriteria],
+  );
   const setQuery = useCallback(
-    (query: string) => {
-      retireCriteria();
-      setState((current) => ({
-        ...current,
-        phase: "idle",
-        query,
-        response: null,
-        pages: [],
-        error: null,
-      }));
-    },
-    [retireCriteria],
+    (query: string) => setCriterion("query", query),
+    [setCriterion],
   );
-
   const setCaseSensitive = useCallback(
-    (caseSensitive: boolean) => {
-      retireCriteria();
-      setState((current) => ({
-        ...current,
-        phase: "idle",
-        caseSensitive,
-        response: null,
-        pages: [],
-        error: null,
-      }));
-    },
-    [retireCriteria],
+    (caseSensitive: boolean) => setCriterion("caseSensitive", caseSensitive),
+    [setCriterion],
   );
-
   const setWholeWord = useCallback(
-    (wholeWord: boolean) => {
-      retireCriteria();
-      setState((current) => ({
-        ...current,
-        phase: "idle",
-        wholeWord,
-        response: null,
-        pages: [],
-        error: null,
-      }));
-    },
-    [retireCriteria],
+    (wholeWord: boolean) => setCriterion("wholeWord", wholeWord),
+    [setCriterion],
   );
-
   const setIncludePatternText = useCallback(
-    (includePatternText: string) => {
-      retireCriteria();
-      setState((current) => ({
-        ...current,
-        phase: "idle",
-        includePatternText,
-        response: null,
-        pages: [],
-        error: null,
-      }));
-    },
-    [retireCriteria],
+    (text: string) => setCriterion("includePatternText", text),
+    [setCriterion],
   );
-
   const setExcludePatternText = useCallback(
-    (excludePatternText: string) => {
-      retireCriteria();
-      setState((current) => ({
-        ...current,
-        phase: "idle",
-        excludePatternText,
-        response: null,
-        pages: [],
-        error: null,
-      }));
-    },
-    [retireCriteria],
+    (text: string) => setCriterion("excludePatternText", text),
+    [setCriterion],
   );
 
   const cancel = useCallback(() => {
     generation.current += 1;
     active.current?.abort();
     active.current = null;
-    setState((current) => ({
-      ...current,
-      phase: "idle",
-      response: null,
-      pages: [],
-      error: null,
-    }));
+    setState((current) => ({ ...current, ...clearedResults }));
   }, []);
 
   const submit = useCallback(async () => {
@@ -238,8 +276,7 @@ export function useWorkspaceSearch({
           query,
           caseSensitive: state.caseSensitive,
           wholeWord: state.wholeWord,
-          includePatterns: filterPatterns(state.includePatternText),
-          excludePatterns: filterPatterns(state.excludePatternText),
+          ...searchFilters(state.includePatternText, state.excludePatternText),
           ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,
@@ -325,8 +362,7 @@ export function useWorkspaceSearch({
           query,
           caseSensitive: state.caseSensitive,
           wholeWord: state.wholeWord,
-          includePatterns: filterPatterns(state.includePatternText),
-          excludePatterns: filterPatterns(state.excludePatternText),
+          ...searchFilters(state.includePatternText, state.excludePatternText),
           ...searchSettingFields(useIgnoreFiles, filesExclude),
         },
         controller.signal,

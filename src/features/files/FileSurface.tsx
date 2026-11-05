@@ -328,3 +328,5 @@ export function FileSurface({
     />
   );
 }
+
+export default FileSurface;

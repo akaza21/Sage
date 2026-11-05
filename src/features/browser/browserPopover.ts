@@ -44,6 +44,8 @@ export function browserMenuKeyDown(
     return;
   }
   if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  // Overflowed form controls retain their native navigation keys.
+  if ((event.target as Element).closest("select, input, textarea")) return;
   event.preventDefault();
   const items = Array.from(
     menu?.querySelectorAll<HTMLButtonElement>(

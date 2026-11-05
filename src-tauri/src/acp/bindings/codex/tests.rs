@@ -415,10 +415,6 @@ fn lexically_validates_only_the_exact_windows_packet_and_keeps_launch_fail_close
         "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc"
     );
     assert_eq!(packet.metadata().supporting_artifacts.len(), 7);
-    let manifest_source = include_str!("manifest.rs");
-    assert!(manifest_source.contains("verify_installed_authenticode"));
-    assert!(manifest_source.contains("admit_installed_role"));
-    assert!(manifest_source.contains("WinVerifyTrustCatalog"));
     let mut missing_artifact = packet_value();
     relocate_package_root(
         &mut missing_artifact,

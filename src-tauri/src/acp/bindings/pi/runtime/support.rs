@@ -19,8 +19,6 @@ mod config_reply;
 mod delivery;
 mod dialog;
 mod errors;
-#[cfg(test)]
-pub(super) use errors::ATTEMPT_FAILURE_CODE;
 mod identity;
 mod image;
 mod permission;
@@ -207,7 +205,14 @@ impl PiRuntime {
                 (Some(event), None)
             }
             AdapterOutput::FailureDetail { message } => (Some(self.failure_detail(message)?), None),
-            AdapterOutput::AttemptFailed { message } => (Some(self.attempt_failed(message)?), None),
+            AdapterOutput::AttemptFailed {
+                attempt,
+                max_attempts,
+                message,
+            } => (
+                Some(self.attempt_failed(attempt, max_attempts, message)?),
+                None,
+            ),
             AdapterOutput::TextStarted { external_id } => {
                 let id = self.start_text(external_id)?;
                 (
