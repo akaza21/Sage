@@ -50,6 +50,51 @@ test("finds multiline cross-file selector ownership without counting same-file r
   ]);
 });
 
+test("reports a rule repeated in one stylesheet and at-rule context", async () => {
+  const inventory = analyze({
+    "src/styles/a.css": `
+      .card { display: grid; }
+      .card,
+      .tile { gap: var(--space-2); }
+      .card { color: var(--color-text-primary); }
+      @media (max-width: 40rem) {
+        .card { gap: var(--space-1); }
+        .card { padding: var(--space-1); }
+      }
+      @media (min-width: 60rem) {
+        .card { gap: var(--space-3); }
+      }
+    `,
+    "src/styles/b.css": `.card { display: block; }`,
+  });
+
+  assert.deepEqual(inventory.repeatedRules, [
+    {
+      context: "",
+      firstLine: 2,
+      line: 5,
+      relativePath: "src/styles/a.css",
+      selector: ".card",
+    },
+    {
+      context: "@media (max-width: 40rem)",
+      firstLine: 7,
+      line: 8,
+      relativePath: "src/styles/a.css",
+      selector: ".card",
+    },
+  ]);
+  const root = await mkdtemp(path.join(tmpdir(), "sage-css-repeat-"));
+  await mkdir(path.join(root, "src"));
+  await writeFile(
+    path.join(root, "src/a.css"),
+    ".card { display: grid; }\n.card { gap: var(--space-2); }\n",
+  );
+  assert.deepEqual(await cssHygienePolicyErrors(root, ["src/a.css"]), [
+    'src/a.css:2 repeats the rule ".card" from line 1; merge the two rules.',
+  ]);
+});
+
 test("does not treat keyframe steps as selectors", () => {
   const inventory = analyze({
     "src/styles/a.css": `

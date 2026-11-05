@@ -146,16 +146,13 @@
 
 .project-intro__icon {
   display: grid;
-  place-items: center;
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.project-intro__icon {
   width: var(--control-height-compact);
   height: var(--control-height-compact);
   flex: 0 0 var(--control-height-compact);
+  place-items: center;
   border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .project-intro strong {
