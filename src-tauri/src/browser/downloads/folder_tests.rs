@@ -35,6 +35,80 @@ fn free(_: &Path) -> bool {
     false
 }
 
+#[test]
+fn slow_reservation_conflicts_stop_at_the_deadline_and_release_admission() {
+    use crate::browser::downloads::{MAX_ACTIVE_DOWNLOADS, io::Executor};
+    use std::{
+        io,
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+
+    let folder = Scratch::new("slow-conflict");
+    let executor = Executor::new(Duration::from_secs(2));
+    let held = (0..MAX_ACTIVE_DOWNLOADS - 1)
+        .map(|_| executor.acquire(&folder.0).unwrap())
+        .collect::<Vec<_>>();
+    let destination = executor.acquire(&folder.0).unwrap();
+    assert!(executor.acquire(&folder.0).is_none());
+    let path = folder.0.clone();
+    let (finished, work_done) = mpsc::sync_channel(1);
+    let (done, completion) = mpsc::sync_channel(1);
+    assert!(destination.run(
+        move |_, deadline| {
+            let mut first = true;
+            let reserved =
+                unique_destination_with(&path, "report.txt", free, deadline, |candidate| {
+                    if first {
+                        first = false;
+                        // Model one uninterruptible create_new on a slow share.
+                        while deadline.check().is_ok() {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(io::ErrorKind::AlreadyExists.into())
+                    } else {
+                        placeholder::create(candidate)
+                    }
+                });
+            let selected = reserved.as_ref().map(|value| value.path.clone());
+            if let Some(reserved) = reserved {
+                reserved.delete_if_empty();
+            }
+            finished.send(selected).unwrap();
+            deadline.check()
+        },
+        move |result| {
+            done.send(result).ok();
+        },
+        |_| {},
+    ));
+    assert_eq!(
+        completion
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::TimedOut,
+    );
+    let selected = work_done.recv_timeout(Duration::from_secs(5)).unwrap();
+    // Download admission must become reusable when the expired OS call
+    // returns, without starting another reservation or retaining the lease.
+    let limit = Instant::now() + Duration::from_secs(2);
+    let next = loop {
+        if let Some(next) = executor.acquire(&folder.0) {
+            break next;
+        }
+        assert!(
+            Instant::now() < limit,
+            "expired planning retained admission"
+        );
+        std::thread::yield_now();
+    };
+    drop((next, held));
+    assert_eq!(selected, None, "expiry must stop the reservation search");
+    assert!(!folder.0.join("report (1).txt").exists());
+}
+
 /// One download through the same steps the WebView2 handler takes: plan
 /// against the stored folder, record the destination in the registry, and
 /// remember the folder when the plan asked to.

@@ -1,5 +1,32 @@
 use super::*;
 
+#[cfg(windows)]
+#[test]
+fn equal_canonical_windows_paths_share_download_admission() {
+    let executor = Executor::new(TIMEOUT);
+    let folder = std::env::temp_dir().join(format!("sage-io-case-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(folder.join("Downloads")).unwrap();
+    // Let the filesystem resolve the aliases. Do not impose Unicode folding
+    // rules on either the volume or its canonical directory spelling.
+    let first = std::fs::canonicalize(folder.join("Downloads")).unwrap();
+    let second = std::fs::canonicalize(folder.join("DOWNLOADS")).unwrap();
+    assert_eq!(first, second);
+    let held = (0..MAX_PER_DESTINATION)
+        .map(|index| {
+            executor
+                .acquire(if index % 2 == 0 { &first } else { &second })
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let extra = executor.acquire(&second);
+    drop(held);
+    assert!(
+        extra.is_none(),
+        "equal paths must share the admission bound"
+    );
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
 #[test]
 fn a_stuck_destination_has_bounded_admission_and_does_not_consume_local_capacity() {
     let executor = Executor::new(TIMEOUT);

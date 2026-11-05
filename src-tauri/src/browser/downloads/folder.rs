@@ -56,7 +56,7 @@ pub(crate) fn plan(
 /// download folder as Settings recorded it; `mime` is the server's content
 /// type; `taken` reports destinations already claimed by downloads still in
 /// flight. A `Silent` path has been reserved on disk (see
-/// [`unique_destination`]). This does file-system work, so it runs off the
+/// [`unique_destination_before`]). This does file-system work, so it runs off the
 /// WebView2 UI thread.
 pub(crate) fn plan_before(
     stored: Option<&Path>,
@@ -81,7 +81,7 @@ pub(crate) fn plan_before(
             directory: Some(folder),
         };
     }
-    match unique_destination(&folder, &file_name, taken) {
+    match unique_destination_before(&folder, &file_name, taken, deadline) {
         Some(reserved) => Plan::Silent(reserved),
         None => Plan::Ask {
             file_name,
@@ -286,19 +286,40 @@ pub(super) fn destination_candidates<'a>(
     })
 }
 
-/// Reserves the first available candidate with create_new. This is only a
-/// planning claim: WebView2 writes privately and publication claims the final
-/// name again atomically, since another process can take it in the meantime.
+#[cfg(test)]
 pub(crate) fn unique_destination(
     folder: &Path,
     file_name: &str,
     taken: impl Fn(&Path) -> bool,
 ) -> Option<Placeholder> {
+    unique_destination_before(folder, file_name, taken, super::io::test_deadline())
+}
+
+/// Reserves the first available candidate with create_new, using the original
+/// planning deadline across all attempts. This is only a planning claim:
+/// publication claims the final name again atomically without replacement.
+fn unique_destination_before(
+    folder: &Path,
+    file_name: &str,
+    taken: impl Fn(&Path) -> bool,
+    deadline: Deadline,
+) -> Option<Placeholder> {
+    unique_destination_with(folder, file_name, taken, deadline, placeholder::create)
+}
+
+fn unique_destination_with(
+    folder: &Path,
+    file_name: &str,
+    taken: impl Fn(&Path) -> bool,
+    deadline: Deadline,
+    mut create: impl FnMut(&Path) -> std::io::Result<Placeholder>,
+) -> Option<Placeholder> {
     for candidate in destination_candidates(folder, file_name) {
+        deadline.check().ok()?;
         if taken(&candidate) {
             continue;
         }
-        match placeholder::create(&candidate) {
+        match create(&candidate) {
             Ok(placeholder) => return Some(placeholder),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return None,

@@ -7,7 +7,7 @@
 use std::{
     io,
     panic::{AssertUnwindSafe, catch_unwind},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, Weak,
         atomic::{AtomicUsize, Ordering},
@@ -73,7 +73,7 @@ pub(crate) struct Destination {
 }
 
 pub(crate) struct Executor {
-    lanes: Mutex<Vec<(String, Weak<Lane>)>>,
+    lanes: Mutex<Vec<(PathBuf, Weak<Lane>)>>,
     active: Arc<AtomicUsize>,
     workers: Arc<AtomicUsize>,
     timeout: Duration,
@@ -102,12 +102,14 @@ impl Executor {
 
     // The caller holds `lanes` while admitting a lease or coalescing a probe.
     // Never resolve paths here: even canonicalization can block.
-    fn lane(&self, lanes: &mut Vec<(String, Weak<Lane>)>, folder: &Path) -> Option<Arc<Lane>> {
-        let key = folder.to_string_lossy().to_lowercase();
+    fn lane(&self, lanes: &mut Vec<(PathBuf, Weak<Lane>)>, folder: &Path) -> Option<Arc<Lane>> {
+        // Preserve the supplied (normally canonical) OS spelling. Neither the
+        // target OS nor Unicode folding tells us a volume's case rules, and
+        // discovering those rules here would block admission on filesystem I/O.
         lanes.retain(|(_, lane)| lane.strong_count() != 0);
         if let Some(lane) = lanes
             .iter()
-            .find(|(path, _)| *path == key)
+            .find(|(path, _)| path.as_path() == folder)
             .and_then(|(_, lane)| lane.upgrade())
         {
             return Some(lane);
@@ -137,7 +139,7 @@ impl Executor {
             active: Arc::new(AtomicUsize::new(0)),
             probe: Mutex::new(None),
         });
-        lanes.push((key, Arc::downgrade(&lane)));
+        lanes.push((folder.to_path_buf(), Arc::downgrade(&lane)));
         Some(lane)
     }
 

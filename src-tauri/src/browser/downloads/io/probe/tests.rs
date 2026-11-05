@@ -52,6 +52,72 @@ async fn duplicate_probes_share_the_same_admitted_folder() {
     std::fs::remove_dir_all(folder).unwrap();
 }
 
+async fn independent_probes(first_path: PathBuf, second_path: PathBuf) {
+    let executor = Arc::new(Executor::new(Duration::from_secs(2)));
+    let (release, wait) = mpsc::sync_channel::<()>(0);
+    let (started, start) = tokio::sync::oneshot::channel();
+    let io = Arc::clone(&executor);
+    let expected = first_path.clone();
+    let first = tokio::spawn(async move {
+        io.probe(first_path, move |path, _| {
+            started.send(()).ok();
+            let _ = wait.recv_timeout(Duration::from_secs(5));
+            Some(path.to_owned())
+        })
+        .await
+    });
+    start.await.unwrap();
+    let second = executor
+        .probe(second_path.clone(), |path, _| Some(path.to_owned()))
+        .await;
+    drop(release);
+    let first = first.await.unwrap();
+    drained(&executor).await;
+    assert_eq!(second, Some(second_path));
+    assert_eq!(first, Some(expected));
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn distinct_case_directories_do_not_share_a_pending_probe() {
+    let folder = scratch();
+    let upper = folder.join("A");
+    let lower = folder.join("a");
+    std::fs::create_dir(&upper).unwrap();
+    std::fs::create_dir(&lower).unwrap();
+    independent_probes(
+        std::fs::canonicalize(upper).unwrap(),
+        std::fs::canonicalize(lower).unwrap(),
+    )
+    .await;
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[cfg(any(unix, windows))]
+#[tokio::test]
+async fn non_unicode_paths_do_not_share_a_pending_probe() {
+    let folder = scratch();
+    #[cfg(windows)]
+    let names = {
+        use std::os::windows::ffi::OsStringExt;
+        [0xd800, 0xd801].map(|unit| std::ffi::OsString::from_wide(&[unit]))
+    };
+    #[cfg(unix)]
+    let names = {
+        use std::os::unix::ffi::OsStringExt;
+        [0xfe, 0xff].map(|byte| std::ffi::OsString::from_vec(vec![byte]))
+    };
+    let [first, second] = names.map(|name| folder.join(name));
+    std::fs::create_dir(&first).unwrap();
+    std::fs::create_dir(&second).unwrap();
+    independent_probes(
+        std::fs::canonicalize(first).unwrap(),
+        std::fs::canonicalize(second).unwrap(),
+    )
+    .await;
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
 #[tokio::test]
 async fn deadline_releases_admission_before_the_os_call_returns() {
     let executor = Arc::new(Executor::new(Duration::from_secs(1)));
