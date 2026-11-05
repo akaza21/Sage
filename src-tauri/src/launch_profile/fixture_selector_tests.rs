@@ -107,6 +107,7 @@ fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
         ("codex-effort-menu", true),
         ("codex-model-menu", true),
         ("codex-turn-completed", false),
+        ("codex-browse-preview", false),
         ("codex-steer-lost-result", false),
     ] {
         let selection = fixture_selector::resolve_selection(

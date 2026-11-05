@@ -444,3 +444,66 @@ fn codex_live_file_wire_allows_live_projection_without_fabricated_completed_pair
             .any(|frame| frame["method"] == "item/completed")
     );
 }
+
+#[test]
+fn browse_preview_journey_projects_loopback_tool_and_completes_turn() {
+    use crate::acp::bindings::codex::normalize_transcript_item;
+
+    for list_models in [false, true] {
+        let mut requests = vec![
+            json!({"id":1,"method":"initialize"}),
+            json!({"method":"initialized"}),
+            json!({"id":2,"method":"thread/start"}),
+        ];
+        if list_models {
+            requests.push(json!({"id":3,"method":"model/list"}));
+        }
+        requests.extend([
+            json!({"id":4,"method":"thread/goal/get"}),
+            json!({"id":5,"method":"turn/start"}),
+            json!({"id":6,"method":"thread/unsubscribe"}),
+        ]);
+        let frames = replay_native("codex-browse-preview", &client_requests(&requests));
+        let file = ExistingFile::new();
+        let mut states = Vec::new();
+        let mut tool_id = None;
+        let mut turn_id = None;
+        for frame in &frames {
+            let lifecycle = match frame["method"].as_str() {
+                Some("item/started") => ItemLifecycle::Started,
+                Some("item/completed") => ItemLifecycle::Completed,
+                _ => continue,
+            };
+            let params = &frame["params"];
+            let item = &params["item"];
+            let (payload, state, _) =
+                normalize_transcript_item(item.as_object().unwrap(), lifecycle, &file)
+                    .unwrap()
+                    .unwrap();
+            assert!(matches!(payload,
+                NormalizedPayload::ToolCall { category: ToolCategory::Fetch, label,
+                    input_summary: Some(summary), .. }
+                if label.as_str() == "_sage/browse"
+                    && summary.as_str() == "http://127.0.0.1:5173/"
+            ));
+            if let Some(id) = &tool_id {
+                assert_eq!(&item["id"], id);
+            }
+            tool_id = Some(item["id"].clone());
+            turn_id = Some(params["turnId"].clone());
+            states.push(state.unwrap());
+        }
+        assert_eq!(states, [ToolState::InProgress, ToolState::Completed]);
+        let completed = frames
+            .iter()
+            .position(|frame| frame["method"] == "turn/completed")
+            .unwrap();
+        assert_eq!(frames[completed]["params"]["turn"]["status"], "completed");
+        assert_eq!(
+            Some(frames[completed]["params"]["turn"]["id"].clone()),
+            turn_id
+        );
+        assert_eq!(frames[completed - 1]["method"], "item/completed");
+        assert_eq!(frames.last().unwrap()["id"], 6);
+    }
+}
