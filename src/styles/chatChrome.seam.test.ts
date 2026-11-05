@@ -1,13 +1,27 @@
 import { readFile } from "node:fs/promises";
-import { expect, it } from "vitest";
+import { createElement } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
+import { AgentTaskStatus } from "../workbench/AgentTaskStatus";
 
-it("keeps compact status shapes visible and full harness errors expandable", async () => {
+afterEach(cleanup);
+
+it("keeps status announcements compact and full harness errors expandable", async () => {
   const css = await readFile("src/styles/agent-task-header.css", "utf8");
   const compact = css.slice(css.indexOf("@container chat-center"));
   expect(compact).not.toMatch(/flex-wrap:\s*wrap|flex-basis:\s*100%/);
-  expect(compact).toMatch(
-    /\.agent-task-header__status:not\(\.agent-chat-chip--idle\)[\s\S]*status-label\s*\{[^}]*display:\s*none;/,
+  render(
+    createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
+      snapshot: null,
+      harnessStatus: "Disconnected",
+    }),
   );
+  expect(screen.getByRole("status")).toHaveAccessibleName("Chat status: Idle");
+  const explanation = screen.getByText("Disconnected", { selector: "p" });
+  expect(explanation).not.toBeVisible();
+  fireEvent.click(screen.getByLabelText("Harness status: Disconnected"));
+  expect(explanation).toBeVisible();
   expect(css).not.toMatch(
     /font-size:\s*0;|text-overflow:\s*ellipsis;[^}]*harness/s,
   );
@@ -15,14 +29,27 @@ it("keeps compact status shapes visible and full harness errors expandable", asy
   expect(css).toMatch(/harness-icon\s*\{[^}]*display:\s*block;/s);
 });
 
-it("drops only the idle status word in a compact pane so the title stays readable", async () => {
+it("omits neutral harness controls while keeping compact titles readable", async () => {
   const css = await readFile("src/styles/agent-task-header.css", "utf8");
   const compact = css.slice(
     css.indexOf("@container chat-center (max-width: 400px)"),
   );
-  expect(compact).toMatch(
-    /\.agent-task-header__status\.agent-chat-chip--idle\s*\{[^}]*display:\s*none;/,
+  const notice = render(
+    createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
+      snapshot: null,
+      harnessStatus: "Ready",
+    }),
   );
+  expect(screen.queryByLabelText("Harness status: Ready")).toBeNull();
+  notice.rerender(
+    createElement(AgentTaskStatus, {
+      chatId: "chat:chrome",
+      snapshot: null,
+      harnessStatus: "Live",
+    }),
+  );
+  expect(screen.queryByLabelText("Harness status: Live")).toBeNull();
   expect(compact).toMatch(
     /\.agent-task-header__title\s*\{[^}]*min-width:\s*3em;/,
   );

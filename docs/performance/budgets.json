@@ -11,14 +11,15 @@
       "editorSearch": 193942,
       "editorFile": 290998
     },
-    "webTotalJsGzipBytes": 461000,
+    "webTotalJsGzipBytes": 460850,
     "webTerminalLazyJsGzipBytes": 89516,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
         "maxGzipBytes": 1083,
-        "reason": "Conditional harness build/account notices, deferred unless a harness needs attention; keeps their sign-in actions and copy off the ready first-Chat path."
+        "maxCssGzipBytes": 490,
+        "reason": "Dismissible build/account notice, memoized during typing. Compact wrapping CSS measures 467 B. JS and CSS load only when attention is needed and stay off the ready first-Chat path."
       },
       {
         "entry": "src/features/chat/ClaudeAuthActions.tsx",
@@ -102,6 +103,11 @@
         "entry": "src/features/chat/ComposerAccessMenu.tsx",
         "maxGzipBytes": 959,
         "reason": "Supported-access menu and workspace-write confirmation; loads on the first Access request."
+      },
+      {
+        "entry": "src/features/chat/ComposerAddActions.tsx",
+        "maxGzipBytes": 3000,
+        "reason": "Composer Add menu, image/goal actions and session controls load on first open; closed composers need only the trigger."
       },
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",
@@ -290,13 +296,14 @@
       {
         "entry": "src/features/browser/BrowserDownloadsPanel.tsx",
         "maxGzipBytes": 826,
-        "reason": "Browser download rows and transfer actions; loads only while the downloads panel is open."
+        "maxCssGzipBytes": 500,
+        "reason": "Browser download rows, transfer actions and their CSS; loads only while the downloads panel is open."
       },
       {
         "entry": "src/features/browser/BrowserSurface.tsx",
-        "maxGzipBytes": 8635,
+        "maxGzipBytes": 8785,
         "maxCssGzipBytes": 3147,
-        "reason": "Browser toolbar and page host; loads only when a Browser resource is opened."
+        "reason": "Browser toolbar, persistent History and page host; loads only for a Browser resource. Combined History and overflow receive 150 B transferred from the core allowance."
       },
       {
         "entry": "src/features/chat/acp/MermaidFigure.tsx",

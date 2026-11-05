@@ -1,8 +1,6 @@
 import { useWorkbenchStore } from "../../app/store";
-import {
-  browserStatus,
-  browserSuggestedSites,
-} from "../../ports/nativeBrowserPort";
+import { browserStatus } from "../../ports/nativeBrowserPort";
+import { browserSuggestedSites } from "../../ports/nativeBrowserHistoryPort";
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
 import { browserFaviconDataUrl } from "./browserFavicon";
 

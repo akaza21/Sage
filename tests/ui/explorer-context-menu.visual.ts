@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 // ED-18: a right-click on an Explorer row selects it and opens the Explorer
 // actions at that row, in Chromium against the browser runtime.
@@ -31,6 +34,7 @@ test.describe("Explorer context menu", () => {
     await expect(row).toHaveAttribute("aria-current", "page");
     expect(await page.getByRole("tab").count()).toBe(tabsBefore);
     // At the pointer, as a native context menu opens.
+    await waitForAnimations(menu);
     const menuBox = (await menu.boundingBox())!;
     expect(menuBox.x).toBeCloseTo(rowBox.x + pointer.x, 0);
     expect(menuBox.y).toBeCloseTo(rowBox.y + pointer.y, 0);
@@ -54,6 +58,7 @@ test.describe("Explorer context menu", () => {
     // with the menu right under the row since there is no pointer.
     await page.keyboard.press("Shift+F10");
     await expect(menu).toBeVisible();
+    await waitForAnimations(menu);
     const keyboardBox = (await menu.boundingBox())!;
     expect(keyboardBox.y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height - 1);
     expect(keyboardBox.y).toBeLessThan(rowBox.y + rowBox.height + 24);

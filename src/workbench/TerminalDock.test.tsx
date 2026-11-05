@@ -97,9 +97,9 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 
-import { TerminalDock } from "./TerminalDock";
+import TerminalDock from "./TerminalDock";
 
-import { TerminalDockForWorkbench } from "./TerminalDockShell";
+import TerminalDockForWorkbench from "./TerminalDockShell";
 
 // The dock's screen box; it opens just large enough for xterm's 80 x 24.
 const space = { width: 645, height: 390 };
@@ -194,6 +194,7 @@ it("delivers a zero-delay typing burst without losing characters", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -218,6 +219,7 @@ it("reports an ended shell and ignores later input", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -240,6 +242,7 @@ it("sends input again while the program is not reading it", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -264,6 +267,7 @@ it("drops input refused as busy for too long and says why", async () => {
     const onStatus = vi.fn();
     render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -300,6 +304,7 @@ it("sends no input after the dock is disposed during a busy backoff", async () =
   const onStatus = vi.fn();
   const { unmount } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -336,6 +341,7 @@ it("refuses typing past the native input limit while a write is pending", async 
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -364,6 +370,7 @@ it("retries a transient native reader conflict after remount", async () => {
   const onStatus = vi.fn();
   render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -377,6 +384,7 @@ it("retries a transient native reader conflict after remount", async () => {
 it("resizes the active terminal after a pane or DPI change", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -406,6 +414,7 @@ it("applies the latest viewport size after an in-flight resize is refused", asyn
   );
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -428,6 +437,7 @@ it.each([1, 80])(
     setScreenSize(800, 160);
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -447,6 +457,7 @@ it.each([
     setScreenSize(width, height);
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -477,6 +488,7 @@ it.each([
 it("keeps a measured grid inside the native size limits", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -494,6 +506,7 @@ it("keeps a measured grid inside the native size limits", async () => {
 it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -514,6 +527,7 @@ it.each([1, 80])(
     xterm.initial = [columns, 24];
     const { container } = render(
       <TerminalDock
+        visible
         scope={scope}
         session={handle}
         ended={false}
@@ -529,6 +543,7 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   xterm.measured = false;
   const { container } = render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}
@@ -542,6 +557,33 @@ it("keeps the grid until xterm has laid out its screen", async () => {
   resizeCallback?.();
   await waitFor(() => expectGrid(container, 800, 160, 100, 10));
 });
+
+it.each([
+  [0, 0],
+  [0, 160],
+  [800, 0],
+])(
+  "keeps the PTY grid while its host measures %i by %i, then fits the visible host",
+  async (width, height) => {
+    setScreenSize(800, 160);
+    const { container } = render(
+      <TerminalDock
+        visible
+        scope={scope}
+        session={handle}
+        ended={false}
+        onStatus={() => undefined}
+      />,
+    );
+    await waitFor(() => expectGrid(container, 800, 160, 100, 10));
+    setScreenSize(width, height);
+    await act(async () => resizeCallback?.());
+    expectGrid(container, 800, 160, 100, 10);
+    setScreenSize(960, 320);
+    resizeCallback?.();
+    await waitFor(() => expectGrid(container, 960, 320, 120, 20));
+  },
+);
 
 it("closes every owned session when the focused chat changes", async () => {
   useWorkbenchStore.setState({
@@ -572,7 +614,13 @@ it("closes every owned session when the focused chat changes", async () => {
   function Host() {
     const [open, setOpen] = useState(true);
     return open ? (
-      <TerminalDockForWorkbench setOpen={setOpen} pinnedChatId={null} />
+      <TerminalDockForWorkbench
+        visible
+        open
+        container={document.body}
+        setOpen={setOpen}
+        pinnedChatId={null}
+      />
     ) : null;
   }
   render(<Host />);
@@ -600,7 +648,13 @@ it("uses the native transition epoch for a valid project scope", async () => {
     ],
   });
   render(
-    <TerminalDockForWorkbench setOpen={() => undefined} pinnedChatId={null} />,
+    <TerminalDockForWorkbench
+      visible
+      open
+      container={document.body}
+      setOpen={() => undefined}
+      pinnedChatId={null}
+    />,
   );
   await screen.findByTitle(handle.shellPath);
   expect(native.create).toHaveBeenCalledWith(

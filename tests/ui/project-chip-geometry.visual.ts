@@ -1,8 +1,23 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
+
+import {
+  openSelectionScenario,
+  dragAnswerPhrase,
+} from "./shared/transcriptSelection";
+
+async function openSplitComposerScenario(page: Page) {
+  await openSelectionScenario(page);
+  await dragAnswerPhrase(page);
+  await page
+    .getByRole("button", { name: "Ask in side chat", exact: true })
+    .click();
+  await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+  await settleChatProjections(page);
+}
 
 async function expectProjectInOptionsMenu(composer: Locator) {
   const page = composer.page();
@@ -21,7 +36,13 @@ async function expectProjectInOptionsMenu(composer: Locator) {
   await expect(add).toBeFocused();
 }
 
-async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
+async function expectResponsiveToolbar(
+  composer: Locator,
+  compact: boolean,
+  // A long effort label crowds the toolbar, so the harness may need to fall
+  // back to its mark even above 320px.
+  crowded = false,
+) {
   const project = composer.getByRole("button", { name: /^Project: / });
   // Wave 5: at 280px and below the Project control folds into the composer
   // options menu so the toolbar keeps one row (Codex ref 37).
@@ -63,10 +84,31 @@ async function expectResponsiveToolbar(composer: Locator, compact: boolean) {
   }
   const harnessLabel = harness.locator(".searchable-picker__trigger-label");
   const modelLabel = model.locator(".composer__model-label");
-  if (await composer.evaluate((element) => element.clientWidth <= 400)) {
-    await expect(harnessLabel).toBeHidden();
+  // The brand mark always stays whole inside the harness trigger.
+  const harnessBox = (await harness.boundingBox())!;
+  const markBox = (await harness.locator("[data-harness-icon]").boundingBox())!;
+  expect(markBox.width).toBeGreaterThanOrEqual(12);
+  expect(markBox.x).toBeGreaterThanOrEqual(harnessBox.x - 0.5);
+  expect(markBox.x + markBox.width).toBeLessThanOrEqual(
+    harnessBox.x + harnessBox.width + 0.5,
+  );
+  // The harness shows its whole name or only its mark, never a truncated
+  // name. Uncrowded above 320px there is room for the name.
+  if (await harnessLabel.isVisible()) {
+    expect((await harnessLabel.boundingBox())!.x).toBeGreaterThanOrEqual(
+      markBox.x + markBox.width,
+    );
+    expect(
+      await harnessLabel.evaluate(
+        (node) => node.scrollWidth <= node.clientWidth,
+      ),
+    ).toBe(true);
   } else {
-    await expect(harnessLabel).toBeVisible();
+    expect(harnessBox.width).toBeGreaterThanOrEqual(24);
+    if (!crowded)
+      expect(
+        await composer.evaluate((element) => element.clientWidth <= 320),
+      ).toBe(true);
   }
   if (controlsCompact) {
     await expect(modelLabel).toBeHidden();
@@ -241,7 +283,7 @@ for (const contentWidth of [
         exact: true,
       }),
     ).toBeVisible();
-    await expectResponsiveToolbar(composer, contentWidth <= 400);
+    await expectResponsiveToolbar(composer, contentWidth <= 400, true);
   });
 }
 
@@ -294,4 +336,96 @@ test.describe("Project chip 200% zoom reflow proxy", () => {
     );
     expect(form.y + form.height).toBeLessThanOrEqual(360);
   });
+});
+
+// These geometry contracts used to inspect CSS selectors in jsdom. Exercise
+// the rendered controls so stylesheet ownership can change independently.
+test("keeps the split chip nonshrinking after the later composer styles load", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openSplitComposerScenario(page);
+  await expect(
+    page.locator("form.composer").nth(1).locator(".project-scope"),
+  ).toHaveCount(0);
+  for (const composer of [page.locator("form.composer").first()]) {
+    const chip = composer.locator(".project-scope");
+    const trigger = chip.getByRole("button");
+    await expect(chip).toHaveCSS("width", "28px");
+    await expect(chip).toHaveCSS("flex-shrink", "0");
+    await expect(trigger).toHaveCSS("min-width", "28px");
+    await expect(trigger).toHaveCSS("min-height", "28px");
+    await expect(
+      trigger.locator(".searchable-picker__trigger-label"),
+    ).toBeHidden();
+    await expect(trigger.locator(".searchable-picker__chevron")).toBeHidden();
+  }
+});
+
+test("reserves clickable icon targets while allowing the harness to shrink", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    fixture.installVisualComposerEffortFixture({
+      levels: ["low", "medium", "high"],
+      currentValue: "high",
+    });
+  });
+  const project = composer.getByRole("button", { name: /^Project: / });
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  const effort = composer.getByRole("button", { name: "Thinking level: High" });
+  await expect(composer.locator(".project-scope")).toHaveCSS(
+    "min-width",
+    "28px",
+  );
+  for (const trigger of [project, model, effort]) {
+    await expect(trigger).toHaveCSS("min-width", "28px");
+    expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(28);
+  }
+  await expect(project).toHaveCSS("min-height", "28px");
+  await expect(effort).toHaveCSS("overflow", "hidden");
+  await composer.evaluate((element) => {
+    element.style.width = "320px";
+  });
+  await expectResponsiveToolbar(composer, true);
+});
+
+test("uses the same nonshrinking icon-only chip below 400px and in split panes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  for (const scenario of ["agent-single", "agent-dual"] as const) {
+    if (scenario === "agent-dual") await openSplitComposerScenario(page);
+    else await openScenario(page, scenario, "agent");
+    await settleChatProjections(page);
+    if (scenario === "agent-dual")
+      await expect(
+        page.locator("form.composer").nth(1).locator(".project-scope"),
+      ).toHaveCount(0);
+    for (const composer of [page.locator("form.composer").first()]) {
+      if (scenario === "agent-single") {
+        await composer.evaluate((element) => {
+          element.style.width = "400px";
+        });
+      }
+      const chip = composer.locator(".project-scope");
+      const trigger = chip.getByRole("button");
+      await expect(chip).toHaveCSS("width", "28px");
+      await expect(chip).toHaveCSS("flex-shrink", "0");
+      await expect(trigger).toHaveCSS("justify-content", "center");
+      await expect(trigger).toHaveCSS("padding", "0px");
+      await expect(
+        trigger.locator(".searchable-picker__trigger-label"),
+      ).toBeHidden();
+      await expect(trigger.locator(".searchable-picker__chevron")).toBeHidden();
+      await expect(trigger.locator(".project-scope__icon")).toBeVisible();
+      await expectResponsiveToolbar(composer, true);
+    }
+  }
 });

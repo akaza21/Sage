@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 test("CP-17(e) refs 07/13/17: completed edit pill expands within a 560 px chat pane", async ({
   page,
@@ -17,6 +20,7 @@ test("CP-17(e) refs 07/13/17: completed edit pill expands within a 560 px chat p
   const summary = pane.locator(".chat-edit-summary-zone");
   await expect(pill).toContainText(/\d+ files? changed/);
   await expect(pill).toHaveAttribute("aria-expanded", "false");
+  await waitForAnimations(summary);
   const box = await pill.boundingBox();
   const collapsedHeight = (await summary.boundingBox())!.height;
   expect(box && box.width < 560).toBeTruthy();

@@ -166,6 +166,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::navigation::browser_status,
         browser::state_query::browser_live_tabs,
         browser::state_query::browser_history,
+        browser::browsing_history::commands::browser_history_page,
+        browser::browsing_history::commands::browser_history_remove,
         browser::state_query::browser_suggested_sites,
         browser::page_context::browser_page_context,
         browser::user_screenshot::browser_capture_screenshot,
@@ -188,7 +190,10 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::agent_rail_view::agent_rail_view,
         settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
-        settings_commands::browser_preferences::browser_set_preferences
+        settings_commands::browser_preferences::browser_set_preferences,
+        settings_commands::browser_download_folder::browser_download_folder,
+        settings_commands::browser_download_folder::browser_choose_download_folder,
+        settings_commands::browser_download_folder::browser_reset_download_folder
     ];
     handle(invoke)
 }

@@ -352,7 +352,17 @@ test("committed path caps tighten startup and Agent within the original 0.5 perc
     budgets.measurement.webBundlePaths.integrationAdjustment,
     undefined,
   );
-  assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
+  const browserSurface = budgets.bundle.lazyFeatureChunks.find(
+    (feature) => feature.entry === "src/features/browser/BrowserSurface.tsx",
+  );
+  // The combined History/overflow host receives 150 B from core; the
+  // approved aggregate allowance stays fixed.
+  assert.equal(budgets.bundle.webTotalJsGzipBytes, 460850);
+  assert.equal(browserSurface.maxGzipBytes, 8785);
+  assert.equal(
+    budgets.bundle.webTotalJsGzipBytes + browserSurface.maxGzipBytes,
+    469635,
+  );
   // Codex §7 Subagents (w8sub): measured 5,101 B + 10%, less the 32 B that
   // hashed import names added to the emitted chunk.
   assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5580);

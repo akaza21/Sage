@@ -1,3 +1,4 @@
+import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test } from "@playwright/test";
 import { forbidBrowserRetries } from "./shared/browserRetryGuard";
 
@@ -61,6 +62,7 @@ test("new-tab browser menu retains unavailable page actions at 560 px", async ({
     "Browser settings",
   ])
     await expect(menu.getByRole("menuitem", { name })).toBeEnabled();
+  await waitForAnimations(menu);
   const geometry = await menu.evaluate((element) => {
     const menuBox = element.getBoundingClientRect();
     const toolbarBox = element

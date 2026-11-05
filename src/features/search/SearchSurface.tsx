@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from "../../app/store";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
 
-export function SearchSurface() {
+export default function SearchSurface() {
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const transitionEpoch = useWorkbenchStore(
     (state) => state.nativeTransitionEpoch,

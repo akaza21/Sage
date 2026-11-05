@@ -1,11 +1,11 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef } from "react";
+import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
@@ -28,7 +28,6 @@ import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-const loadQueueExecution = () => import("./ChatQueueExecution");
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -51,9 +50,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     imageUploading,
     addImages,
     queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
-    observedOrder,
     sending,
     chatError,
     setComposerText,
@@ -62,7 +58,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queuePrompt,
     updateQueuedPrompt,
     steerQueuedPrompt,
-    setQueuedTurnBarrier,
   } = useBoundChatComposer(chatId, acpPage ?? null);
   const projectTransitioning = useWorkbenchStore((s) => s.projectTransitioning);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -78,7 +73,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [editSummaryContainer, setEditSummaryContainer] =
-    useState<HTMLDivElement | null>(null);
+    useRetainedElement<HTMLDivElement>();
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
@@ -135,20 +130,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       (prompt) => prompt.status === "saving",
     ),
   });
-  const queueExecution = {
-    queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
-    activeTurn: Boolean(activeAcpTurn),
-    actionBusy,
-    projectTransitioning,
-    canPrompt,
-    useNativeAcp,
-    observedOrder,
-    submit: acpActions.submit,
-    updateQueuedPrompt,
-    setQueuedTurnBarrier,
-  };
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
     chatId,
@@ -243,14 +224,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
-      {queuedPrompts.length || queuedTurnBarrier ? (
-        <LazyModuleBoundary
-          label="Queued messages"
-          load={loadQueueExecution}
-          fallback={null}
-          render={(Execution) => <Execution {...queueExecution} />}
-        />
-      ) : null}
       {!setAgentSessionChrome ? (
         <header className="surface-header">
           <SessionWorkingPill

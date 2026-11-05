@@ -1,4 +1,4 @@
-import { Files, Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
+import { Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { isTauriRuntime } from "../ports/nativeInvoke";
@@ -71,24 +71,6 @@ export function AgentBrowserPaneControls(
     />
   );
 }
-export function AgentArtifactEmptyState({ titleId }: { titleId: string }) {
-  return (
-    <section
-      className="placeholder-surface agent-artifact-pane__empty-state"
-      aria-labelledby={titleId}
-    >
-      <span className="placeholder-surface__icon" aria-hidden="true">
-        <Files size={19} strokeWidth={1.7} />
-      </span>
-      <h1 id={titleId}>Waiting for this Chat</h1>
-      <p>
-        Open a file or change from the conversation. Preview will appear when
-        this Chat starts a loopback server.
-      </p>
-    </section>
-  );
-}
-
 export function AgentArtifactPaneControls({
   maximized,
   onMaximizedChange,

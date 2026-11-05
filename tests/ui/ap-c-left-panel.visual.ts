@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
@@ -196,6 +197,7 @@ test("Search Chats keeps Cancel reachable when a pending search fails", async ({
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
   const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
   await cancel.click({ trial: true });
+  await waitForAnimations(dialog);
   const before = (await cancel.boundingBox())!;
   await page.mouse.move(
     before.x + before.width / 2,
@@ -510,12 +512,14 @@ test("AP-C sidebar options open from the trigger toward the center pane", async 
   await trigger.click();
   const menu = page.getByRole("menu", { name: "Sidebar options" });
   await expect(menu).toBeVisible();
+  await waitForAnimations(menu);
   const triggerBox = (await trigger.boundingBox())!;
   const menuBox = (await menu.boundingBox())!;
   expect(Math.round(menuBox.x)).toBe(Math.round(triggerBox.x));
   await menu.getByRole("menuitem", { name: "Organize sidebar" }).click();
   const submenu = page.getByRole("menu", { name: "Organize sidebar" });
   await expect(submenu).toBeVisible();
+  await waitForAnimations(submenu);
   expect((await submenu.boundingBox())!.x).toBeGreaterThanOrEqual(
     menuBox.x + menuBox.width,
   );

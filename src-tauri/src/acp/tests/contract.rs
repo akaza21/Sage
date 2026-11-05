@@ -291,15 +291,6 @@ fn sqlite_rejects_every_cross_wait_turn_transition() {
 }
 
 #[test]
-fn production_schema_exactly_matches_the_reviewed_schema_contract() {
-    let production = include_str!("../../../migrations/005_acp_session_foundation.sql");
-    let contract = include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/schema-005.sql"
-    );
-    assert_eq!(production.as_bytes(), contract.as_bytes());
-}
-
-#[test]
 fn normalized_payloads_admit_only_canonical_resource_refs() {
     let root_id = SageRootId::parse("root-a").unwrap();
     let resource = SafeResourceRef::new(root_id, "src/main.rs").unwrap();

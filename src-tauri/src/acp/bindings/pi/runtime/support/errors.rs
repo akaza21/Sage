@@ -9,7 +9,7 @@ use crate::acp::{
     lifecycle::{ItemLifecycle, TurnTerminalReason},
 };
 
-pub(in crate::acp::bindings::pi::runtime) const ATTEMPT_FAILURE_CODE: &str = "Attempt failed";
+const ATTEMPT_FAILURE_CODE: &str = "Attempt failed";
 
 impl PiRuntime {
     pub(super) fn failure_detail(
@@ -28,17 +28,22 @@ impl PiRuntime {
 
     pub(super) fn attempt_failed(
         &mut self,
+        attempt: u64,
+        max_attempts: Option<u64>,
         message: String,
     ) -> Result<AdapterEvent, AdapterRuntimeError> {
         let id = self.next_local_item("attempt")?;
+        let code = match max_attempts {
+            Some(maximum) => format!("{ATTEMPT_FAILURE_CODE} (attempt {attempt}/{maximum})"),
+            None => format!("{ATTEMPT_FAILURE_CODE} (attempt {attempt})"),
+        };
         self.item(
             id,
             ItemLifecycle::Failed,
             None,
             NormalizedPayload::Error {
                 kind: Some(ErrorKind::Attempt),
-                code: SafeText::new("errorCode", ATTEMPT_FAILURE_CODE)
-                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                code: SafeText::new("errorCode", code).map_err(|_| AdapterRuntimeError::Frame)?,
                 message: SafeText::new("errorMessage", message)
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 retryable: false,

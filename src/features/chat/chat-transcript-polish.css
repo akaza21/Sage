@@ -1,5 +1,5 @@
 .message-list__content {
-  width: min(100%, var(--reading-measure));
+  width: min(100%, var(--chat-column-measure));
   margin-inline: auto;
 }
 
@@ -25,58 +25,24 @@
   object-fit: contain;
 }
 
-.message-list__content .acp-message--assistant,
-.message-list__content .acp-message--system {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.message-list__content .acp-message__avatar,
-.message-list__content .acp-message__role {
-  display: none;
-}
-
 .message-list__content .acp-message__meta {
   display: none;
 }
 
-.message-list__content .acp-message__meta time {
-  display: none;
-}
-
-.chat-transcript-day {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: var(--space-4) auto var(--space-3);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-}
-
-.chat-transcript-day::before,
-.chat-transcript-day::after {
-  height: 1px;
-  flex: 1 1 auto;
-  background: var(--color-border-subtle);
-  content: "";
-}
-
 .chat-transcript-work {
-  margin-block: var(--space-3) 0;
+  margin-block: calc(var(--space-8) - var(--space-1) / 2) 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
 }
 
 .chat-transcript-work > summary,
 .chat-transcript-work__heading {
   display: flex;
   min-width: 0;
-  min-height: 28px;
+  min-height: var(--control-height-compact);
   align-items: center;
   gap: var(--space-2);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--border-width) solid var(--agent-shell-divider);
   color: var(--color-text-muted);
   font-weight: var(--font-weight-regular);
   white-space: nowrap;
@@ -120,27 +86,21 @@
 }
 
 .chat-transcript-work__groups .acp-tool-rollup {
+  --chat-tool-leading: 21px;
   width: 100%;
-  color: color-mix(
-    in srgb,
-    var(--color-text-secondary) 75%,
-    var(--color-text-muted)
-  );
-  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-regular);
+  line-height: var(--chat-tool-leading);
 }
 
 .chat-transcript-work__groups .acp-tool-rollup > summary {
   display: flex;
   gap: var(--space-2);
   justify-content: flex-start;
-  min-height: 28px;
+  min-height: var(--control-height-compact);
   color: inherit;
   font-weight: inherit;
-}
-
-.chat-transcript-work__groups .acp-tool-rollup__items {
-  margin-top: 0;
 }
 
 .chat-transcript-work__groups .acp-tool-rollup__items .acp-tool-card {
@@ -170,18 +130,12 @@
   display: contents;
 }
 
-.chat-transcript-work__groups .acp-tool-rollup__chevron {
-  opacity: 0;
-  transition:
-    opacity var(--motion-duration-fast) ease,
-    transform var(--motion-duration-chevron) ease-out;
-}
-
 .chat-transcript-work__groups
   .acp-tool-rollup__items
   .acp-tool-rollup
   > summary {
   min-height: 20px;
+  line-height: 20px;
 }
 
 .chat-transcript-work__groups .acp-tool-rollup > summary:hover,
@@ -190,24 +144,9 @@
   color: var(--color-text-emphasis);
 }
 
-.chat-transcript-work__groups
-  .acp-tool-rollup
-  > summary:hover
-  .acp-tool-rollup__chevron,
-.chat-transcript-work__groups
-  .acp-tool-rollup
-  > summary:focus-visible
-  .acp-tool-rollup__chevron,
-.chat-transcript-work__groups
-  .acp-tool-rollup[open]
-  > summary
-  .acp-tool-rollup__chevron {
-  opacity: 1;
-}
-
 .chat-transcript-actions {
   display: flex;
-  min-height: 28px;
+  min-height: var(--control-height-compact);
   align-items: center;
 
   gap: 0;
@@ -218,12 +157,12 @@
 .chat-transcript-actions > button {
   position: relative;
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: var(--space-6);
+  height: var(--space-6);
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   background: transparent;
@@ -233,9 +172,14 @@
 }
 
 .chat-transcript-actions > button:hover {
-  border-color: var(--color-border-subtle);
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
+}
+
+.chat-transcript-actions > button > svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  stroke-width: 1.5;
 }
 
 /* The open "…" keeps a pressed fill and white dots under its menu (s2/f0053). */
@@ -312,8 +256,7 @@
   }
 
   .chat-transcript-work > summary,
-  .chat-transcript-work__chevron,
-  .chat-transcript-work__groups .acp-tool-rollup__chevron {
+  .chat-transcript-work__chevron {
     transition: none;
   }
 
@@ -325,14 +268,5 @@
 @media (forced-colors: active) {
   .chat-transcript-work[open] + .chat-transcript-work__groups > * {
     animation: none;
-  }
-
-  .chat-transcript-day::before,
-  .chat-transcript-day::after {
-    background: CanvasText;
-  }
-
-  .message-list__content .acp-message--user {
-    border-color: CanvasText;
   }
 }

@@ -88,10 +88,12 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/BrowserFindControls.tsx",
   "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
+  "src/features/chat/ComposerAddActions.tsx",
   ...REQUEST_ONLY_DYNAMIC_FACADES,
   ...COMPOSER_MENU_DYNAMIC_FACADES,
   ...Object.values(CODEMIRROR_LANGUAGE_DYNAMIC_FACADES),
@@ -107,12 +109,15 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.
   "src/features/browser/BrowserElementChips.tsx",
+  // The History page loads on its first open (BF-7c).
+  "src/features/browser/BrowserHistoryPage.tsx",
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
+  "src/features/chat/ChatQueueRuntime.tsx",
   // Recovery notices and sign-in actions stay off the ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",
@@ -481,6 +486,8 @@ describe("desktop-native runtime resolver", () => {
         "/src/features/chat/composerChrome.ts",
         "/src/workbench/agentChatRail.ts",
         "/src/workbench/agentRailStatusView.ts",
+        "/src/ui/IconButton.tsx",
+        "/src/ui/RetainedActivity.tsx",
       ]) {
         expect(
           closureForModule(graph, facade).some((id) => id.endsWith(module)),
