@@ -2,11 +2,12 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as history from "../app/editorHistory";
+import * as chatHistory from "./agentChatHistory";
 
 const apple = vi.hoisted(() => ({ value: false }));
 vi.mock("../ui/shortcutLabel", () => ({ usesMetaModifier: () => apple.value }));
 
-import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
+import { useHistoryKeys } from "./useHistoryKeys";
 
 function press(init: KeyboardEventInit, target: EventTarget = document.body) {
   const event = new KeyboardEvent("keydown", {
@@ -24,6 +25,8 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 beforeEach(() => {
   vi.spyOn(history, "goBack").mockResolvedValue(undefined);
   vi.spyOn(history, "goForward").mockResolvedValue(undefined);
+  vi.spyOn(chatHistory, "goBackToPreviousChat").mockResolvedValue(undefined);
+  vi.spyOn(chatHistory, "goForwardToNextChat").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -32,9 +35,9 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("editor history keys (ED-2b)", () => {
+describe("history keys", () => {
   it("goes back and forward on Alt+Left and Alt+Right, before the editor sees them", async () => {
-    renderHook(() => useEditorHistoryKeys(true));
+    renderHook(() => useHistoryKeys("editor"));
     const editor = document.createElement("div");
     editor.className = "cm-editor";
     const content = document.createElement("div");
@@ -56,7 +59,7 @@ describe("editor history keys (ED-2b)", () => {
 
   it("uses Ctrl+- and Ctrl+Shift+- on macOS, whatever Shift makes of the key", async () => {
     apple.value = true;
-    renderHook(() => useEditorHistoryKeys(true));
+    renderHook(() => useHistoryKeys("editor"));
     expect(press({ key: "ArrowLeft", altKey: true }).defaultPrevented).toBe(
       false,
     );
@@ -72,14 +75,14 @@ describe("editor history keys (ED-2b)", () => {
   });
 
   it("ignores the keys while an IME is composing", async () => {
-    renderHook(() => useEditorHistoryKeys(true));
+    renderHook(() => useHistoryKeys("editor"));
     press({ key: "ArrowLeft", altKey: true, isComposing: true });
     await settle();
     expect(history.goBack).not.toHaveBeenCalled();
   });
 
   it("leaves the chord to a text field or terminal", async () => {
-    renderHook(() => useEditorHistoryKeys(true));
+    renderHook(() => useHistoryKeys("editor"));
     const input = document.createElement("textarea");
     document.body.append(input);
     expect(
@@ -90,7 +93,7 @@ describe("editor history keys (ED-2b)", () => {
   });
 
   it("follows the mouse's back and forward buttons", async () => {
-    renderHook(() => useEditorHistoryKeys(true));
+    renderHook(() => useHistoryKeys("editor"));
     window.dispatchEvent(new MouseEvent("mouseup", { button: 3 }));
     window.dispatchEvent(new MouseEvent("mouseup", { button: 4 }));
     window.dispatchEvent(new MouseEvent("mouseup", { button: 0 }));
@@ -100,8 +103,19 @@ describe("editor history keys (ED-2b)", () => {
     });
   });
 
-  it("does nothing outside the Editor window", async () => {
-    renderHook(() => useEditorHistoryKeys(false));
+  it("travels through chats, not File places, in the Agent window", async () => {
+    renderHook(() => useHistoryKeys("agent"));
+    press({ key: "ArrowLeft", altKey: true });
+    window.dispatchEvent(new MouseEvent("mouseup", { button: 4 }));
+    await settle();
+    expect(chatHistory.goBackToPreviousChat).toHaveBeenCalledTimes(1);
+    expect(chatHistory.goForwardToNextChat).toHaveBeenCalledTimes(1);
+    expect(history.goBack).not.toHaveBeenCalled();
+    expect(history.goForward).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while Settings covers the window", async () => {
+    renderHook(() => useHistoryKeys(null));
     press({ key: "ArrowLeft", altKey: true });
     window.dispatchEvent(new MouseEvent("mouseup", { button: 3 }));
     await settle();

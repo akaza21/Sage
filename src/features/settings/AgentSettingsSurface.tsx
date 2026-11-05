@@ -1,4 +1,10 @@
-import { Activity, useState } from "react";
+import {
+  Activity,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { useDocumentVisible } from "../../ui/useDocumentVisible";
 import {
@@ -21,6 +27,7 @@ import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
 import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import {
+  returnFocusToAgentSettingsOpener,
   useAgentSettingsState,
   type AgentSettingsPage,
 } from "./agentSettingsState";
@@ -50,6 +57,26 @@ const groups: readonly {
   { heading: null, pages: ["Archived chats"] },
 ];
 
+const SECTION_STEPS: Partial<Record<string, number>> = {
+  ArrowDown: 1,
+  ArrowUp: -1,
+};
+
+/** ArrowUp and ArrowDown move between the section buttons, wrapping. */
+function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
+  const step = SECTION_STEPS[event.key];
+  if (!step) return;
+  const sections = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      ".agent-settings__nav-group > button",
+    ),
+  ];
+  const index = sections.indexOf(event.target as HTMLButtonElement);
+  if (index < 0) return;
+  event.preventDefault();
+  sections[(index + step + sections.length) % sections.length]?.focus();
+}
+
 const icons: Record<AgentSettingsPage, typeof Archive> = {
   Appearance: Eye,
   Keybindings: Command,
@@ -70,6 +97,13 @@ export function AgentSettingsSurface({
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
+  const surfaceRef = useRef<HTMLElement | null>(null);
+  // Settings covers the Agent workspace without unmounting it, so closing
+  // it hands focus back to whatever opened it.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    return () => returnFocusToAgentSettingsOpener(surface);
+  }, []);
   const normalized = query.trim().toLowerCase();
   const matching = groups
     .map((group) => ({
@@ -84,6 +118,7 @@ export function AgentSettingsSurface({
     // usable, with the settings dialog centred in it.
     <div className="agent-settings-layer">
       <section
+        ref={surfaceRef}
         className="agent-settings"
         role="dialog"
         aria-modal="true"
@@ -107,6 +142,7 @@ export function AgentSettingsSurface({
         <nav
           className="agent-settings__nav"
           aria-label="Agent settings sections"
+          onKeyDown={moveSectionFocus}
         >
           <label className="input agent-settings__search">
             <Search size={14} aria-hidden="true" />
