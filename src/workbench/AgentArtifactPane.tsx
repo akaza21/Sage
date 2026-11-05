@@ -51,7 +51,7 @@ import {
   useSelectOpenedBrowserTab,
 } from "./useAgentArtifactFollowLifecycle";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
-import { useAgentChangesPane } from "./useAgentChangesPane";
+import { useAgentChangesPane, useChangesOnExpand } from "./useAgentChangesPane";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
 const SubagentSurface = lazy(() =>
@@ -279,6 +279,7 @@ export function AgentArtifactPane({
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
+  useChangesOnExpand(expanded, !hasResources, focusedOwner, projectGeneration);
   useExpandOnNewArtifact({
     artifacts,
     previewOpen,
