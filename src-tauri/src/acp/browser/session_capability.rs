@@ -1,5 +1,8 @@
 use tauri::{AppHandle, Emitter, Manager};
 pub(crate) mod attached;
+mod developer;
+#[cfg(test)]
+pub(crate) use developer::LeaseDeveloperPolicy;
 mod open_tab_commit;
 mod tab;
 
@@ -281,6 +284,10 @@ impl BrowserCapability for SessionBrowserCapability {
                     .browser_attachment(&self.project_id, &self.chat_id)
                     .map(|lease| lease.tab_number)
             })
+    }
+
+    fn refused(&mut self, request: &BrowserRequest, failure: BrowserFailure) {
+        developer::audit_refused(&self.app.state::<AppState>().settings, request, failure);
     }
 
     /// Take over pauses the call and Hand back resumes it (`pause.rs`).

@@ -151,7 +151,7 @@ fn load_turn_items(
          FROM items i
          JOIN agent_sessions s ON s.id=i.session_id
          LEFT JOIN server_requests r
-           ON i.kind='permissionRequest' AND r.kind IN ('permission','browserPermission')
+           ON i.kind='permissionRequest' AND r.kind IN ('permission','browserPermission','browserDeveloperPermission')
           AND r.project_id=i.project_id AND r.chat_id=i.chat_id
           AND r.session_id=i.session_id AND r.turn_id=i.turn_id
           AND r.runtime_epoch=i.runtime_epoch
@@ -260,6 +260,9 @@ fn permission(
                 match kind.as_str() {
                     "permission" => crate::acp::projection::PermissionRequestSource::Harness,
                     "browserPermission" => crate::acp::projection::PermissionRequestSource::Browser,
+                    "browserDeveloperPermission" => {
+                        crate::acp::projection::PermissionRequestSource::BrowserDeveloper
+                    }
                     _ => return Err(StoreError::Corrupt("permission source")),
                 },
             )))

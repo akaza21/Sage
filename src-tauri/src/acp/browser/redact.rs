@@ -47,6 +47,27 @@ pub(super) fn redact_result(result: &mut BrowserResult) {
                 entry.text = redact_console(&entry.text);
             }
         }
+        BrowserResult::Cdp { result } => redact_json(result),
+        _ => {}
+    }
+}
+
+/// Redacts every string in a raw CDP result, and the whole value of any
+/// field whose name is a secret's. Best effort: ADR-0009b names the risk.
+pub(crate) fn redact_json(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::String(text) => *text = redact_console(text),
+        Value::Array(items) => items.iter_mut().for_each(redact_json),
+        Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                if sensitive(key) && value.is_string() {
+                    *value = Value::String("[redacted]".into());
+                } else {
+                    redact_json(value);
+                }
+            }
+        }
         _ => {}
     }
 }

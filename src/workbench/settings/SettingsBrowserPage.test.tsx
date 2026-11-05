@@ -9,6 +9,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const getPreferences = vi.fn();
 const setPreferences = vi.fn();
+const getDeveloperMode = vi.fn();
+const setDeveloperMode = vi.fn();
 const siteSettings = vi.fn();
 const runtime = vi.hoisted(() => ({ desktop: true }));
 
@@ -21,6 +23,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => getPreferences(),
   browserSetPreferences: (value: unknown) => setPreferences(value),
+  browserDeveloperMode: () => getDeveloperMode(),
+  browserSetDeveloperMode: (enabled: boolean) => setDeveloperMode(enabled),
 }));
 vi.mock("../../ports/nativeBrowserDownloadFolderPort", async (actual) => ({
   ...(await actual<Record<string, unknown>>()),
@@ -48,6 +52,11 @@ beforeEach(() => {
   runtime.desktop = true;
   getPreferences.mockResolvedValue({ showFullUrl: false });
   setPreferences.mockImplementation(async (value: unknown) => value);
+  getDeveloperMode.mockResolvedValue({ available: false, enabled: false });
+  setDeveloperMode.mockImplementation(async (enabled: boolean) => ({
+    available: true,
+    enabled,
+  }));
   siteSettings.mockResolvedValue({
     staleSites: [],
     settings: [
@@ -152,6 +161,64 @@ it("explains that browser settings need the desktop app", () => {
   expect(getPreferences).not.toHaveBeenCalled();
   expect(screen.queryByRole("group", { name: "Site permissions" })).toBeNull();
   expect(siteSettings).not.toHaveBeenCalled();
+});
+
+it("offers developer mode off by default, names its risk, and saves through Rust", async () => {
+  const allowedMethods = [
+    "Runtime.evaluate",
+    "Page.reload",
+    "Page.getLayoutMetrics",
+  ];
+  getDeveloperMode.mockResolvedValue({
+    available: true,
+    enabled: false,
+    allowedMethods,
+  });
+  render(<SettingsBrowserPage visible={all()} />);
+  const group = await screen.findByRole("group", { name: "Developer mode" });
+  const toggle = screen.getByRole("checkbox", {
+    name: "Enable CDP access",
+  });
+  expect(group).toContainElement(toggle);
+  expect(group).toHaveTextContent("Elevated risk");
+  expect(group).toHaveTextContent(
+    "Runtime.evaluate is limited to explicitly approved agents; results over 256 KiB are rejected.",
+  );
+  expect(group).toHaveTextContent(
+    "CDP can allocate inline strings before Sage can check their size.",
+  );
+  expect(toggle).not.toBeChecked();
+  expect(toggle).toHaveAccessibleDescription(
+    /Runtime.evaluate, Page.reload, Page.getLayoutMetrics.*Scripts can access data available to the page.*Default: Off$/,
+  );
+  expect(group).not.toHaveTextContent("Full CDP access");
+  fireEvent.click(toggle);
+  expect(setDeveloperMode).toHaveBeenCalledWith(true);
+  await vi.waitFor(() => expect(toggle).toBeChecked());
+  fireEvent.click(toggle);
+  expect(setDeveloperMode).toHaveBeenLastCalledWith(false);
+  await vi.waitFor(() => expect(toggle).not.toBeChecked());
+});
+
+it("hides developer mode where the browser has no CDP", async () => {
+  render(<SettingsBrowserPage visible={all()} />);
+  await screen.findByRole("checkbox", { name: "Show full URL" });
+  await vi.waitFor(() => expect(getDeveloperMode).toHaveBeenCalled());
+  expect(screen.queryByRole("group", { name: "Developer mode" })).toBeNull();
+});
+
+it("says so when developer mode cannot be changed, and keeps Rust's value", async () => {
+  getDeveloperMode.mockResolvedValue({ available: true, enabled: false });
+  setDeveloperMode.mockRejectedValue(new Error("unavailable"));
+  render(<SettingsBrowserPage visible={all()} />);
+  const toggle = await screen.findByRole("checkbox", {
+    name: "Enable CDP access",
+  });
+  fireEvent.click(toggle);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Couldn't change developer mode. Try again.",
+  );
+  expect(toggle).not.toBeChecked();
 });
 
 it("lists the download location under its own Downloads group", async () => {

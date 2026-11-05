@@ -19,9 +19,20 @@ pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
+#[cfg(test)]
+mod control_tests;
+#[cfg(test)]
+mod detach_tests;
+mod developer;
 mod popup;
+mod resources;
 pub(crate) use control::AgentControl;
+#[cfg(windows)]
+pub(crate) use developer::DeveloperCommand;
 pub(crate) use popup::AgentAction;
+#[cfg(windows)]
+pub(crate) use resources::DeveloperScope;
+pub(crate) use resources::DiagnosticScope;
 
 #[derive(Clone)]
 pub(crate) struct AttachmentLease {
@@ -44,6 +55,10 @@ pub(crate) struct AttachmentLease {
     /// The tab that opened this one, for a popup that joined its opener's
     /// attachment: Take over, Hand back and Stop on the opener cover it.
     opener: Option<String>,
+    /// The developer-mode grant (ADR-0009b): the session and origin the
+    /// user approved, in memory only (`developer.rs`).
+    developer: Arc<developer::DeveloperAccess>,
+    resources: Arc<resources::Resources>,
 }
 
 pub(crate) struct AgentSweepClaim {
@@ -78,6 +93,8 @@ impl AttachmentLease {
                 return Some(authority.clone());
             }
             authority.stop();
+            self.release_resources();
+            self.end_developer_mode();
         }
         let authority =
             BrowserAuthority::attached(scope.clone(), &self.url, self.tab_revision).ok()?;
@@ -96,12 +113,16 @@ impl AttachmentLease {
         self.stop_retired();
         let Ok(slot) = self.authority.lock() else {
             self.active.store(false, Ordering::Release);
+            self.release_resources();
+            self.end_developer_mode();
             return;
         };
         self.active.store(false, Ordering::Release);
         if let Some((_, authority)) = slot.as_ref() {
             authority.stop();
         }
+        self.release_resources();
+        self.end_developer_mode();
     }
 
     /// Stops the authorities navigations took out of the slot, which ends
@@ -137,6 +158,8 @@ impl AttachmentLease {
         {
             authority.stop();
         }
+        self.release_resources();
+        self.end_developer_mode();
     }
 
     fn navigation_started(&self) {
@@ -150,6 +173,7 @@ impl AttachmentLease {
 
 #[derive(Default)]
 pub(crate) struct BrowserAttachments {
+    developer_registry: Arc<developer::DeveloperRegistry>,
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
     /// Tabs an Agent-driven tab opened, by child label, until they join.
@@ -202,7 +226,7 @@ impl BrowserAttachments {
             return Err(());
         }
         if let Some(previous) = entries.remove(&key) {
-            previous.stop();
+            previous.stop_or_hand_off();
             // Keep replacement unpublished until its old family is gone.
             // Registry lock order is user entries, then Agent entries.
             self.drop_joined_popups(&previous.tab_label);
@@ -222,6 +246,11 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: None,
+                developer: Arc::new(developer::DeveloperAccess::new(
+                    self.developer_registry.clone(),
+                    tab_label,
+                )),
+                resources: Arc::default(),
             },
         );
         drop(entries);
@@ -251,12 +280,12 @@ impl BrowserAttachments {
     }
 
     pub(crate) fn detach(&self, project: &SageProjectId, chat: &SageChatId) -> Option<String> {
-        let lease = self
-            .entries
-            .lock()
-            .ok()
-            .and_then(|mut entries| entries.remove(&(project.clone(), chat.clone())))?;
-        lease.stop();
+        let lease = self.entries.lock().ok().and_then(|mut entries| {
+            let key = (project.clone(), chat.clone());
+            // Keep the grant discoverable until its authority is stopped.
+            entries.get(&key)?.stop_or_hand_off();
+            entries.remove(&key)
+        })?;
         self.drop_joined_popups(&lease.tab_label);
         Some(lease.tab_label)
     }
@@ -312,6 +341,7 @@ impl BrowserAttachments {
                 .filter(|lease| lease.tab_label == tab_label)
             {
                 lease.retire_slot_authority();
+                lease.end_developer_mode_unless_on(url);
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }
@@ -322,6 +352,7 @@ impl BrowserAttachments {
                 .filter(|lease| lease.tab_label == tab_label)
             {
                 lease.retire_slot_authority();
+                lease.end_developer_mode_unless_on(url);
                 lease.url = url.to_owned();
                 lease.tab_revision = revision;
             }

@@ -135,6 +135,9 @@ impl BrowserCapability for FakeBrowserCapability {
                 next_cursor: 0,
                 entries: vec![],
             }),
+            BrowserCommand::Cdp { .. } => Ok(BrowserResult::Cdp {
+                result: serde_json::json!({}),
+            }),
         }
     }
 }

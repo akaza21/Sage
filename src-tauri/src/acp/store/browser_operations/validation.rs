@@ -13,6 +13,7 @@ pub(super) fn validate(record: &BrowserOperationProjection) -> Result<(), StoreE
             | "screenshot"
             | "readConsole"
             | "readNetwork"
+            | "cdp"
     );
     let valid_phase = matches!(
         record.phase.as_str(),

@@ -191,6 +191,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
         settings_commands::browser_preferences::browser_set_preferences,
+        settings_commands::browser_developer::browser_developer_mode,
+        settings_commands::browser_developer::browser_set_developer_mode,
         settings_commands::browser_download_folder::browser_download_folder,
         settings_commands::browser_download_folder::browser_choose_download_folder,
         settings_commands::browser_download_folder::browser_reset_download_folder

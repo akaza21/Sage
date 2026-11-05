@@ -70,6 +70,20 @@ pub enum BrowserCommand {
         cursor: Option<u64>,
         limit: usize,
     },
+    /// Developer mode (ADR-0009b): one raw CDP command on the tab.
+    Cdp {
+        method: String,
+        #[serde(default)]
+        params: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
+impl BrowserCommand {
+    /// Whether this command needs a developer-mode grant rather than an
+    /// ordinary browser permission.
+    pub fn is_elevated(&self) -> bool {
+        matches!(self, Self::Cdp { .. })
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +245,9 @@ pub enum BrowserResult {
         next_cursor: u64,
         entries: Vec<NetworkEntry>,
     },
+    Cdp {
+        result: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +262,9 @@ pub trait BrowserCapability {
         None
     }
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure>;
+    /// Told when a request fails validation and is never performed, so a
+    /// refused developer-mode call is still audited (ADR-0009b).
+    fn refused(&mut self, _request: &BrowserRequest, _failure: BrowserFailure) {}
 }
 
 pub fn admit_request_json(bytes: &[u8]) -> Result<BrowserRequest, BrowserFailure> {
@@ -259,14 +279,20 @@ pub fn dispatch_json<P: BrowserCapability>(
     port: &mut P,
     bytes: &[u8],
 ) -> Result<BrowserResponse, BrowserFailure> {
-    dispatch(port, admit_request_json(bytes)?)
+    admit_count(bytes.len(), BROWSER_LIMITS.request_bytes)?;
+    let request: BrowserRequest =
+        serde_json::from_slice(bytes).map_err(|_| BrowserFailure::InvalidRequest)?;
+    dispatch(port, request)
 }
 
 pub fn dispatch<P: BrowserCapability>(
     port: &mut P,
     request: BrowserRequest,
 ) -> Result<BrowserResponse, BrowserFailure> {
-    validate_request(&request)?;
+    if let Err(failure) = validate_request(&request) {
+        port.refused(&request, failure);
+        return Err(failure);
+    }
     let mut result = port.perform(&request)?;
     redact_result(&mut result);
     validate_result(&result)?;
@@ -349,6 +375,11 @@ pub fn validate_request(request: &BrowserRequest) -> Result<(), BrowserFailure> 
             }
             admit_count(*limit, BROWSER_LIMITS.diagnostic_entries)?;
         }
+        BrowserCommand::Cdp { method, params } => {
+            super::developer::admit_method_shape(method)?;
+            let encoded = serde_json::to_vec(params).map_err(|_| BrowserFailure::InvalidRequest)?;
+            admit_count(encoded.len(), BROWSER_LIMITS.cdp_params_bytes)?;
+        }
     }
     Ok(())
 }
@@ -390,6 +421,10 @@ pub fn validate_result(result: &BrowserResult) -> Result<(), BrowserFailure> {
                 admit_text("key", &entry.method)?;
                 admit_text("url", &entry.url)?;
             }
+        }
+        BrowserResult::Cdp { result } => {
+            let encoded = serde_json::to_vec(result).map_err(|_| BrowserFailure::Unavailable)?;
+            admit_count(encoded.len(), BROWSER_LIMITS.cdp_result_bytes)?;
         }
     }
     let encoded = serde_json::to_vec(result).map_err(|_| BrowserFailure::Unavailable)?;
