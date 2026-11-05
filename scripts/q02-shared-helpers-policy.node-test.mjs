@@ -12,10 +12,20 @@ import {
 async function withFixture(files, run) {
   const root = await mkdtemp(path.join(tmpdir(), "q02-policy-"));
   try {
-    for (const [name, contents] of Object.entries(files)) {
-      const target = path.join(root, name);
-      await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(target, contents);
+    const entries = Object.entries(files);
+    const folders = new Set(entries.map(([name]) => path.dirname(name)));
+    for (const folder of folders)
+      await mkdir(path.join(root, folder), { recursive: true });
+    // Written in bounded batches so wide fixtures stay quick without
+    // exhausting file handles.
+    for (let start = 0; start < entries.length; start += 64) {
+      await Promise.all(
+        entries
+          .slice(start, start + 64)
+          .map(([name, contents]) =>
+            writeFile(path.join(root, name), contents),
+          ),
+      );
     }
     return await run(root);
   } finally {
@@ -58,6 +68,31 @@ test("one directory's listing is bounded and fails closed past its cap", async (
     assert.match(
       (await scan(root))[0],
       /^Q02 directory-entry limit 1024 exceeded at src\//u,
+    );
+  });
+});
+
+test("wide fan-out of files the policy ignores still exhausts the entry budget", async () => {
+  // Ten directories, each under its listing cap, of tests and scripts that are
+  // never read as modules, so no module or byte total grows. Listing them is
+  // still work, and the scan stops once the entry budget is spent.
+  const files = {};
+  for (let folder = 0; folder < 10; folder += 1)
+    for (let index = 0; index < 1_000; index += 1)
+      files[
+        `src/d${folder}/f${String(index).padStart(4, "0")}.${index % 2 ? "test.ts" : "js"}`
+      ] = "";
+  await withFixture(files, async (root) => {
+    // src lists 10 entries and d0 to d8 list 9,000 more, so the budget
+    // runs out partway through d9, in whatever order the filesystem lists it.
+    const errors = await scan(root);
+    assert.equal(errors.length, 1);
+    assert.match(
+      errors[0],
+      new RegExp(
+        `^Q02 entry limit ${Q02_LIMITS.entries} exceeded at src/d9/`,
+        "u",
+      ),
     );
   });
 });
@@ -120,11 +155,11 @@ test("lexical traversal uses stable code-unit order and stops at every bound", a
     { "src/a.ts": "", "src/b.ts": "", "src/c.ts": "function isRecord() {}" },
     async (root) => {
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, files: 2 }))[0],
+        (await scan(root, { ...Q02_LIMITS, entries: 2 }))[0],
         /c\.ts$/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, files: 3 }))[0],
+        (await scan(root, { ...Q02_LIMITS, entries: 3 }))[0],
         /forbidden isRecord at src\/c/u,
       );
       assert.match(
@@ -276,7 +311,7 @@ test("observed source directories reject replacement during enumeration or child
     await rm(root, { recursive: true, force: true, maxRetries: 3 });
   }
   await withFixture({ "src/a.ts": "", "src/b.ts": "" }, async (root) => {
-    assert.deepEqual(await scan(root, { ...Q02_LIMITS, files: 2 }), []);
+    assert.deepEqual(await scan(root, { ...Q02_LIMITS, entries: 2 }), []);
   });
 });
 test("current repository is clean", async () => {

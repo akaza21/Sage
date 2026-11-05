@@ -6,16 +6,18 @@ import { WEB_BUILD_FINGERPRINT_LIMITS } from "./web-build-fingerprint.mjs";
 
 // The scan reads one module at a time and keeps only the directory it is
 // listing, so its memory is bounded per module and per directory, not by the
-// size of the tree. The totals are the bound every whole-tree read of the
-// sources already lives under: the web build fingerprint reads all of `src`,
-// so this policy never becomes the tighter limit on how far `src` can grow.
+// size of the tree. Its work is bounded by the totals every whole-tree read of
+// the sources already lives under: the web build fingerprint hashes every file
+// in `src`, tests and scripts included, so this policy does not become the
+// tighter limit on how far `src` can grow.
 export const Q02_LIMITS = Object.freeze({
   depth: 16,
   // One module's read buffer.
   fileBytes: 64 * 1024,
   // One directory's sorted listing.
   directoryEntries: 1024,
-  files: WEB_BUILD_FINGERPRINT_LIMITS.maxFiles,
+  // Every entry listed, directories and files the policy ignores included.
+  entries: WEB_BUILD_FINGERPRINT_LIMITS.maxFiles,
   aggregateBytes: WEB_BUILD_FINGERPRINT_LIMITS.maxBytes,
   errors: 32,
 });
@@ -142,7 +144,7 @@ export async function q02SharedHelperPolicyErrors(root, options = {}) {
   const sourceDirectory = options.sourceDirectory ?? "src";
   const fileSystem = { lstat, open, opendir, ...options.fileSystem };
   const errors = [];
-  let files = 0;
+  let inspectedEntries = 0;
   let aggregateBytes = 0;
   const fail = (message) => {
     if (errors.length < limits.errors) errors.push(message);
@@ -202,6 +204,13 @@ export async function q02SharedHelperPolicyErrors(root, options = {}) {
     const entries = [];
     let ordinal = 0;
     for await (const entry of directory) {
+      inspectedEntries += 1;
+      if (inspectedEntries > limits.entries) {
+        fail(
+          `Q02 entry limit ${limits.entries} exceeded at ${path.posix.join(relative, entry.name)}`,
+        );
+        return false;
+      }
       if (entries.length === limits.directoryEntries) {
         fail(
           `Q02 directory-entry limit ${limits.directoryEntries} exceeded at ${path.posix.join(relative, entry.name)}`,
@@ -238,11 +247,6 @@ export async function q02SharedHelperPolicyErrors(root, options = {}) {
       }
       if (!production.test(entry.name) || ignored.test(entry.name)) continue;
 
-      files += 1;
-      if (files > limits.files) {
-        fail(`Q02 file limit ${limits.files} exceeded at ${child}`);
-        return false;
-      }
       if (metadata.size > limits.fileBytes) {
         fail(`Q02 per-file limit ${limits.fileBytes} exceeded at ${child}`);
         return false;
