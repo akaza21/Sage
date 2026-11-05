@@ -76,7 +76,7 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: opener.map(|(label, _)| label.to_owned()),
-                developer: Arc::default(),
+                developer: Arc::new(developer::DeveloperAccess::new(self.control_events.clone())),
                 resources: Arc::default(),
             },
         );

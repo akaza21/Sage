@@ -51,7 +51,7 @@ pub(crate) struct AttachmentLease {
     opener: Option<String>,
     /// The developer-mode grant (ADR-0009b): the session and origin the
     /// user approved, in memory only (`developer.rs`).
-    developer: Arc<Mutex<Option<developer::DeveloperGrant>>>,
+    developer: Arc<developer::DeveloperAccess>,
     resources: Arc<resources::Resources>,
 }
 
@@ -167,6 +167,7 @@ impl AttachmentLease {
 
 #[derive(Default)]
 pub(crate) struct BrowserAttachments {
+    control_events: Arc<developer::ControlEvents>,
     entries: Mutex<HashMap<(SageProjectId, SageChatId), AttachmentLease>>,
     agent_entries: Mutex<HashMap<(SageProjectId, SageChatId, String, u64), AttachmentLease>>,
     /// Tabs an Agent-driven tab opened, by child label, until they join.
@@ -239,7 +240,7 @@ impl BrowserAttachments {
                 retired: Arc::default(),
                 last_session: Arc::default(),
                 opener: None,
-                developer: Arc::default(),
+                developer: Arc::new(developer::DeveloperAccess::new(self.control_events.clone())),
                 resources: Arc::default(),
             },
         );

@@ -75,6 +75,16 @@ impl super::AcpService {
 
     #[cfg(windows)]
     pub(crate) fn set_browser_app(&self, app: tauri::AppHandle) {
+        use tauri::Emitter;
+        let events = app.clone();
+        self.browser_attachments
+            .set_agent_control_emitter(std::sync::Arc::new(move |tab| {
+                let _ = events.emit_to(
+                    "main",
+                    "browser:agent-control",
+                    serde_json::json!({ "tabId": tab }),
+                );
+            }));
         if let Ok(mut slot) = self.browser_app.lock() {
             *slot = Some(app);
         }

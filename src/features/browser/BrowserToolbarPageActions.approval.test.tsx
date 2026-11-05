@@ -1,5 +1,6 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import type { BrowserAgentControl } from "../../ports/nativeBrowserPort";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
 
@@ -40,7 +41,11 @@ const approved: BrowserAgentControl = {
   developerMode: true,
 };
 
-function tree(visible: boolean, revision = "1") {
+function tree(
+  visible: boolean,
+  revision = "1",
+  operation: BrowserOperationProjection | null = null,
+) {
   return (
     <BrowserToolbarPageActions
       visible={visible}
@@ -49,13 +54,76 @@ function tree(visible: boolean, revision = "1") {
       ready
       pageRevision={revision}
       chats={[{ id: "chat-1", title: "Research chat" }]}
-      operation={null}
+      operation={operation}
       attachmentEpoch={0}
       onStopped={() => undefined}
       onError={() => undefined}
     />
   );
 }
+
+it("shows a new developer grant and its revocation while the first elevated command is pending", async () => {
+  native.control = { ...approved, developerMode: false };
+  const evaluation: BrowserOperationProjection = {
+    projectId: "project-1",
+    chatId: "chat-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    tabId: "browser-1",
+    operationId: "evaluation-1",
+    operation: "cdp",
+    phase: "started",
+    origin: "https://example.com",
+    summary: "Runtime.evaluate",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const view = render(tree(true, "1", evaluation));
+  await screen.findByRole("button", { name: "Take over" });
+  await waitFor(() => expect(native.listeners.size).toBe(1));
+  expect(screen.queryByText("Developer mode")).toBeNull();
+
+  let finish!: () => void;
+  const command = new Promise<void>((resolve) => {
+    finish = resolve;
+  }).then(() => {
+    view.rerender(
+      tree(true, "1", { ...evaluation, phase: "completed", updatedAt: 2 }),
+    );
+  });
+  try {
+    native.control = approved;
+    await act(async () => {
+      for (const listener of native.listeners)
+        listener({ payload: { tabId: "browser-1" } });
+    });
+    expect(screen.getByText("Developer mode")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "title",
+      "Agent has a browser action pending · Research chat",
+    );
+
+    native.control = { ...approved, developerMode: false };
+    await act(async () => {
+      for (const listener of native.listeners)
+        listener({ payload: { tabId: "browser-1" } });
+    });
+    expect(screen.queryByText("Developer mode")).toBeNull();
+    expect(screen.getByRole("status")).toHaveAttribute(
+      "title",
+      "Agent has a browser action pending · Research chat",
+    );
+  } finally {
+    await act(async () => {
+      finish();
+      await command;
+    });
+  }
+  expect(screen.getByRole("status")).toHaveAttribute(
+    "title",
+    "Agent attached · Research chat",
+  );
+});
 
 it("refreshes approval revocation while visible and releases its subscription while hidden", async () => {
   native.control = approved;

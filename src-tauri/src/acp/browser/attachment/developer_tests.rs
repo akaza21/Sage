@@ -4,6 +4,122 @@ use crate::acp::browser::BrowserScope;
 const SESSION: &str = "session-1";
 const ORIGIN: &str = "https://example.com";
 
+#[test]
+fn developer_grant_is_announced_before_elevated_dispatch() {
+    use crate::acp::browser::{
+        BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult,
+        developer::{CdpAuditEntry, DeveloperModePolicy},
+        permission::{
+            BrowserCapabilityDispatch, BrowserDispatchPermit, BrowserPermissionChoice,
+            BrowserPermissionGate, BrowserPermissionPrompt, PendingBrowserResult,
+        },
+    };
+    use std::sync::mpsc::{Receiver, sync_channel};
+
+    struct Policy(AttachmentLease);
+    impl DeveloperModePolicy for Policy {
+        fn enabled(&self) -> bool {
+            true
+        }
+        fn granted(&self, session: &str, origin: &str) -> bool {
+            self.0.developer_granted(session, origin)
+        }
+        fn grant(&self, session: &str, origin: &str) -> bool {
+            self.0.grant_developer_mode(session, origin)
+        }
+        fn audit(&self, _: CdpAuditEntry) -> bool {
+            true
+        }
+    }
+    struct Port(Receiver<String>);
+    impl BrowserCapabilityDispatch for Port {
+        fn dispatch(
+            &mut self,
+            _: &BrowserRequest,
+            permit: BrowserDispatchPermit,
+        ) -> Result<PendingBrowserResult, BrowserFailure> {
+            permit.with_live_lock(|| {
+                assert_eq!(
+                    self.0.try_recv().as_deref(),
+                    Ok("browser-7"),
+                    "the chrome must be notified before Runtime.evaluate is issued"
+                );
+                permit.mark_issued();
+                Ok(())
+            })?;
+            Ok(Box::new(|| {
+                Ok(BrowserResult::Cdp {
+                    result: serde_json::json!({"value": 2}),
+                })
+            }))
+        }
+    }
+    let (registry, lease) = attached();
+    let (send, events) = sync_channel(4);
+    registry.set_agent_control_emitter(Arc::new(move |tab| send.send(tab.to_owned()).unwrap()));
+    let mut gate = BrowserPermissionGate::new(
+        Port(events),
+        |_: &BrowserPermissionPrompt| BrowserPermissionChoice::AllowDeveloperMode,
+        lease.authority_for(&scope(SESSION)).unwrap(),
+    )
+    .with_developer_mode(Arc::new(Policy(lease)));
+    assert_eq!(
+        gate.perform(&BrowserRequest {
+            scope: scope(SESSION),
+            command: BrowserCommand::Cdp {
+                method: "Runtime.evaluate".into(),
+                params: serde_json::from_value(serde_json::json!({"expression": "1 + 1"})).unwrap(),
+            },
+        }),
+        Ok(BrowserResult::Cdp {
+            result: serde_json::json!({"value": 2})
+        })
+    );
+}
+
+#[test]
+fn every_developer_grant_end_notifies_the_chrome() {
+    use std::sync::mpsc::sync_channel;
+    for end in [
+        |registry: &BrowserAttachments, _: &AttachmentLease| {
+            registry.take_over("browser-7");
+        },
+        |registry: &BrowserAttachments, _: &AttachmentLease| {
+            registry.revoke_tab("browser-7");
+        },
+        |registry: &BrowserAttachments, _: &AttachmentLease| {
+            registry.end_developer_mode();
+        },
+        |registry: &BrowserAttachments, _: &AttachmentLease| {
+            registry.navigation_settled("browser-7", "https://other.example/", 2);
+        },
+        |registry: &BrowserAttachments, _: &AttachmentLease| {
+            let (project, chat) = ids();
+            registry.detach(&project, &chat);
+        },
+        |_: &BrowserAttachments, lease: &AttachmentLease| {
+            lease.authority_for(&scope("session-2"));
+        },
+        |_: &BrowserAttachments, lease: &AttachmentLease| {
+            lease.retire();
+        },
+    ] {
+        let (registry, lease) = attached();
+        let (send, events) = sync_channel(4);
+        registry.set_agent_control_emitter(Arc::new(move |tab| send.send(tab.to_owned()).unwrap()));
+        assert!(lease.grant_developer_mode(SESSION, ORIGIN));
+        assert_eq!(events.try_recv().as_deref(), Ok("browser-7"));
+        end(&registry, &lease);
+        assert_eq!(events.try_recv().as_deref(), Ok("browser-7"));
+        assert!(!lease.developer_mode_active());
+        assert!(
+            !registry
+                .agent_control("browser-7")
+                .is_some_and(|control| control.developer_mode)
+        );
+    }
+}
+
 fn ids() -> (SageProjectId, SageChatId) {
     (
         SageProjectId::parse("project-one").unwrap(),
@@ -270,6 +386,8 @@ fn revocation_releases_buffers_before_a_slow_audit_writer_finishes() {
     use std::time::Duration;
     let (registry, lease) = attached();
     let registry = Arc::new(registry);
+    let (notify, events) = sync_channel(4);
+    registry.set_agent_control_emitter(Arc::new(move |tab| notify.send(tab.to_owned()).unwrap()));
     let (ready, entered) = sync_channel(1);
     let (resume, blocked) = sync_channel(1);
     let blocked = Mutex::new(blocked);
@@ -301,9 +419,15 @@ fn revocation_releases_buffers_before_a_slow_audit_writer_finishes() {
     let worker = std::thread::spawn(move || worker_registry.revoke_tab("browser-7"));
     let started = entered.recv_timeout(Duration::from_secs(5)).is_ok();
     let released = weak.upgrade().is_none();
+    let notifications: Vec<_> = events.try_iter().collect();
     resume.send(()).unwrap();
     worker.join().unwrap();
     assert!(started);
+    assert_eq!(
+        notifications,
+        ["browser-7", "browser-7"],
+        "revocation must notify the chrome before slow audit I/O finishes"
+    );
     assert!(
         released,
         "slow audit I/O must not retain revoked native state"

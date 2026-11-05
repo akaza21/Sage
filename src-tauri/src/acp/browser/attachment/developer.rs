@@ -12,7 +12,43 @@ use crate::acp::browser::developer;
 
 pub(crate) type GrantAudit = Arc<dyn Fn(developer::CdpAuditOutcome) -> bool + Send + Sync>;
 
-pub(super) struct DeveloperGrant {
+pub(crate) type AgentControlEmitter = Arc<dyn Fn(&str) + Send + Sync>;
+
+#[derive(Default)]
+pub(super) struct ControlEvents(Mutex<Option<AgentControlEmitter>>);
+
+pub(super) struct DeveloperAccess {
+    grant: Mutex<Option<DeveloperGrant>>,
+    events: Arc<ControlEvents>,
+}
+
+impl DeveloperAccess {
+    pub(super) fn new(events: Arc<ControlEvents>) -> Self {
+        Self {
+            grant: Mutex::new(None),
+            events,
+        }
+    }
+
+    /// The only writer of the grant. Notify under its lock so a command
+    /// cannot observe new privilege before the chrome has been notified.
+    /// Return the old grant for audit I/O after releasing the state locks.
+    fn transition(
+        &self,
+        tab: &str,
+        grant: &mut Option<DeveloperGrant>,
+        next: Option<DeveloperGrant>,
+    ) -> Option<DeveloperGrant> {
+        let changed = grant.is_some() || next.is_some();
+        let previous = std::mem::replace(grant, next);
+        if changed && let Some(emit) = self.events.0.lock().ok().and_then(|slot| slot.clone()) {
+            emit(tab);
+        }
+        previous
+    }
+}
+
+struct DeveloperGrant {
     session: String,
     origin: String,
     audit: GrantAudit,
@@ -77,7 +113,7 @@ impl AttachmentLease {
         {
             return false;
         }
-        let Ok(mut grant) = self.developer.lock() else {
+        let Ok(mut grant) = self.developer.grant.lock() else {
             return false;
         };
         if !developer::switch_is_current(generation)
@@ -89,18 +125,25 @@ impl AttachmentLease {
         if !audit(developer::CdpAuditOutcome::Granted) {
             return false;
         }
-        *grant = Some(DeveloperGrant {
-            session: session.to_owned(),
-            origin: origin.to_owned(),
-            audit,
-        });
+        let previous = self.developer.transition(
+            &self.tab_label,
+            &mut grant,
+            Some(DeveloperGrant {
+                session: session.to_owned(),
+                origin: origin.to_owned(),
+                audit,
+            }),
+        );
+        drop(grant);
+        drop(slot);
+        drop(previous);
         true
     }
 
     pub(crate) fn developer_granted(&self, session: &str, origin: &str) -> bool {
         self.is_live()
             && !self.user_controls()
-            && self.developer.lock().is_ok_and(|grant| {
+            && self.developer.grant.lock().is_ok_and(|grant| {
                 grant
                     .as_ref()
                     .is_some_and(|grant| grant.session == session && grant.origin == origin)
@@ -111,15 +154,19 @@ impl AttachmentLease {
     pub(crate) fn developer_mode_active(&self) -> bool {
         self.is_live()
             && !self.user_controls()
-            && self.developer.lock().is_ok_and(|grant| grant.is_some())
+            && self
+                .developer
+                .grant
+                .lock()
+                .is_ok_and(|grant| grant.is_some())
     }
 
     pub(super) fn end_developer_mode(&self) -> bool {
-        let ended = self
-            .developer
-            .lock()
-            .ok()
-            .and_then(|mut grant| grant.take().map(|grant| (grant, self.invalidate_grant())));
+        let ended = self.developer.grant.lock().ok().and_then(|mut grant| {
+            self.developer
+                .transition(&self.tab_label, &mut grant, None)
+                .map(|grant| (grant, self.invalidate_grant()))
+        });
         let had_grant = ended.is_some();
         if let Some((_, generation)) = &ended {
             self.release_developer_resources(None, Some(*generation));
@@ -132,13 +179,16 @@ impl AttachmentLease {
     pub(super) fn end_developer_mode_unless_on(&self, url: &str) {
         let incoming = origin_of(url);
         let changed = origin_of(&self.url) != incoming;
-        let ended = self.developer.lock().ok().and_then(|mut grant| {
+        let ended = self.developer.grant.lock().ok().and_then(|mut grant| {
             if changed
                 || grant
                     .as_ref()
                     .is_some_and(|grant| incoming.as_deref() != Some(grant.origin.as_str()))
             {
-                Some((grant.take(), self.invalidate_grant()))
+                Some((
+                    self.developer.transition(&self.tab_label, &mut grant, None),
+                    self.invalidate_grant(),
+                ))
             } else {
                 None
             }
@@ -151,6 +201,13 @@ impl AttachmentLease {
 }
 
 impl BrowserAttachments {
+    #[cfg(any(windows, test))]
+    pub(crate) fn set_agent_control_emitter(&self, emit: AgentControlEmitter) {
+        if let Ok(mut slot) = self.control_events.0.lock() {
+            *slot = Some(emit);
+        }
+    }
+
     /// Ends every developer-mode grant, as the Settings switch going off
     /// does. Returns the tabs that held one.
     pub(crate) fn end_developer_mode(&self) -> Vec<String> {

@@ -4,7 +4,7 @@
 //! ends every live grant at once and tells the browser chrome, so its
 //! Developer mode tag goes away.
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::State;
 
 use crate::state::AppState;
 
@@ -36,7 +36,6 @@ pub(crate) fn browser_developer_mode(
 
 #[tauri::command]
 pub(crate) fn browser_set_developer_mode(
-    app: AppHandle,
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<BrowserDeveloperMode, String> {
@@ -47,13 +46,7 @@ pub(crate) fn browser_set_developer_mode(
     // setting: they are refused from here on.
     let enabled = crate::acp::browser::developer::with_switch_change(|| {
         persist_after_revocation(&state.settings, enabled, || {
-            for tab_id in state.acp.end_browser_developer_mode() {
-                let _ = app.emit_to(
-                    "main",
-                    "browser:agent-control",
-                    serde_json::json!({ "tabId": tab_id }),
-                );
-            }
+            state.acp.end_browser_developer_mode();
         })
     })?;
     Ok(BrowserDeveloperMode {
