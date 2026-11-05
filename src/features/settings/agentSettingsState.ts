@@ -6,6 +6,7 @@ export type AgentSettingsPage =
   | "Harnesses"
   | "Chats"
   | "Browser"
+  | "Passwords"
   | "Archived chats";
 
 export const useAgentSettingsState = create<{
