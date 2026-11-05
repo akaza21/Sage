@@ -24,6 +24,8 @@
 .agent-artifact-header__provenance,
 .agent-artifact-header__view-only {
   width: max-content;
+  flex: none;
+  white-space: nowrap;
   padding: 2px 4px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-pill);
@@ -43,12 +45,15 @@
   align-items: center;
 }
 
+/* A narrow pane wraps the controls below the name rather than cutting the
+   name down to a letter. */
 .agent-artifact-header__title-row {
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
 }
 
 .agent-artifact-header__identity {
-  min-width: 0;
+  min-width: min(100%, 9rem);
   flex: 1 1 auto;
   gap: 4px;
   color: var(--color-text-secondary);
@@ -379,7 +384,9 @@
   color: var(--color-success);
 }
 
-@container agent-workbench (max-width: 760px) {
+/* The header's own width decides when its action labels fold to icons, so
+   a narrow pane beside a wide window keeps the file name readable. */
+@container agent-artifact-pane (max-width: 520px) {
   .agent-artifact-header__editor-label,
   .agent-artifact-header__copy > span {
     position: absolute;
@@ -396,7 +403,9 @@
   .agent-artifact-header__title-row {
     gap: var(--space-1);
   }
+}
 
+@container agent-workbench (max-width: 760px) {
   .harness-browser__connection-label {
     position: absolute;
     width: 1px;

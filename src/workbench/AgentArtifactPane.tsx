@@ -66,6 +66,9 @@ const AgentArtifactHeader = lazy(() =>
   })),
 );
 
+// The pane's header names the resource, so canvases leave out their own.
+const PANE_CANVAS = { readOnly: true, hostHeader: true };
+
 export function AgentArtifactPane({
   expanded = true,
   focusOnExpand = false,
@@ -385,7 +388,7 @@ export function AgentArtifactPane({
             {!previewSelected && activeArtifact
               ? activeArtifact.kind === "browser"
                 ? renderRegisteredCanvas("browser", activeArtifact)
-                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+                : renderFileOrDiffCanvas(activeArtifact, PANE_CANVAS)
               : null}
             {!changes.selected &&
             !subagentSelected &&
