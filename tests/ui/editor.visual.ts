@@ -3,6 +3,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { EDITOR_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   takeCanonicalScreenshot,
@@ -74,6 +75,9 @@ function expectRectInside(
 }
 
 async function expectPickerGeometry(picker: Locator) {
+  await waitForAnimations(
+    picker.locator("xpath=ancestor::*[contains(@class, 'menu-popover')][1]"),
+  );
   const observation = await picker.evaluate((input) => {
     const listbox = document.getElementById(
       input.getAttribute("aria-controls") ?? "",
@@ -562,6 +566,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       menu.getByRole("menuitem", { name: "Add folder root" }),
     ).toBeFocused();
 
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();
@@ -885,6 +890,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(renameInput).toBeFocused();
     await expect(renamePopup).toBeVisible();
     await expect(renameListbox).toBeVisible();
+    await waitForAnimations(renamePopup);
     const [renameInputBox, renameListboxBox, renamePopupBox] =
       await Promise.all([
         renameInput.boundingBox(),
@@ -936,6 +942,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.getByRole("button", { name: "More Explorer actions" }).click();
     const explorerMenu = page.getByRole("menu", { name: "Explorer actions" });
     await expect(explorerMenu).toBeVisible();
+    await waitForAnimations(explorerMenu);
     expect(
       await explorerMenu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();

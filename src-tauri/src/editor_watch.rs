@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -70,7 +70,9 @@ pub struct EditorExternalWatchNotice {
 }
 
 static WATCHES: OnceLock<Mutex<HashMap<WatchKey, WatchEntry>>> = OnceLock::new();
-static GENERATIONS: OnceLock<Mutex<HashMap<WatchKey, u32>>> = OnceLock::new();
+/// One counter for every watch, so a restarted watch never reuses a stale
+/// generation and nothing is kept per file once its watch ends.
+static NEXT_GENERATION: AtomicU32 = AtomicU32::new(0);
 
 fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, WatchEntry>> {
     WATCHES
@@ -79,11 +81,13 @@ fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, WatchEntry>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn generations() -> std::sync::MutexGuard<'static, HashMap<WatchKey, u32>> {
-    GENERATIONS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+fn next_generation() -> AppResult<u32> {
+    NEXT_GENERATION
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .map(|previous| previous + 1)
+        .map_err(|_| AppError::ResourceLimit("editor file watch generations exhausted".into()))
 }
 
 #[cfg(test)]
@@ -116,13 +120,7 @@ pub fn start_watch(resource: &ResourceRef) -> AppResult<u32> {
             "too many active editor file watches".into(),
         ));
     }
-    let mut generations = generations();
-    let generation = generations
-        .get(&key)
-        .copied()
-        .unwrap_or(0)
-        .saturating_add(1);
-    generations.insert(key.clone(), generation);
+    let generation = next_generation()?;
     watches.insert(
         key,
         WatchEntry {

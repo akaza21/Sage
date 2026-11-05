@@ -52,7 +52,18 @@ it("cancels cold resources and rename on outside pointer, Escape and Tab before 
   );
   const outside = screen.getByRole("button", { name: "Composer" });
   const resources = screen.getByRole("button", { name: "Show chat resources" });
-  const rename = screen.getByRole("button", { name: "Rename chat" });
+  const actions = screen.getByRole("button", {
+    name: "Chat actions for Pending header task",
+  });
+  const openRename = async () => {
+    fireEvent.click(actions);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Rename chat" }),
+    );
+  };
   resources.focus();
   fireEvent.keyDown(resources, { key: "Tab" });
   for (const key of ["Escape", "Tab", null]) {
@@ -65,18 +76,17 @@ it("cancels cold resources and rename on outside pointer, Escape and Tab before 
       fireEvent.pointerDown(outside);
     }
     expect(resources).toHaveAttribute("aria-expanded", "false");
-    rename.focus();
-    fireEvent.click(rename);
+    await openRename();
     expect(screen.getByText("Pending header")).toBeVisible();
-    if (key) fireEvent.keyDown(rename, { key });
+    expect(resources).toHaveFocus();
+    if (key) fireEvent.keyDown(resources, { key });
     else {
       outside.focus();
       fireEvent.pointerDown(outside);
     }
-    expect(rename).not.toBeDisabled();
+    expect(actions).not.toBeDisabled();
   }
-  rename.focus();
-  fireEvent.click(rename);
+  await openRename();
   mounted.rerender(
     <>
       <button>Composer</button>
