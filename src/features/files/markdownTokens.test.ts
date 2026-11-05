@@ -1,7 +1,143 @@
 import { describe, expect, it } from "vitest";
 import { MAX_MARKDOWN_PREVIEW_BLOCKS } from "./markdownLimits";
-import { renderMarkdownPreview } from "./markdownPreview";
+import {
+  renderMarkdownPreview,
+  type MarkdownPreviewBlock,
+} from "./markdownPreview";
 import { parseMarkdownTokens } from "./markdownTokens";
+
+describe("nested markdown content", () => {
+  it("retains a quoted warning inside a list item", () => {
+    expect(renderMarkdownPreview("- > quoted warning").blocks).toEqual([
+      { kind: "list", items: ["quoted warning"] },
+    ]);
+  });
+
+  it.each([8, 16, 17, 18, 32, 64])(
+    "retains text when %i quote levels reach the parser nesting limit",
+    (depth) => {
+      const document = renderMarkdownPreview(
+        "> ".repeat(depth) + "deep warning",
+      );
+      expect(document.blocks.map(output).join(" ")).toContain("deep warning");
+      expect(document.truncated).toBe(false);
+    },
+  );
+
+  it("does not let markup-only items consume the visible list allowance", () => {
+    const document = renderMarkdownPreview(
+      "- <br>\n".repeat(4096) + "- warning",
+    );
+    expect(document.blocks).toEqual([{ kind: "list", items: ["warning"] }]);
+    expect(document.truncated).toBe(false);
+  });
+
+  it("retains task states when a quote cannot present list structure", () => {
+    expect(
+      renderMarkdownPreview("> - [x] done\n> - [ ] pending").blocks,
+    ).toEqual([{ kind: "quote", text: "[x] done [ ] pending" }]);
+  });
+
+  it("retains ordered starts and numbering when a quote flattens nested lists", () => {
+    expect(
+      renderMarkdownPreview(
+        "> 42. release\n> 43. next\n>\n>     7. nested\n>     8. nested-next\n> 44. last",
+      ).blocks,
+    ).toEqual([
+      {
+        kind: "quote",
+        text: "42. release 43. next 7. nested 8. nested-next 44. last",
+      },
+    ]);
+  });
+
+  const wrappers = [
+    {
+      name: "list",
+      wrap: (text: string, id: string) =>
+        `- before-${id}\n\n${text
+          .split("\n")
+          .map((line) => `  ${line}`)
+          .join("\n")}\n\n  after-${id}`,
+    },
+    {
+      name: "ordered list",
+      wrap: (text: string, id: string) =>
+        `3. before-${id}\n\n${text
+          .split("\n")
+          .map((line) => `   ${line}`)
+          .join("\n")}\n\n   after-${id}`,
+    },
+    {
+      name: "quote",
+      wrap: (text: string, id: string) =>
+        `before-${id}\n\n${text}\n\nafter-${id}`
+          .split("\n")
+          .map((line) => `> ${line}`)
+          .join("\n"),
+    },
+  ];
+  const leaves = [
+    { name: "paragraph", markdown: "leaf-text", text: ["leaf-text"] },
+    {
+      name: "code",
+      markdown: "```text\nliteral **stars** [code](hidden.ts) <tag>\n```",
+      text: ["literal **stars** [code](hidden.ts) <tag>"],
+    },
+    {
+      name: "indented code",
+      markdown: "    literal **stars** <tag>",
+      text: ["literal **stars** <tag>"],
+    },
+    {
+      name: "table",
+      markdown:
+        "| header-one | header-two |\n| - | - |\n| cell-one | cell-two |",
+      text: ["header-one", "header-two", "cell-one", "cell-two"],
+    },
+    { name: "heading", markdown: "## heading-text", text: ["heading-text"] },
+    { name: "rule", markdown: "---", text: ["---"] },
+  ];
+  function output(block: MarkdownPreviewBlock): string {
+    if (block.kind === "rule") return "---";
+    if (block.kind === "list") return block.items.join(" ");
+    if (block.kind === "table") return block.rows.flat().join(" ");
+    return "text" in block ? block.text : "";
+  }
+  // Every container pair, including mixed list kinds, is exercised in both
+  // directions and with a third enclosing container. Code and tables are leaves.
+  const chains = wrappers.flatMap((outer) => [
+    [outer],
+    ...wrappers.flatMap((inner) => [
+      [outer, inner],
+      ...wrappers.map((third) => [outer, inner, third]),
+    ]),
+  ]);
+  it.each(
+    chains.flatMap((chain) =>
+      leaves.map((leaf) => ({
+        name: [...chain.map((wrapper) => wrapper.name), leaf.name].join(" / "),
+        source: chain.reduceRight(
+          (text, wrapper, index) => wrapper.wrap(text, String(index)),
+          leaf.markdown,
+        ),
+        expected: [
+          ...leaf.text,
+          ...chain.flatMap((_, index) => [`before-${index}`, `after-${index}`]),
+        ],
+      })),
+    ),
+  )("retains all text through $name", ({ source, expected }) => {
+    const document = renderMarkdownPreview(source);
+    const text = document.blocks.map(output).join(" ");
+    for (const value of expected) {
+      expect(text).toContain(value);
+      expect(text.split(value)).toHaveLength(2);
+    }
+    expect(document.fileLinks).toEqual([]);
+    expect(document.truncated).toBe(false);
+  });
+});
 
 describe("bounded markdown tokenization", () => {
   it.each(["- x\n", "> - x\n", "> > - x\n"])(

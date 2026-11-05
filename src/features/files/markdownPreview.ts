@@ -1,5 +1,6 @@
 import { truncateUtf8, utf8Bytes } from "../../domain/text";
 import { adaptMarkdownTokens } from "./markdownTokens";
+import type { MarkdownContent } from "./markdownContainers";
 import type { MarkdownListBlock } from "./markdownListTypes";
 
 import {
@@ -99,7 +100,7 @@ export function renderMarkdownPreview(
   let formatCount = 0;
   let scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
 
-  const inline = (raw: string, itemIndex?: number) => {
+  const inline = (parts: MarkdownContent, itemIndex?: number) => {
     let text = "";
     const append = (value: string) => {
       if (text.length + value.length > remaining) document.truncated = true;
@@ -188,15 +189,35 @@ export function renderMarkdownPreview(
       spans.push(append(value.slice(position)));
       return spans;
     };
-    const spans = parse(
-      raw
-        .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (part) =>
-          part[0] === "`" ? part : "",
-        )
-        .replace(/`[^`]+`|\s+/gu, (part) => (part[0] === "`" ? part : " "))
-        .trim(),
-      0,
-    );
+    // Coalesce adjacent prose before normalizing whitespace and parsing inline
+    // syntax. Literal code stays outside that parser, including in quote fallback.
+    const runs: MarkdownContent = [];
+    let prose: string[] = [];
+    const flush = () => {
+      if (prose.length) runs.push(prose.join(""));
+      prose = [];
+    };
+    for (const part of parts) {
+      if (typeof part === "string") prose.push(part);
+      else {
+        flush();
+        runs.push(part);
+      }
+    }
+    flush();
+    const spans = runs.flatMap((part, index) => {
+      if (typeof part !== "string") return [append(part.literal)];
+      return parse(
+        part
+          .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
+            value[0] === "`" ? value : "",
+          )
+          .replace(/`[^`]+`|\s+/gu, (value) => (value[0] === "`" ? value : " "))
+          .replace(/^\s+/u, index ? " " : "")
+          .replace(/\s+$/u, index < runs.length - 1 ? " " : ""),
+        0,
+      );
+    });
     if (text)
       document.formats.push({ blockIndex: blocks.length, itemIndex, spans });
     remaining -= text.length;
