@@ -139,9 +139,11 @@ afterEach(() => {
 it("keeps one model identity while the composer confirms the model's name", () => {
   const view = render(<ChatPane confirmed={false} />);
   const before = window.eval(ACP04_SNAPSHOT_EXPRESSION) as Acp04Snapshot;
-  // A single-model catalog renders its identity as a read-only label.
-  expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
-  expect(screen.getByLabelText("Model")).toHaveTextContent("Model");
+  // A single-model catalog keeps the model picker, unlabelled until the
+  // session confirms the model's name.
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    "Model",
+  );
   const state = createModeAState(
     [ECHO, "SAGE_ACP04_A_TURN_2"],
     before,

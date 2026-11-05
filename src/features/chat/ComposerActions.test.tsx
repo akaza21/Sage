@@ -225,7 +225,9 @@ it("does not enable Add for effort alone while its trigger is visible", async ()
       ],
     }),
   });
-  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
   expect(screen.queryByRole("menuitem", { name: "Thinking level" })).toBeNull();
 });
 
@@ -373,9 +375,9 @@ it("keeps Add and Harness mutually exclusive and restores plus focus on Escape",
   expect(trigger).toHaveFocus();
 });
 
-it("hides Add instead of opening an empty capability menu", async () => {
+it("disables Add instead of opening an empty capability menu", async () => {
   const { trigger } = await renderActions(false);
-  expect(trigger).toBeNull();
+  expect(trigger).toBeDisabled();
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
@@ -444,7 +446,7 @@ it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
       ],
     });
     const { trigger } = await renderActions(false);
-    expect(trigger).toBeNull();
+    expect(trigger).toBeDisabled();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();
     for (const action of ["Files", "Goal", "Plan", "Add images", "Plugins"]) {

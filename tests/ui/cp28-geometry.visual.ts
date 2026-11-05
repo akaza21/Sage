@@ -109,7 +109,7 @@ async function expectComposerControlsContained(pane: Locator) {
   );
   for (const control of [
     composer.getByRole("button", { name: "Harness", exact: true }),
-    composer.locator("span.composer__model-trigger"),
+    composer.getByRole("button", { name: "Model", exact: true }),
     composer.locator(".send-button"),
   ]) {
     await expect(control).toBeVisible();
@@ -183,12 +183,9 @@ for (const paneWidth of [360, 384]) {
     expect(paneBox).toBeTruthy();
     expect(paneBox!.width).toBeCloseTo(paneWidth, 0);
     const composer = pane.locator(".composer");
-    // A singleton model is a passive identity label, not a picker (#98).
-    const model = composer.locator("span.composer__model-trigger");
-    await expect(model).toHaveAccessibleName("Model");
-    await expect(
-      composer.getByRole("button", { name: "Model", exact: true }),
-    ).toHaveCount(0);
+    // A singleton model keeps the same picker trigger as a longer catalog.
+    const model = composer.getByRole("button", { name: "Model", exact: true });
+    await expect(model).toBeEnabled();
     // Wave 5 (Codex ref 36): a composer this wide keeps the model label and
     // truncates it; icon-only compaction starts at 320px.
     const label = model.locator(".composer__model-label");

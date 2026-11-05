@@ -16,6 +16,7 @@ import { ChevronDown } from "./leanIcons";
 import { PickerOption, PickerLogo } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
+import type { MenuPlacement } from "./menuPopoverPosition";
 import { ResourceStateNotice } from "./ResourceStateNotice";
 
 export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
@@ -54,6 +55,7 @@ export function SearchablePicker({
   onOpenChange,
   popoverClassName,
   popoverGap,
+  popoverPlacement,
   triggerClassName,
   triggerRole,
   triggerIcon,
@@ -77,6 +79,8 @@ export function SearchablePicker({
   onOpenChange?: (open: boolean) => void;
   popoverClassName?: string;
   popoverGap?: number;
+  /** Where the list opens relative to its trigger; see MenuPlacement. */
+  popoverPlacement?: MenuPlacement;
   triggerClassName?: string;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
@@ -285,6 +289,7 @@ export function SearchablePicker({
         id={`${id}-popover`}
         matchTriggerWidth
         gap={popoverGap}
+        placement={popoverPlacement}
         onDismiss={close}
         open={expanded}
         portalTarget={portalTarget}

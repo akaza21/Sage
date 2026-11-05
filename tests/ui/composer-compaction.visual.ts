@@ -256,7 +256,7 @@ for (const width of [1888, 720, 480]) {
             plan.locator('svg[aria-hidden="true"]').first(),
           ).toBeVisible();
         }
-      } else await expect(add).toHaveCount(0);
+      } else await expect(add).toBeDisabled();
       if (!profile.effort) {
         if (hasAddActions) await page.keyboard.press("Escape");
         return;
@@ -302,10 +302,10 @@ for (const width of [1888, 720, 480]) {
 const LABEL_PRIORITY = [
   ".composer__effort-picker:not([aria-controls]) .composer__effort-label",
   ".composer__capacity",
-  ".composer__access-text",
-  ".composer__harness .searchable-picker__trigger-label",
   ".project-scope .searchable-picker__trigger-label",
   ".composer__effort-picker[data-overflow-control] .composer__effort-label",
+  ".composer__access-text",
+  ".composer__harness .searchable-picker__trigger-label",
   ".composer__model-label",
 ];
 
