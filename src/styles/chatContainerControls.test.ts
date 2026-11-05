@@ -9,7 +9,7 @@ describe("Chat container control breakpoints", () => {
       "utf8",
     );
     expect(base).toMatch(
-      /\.composer__queued\s*\{[^}]*position:\s*static;[^}]*min-height:\s*0;[^}]*max-height:\s*min\(320px, 40vh\);[^}]*overflow-y:\s*auto;/s,
+      /\.composer__queued\s*\{[^}]*position:\s*static;[^}]*min-height:\s*var\(--chrome-row-height\);[^}]*max-height:\s*min\(320px, 40vh\);[^}]*overflow-y:\s*auto;/s,
     );
     expect(compact).not.toMatch(/\.composer \.composer__queued\s*\{/);
   });
