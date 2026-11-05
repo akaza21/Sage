@@ -139,9 +139,11 @@ export function BrowserNavigationControls({
     </button>
   );
   const onMenuClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    if (!event.target.closest(".browser-clear-data--menu button")) return;
-    run();
+    if (
+      event.target instanceof Element &&
+      event.target.closest(".browser-clear-data--menu button")
+    )
+      run();
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (menuOpen) browserMenuKeyDown(event, menu.current, run);

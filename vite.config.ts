@@ -41,7 +41,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "workbench-deps",
     priority: 1,
     // Shared page-layer state belongs to the shell, not Agent UI.
-    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker|IconButton))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
+    test: /src[\\/](?:(?:workbench[\\/]Workbench|ui[\\/](?:ResourceStateNotice|SearchablePicker))\.tsx|(?:app[\\/]snapshotProjection|ui[\\/]nativePageLayers)\.ts)$/,
   },
   {
     name: "modal-dialog",

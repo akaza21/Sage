@@ -482,6 +482,8 @@ describe("desktop-native runtime resolver", () => {
         "/src/features/chat/composerChrome.ts",
         "/src/workbench/agentChatRail.ts",
         "/src/workbench/agentRailStatusView.ts",
+        "/src/ui/IconButton.tsx",
+        "/src/ui/RetainedActivity.tsx",
       ]) {
         expect(
           closureForModule(graph, facade).some((id) => id.endsWith(module)),

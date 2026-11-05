@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -80,9 +81,7 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(0);
       }
       // Measure the settled panel, not a frame of its enter animation.
-      await menu.evaluate((element) =>
-        Promise.all(element.getAnimations().map((motion) => motion.finished)),
-      );
+      await waitForAnimations(menu);
       const anchor = await trigger.boundingBox();
       const panel = await menu.boundingBox();
       expect(anchor).not.toBeNull();
@@ -91,6 +90,8 @@ for (const width of [1888, 720, 480]) {
       expect(panel!.x + panel!.width).toBeLessThanOrEqual(width - 8);
       expect(panel!.y).toBeGreaterThanOrEqual(8);
       expect(panel!.y + panel!.height).toBeLessThanOrEqual(1088);
+      for (const summary of await page.locator(".acp-file-changes").all())
+        await waitForAnimations(summary);
       const edits = await page
         .locator(".chat-edit-summary-zone:not(:empty)")
         .boundingBox();

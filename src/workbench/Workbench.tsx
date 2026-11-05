@@ -55,10 +55,7 @@ registerWorkbenchSurfaces();
 
 const loadAgentWorkbenchBody = () => import("./AgentWorkbenchBody");
 
-const loadRailStatus = () =>
-  import("./useAgentRailStatus").then(({ AgentRailStatusObserver }) => ({
-    default: AgentRailStatusObserver,
-  }));
+const loadRailStatus = () => import("./useAgentRailStatus");
 
 const loadEditorCanvas = () => import("./ActiveEditorCanvas");
 
@@ -67,8 +64,7 @@ const loadQuickOpenHost = () => import("../features/quickOpen/QuickOpenHost");
 const loadDirtyTabDialog = () => import("./DirtyTabDialog");
 
 // The Editor's tab strip stays off the Agent startup path.
-const loadTabStrip = () =>
-  import("./TabStrip").then(({ TabStrip }) => ({ default: TabStrip }));
+const loadTabStrip = () => import("./TabStrip");
 
 const loadTerminalDock = () => import("./TerminalDockShell");
 

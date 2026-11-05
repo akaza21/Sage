@@ -592,6 +592,30 @@ async function gridGeometry(page: Page) {
   });
 }
 
+async function expectGridFit(page: Page) {
+  await expect
+    .poll(async () => {
+      const grid = await gridGeometry(page);
+      return {
+        fitsWidth: grid.width <= grid.availableWidth,
+        fitsHeight: grid.height <= grid.availableHeight,
+        fillsWidth: grid.availableWidth - grid.width < grid.cellWidth,
+        fillsHeight: grid.availableHeight - grid.height < grid.cellHeight,
+        matchesColumns:
+          grid.width === Math.round(grid.columns * grid.cellWidth),
+        matchesRows: grid.renderedRows === grid.rows,
+      };
+    })
+    .toEqual({
+      fitsWidth: true,
+      fitsHeight: true,
+      fillsWidth: true,
+      fillsHeight: true,
+      matchesColumns: true,
+      matchesRows: true,
+    });
+}
+
 async function dockGeometry(page: Page) {
   return page.locator(".terminal-dock").evaluate((dock) => {
     const header = dock.querySelector<HTMLElement>(".terminal-dock__header")!;
@@ -626,6 +650,7 @@ test("the terminal viewport follows the dock as the window shrinks and grows", a
   await expect
     .poll(async () => (await dockGeometry(page)).unusedHeight)
     .toBe(0);
+  await expectGridFit(page);
   const first = await dockGeometry(page);
   let tallest = first;
   for (const [width, height] of [
@@ -637,6 +662,7 @@ test("the terminal viewport follows the dock as the window shrinks and grows", a
     await expect
       .poll(async () => (await dockGeometry(page)).unusedHeight)
       .toBe(0);
+    await expectGridFit(page);
     if (height === 1000) tallest = await dockGeometry(page);
   }
   expect(tallest.rows).toBeGreaterThan(first.rows);
@@ -669,27 +695,7 @@ for (const deviceScaleFactor of [1, 1.25, 2]) {
           },
           { width, height },
         );
-        await expect
-          .poll(async () => {
-            const grid = await gridGeometry(page);
-            return {
-              fitsWidth: grid.width <= grid.availableWidth,
-              fitsHeight: grid.height <= grid.availableHeight,
-              fillsWidth: grid.availableWidth - grid.width < grid.cellWidth,
-              fillsHeight: grid.availableHeight - grid.height < grid.cellHeight,
-              matchesColumns:
-                grid.width === Math.round(grid.columns * grid.cellWidth),
-              matchesRows: grid.renderedRows === grid.rows,
-            };
-          })
-          .toEqual({
-            fitsWidth: true,
-            fitsHeight: true,
-            fillsWidth: true,
-            fillsHeight: true,
-            matchesColumns: true,
-            matchesRows: true,
-          });
+        await expectGridFit(page);
         if (width === 800) {
           const fit = await gridGeometry(page);
           if (firstFit) expect(fit).toEqual(firstFit);

@@ -1,4 +1,5 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef } from "react";
+import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
@@ -72,7 +73,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [editSummaryContainer, setEditSummaryContainer] =
-    useState<HTMLDivElement | null>(null);
+    useRetainedElement<HTMLDivElement>();
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";

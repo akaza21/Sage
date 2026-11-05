@@ -32,11 +32,7 @@ import { useBrowserPlacement } from "./useBrowserPlacement";
 import { useBrowserScreenshot } from "./useBrowserScreenshot";
 import "./browser.css";
 
-const ClosedBrowserSurface = lazy(() =>
-  import("./ClosedBrowserSurface").then((module) => ({
-    default: module.ClosedBrowserSurface,
-  })),
-);
+const ClosedBrowserSurface = lazy(() => import("./ClosedBrowserSurface"));
 const BrowserFindControls = lazy(() =>
   import("./BrowserFindControls").then((module) => ({
     default: module.BrowserFindControls,
@@ -105,12 +101,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const agentPresence = useBrowserAgentPresence(projectId, tab.id);
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
-  const page =
-    navigation && !navigation.loading
-      ? browserPageIdentity(navigation.url)
-      : null;
-  const newTab =
-    navigation?.loading === false && navigation.url === "" && !navigation.error;
+  const ready = navigation?.loading === false;
+  const page = ready ? browserPageIdentity(navigation.url) : null;
+  const newTab = ready && navigation.url === "" && !navigation.error;
   const suggestionScope = `${projectId ?? ""}\0${tab.id}\0${navigation?.revision ?? ""}`;
   const suggestions =
     suggestionResult?.scope === suggestionScope ? suggestionResult.sites : [];
@@ -215,6 +208,9 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     } catch (cause) {
       setError(String(cause).slice(0, 512));
     }
+  }
+  function navigateTo(url: string) {
+    void pageAction(() => browserNavigate(tab.id, url));
   }
   function changeZoom(delta: number) {
     const percent = Math.max(
@@ -367,17 +363,13 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         historyOpen={historyOpen}
         onError={setError}
         onCloseHistory={() => setHistoryOpen(false)}
-        onNavigate={(url) =>
-          void pageAction(() => browserNavigate(tab.id, url))
-        }
+        onNavigate={navigateTo}
       />
       {newTab ? (
         <Suspense fallback={<p role="status">Loading new tab…</p>}>
           <BrowserNewTab
             suggestions={suggestions}
-            onNavigate={(url) =>
-              void pageAction(() => browserNavigate(tab.id, url))
-            }
+            onNavigate={navigateTo}
             onNewTab={openNewTab}
             onTool={tools.launch}
             chatAvailable={tools.chatAvailable}

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -61,6 +62,8 @@ test("transcript owns one responsive reading column with nonnegative rhythm", as
           ),
         measure,
       );
+    for (const actions of await page.locator(".chat-transcript-actions").all())
+      await waitForAnimations(actions);
     const geometry = await page
       .locator(".message-list__content")
       .evaluate((column) => {
@@ -109,6 +112,10 @@ test("settings loading and persistence errors stay in the content flow", async (
   });
   for (const width of [1280, 480]) {
     await page.setViewportSize({ width, height: 800 });
+    const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+    if (await drawer.isVisible())
+      await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    await expect(page.locator(".settings-surface")).toBeVisible();
     const headerGap = await page
       .locator(".settings-surface__nav")
       .evaluate((nav) => ({

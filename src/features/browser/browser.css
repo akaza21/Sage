@@ -80,9 +80,13 @@
 .browser-surface__address {
   position: relative;
   flex: 1 1 auto;
-  min-width: var(--browser-address-min-width);
+  min-width: max(
+    var(--browser-address-min-width),
+    var(--browser-address-preferred-width)
+  );
 }
-/* The address is the primary control. When it would fall below its minimum,
+/* Annotate's label yields first to the address's preferred reading width.
+   The address is the primary control. When it would fall below its minimum,
    the toolbar compacts one step at a time, each step only as needed
    (useToolbarOverflow): the Annotate pill drops its label, the chat picker
    drops its title, the Agent's presence drops its label, then Downloads and
@@ -93,6 +97,9 @@
   padding: 0;
   justify-content: center;
   font-size: 0;
+}
+[data-compact-annotate] .browser-surface__address {
+  min-width: var(--browser-address-min-width);
 }
 [data-compact-presence]
   .browser-surface__page-actions-slot

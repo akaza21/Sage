@@ -143,8 +143,7 @@ for (const width of [480, 1380]) {
       page.getByRole("radio", { name: "Editor", exact: true }),
     ).toBeChecked();
     await page.keyboard.press("Control+,");
-    // At 480px the compact Editor's open tool drawer is modal, so the
-    // canvas behind it is hidden from the accessibility tree while visible.
+    // Opening Settings reveals its canvas, dismissing a compact tool drawer.
     const editor = page.getByRole("region", {
       name: "Settings",
       exact: true,

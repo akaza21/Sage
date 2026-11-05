@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
+  settleTranscriptAtStart,
 } from "./shared/visualBrowserPrimitives";
 
 test.use({ deviceScaleFactor: 1 });
@@ -69,9 +70,7 @@ for (const { width, height } of [
     );
     await page.getByRole("button", { name: "Dismiss build notice" }).click();
     await expect(page.locator(".build-notice")).toHaveCount(0);
-    await page.locator(".message-list").evaluate((element) => {
-      element.scrollTop = 0;
-    });
+    await settleTranscriptAtStart(page);
     await expect(page.locator(".message-list")).toHaveScreenshot(
       `chat-surface-rows-${width}.png`,
       pixels,
