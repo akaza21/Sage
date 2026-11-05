@@ -110,7 +110,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(
       resources.getByRole("button", { name: "Changes", exact: true }),
     ).toBeEnabled();
-    await expect(resources.getByText(/files? changed/)).toBeVisible();
+    await expect(resources.getByText(/recently changed files?/)).toBeVisible();
     await expect(
       resources.getByText("Background processes", { exact: true }),
     ).toBeVisible();
