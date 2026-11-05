@@ -402,7 +402,7 @@ test("composer controls compact by their own container width, not the window", a
       expect(geometry.chevron, at).toEqual([16, 16]);
       expect(geometry.ellipsis, at).toBe("ellipsis");
       // Below 321px the icon, empty label and chevron can outgrow the
-      // squeezed trigger; that overflow is tracked as a product bug.
+      // squeezed trigger; that overflow is tracked in issue #169.
       if (contentWidth > 320) {
         expect(geometry.chevronInside, at).toBe(true);
         expect(geometry.labelWidth, at).toBeGreaterThan(0);
