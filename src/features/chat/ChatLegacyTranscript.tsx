@@ -1,8 +1,7 @@
+import { type ChatMessage } from "../../domain/chat";
 import { Check } from "../../ui/leanIcons";
-
-import type { ChatMessage } from "../../domain/chat";
-import { EditSummary } from "./EditSummary";
 import { chatTimestamp } from "./chatTimestamp";
+import { EditSummary } from "./EditSummary";
 
 export function ChatLegacyTranscript({
   messages,

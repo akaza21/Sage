@@ -131,6 +131,15 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
   await page.goto("/tests/ui/fixtures/chat-performance.html");
   await page.waitForFunction(() => Boolean(window.chatPerf));
   await page.evaluate(() => window.chatPerf.mount("cap"));
+  // The text renderer loads on demand. Choose the expansion anchor after
+  // its content replaces the loading placeholders, not during that reflow.
+  await page.waitForFunction(() => {
+    const messages = [...document.querySelectorAll(".acp-message")];
+    return (
+      messages.length > 0 &&
+      messages.every((message) => message.querySelector(".acp-markdown"))
+    );
+  });
   await page.evaluate(() => window.chatPerf.scrollToMiddle());
   await page.waitForFunction(() => Boolean(window.chatPerf.visibleAnchor()));
   const anchored = await page.evaluate(() => window.chatPerf.visibleAnchor());

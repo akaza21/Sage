@@ -7,8 +7,7 @@ impl AcpService {
         let started = Instant::now();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         self.close_agent_tabs_for_shutdown(started + budget);
-        self.runtime.config.clear_all();
-        self.runtime.goal.clear_all();
+        self.clear_lane_channels();
         let settlement = self.read_text_files.terminalize_all();
         if !settlement.wait_until(started + budget) {
             return Err(crate::acp::runtime::HostError::Deadline);
@@ -29,7 +28,11 @@ impl AcpService {
         // Recovery still owns native/durable authority on error. The early
         // return keeps the slot, publisher, and journal alive for exact retry.
         self.shutdown_codex_recovery(started + budget)?;
-        if let Some(runtime) = self.runtime.begin_shutdown() {
+        let mut runtime_failure = None;
+        for lane in self.lanes() {
+            let Some(runtime) = lane.runtime.begin_shutdown() else {
+                continue;
+            };
             #[cfg(all(test, windows))]
             if failure.is_none() {
                 self.record_shutdown_stage("runtime");
@@ -37,11 +40,14 @@ impl AcpService {
             if let Err(error) = runtime.shutdown(started + budget) {
                 #[cfg(all(test, windows))]
                 self.record_shutdown_stage(runtime.last_shutdown_phase());
-                self.runtime
+                lane.runtime
                     .shutdown_failed()
                     .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
-                return Err(error);
+                runtime_failure.get_or_insert(error);
             }
+        }
+        if let Some(error) = runtime_failure {
+            return Err(error);
         }
         let remaining = (started + budget).saturating_duration_since(Instant::now());
         if let Err(error) = self.stop_notifier(remaining) {
@@ -58,7 +64,12 @@ impl AcpService {
             self.record_shutdown_stage("journal");
             failure.get_or_insert(error);
         }
-        if self.runtime.finish_shutdown().is_err() {
+        // Every lane finishes; one failure must not skip the others.
+        let unfinished = self
+            .lanes()
+            .filter(|lane| lane.runtime.finish_shutdown().is_err())
+            .count();
+        if unfinished != 0 {
             #[cfg(all(test, windows))]
             if failure.is_none() {
                 self.record_shutdown_stage("finish");
@@ -70,6 +81,13 @@ impl AcpService {
             self.record_shutdown_stage("ok");
         }
         failure.map_or(Ok(()), Err)
+    }
+
+    fn clear_lane_channels(&self) {
+        for lane in self.lanes() {
+            lane.runtime.config.clear_all();
+            lane.runtime.goal.clear_all();
+        }
     }
 
     fn stop_notifier(&self, timeout: Duration) -> Result<(), crate::acp::runtime::HostError> {
@@ -111,8 +129,7 @@ impl AcpService {
 
 impl Drop for AcpService {
     fn drop(&mut self) {
-        self.runtime.config.clear_all();
-        self.runtime.goal.clear_all();
+        self.clear_lane_channels();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
@@ -125,11 +142,7 @@ impl Drop for AcpService {
         let mut recovery_attempts = 0_u8;
         while recovery_attempts < 2
             && Instant::now() < recovery_deadline
-            && self
-                .codex_recovery
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_some()
+            && self.has_retained_recovery()
             && self.shutdown_codex_recovery(recovery_deadline).is_err()
         {
             recovery_attempts += 1;
@@ -140,12 +153,14 @@ impl Drop for AcpService {
             .codex_discovery
             .shutdown(budget.saturating_sub(started.elapsed()));
         self.codex_auth.invalidate();
-        let mut runtime_stopped = true;
-        if let Some(runtime) = self.runtime.begin_shutdown()
-            && runtime.shutdown(started + budget).is_err()
-        {
-            let _ = self.runtime.shutdown_failed();
-            runtime_stopped = false;
+        let mut runtime_stopped = vec![true; self.lanes.len()];
+        for (index, lane) in self.lanes().enumerate() {
+            if let Some(runtime) = lane.runtime.begin_shutdown()
+                && runtime.shutdown(started + budget).is_err()
+            {
+                let _ = lane.runtime.shutdown_failed();
+                runtime_stopped[index] = false;
+            }
         }
         let _ = self.stop_notifier(budget.saturating_sub(started.elapsed()));
         self.journal.close_when_drained();
@@ -155,8 +170,10 @@ impl Drop for AcpService {
         {
             self.journal.shutdown();
         }
-        if runtime_stopped {
-            let _ = self.runtime.finish_shutdown();
+        for (index, lane) in self.lanes().enumerate() {
+            if runtime_stopped[index] {
+                let _ = lane.runtime.finish_shutdown();
+            }
         }
     }
 }

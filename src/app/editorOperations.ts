@@ -1,5 +1,7 @@
 const MAX_QUEUED_EDITOR_OPERATIONS = 8;
+
 let editorOperationPipeline: Promise<void> = Promise.resolve();
+
 let queuedEditorOperations = 0;
 
 export function enqueueEditorOperation<T>(

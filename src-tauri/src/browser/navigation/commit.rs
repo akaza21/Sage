@@ -21,6 +21,8 @@ pub(super) fn register(app: AppHandle, label: String, core: &ICoreWebView2) -> R
             if let Ok(mut tabs) = app.state::<BrowserState>().tabs.lock() {
                 tabs.note_content_loading(&label, id, error_page.as_bool());
             }
+            // An error page replaces the old document too.
+            crate::browser::site_permissions::document_committed_native(&app, &label, id);
         }
         Ok(())
     }));

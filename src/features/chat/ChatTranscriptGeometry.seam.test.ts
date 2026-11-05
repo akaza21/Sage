@@ -38,23 +38,12 @@ afterEach(() => {
 
 describe("CP-28 transcript style contracts", () => {
   it("shares the narrow Agent column without sacrificing the native scrollbar gutter", () => {
-    const source = readFileSync(
-      "src/workbench/workbench-window-mode.css",
-      "utf8",
-    );
-    const narrow = source.match(
-      /@container chat \(max-width: 520px\)\s*\{([\s\S]*?)\n\}/u,
-    )?.[1];
-    expect(narrow).toBeDefined();
-    expect(narrow).toMatch(
-      /\.workbench--agent \.message-list,\s*\.workbench--agent \.composer\s*\{[^}]*--chat-column-trailing:\s*0px;/u,
-    );
-    expect(narrow).toMatch(
-      /padding-inline-end:\s*calc\(\s*var\(--chat-column-gutter\)\s*\+\s*var\(--chat-column-trailing\)\s*-\s*var\(--scrollbar-size\)\s*\);/u,
-    );
-    expect(narrow).toMatch(
-      /\.workbench--agent \.acp-turn\s*\{[^}]*column-gap:\s*0;/u,
-    );
+    expect(
+      declaration(
+        "src/styles/chat-surface.css",
+        ".chat-surface",
+      ).getPropertyValue("--chat-column-trailing"),
+    ).toBe("var(--scrollbar-size)");
     expect(
       declaration(
         "src/styles/chat-surface.css",
@@ -70,27 +59,27 @@ describe("CP-28 transcript style contracts", () => {
     );
   });
 
-  it("declares a 660px reading-measure token and matching composer width/offset expressions", () => {
+  it("inherits the global reading measure and shares composer width/offset expressions", () => {
     const surface = declaration("src/styles/chat-surface.css", ".chat-surface");
-    expect(surface.getPropertyValue("--reading-measure")).toBe("660px");
-    expect(surface.getPropertyValue("--chat-column-gutter")).toBe(
-      "var(--space-4)",
+    expect(surface.getPropertyValue("--reading-measure")).toBe("");
+    expect(compact(surface.getPropertyValue("--chat-column-gutter"))).toBe(
+      "var(--space-1)",
     );
     expect(surface.getPropertyValue("--chat-column-trailing")).toBe(
-      "calc(var(--scrollbar-size) + var(--space-3))",
+      "var(--scrollbar-size)",
     );
     const composer = declaration(
       "src/styles/composer-surface.css",
-      ".composer, .chat-surface > .acp-permission-prompt",
+      ".chat-dock",
     );
     expect(compact(composer.width)).toBe(
       compact(
-        "min(var(--reading-measure), calc(100% - var(--chat-column-gutter) - var(--chat-column-gutter) - var(--chat-column-trailing)))",
+        "min(var(--chat-column-measure), calc(100% - var(--chat-column-gutter) - var(--chat-column-gutter) - var(--chat-column-trailing)))",
       ),
     );
     expect(compact(composer.marginInlineStart)).toBe(
       compact(
-        "max(var(--chat-column-gutter), calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2))",
+        "max(var(--chat-column-gutter), calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2))",
       ),
     );
     const source = readFileSync("src/styles/composer-surface.css", "utf8");
@@ -104,9 +93,9 @@ describe("CP-28 transcript style contracts", () => {
     expect(
       declaration(
         "src/features/chat/chat-transcript-polish.css",
-        ".message-list__content .acp-turn__items",
+        ".message-list__content",
       ).width,
-    ).toBe("min(100%, var(--reading-measure))");
+    ).toBe("min(100%, var(--chat-column-measure))");
   });
 
   it("configures one native-marker gutter and hanging text inset for Chat lists", () => {
@@ -139,7 +128,7 @@ describe("CP-28 transcript style contracts", () => {
       "src/features/chat/acp/chat-markdown.css",
       ".acp-markdown .markdown-table :is(th, td)",
     );
-    expect(cells.fontSize).toBe("var(--font-size-sm)");
+    expect(cells.fontSize).toBe("var(--chat-table-font-size)");
     expect(cells.lineHeight).toBe("var(--line-height-relaxed)");
     const headers = declaration(
       "src/features/chat/acp/chat-markdown.css",

@@ -68,6 +68,7 @@ if ($argumentBytes -gt $MaximumArgumentBytes -or $environmentBytes -gt $MaximumE
 }
 
 $deadlineUtc = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$request.deadlineEpochMs).UtcDateTime
+[Console]::Error.WriteLine(('cargo-job wrapper-ready remainingMs={0}' -f [long][Math]::Floor(($deadlineUtc - [DateTime]::UtcNow).TotalMilliseconds)))
 $result = Invoke-CargoValidationJob `
   -RequestNonce ([string]$request.requestNonce) `
   -ControlPipeName $pipeName `

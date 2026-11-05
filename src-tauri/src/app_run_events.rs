@@ -38,6 +38,10 @@ fn handle_exit_request(
 pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
     if let RunEvent::WindowEvent { label, event, .. } = &event {
         crate::window_memory::handle_window_event(app_handle, label, event);
+        #[cfg(windows)]
+        {
+            crate::window_frame::handle_window_event(app_handle, label, event);
+        }
     }
     if matches!(
         &event,
@@ -67,6 +71,9 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         app_handle
             .state::<BrowserState>()
             .clear_teardown_after_window_destroy();
+        app_handle
+            .state::<crate::browser::passwords::PasswordsState>()
+            .clear_clipboard_on_exit();
     }
     if let RunEvent::ExitRequested { api, .. } = event {
         info!("Sage host ExitRequested shutdown start");

@@ -35,19 +35,19 @@
 }
 
 .root-tree + .root-tree {
-  margin-top: 8px;
-  padding-top: 4px;
+  margin-top: var(--space-2);
+  padding-top: var(--space-1);
   border-top: 1px solid var(--color-border-subtle);
 }
 
 .root-tree__heading {
   display: grid;
   width: 100%;
-  height: 28px;
+  height: var(--editor-list-row-height);
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: var(--editor-list-gap);
+  padding: 0 var(--editor-list-inline-padding);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
@@ -76,12 +76,17 @@
 }
 
 .tree__row {
+  position: relative;
   display: flex;
   width: 100%;
-  height: var(--row-height-compact);
+  height: var(--editor-list-row-height);
   align-items: center;
-  gap: var(--space-1);
-  padding-right: var(--space-2);
+  gap: var(--editor-list-gap);
+  padding-inline: calc(
+      var(--editor-list-inline-padding) + var(--tree-depth, 0) *
+        var(--editor-tree-indent)
+    )
+    var(--editor-list-inline-padding);
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-sm);
@@ -109,12 +114,38 @@
 
 .tree__row--selected {
   color: var(--color-text-primary);
-  background: var(--color-surface-selected);
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  background: var(--row-selected-fill, var(--color-surface-selected));
+  box-shadow: var(--row-selected-shadow, inset 2px 0 0 var(--color-accent));
 }
 
 .tree__row svg {
   flex: 0 0 auto;
+  width: var(--editor-list-icon-size);
+  height: var(--editor-list-icon-size);
+}
+
+/* One guide per ancestor, centred under that ancestor's chevron. They show
+   while the pointer or focus is in the tree, as VS Code's do. */
+.tree__row::before {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(
+    var(--editor-list-inline-padding) + var(--editor-tree-twisty-size) / 2
+  );
+  width: calc(var(--tree-depth, 0) * var(--editor-tree-indent));
+  background: repeating-linear-gradient(
+    to right,
+    var(--editor-tree-guide-color) 0 var(--editor-tree-guide-width),
+    transparent var(--editor-tree-guide-width) var(--editor-tree-indent)
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--editor-tree-guide-duration) linear;
+}
+
+.tree:is(:hover, :focus-within) .tree__row::before {
+  opacity: 1;
 }
 
 /* Entries an ignore file ignores: VS Code greys the name of Git-ignored ones. */
@@ -123,7 +154,7 @@
 }
 
 .tree__row > svg:first-child {
-  transition: transform 90ms ease;
+  transition: transform var(--motion-duration-fast) ease;
 }
 
 .tree__chevron--expanded {
@@ -131,6 +162,11 @@
 }
 
 .tree__indent {
-  width: 13px;
-  flex: 0 0 13px;
+  flex: 0 0 var(--editor-tree-twisty-size);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tree__row::before {
+    transition-duration: 0ms;
+  }
 }

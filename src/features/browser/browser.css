@@ -1,4 +1,6 @@
 .browser-surface {
+  /* The device toolbar's row, divider included (Codex ref 41). */
+  --browser-device-toolbar-height: 36px;
   position: absolute;
   inset: 0;
   min-width: 0;
@@ -22,7 +24,7 @@
   padding: 4px 8px;
   border-bottom: 1px solid var(--browser-chrome-divider);
   background: var(--browser-start-fill);
-  z-index: 5;
+  z-index: var(--z-floating);
 }
 .browser-surface__toolbar button {
   display: grid;
@@ -75,18 +77,48 @@
 .browser-surface__toolbar .browser-surface__annotate:disabled {
   opacity: 0.5;
 }
-/* A narrow pane keeps the address legible: the pill drops its label. */
-@container (max-width: 640px) {
-  .browser-surface__toolbar .browser-surface__annotate {
-    width: 28px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
-}
 .browser-surface__address {
   position: relative;
   flex: 1 1 auto;
+  min-width: max(
+    var(--browser-address-min-width),
+    var(--browser-address-preferred-width)
+  );
+}
+/* Annotate's label yields first to the address's preferred reading width.
+   The address is the primary control. When it would fall below its minimum,
+   the toolbar compacts one step at a time, each step only as needed
+   (useToolbarOverflow): the Annotate pill drops its label, the chat picker
+   drops its title, the Agent's presence drops its label, then Downloads and
+   last the page actions move into the More menu. Only with nothing left to
+   move does the address shrink further. */
+[data-compact-annotate] .browser-surface__annotate {
+  width: var(--control-height-compact);
+  padding: 0;
+  justify-content: center;
+  font-size: 0;
+}
+[data-compact-annotate] .browser-surface__address {
+  min-width: var(--browser-address-min-width);
+}
+[data-compact-presence]
+  .browser-surface__page-actions-slot
+  .browser-surface__agent-presence-label {
+  /* Keep the live status in the accessibility tree while its text yields. */
+  width: 0;
+}
+.browser-surface__page-actions-slot {
+  display: flex;
+  flex: none;
+}
+.browser-surface__page-actions-host {
+  display: contents;
+}
+[data-overflow-downloads] .browser-downloads__trigger,
+[data-overflow-actions] .browser-surface__page-actions-slot {
+  display: none;
+}
+[data-overflow-actions] .browser-surface__address {
   min-width: 0;
 }
 .browser-surface__nav-group,
@@ -97,8 +129,12 @@
   gap: 2px;
 }
 .browser-surface__nav-group {
+  overflow: clip;
   border-radius: var(--radius-pill);
   background: var(--browser-control-fill);
+}
+.browser-surface__nav-group button:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-offset));
 }
 .browser-surface__right-group {
   position: relative;
@@ -117,7 +153,7 @@
 
 .browser-surface__address-security {
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raised);
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
@@ -127,7 +163,6 @@
 .browser-surface__page-actions {
   display: flex;
   min-width: 0;
-  max-width: min(55%, 440px);
   align-items: center;
   gap: var(--space-1);
 }
@@ -158,10 +193,77 @@
   cursor: pointer;
 }
 
+/* The chat picker shows the chat's title, ellipsised only past its cap. In a
+   narrow toolbar it becomes a chat icon over the same native select, so it
+   stays reachable without a clipped title. */
+.browser-surface__chat-picker {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 10ch;
+  max-width: var(--browser-chat-picker-max-width);
+}
 .browser-surface__attachment select {
-  flex: 1 1 auto;
-  max-width: 160px;
+  width: 100%;
+  text-overflow: ellipsis;
   cursor: pointer;
+}
+.browser-surface__chat-icon {
+  position: absolute;
+  inset: 0;
+  display: none;
+  margin: auto;
+  color: var(--browser-control-text);
+  pointer-events: none;
+}
+@container (max-width: 480px) {
+  .browser-surface__address input {
+    padding: 0 var(--space-2);
+    text-overflow: ellipsis;
+  }
+  .browser-surface__address-security {
+    display: none;
+  }
+}
+[data-compact-chat]
+  .browser-surface__page-actions-slot
+  .browser-surface__chat-picker {
+  flex: none;
+  width: var(--control-height-compact);
+  min-width: 0;
+}
+[data-compact-chat]
+  .browser-surface__page-actions-slot
+  .browser-surface__attachment
+  select {
+  padding: 0;
+  color: transparent;
+  appearance: none;
+}
+.browser-surface__attachment option {
+  color: var(--browser-control-text);
+}
+[data-compact-chat]
+  .browser-surface__page-actions-slot
+  .browser-surface__chat-icon {
+  display: block;
+}
+/* In the More menu the page actions stack: the attachment row, which has
+   room for the chat's title, above the Agent's presence row. */
+.browser-surface__menu-page-actions {
+  min-width: 0;
+}
+.browser-surface__menu-page-actions .browser-surface__page-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.browser-surface__menu-page-actions .browser-surface__agent-presence-label {
+  flex: 1 1 auto;
+  max-width: none;
+}
+.browser-surface__menu-page-actions .browser-surface__chat-picker {
+  flex: 1 1 0;
+  max-width: none;
 }
 .browser-surface__attachment button:hover:not(:disabled),
 .browser-surface__attachment select:hover:not(:disabled) {
@@ -172,17 +274,9 @@
   opacity: 0.5;
   cursor: default;
 }
-.browser-surface__attachment [role="alert"] {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-danger);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-}
 .browser-surface__menu {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -204,7 +298,7 @@
   margin-top: 4px;
   padding-top: 4px;
 }
-.browser-surface__menu button {
+.browser-surface__menu [role="menuitem"] {
   display: block;
   width: 100%;
   height: 28px;
@@ -249,7 +343,7 @@
   padding: 0;
 }
 .browser-surface__drawer {
-  z-index: 2;
+  z-index: var(--z-sticky);
   max-height: 192px;
   overflow: auto;
   border-bottom: 1px solid var(--browser-control-hover);
@@ -299,32 +393,43 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-.browser-surface__find {
   flex-wrap: wrap;
   padding: 4px 8px;
 }
+
 .browser-surface__find input {
   flex: 1 1 120px;
   min-width: 0;
 }
 .browser-surface__error {
-  z-index: 1;
+  z-index: var(--z-raised);
+  color: var(--color-danger);
   padding: 4px 8px;
   background: var(--bg);
 }
 .browser-surface__status {
-  z-index: 1;
+  z-index: var(--z-raised);
   margin: 0;
   padding: 4px 8px;
   color: var(--color-text-secondary);
   background: var(--bg);
 }
+/* The device toolbar's row; it holds its height while the toolbar loads. */
+.browser-surface__device-slot {
+  flex: 0 0 var(--browser-device-toolbar-height);
+  min-width: 0;
+  z-index: var(--z-floating);
+}
 .browser-surface__frame {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+/* The native page sits over this box: the whole frame, or a centred
+   device with a gutter for its resize handles (BF-7a, browser-device.css). */
+.browser-surface__viewport {
+  position: absolute;
+  inset: 0;
 }
 /* Annotate's comment box over the frozen page (Codex ref 60). */
 .browser-annotate {
@@ -453,8 +558,7 @@
   padding: 2px 8px;
 }
 .browser-clear-data [role="alert"],
-.browser-site-permissions p[role="alert"],
-.browser-downloads__error {
+.browser-site-permissions p[role="alert"] {
   color: var(--color-danger);
 }
 
@@ -462,6 +566,9 @@
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-panel);
   font-size: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 4px 8px;
 }
 .browser-site-permissions ul {
   display: grid;
@@ -470,9 +577,9 @@
   overflow-y: auto;
   margin: 0;
   list-style: none;
+  padding: 0;
 }
-/* Downloads: the toolbar's ⬇ button and its popover (Codex toolbar). The
-   popover hangs from the right group like the … menu does. */
+
 .browser-downloads__trigger {
   position: relative;
 }
@@ -493,12 +600,7 @@
   pointer-events: none;
 }
 .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
-  animation: browser-download-spin 1s linear infinite;
-}
-@keyframes browser-download-spin {
-  to {
-    transform: rotate(1turn);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-downloads[data-indeterminate] .browser-downloads__trigger::after {
@@ -507,7 +609,7 @@
 }
 .browser-downloads__popover {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   top: calc(100% + 6px);
   right: 0;
   display: grid;
@@ -525,71 +627,6 @@
 .browser-downloads__popover:focus {
   outline: none;
 }
-.browser-downloads__title {
-  margin: 0;
-  padding: 2px 8px 4px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.browser-downloads__empty {
-  margin: 0;
-  padding: 8px;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__error {
-  margin: 0;
-  padding: 0 8px;
-}
-.browser-downloads__list {
-  display: grid;
-  gap: 2px;
-  max-height: 288px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.browser-downloads__item {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0 8px;
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-}
-.browser-downloads__item:hover {
-  background: var(--browser-control-hover);
-}
-.browser-downloads__item > svg {
-  grid-row: 1 / span 2;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__name,
-.browser-downloads__status {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.browser-downloads__status {
-  grid-column: 2;
-  color: var(--browser-muted-text);
-}
-.browser-downloads__item > button {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-}
-.browser-downloads__item > progress {
-  grid-column: 2 / -1;
-  width: 100%;
-  height: 4px;
-  accent-color: var(--color-accent);
-}
-.browser-site-permissions {
-  display: grid;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
 .browser-site-permissions__prompt,
 .browser-site-permissions li {
   display: flex;
@@ -601,9 +638,6 @@
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
-}
-.browser-site-permissions ul {
-  padding: 0;
 }
 .browser-site-permissions p {
   margin: 0;

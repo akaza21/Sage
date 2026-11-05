@@ -1,14 +1,15 @@
-import type { ChatMatch } from "./chatFindModel";
+import { type ChatMatch } from "./chatFindModel";
 
 type Ranges = { other: Range[]; current: Range[] };
 
 /** At most two chat panes are visible, so at most two owners paint. */
 const MAX_HIGHLIGHT_OWNERS = 2;
+
 const owners = new Map<symbol, Ranges>();
 
 /** The rendered blocks, in the order chatTurnText produces segments. */
 const SEGMENT_SELECTOR =
-  "p, h1, h2, h3, h4, h5, h6, blockquote, li, th, td, pre > code";
+  "p, h1, h2, h3, h4, h5, h6, [data-markdown-inline], th, td, pre > code";
 
 function segmentElements(message: Element): Element[] {
   const markdown = message.querySelector(".acp-markdown");

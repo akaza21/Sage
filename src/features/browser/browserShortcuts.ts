@@ -1,18 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import {
+  browserShortcutFor,
+  type BrowserShortcut,
+} from "./browserShortcutRegistry";
 
-export type BrowserShortcut =
-  | "focusAddress"
-  | "reload"
-  | "back"
-  | "forward"
-  | "find"
-  | "zoomIn"
-  | "zoomOut"
-  | "zoomReset"
-  | "newTab"
-  | "closeTab"
-  | "stop";
+export type { BrowserShortcut } from "./browserShortcutRegistry";
 
 export function dispatchBrowserChromeShortcut(
   root: HTMLElement,
@@ -21,42 +14,13 @@ export function dispatchBrowserChromeShortcut(
   dispatch: (action: BrowserShortcut) => void,
 ): void {
   if (!(event.target instanceof Node) || !root.contains(event.target)) return;
-  let action: BrowserShortcut | undefined;
-  const key = event.key.toLowerCase();
-  if (event.ctrlKey && !event.altKey && !event.metaKey) {
-    if (!event.shiftKey) {
-      action = (
-        {
-          l: "focusAddress",
-          r: "reload",
-          f: "find",
-          t: "newTab",
-          w: "closeTab",
-          "0": "zoomReset",
-          "-": "zoomOut",
-        } as const
-      )[key as "l"];
-    }
-    if (key === "+" || key === "=" || key === "add" || event.code === "Equal") {
-      action = "zoomIn";
-    }
-  } else if (
-    event.altKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    !event.metaKey
-  ) {
-    if (key === "arrowleft") action = "back";
-    if (key === "arrowright") action = "forward";
-  } else if (
-    !event.ctrlKey &&
-    !event.altKey &&
-    !event.shiftKey &&
-    !event.metaKey
-  ) {
-    if (key === "f5") action = "reload";
-    if (key === "escape" && loading) action = "stop";
-  }
+  if (
+    event.key === "Escape" &&
+    event.target instanceof HTMLElement &&
+    event.target.matches("input, textarea, [contenteditable=true]")
+  )
+    return;
+  const action = browserShortcutFor(event, loading);
   if (!action) return;
   event.preventDefault();
   event.stopPropagation();
@@ -72,6 +36,7 @@ interface BrowserShortcutActions {
   zoomPercent: number;
   newTab: () => void;
   closeTab: () => void;
+  history: () => void;
 }
 
 export function performBrowserShortcut(
@@ -107,6 +72,9 @@ export function performBrowserShortcut(
       break;
     case "closeTab":
       actions.closeTab();
+      break;
+    case "history":
+      actions.history();
       break;
   }
 }

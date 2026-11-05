@@ -247,7 +247,7 @@
   min-width: 0;
   grid-template-columns: 10px minmax(0, 1fr);
   align-items: start;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -269,7 +269,7 @@
 .acp-plan__pulse {
   width: 4px;
   height: 4px;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   border-radius: var(--radius-pill);
   background: var(--color-accent);
   animation: sage-working-pulse var(--motion-duration-pulse) ease-in-out
@@ -278,7 +278,7 @@
 
 .acp-plan__activity .acp-plan__working-more {
   display: block;
-  margin-left: 16px;
+  margin-left: var(--space-4);
   color: var(--color-text-disabled);
   font-style: italic;
 }
@@ -292,13 +292,6 @@
   .acp-activity-card > summary,
   .acp-activity-card__header {
     gap: var(--space-2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .acp-activity-card * {
-    animation-duration: 0s !important;
-    animation-iteration-count: 1 !important;
   }
 }
 
@@ -325,7 +318,7 @@
   }
 }
 .acp-lifecycle-notice {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   color: var(--composer-muted-text);
   font-size: 12px;
 }

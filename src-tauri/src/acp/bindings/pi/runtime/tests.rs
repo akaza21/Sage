@@ -234,6 +234,24 @@ fn pi_thinking_delta_projects_thought_summary_not_assistant_text() {
         batch.events(),
         [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+            ..
+        }] if summary.as_str() == "Check the fixture"
+    ));
+    let completed = runtime
+        .ingest(
+            &frame(json!({
+                "type":"message_update",
+                "assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Check the fixture"}
+            })),
+            &Mapper,
+        )
+        .expect("thinking end");
+    assert!(matches!(
+        completed.events(),
+        [AdapterEvent::Item {
+            payload: NormalizedPayload::ThoughtSummary { summary },
+            lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
             ..
         }] if summary.as_str() == "Check the fixture"
     ));
@@ -435,6 +453,22 @@ fn pi_tool_snapshot_cache_rejects_aggregate_overflow() {
         runtime.command(AdapterCommand::Cancel),
         Err(AdapterRuntimeError::Operation)
     ));
+}
+
+#[test]
+fn retry_progress_preserves_reported_attempt_counts_even_without_error_text() {
+    let mut runtime = fixture_runtime(73);
+    ready(&mut runtime);
+    running(&mut runtime);
+    let batch = runtime
+        .ingest(
+            &frame(json!({"type":"auto_retry_start","attempt":1,"maxAttempts":3})),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::Item {
+        payload: NormalizedPayload::Error { code, message, .. }, ..
+    }] if code.as_str() == "Attempt failed (attempt 1/3)" && message.as_str().is_empty()));
 }
 
 #[test]
@@ -854,9 +888,9 @@ fn pi_malformed_or_failed_idle_levels_keep_model_only_without_egress() {
     );
 
     let mut failed = fixture_runtime(43);
-    let levels = ready_until_levels(&mut failed);
+    ready_until_levels(&mut failed);
     let batch = failed
-        .ingest(&frame(json!({"type":"response","id":levels["id"],"command":"get_available_thinking_levels","success":false})), &Mapper)
+        .ingest(&frame(json!({"type":"response","command":"get_available_thinking_levels","success":false,"error":"Unknown command: get_available_thinking_levels"})), &Mapper)
         .expect("failed levels diagnostic");
     assert!(
         batch

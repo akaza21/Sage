@@ -11,6 +11,8 @@ name: CI
 # request next to the Linux ones.
 
 on:
+  schedule:
+    - cron: "23 6 * * *"
   pull_request:
     types:
       - opened
@@ -40,14 +42,35 @@ permissions:
 # repository the branch lives in, so a fork's branch never shares a group with
 # a branch of the same name here.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled' || 'branch' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Audit Rust dependencies
+        working-directory: src-tauri
+        run: cargo deny check advisories bans sources
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm audit --audit-level=critical
+      - name: Check source policy and regression tests
+        run: node --test scripts/check-policy.node-test.mjs && node scripts/check-policy.mjs
+
   plan:
     name: Plan lanes
-    # Draft pull requests run nothing until they are marked ready for review.
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    # Only the security job runs on schedules and draft pull requests.
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -171,8 +194,29 @@ jobs:
       - run: npm ci
       - name: Provision the bundled Chromium the smoke CLI drives
         run: npx playwright install chromium
-      # The Windows Cargo Job tests give each cargo command 10 s; install the
-      # rust-toolchain.toml toolchain first so no command waits on a download.
+      # The Windows Cargo Job tests give each cargo command 10 s. The image
+      # keeps rustup on C:, which Defender saturates for about 30 s when it
+      # loads new security intelligence partway through the job; a rustup
+      # proxy that pages in from C: then can stall past that deadline. Install
+      # rustup into the runner temp directory, which shares the workspace's
+      # disk (D: on hosted images), so rustup, its proxies and the toolchain
+      # are not read from C:.
+      - name: Install rustup on the runner's local disk
+        run: |
+          $cargoHome = Join-Path $env:RUNNER_TEMP "cargo"
+          $rustupHome = Join-Path $env:RUNNER_TEMP "rustup"
+          $installer = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+          Copy-Item (Get-Command rustup -CommandType Application | Select-Object -First 1).Source $installer
+          $env:CARGO_HOME = $cargoHome
+          $env:RUSTUP_HOME = $rustupHome
+          & $installer -y --no-modify-path --default-toolchain none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item $installer
+          "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          "RUSTUP_HOME=$rustupHome" >> $env:GITHUB_ENV
+          Join-Path $cargoHome "bin" >> $env:GITHUB_PATH
+      # Install the rust-toolchain.toml toolchain first so no command waits on
+      # a download.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Run the Windows budget lane
@@ -241,9 +285,10 @@ jobs:
   merge-gate:
     name: Merge gate
     if: >-
-      always() &&
+      always() && github.event_name != 'schedule' &&
       (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     needs:
+      - security
       - plan
       - frontend
       - smoke-cli
@@ -253,6 +298,7 @@ jobs:
     steps:
       - name: Require every planned lane
         env:
+          SECURITY: ${{ needs.security.result }}
           PLAN: ${{ needs.plan.result }}
           FRONTEND: ${{ needs.frontend.result }}
           FRONTEND_PLANNED: ${{ needs.plan.outputs.frontend }}
@@ -272,12 +318,14 @@ jobs:
               test "$result" = "skipped" || { echo "::error::$lane ran unplanned: $result"; exit 1; }
             fi
           }
+          require "Security" "true" "$SECURITY"
           test "$PLAN" = "success"
           require "Frontend and policy" "$FRONTEND_PLANNED" "$FRONTEND"
           require "Windows budget lane" "$SMOKE_CLI_PLANNED" "$SMOKE_CLI"
           require "Rust" "$RUST_PLANNED" "$RUST"
           {
             echo "### Verified in this run"
+            echo "- Security: $SECURITY"
             echo "- Frontend and policy: $FRONTEND"
             echo "- Rust on $RUST_OS: $RUST"
             echo "- Windows budget lane: $SMOKE_CLI"

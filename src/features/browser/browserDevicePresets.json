@@ -1,0 +1,19 @@
+[
+  { "id": "responsive", "label": "Responsive", "width": 0, "height": 0 },
+  { "id": "iphone-se", "label": "iPhone SE", "width": 375, "height": 667 },
+  {
+    "id": "iphone-14-pro-max",
+    "label": "iPhone 14 Pro Max",
+    "width": 430,
+    "height": 932
+  },
+  { "id": "pixel-7", "label": "Pixel 7", "width": 412, "height": 915 },
+  {
+    "id": "galaxy-s20-ultra",
+    "label": "Samsung Galaxy S20 Ultra",
+    "width": 412,
+    "height": 915
+  },
+  { "id": "ipad-mini", "label": "iPad Mini", "width": 768, "height": 1024 },
+  { "id": "ipad-air", "label": "iPad Air", "width": 820, "height": 1180 }
+]

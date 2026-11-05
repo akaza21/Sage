@@ -1,7 +1,11 @@
+import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
-import { expectCompactComposerTargets } from "./shared/composerGeometry";
+import {
+  expectCompactComposerTargets,
+  settledComposerFit,
+} from "./shared/composerGeometry";
 
 let script: string;
 let styles: string;
@@ -50,6 +54,28 @@ async function render(page: Page, name: string, state: ParityState) {
   );
   await expect(page.locator("form.composer")).toBeVisible();
 }
+/** Opens Thinking level from the toolbar, or from the options menu when the
+ * toolbar has moved it there to keep the model name readable. */
+async function openEffort(page: Page, level: string) {
+  const composer = page.locator("form.composer");
+  const effort = composer.getByRole("button", {
+    name: `Thinking level: ${level}`,
+  });
+  await expect(
+    composer.locator(".composer__effort-picker[data-overflow-control]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu")) {
+    await expect(effort.locator(".lucide-brain")).toHaveCount(1);
+    return effort.click();
+  }
+  await composer
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Composer options menu" })
+    .getByRole("menuitem", { name: "Thinking level", exact: true })
+    .click();
+}
 async function noClip(page: Page, selector: string) {
   for (const element of await page.locator(selector).all()) {
     const geometry = await element.evaluate((element) => ({
@@ -77,18 +103,11 @@ for (const width of [1888, 720, 480]) {
         const composer = page.locator("form.composer");
         await expectCompactComposerTargets(composer);
         await render(page, name, "stopped");
-        const model = composer.getByRole("button", {
-          name: "Model",
-          exact: true,
-        });
-        const effort = composer.getByRole("button", {
-          name: "Thinking level: High",
-        });
+        const model = composer.getByLabel("Model", { exact: true });
         await expect(model).toHaveText("Confirmed session model");
         await expect(model.locator(".lucide-sparkles")).toHaveCount(1);
-        await expect(effort.locator(".lucide-brain")).toHaveCount(1);
         await expectCompactComposerTargets(composer);
-        await effort.click();
+        await openEffort(page, "High");
         const reset = page.getByRole("button", { name: "Reset effort" });
         await expect(reset).toBeVisible();
         await reset.click();
@@ -98,7 +117,7 @@ for (const width of [1888, 720, 480]) {
         );
       });
     }
-    test("new-chat caption reflows and project scope sits above, not inside, the composer", async ({
+    test("new-chat caption reflows and project scope attaches above the composer input", async ({
       page,
     }) => {
       await render(page, "Pi", "home");
@@ -113,8 +132,11 @@ for (const width of [1888, 720, 480]) {
         .getByRole("group", { name: "Project scope" })
         .boundingBox();
       const composer = page.locator("form.composer");
-      const box = await composer.boundingBox();
-      expect(row!.y + row!.height).toBeLessThanOrEqual(box!.y + 1);
+      const box = await composer.locator(".composer__body").boundingBox();
+      expect(row!.y + row!.height).toBe(box!.y);
+      await expect(
+        composer.getByRole("group", { name: "Project scope" }),
+      ).toHaveCount(1);
       await expect(composer.locator(".project-scope")).toHaveCount(0);
       await expectCompactComposerTargets(composer);
     });
@@ -138,6 +160,7 @@ for (const width of [1888, 720, 480]) {
       });
       await expect(advertisedDefault).toHaveAttribute("aria-checked", "true");
       const plan = menu.getByRole("menuitemradio", { name: "Plan mode" });
+      await waitForAnimations(menu);
       const label = await plan.locator("span").first().boundingBox();
       const description = await plan
         .getByText("Plan mode is off")
@@ -167,6 +190,7 @@ for (const width of [1888, 720, 480]) {
       });
       const subtitle = selected.locator(".searchable-picker__subtitle");
       await expect(subtitle).toBeVisible();
+      await waitForAnimations(page.locator(".composer__harness-menu"));
       const label = await selected
         .locator(".searchable-picker__option-copy > span")
         .first()
@@ -229,11 +253,18 @@ for (const width of [1888, 720, 480]) {
       await render(page, "Codex", "files");
       const pill = page.locator(".acp-file-changes__header");
       await expect(pill).toBeVisible();
-      const label = await pill.locator("strong").boundingBox();
-      const counts = await pill.getByLabel("Line changes").boundingBox();
-      expect(
-        Math.abs(label!.y + label!.height / 2 - counts!.y - counts!.height / 2),
-      ).toBeLessThanOrEqual(1);
+      await waitForAnimations(page.locator(".acp-file-changes"));
+      // Read both children in one frame after the shared pill settles.
+      const alignment = await pill.evaluate((element) => {
+        const label = element.querySelector("strong")!.getBoundingClientRect();
+        const counts = element
+          .querySelector('[aria-label="Line changes"]')!
+          .getBoundingClientRect();
+        return Math.abs(
+          label.y + label.height / 2 - counts.y - counts.height / 2,
+        );
+      });
+      expect(alignment).toBeLessThanOrEqual(1);
       await noClip(page, ".acp-file-changes__totals");
       await render(page, "Claude Code", "answer");
       await expect(
@@ -244,20 +275,162 @@ for (const width of [1888, 720, 480]) {
         ".markdown-table, .markdown-table th, .markdown-table td",
       );
     });
+    test("pre-turn chips remain truthful and compact without truncation", async ({
+      page,
+    }) => {
+      await render(page, "Claude Code", "pre-turn");
+      const composer = page.locator("form.composer");
+      await expect(composer.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
+      const effort = composer.getByRole("button", {
+        name: "Thinking level",
+        exact: true,
+      });
+      await expect(effort).toBeDisabled();
+      await expect(effort).toHaveAttribute(
+        "title",
+        "Available when the harness advertises effort controls for this session.",
+      );
+      await expectCompactComposerTargets(composer);
+      await expect(
+        composer.getByRole("button", { name: "Send message" }),
+      ).toBeDisabled();
+    });
+    test("model groups use human labels and retain exact selection IDs", async ({
+      page,
+    }) => {
+      await render(page, "Pi", "models");
+      await page.getByLabel("Model", { exact: true }).click();
+      const recommended = page.getByRole("group", {
+        name: "Recommended by harness",
+      });
+      await expect(
+        recommended.getByRole("option", {
+          name: "Claude Sonnet 4.5",
+          exact: true,
+        }),
+      ).toHaveAttribute("aria-selected", "true");
+      const other = page
+        .getByRole("group", { name: "Other models" })
+        .getByRole("option", { name: "GPT-5.4 Mini", exact: true });
+      await expect(other).toHaveAttribute("data-option-id", "gpt-5.4-mini");
+      await other.click();
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "GPT-5.4 Mini",
+      );
+    });
+    test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
+      page,
+    }) => {
+      await render(page, "Codex", "access");
+      const access = page.getByRole("button", {
+        name: "Access options",
+        exact: true,
+      });
+      await access.click();
+      await expect(
+        page.getByRole("menuitemradio", { name: "Full access", exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "Switch to Workspace edits?",
+      });
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: "Cancel", exact: true }),
+      ).toBeFocused();
+      await expect(access).toHaveAttribute("data-selected-id", "readOnly");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(access).toBeFocused();
+      await access.click();
+      await page
+        .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
+        .click();
+      await dialog
+        .getByRole("button", { name: "Switch access", exact: true })
+        .click();
+      await expect(access).toHaveAttribute(
+        "data-selected-id",
+        "workspaceWrite",
+      );
+      await expect(access).toBeFocused();
+    });
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`fixture model snapshot identities remain visible (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ forcedColors });
+        expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+        await render(page, "Claude Code", "model-collisions");
+        const trigger = page.getByLabel("Model", { exact: true });
+        await trigger.focus();
+        await page.keyboard.press("Enter");
+        const menu = page.locator(".composer__model-menu");
+        const first = menu.getByRole("option", {
+          name: "Claude Sonnet 4 (claude-sonnet-4-20250514)",
+          exact: true,
+        });
+        const second = menu.getByRole("option", {
+          name: "Claude Sonnet 4 (claude-sonnet-4-20250601)",
+          exact: true,
+        });
+        await expect(first).toHaveAttribute("aria-selected", "true");
+        await expect(
+          first.getByText("claude-sonnet-4-20250514", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          second.getByText("claude-sonnet-4-20250601", { exact: true }),
+        ).toBeVisible();
+        const subtitles = menu.locator(".searchable-picker__subtitle");
+        await expect(subtitles).toHaveCount(3);
+        await menu.getByRole("option").last().scrollIntoViewIfNeeded();
+        await noClip(
+          page,
+          ".composer__model-menu, .composer-model-picker__list, .composer-model-picker .searchable-picker__subtitle",
+        );
+        await first.scrollIntoViewIfNeeded();
+        await page.keyboard.press("Home");
+        await expect(first).toBeFocused();
+        await expect
+          .poll(() =>
+            first.evaluate((element) => element.matches(":focus-visible")),
+          )
+          .toBe(true);
+        await expect(menu).toHaveScreenshot(
+          `model-collisions-${width}-${forcedColors}.png`,
+        );
+        await page.keyboard.press("ArrowDown");
+        await expect(second).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(
+          menu.getByRole("option", {
+            name: "Claude Sonnet 4 (claude-sonnet-4-20250601)",
+            exact: true,
+          }),
+        ).toHaveAttribute("aria-selected", "true");
+      });
+    }
     test("unconfirmed defaults and unsupported effort never invent controls", async ({
       page,
     }) => {
       await render(page, "Pi", "no-default");
-      await page.getByRole("button", { name: "Thinking level: High" }).click();
+      await openEffort(page, "High");
       await expect(
         page.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(0);
       await render(page, "OpenCode", "no-effort");
       await expect(page.locator(".composer__effort-picker")).toHaveCount(0);
       await render(page, "Pi", "unknown");
-      await expect(
-        page.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Model");
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
       await page.getByRole("button", { name: "Harness", exact: true }).click();
       await expect(page.locator(".searchable-picker__subtitle")).toHaveCount(0);
     });

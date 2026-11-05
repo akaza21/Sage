@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -16,6 +16,16 @@ use crate::{
 };
 
 pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
+
+// Allow 32 tabs per project across 8 workspace watches, even though only active
+// File canvases normally watch. This bounds native threads and handles while
+// leaving headroom for every tab in those workspaces to be watched concurrently.
+const MAX_GLOBAL_WATCHES: usize = 256;
+
+/// The IPC error a File editor receives when every watch slot is taken. It is a
+/// stable code rather than display text, so the editor can tell "retry later"
+/// apart from a watch that cannot start at all.
+pub const EDITOR_WATCH_LIMIT_ERROR: &str = "editor-watch-limit-reached";
 
 const FILE_ACTION_ADDED: u32 = 1;
 const FILE_ACTION_REMOVED: u32 = 2;
@@ -60,7 +70,9 @@ pub struct EditorExternalWatchNotice {
 }
 
 static WATCHES: OnceLock<Mutex<HashMap<WatchKey, WatchEntry>>> = OnceLock::new();
-static GENERATIONS: OnceLock<Mutex<HashMap<WatchKey, u32>>> = OnceLock::new();
+/// One counter for every watch, so a restarted watch never reuses a stale
+/// generation and nothing is kept per file once its watch ends.
+static NEXT_GENERATION: AtomicU32 = AtomicU32::new(0);
 
 fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, WatchEntry>> {
     WATCHES
@@ -69,11 +81,13 @@ fn watches() -> std::sync::MutexGuard<'static, HashMap<WatchKey, WatchEntry>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn generations() -> std::sync::MutexGuard<'static, HashMap<WatchKey, u32>> {
-    GENERATIONS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+fn next_generation() -> AppResult<u32> {
+    NEXT_GENERATION
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .map(|previous| previous + 1)
+        .map_err(|_| AppError::ResourceLimit("editor file watch generations exhausted".into()))
 }
 
 #[cfg(test)]
@@ -101,13 +115,12 @@ pub fn start_watch(resource: &ResourceRef) -> AppResult<u32> {
             "a watch is already active for this resource".into(),
         ));
     }
-    let mut generations = generations();
-    let generation = generations
-        .get(&key)
-        .copied()
-        .unwrap_or(0)
-        .saturating_add(1);
-    generations.insert(key.clone(), generation);
+    if watches.len() >= MAX_GLOBAL_WATCHES {
+        return Err(AppError::ResourceLimit(
+            "too many active editor file watches".into(),
+        ));
+    }
+    let generation = next_generation()?;
     watches.insert(
         key,
         WatchEntry {
@@ -268,7 +281,7 @@ pub fn watch_editor_document(
         })
         .and_then(checked_file_path)
         .map_err(|error| error.to_string())?;
-    let generation = start_watch(&resource).map_err(|error| error.to_string())?;
+    let generation = start_watch(&resource).map_err(watch_command_error)?;
     let Some(cancelled) = watch_control(&resource, generation) else {
         return Err("editor watch was cancelled before it could start".into());
     };
@@ -285,6 +298,13 @@ pub fn unwatch_editor_document(
     resource: ResourceRef,
 ) -> Result<(), String> {
     stop_watch(&resource).map_err(|error| error.to_string())
+}
+
+fn watch_command_error(error: AppError) -> String {
+    match error {
+        AppError::ResourceLimit(_) => EDITOR_WATCH_LIMIT_ERROR.into(),
+        other => other.to_string(),
+    }
 }
 
 fn checked_file_path(path: PathBuf) -> AppResult<PathBuf> {

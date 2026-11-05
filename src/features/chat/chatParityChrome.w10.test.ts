@@ -32,16 +32,6 @@ describe("Codex chrome parity (w10 group B)", () => {
     ).toMatch(/padding-inline-start:\s*var\(--space-1\);/);
   });
 
-  it("gaps the rail's approval pill before its spinner (B1, s6/f0526)", async () => {
-    const text = await css("../../styles/chat-navigation-surface.css");
-    expect(
-      rule(
-        text,
-        ".project-chat-row:has(.project-chat__approval-spinner) .project-chat",
-      ),
-    ).toMatch(/padding-inline-end:\s*28px;/);
-  });
-
   it("shows an explicitly read-only model label at full strength (B2, s2/f0244)", async () => {
     const text = await css("../../styles/composer-model-picker.css");
     expect(

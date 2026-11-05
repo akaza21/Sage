@@ -27,9 +27,11 @@ for (const width of [1872, 720, 480]) {
       // back to its parent Chat, whose header still carries the side tab.
       if (split && width < 1872) {
         await expect(answer).toBeHidden();
+        if (width <= 600) await page.keyboard.press("Control+b");
         await page
           .getByRole("button", { name: /^Open chat Rich answers/ })
           .click();
+        if (width <= 600) await page.keyboard.press("Control+b");
       }
       await answer.click();
       await page.keyboard.press("Control+f");
@@ -42,7 +44,10 @@ for (const width of [1872, 720, 480]) {
       const headerLocator = page.locator(".agent-chat-center__header");
       const header = (await headerLocator.boundingBox())!;
       expect(box.y).toBeGreaterThanOrEqual(header.y + header.height);
-      const controls = headerLocator.locator("button, [role=status]");
+      const status = headerLocator.getByRole("status");
+      await expect(status).toHaveClass("sr-only");
+      await expect(status).toHaveAccessibleName(/^Chat status: /);
+      const controls = headerLocator.getByRole("button");
       expect(await controls.count()).toBeGreaterThan(0);
       for (const control of await controls.all()) {
         if (!(await control.isVisible())) continue;

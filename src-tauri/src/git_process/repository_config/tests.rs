@@ -683,3 +683,69 @@ fn a_linked_config_file_is_refused() {
         ))
     ));
 }
+
+/// Keeps `path` unreadable to every other opener until dropped.
+struct ReadDenied {
+    #[cfg(windows)]
+    _exclusive: fs::File,
+    #[cfg(unix)]
+    path: PathBuf,
+}
+
+impl ReadDenied {
+    fn new(path: &Path) -> Self {
+        #[cfg(windows)]
+        let denied = {
+            use std::os::windows::fs::OpenOptionsExt;
+            let exclusive = fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(path)
+                .unwrap();
+            Self {
+                _exclusive: exclusive,
+            }
+        };
+        #[cfg(unix)]
+        let denied = {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+            Self {
+                path: path.to_path_buf(),
+            }
+        };
+        assert!(fs::read(path).is_err(), "fixture config is still readable");
+        denied
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ReadDenied {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&self.path, fs::Permissions::from_mode(0o644));
+    }
+}
+
+#[test]
+fn an_unreadable_repository_config_fails_closed_until_it_can_be_checked() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    git(
+        &root,
+        &["config", "filter.sentinel.clean", "touch filter-ran"],
+    );
+    let config = root.join(".git").join("config");
+
+    let denied = ReadDenied::new(&config);
+    for _ in 0..2 {
+        let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+        assert_eq!(message, UNREADABLE);
+    }
+    assert_eq!(probes(&root), 2, "an unreadable config must not cache");
+    drop(denied);
+
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+    assert!(!root.join("filter-ran").exists());
+}

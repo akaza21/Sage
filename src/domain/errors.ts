@@ -3,7 +3,9 @@ import { truncateUtf8 } from "./text";
 export type ErrorBoundUnit = "utf16" | "utf8";
 
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return typeof error === "object" && error !== null && "message" in error
+    ? String(error.message)
+    : String(error);
 }
 
 export function boundedError(

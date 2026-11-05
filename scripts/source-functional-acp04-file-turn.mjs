@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { operationDeadline } from "./source-functional-native-ide-journey.mjs";
-import { fillPromptExpression } from "./source-functional-acp04-live-probe.mjs";
+import {
+  ACP04_TURN_STATE_EXPRESSION,
+  fillPromptExpression,
+} from "./source-functional-acp04-live-probe.mjs";
 import {
   fail,
   rejectObservedFailures,
@@ -11,14 +14,23 @@ import {
 export const ACP04_READ_ONLY_PACKAGE_JSON_PROMPT =
   "Use exec_command exactly once with cmd `cat package.json`, shell `C:\\Program Files\\Git\\bin\\bash.exe`, and login `false`. Read package.json only. Do not modify files or run unrelated commands.";
 
+// The transcript renders the prompt as Markdown, so its inline code spans
+// lose their backticks.
+export const ACP04_READ_ONLY_PACKAGE_JSON_RENDERED_PROMPT =
+  ACP04_READ_ONLY_PACKAGE_JSON_PROMPT.replace(/`/gu, "");
+
 const MAX_TURNS = 4;
 const MAX_ACTIONS = 16;
 const MAX_ID_BYTES = 512;
 const MAX_DECIMAL_DIGITS = 20;
+// Codex reports `cat package.json` as a read; a shell command card carries
+// its resources the same way.
+const FILE_ACTION_CARDS =
+  '[role="group"][data-acp-item-id][data-activity-kind="read"],[role="group"][data-acp-item-id][data-activity-kind="execute"]';
 
-export const ACP04_FILE_TURN_SNAPSHOT = `(()=>{const panes=document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused');if(panes.length!==1)return null;const s=panes[0].querySelector('section.chat-surface[aria-label="Agent chat"]'),p=s?.querySelector('section.acp-chat-projection[aria-label^="Agent chat "]');if(!s||!p)return null;const turnNodes=p.querySelectorAll(':scope > section.acp-turn'),alerts=s.querySelectorAll('[role="alert"]');if(turnNodes.length>${MAX_TURNS}||alerts.length>8)return null;const boundedExact=(node,expected)=>{if(!node)return false;const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let text='',next;while((next=walker.nextNode())){const part=next.nodeValue||'';if(part.length>expected.length-text.length)return false;text+=part;}return text===expected;};const read=t=>{const cards=t.querySelectorAll('article[data-acp-item-id][data-activity-kind="command"]'),itemNodes=t.querySelectorAll('article[data-item-id][data-message-role]');if(cards.length>${MAX_ACTIONS}||itemNodes.length>16)return null;const actions=[];for(const c of cards){const buttons=c.querySelectorAll('button.acp-resource-action[data-resource-root-id][data-resource-relative-path]');if(buttons.length>${MAX_ACTIONS}||actions.length+buttons.length>${MAX_ACTIONS})return null;for(const b of buttons)actions.push({itemId:c.dataset.acpItemId||'',rootId:b.dataset.resourceRootId||'',relativePath:b.dataset.resourceRelativePath||'',enabled:!b.disabled});}const items=[];for(const x of itemNodes)items.push({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',readOnlyPrompt:x.dataset.messageRole==='user'&&boundedExact(x.querySelector('.acp-markdown'),${JSON.stringify(ACP04_READ_ONLY_PACKAGE_JSON_PROMPT)})});return {id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:t.dataset.turnOrdinal||'',state:t.querySelector(':scope > header [data-turn-status][role="status"]')?.getAttribute('aria-label')||'',items,actions};};const turns=[];for(const node of turnNodes){const turn=read(node);if(!turn)return null;turns.push(turn);}return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',expectedRootId:p.dataset.expectedResourceRootId||'',projectionRevision:p.dataset.projectionRevision||'',composerEnabled:s.querySelectorAll('textarea[aria-label="Message agent"]:not(:disabled)').length===1,failures:alerts.length===0?[]:['dom-alert'],turns};})()`;
+export const ACP04_FILE_TURN_SNAPSHOT = `(()=>{const panes=document.querySelectorAll('section.agent-chat-pane.agent-chat-pane--focused');if(panes.length!==1)return null;const s=panes[0].querySelector('section.chat-surface[aria-label="Agent chat"]'),p=s?.querySelector('section.acp-chat-projection[aria-label^="Agent chat "]');if(!s||!p)return null;const turnNodes=p.querySelectorAll('section[data-turn-id][data-turn-ordinal]'),alerts=s.querySelectorAll('[role="alert"]');if(turnNodes.length>${MAX_TURNS}||alerts.length>8)return null;const boundedExact=(node,expected)=>{if(!node)return false;const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let text='',next;while((next=walker.nextNode())){const part=next.nodeValue||'';if(part.length>expected.length-text.length)return false;text+=part;}return text===expected;};const read=t=>{const cards=t.querySelectorAll('${FILE_ACTION_CARDS}'),itemNodes=t.querySelectorAll('article[data-item-id][data-message-role]');if(cards.length>${MAX_ACTIONS}||itemNodes.length>16)return null;const actions=[];for(const c of cards){const buttons=c.querySelectorAll('button[data-resource-root-id][data-resource-relative-path]');if(buttons.length>${MAX_ACTIONS}||actions.length+buttons.length>${MAX_ACTIONS})return null;for(const b of buttons)actions.push({itemId:c.dataset.acpItemId||'',rootId:b.dataset.resourceRootId||'',relativePath:b.dataset.resourceRelativePath||'',enabled:!b.disabled});}const items=[];for(const x of itemNodes)items.push({id:x.dataset.itemId||'',role:x.dataset.messageRole||'',readOnlyPrompt:x.dataset.messageRole==='user'&&(boundedExact(x.querySelector('.acp-markdown'),${JSON.stringify(ACP04_READ_ONLY_PACKAGE_JSON_PROMPT)})||boundedExact(x.querySelector('.acp-markdown'),${JSON.stringify(ACP04_READ_ONLY_PACKAGE_JSON_RENDERED_PROMPT)}))});return {id:t.dataset.turnId||'',sessionId:t.dataset.sessionId||'',runtimeEpoch:t.dataset.runtimeEpoch||'',ordinal:t.dataset.turnOrdinal||'',state:${ACP04_TURN_STATE_EXPRESSION}(t),items,actions};};const turns=[];for(const node of turnNodes){const turn=read(node);if(!turn)return null;turns.push(turn);}return {projectId:p.dataset.projectId||'',chatId:p.dataset.chatId||'',currentSessionId:p.dataset.currentSessionId||'',expectedRootId:p.dataset.expectedResourceRootId||'',projectionRevision:p.dataset.projectionRevision||'',composerEnabled:s.querySelectorAll('textarea[aria-label="Message agent"]:not(:disabled)').length===1,failures:alerts.length===0?[]:['dom-alert'],turns};})()`;
 
-export const ACP04_FILE_TAB_SNAPSHOT = `(()=>{const panes=document.querySelectorAll('aside[aria-label="Agent artifacts"]');if(panes.length!==1)return null;const pane=panes[0],tabNodes=pane.querySelectorAll('[role="tab"][data-resource-root-id][data-resource-relative-path]'),surfaces=pane.querySelectorAll('.agent-artifact-pane__canvas section.file-surface[aria-label="File editor package.json"]'),editors=pane.querySelectorAll('.agent-artifact-pane__canvas [aria-label="Edit package.json"]:not(:disabled)');if(tabNodes.length>${MAX_ACTIONS})return null;const tabs=[];for(const t of tabNodes)tabs.push({rootId:t.dataset.resourceRootId||'',relativePath:t.dataset.resourceRelativePath||'',selected:t.getAttribute('aria-selected')==='true'});return {projectId:pane.dataset.ownerProjectId||'',chatId:pane.dataset.ownerChatId||'',sessionId:pane.dataset.ownerSessionId||'',runtimeEpoch:pane.dataset.ownerRuntimeEpoch||'',tabs,ready:surfaces.length===1&&editors.length===1};})()`;
+export const ACP04_FILE_TAB_SNAPSHOT = `(()=>{const panes=document.querySelectorAll('aside[aria-label="Agent artifacts"]');if(panes.length!==1)return null;const pane=panes[0],tabNodes=pane.querySelectorAll('[role="tab"][data-resource-root-id][data-resource-relative-path]'),surfaces=pane.querySelectorAll('section[aria-label="File editor package.json"]'),editors=pane.querySelectorAll('section[aria-label="File editor package.json"] [aria-label="Edit package.json"]:not(:disabled)');if(tabNodes.length>${MAX_ACTIONS})return null;const tabs=[];for(const t of tabNodes)tabs.push({rootId:t.dataset.resourceRootId||'',relativePath:t.dataset.resourceRelativePath||'',selected:t.getAttribute('aria-selected')==='true'});return {projectId:pane.dataset.ownerProjectId||'',chatId:pane.dataset.ownerChatId||'',sessionId:pane.dataset.ownerSessionId||'',runtimeEpoch:pane.dataset.ownerRuntimeEpoch||'',tabs,ready:surfaces.length===1&&editors.length===1};})()`;
 
 function validText(value, maximum = MAX_ID_BYTES) {
   return (
@@ -152,6 +164,8 @@ function thirdTurn(snapshot, modeA) {
     !turn.items[0].readOnlyPrompt
   )
     return null;
+  // A finished Turn folds its work behind "Worked for …"; the caller reveals it.
+  if (turn.actions.length === 0) return { turn, action: null };
   const actions = turn.actions.filter((action) => action.enabled);
   if (actions.length !== 1 || turn.actions.length !== 1)
     fail("file-turn-action-ambiguous");
@@ -159,7 +173,38 @@ function thirdTurn(snapshot, modeA) {
 }
 
 function selectActionExpression(action) {
-  return `(()=>{const turns=[...document.querySelectorAll('section.acp-turn')].filter(t=>t.dataset.turnId===${JSON.stringify(action.turnId)});if(turns.length!==1)return false;const actions=[...turns[0].querySelectorAll('article[data-acp-item-id][data-activity-kind="command"] button.acp-resource-action[data-resource-root-id][data-resource-relative-path]')].filter(x=>x.dataset.resourceRootId===${JSON.stringify(action.rootId)}&&x.dataset.resourceRelativePath===${JSON.stringify(action.relativePath)}&&x.closest('article')?.dataset.acpItemId===${JSON.stringify(action.itemId)}&&!x.disabled);if(actions.length!==1)return false;actions[0].click();return true;})()`;
+  return `(()=>{const turns=[...document.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].filter(t=>t.dataset.turnId===${JSON.stringify(action.turnId)});if(turns.length!==1)return false;const actions=[...turns[0].querySelectorAll('button[data-resource-root-id][data-resource-relative-path]')].filter(x=>x.dataset.resourceRootId===${JSON.stringify(action.rootId)}&&x.dataset.resourceRelativePath===${JSON.stringify(action.relativePath)}&&x.closest(${JSON.stringify(FILE_ACTION_CARDS)})?.dataset.acpItemId===${JSON.stringify(action.itemId)}&&!x.disabled);if(actions.length!==1)return false;actions[0].click();return true;})()`;
+}
+
+// One disclosure inside the Turn: its folded "Worked for …" summary, or the
+// tool rollup that summary reveals. Opens it only while it is closed and
+// reports "open", "opening", "missing" or "ambiguous".
+export function revealTurnDisclosureExpression(turnId, level) {
+  if (!validText(turnId)) fail("file-turn-reveal-invalid");
+  const candidates =
+    level === "worked"
+      ? "[...turns[0].querySelectorAll('details')].filter(d=>/^Worked\\b/u.test(d.querySelector(':scope > summary')?.textContent.trim()||''))"
+      : level === "tool"
+        ? "[...turns[0].querySelectorAll('details[data-activity-kind]')]"
+        : fail("file-turn-reveal-invalid");
+  return `(()=>{const turns=[...document.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].filter(t=>t.dataset.turnId===${JSON.stringify(turnId)});if(turns.length!==1)return 'ambiguous';const found=${candidates};if(found.length>1)return 'ambiguous';if(found.length===0)return 'missing';if(found[0].open)return 'open';const summaries=found[0].querySelectorAll(':scope > summary');if(summaries.length!==1)return 'ambiguous';summaries[0].click();return 'opening';})()`;
+}
+
+async function revealTurnDisclosure(cdp, deadline, turnId, level) {
+  const expression = revealTurnDisclosureExpression(turnId, level);
+  await waitUntil(
+    async () => {
+      const result = await cdp.evaluate(
+        expression,
+        operationDeadline(deadline),
+      );
+      if (result === "open") return true;
+      if (result === "opening" || result === "missing") return null;
+      fail("file-turn-reveal-ambiguous");
+    },
+    deadline,
+    "file-turn-reveal-timeout",
+  );
 }
 
 function validateExpectedResource(value, owner) {
@@ -316,11 +361,25 @@ export async function runReadOnlyPackageJsonTurn(cdp, deadline, modeA) {
     operationDeadline(deadline),
   );
   if (sent !== true) fail("file-turn-send-ambiguous");
-  const accepted = await waitUntil(
+  let accepted = await waitUntil(
     async () => thirdTurn(await snapshot(), owner),
     deadline,
     "file-turn-timeout",
   );
+  if (accepted.action === null) {
+    const turnId = accepted.turn.id;
+    await revealTurnDisclosure(cdp, deadline, turnId, "worked");
+    await revealTurnDisclosure(cdp, deadline, turnId, "tool");
+    accepted = await waitUntil(
+      async () => {
+        const next = thirdTurn(await snapshot(), owner);
+        if (next && next.turn.id !== turnId) fail("file-turn-identity-churn");
+        return next?.action ? next : null;
+      },
+      deadline,
+      "file-turn-timeout",
+    );
+  }
   if (
     accepted.action.rootId !== expected.rootId ||
     accepted.action.relativePath !== expected.relativePath
@@ -331,7 +390,7 @@ export async function runReadOnlyPackageJsonTurn(cdp, deadline, modeA) {
     fail("file-turn-expected-resource-churn");
   const beforeClick = thirdTurn(beforeClickSnapshot, owner);
   if (
-    !beforeClick ||
+    !beforeClick?.action ||
     beforeClick.turn.id !== accepted.turn.id ||
     beforeClick.action.itemId !== accepted.action.itemId ||
     beforeClick.action.rootId !== expected.rootId ||

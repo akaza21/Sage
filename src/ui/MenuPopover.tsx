@@ -11,11 +11,13 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useNativePageLayer } from "./nativePageLayers";
 import {
   exitPopoverDialogOnTab,
   focusPopoverDialog,
 } from "./menuPopoverDialogFocus";
 import {
+  inFixedContainingBlock,
   type MenuPlacement,
   menuPopoverPosition,
   PopoverPlacementContext,
@@ -28,6 +30,16 @@ const ITEM_SELECTOR = [
   '[role="option"]',
 ].join(",");
 const POPOVER_GAP = 4;
+/** The style keys the placement functions set. */
+const POSITION_KEYS = [
+  "left",
+  "top",
+  "minWidth",
+  "maxWidth",
+  "maxHeight",
+  "visibility",
+] as const;
+const MAX_POSITION_UPDATES_PER_FRAME = 4;
 
 type InitialFocus = "first" | "last" | "selected";
 type PopoverRole = "menu" | "listbox" | "dialog" | "none";
@@ -87,6 +99,7 @@ export function MenuPopover({
   onDismiss,
   open,
   placement: preferredPlacement = "below-end",
+  positionAt,
   portalTarget = "document",
   restoreFocusOnTab = false,
   role = "menu",
@@ -108,6 +121,12 @@ export function MenuPopover({
   open: boolean;
   /** Top-level menus only; nested menus follow their parent. */
   placement?: MenuPlacement;
+  /**
+   * Places the popover itself, for example at a right-click's pointer
+   * (`pointerPopoverPosition`), instead of beside the trigger. The trigger
+   * still takes the focus back when the menu closes.
+   */
+  positionAt?: (popover: HTMLElement) => CSSProperties;
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
   role?: PopoverRole;
@@ -122,10 +141,12 @@ export function MenuPopover({
   const [portalRoot, setPortalRoot] = useState<HTMLElement>(
     () => document.body,
   );
+  useNativePageLayer(popoverRef, { open, portalRoot });
   const [position, setPosition] = useState<CSSProperties>(() =>
     focusStrategy === "none" ? {} : { visibility: "hidden" },
   );
   const positionRef = useRef(position);
+  const settleRef = useRef({ frame: 0, count: 0 });
   const measureRef = useRef<() => void>(() => {});
   const hiddenTriggerRef = useRef<() => void>(() => {});
   const placement = useMemo(
@@ -140,24 +161,31 @@ export function MenuPopover({
     if (!popover || !trigger) return;
 
     const updatePosition = () => {
-      const next = menuPopoverPosition(
-        trigger,
+      const next = inFixedContainingBlock(
+        positionAt
+          ? positionAt(popover)
+          : menuPopoverPosition(
+              trigger,
+              popover,
+              originRef.current ?? trigger,
+              gap,
+              matchTriggerWidth,
+              preferredPlacement,
+            ),
         popover,
-        originRef.current ?? trigger,
-        gap,
-        matchTriggerWidth,
-        preferredPlacement,
       );
       const current = positionRef.current;
-      if (
-        current.left === next.left &&
-        current.top === next.top &&
-        current.minWidth === next.minWidth &&
-        current.maxWidth === next.maxWidth &&
-        current.maxHeight === next.maxHeight &&
-        current.visibility === next.visibility
-      )
-        return;
+      if (POSITION_KEYS.every((key) => current[key] === next[key])) return;
+      // Two placements can each make the other the better fit (a flip that
+      // changes the room left for the list), so bound synchronous
+      // re-measures per frame instead of looping until React gives up.
+      const guard = settleRef.current;
+      if (guard.count >= MAX_POSITION_UPDATES_PER_FRAME) return;
+      guard.count += 1;
+      guard.frame ||= requestAnimationFrame(() => {
+        guard.frame = 0;
+        guard.count = 0;
+      });
       positionRef.current = next;
       setPosition(next);
     };

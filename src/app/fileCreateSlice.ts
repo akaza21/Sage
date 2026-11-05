@@ -8,11 +8,10 @@ import type {
 } from "../domain/workbench";
 import {
   newFileResource,
-  validateCreateProjectFileResult,
-  validateCreateProjectFolderResult,
   validateNewFilePath,
 } from "../features/files/newFileContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { editorNavigationUpdate } from "./editorNavigation";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { resourceTabUpdate } from "./resourceTabs";
 import {
@@ -235,6 +234,10 @@ export const createFileCreateSlice: StateCreator<
     set(creationStart(kind, requestGeneration));
     try {
       await get().flushActiveEditor();
+      const {
+        validateCreateProjectFileResult,
+        validateCreateProjectFolderResult,
+      } = await import("../features/files/newFileResult");
       if (
         !matchesProjectIntent(get(), projectGeneration, project.id) ||
         get().nativeTransitionEpoch !== transitionEpoch ||
@@ -279,6 +282,8 @@ export const createFileCreateSlice: StateCreator<
         ...creationComplete(kind, result.warning),
       }));
       if (kind === "file" && resourceConfirmed) {
+        const navigation = editorNavigationUpdate();
+        if (navigation) set(navigation);
         await get().loadEditor(result.resource);
       } else {
         await get().loadDirectory(resourceConfirmed ? result.resource : parent);

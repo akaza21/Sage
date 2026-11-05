@@ -8,12 +8,21 @@ import {
 } from "./settingsNavigation";
 
 describe("settings navigation", () => {
-  it("orders the pages so Editor comes before Keyboard and Browser", () => {
+  it("orders the pages Editor, Keyboard, Browser, then Passwords", () => {
     expect(SETTINGS_PAGES.map((page) => page.id)).toEqual([
       "editor",
       "keyboard",
       "browser",
+      "passwords",
     ]);
+  });
+
+  it("finds the Passwords page by import and saved-password searches", () => {
+    expect(admitSettingsPageId("passwords")).toBe("passwords");
+    expect(pagesWithMatches("csv")).toEqual(new Set(["passwords"]));
+    expect(matchingSettingsEntryIds("delete all", "passwords")).toEqual(
+      new Set(["passwords.deleteAll"]),
+    );
   });
 
   it("finds the Browser settings by their Codex labels", () => {
@@ -75,6 +84,13 @@ describe("settings navigation", () => {
 
   it("finds the save shortcut from the Keyboard page", () => {
     expect(matchingSettingsEntryIds("save", "keyboard")).toContain("save");
+  });
+
+  it("keeps Agent shortcuts off the Editor's Keyboard page", () => {
+    const ids = matchingSettingsEntryIds("", "keyboard");
+    expect(ids).toContain("openSettings");
+    expect(ids).not.toContain("chat.findInChat");
+    expect(ids).not.toContain("sendMessage");
   });
 });
 

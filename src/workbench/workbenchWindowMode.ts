@@ -4,11 +4,9 @@ export const WORKBENCH_WINDOW_MODES = ["agent", "editor"] as const;
 
 export type WorkbenchWindowMode = (typeof WORKBENCH_WINDOW_MODES)[number];
 
-export const DEFAULT_WORKBENCH_WINDOW_MODE: WorkbenchWindowMode = "editor";
+export const DEFAULT_WORKBENCH_WINDOW_MODE: WorkbenchWindowMode = "agent";
 
 export const AGENT_CENTER_CHAT_SCAN_LIMIT = 64;
-
-export const MAX_AGENT_VISIBLE_CHATS = 2;
 
 export const EDITOR_CANVAS_KINDS = ["file", "diff", "settings"] as const;
 
@@ -65,103 +63,16 @@ export function collectChatTabIds(
   return ids;
 }
 
-function listHasId(ids: readonly string[], candidate: string): boolean {
-  const scanLimit = Math.min(ids.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
-  for (let index = 0; index < scanLimit; index += 1) {
-    if (ids[index] === candidate) return true;
-  }
-  return false;
-}
-
-function pushUniqueId(ids: string[], candidate: string): void {
-  if (!listHasId(ids, candidate) && ids.length < MAX_AGENT_VISIBLE_CHATS) {
-    ids.push(candidate);
-  }
-}
-
-export function reconcileVisibleChatIds(
-  chatIds: readonly string[],
-  visibleIds: readonly string[],
-  focusedId: string | null,
-): string[] {
-  const next: string[] = [];
-  const visibleLimit = Math.min(visibleIds.length, MAX_AGENT_VISIBLE_CHATS);
-  for (let index = 0; index < visibleLimit; index += 1) {
-    const id = visibleIds[index];
-    if (id && listHasId(chatIds, id)) {
-      pushUniqueId(next, id);
-    }
-  }
-  if (
-    focusedId &&
-    listHasId(chatIds, focusedId) &&
-    !listHasId(next, focusedId)
-  ) {
-    if (next.length < MAX_AGENT_VISIBLE_CHATS) {
-      next.push(focusedId);
-    } else {
-      next[next.length - 1] = focusedId;
-    }
-  }
-  if (next.length === 0) {
-    const seedLimit = Math.min(chatIds.length, MAX_AGENT_VISIBLE_CHATS);
-    for (let index = 0; index < seedLimit; index += 1) {
-      const id = chatIds[index];
-      if (id) next.push(id);
-    }
-  }
-  return next;
-}
-
-export function selectVisibleChatIds(
-  chatIds: readonly string[],
-  visibleIds: readonly string[],
-  selectedId: string,
-): string[] {
-  if (!listHasId(chatIds, selectedId)) {
-    return reconcileVisibleChatIds(chatIds, visibleIds, null);
-  }
-  const kept: string[] = [];
-  const visibleLimit = Math.min(visibleIds.length, MAX_AGENT_VISIBLE_CHATS);
-  for (let index = 0; index < visibleLimit; index += 1) {
-    const id = visibleIds[index];
-    if (id && listHasId(chatIds, id)) {
-      pushUniqueId(kept, id);
-    }
-  }
-  if (!listHasId(kept, selectedId)) {
-    if (kept.length < MAX_AGENT_VISIBLE_CHATS) {
-      kept.push(selectedId);
-    } else {
-      const newest = kept[kept.length - 1];
-      return newest ? [newest, selectedId] : [selectedId];
-    }
-  }
-  const fillLimit = Math.min(chatIds.length, AGENT_CENTER_CHAT_SCAN_LIMIT);
-  for (let index = 0; index < fillLimit; index += 1) {
-    const id = chatIds[index];
-    if (id) pushUniqueId(kept, id);
-  }
-  return kept;
-}
-
 export function focusedAgentChatId(
-  chatIds: readonly string[],
-  visibleIds: readonly string[],
+  candidates: readonly string[],
   activeTabId: string | null,
-  previousFocusedId: string | null = null,
+  previousFocusedId: string | null,
 ): string | null {
-  if (activeTabId && listHasId(chatIds, activeTabId)) {
-    return activeTabId;
-  }
-  if (
-    previousFocusedId &&
-    listHasId(chatIds, previousFocusedId) &&
-    listHasId(visibleIds, previousFocusedId)
-  ) {
-    return previousFocusedId;
-  }
-  return visibleIds[0] ?? chatIds[0] ?? null;
+  return (
+    [activeTabId, previousFocusedId, candidates[0]].find((id): id is string =>
+      Boolean(id && candidates.includes(id)),
+    ) ?? null
+  );
 }
 
 export function lastArtifactTabId(

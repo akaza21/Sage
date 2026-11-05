@@ -9,6 +9,7 @@ use crate::{
 
 const MAX_GIT_ADMIN_PATH_BYTES: usize = 32 * 1024;
 const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
+pub(crate) const NOOP_GIT_EDITOR: &str = ":";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConflictSide {
@@ -73,19 +74,6 @@ pub(crate) async fn resolve_conflicted_file(
     repository::ensure_success(&add)
 }
 
-pub(crate) fn noop_git_editor() -> String {
-    #[cfg(windows)]
-    {
-        let comspec = std::env::var("COMSPEC")
-            .unwrap_or_else(|_| String::from(r"C:\Windows\System32\cmd.exe"));
-        format!("{comspec} /c exit 0")
-    }
-    #[cfg(not(windows))]
-    {
-        String::from("/usr/bin/true")
-    }
-}
-
 pub(crate) async fn continue_rebase(workspace: &Workspace) -> AppResult<()> {
     continue_rebase_with_policy(
         workspace,
@@ -125,9 +113,8 @@ pub(crate) async fn continue_rebase_with_policy(
             "Continue rebase requires resolved conflicts".into(),
         ));
     }
-    let editor_command = noop_git_editor();
-    let editor = format!("core.editor={editor_command}");
-    let sequence = format!("sequence.editor={editor_command}");
+    let editor = format!("core.editor={NOOP_GIT_EDITOR}");
+    let sequence = format!("sequence.editor={NOOP_GIT_EDITOR}");
     let output = repository::run_git_with_policy(
         workspace.root(),
         &[
@@ -187,9 +174,8 @@ pub(crate) async fn continue_cherry_pick_with_policy(
             "Continue cherry-pick requires resolved conflicts".into(),
         ));
     }
-    let editor_command = noop_git_editor();
-    let editor = format!("core.editor={editor_command}");
-    let sequence = format!("sequence.editor={editor_command}");
+    let editor = format!("core.editor={NOOP_GIT_EDITOR}");
+    let sequence = format!("sequence.editor={NOOP_GIT_EDITOR}");
     let output = repository::run_git_with_policy(
         workspace.root(),
         &[
@@ -566,6 +552,41 @@ mod tests {
             fs::read_to_string(root.join("conflict.txt")).unwrap(),
             "ours\n"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn continue_rebase_preserves_the_commit_message_without_opening_an_editor() {
+        // Repository editor keys are refused before Git runs, so no editor is
+        // configured here: without Sage's no-op override Git would fall back
+        // to its default editor.
+        let (root, workspace, resource) = rebase_conflict_fixture();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(resolve_conflicted_file(
+                &workspace,
+                &resource,
+                &conflicted("conflict.txt"),
+                GitFileMutationAction::KeepTheirs,
+                repository::GitProcessPolicy::mutation(Duration::from_secs(3)),
+            ))
+            .unwrap();
+        runtime.block_on(continue_rebase(&workspace)).unwrap();
+        assert!(!runtime.block_on(rebase_in_progress(&workspace)).unwrap());
+        assert_eq!(current_branch(&root), "other");
+        assert_eq!(
+            fs::read_to_string(root.join("conflict.txt")).unwrap(),
+            "other\n"
+        );
+        let commit = runtime
+            .block_on(repository::run_git(
+                workspace.root(),
+                &["log", "-1", "--format=%B"],
+                MAX_GIT_MUTATION_OUTPUT_BYTES,
+            ))
+            .unwrap();
+        repository::ensure_success(&commit).unwrap();
+        assert_eq!(String::from_utf8(commit.stdout).unwrap().trim(), "other");
         fs::remove_dir_all(root).unwrap();
     }
 

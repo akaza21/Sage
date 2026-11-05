@@ -1,36 +1,33 @@
 import { useContext, useEffect, useRef } from "react";
+import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
-import { SessionWorkingPill } from "./SessionWorkingPill";
-import { ChatHandoffControl } from "./ChatHandoffControl";
-import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { HarnessDiscoveryNotice } from "./HarnessDiscoveryNotice";
+import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
+import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
-  terminalTurnStates,
   latestRetryPrompt,
+  terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
-  useAcpRetentionIncomplete,
   useAcpChatLoadFailure,
+  useAcpRetentionIncomplete,
   useRendererRecreationFocus,
 } from "./acp";
-import {
-  useBoundChatComposer,
-  useQueuedPromptDrain,
-} from "./useBoundChatComposer";
+import { useComposerFocusHotkey } from "./composerChrome";
+import { LazyHarnessNotice } from "./lazyParts";
+import { isNewProjectChat, newProjectScopeName } from "./newProjectChat";
+import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
+import { useApprovalSlot } from "./useApprovalSlot";
+import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-import { bindingNoticeAllowed } from "./composerBindingNotice";
-import { isNewProjectChat } from "./newProjectChat";
-import { useApprovalSlot } from "./useApprovalSlot";
-import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -53,8 +50,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     imageUploading,
     addImages,
     queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
     sending,
     chatError,
     setComposerText,
@@ -63,9 +58,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queuePrompt,
     updateQueuedPrompt,
     steerQueuedPrompt,
-    setQueuedTurnBarrier,
-    rememberTurnOrder,
-  } = useBoundChatComposer(chatId);
+  } = useBoundChatComposer(chatId, acpPage ?? null);
   const projectTransitioning = useWorkbenchStore((s) => s.projectTransitioning);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   const project = useWorkbenchStore((state) => state.project);
@@ -79,6 +72,8 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const transcriptContentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [editSummaryContainer, setEditSummaryContainer] =
+    useRetainedElement<HTMLDivElement>();
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
@@ -103,6 +98,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     sessionPromptUnavailable,
     usage,
     composerEnabled,
+    sendBlocked,
     queueAvailable,
     composerHotkeyEnabled,
     disabledReason,
@@ -133,21 +129,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queueSavePending: queuedPrompts.some(
       (prompt) => prompt.status === "saving",
     ),
-  });
-  useQueuedPromptDrain({
-    queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
-    activeTurn: Boolean(activeAcpTurn),
-    actionBusy,
-    projectTransitioning,
-    canPrompt,
-    useNativeAcp,
-    page: acpPage ?? null,
-    submit: acpActions.submit,
-    updateQueuedPrompt,
-    setQueuedTurnBarrier,
-    rememberTurnOrder,
   });
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
@@ -229,6 +210,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
   ]);
 
+  const newProjectChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
   return (
     <section
       ref={surfaceRef}
@@ -284,12 +273,13 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           </div>
         </header>
       ) : null}
-      <HarnessDiscoveryNotice
+      <LazyHarnessNotice
         harness={selectedHarnessDefinition}
         discoveryPhase={discoveryPhase}
       />
 
       <ChatTranscript
+        editSummaryContainer={editSummaryContainer}
         transcriptRef={messageListRef}
         contentRef={transcriptContentRef}
         endRef={endRef}
@@ -314,8 +304,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onJumpToLatest={jumpToLatest}
       />
 
-      {approval.slot}
       <ChatComposerRegion
+        approvalSlot={approval.slot}
+        onEditSummaryMount={setEditSummaryContainer}
         hidden={approval.awaiting}
         composerRef={composerRef}
         fieldId={composerFieldId}
@@ -329,6 +320,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         imageUploading={imageUploading}
         onAddImages={addImages}
         enabled={composerEnabled}
+        sendBlocked={sendBlocked}
         actionBusy={actionBusy}
         activeTurn={Boolean(activeAcpTurn)}
         queueAvailable={queueAvailable}
@@ -359,25 +351,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
-        missingBindingNotice={
-          useNativeAcp &&
-          !availableBinding &&
-          bindingNoticeAllowed(discoveryPhase)
-        }
+        missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={
-          isNewProjectChat({
-            useNativeAcp,
-            page: acpPage,
-            project,
-            projectTransitioning,
-            ...acpHistory,
-            retentionIncomplete: acpRetentionIncomplete,
-          })
-            ? null
-            : project
-        }
+        project={newProjectChat ? null : project}
+        projectScopeName={newProjectScopeName(newProjectChat, acpPage, project)}
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}

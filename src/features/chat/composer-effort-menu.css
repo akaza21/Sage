@@ -1,0 +1,8 @@
+.composer-effort__model-label {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--composer-muted-text);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

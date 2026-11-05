@@ -1,10 +1,9 @@
 use std::{
     fs::OpenOptions,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
-    sync::{Arc, Mutex, mpsc},
-    thread,
+    process::{Command, Stdio},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -23,6 +22,10 @@ use crate::acp::{
 };
 
 use super::store_bounds::{digest, item_fixture};
+
+#[path = "redaction_observer_process.rs"]
+mod process;
+use process::ChildGuard;
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["redaction-canaries-all-sinks"];
 
@@ -272,18 +275,12 @@ fn observe_curated_evidence(observation: &Value) -> Value {
         .spawn()
         .unwrap();
     let spawned = Instant::now();
-    let mut child = ChildGuard {
-        child,
-        completed: false,
-        started,
-        spawned,
-    };
-    let stdout = read_node_stream(child.child.stdout.take().unwrap());
-    let stderr = read_node_stream(child.child.stderr.take().unwrap());
+    let mut child = ChildGuard::new(child, started, spawned);
+    let (stdout, stderr) = child.read_streams();
     let deadline = spawned + NODE_TIMEOUT;
     let status = child.wait_until(deadline);
-    let output = receive_node_stream(stdout, deadline, "stdout", &child);
-    let stderr = receive_node_stream(stderr, deadline, "stderr", &child);
+    let output = child.receive_stream(stdout, deadline);
+    let stderr = child.receive_stream(stderr, deadline);
     let stderr_overflow = stderr.len() as u64 > NODE_OUTPUT_BYTES;
     let stderr = SensitiveBytes::new(stderr).redact(DiagnosticCode::ProtocolFailure);
     assert!(
@@ -303,94 +300,6 @@ fn observe_curated_evidence(observation: &Value) -> Value {
     // tests too. Log durations only, never child output or evidence paths.
     let _ = writeln!(std::io::stderr(), "curated observer: {}", child.timing());
     observation
-}
-
-fn read_node_stream<R>(reader: R) -> mpsc::Receiver<std::io::Result<Vec<u8>>>
-where
-    R: Read + Send + 'static,
-{
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let mut output = Vec::new();
-        let result = reader
-            .take(NODE_OUTPUT_BYTES + 1)
-            .read_to_end(&mut output)
-            .map(|_| output);
-        let _ = sender.send(result);
-    });
-    receiver
-}
-
-fn receive_node_stream(
-    receiver: mpsc::Receiver<std::io::Result<Vec<u8>>>,
-    deadline: Instant,
-    stream: &str,
-    child: &ChildGuard,
-) -> Vec<u8> {
-    receiver
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .unwrap_or_else(|_| {
-            panic!(
-                "curated observer {stream} did not close; {}",
-                child.timing()
-            )
-        })
-        .unwrap_or_else(|_| panic!("curated observer {stream} could not be read"))
-}
-
-struct ChildGuard {
-    child: Child,
-    completed: bool,
-    started: Instant,
-    spawned: Instant,
-}
-
-impl ChildGuard {
-    fn timing(&self) -> String {
-        let now = Instant::now();
-        format!(
-            "elapsed={:.3?}, spawn={:.3?}, post_spawn={:.3?}, limit={:.3?}",
-            now.duration_since(self.started),
-            self.spawned.duration_since(self.started),
-            now.duration_since(self.spawned),
-            NODE_TIMEOUT,
-        )
-    }
-
-    fn wait_until(&mut self, deadline: Instant) -> ExitStatus {
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(status)) => {
-                    self.completed = true;
-                    return status;
-                }
-                Ok(None) => {}
-                Err(_) => panic!("curated observer status unavailable"),
-            }
-            assert!(
-                Instant::now() < deadline,
-                "curated observer exceeded its time limit; {}",
-                self.timing()
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
-    }
-}
-
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        if !self.completed {
-            let _ = self.child.kill();
-            let deadline =
-                Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.tree_termination);
-            while Instant::now() < deadline {
-                match self.child.try_wait() {
-                    Ok(Some(_)) | Err(_) => break,
-                    Ok(None) => thread::sleep(Duration::from_millis(10)),
-                }
-            }
-        }
-    }
 }
 
 struct TemporaryEvidence(PathBuf);

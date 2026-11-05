@@ -3,6 +3,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { EDITOR_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   takeCanonicalScreenshot,
@@ -74,6 +75,9 @@ function expectRectInside(
 }
 
 async function expectPickerGeometry(picker: Locator) {
+  await waitForAnimations(
+    picker.locator("xpath=ancestor::*[contains(@class, 'menu-popover')][1]"),
+  );
   const observation = await picker.evaluate((input) => {
     const listbox = document.getElementById(
       input.getAttribute("aria-controls") ?? "",
@@ -562,6 +566,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       menu.getByRole("menuitem", { name: "Add folder root" }),
     ).toBeFocused();
 
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();
@@ -740,6 +745,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(drawer).toBeVisible();
     await expect(center).toHaveAttribute("inert", "");
     await expect(center).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: "Hide left sidebar" }).click();
     await expect(
       page.getByRole("textbox", {
         name: "Edit src/workbench/AgentChatPanes.tsx",
@@ -754,6 +760,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(
       center.locator(".file-surface .cm-content .cm-line span[class]").first(),
     ).toBeAttached();
+    await page.getByRole("button", { name: "Show left sidebar" }).click();
+    await expect(center).toHaveAttribute("inert", "");
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -766,7 +774,12 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           if (!drawer || !center) return null;
           const drawerBounds = drawer.getBoundingClientRect();
           const centerBounds = center.getBoundingClientRect();
-          return centerBounds.left >= drawerBounds.right;
+          return (
+            drawerBounds.left <= centerBounds.left &&
+            drawerBounds.top <= centerBounds.top &&
+            drawerBounds.right >= centerBounds.right &&
+            drawerBounds.bottom >= centerBounds.bottom
+          );
         }),
       )
       .toBe(true);
@@ -793,7 +806,9 @@ test.describe("Wave 2 200% zoom state", () => {
   test("keeps Editor Settings usable at 200% zoom", async ({ page }) => {
     await openScenario(page, "editor", "editor");
     await page.getByRole("button", { name: "Open settings" }).click();
-    await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    await expect(
+      page.getByRole("button", { name: "Show left sidebar" }),
+    ).toBeVisible();
 
     const settings = page.getByRole("region", { name: "Settings" });
     await expect(settings).toBeVisible();
@@ -885,6 +900,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(renameInput).toBeFocused();
     await expect(renamePopup).toBeVisible();
     await expect(renameListbox).toBeVisible();
+    await waitForAnimations(renamePopup);
     const [renameInputBox, renameListboxBox, renamePopupBox] =
       await Promise.all([
         renameInput.boundingBox(),
@@ -936,6 +952,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await page.getByRole("button", { name: "More Explorer actions" }).click();
     const explorerMenu = page.getByRole("menu", { name: "Explorer actions" });
     await expect(explorerMenu).toBeVisible();
+    await waitForAnimations(explorerMenu);
     expect(
       await explorerMenu.evaluate((node) => {
         const menuBounds = node.getBoundingClientRect();

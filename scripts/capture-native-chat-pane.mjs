@@ -9,7 +9,7 @@ export function paneSelector(selector) {
     [
       'button[aria-label="Open projects and chats"]',
       'button[aria-label="Close projects and chats"]',
-      'button[aria-label="New task"]',
+      'button[aria-label="New chat"]',
       FOCUSED_CHAT_RESOURCES,
     ].includes(selector)
   )

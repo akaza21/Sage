@@ -8,8 +8,40 @@
 }
 
 .workbench--agent .project-chat__trailing {
+  position: relative;
   grid-row: 1;
-  padding-bottom: 0;
+  padding: 0 var(--space-1) 0 0;
+  /* Clicks pass through to the title button; only the cell's visible
+     controls take the pointer (agent-rail-surface.css). */
+  pointer-events: none;
+}
+
+/* Codex clips every title at the same point whether or not the row shows a
+   dot, so the trailing glyph sits in space the title already leaves free.
+   Beside Pin and Archive the clip moves in to clear them. */
+.workbench--agent .project-chat-row > .project-chat {
+  grid-column: 1 / -1;
+  padding-inline-end: var(--agent-rail-title-end);
+}
+
+.workbench--agent
+  .project-chat-row:is(:hover, :has(:focus-visible))
+  > .project-chat {
+  padding-inline-end: var(--agent-rail-title-end-hover);
+}
+
+/* Titles fade out at the clip instead of ending in an ellipsis. Only a title
+   long enough to reach the clip is affected. */
+.workbench--agent .project-chat-row .project-chat__copy {
+  mask-image: linear-gradient(
+    to right,
+    currentColor calc(100% - var(--agent-rail-title-fade)),
+    transparent
+  );
+}
+
+.workbench--agent .project-chat-row .project-chat__title-label {
+  text-overflow: clip;
 }
 
 .workbench--agent .project-chat__working {
@@ -18,13 +50,7 @@
   border: 2px solid var(--agent-shell-spinner-track);
   border-top-color: var(--agent-shell-spinner-head);
   background: transparent;
-  animation: sage-rail-spin 800ms linear infinite;
-}
-
-@keyframes sage-rail-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: sage-spin var(--motion-duration-spin) linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -60,7 +86,7 @@
   width: min(272px, calc(100vw - 16px));
   max-height: min(70vh, calc(100vh - 16px));
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--agent-shell-resource-border);
   border-radius: var(--radius-lg);
   color: var(--color-text-secondary);
@@ -72,8 +98,8 @@
 .agent-task-header__resource-panel section {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
 }
 
 .agent-task-header__resource-panel section[aria-label="Outputs"],
@@ -93,7 +119,7 @@
   min-height: 24px;
   grid-column: 1 / -1;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 2px 0;
   border: 0;
   color: var(--color-text-muted);
@@ -122,7 +148,7 @@ button.agent-task-header__resource-row:hover {
 }
 
 .agent-task-header__view-all {
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   border: 0;
   color: var(--color-text-muted);
   background: transparent;
@@ -135,16 +161,16 @@ button.agent-task-header__resource-row:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   border-top: 1px solid var(--agent-shell-resource-border);
   border-bottom: 1px solid var(--agent-shell-resource-border);
-  margin: 8px 0;
-  padding: 8px 0;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) 0;
 }
 
 .agent-task-header__resource-panel .agent-task-header__agent {
   display: flex;
   grid-column: 1 / -1;
   justify-content: space-between;
-  gap: 8px;
-  margin: 4px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
 }
 
 .agent-task-header__agent span:first-child {
@@ -154,7 +180,7 @@ button.agent-task-header__resource-row:hover {
 }
 
 .agent-task-header__resource-panel p {
-  margin: 4px 0 12px;
+  margin: var(--space-1) 0 var(--space-3);
   overflow: hidden;
   color: var(--color-text-muted);
   text-overflow: ellipsis;
@@ -203,14 +229,6 @@ button.agent-task-header__resource-row:hover {
   background: var(--color-surface-hover);
 }
 
-.project-action__chord {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-family: inherit;
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.02em;
-}
-
 .project-action--primary {
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-strong);
@@ -234,38 +252,6 @@ button.agent-task-header__resource-row:hover {
 .project-row--active {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
-}
-
-.project-row .project-row__count,
-.project-row .project-row__branch {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.project-row .project-row__branch {
-  display: inline-flex;
-  max-width: 46%;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-none);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-row .project-row__branch svg {
-  flex: 0 0 auto;
-}
-
-.project-row .project-row__branch--chip {
-  min-height: 16px;
-  padding: 0 4px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
 }
 
 .project-row span {
@@ -312,7 +298,7 @@ button.agent-task-header__resource-row:hover {
 }
 
 .project-empty-copy {
-  margin: 8px 8px 0;
+  margin: var(--space-2) var(--space-2) 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   line-height: 1.4;
@@ -320,7 +306,7 @@ button.agent-task-header__resource-row:hover {
 
 .archived-chats {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .archived-chats__disclosure {
@@ -328,8 +314,8 @@ button.agent-task-header__resource-row:hover {
   width: 100%;
   height: 28px;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 24px;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-6);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
@@ -363,7 +349,7 @@ button.agent-task-header__resource-row:hover {
   min-height: 28px;
   grid-template-columns: auto minmax(0, 1fr) 26px;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding-left: 28px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);

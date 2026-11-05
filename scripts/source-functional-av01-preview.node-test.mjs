@@ -22,6 +22,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
 import {
   createAv01PreviewReceipt,
@@ -51,6 +52,7 @@ import {
   ACP04_READ_ONLY_PACKAGE_JSON_PROMPT,
   ACP04_FILE_TAB_SNAPSHOT,
   ACP04_FILE_TURN_SNAPSHOT,
+  revealTurnDisclosureExpression,
   runReadOnlyPackageJsonTurn,
   validateReadOnlyFileProof,
 } from "./source-functional-acp04-file-turn.mjs";
@@ -1691,4 +1693,307 @@ test("AV01 finalizer rejects escaped receipt topology and incomplete pending art
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+// JSDOM stand-in for the CDP page: expressions run against markup copied
+// from main's rendered components.
+async function withPage(markup, run) {
+  const dom = new JSDOM(`<!doctype html><body>${markup}</body>`);
+  const names = [
+    "document",
+    "Event",
+    "HTMLTextAreaElement",
+    "HTMLInputElement",
+    "NodeFilter",
+  ];
+  const previous = Object.fromEntries(
+    names.map((name) => [name, globalThis[name]]),
+  );
+  for (const name of names) globalThis[name] = dom.window[name];
+  try {
+    return await run(dom.window.document, {
+      evaluate: async (expression) => eval(expression),
+    });
+  } finally {
+    Object.assign(globalThis, previous);
+    dom.window.close();
+  }
+}
+
+function fileTurnMarkup({ id, ordinal, items = "" }) {
+  return `<section class="acp-turn" data-turn-state="completed" aria-label="Turn ${ordinal}" data-turn-id="${id}" data-session-id="session-a" data-runtime-epoch="1" data-turn-ordinal="${ordinal}"><header class="acp-turn__header"><span class="acp-state acp-turn__state" role="status" aria-label="Completed" data-turn-status="${id}">Completed</span></header><div class="acp-turn__items">${items}</div></section>`;
+}
+
+const RENDERED_READ_ONLY_PROMPT =
+  "<p>Use exec_command exactly once with cmd <code>cat package.json</code>, shell <code>C:\\Program Files\\Git\\bin\\bash.exe</code>, and login <code>false</code>. Read package.json only. Do not modify files or run unrelated commands.</p>";
+
+function readOnlyAgentMarkup() {
+  return `<main class="workbench workbench--agent"><div class="agent-chat-center"><div id="agent-chat-panel" aria-label="Agent chat panes" class="agent-chat-panes" role="tabpanel"><section class="agent-chat-pane agent-chat-pane--focused" aria-label="Chat pane Fixture" data-chat-id="chat-a"><section class="chat-surface chat-surface--agent" aria-label="Agent chat"><section class="acp-chat-projection" aria-label="Agent chat Fixture" data-projection-revision="2" data-project-id="project-a" data-chat-id="chat-a" data-current-session-id="session-a" data-expected-resource-root-id="fixture-root">${fileTurnMarkup({ id: "turn-1", ordinal: 1 })}${fileTurnMarkup({ id: "turn-2", ordinal: 2 })}</section><form class="composer"><textarea id="prompt-chat-a" aria-label="Message agent"></textarea><button class="send-button" type="submit" aria-label="Send message"></button></form></section></section></div></div><div class="agent-artifact-surface"><aside id="agent-artifacts" class="agent-artifact-pane" aria-label="Agent artifacts" data-owner-project-id="project-a" data-owner-chat-id="chat-a" data-owner-session-id="session-a" data-owner-runtime-epoch="1"><header class="agent-artifact-pane__header"><nav class="tab-strip" aria-label="Agent artifact tabs"></nav><button class="agent-artifact-pane__collapse" type="button" aria-label="Collapse files, changes, and preview"></button></header><div class="agent-artifact-pane__canvas"></div></aside></div></main>`;
+}
+
+// Mirrors ChatTranscriptTurnSummary (folded "Worked for …") and
+// ToolActivityRollup (folded tool row) for a finished Turn.
+function mountReadOnlyTurn(document, clicks, rollups = 1) {
+  const projection = document.querySelector("section.acp-chat-projection");
+  projection.dataset.projectionRevision = "3";
+  projection.insertAdjacentHTML(
+    "beforeend",
+    fileTurnMarkup({
+      id: "turn-3",
+      ordinal: 3,
+      items: `<article class="acp-message acp-message--user" data-item-id="item-user" data-message-role="user"><header class="acp-message__meta"><span class="acp-message__role">You</span></header><div class="acp-markdown">${RENDERED_READ_ONLY_PROMPT}</div></article><details class="chat-transcript-work"><summary>Worked for 2s<svg aria-hidden="true"></svg></summary></details><article class="acp-message acp-message--assistant" data-item-id="item-answer" data-message-role="assistant"><div class="acp-markdown"><p>Read package.json.</p></div></article>`,
+    }),
+  );
+  const worked = projection.querySelector("details.chat-transcript-work");
+  worked.querySelector("summary").addEventListener("click", (event) => {
+    event.preventDefault();
+    clicks.worked += 1;
+    worked.open = true;
+    worked.insertAdjacentHTML(
+      "afterend",
+      `<div class="chat-transcript-work__groups">${'<details class="acp-activity-card acp-tool-rollup" data-activity-kind="read" data-activity-state="completed"><summary aria-label="Read package.json, Completed">Read package.json</summary></details>'.repeat(rollups)}</div>`,
+    );
+    for (const rollup of document.querySelectorAll("details.acp-tool-rollup"))
+      rollup.querySelector("summary").addEventListener("click", (toggle) => {
+        toggle.preventDefault();
+        clicks.rollup += 1;
+        rollup.open = true;
+        rollup.insertAdjacentHTML(
+          "beforeend",
+          '<div class="acp-tool-rollup__items"><article class="acp-activity-card acp-tool-compact" data-acp-item-id="item-read" data-activity-kind="read" data-activity-state="completed" role="group" aria-label="Read package.json"><ul class="acp-resource-list" aria-label="Referenced resources"><li><button type="button" class="acp-resource-action" aria-label="Open file package.json" data-resource-root-id="fixture-root" data-resource-relative-path="package.json"><span>package.json</span></button></li></ul></article></div>',
+        );
+        rollup
+          .querySelector("button.acp-resource-action")
+          .addEventListener("click", () => {
+            clicks.action += 1;
+            document
+              .querySelector('nav[aria-label="Agent artifact tabs"]')
+              .insertAdjacentHTML(
+                "beforeend",
+                '<div class="tab tab--active" role="presentation" data-resource-kind="file"><button class="tab__activate" type="button" role="tab" aria-selected="true" aria-label="File package.json" data-resource-root-id="fixture-root" data-resource-relative-path="package.json"></button><button class="tab__close" type="button" aria-label="Close package.json"></button></div>',
+              );
+            document
+              .querySelector(".agent-artifact-pane__canvas")
+              .insertAdjacentHTML(
+                "beforeend",
+                '<section class="file-surface resource-document" aria-label="File editor package.json"><div class="file-editor" aria-label="Edit package.json" contenteditable="true"></div></section>',
+              );
+          });
+      });
+  });
+}
+
+const READ_ONLY_OWNER = Object.freeze({
+  phase: "complete",
+  projectId: "project-a",
+  chatId: "chat-a",
+  sessionId: "session-a",
+  runtimeEpoch: "1",
+  turnIds: ["turn-1", "turn-2"],
+});
+
+test("collector reveals the folded Worked read and opens its one package.json File against current transcript markup", async () => {
+  await withPage(readOnlyAgentMarkup(), async (document, cdp) => {
+    const clicks = { send: 0, worked: 0, rollup: 0, action: 0 };
+    document
+      .querySelector('button[aria-label="Send message"]')
+      .addEventListener("click", (event) => {
+        event.preventDefault();
+        clicks.send += 1;
+        mountReadOnlyTurn(document, clicks);
+      });
+    const proof = await runReadOnlyPackageJsonTurn(
+      cdp,
+      Date.now() + 5_000,
+      READ_ONLY_OWNER,
+    );
+    assert.deepEqual(clicks, { send: 1, worked: 1, rollup: 1, action: 1 });
+    assert.equal(
+      document.querySelector('textarea[aria-label="Message agent"]').value,
+      ACP04_READ_ONLY_PACKAGE_JSON_PROMPT,
+    );
+    assert.equal(proof.turnId, "turn-3");
+    assert.equal(proof.itemId, "item-read");
+    assert.equal(proof.rootId, "fixture-root");
+    assert.equal(proof.relativePath, "package.json");
+    assert.equal(proof.selectedReadyFile, true);
+  });
+});
+
+test("collector refuses an ambiguous folded tool row without opening a File", async () => {
+  await withPage(readOnlyAgentMarkup(), async (document, cdp) => {
+    const clicks = { send: 0, worked: 0, rollup: 0, action: 0 };
+    document
+      .querySelector('button[aria-label="Send message"]')
+      .addEventListener("click", (event) => {
+        event.preventDefault();
+        clicks.send += 1;
+        mountReadOnlyTurn(document, clicks, 2);
+      });
+    await assert.rejects(
+      () =>
+        runReadOnlyPackageJsonTurn(cdp, Date.now() + 5_000, READ_ONLY_OWNER),
+      /acp04-file-turn-reveal-ambiguous/,
+    );
+    assert.deepEqual(clicks, { send: 1, worked: 1, rollup: 0, action: 0 });
+    assert.equal(
+      eval(revealTurnDisclosureExpression("turn-3", "worked")),
+      "open",
+    );
+    assert.equal(
+      eval(revealTurnDisclosureExpression("turn-missing", "worked")),
+      "ambiguous",
+    );
+    assert.throws(
+      () => revealTurnDisclosureExpression("turn-3", "other"),
+      /acp04-file-turn-reveal-invalid/,
+    );
+  });
+});
+
+const PREVIEW_ORIGIN = "http://127.0.0.1:41234/";
+
+function previewStackMarkup({ phase, frame = false, lifecycle = "" }) {
+  const control =
+    phase === "active"
+      ? '<button type="button" class="button button--compact button--danger">Stop</button>'
+      : `<button type="button" class="button button--compact button--primary"${phase === "idle" ? "" : " disabled"}>Start</button>`;
+  return `<div class="agent-preview-stack" data-preview-listener-ready="true" data-preview-phase="${phase}"${phase === "idle" ? "" : ' data-preview-target-identity="fixture-root:dev"'}>${lifecycle}<div class="agent-preview-targets" role="group" aria-label="Preview targets"><div class="agent-preview-target"><span class="agent-preview-target__identity"><span class="agent-preview-target__name" title="dev">dev</span></span>${control}</div></div><section class="harness-browser" aria-label="Sage browser"><header class="harness-browser__chrome"><span class="harness-browser__connection" aria-label="${frame ? "Loopback preview active" : "No preview connected"}" title="" role="status"><span aria-hidden="true"></span><span class="harness-browser__connection-label">${frame ? "Local" : "Idle"}</span></span><button class="harness-browser__controls-trigger" type="button" aria-label="Preview controls"></button><form class="harness-browser__address"><input aria-label="Preview address" value=""></form></header>${frame ? `<iframe class="harness-browser__frame" title="Sage browser" src="${PREVIEW_ORIGIN}"></iframe>` : '<div class="resource-state resource-state--idle" role="status" aria-atomic="true"><strong class="resource-state__title">Preview is idle</strong><span class="resource-state__detail">Preview shows loopback development servers started from this Chat.</span></div>'}</section></div>`;
+}
+
+const STARTING_LIFECYCLE =
+  '<div class="agent-preview-lifecycle agent-preview-lifecycle--working agent-preview-lifecycle--compact" role="status" aria-atomic="true"><span class="agent-preview-lifecycle__icon" aria-hidden="true"></span><span class="agent-preview-lifecycle__copy"><span class="agent-preview-lifecycle__line"><strong>Starting process</strong></span><span class="agent-preview-lifecycle__detail sr-only">Launching the selected Preview process.</span></span></div>';
+
+function previewPaneMarkup(stack) {
+  return `<div class="agent-artifact-surface"><aside id="agent-artifacts" class="agent-artifact-pane agent-artifact-pane--with-header" aria-label="Agent artifacts"><header class="agent-artifact-pane__header"><nav class="tab-strip" aria-label="Agent artifact tabs"><div class="tab" role="presentation" data-resource-kind="file"><button class="tab__activate" type="button" role="tab" aria-selected="false" aria-label="File package.json" data-resource-root-id="fixture-root" data-resource-relative-path="package.json"></button><button class="tab__close" type="button" aria-label="Close package.json"></button></div><div class="tab tab--active" role="presentation" data-resource-kind="preview"><button class="tab__activate" type="button" role="tab" aria-selected="true" aria-label="Preview" title="Preview"></button></div></nav><button class="agent-artifact-pane__collapse" type="button" aria-label="Collapse files, changes, and preview" title="Collapse resources"></button></header><div class="agent-artifact-pane__canvas">${stack}</div></aside></div>`;
+}
+
+function previewWorkbenchMarkup(stack) {
+  return `<main class="workbench workbench--agent"><header class="title-bar"><div class="title-bar__modes" role="radiogroup" aria-label="Window mode"><label class="title-bar__mode"><input name="workbench-window-mode" type="radio" value="agent" checked>Agent</label><label class="title-bar__mode"><input name="workbench-window-mode" type="radio" value="editor">Editor</label></div></header><div class="agent-chat-center"><div class="agent-chat-center__header"><div class="agent-artifact-header-slot"></div></div></div><div id="artifact-host">${previewPaneMarkup(stack)}</div></main>`;
+}
+
+test("collector Preview selectors drive the current Preview stack, collapse edge action, and Editor exit", async () => {
+  await withPage(
+    previewWorkbenchMarkup(previewStackMarkup({ phase: "idle" })),
+    async (document, cdp) => {
+      const read = async () =>
+        validatePreviewSnapshot(await cdp.evaluate(AV01_PREVIEW_SNAPSHOT));
+      const canvas = () =>
+        document.querySelector(".agent-artifact-pane__canvas");
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.openPreview), true);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.previewReady), true);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.startEnabled), true);
+      assert.deepEqual(await read(), {
+        listenerReady: "true",
+        phase: "idle",
+        targetIdentity: null,
+        startEnabled: true,
+        stopVisible: false,
+        frameUrls: [],
+        notices: [
+          "Idle",
+          "Preview is idlePreview shows loopback development servers started from this Chat.",
+        ],
+        collapsed: false,
+      });
+
+      let starts = 0;
+      document
+        .querySelector('[aria-label="Preview targets"] button')
+        .addEventListener("click", () => {
+          starts += 1;
+        });
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.clickStart), true);
+      assert.equal(starts, 1);
+      canvas().innerHTML = previewStackMarkup({
+        phase: "starting",
+        lifecycle: STARTING_LIFECYCLE,
+      });
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.startEnabled), false);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.clickStart), false);
+      const starting = await read();
+      assert.equal(starting.phase, "starting");
+      assert.equal(starting.targetIdentity, "fixture-root:dev");
+      assert.equal(
+        starting.notices.some((notice) => notice.includes("Preview")),
+        true,
+      );
+      assert.deepEqual(starting.notices.slice(0, 1), [
+        "Starting processLaunching the selected Preview process.",
+      ]);
+
+      canvas().innerHTML = previewStackMarkup({ phase: "active", frame: true });
+      const active = await read();
+      assert.equal(active.stopVisible, true);
+      assert.deepEqual(active.frameUrls, [PREVIEW_ORIGIN]);
+
+      const fileTab = document.querySelector(
+        '[role="tab"][aria-label^="File "]',
+      );
+      fileTab.addEventListener("click", () => {
+        fileTab.setAttribute("aria-selected", "true");
+        document
+          .querySelector('[role="tab"][aria-label="Preview"]')
+          .setAttribute("aria-selected", "false");
+        canvas().innerHTML = "";
+      });
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.selectFile), true);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.fileSelected), true);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.previewReady), false);
+      assert.equal((await read()).phase, "none");
+
+      // The collapsed pane leaves only its edge action in the Chat header.
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.reopen), false);
+      const host = document.getElementById("artifact-host");
+      const slot = document.querySelector(".agent-artifact-header-slot");
+      document
+        .querySelector(
+          'button[aria-label="Collapse files, changes, and preview"]',
+        )
+        .addEventListener("click", () => {
+          host.innerHTML = "";
+          slot.innerHTML =
+            '<button class="agent-artifact-pane__edge-action" type="button" aria-label="Show files and preview · Ready · 2 resources" aria-controls="agent-artifacts" aria-expanded="false" title="Show files and preview · Ready · 2 resources"></button>';
+          slot.firstElementChild.addEventListener("click", () => {
+            slot.innerHTML = "";
+            host.innerHTML = previewPaneMarkup(
+              previewStackMarkup({ phase: "active", frame: true }),
+            );
+          });
+        });
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.collapse), true);
+      assert.equal((await read()).collapsed, true);
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.collapse), false);
+      slot.append(slot.firstElementChild.cloneNode(true));
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.reopen), false);
+      assert.throws(
+        () => validatePreviewSnapshot(eval(AV01_PREVIEW_SNAPSHOT)),
+        /av01-preview-snapshot-invalid/,
+      );
+      slot.lastElementChild.remove();
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.reopen), true);
+      const reopened = await read();
+      assert.equal(reopened.collapsed, false);
+      assert.deepEqual(reopened.frameUrls, [PREVIEW_ORIGIN]);
+
+      canvas().insertAdjacentHTML(
+        "beforeend",
+        previewStackMarkup({ phase: "active", frame: true }),
+      );
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.previewReady), false);
+      assert.throws(
+        () => validatePreviewSnapshot(eval(AV01_PREVIEW_SNAPSHOT)),
+        /av01-preview-snapshot-invalid/,
+      );
+
+      let editorClicks = 0;
+      document
+        .querySelector('input[value="editor"]')
+        .addEventListener("click", () => {
+          editorClicks += 1;
+        });
+      assert.equal(await cdp.evaluate(AV01_PREVIEW_UI.leaveAgent), true);
+      assert.equal(editorClicks, 1);
+    },
+  );
 });

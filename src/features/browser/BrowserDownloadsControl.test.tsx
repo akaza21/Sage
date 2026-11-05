@@ -1,16 +1,18 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
+import { Activity, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { BrowserDownload } from "../../ports/nativeBrowserDownloadsPort";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
-import { progressLabel } from "./browserDownloadLabel";
+import BrowserDownloadsPanel from "./BrowserDownloadsPanel";
 import { activeDownloadProgress } from "./useBrowserDownloads";
 
 const browserDownloads = vi.fn(
@@ -60,7 +62,43 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it("disposes late downloads registration after Activity sleeps without reading hidden state", async () => {
+  let finish: ((dispose: () => void) => void) | undefined;
+  const dispose = vi.fn();
+  vi.mocked(listen).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = render(
+    <Activity mode="visible">
+      <Harness />
+    </Activity>,
+  );
+  await waitFor(() => expect(finish).toBeDefined());
+  view.rerender(
+    <Activity mode="hidden">
+      <Harness />
+    </Activity>,
+  );
+  await act(async () => finish?.(dispose));
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(browserDownloads).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 it("labels bounded progress and all terminal download states", () => {
+  const progressLabel = (item: BrowserDownload) => {
+    const view = render(
+      <BrowserDownloadsPanel tabId="browser-1" downloads={[item]} />,
+    );
+    const label = view.container
+      .querySelector(".browser-downloads__status")!
+      .textContent!.split(" · ")[0];
+    view.unmount();
+    return label;
+  };
   expect(progressLabel(download)).toBe("50%");
   expect(progressLabel({ ...download, receivedBytes: 20 })).toBe("100%");
   expect(progressLabel({ ...download, totalBytes: null })).toBe("Downloading");
@@ -83,6 +121,22 @@ it("sums only the active downloads with a known size into the ring", () => {
   ).toBeCloseTo(35 / 40);
 });
 
+it("shows the destination timeout and recovery guidance in the failed row", () => {
+  const error =
+    "Download destination I/O timed out. Downloaded bytes may be recovered from the private download folder";
+  render(
+    <BrowserDownloadsPanel
+      tabId="browser-1"
+      downloads={[{ ...download, state: "error", error }]}
+    />,
+  );
+  expect(screen.getByText(`${error} · example.com`)).toBeInTheDocument();
+  expect(screen.getByTitle(error)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel report.pdf" }),
+  ).toBeNull();
+});
+
 it("shows active progress on the toolbar button while the popover is shut", async () => {
   browserDownloads.mockResolvedValueOnce([download]);
   const view = render(<Harness />);
@@ -96,6 +150,23 @@ it("shows active progress on the toolbar button while the popover is shut", asyn
   expect(view.container.querySelector("[data-active]")).not.toBeNull();
   expect(view.container.querySelector("[data-indeterminate]")).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("keeps saving downloads active without offering cancellation or a completed folder", async () => {
+  browserDownloads.mockResolvedValueOnce([
+    { ...download, state: "publishing" },
+  ]);
+  render(<Harness />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Downloads, 1 active" }),
+  );
+  expect(await screen.findByText("Saving · example.com")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Cancel report.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Show report.pdf in folder" }),
+  ).toBeNull();
 });
 
 it("opens a popover listing downloads newest first instead of a bar", async () => {

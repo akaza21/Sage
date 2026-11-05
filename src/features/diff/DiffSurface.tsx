@@ -24,7 +24,11 @@ export function DiffSurface({
   return tab.diffRef ? (
     <SnapshotDiffSurface tab={tab} commentEnabled={readOnly} />
   ) : (
-    <DiffDocument tab={tab} unavailable={isSnapshotDiffTab(tab)} />
+    <DiffDocument
+      tab={tab}
+      unavailable={isSnapshotDiffTab(tab)}
+      workingTreeNotice={readOnly && !isSnapshotDiffTab(tab)}
+    />
   );
 }
 
@@ -64,10 +68,12 @@ function DiffDocument({
   tab,
   unavailable = false,
   commentEnabled = false,
+  workingTreeNotice = false,
 }: {
   tab: WorkbenchTab;
   unavailable?: boolean;
   commentEnabled?: boolean;
+  workingTreeNotice?: boolean;
 }) {
   const focusedChatId = usePinnedAgentChatOwner();
   const captureChatOwnership = useWorkbenchStore(
@@ -154,6 +160,12 @@ function DiffDocument({
       className="diff-surface resource-document"
       aria-label={`Diff for ${path}`}
     >
+      {workingTreeNotice ? (
+        <p role="status">
+          Current working-tree changes against Git; may include edits from other
+          turns.
+        </p>
+      ) : null}
       <header className="diff-header">
         <div className="diff-header__path">
           <FileDiff size={16} aria-hidden="true" />
@@ -224,6 +236,7 @@ function DiffDocument({
           <DiffHunks
             diff={diff.value}
             label="Unified file diff"
+            maxLines={1200}
             limitMessage="Diff capped at 1,200 lines to protect UI responsiveness."
             renderComment={
               canComment && tab.diffRef

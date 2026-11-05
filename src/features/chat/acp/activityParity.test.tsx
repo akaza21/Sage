@@ -7,7 +7,6 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { PrimaryActivities } from "./PrimaryActivities";
-import type { ToolActivityRollup } from "./ToolActivityRollupView";
 import { parityTool } from "./activityParity.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
@@ -17,7 +16,7 @@ import { ToolItem } from "./ToolItem";
 afterEach(cleanup);
 
 it("offers no dead expandDetails prop on Worked rows", () => {
-  // Type-level: tsc fails while either component still accepts the prop.
+  // Type-level: tsc fails if the public owner accepts the removed prop.
   const { container } = render(
     <PrimaryActivities
       items={[]}
@@ -28,8 +27,8 @@ it("offers no dead expandDetails prop on Worked rows", () => {
     />,
   );
   expect(container).toBeEmptyDOMElement();
-  type RollupProps = Parameters<typeof ToolActivityRollup>[0];
-  const rollupProps: Omit<RollupProps, "rollup"> = {
+  type RollupProps = Parameters<typeof PrimaryActivities>[0];
+  const rollupProps: Omit<RollupProps, "items" | "renderItem"> = {
     interactive: true,
     // @ts-expect-error expandDetails was removed: nothing passed it.
     expandDetails: true,

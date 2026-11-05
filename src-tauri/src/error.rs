@@ -40,6 +40,9 @@ pub enum AppError {
     #[error("harness is not available: {0}")]
     HarnessUnavailable(String),
 
+    #[error("Mixed line endings require a read-only viewer")]
+    MixedLineEndings,
+
     #[error("invalid request: {0}")]
     InvalidRequest(String),
 

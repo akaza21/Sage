@@ -9,9 +9,49 @@
 .menu-popover--editor {
   --radius-sm: 4px;
   --radius-md: 6px;
+  --workbench-card-radius: var(--radius-md);
+  --workbench-card-fill: var(--color-panel);
+  --workbench-card-border: var(--color-border-subtle);
   --radius-lg: 8px;
 
   font-family: var(--font-family-ui);
+}
+
+/* Editor chrome geometry, read by the components that own each part. The
+   center region is an inset card; tabs, the canvas and the tool sidebar sit
+   on the panel colour. */
+.workbench--editor {
+  --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
+  --center-region-tabs-height: var(--tab-height);
+  --active-canvas-fill: var(--color-panel);
+  --tab-strip-fill: var(--color-panel);
+  --tab-fill: var(--color-panel);
+  --tab-active-fill: var(--color-panel);
+  --tab-motion-duration: var(--motion-duration-fast);
+  --radius-title-bar-search: var(--radius-sm);
+  --placeholder-title-gap: var(--space-2);
+  --placeholder-body-font-size: var(--font-size-sm);
+  /* A canvas-coloured activity rail whose buttons fill its width. */
+  --activity-rail-gap: calc(var(--space-1) / 2);
+  --activity-rail-width: var(--editor-activity-width);
+  --activity-rail-fill: var(--color-canvas);
+  --activity-button-width: 100%;
+  --radius-activity-button: var(--radius-sm);
+  --activity-button-active-fill: var(
+    --editor-active-fill,
+    var(--color-surface-hover)
+  );
+  --activity-button-active-hover-fill: var(--activity-button-active-fill);
+  /* A hairline tool-rail splitter that lights with the highlight roles,
+     which global.css also defines for forced colours. Hover and drag take
+     the focus-ring width: a hairline normally, 2px in forced colours. */
+  --sidebar-splitter-width: var(--border-width);
+  --sidebar-splitter-state-width: var(--focus-ring-width);
+  --sidebar-splitter-fill: transparent;
+  --sidebar-splitter-hover-fill: var(--highlight-selection-edge);
+  --sidebar-splitter-hover-shadow: 0 0 4px var(--highlight-focus-halo);
+  --sidebar-splitter-active-fill: var(--highlight-focus-edge);
+  --sidebar-splitter-active-shadow: var(--highlight-focus-halo-shadow);
 }
 
 @media (forced-colors: none) {
@@ -105,298 +145,36 @@
       var(--highlight-focus-edge);
     --menu-focus-edge: var(--editor-focus-edge);
     --menu-selected-fill: var(--editor-selection-fill);
+    /* Role tokens the Editor's components read. Persistent selection is a
+       quiet fill with a hairline edge; a focused region gets a contained
+       hairline instead of a full ring; search matches stay amber; count
+       badges read as quantity, not selection. */
+    --row-selected-fill: var(--editor-selection-fill);
+    --row-selected-shadow: inset var(--border-width) 0 0
+      var(--editor-selection-edge);
+    --region-focus-shadow: inset 0 0 0 var(--border-width)
+      var(--editor-focus-edge);
+    --search-match-fill: var(--editor-find-match-fill);
+    --search-match-shadow: inset 0 calc(-1 * var(--border-width)) 0
+      var(--editor-find-match-edge);
+    --count-badge-fill: var(--color-surface-hover);
   }
-}
-
-.workbench--editor .center-region {
-  margin: var(--space-1) var(--space-1) var(--space-1) 0;
-  overflow: hidden;
-  grid-template-rows: 36px minmax(0, 1fr);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-panel);
-}
-
-.workbench--editor .active-canvas {
-  background: var(--color-panel);
-}
-
-.workbench--editor .workbench__tabs,
-.workbench--editor .tab-strip,
-.workbench--editor .tab {
-  background: var(--color-panel);
-}
-
-.workbench--editor .title-bar__search {
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .outline-surface__header {
-  min-height: 36px;
-}
-
-.workbench--editor .outline-surface__header {
-  padding: 0 var(--space-3);
-}
-
-.workbench--editor .workspace-search__input {
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .workspace-search__input button,
-.workbench--editor .workspace-search__details-toggle {
-  min-height: 28px;
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .sidebar__heading-actions button,
-.workbench--editor .sidebar__heading > button,
-.workbench--editor .tree__row,
-.workbench--editor .root-tree__heading,
-.workbench--editor .source-change,
-.workbench--editor .tab {
-  transition:
-    color var(--motion-duration-fast) ease,
-    background-color var(--motion-duration-fast) ease,
-    border-color var(--motion-duration-fast) ease;
-}
-
-.workbench--editor .sidebar__heading > button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.workbench--editor .sidebar__heading > button:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.workbench--editor .sidebar__heading > button:disabled {
-  color: var(--color-text-disabled);
-  cursor: default;
-}
-
-.workbench--editor .source-control-list {
-  padding: 4px;
-}
-
-.workbench--editor .source-control-selector {
-  display: block;
-  margin: 0 2px 4px;
-}
-
-.workbench--editor .source-control-selector .searchable-picker__trigger,
-.workbench--editor .source-control-selector .searchable-picker__input {
-  width: 100%;
-  height: 28px;
-  padding: 0 24px 0 8px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font-size: var(--font-size-xs);
-}
-
-.menu-popover--editor .searchable-picker__input {
-  height: 28px;
-  padding: 0 8px;
-}
-
-.workbench--editor .source-root__summary {
-  min-height: 32px;
-  /* Lines the repository name up with the group labels and changes. */
-  padding: 4px 4px 4px 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.workbench--editor .source-root__name {
-  grid-column: 1;
-}
-
-.workbench--editor .source-root__branch {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.workbench--editor .source-root__identity {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.workbench--editor .source-group-label {
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.workbench--editor .source-root + .source-root {
-  margin-top: 4px;
-  padding-top: 4px;
-}
-
-.workbench--editor .source-change {
-  height: var(--row-height-compact);
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .repository-commit {
-  gap: 4px;
-  margin: 0 4px 4px;
-}
-
-.workbench--editor .repository-commit__label textarea {
-  height: var(--row-height-emphasis);
-  min-height: var(--row-height-emphasis);
-  padding: 8px;
-  resize: none;
-  border-color: var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  line-height: 18px;
-}
-
-.workbench--editor .repository-commit__footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "actions"
-    "help";
-  gap: 4px;
-}
-
-.workbench--editor .repository-commit__help {
-  grid-area: help;
-}
-
-.workbench--editor .repository-commit__actions {
-  display: flex;
-  width: 100%;
-  grid-area: actions;
-}
-
-.workbench--editor .repository-commit__actions button {
-  min-height: 28px;
-  flex: 1 1 auto;
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor
-  .repository-commit__actions
-  button[type="submit"]:not(:disabled) {
-  border-color: var(--color-accent);
-  color: var(--color-accent-foreground);
-  background: var(--color-accent);
-  font-weight: var(--font-weight-semibold);
-}
-
-/* Neutral, not accent-tinted, so a disabled Commit doesn't read as ready. */
-.workbench--editor .repository-commit__actions button:disabled {
-  border-color: var(--color-border-subtle);
-  color: var(--color-text-muted);
-  background: transparent;
-  cursor: default;
-  /* Instead of the global disabled fade, which would make it too faint. */
-  opacity: 1;
-}
-
-.workbench--editor .workspace-search__result,
-.workbench--editor .outline-card {
-  min-height: var(--row-height-compact);
-  font-size: var(--font-size-sm);
-  border-radius: var(--radius-sm);
-}
-
-.workbench--editor .workspace-search__empty,
-.workbench--editor .workspace-search__notice,
-.workbench--editor .sidebar__empty,
-.workbench--editor .sidebar__loading,
-.workbench--editor .sidebar__notice,
-.workbench--editor .outline-surface__empty {
-  max-width: none;
-  margin: 0;
-  padding: var(--space-3);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-normal);
-}
-
-.workbench--editor .workspace-search__progress {
-  min-height: 28px;
-}
-
-.workbench--editor .workspace-search__error,
-.workbench--editor .sidebar__error,
-.workbench--editor .repository-commit__error {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px solid var(--color-danger);
-  color: var(--color-danger);
-  background: var(--color-danger-muted);
-  font-size: var(--font-size-xs);
-}
-
-.workbench--editor .status-bar {
-  border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-canvas);
-}
-
-.workbench--editor .placeholder-surface h1 {
-  margin-top: 8px;
-}
-
-.workbench--editor .placeholder-surface p {
-  font-size: var(--font-size-sm);
 }
 
 @media (max-width: 760px) {
-  .workbench--editor .right-region--leading .sidebar {
-    top: var(--space-1);
-    right: auto;
-    bottom: var(--space-1);
-    left: var(--editor-activity-width);
-    width: min(272px, calc(100vw - var(--editor-activity-width) - 12px));
-    height: auto;
-    margin: 0 var(--space-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    box-shadow: var(--elevation-floating);
-  }
-
-  .workbench--editor .center-region {
-    margin-left: var(--space-1);
-  }
-
-  .workbench--editor .center-region[aria-hidden="true"] {
-    margin-left: min(280px, calc(100% - 160px));
+  .workbench--editor {
+    --workbench-card-margin: var(--space-1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench--editor .sidebar__heading-actions button,
-  .workbench--editor .sidebar__heading > button,
-  .workbench--editor .tree__row,
-  .workbench--editor .root-tree__heading,
-  .workbench--editor .source-change,
-  .workbench--editor .tab {
-    transition-duration: 0ms;
+  .workbench--editor {
+    --tab-motion-duration: 0ms;
   }
 }
 
 @media (forced-colors: active) {
-  .workbench--editor .center-region {
-    border-color: CanvasText;
-  }
-
-  .workbench--editor .source-control-selector .searchable-picker__trigger,
-  .workbench--editor .source-control-selector .searchable-picker__input,
-  .menu-popover--editor .searchable-picker__input,
-  .workbench--editor .repository-commit__label textarea {
-    border-color: ButtonText;
+  .workbench--editor {
+    --workbench-card-border: CanvasText;
   }
 }

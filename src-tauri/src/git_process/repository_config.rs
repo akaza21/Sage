@@ -222,6 +222,7 @@ impl Probe {
             .ancestors()
             .map(|directory| watch(directory.join(GIT_DIR_NAME)))
             .collect::<Vec<_>>();
+        let unreadable_before_probe = has_unreadable_config(&ancestors);
         let location = probe_git(
             root,
             authority,
@@ -237,6 +238,12 @@ impl Probe {
         )
         .await?;
         if !location.status.success() {
+            // Git may have failed only because it could not read a config.
+            // Running Git unpinned after that would read a config nobody
+            // checked, so this fails closed and probes again next time.
+            if unreadable_before_probe || has_unreadable_config(&ancestors) {
+                return Ok(Self::uncached_refusal(ancestors, UNREADABLE));
+            }
             // Git found no repository, so it reads no repository config. That
             // stays true only while no `.git` exists on the discovery path: an
             // existing but invalid one (an empty directory, say) can become a
@@ -294,6 +301,11 @@ impl Probe {
             Some(Refusal::Layout(RepositoryLayout::ExternalGitDir))
         } else if watched
             .iter()
+            .any(|(_, fingerprint)| matches!(fingerprint, Fingerprint::Unreadable(_)))
+        {
+            return Ok(Self::uncached_refusal(watched, UNREADABLE));
+        } else if watched
+            .iter()
             .any(|(_, fingerprint)| fingerprint.is_unverifiable())
         {
             Some(Refusal::Config(TOO_LARGE.to_owned()))
@@ -307,9 +319,9 @@ impl Probe {
             )
             .await?;
             if !listing.status.success() {
-                return Err(AppError::Git(
-                    String::from_utf8_lossy(&listing.stderr).trim().to_owned(),
-                ));
+                // Git's stderr names local paths, so it never reaches the
+                // public message; the next call probes again.
+                return Ok(Self::uncached_refusal(watched, UNREADABLE));
             }
             if listing.stdout_truncated {
                 Some(Refusal::Config(TOO_LARGE.to_owned()))
@@ -326,7 +338,36 @@ impl Probe {
             cacheable,
         })
     }
+
+    fn uncached_refusal(watched: Vec<(PathBuf, Fingerprint)>, message: &str) -> Self {
+        Self {
+            admission: Admission {
+                watched,
+                refusal: Some(Refusal::Config(message.to_owned())),
+                repository: None,
+            },
+            cacheable: false,
+        }
+    }
 }
+
+/// True when a `.git` entry on the discovery path, or the `config` inside a
+/// `.git` directory there, exists but cannot be read.
+fn has_unreadable_config(ancestors: &[(PathBuf, Fingerprint)]) -> bool {
+    ancestors
+        .iter()
+        .any(|(entry, fingerprint)| match fingerprint {
+            Fingerprint::Unreadable(_) => true,
+            Fingerprint::Directory => matches!(
+                Fingerprint::of(&entry.join("config")),
+                Fingerprint::Unreadable(_)
+            ),
+            _ => false,
+        })
+}
+
+const UNREADABLE: &str = "Sage did not run Git here because it could not read this repository's \
+     Git config to check it. Use the terminal for Git in this folder.";
 
 const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git config is too \
      large or unusual to check. Use the terminal for Git in this folder.";

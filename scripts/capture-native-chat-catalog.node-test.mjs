@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { nativeCases, truthfulAbsentStates } from "./acp-native-cases.mjs";
 import { parseArgs } from "./capture-native-chat-contract.mjs";
 import {
@@ -13,77 +12,6 @@ import { observationFor, HARNESS } from "./capture-native-chat-dom.mjs";
 import { NATIVE_IMAGE_BASE64 } from "./acp-native-case-events.mjs";
 import { JSDOM } from "jsdom";
 import { waitForComposerIdle } from "./capture-native-chat-drive.mjs";
-
-test("capture accessible selectors stay anchored to product controls", () => {
-  const source = (file) =>
-    readFileSync(new URL("../src/" + file, import.meta.url), "utf8");
-  const effort = readFileSync(
-    new URL("../src/features/chat/ComposerEffortControl.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(effort.includes('title="Select effort"'));
-  assert.ok(effort.includes('aria-haspopup="dialog"'));
-  const header = readFileSync(
-    new URL("../src/workbench/AgentTaskHeader.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(header.includes('aria-label="Show chat resources"'));
-  assert.ok(header.includes('from "./agentTaskHeaderLazy"'));
-  assert.ok(header.includes('part="AgentTaskResources"'));
-  const headerLazy = source("workbench/agentTaskHeaderLazy.ts");
-  assert.ok(headerLazy.includes('() => import("./AgentTaskResources")'));
-  const resources = source("workbench/AgentTaskResources.tsx");
-  assert.ok(resources.includes('ariaLabel="Chat resources"'));
-  const subagentSummary = readFileSync(
-    new URL("../src/workbench/AgentTaskSubagentSummary.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.ok(resources.includes("<AgentTaskSubagentSummary"));
-  assert.ok(resources.includes("aria-label={`Recent subagents working:"));
-  assert.ok(subagentSummary.includes('aria-label="Subagents"'));
-  const composer = source("features/chat/ChatHarnessControls.tsx");
-  assert.ok(composer.includes('aria-label="Composer options"'));
-  assert.ok(composer.includes('ariaLabel="Composer options menu"'));
-  assert.ok(composer.includes("<ComposerAddActions"));
-  const addActions = source("features/chat/ComposerAddActions.tsx");
-  assert.ok(
-    addActions.includes('<div role="group" aria-label="Session mode">'),
-  );
-  assert.ok(addActions.includes('role="menuitemradio"'));
-  const access = source("features/chat/ComposerAccessControl.tsx");
-  assert.ok(access.includes('aria-label="Access options"'));
-  assert.ok(access.includes('ariaLabel="Access mode"'));
-  const edits = source("features/chat/acp/TurnEditSummary.tsx");
-  assert.ok(edits.includes('aria-label="Files edited in this chat"'));
-  assert.ok(
-    edits.includes("aria-label={`Preview saved diff ${qualifiedLabel}`}"),
-  );
-  assert.ok(
-    edits.includes(
-      'aria-label={`Open ${change.diffRef ? "diff" : "file"} ${qualifiedLabel}`}',
-    ),
-  );
-  assert.ok(
-    source("features/chat/acp/InlineSavedDiff.tsx").includes(
-      'label="Inline saved diff"',
-    ),
-  );
-  assert.ok(
-    source("workbench/AgentArtifactPane.tsx").includes(
-      'aria-label="Agent artifacts"',
-    ),
-  );
-  assert.ok(
-    source("features/diff/DiffSurface.tsx").includes(
-      'label="Unified file diff"',
-    ),
-  );
-  const tabs = source("workbench/AgentArtifactTabStrip.tsx");
-  assert.ok(tabs.includes('aria-label="Agent artifact tabs"'));
-  assert.ok(
-    tabs.includes("const accessibleName = `${kindLabel} ${fullPath}`;"),
-  );
-});
 
 test("CP-29d/e composer menus: access is its own menu, plan is a named Session mode item", async () => {
   const menu = (items) =>

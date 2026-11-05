@@ -10,6 +10,7 @@ import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   installFixedClock,
   installLayoutMode,
@@ -101,6 +102,14 @@ test.describe("AV-01 projection-fixture browser routes", () => {
         );
       }
       await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Toggle terminal", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        page.getByText("Terminal visibility could not be loaded.", {
+          exact: true,
+        }),
+      ).toHaveCount(0);
       // Projection-fixture proof only; native lifecycle proof is separate.
       await expectNoViewportOverflow(page);
       await settleTranscriptAtEnd(page);
@@ -161,9 +170,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       name: "Chat pane Editor consistency pass",
       exact: true,
     });
-    await expect(
-      secondPane.getByRole("textbox", { name: "Message agent" }),
-    ).toBeDisabled();
+    // AP-A1: the centre shows one Chat; selecting another replaces it.
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
+    await expect(secondPane).toHaveCount(0);
     await page
       .getByRole("button", { name: /^Open chat Editor consistency pass$/ })
       .click();
@@ -182,7 +191,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await resourceSplitter.focus();
     await page.keyboard.press("Home");
     await expect(resourceSplitter).toHaveAttribute("aria-valuenow", "280");
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     const tabs = resources.getByRole("tab");
     const previewTab = resources.getByRole("tab", {
       name: "Preview",
@@ -238,7 +247,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Agent navigation polish/ })
       .click();
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Agent navigation polish",
@@ -254,7 +263,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await rail
       .getByRole("button", { name: /Open chat Editor consistency pass/ })
       .click();
-    await expect(page.locator(".agent-chat-pane")).toHaveCount(2);
+    await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
     await expect(
       page.getByRole("region", {
         name: "Chat pane Editor consistency pass",
@@ -300,6 +309,21 @@ test.describe("Wave 2 accessibility and responsive states", () => {
           .locator(".file-surface .cm-content .cm-line span[class]")
           .first(),
       ).toBeVisible();
+      // Language support loads asynchronously; whitespace spans can precede
+      // syntax colours, so wait for the rendered palette before comparing modes.
+      await expect
+        .poll(() =>
+          target.locator(".file-surface").evaluate((surface) => {
+            const editor = surface.querySelector(".editor-input")!;
+            const plain = getComputedStyle(editor).color;
+            return new Set(
+              Array.from(surface.querySelectorAll(".cm-line span[class]"))
+                .map((span) => getComputedStyle(span).color)
+                .filter((color) => color !== plain),
+            ).size;
+          }),
+        )
+        .toBeGreaterThanOrEqual(2);
       return target.locator(".file-surface").evaluate((surface, tokens) => {
         const header = surface.querySelector<HTMLElement>(".file-header");
         const editor = surface.querySelector<HTMLElement>(".editor-input");
@@ -847,6 +871,8 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByText(/Open a file or change from the conversation/),
     ).toBeVisible();
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-resource-empty.png");
     const collapse = page.getByRole("button", {
       name: "Collapse files, changes, and preview",
@@ -926,6 +952,8 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByRole("alert").filter({ hasText: "Could not open" }),
     ).toContainText("The file is temporarily unavailable.");
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-file-error.png");
     await expectNoViewportOverflow(page);
   });
@@ -1247,6 +1275,8 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       resources.getByRole("tab", { name: `File ${longPath}` }),
     ).toHaveAttribute("aria-selected", "true");
     await expectNoViewportOverflow(page);
+    // The pane change reflows the transcript; capture it settled at its end.
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot("agent-artifacts-long-paths.png");
   });
 });
@@ -1277,6 +1307,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(
       menu.getByRole("menuitem", { name: "Reload preview" }),
     ).toBeEnabled();
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
@@ -1422,11 +1453,10 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     const newBrowser = resources.getByRole("button", {
       name: "New browser tab",
     });
-    await expect(newBrowser).toBeFocused();
+    await expect(newBrowser).toBeDisabled();
     await expect(
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeEnabled();
-    await page.keyboard.press("Tab");
     await expect(
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeFocused();
@@ -1438,7 +1468,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
       resources.getByRole("button", { name: "Expand resource pane" }),
     ).toBeFocused();
     await page.keyboard.press("Shift+Tab");
-    await expect(newBrowser).toBeFocused();
+    await expect(previewTab).toBeFocused();
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
     await expect(collapse).toBeFocused();

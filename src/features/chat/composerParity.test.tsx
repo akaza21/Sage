@@ -1,9 +1,16 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { readFile } from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
 import { ComposerAddActions } from "./ComposerAddActions";
-import { ChatHome } from "./ChatHome";
+import { ChatTranscript } from "./ChatTranscript";
+import { page as projectionPage } from "./acp/acpProjection.fixture";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { ChatMarkdown } from "./acp/ChatMarkdown";
 
@@ -102,8 +109,38 @@ it("lets the complete home project caption reflow instead of ellipsizing", async
       },
     ],
   });
-  render(<ChatHome projectName="Project with a complete name" />);
-  const label = screen.getByText("Project with a complete name");
+  const emptyPage = projectionPage("completed");
+  emptyPage.turns = [];
+  render(
+    <ChatTranscript
+      project={{
+        id: emptyPage.projectId,
+        name: "Project with a complete name",
+      }}
+      transcriptRef={{ current: null }}
+      contentRef={{ current: null }}
+      endRef={{ current: null }}
+      onScroll={() => {}}
+      projectTransitioning={false}
+      useNativeAcp
+      page={emptyPage}
+      focused
+      projectRoots={[]}
+      retentionIncomplete={false}
+      onOpenResource={() => {}}
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      onLoadEarlier={() => {}}
+      messages={[]}
+      developmentSimulator={false}
+      showJumpToLatest={false}
+      onJumpToLatest={() => {}}
+    />,
+  );
+  const label = within(
+    await screen.findByRole("region", { name: "New chat" }),
+  ).getByText("Project with a complete name");
   expect(getComputedStyle(label).whiteSpace).toBe("normal");
   expect(getComputedStyle(label).overflow).toBe("visible");
 });
@@ -150,6 +187,7 @@ it("keeps the plus target at least 24px before container overrides", async () =>
 it("paints a harness ring only after keyboard navigation, not initial or pointer focus", async () => {
   await loadStyle("src/styles/global.css");
   await loadStyle("src/styles/harness-picker.css");
+  await loadStyle("src/styles/searchable-picker.css");
   render(
     <ChatHarnessControls
       availableBinding

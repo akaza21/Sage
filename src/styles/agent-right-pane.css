@@ -1,3 +1,18 @@
+.workbench--agent .agent-artifact-pane__header > .tab-strip {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.agent-artifact-pane .tab-strip__scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.agent-artifact-pane .tab-strip__scroll::-webkit-scrollbar {
+  display: block;
+  height: var(--space-1);
+}
+
 .agent-artifact-header {
   display: grid;
   gap: var(--space-1);
@@ -168,19 +183,10 @@
   background: var(--color-text-muted);
 }
 
-.workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-  min-width: 112px;
-}
-
-/* Codex s4/f0244: the Subagents label starts beside its icon. */
 .agent-artifact-pane .tab[data-resource-kind="subagent"] .tab__activate {
   text-align: left;
 }
 
-/*
- * Codex s4/f0244: a person outline marks the Subagents tab. It is drawn here,
- * so the Agent chunk carries no icon for it: a head ring over a shoulder arc.
- */
 .tab__person {
   position: relative;
   width: 16px;
@@ -389,10 +395,6 @@
 
   .agent-artifact-header__title-row {
     gap: var(--space-1);
-  }
-
-  .workbench--agent .agent-artifact-pane .tab[data-resource-kind="preview"] {
-    min-width: 104px;
   }
 
   .harness-browser__connection-label {

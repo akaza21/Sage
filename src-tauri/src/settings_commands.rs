@@ -1,11 +1,32 @@
 use tauri::State;
 
+pub(crate) mod agent_rail_view;
+pub(crate) mod browser_download_folder;
 pub(crate) mod browser_preferences;
 
 use crate::{
     settings_store::{EditorSettings, SessionAccessModes, UiAppearance},
     state::AppState,
 };
+
+#[tauri::command]
+pub fn get_terminal_dock_visible(state: State<'_, AppState>) -> Result<bool, String> {
+    state
+        .settings
+        .terminal_dock_visible()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_terminal_dock_visible(
+    state: State<'_, AppState>,
+    visible: bool,
+) -> Result<bool, String> {
+    state
+        .settings
+        .set_terminal_dock_visible(visible)
+        .map_err(|error| error.to_string())
+}
 
 pub(crate) fn access_preferences(state: &AppState) -> crate::error::AppResult<SessionAccessModes> {
     if !state.settings.pending_access_migration()? {

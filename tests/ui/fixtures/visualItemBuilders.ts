@@ -52,6 +52,20 @@ const FIXTURE_RESOURCE: SafeResourceLocation = {
 };
 
 export const TOOL_KIND_PRESENTATIONS = {
+  imageView: {
+    kind: "imageView",
+    label: "View src/diagram.png",
+    resources: [
+      {
+        kind: "resource",
+        resource: { rootId: ROOT_ID, relativePath: "src/diagram.png" },
+      },
+    ],
+  },
+  webSearch: {
+    kind: "webSearch",
+    label: "Search web",
+  },
   read: {
     kind: "read",
     label: "Read src/main.ts",

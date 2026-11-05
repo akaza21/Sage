@@ -91,23 +91,49 @@ export async function settleChatProjections(page: Page) {
       page.evaluate(async () => {
         const { acpProjectionStoreFor } =
           await import("/src/app/acpProjectionRegistry.ts");
-        return [
+        const projections = [
           ...document.querySelectorAll<HTMLElement>(
             ".acp-chat-projection[data-chat-id]",
           ),
-        ].every((projection) => {
-          const state = acpProjectionStoreFor(
-            projection.dataset.chatId as never,
-          ).getState();
-          return (
-            state.requestSequence > 0 &&
-            state.activeLoad === null &&
-            !projection.querySelector(':scope > p[role="status"]')
-          );
-        });
+        ];
+        // The chat canvas loads lazily. An empty list is still loading, and
+        // a split must settle both canvases before fixtures can mutate them.
+        const panes = [...document.querySelectorAll(".agent-chat-pane")];
+        return (
+          projections.length > 0 &&
+          panes.every(
+            (pane) =>
+              pane.querySelector(".acp-chat-projection[data-chat-id]") !== null,
+          ) &&
+          projections.every((projection) => {
+            const state = acpProjectionStoreFor(
+              projection.dataset.chatId as never,
+            ).getState();
+            return (
+              state.requestSequence > 0 &&
+              state.activeLoad === null &&
+              state.page !== null &&
+              state.scope !== null &&
+              !projection.querySelector(':scope > p[role="status"]')
+            );
+          })
+        );
       }),
     )
     .toBe(true);
+}
+
+// Scope this to the measured surface. Panels with perpetual status indicators
+// can wait for their own entry animation without waiting for those descendants.
+export async function waitForAnimations(
+  locator: Locator,
+  { subtree = true }: { subtree?: boolean } = {},
+) {
+  await locator.evaluate(
+    (el, subtree) =>
+      Promise.all(el.getAnimations({ subtree }).map((a) => a.finished)),
+    subtree,
+  );
 }
 
 async function settleTranscriptScroll(page: Page, edge: "start" | "end") {

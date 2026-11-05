@@ -3,26 +3,10 @@
  * last and Editor-owned so Agent surfaces and shared resource defaults retain
  * their independent presentation.
  */
-.workbench--editor .activity-rail__button--active {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
 @media (forced-colors: none) {
-  /* Persistent selection: quiet fill, local hairline, no glow. */
-  .workbench--editor .tree__row--selected,
-  .workbench--editor .source-change--selected {
-    background: var(--editor-selection-fill);
-    box-shadow: inset 1px 0 0 var(--editor-selection-edge);
-  }
-
   .workbench--editor .tab--active {
     background: var(--editor-selection-fill);
     box-shadow: inset 0 1px 0 var(--editor-selection-edge);
-  }
-
-  .workbench--editor .activity-rail__button--active {
-    background: var(--editor-active-fill);
   }
 
   .workbench--editor .title-bar__mode--active {
@@ -126,16 +110,6 @@
     box-shadow: var(--editor-focus-halo-shadow);
   }
 
-  /* Large regions receive a contained edge, never a full-panel glow. */
-  .workbench--editor .sidebar:focus-visible {
-    outline: 0;
-    box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
-  }
-
-  .workbench--editor .workbench-sidebar-splitter:focus-visible {
-    outline: 0;
-  }
-
   /* File and Diff share document syntax; these overrides belong to Editor. */
   .workbench--editor .resource-document {
     --resource-document-selection: var(--editor-code-selection);
@@ -147,18 +121,5 @@
 
   .workbench--editor .editor-input .cm-content:focus-visible {
     outline: 0;
-  }
-
-  /* Search matches remain amber and cannot be confused with selection. */
-  .workbench--editor .workspace-search__preview mark {
-    color: var(--color-text-primary);
-    background: var(--editor-find-match-fill);
-    box-shadow: inset 0 -1px 0 var(--editor-find-match-edge);
-  }
-
-  /* Count badges communicate quantity, not selection. */
-  .workbench--editor .workspace-search__file-count,
-  .workbench--editor .source-change-group > summary span:last-child {
-    background: var(--color-surface-hover);
   }
 }

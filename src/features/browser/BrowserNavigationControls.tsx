@@ -22,13 +22,16 @@ import type {
   BrowserControlAction,
   BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
-import { useWorkbenchStore } from "../../app/store";
 import { useAddressText, type BrowserPageIdentity } from "./browserAddressText";
 import { BrowserAnnotateControl } from "./BrowserAnnotateControl";
-import { BrowserSettingsMenuItems } from "./BrowserSettingsMenuItems";
-import { useDismissOnOutsidePointer } from "./browserPopover";
+import {
+  browserMenuKeyDown,
+  useDismissOnOutsidePointer,
+} from "./browserPopover";
+import { useBrowserToolbarOverflow } from "./useBrowserToolbarOverflow";
+import { useNativePageLayer } from "../../ui/nativePageLayers";
 
-interface Props {
+export interface BrowserNavigationProps {
   navigation: BrowserNavigation | null;
   page: BrowserPageIdentity | null;
   address: string;
@@ -42,13 +45,15 @@ interface Props {
   onScreenshot: () => void;
   onZoom: (delta: number) => void;
   onZoomReset: () => void;
+  deviceOpen: boolean;
+  onDevice: () => void;
   onDownloads: () => void;
   onHistory: () => void;
   onSettings: (target: "browser" | "site") => void;
   onCopy: () => void;
   onExternal: () => void;
   clearDataControl: ReactNode;
-  pageControls?: ReactNode;
+  pageControls?: (visible: boolean) => ReactNode;
   downloadsControl?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
 }
@@ -67,6 +72,8 @@ export function BrowserNavigationControls({
   onScreenshot,
   onZoom,
   onZoomReset,
+  deviceOpen,
+  onDevice,
   onDownloads,
   onHistory,
   onSettings,
@@ -76,94 +83,89 @@ export function BrowserNavigationControls({
   pageControls,
   downloadsControl,
   onMenuOpenChange,
-}: Props) {
+}: BrowserNavigationProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const addressText = useAddressText(editing, page, address);
-  const menuTrigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
-  useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
+  const overflow = useBrowserToolbarOverflow(menuOpen, pageControls);
   useLayoutEffect(() => {
     if (editing) addressField.current?.select();
   }, [editing, addressField]);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useNativePageLayer(menu, { open: menuOpen });
+  useDismissOnOutsidePointer(menuOpen, [menu, menuTrigger], setMenuOpen);
+  useEffect(() => onMenuOpenChange?.(menuOpen), [menuOpen, onMenuOpenChange]);
   useEffect(() => {
     if (menuOpen)
       menu.current
         ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
         ?.focus();
   }, [menuOpen]);
-  const run = (action: () => void) => {
+  const run = (action?: () => void) => {
     setMenuOpen(false);
     menuTrigger.current?.focus();
-    action();
+    action?.();
   };
+  const navigationButton = (
+    label: string,
+    action: BrowserControlAction,
+    disabled: boolean,
+    Icon: typeof ArrowLeft,
+  ) => (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onControl(action)}
+    >
+      <Icon size={16} aria-hidden="true" />
+    </button>
+  );
+  const menuItem = (
+    label: string,
+    action: () => void,
+    disabled = false,
+    title?: string,
+    overflowKey?: string,
+  ) => (
+    <button
+      role="menuitem"
+      type="button"
+      disabled={disabled}
+      title={title}
+      data-overflow-control={overflowKey}
+      onClick={() => run(action)}
+    >
+      {label}
+    </button>
+  );
   const onMenuClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    if (!event.target.closest(".browser-clear-data--menu button")) return;
-    setMenuOpen(false);
-    menuTrigger.current?.focus();
+    if (
+      event.target instanceof Element &&
+      event.target.closest(".browser-clear-data--menu button")
+    )
+      run();
   };
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!menuOpen) return;
-    if (event.key === "Escape") {
-      // The menu is the innermost layer: Escape must not reach the pane.
-      event.preventDefault();
-      event.stopPropagation();
-      setMenuOpen(false);
-      menuTrigger.current?.focus();
-      return;
-    }
-    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const items = Array.from(
-      menu.current?.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]:not(:disabled)',
-      ) ?? [],
-    );
-    if (!items.length) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : event.key === "ArrowDown"
-            ? (current + 1) % items.length
-            : (current - 1 + items.length) % items.length;
-    items[next]?.focus();
+    if (menuOpen) browserMenuKeyDown(event, menu.current, run);
   };
   return (
     <>
       <div className="browser-surface__nav-group">
-        <button
-          type="button"
-          aria-label="Back"
-          disabled={!navigation?.canGoBack}
-          onClick={() => onControl("back")}
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label="Forward"
-          disabled={!navigation?.canGoForward}
-          onClick={() => onControl("forward")}
-        >
-          <ArrowRight size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label={navigation?.loading ? "Stop loading" : "Reload"}
-          disabled={!navigation?.url && !navigation?.loading}
-          onClick={() => onControl(navigation?.loading ? "stop" : "reload")}
-        >
-          {navigation?.loading ? (
-            <X size={16} aria-hidden="true" />
-          ) : (
-            <RotateCw size={16} aria-hidden="true" />
-          )}
-        </button>
+        {navigationButton("Back", "back", !navigation?.canGoBack, ArrowLeft)}
+        {navigationButton(
+          "Forward",
+          "forward",
+          !navigation?.canGoForward,
+          ArrowRight,
+        )}
+        {navigationButton(
+          navigation?.loading ? "Stop loading" : "Reload",
+          navigation?.loading ? "stop" : "reload",
+          !navigation?.url && !navigation?.loading,
+          navigation?.loading ? X : RotateCw,
+        )}
       </div>
       <BrowserAnnotateControl
         navigation={navigation}
@@ -199,10 +201,17 @@ export function BrowserNavigationControls({
           onFocus={() => setEditing(true)}
           onBlur={() => setEditing(false)}
           onChange={(event) => onAddressChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onAddressChange(navigation?.url ?? "");
+            event.currentTarget.blur();
+          }}
         />
       </form>
       <div className="browser-surface__right-group" onKeyDown={onMenuKeyDown}>
-        {pageControls}
+        {overflow.toolbarActions}
         {downloadsControl}
         <button
           ref={menuTrigger}
@@ -222,36 +231,18 @@ export function BrowserNavigationControls({
           aria-label="Browser menu"
           onClickCapture={onMenuClickCapture}
         >
+          {overflow.menuActions}
           <div className="browser-surface__menu-group">
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page}
-              onClick={() => run(onFind)}
-            >
-              Find in page
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page || Boolean(navigation?.printUnavailableReason)}
-              title={
-                page
-                  ? (navigation?.printUnavailableReason ?? undefined)
-                  : "Open a page to print"
-              }
-              onClick={() => run(onPrint)}
-            >
-              Print
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              disabled={!page}
-              onClick={() => run(onScreenshot)}
-            >
-              Take a screenshot
-            </button>
+            {menuItem("Find in page", onFind, !page)}
+            {menuItem(
+              "Print",
+              onPrint,
+              !page || Boolean(navigation?.printUnavailableReason),
+              page
+                ? (navigation?.printUnavailableReason ?? undefined)
+                : "Open a page to print",
+            )}
+            {menuItem("Take a screenshot", onScreenshot, !page)}
             <div className="browser-surface__menu-zoom">
               <span>Zoom</span>
               <button
@@ -283,121 +274,33 @@ export function BrowserNavigationControls({
                 ↺
               </button>
             </div>
+            {menuItem(
+              deviceOpen ? "Hide device toolbar" : "Show device toolbar",
+              onDevice,
+              !deviceOpen &&
+                (!page || Boolean(navigation?.deviceUnavailableReason)),
+              page
+                ? (navigation?.deviceUnavailableReason ?? undefined)
+                : "Open a page to emulate a device",
+            )}
           </div>
           <div className="browser-surface__menu-group">
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => run(onDownloads)}
-            >
-              Downloads
-            </button>
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => run(onHistory)}
-            >
-              History
-            </button>
+            {menuItem("Downloads", onDownloads, false, undefined, "downloads")}
+            {menuItem("History", onHistory)}
             {clearDataControl}
           </div>
           <div className="browser-surface__menu-group">
-            <BrowserSettingsMenuItems run={run} onSettings={onSettings} />
+            {menuItem("Browser settings", () => onSettings("browser"))}
+            {menuItem("Site settings", () => onSettings("site"))}
             {page ? (
               <>
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => run(onCopy)}
-                >
-                  Copy URL
-                </button>
-                <button
-                  role="menuitem"
-                  type="button"
-                  onClick={() => run(onExternal)}
-                >
-                  Open externally
-                </button>
+                {menuItem("Copy URL", onCopy)}
+                {menuItem("Open externally", onExternal)}
               </>
             ) : null}
           </div>
         </div>
       </div>
     </>
-  );
-}
-
-export function BrowserFindControls({
-  findField,
-  findText,
-  onFindTextChange,
-  onFind,
-  onClose,
-}: {
-  findField: RefObject<HTMLInputElement | null>;
-  findText: string;
-  onFindTextChange: (value: string) => void;
-  onFind: (action: "start" | "previous" | "next") => void;
-  onClose: () => void;
-}) {
-  return (
-    <form
-      className="browser-surface__find"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onFind("start");
-      }}
-    >
-      <input
-        ref={findField}
-        aria-label="Find text"
-        value={findText}
-        maxLength={256}
-        onChange={(event) => onFindTextChange(event.target.value)}
-      />
-      <button type="submit" disabled={!findText}>
-        Find
-      </button>
-      <button
-        type="button"
-        aria-label="Previous match"
-        onClick={() => onFind("previous")}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        aria-label="Next match"
-        onClick={() => onFind("next")}
-      >
-        ↓
-      </button>
-      <button type="button" aria-label="Close find" onClick={onClose}>
-        <X size={16} aria-hidden="true" />
-      </button>
-    </form>
-  );
-}
-
-export function ClosedBrowserSurface({ tabId }: { tabId: string }) {
-  const openBrowser = useWorkbenchStore((state) => state.openBrowser);
-  const closeTab = useWorkbenchStore((state) => state.closeTab);
-  return (
-    <section
-      aria-label="Browser page"
-      className="browser-surface browser-surface--closed"
-    >
-      <p>
-        This browser session closed when Sage restarted. Its page was not
-        restored.
-      </p>
-      <button type="button" onClick={() => void openBrowser()}>
-        Open new browser
-      </button>
-      <button type="button" onClick={() => closeTab(tabId)}>
-        Close tab
-      </button>
-    </section>
   );
 }

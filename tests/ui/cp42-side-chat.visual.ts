@@ -32,9 +32,11 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
   );
   expect(Math.abs(tabBox.x - rightBox.x)).toBeLessThanOrEqual(12);
   await expect(header.locator(".agent-chat-center__side-tab")).toHaveCount(1);
-  const current = page.locator("[aria-current='page'][title^='Open chat']");
+  const current = page
+    .getByRole("button", { name: /^Open chat / })
+    .and(page.locator("[aria-current='page']"));
   await expect(current).toHaveCount(1);
-  await expect(current).not.toHaveAttribute("title", /Side chat/);
+  await expect(current).not.toHaveAccessibleName(/Side chat/);
   await expect(right.locator(".chat-home__scope")).toHaveCount(0);
   const homeIcon = (await right.locator(".side-chat-home svg").boundingBox())!;
   // Codex s2/f0244 draws the empty-state icon at about 23 px; Sage uses 24.
@@ -54,7 +56,8 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
     .click();
   await expect(sideTab.locator(".agent-chat-pane__title")).toHaveText(prompt);
   await expect(sideTab.locator(".spinner")).toBeVisible();
-  await expect(page.locator(".project-chat__working")).toBeVisible();
+  // AP-C4: the running chat shows a spinner in its project group and Recents.
+  await expect(page.locator(".project-chat__working").first()).toBeVisible();
   await expect(workbench).toHaveScreenshot("side-chat-running.png");
   await page.evaluate(async () => {
     const fixture =
