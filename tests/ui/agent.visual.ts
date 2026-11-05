@@ -748,6 +748,7 @@ test.describe("V2-4 session mode picker", () => {
       "agent-session-mode-closed",
       "agent",
     );
+    await settleTranscriptAtEnd(page);
     const closedOptions = await openComposerOptions(page);
     const closedTrigger = closedOptions.getByRole("menuitemradio", {
       name: "Review changes",
@@ -783,6 +784,7 @@ test.describe("V2-4 session mode picker", () => {
       "agent-session-mode-open",
       "agent",
     );
+    await settleTranscriptAtEnd(page);
     await openComposerOptions(page);
     const openInput = page.getByRole("menuitemradio", {
       name: "Review changes",
@@ -805,6 +807,7 @@ test.describe("V2-4 session mode picker", () => {
       "agent-session-mode-narrow",
       "agent",
     );
+    await settleTranscriptAtEnd(page);
     await openComposerOptions(page);
     const narrowTrigger = page.getByRole("menuitemradio", {
       name: "Review changes",
@@ -828,6 +831,7 @@ test.describe("V2-4 session mode picker", () => {
       "agent-session-mode-forced-colors",
       "agent",
     );
+    await settleTranscriptAtEnd(page);
     await openComposerOptions(page);
     const forcedState = await page
       .getByRole("group", { name: "Session mode" })
