@@ -8,8 +8,9 @@ export const Q02_LIMITS = Object.freeze({
   files: 700,
   depth: 16,
   fileBytes: 64 * 1024,
-  // Policy scanner input bound, independent of app runtime budgets.
-  aggregateBytes: 2.5 * 1024 * 1024,
+  // Policy scanner input bound, independent of app runtime budgets. The source
+  // tree exceeds 2.5 MiB; retain finite headroom without retaining file contents.
+  aggregateBytes: 3 * 1024 * 1024,
   visitedEntries: 1280,
   errors: 32,
 });

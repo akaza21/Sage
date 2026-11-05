@@ -44,24 +44,34 @@ test("default visited-entry cap is 1280", () => {
   assert.equal(Q02_LIMITS.visitedEntries, 1280);
 });
 
-test("default aggregate source cap accepts just under 2.5 MiB and fails closed just over", async () => {
-  const cap = 2_621_440;
-  const files = Object.fromEntries(
-    Array.from({ length: 80 }, (_, index) => [
-      `src/f${String(index).padStart(3, "0")}.ts`,
-      " ".repeat(index === 79 ? 32_767 : 32_768),
-    ]),
-  );
-  await withFixture(files, async (root) => {
-    assert.deepEqual(await scan(root), []);
-    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_768));
-    assert.deepEqual(await scan(root), []);
-    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_769));
-    assert.deepEqual(await scan(root), [
-      `Q02 aggregate limit ${cap} exceeded at src/f079.ts`,
-    ]);
+for (const { label, cap, count, limits } of [
+  { label: "default 3 MiB", cap: 3_145_728, count: 96, limits: undefined },
+  {
+    label: "configured 2.5 MiB",
+    cap: 2_621_440,
+    count: 80,
+    limits: { aggregateBytes: 2_621_440 },
+  },
+]) {
+  test(`${label} aggregate source cap accepts exact and fails closed just over`, async () => {
+    const last = `src/f${String(count - 1).padStart(3, "0")}.ts`;
+    const files = Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `src/f${String(index).padStart(3, "0")}.ts`,
+        " ".repeat(index === count - 1 ? 32_767 : 32_768),
+      ]),
+    );
+    await withFixture(files, async (root) => {
+      assert.deepEqual(await scan(root, limits), []);
+      await writeFile(path.join(root, last), " ".repeat(32_768));
+      assert.deepEqual(await scan(root, limits), []);
+      await writeFile(path.join(root, last), " ".repeat(32_769));
+      assert.deepEqual(await scan(root, limits), [
+        `Q02 aggregate limit ${cap} exceeded at ${last}`,
+      ]);
+    });
   });
-});
+}
 
 test("clean scope admits exact owners and ignores test/spec/fixture/JS", async () => {
   await withFixture(
