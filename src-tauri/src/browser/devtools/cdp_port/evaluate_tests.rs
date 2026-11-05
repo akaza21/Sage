@@ -104,7 +104,11 @@ impl CdpTransport for Page {
     }
 
     fn stamp(&self) -> Result<DocumentStamp, BrowserFailure> {
-        Err(BrowserFailure::Unavailable)
+        // Mutations within this fixture never navigate the document.
+        Ok(DocumentStamp {
+            navigation_id: 7,
+            generation: 1,
+        })
     }
 
     fn issued(&self) -> bool {
@@ -233,4 +237,65 @@ fn plain_objects_fail_closed_and_selected_paths_remain_available() {
         evaluate(&mut port, "[largeRecord]").unwrap(),
         json!([marker])
     );
+}
+
+#[test]
+fn a_capacity_rejected_mutating_evaluate_invalidates_snapshot_handles() {
+    use crate::acp::browser::{
+        BrowserAction, BrowserCapability, BrowserCommand, BrowserRequest, BrowserResult,
+        BrowserScope,
+    };
+    use crate::browser::devtools::capability::DevtoolsCapability;
+
+    let scope = BrowserScope {
+        session_id: "session-1".into(),
+        tab_id: 1,
+    };
+    let mut port = CdpPort::new(Page::open());
+    evaluate(
+        &mut port,
+        "globalThis.button = {textContent: 'Continue'}; true",
+    )
+    .unwrap();
+    let mut capability = DevtoolsCapability::new(scope.clone(), port);
+    let request = |command| BrowserRequest {
+        scope: scope.clone(),
+        command,
+    };
+    let BrowserResult::SnapshotPage {
+        nodes,
+        navigation_epoch,
+        ..
+    } = capability
+        .perform(&request(BrowserCommand::SnapshotPage {}))
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    assert_eq!(nodes[0].name, "Continue");
+    assert_eq!(capability.perform(&request(BrowserCommand::Cdp {
+        method: "Runtime.evaluate".into(),
+        params: json!({"expression": "button.textContent = 'Delete account'; new Array(5000).fill(42)"})
+            .as_object().cloned().unwrap(),
+    })), Err(BrowserFailure::Capacity));
+    assert_eq!(
+        capability.perform(&request(BrowserCommand::Act {
+            action: BrowserAction::Click {
+                handle: nodes[0].handle.clone()
+            },
+        })),
+        Err(BrowserFailure::StaleHandle)
+    );
+    let BrowserResult::SnapshotPage {
+        nodes,
+        navigation_epoch: after,
+        ..
+    } = capability
+        .perform(&request(BrowserCommand::SnapshotPage {}))
+        .unwrap()
+    else {
+        panic!("expected snapshot")
+    };
+    assert_eq!(nodes[0].name, "Delete account");
+    assert_eq!(after, navigation_epoch);
 }

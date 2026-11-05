@@ -62,6 +62,18 @@ pub(crate) struct DevtoolsCapability<P> {
     handles: Arc<Mutex<HashMap<String, (DocumentStamp, u64)>>>,
 }
 
+/// A dispatched mutation may have changed the page even when its result is
+/// rejected, lost or timed out. Retire handles before any outcome escapes.
+struct SnapshotInvalidation<'a>(&'a Mutex<HashMap<String, (DocumentStamp, u64)>>);
+
+impl Drop for SnapshotInvalidation<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut handles) = self.0.lock() {
+            handles.clear();
+        }
+    }
+}
+
 impl<P: Clone> Clone for DevtoolsCapability<P> {
     fn clone(&self) -> Self {
         Self {
@@ -134,6 +146,16 @@ impl<P: DevtoolsPort> DevtoolsCapability<P> {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 
+    fn dispatch_mutation<R>(
+        &mut self,
+        dispatch: impl FnOnce(&mut P) -> Result<R, BrowserFailure>,
+    ) -> Result<R, BrowserFailure> {
+        // Do not hold the handle lock while the page runs. The guard also
+        // covers future early returns inside the dispatch closure.
+        let _invalidate = SnapshotInvalidation(&self.handles);
+        dispatch(&mut self.port)
+    }
+
     fn wait_for(
         &mut self,
         condition: &WaitCondition,
@@ -176,11 +198,7 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
         match &request.command {
             BrowserCommand::OpenTab { .. } => Err(BrowserFailure::InvalidRequest),
             BrowserCommand::Navigate { url } => {
-                let (url, navigation_epoch) = self.port.navigate(url)?;
-                self.handles
-                    .lock()
-                    .map_err(|_| BrowserFailure::Unavailable)?
-                    .clear();
+                let (url, navigation_epoch) = self.dispatch_mutation(|port| port.navigate(url))?;
                 Ok(BrowserResult::Navigate {
                     url,
                     navigation_epoch,
@@ -246,7 +264,7 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                     .get(action.handle().token())
                     .copied()
                     .ok_or(BrowserFailure::StaleHandle)?;
-                let applied = self.port.act(stamp, backend_id, action)?;
+                let applied = self.dispatch_mutation(|port| port.act(stamp, backend_id, action))?;
                 Ok(BrowserResult::Act { applied })
             }
             BrowserCommand::WaitFor {
@@ -273,16 +291,13 @@ impl<P: DevtoolsPort> BrowserCapability for DevtoolsCapability<P> {
                 }
                 let params =
                     serde_json::to_string(&params).map_err(|_| BrowserFailure::InvalidRequest)?;
-                let result = self.port.raw(method, &params);
-                if evaluate {
-                    self.port.release_developer_objects();
-                }
-                let result = result?;
-                // Script and DOM commands can change what handles point at.
-                self.handles
-                    .lock()
-                    .map_err(|_| BrowserFailure::Unavailable)?
-                    .clear();
+                let result = self.dispatch_mutation(|port| {
+                    let result = port.raw(method, &params);
+                    if evaluate {
+                        port.release_developer_objects();
+                    }
+                    result
+                })?;
                 Ok(BrowserResult::Cdp {
                     result: serde_json::from_str(&result)
                         .map_err(|_| BrowserFailure::Unavailable)?,

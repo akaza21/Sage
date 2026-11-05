@@ -8,7 +8,20 @@ try {
   for await (const line of createInterface({ input: process.stdin })) {
     const { method, params } = JSON.parse(line);
     try {
-      const result = await session.post(method, params);
+      // Node has V8 but no DOM: expose the fixture button as an AX node.
+      const result =
+        method === "Accessibility.getFullAXTree"
+          ? {
+              nodes: [
+                {
+                  nodeId: "button",
+                  backendDOMNodeId: 10,
+                  role: { value: "button" },
+                  name: { value: globalThis.button.textContent },
+                },
+              ],
+            }
+          : await session.post(method, params);
       process.stdout.write(JSON.stringify({ result }) + "\n");
     } catch (error) {
       process.stdout.write(JSON.stringify({ error: error.message }) + "\n");

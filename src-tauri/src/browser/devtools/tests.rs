@@ -489,3 +489,4 @@ fn a_wait_stops_probing_the_page_once_the_user_stops_or_takes_over() {
 
 mod developer_objects;
 mod handle_invalidation;
+mod mutation_outcomes;
