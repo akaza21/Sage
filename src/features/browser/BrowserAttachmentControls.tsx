@@ -45,13 +45,31 @@ function useBrowserAgentControl(
     0,
   );
   const sequence = useRef(0);
+  const registered = useRef(false);
   useEffect(() => {
     if (!visible || !isTauriRuntime()) return;
-    return subscribeBrowserTab("browser:agent-control", tabId, refresh);
+    const stop = subscribeBrowserTab(
+      "browser:agent-control",
+      tabId,
+      () => {
+        // Invalidate pending reads immediately, before React runs the effect.
+        sequence.current += 1;
+        refresh();
+      },
+      async () => {
+        registered.current = true;
+        refresh();
+      },
+    );
+    return () => {
+      registered.current = false;
+      sequence.current += 1;
+      stop();
+    };
   }, [tabId, visible]);
   useEffect(() => {
+    if (!visible || (isTauriRuntime() && !registered.current)) return;
     const current = ++sequence.current;
-    if (!visible) return;
     void browserAgentControl(tabId, "agentControl")
       .catch(() => null)
       .then((next) => {

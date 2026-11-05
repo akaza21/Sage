@@ -309,6 +309,28 @@ it("subscribes before the first read so a change in between is kept", async () =
   ).toBeVisible();
 });
 
+it("reads the latest settings after an earlier event during registration", async () => {
+  let registered!: () => void;
+  let deliver!: (payload: unknown) => void;
+  vi.mocked(listen).mockImplementationOnce(
+    (_event, handler) =>
+      new Promise((resolve) => {
+        deliver = (payload) =>
+          handler({ event: "browser:site-settings", id: 1, payload });
+        registered = () => resolve(() => undefined);
+      }),
+  );
+  list.mockResolvedValueOnce(view([]));
+  renderSettings();
+  await vi.waitFor(() => expect(registered).toBeTypeOf("function"));
+  act(() => deliver(view([camera])));
+  await act(async () => registered());
+  expect(
+    await screen.findByText("No site permissions saved yet."),
+  ).toBeVisible();
+  expect(screen.queryByRole("table")).toBeNull();
+});
+
 it("admits only well-formed rows and sites, bounded to the store's cap", () => {
   expect(
     admitBrowserSiteSettings([

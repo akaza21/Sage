@@ -35,16 +35,20 @@ export function BrowserSitePermissions({
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    let sawEvent = false;
+    let events = 0;
+    let readEpoch = 0;
     return subscribeBrowserTab(
       "browser:permissions",
       tabId,
       (payload, initial) => {
-        if (initial && sawEvent) return;
-        sawEvent = true;
+        if (initial && readEpoch !== events) return;
+        if (!initial) events += 1;
         setSnapshot(payload);
       },
-      () => browserPermissionStatus(tabId),
+      () => {
+        readEpoch = events;
+        return browserPermissionStatus(tabId);
+      },
       setError,
     );
   }, [tabId]);

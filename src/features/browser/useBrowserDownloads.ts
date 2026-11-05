@@ -24,16 +24,20 @@ export function useBrowserDownloads(tabId: string): BrowserDownload[] {
   } | null>(null);
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    let sawEvent = false;
+    let events = 0;
+    let readEpoch = 0;
     return subscribeBrowserTab(
       "browser:downloads",
       tabId,
       (payload, initial) => {
-        if (initial && sawEvent) return;
-        sawEvent = true;
+        if (initial && readEpoch !== events) return;
+        if (!initial) events += 1;
         setReported(payload);
       },
-      async () => ({ tabId, downloads: await browserDownloads(tabId) }),
+      async () => {
+        readEpoch = events;
+        return { tabId, downloads: await browserDownloads(tabId) };
+      },
     );
   }, [tabId]);
   return reported?.tabId === tabId ? reported.downloads : NONE;

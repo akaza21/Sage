@@ -151,6 +151,56 @@ it("refreshes approval revocation while visible and releases its subscription wh
   expect(native.listeners.size).toBe(0);
 });
 
+it("shows a grant made before listener registration completes", async () => {
+  let register!: () => void;
+  native.registration = new Promise<void>((resolve) => {
+    register = resolve;
+  });
+  native.control = { ...approved, developerMode: false };
+  render(tree(true));
+  await act(async () => undefined);
+  native.control = approved;
+  await act(async () => register());
+  expect(await screen.findByText("Developer mode")).toBeVisible();
+});
+
+it("clears a grant revoked before the waking listener finishes registering", async () => {
+  native.control = approved;
+  const view = render(tree(true));
+  await screen.findByText("Developer mode");
+  view.rerender(tree(false));
+  let register!: () => void;
+  native.registration = new Promise<void>((resolve) => {
+    register = resolve;
+  });
+  view.rerender(tree(true));
+  await act(async () => undefined);
+  native.control = { ...approved, developerMode: false };
+  await act(async () => register());
+  await waitFor(() => expect(screen.queryByText("Developer mode")).toBeNull());
+  expect(screen.getByRole("button", { name: "Take over" })).toBeVisible();
+});
+
+it("does not restore approval from a late read after a newer revocation event", async () => {
+  let finish!: (control: BrowserAgentControl | null) => void;
+  native.read = new Promise((resolve) => {
+    finish = resolve;
+  });
+  render(tree(true));
+  await act(async () => undefined);
+  native.read = null;
+  native.control = { ...approved, developerMode: false };
+  await act(async () => {
+    for (const listener of native.listeners)
+      listener({ payload: { tabId: "browser-1" } });
+    finish(approved);
+  });
+  expect(
+    await screen.findByRole("button", { name: "Take over" }),
+  ).toBeVisible();
+  expect(screen.queryByText("Developer mode")).toBeNull();
+});
+
 it("releases a subscription that finishes registering after the controls sleep", async () => {
   let finish!: () => void;
   native.registration = new Promise<void>((resolve) => {
