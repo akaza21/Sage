@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import type { SubagentPaneTarget } from "../../src/app/subagentPaneStore";
+import { settleRendering } from "./shared/visualBrowserPrimitives";
 
 declare global {
   interface Window {
@@ -93,6 +94,10 @@ test("long Chat preserves the visible Turn when earlier Turns arrive", async ({
   await page.evaluate(() => window.chatPerf.mount("cap"));
   await page.evaluate(() => window.chatPerf.scrollToMiddle());
   await page.waitForFunction(() => Boolean(window.chatPerf.visibleAnchor()));
+  await expect(
+    page.getByRole("status").filter({ hasText: /^Loading /u }),
+  ).toHaveCount(0);
+  await settleRendering(page);
   const before = await page.evaluate(() => window.chatPerf.visibleAnchor());
   expect(before).not.toBeNull();
   await page.evaluate(() => window.chatPerf.prepend(10));
