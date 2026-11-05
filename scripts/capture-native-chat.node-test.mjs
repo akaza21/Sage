@@ -67,10 +67,9 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
   const clicks = [];
   const archived = [];
   let paneCount = 1;
+  // Agent navigation has no drawer at any capture width.
   const selectors = [
-    'button[aria-label="Open projects and chats"]',
     'button[aria-label="New chat"]',
-    'button[aria-label="Close projects and chats"]',
     'button[aria-label="Harness"]',
     '[role="option"][data-option-id="' + HARNESS[harness].id + '"]',
   ];
@@ -84,17 +83,12 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
       if (expression === SINGLE_CAPTURE_PANE) return paneCount === 1;
       if (expression === observationFor(HARNESS[harness].binding))
         return { ...observation };
-      if (
-        expression ===
-        "Boolean(document.querySelector('button[aria-label=\"Open projects and chats\"]'))"
-      )
-        return width < 760;
       const selector = selectors.find(
         (selector) => expression === clickExpression(selector),
       );
       assert.ok(selector, expression);
       clicks.push(selector);
-      if (selector === selectors[1]) {
+      if (selector === selectors[0]) {
         paneCount = width === 1888 ? 2 : 1;
         Object.assign(
           observation,
@@ -106,12 +100,11 @@ function captureChatBoundary(width, harness, created = {}, initial = {}) {
           created,
         );
       }
-      if (selector === selectors[4]) observation.selected = HARNESS[harness].id;
+      if (selector === selectors[2]) observation.selected = HARNESS[harness].id;
       return true;
     },
   };
-  const expectedClicks =
-    width < 760 ? selectors : [selectors[1], selectors[3], selectors[4]];
+  const expectedClicks = selectors;
   return { cdp, clicks, archived, observation, expectedClicks };
 }
 
@@ -345,7 +338,7 @@ test("approval capture rejects missing advertised Ask before changing access or 
 });
 
 for (const state of ["approval-approved", "approval-declined"])
-  test(`compact Claude ${state} capture leaves eleven timing slots after cleanup`, async () => {
+  test(`compact Claude ${state} capture leaves fifteen timing slots after cleanup`, async () => {
     const timing = captureTiming();
     const boundary = captureChatBoundary(720, "claude");
     const deadline = Date.now() + 1000;
@@ -473,11 +466,11 @@ for (const state of ["approval-approved", "approval-declined"])
       ]),
       undefined,
     );
-    assert.equal(timing.steps.length, 53);
+    assert.equal(timing.steps.length, 49);
     const value = probe();
     value.timing.steps = timing.steps;
     assert.doesNotThrow(() => validateProbe(value));
-    for (let remaining = 0; remaining < 11; remaining++)
+    for (let remaining = 0; remaining < 15; remaining++)
       timing.record("reserved-cleanup");
     assert.throws(() => timing.record("extra"), /timing-bound/u);
   });
