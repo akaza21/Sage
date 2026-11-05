@@ -20,43 +20,14 @@ interface Structure {
 function structure(block: MarkdownPreviewBlock): Structure {
   if (block.kind === "heading") return { kind: block.kind, level: block.level };
   if (block.kind === "quote")
-    return {
-      kind: block.kind,
-      children: block.text ? [{ kind: "paragraph" }] : [],
-    };
+    return { kind: "quote", children: block.children.map(structure) };
   if (block.kind !== "list") return { kind: block.kind };
-  const listBlock = block;
-  const shape = (at: number) =>
-    listBlock.shape?.[at] ?? { depth: 0, ordered: !!listBlock.ordered };
-  let cursor = 0;
-  function list(): Structure {
-    const { depth, ordered } = shape(cursor);
-    const result: Structure = {
-      kind: "list",
-      ordered,
-      ...(ordered
-        ? { start: depth ? (shape(cursor).start ?? 1) : (listBlock.start ?? 1) }
-        : {}),
-      items: [],
-    };
-    const from = cursor;
-    while (cursor < listBlock.items.length && shape(cursor).depth >= depth) {
-      if (shape(cursor).depth > depth) result.items!.at(-1)!.push(list());
-      else {
-        if (
-          cursor > from &&
-          (shape(cursor).ordered !== ordered || shape(cursor).newList)
-        )
-          break;
-        result.items!.push(
-          listBlock.items[cursor] ? [{ kind: "paragraph" }] : [],
-        );
-        cursor++;
-      }
-    }
-    return result;
-  }
-  return list();
+  return {
+    kind: "list",
+    ordered: !!block.ordered,
+    ...(block.ordered ? { start: block.start ?? 1 } : {}),
+    items: block.items.map((item) => item.children.map(structure)),
+  };
 }
 
 describe("CommonMark 0.31.2 supported block structure", () => {

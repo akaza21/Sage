@@ -96,11 +96,18 @@ export function MarkdownBlocks({
       );
     return spans.length ? render(spans) : text;
   };
-  return document.blocks.map((block, index) => {
-    if (block.kind === "rule") return <hr key={index} />;
+  const render = (
+    block: MarkdownPreviewBlock,
+    index: number,
+    key: number,
+    location: { slot: number },
+    nested = false,
+    tight = false,
+  ): ReactNode => {
+    if (block.kind === "rule") return <hr key={key} />;
     if (block.kind === "code")
       return (
-        <div key={index}>
+        <div key={key}>
           {renderCode ? (
             renderCode(block)
           ) : block.language.toLowerCase() === "mermaid" ? (
@@ -110,83 +117,54 @@ export function MarkdownBlocks({
           )}
         </div>
       );
-    if (
-      block.kind === "heading" ||
-      block.kind === "paragraph" ||
-      block.kind === "quote"
-    )
-      return createElement(
-        block.kind === "heading"
-          ? `h${block.level}`
-          : block.kind === "quote"
-            ? "blockquote"
-            : "p",
-        { key: index },
-        inline(block.text, index),
+    const children = (blocks: readonly MarkdownPreviewBlock[], tight = false) =>
+      blocks.map((child, childIndex) =>
+        render(child, index, childIndex, location, true, tight),
       );
-    if (block.kind === "list") {
-      const shape = (at: number) =>
-        block.shape?.[at] ?? { depth: 0, ordered: !!block.ordered };
-      // Items are flat; each run of deeper items nests in the item before it.
-      // The first item of a run is at the run's depth, so `items` is never
-      // empty when a deeper item arrives.
-      const list = (from: number, key: number): [ReactNode, number] => {
-        const { depth, ordered } = shape(from);
-        const items: { task: boolean; children: ReactNode[] }[] = [];
-        let at = from;
-        while (at < block.items.length && shape(at).depth >= depth) {
-          if (shape(at).depth > depth) {
-            const [nested, next] = list(at, at);
-            items[items.length - 1].children.push(nested);
-            at = next;
-            continue;
-          }
-          if (at > from && (shape(at).ordered !== ordered || shape(at).newList))
-            break;
-          const checked = shape(at).checked;
-          items.push({
-            task: checked !== undefined,
-            children: [
-              checked === undefined ? null : (
-                <input
-                  key="task"
-                  type="checkbox"
-                  checked={checked}
-                  disabled
-                  aria-label={block.items[at]}
-                />
-              ),
-              <Fragment key="text">
-                {inline(block.items[at], index, at)}
-              </Fragment>,
-            ],
-          });
-          at++;
-        }
-        return [
-          createElement(
-            ordered ? "ol" : "ul",
-            { key, start: depth ? shape(from).start : block.start },
-            items.map((item, itemIndex) => (
-              <li
-                key={itemIndex}
-                className={item.task ? "markdown-task" : undefined}
-              >
-                {item.children}
-              </li>
-            )),
-          ),
-          at,
-        ];
-      };
-      const lists: ReactNode[] = [];
-      for (let at = 0; at < block.items.length;) {
-        const [node, next] = list(at, at);
-        lists.push(node);
-        at = next;
-      }
-      return <Fragment key={index}>{lists}</Fragment>;
+    if (block.kind === "quote")
+      return <blockquote key={key}>{children(block.children)}</blockquote>;
+    if (block.kind === "paragraph" || block.kind === "heading") {
+      const text = inline(
+        block.text,
+        index,
+        nested ? location.slot++ : undefined,
+      );
+      return block.kind === "paragraph" && tight ? (
+        <span key={key} data-markdown-inline="">
+          {text}
+        </span>
+      ) : (
+        createElement(
+          block.kind === "heading" ? `h${block.level}` : "p",
+          { key },
+          text,
+        )
+      );
     }
+    if (block.kind === "list")
+      return createElement(
+        block.ordered ? "ol" : "ul",
+        { key, start: block.start },
+        block.items.map((item, itemIndex) => (
+          <li
+            key={itemIndex}
+            className={item.checked !== undefined ? "markdown-task" : undefined}
+          >
+            {item.checked !== undefined ? (
+              <input
+                type="checkbox"
+                checked={item.checked}
+                disabled
+                aria-label={
+                  item.children.find((child) => child.kind === "paragraph")
+                    ?.text || "Task"
+                }
+              />
+            ) : null}
+            {children(item.children, !block.loose)}
+          </li>
+        )),
+      );
     const row = (cells: string[], rowIndex: number) => (
       <tr key={rowIndex}>
         {cells.map((cell, column) =>
@@ -201,7 +179,11 @@ export function MarkdownBlocks({
                 ? "markdown-table__unbroken"
                 : undefined,
             },
-            inline(cell, index, rowIndex * block.align.length + column),
+            inline(
+              cell,
+              index,
+              nested ? location.slot++ : rowIndex * block.align.length + column,
+            ),
           ),
         )}
       </tr>
@@ -209,7 +191,7 @@ export function MarkdownBlocks({
     return (
       <div
         className="markdown-table"
-        key={index}
+        key={key}
         tabIndex={0}
         role="region"
         aria-label={
@@ -226,5 +208,8 @@ export function MarkdownBlocks({
         </table>
       </div>
     );
-  });
+  };
+  return document.blocks.map((block, index) =>
+    render(block, index, index, { slot: 0 }),
+  );
 }

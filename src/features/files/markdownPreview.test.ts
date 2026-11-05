@@ -8,6 +8,7 @@ import {
   MAX_CHAT_FILE_LINK_PATH_BYTES,
   MAX_MARKDOWN_LIST_DEPTH,
   renderMarkdownPreview,
+  type MarkdownPreviewBlock,
 } from "./markdownPreview";
 import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
 
@@ -84,15 +85,24 @@ describe("renderMarkdownPreview", () => {
     );
     expect(document.blocks.map((block) => block.kind)).toEqual([
       "list",
-      "code",
       "table",
     ]);
-    expect(document.blocks[1]).toMatchObject({
-      text: "print(1)",
-      language: "python",
-      fenceClosed: true,
+    expect(document.blocks[0]).toMatchObject({
+      items: [
+        {
+          children: [
+            { kind: "paragraph", text: "example" },
+            {
+              kind: "code",
+              text: "print(1)",
+              language: "python",
+              fenceClosed: true,
+            },
+          ],
+        },
+      ],
     });
-    expect(document.blocks[2]).toMatchObject({ align: [undefined, "center"] });
+    expect(document.blocks[1]).toMatchObject({ align: [undefined, "center"] });
   });
   it("bounds literal markup list items and their formatting records", () => {
     const document = renderMarkdownPreview(
@@ -102,9 +112,13 @@ describe("renderMarkdownPreview", () => {
     const block = document.blocks[0];
     expect(block.kind).toBe("list");
     if (block.kind === "list")
-      expect(block.items.join("")).toHaveLength(
-        MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
-      );
+      expect(
+        block.items
+          .flatMap((item) =>
+            item.children.map((child) => ("text" in child ? child.text : "")),
+          )
+          .join(""),
+      ).toHaveLength(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS);
     expect(document.formats.length).toBeLessThanOrEqual(
       MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
     );
@@ -176,9 +190,12 @@ describe("renderMarkdownPreview", () => {
     );
     expect(document.blocks[0]).toMatchObject({
       kind: "list",
+      items: [
+        { children: [{ kind: "paragraph", text: "Database" }] },
+        { children: [{ kind: "paragraph", text: "validator" }] },
+      ],
       ordered: true,
       start: 3,
-      items: ["Database", "validator"],
     });
     expect(document.blocks[1]).toEqual({
       kind: "table",
@@ -281,8 +298,14 @@ describe("renderMarkdownPreview", () => {
         kind: "paragraph",
         text: "Hello world and docs.",
       },
-      { kind: "list", items: ["one", "two"] },
-      { kind: "quote", text: "quoted" },
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          { children: [{ kind: "paragraph", text: "two" }] },
+        ],
+      },
+      { kind: "quote", children: [{ kind: "paragraph", text: "quoted" }] },
       {
         kind: "code",
         text: "code <em>line</em>",
@@ -312,23 +335,44 @@ describe("renderMarkdownPreview", () => {
       {
         kind: "list",
         items: [
-          "one",
-          "one.a",
-          "deep",
-          "one.b",
-          "two",
-          "sibling, indented one space",
-        ],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
-          { depth: 2, ordered: true },
-          { depth: 1, ordered: false },
-          { depth: 0, ordered: false },
-          { depth: 0, ordered: false },
+          {
+            children: [
+              { kind: "paragraph", text: "one" },
+              {
+                kind: "list",
+                items: [
+                  {
+                    children: [
+                      { kind: "paragraph", text: "one.a" },
+                      {
+                        kind: "list",
+                        items: [
+                          { children: [{ kind: "paragraph", text: "deep" }] },
+                        ],
+                        ordered: true,
+                        start: 1,
+                      },
+                    ],
+                  },
+                  { children: [{ kind: "paragraph", text: "one.b" }] },
+                ],
+              },
+            ],
+          },
+          { children: [{ kind: "paragraph", text: "two" }] },
+          {
+            children: [
+              { kind: "paragraph", text: "sibling, indented one space" },
+            ],
+          },
         ],
       },
-      { kind: "list", items: ["other list"], ordered: true, start: 1 },
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "paragraph", text: "other list" }] }],
+        ordered: true,
+        start: 1,
+      },
     ]);
   });
 
@@ -337,18 +381,54 @@ describe("renderMarkdownPreview", () => {
       ["- <br>", "  - child", "    - grandchild", "- sibling"].join("\n"),
     ).blocks;
     expect(dropped).toMatchObject({
-      items: ["child", "grandchild", "sibling"],
-      shape: [{ depth: 0 }, { depth: 1 }, { depth: 0 }],
+      kind: "list",
+      items: [
+        {
+          children: [
+            {
+              kind: "list",
+              items: [
+                {
+                  children: [
+                    { kind: "paragraph", text: "child" },
+                    {
+                      kind: "list",
+                      items: [
+                        {
+                          children: [{ kind: "paragraph", text: "grandchild" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { children: [{ kind: "paragraph", text: "sibling" }] },
+      ],
     });
     const [uneven] = renderMarkdownPreview(
       ["- a", "    - b", "  1. c"].join("\n"),
     ).blocks;
     expect(uneven).toMatchObject({
-      items: ["a", "b", "c"],
-      shape: [
-        { depth: 0, ordered: false },
-        { depth: 1, ordered: false },
-        { depth: 1, ordered: true },
+      kind: "list",
+      items: [
+        {
+          children: [
+            { kind: "paragraph", text: "a" },
+            {
+              kind: "list",
+              items: [{ children: [{ kind: "paragraph", text: "b" }] }],
+            },
+            {
+              kind: "list",
+              items: [{ children: [{ kind: "paragraph", text: "c" }] }],
+              ordered: true,
+              start: 1,
+            },
+          ],
+        },
       ],
     });
   });
@@ -366,9 +446,15 @@ describe("renderMarkdownPreview", () => {
       (_, depth) => `${"  ".repeat(depth)}- level ${depth}`,
     );
     const block = renderMarkdownPreview(lines.join("\n")).blocks[0];
-    expect(block.kind === "list" && block.shape?.at(-1)?.depth).toBe(
-      MAX_MARKDOWN_LIST_DEPTH - 1,
-    );
+    let depth = 0;
+    let children: readonly MarkdownPreviewBlock[] = [block];
+    while (children[0]?.kind === "list") {
+      depth++;
+      children = children[0].items[0].children.filter(
+        (child) => child.kind === "list",
+      );
+    }
+    expect(depth).toBe(MAX_MARKDOWN_LIST_DEPTH);
   });
 
   it("keeps excess same-line nesting literal at the container depth limit", () => {
@@ -377,11 +463,19 @@ describe("renderMarkdownPreview", () => {
     const block = document.blocks[0];
     expect(block.kind).toBe("list");
     if (block.kind !== "list") throw new Error("Expected a list");
-    expect(block.items).toEqual([
-      ...Array(MAX_MARKDOWN_LIST_DEPTH - 1).fill(""),
-      "- ".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS / 2),
-    ]);
-    expect(block.shape?.at(-1)?.depth).toBe(MAX_MARKDOWN_LIST_DEPTH - 1);
+    let leaf: MarkdownPreviewBlock = block;
+    let depth = 0;
+    while (leaf.kind === "list") {
+      depth++;
+      expect(leaf.items).toHaveLength(1);
+      expect(leaf.items[0].children).toHaveLength(1);
+      leaf = leaf.items[0].children[0];
+    }
+    expect(depth).toBe(MAX_MARKDOWN_LIST_DEPTH);
+    expect(leaf).toEqual({
+      kind: "paragraph",
+      text: "- ".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS / 2),
+    });
   });
 
   it("uses absolute tab stops for same-line nested list markers", () => {
@@ -390,11 +484,33 @@ describe("renderMarkdownPreview", () => {
     ).toEqual([
       {
         kind: "list",
-        items: ["", "child", "grandchild"],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
-          { depth: 2, ordered: true },
+        items: [
+          {
+            children: [
+              {
+                kind: "list",
+                items: [
+                  {
+                    children: [
+                      { kind: "paragraph", text: "child" },
+                      {
+                        kind: "list",
+                        items: [
+                          {
+                            children: [
+                              { kind: "paragraph", text: "grandchild" },
+                            ],
+                          },
+                        ],
+                        ordered: true,
+                        start: 1,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
         ],
       },
     ]);
@@ -409,12 +525,14 @@ describe("renderMarkdownPreview", () => {
     expect(document.blocks).toEqual([
       {
         kind: "list",
-        items: ["todo", "done", "also done", "[] not a task"],
-        shape: [
-          { depth: 0, ordered: false, checked: false },
-          { depth: 0, ordered: false, checked: true },
-          { depth: 0, ordered: false, checked: true },
-          { depth: 0, ordered: false },
+        items: [
+          { children: [{ kind: "paragraph", text: "todo" }], checked: false },
+          { children: [{ kind: "paragraph", text: "done" }], checked: true },
+          {
+            children: [{ kind: "paragraph", text: "also done" }],
+            checked: true,
+          },
+          { children: [{ kind: "paragraph", text: "[] not a task" }] },
         ],
       },
     ]);
@@ -424,8 +542,12 @@ describe("renderMarkdownPreview", () => {
     expect(renderMarkdownPreview("- [ ]\n  continued label").blocks).toEqual([
       {
         kind: "list",
-        items: ["continued label"],
-        shape: [{ depth: 0, ordered: false, checked: false }],
+        items: [
+          {
+            children: [{ kind: "paragraph", text: "continued label" }],
+            checked: false,
+          },
+        ],
       },
     ]);
   });
@@ -435,7 +557,13 @@ describe("renderMarkdownPreview", () => {
       renderMarkdownPreview("Steps:\n  + first\n  + second").blocks,
     ).toEqual([
       { kind: "paragraph", text: "Steps:" },
-      { kind: "list", items: ["first", "second"] },
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "first" }] },
+          { children: [{ kind: "paragraph", text: "second" }] },
+        ],
+      },
     ]);
   });
 
@@ -521,7 +649,15 @@ describe("renderMarkdownPreview", () => {
     const first = "A".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS - 2);
     const document = renderMarkdownPreview(`- ${first}\n- leftover`);
     expect(document.truncated).toBe(true);
-    expect(document.blocks).toEqual([{ kind: "list", items: [first, "le"] }]);
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: first }] },
+          { children: [{ kind: "paragraph", text: "le" }] },
+        ],
+      },
+    ]);
   });
 
   it("clamps visible block text", () => {
@@ -571,7 +707,10 @@ describe("CommonMark block syntax", () => {
   );
   it.each(["- - -", "* * *", "___"])("ends a list before %s", (rule) => {
     expect(renderMarkdownPreview(`- item\n${rule}\nAfter`).blocks).toEqual([
-      { kind: "list", items: ["item"] },
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "paragraph", text: "item" }] }],
+      },
       { kind: "rule" },
       { kind: "paragraph", text: "After" },
     ]);
@@ -627,7 +766,13 @@ describe("CommonMark block syntax", () => {
   });
   it("joins blank and unspaced quote lines into one quote", () => {
     expect(renderMarkdownPreview("> one\n>\n> two\n>text").blocks).toEqual([
-      { kind: "quote", text: "one two text" },
+      {
+        kind: "quote",
+        children: [
+          { kind: "paragraph", text: "one" },
+          { kind: "paragraph", text: "two text" },
+        ],
+      },
     ]);
   });
   it("counts rules toward the block cap", () => {
@@ -693,7 +838,7 @@ describe("fence indentation and empty list precedence", () => {
     "classifies empty %s as a list before a rule",
     (marker) => {
       expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
-        { kind: "list", items: [""] },
+        { kind: "list", items: [{ children: [] }] },
         { kind: "rule" },
       ]);
     },
@@ -702,20 +847,32 @@ describe("fence indentation and empty list precedence", () => {
     "retains empty ordered marker %s before a rule",
     (marker) => {
       expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
-        { kind: "list", items: [""], ordered: true, start: Number(marker[0]) },
+        {
+          kind: "list",
+          items: [{ children: [] }],
+          ordered: true,
+          start: Number(marker[0]),
+        },
         { kind: "rule" },
       ]);
     },
   );
   it("keeps empty items among nonempty items without converting them to headings", () => {
     expect(renderMarkdownPreview("- one\n-\n- two\n---").blocks).toEqual([
-      { kind: "list", items: ["one", "", "two"] },
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          { children: [] },
+          { children: [{ kind: "paragraph", text: "two" }] },
+        ],
+      },
       { kind: "rule" },
     ]);
   });
   it("does not use an equals underline to turn an empty list into a heading", () => {
     expect(renderMarkdownPreview("-\n===").blocks).toEqual([
-      { kind: "list", items: [""] },
+      { kind: "list", items: [{ children: [] }] },
       { kind: "paragraph", text: "===" },
     ]);
   });
@@ -724,7 +881,12 @@ describe("fence indentation and empty list precedence", () => {
       "-\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS + 1),
     );
     expect(document.blocks).toEqual([
-      { kind: "list", items: Array(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS).fill("") },
+      {
+        kind: "list",
+        items: Array.from({ length: MAX_MARKDOWN_PREVIEW_BLOCK_CHARS }, () => ({
+          children: [],
+        })),
+      },
     ]);
     expect(document.truncated).toBe(true);
   });
@@ -774,7 +936,7 @@ describe("ATX classification before setext", () => {
 describe("shared list interruption classification", () => {
   it("keeps a quote paragraph open across marked indented continuation", () => {
     expect(renderMarkdownPreview("> foo\n>     bar\nbaz\n").blocks).toEqual([
-      { kind: "quote", text: "foo bar baz" },
+      { kind: "quote", children: [{ kind: "paragraph", text: "foo bar baz" }] },
     ]);
   });
 
@@ -786,7 +948,17 @@ describe("shared list interruption classification", () => {
     "does not lazily continue a quote opened by code: %j",
     (source, text, outside) => {
       expect(renderMarkdownPreview(source).blocks.slice(0, 2)).toEqual([
-        { kind: "quote", text },
+        {
+          kind: "quote",
+          children: [
+            {
+              kind: "code",
+              language: "",
+              text: text === "```" ? "" : text === "``` code" ? "code\n" : text,
+              fenceClosed: source.startsWith(">     "),
+            },
+          ],
+        },
         ...(source.startsWith(">     ")
           ? [{ kind: "code", language: "", text: outside, fenceClosed: true }]
           : [{ kind: "paragraph", text: outside }]),
@@ -796,8 +968,21 @@ describe("shared list interruption classification", () => {
 
   it("does not collect a fenced list child's code as paragraph continuation", () => {
     expect(renderMarkdownPreview("- ```\n  code\n").blocks).toEqual([
-      { kind: "list", items: [""] },
-      { kind: "code", language: "", text: "code\n", fenceClosed: false },
+      {
+        kind: "list",
+        items: [
+          {
+            children: [
+              {
+                kind: "code",
+                language: "",
+                text: "code\n",
+                fenceClosed: false,
+              },
+            ],
+          },
+        ],
+      },
     ]);
   });
 
@@ -805,7 +990,10 @@ describe("shared list interruption classification", () => {
     "keeps an empty nested marker in the paragraph opened by %j",
     (prefix) => {
       expect(renderMarkdownPreview(`${prefix}\n  +\n  two`).blocks).toEqual([
-        { kind: "list", items: ["one + two"] },
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "one + two" }] }],
+        },
       ]);
     },
   );
@@ -814,11 +1002,7 @@ describe("shared list interruption classification", () => {
     expect(renderMarkdownPreview("-\n  +").blocks).toEqual([
       {
         kind: "list",
-        items: ["", ""],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
-        ],
+        items: [{ children: [{ kind: "list", items: [{ children: [] }] }] }],
       },
     ]);
   });
@@ -831,11 +1015,19 @@ describe("shared list interruption classification", () => {
       ).toEqual([
         {
           kind: "list",
-          items: ["parent", "sibling", "child"],
-          shape: [
-            { depth: 0, ordered: false },
-            { depth: 0, ordered: false },
-            { depth: 1, ordered: true },
+          items: [
+            { children: [{ kind: "paragraph", text: "parent" }] },
+            {
+              children: [
+                { kind: "paragraph", text: "sibling" },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                  ordered: true,
+                  start: 1,
+                },
+              ],
+            },
           ],
         },
       ]);
@@ -849,12 +1041,23 @@ describe("shared list interruption classification", () => {
           `10. example\n    ${fence}js\n    const x = 1;\n    ${fence}`,
         ).blocks,
       ).toEqual([
-        { kind: "list", ordered: true, start: 10, items: ["example"] },
         {
-          kind: "code",
-          language: "js",
-          text: "const x = 1;",
-          fenceClosed: true,
+          kind: "list",
+          items: [
+            {
+              children: [
+                { kind: "paragraph", text: "example" },
+                {
+                  kind: "code",
+                  language: "js",
+                  text: "const x = 1;",
+                  fenceClosed: true,
+                },
+              ],
+            },
+          ],
+          ordered: true,
+          start: 10,
         },
       ]);
     },
@@ -867,10 +1070,24 @@ describe("shared list interruption classification", () => {
       ).toEqual(
         prefix.trim() === "+" || prefix.trim() === "*"
           ? [
-              { kind: "list", items: ["parent"] },
-              { kind: "list", items: ["sibling"] },
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "parent" }] }],
+              },
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "sibling" }] }],
+              },
             ]
-          : [{ kind: "list", items: ["parent", "sibling"] }],
+          : [
+              {
+                kind: "list",
+                items: [
+                  { children: [{ kind: "paragraph", text: "parent" }] },
+                  { children: [{ kind: "paragraph", text: "sibling" }] },
+                ],
+              },
+            ],
       );
     },
   );
@@ -898,18 +1115,21 @@ describe("shared list interruption classification", () => {
       expect(renderMarkdownPreview(source).blocks).toEqual([
         {
           kind: "list",
-          items:
-            changesDelimiter || indentedCode
-              ? ["parent", "child"]
-              : ["parent", "child", "sibling"],
-          ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
-          shape: [
-            { depth: 0, ordered },
-            { depth: 1, ordered: false },
+          items: [
+            {
+              children: [
+                { kind: "paragraph", text: "parent" },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                },
+              ],
+            },
             ...(!changesDelimiter && !indentedCode
-              ? [{ depth: 0, ordered }]
+              ? [{ children: [{ kind: "paragraph", text: "sibling" }] }]
               : []),
           ],
+          ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
         },
         ...(indentedCode
           ? [
@@ -921,7 +1141,16 @@ describe("shared list interruption classification", () => {
               },
             ]
           : changesDelimiter
-            ? [{ kind: "list", items: ["sibling"], ordered: true, start: 2 }]
+            ? [
+                {
+                  kind: "list",
+                  items: [
+                    { children: [{ kind: "paragraph", text: "sibling" }] },
+                  ],
+                  ordered: true,
+                  start: 2,
+                },
+              ]
             : []),
       ]);
     },
@@ -933,11 +1162,19 @@ describe("shared list interruption classification", () => {
     ).toEqual([
       {
         kind: "list",
-        items: ["parent", "child", "sibling"],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
-          { depth: 1, ordered: false },
+        items: [
+          {
+            children: [
+              { kind: "paragraph", text: "parent" },
+              {
+                kind: "list",
+                items: [
+                  { children: [{ kind: "paragraph", text: "child" }] },
+                  { children: [{ kind: "paragraph", text: "sibling" }] },
+                ],
+              },
+            ],
+          },
         ],
       },
     ]);
@@ -947,11 +1184,16 @@ describe("shared list interruption classification", () => {
     expect(renderMarkdownPreview("- one\n-\t\n  - child").blocks).toEqual([
       {
         kind: "list",
-        items: ["one", "", "child"],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          {
+            children: [
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+              },
+            ],
+          },
         ],
       },
     ]);
@@ -965,17 +1207,22 @@ describe("shared list interruption classification", () => {
       ).toEqual([
         {
           kind: "list",
-          items: ["", "child"],
-          shape: [
-            { depth: 0, ordered: false },
-            { depth: 1, ordered: false },
+          items: [
+            {
+              children: [
+                {
+                  kind: "code",
+                  language: "",
+                  text: prefix === "-     " ? "parent" : "  parent",
+                  fenceClosed: true,
+                },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                },
+              ],
+            },
           ],
-        },
-        {
-          kind: "code",
-          language: "",
-          text: prefix === "-     " ? "parent" : "  parent",
-          fenceClosed: true,
         },
       ]);
     },
@@ -986,7 +1233,10 @@ describe("shared list interruption classification", () => {
     (line) => {
       expect(renderMarkdownPreview(`Intro\n${line}`).blocks).toEqual([
         { kind: "paragraph", text: "Intro" },
-        { kind: "list", items: ["x"] },
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "x" }] }],
+        },
       ]);
     },
   );
@@ -1001,7 +1251,7 @@ describe("shared list interruption classification", () => {
         { kind: "paragraph", text: "Intro" },
         {
           kind: "list",
-          items: ["item"],
+          items: [{ children: [{ kind: "paragraph", text: "item" }] }],
           ...(ordered ? { ordered: true, start: Number(marker[0]) } : {}),
         },
         { kind: "rule" },
@@ -1015,7 +1265,7 @@ describe("shared list interruption classification", () => {
         { kind: "paragraph", text: "Intro" },
         {
           kind: "list",
-          items: ["item"],
+          items: [{ children: [{ kind: "paragraph", text: "item" }] }],
           ...(line.startsWith("1") ? { ordered: true, start: 1 } : {}),
         },
         { kind: "rule" },

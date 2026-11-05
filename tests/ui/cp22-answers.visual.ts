@@ -261,6 +261,78 @@ test("CP-22 admitted image viewer remains keyboard accessible", async ({
   await expect(trigger).toBeFocused();
 });
 
+test("CP-22 numbered setup answer keeps commands inside their step", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "rich", "agent");
+  await installAnswer(
+    page,
+    "## Run the app\n\n1. Run this command\n\n   ```sh\n   npm install\n   ```\n\n   Wait for the dependencies to finish installing.\n\n2. Start the app\n\n   ```sh\n   npm run dev\n   ```\n\n   Open the local address printed in the terminal.",
+  );
+  const answer = page
+    .locator(".acp-message--assistant")
+    .last()
+    .locator(".acp-markdown");
+  const steps = answer.locator("ol > li");
+  await expect(steps).toHaveCount(2);
+  await expect(steps.nth(0).locator("pre")).toHaveText("npm install");
+  await expect(steps.nth(1).locator("pre")).toHaveText("npm run dev");
+  expect(
+    await steps
+      .nth(0)
+      .locator("pre")
+      .evaluate((command) =>
+        Boolean(
+          command.compareDocumentPosition(
+            command.closest("li")!.nextElementSibling!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      ),
+  ).toBe(true);
+  await expect(
+    steps.nth(0).getByRole("button", { name: "Copy code" }),
+  ).toBeVisible();
+  await settleTranscriptAtEnd(page);
+  await assertContained(page);
+  await expect(answer).toHaveScreenshot("cp22-numbered-commands.png");
+});
+
+test("CP-22 quoted blocks keep code whitespace and their real renderers", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "rich", "agent");
+  await installAnswer(
+    page,
+    "> ## Quoted heading\n>\n> ```python\n> def greet(name):\n>     if name:\n>         print(name)\n>\n>     return name\n> ```\n>\n> | Name | Value |\n> | --- | --- |\n> | key | **value** |\n>\n> ```mermaid\n> flowchart LR\n> A --> B\n> ```\n>\n> - Child\n>   > Nested quote",
+  );
+  const quote = page
+    .locator(".acp-message--assistant")
+    .last()
+    .locator(".acp-markdown > blockquote");
+  await expect(
+    quote.getByRole("heading", { name: "Quoted heading" }),
+  ).toBeVisible();
+  const code = quote.getByRole("region", { name: "Python code" });
+  expect(await code.locator("pre").textContent()).toBe(
+    "def greet(name):\n    if name:\n        print(name)\n\n    return name",
+  );
+  await expect(code.getByRole("button", { name: "Copy code" })).toBeVisible();
+  await expect(quote.getByRole("table").locator("td strong")).toHaveText(
+    "value",
+  );
+  await expect(
+    quote.getByRole("img", { name: "Mermaid diagram" }),
+  ).toBeVisible();
+  await expect(quote.locator("li blockquote")).toHaveText("Nested quote");
+  expect(
+    await quote.evaluate((element) =>
+      [...element.children].map((child) => child.tagName),
+    ),
+  ).toEqual(["H2", "DIV", "DIV", "DIV", "UL"]);
+});
+
 test("CP-22 Pi-compatible text-only projection has no fabricated image controls", async ({
   page,
 }) => {

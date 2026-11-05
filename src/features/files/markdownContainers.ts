@@ -1,32 +1,13 @@
 import type { Token } from "markdown-it";
-import type { MarkdownPreviewBlock } from "./markdownPreview";
-import type { ListItemShape } from "./markdownListTypes";
+import type { MarkdownBlock } from "./markdownBlockTypes";
 import {
-  MAX_MARKDOWN_LIST_DEPTH,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
-  MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_TABLE_COLUMNS,
   MAX_MARKDOWN_TABLE_ROWS,
 } from "./markdownLimits";
 
-export type MarkdownContent = (string | { literal: string })[];
-type Block =
-  | { kind: "paragraph" | "quote"; text: MarkdownContent }
-  | { kind: "heading"; level: 1; text: MarkdownContent }
-  | { kind: "rule" }
-  | (Extract<MarkdownPreviewBlock, { kind: "code" }> & { markup: string })
-  | {
-      kind: "list";
-      items: MarkdownContent[];
-      shape: ListItemShape[];
-      ordered?: true;
-      start?: number;
-    }
-  | {
-      kind: "table";
-      align: ("left" | "center" | "right" | undefined)[];
-      rows: MarkdownContent[][];
-    };
+export type MarkdownRawBlock = MarkdownBlock;
+type Block = MarkdownRawBlock;
 
 interface Node {
   token: Token;
@@ -54,44 +35,12 @@ export function* markdownContainers(tokens: Token[], overflow: () => void) {
   }
 }
 
-function joined(parts: MarkdownContent[]): MarkdownContent {
-  return parts.flatMap((part, index) => (index ? [" ", ...part] : part));
-}
-
-function content(block: Block): MarkdownContent {
-  if (block.kind === "list") {
-    const counters: (number | undefined)[] = [];
-    return joined(
-      block.items.map((item, index) => {
-        const { depth, ordered, checked, start, newList } = block.shape[index];
-        counters.length = Math.min(counters.length, depth + 1);
-        let marker = "";
-        if (ordered) {
-          counters[depth] =
-            start ??
-            (newList || counters[depth] === undefined
-              ? depth
-                ? 1
-                : (block.start ?? 1)
-              : counters[depth]! + 1);
-          marker = `${counters[depth]}. `;
-        } else counters[depth] = undefined;
-        if (checked !== undefined) marker += `[${checked ? "x" : " "}] `;
-        return marker ? [marker, ...item] : item;
-      }),
-    );
-  }
-  if (block.kind === "table") return joined(block.rows.flat());
-  if (block.kind === "rule") return ["---"];
-  if (block.kind === "code") {
-    // Quotes have no child-block slot. Preserve code literally, including an
-    // unfinished fence, without admitting its markup as inline formatting.
-    const raw = block.markup
-      ? `${block.markup}${block.language}\n${block.text}${block.fenceClosed ? `\n${block.markup}` : ""}`
-      : block.text;
-    return [{ literal: raw.replace(/\s+/gu, " ").trim() }];
-  }
-  return block.text;
+// Headings and table cells admit inline content. Containers always use adapt()
+// so their block identity and code whitespace never pass through text joining.
+function inlineText(node: Node): string {
+  return node.token.type === "inline"
+    ? node.token.content
+    : node.children.map(inlineText).join(" ");
 }
 
 function adapt(node: Node, overflow: () => void): Block[] {
@@ -99,7 +48,7 @@ function adapt(node: Node, overflow: () => void): Block[] {
   const descendants = () => children.flatMap((child) => adapt(child, overflow));
   switch (token.type) {
     case "inline":
-      return [{ kind: "paragraph", text: [token.content] }];
+      return [{ kind: "paragraph", text: token.content }];
     case "fence":
     case "code_block": {
       let lines = Number(!!token.content && !token.content.endsWith("\n"));
@@ -117,7 +66,6 @@ function adapt(node: Node, overflow: () => void): Block[] {
           text: text.slice(0, MAX_MARKDOWN_PREVIEW_BLOCK_CHARS),
           language: token.info.trim().split(/\s/u)[0],
           fenceClosed,
-          markup: token.markup,
         },
       ];
     }
@@ -128,83 +76,40 @@ function adapt(node: Node, overflow: () => void): Block[] {
         {
           kind: "heading",
           level: Number(token.tag.slice(1)) as 1,
-          text: joined(descendants().map(content)),
+          text: inlineText(node),
         },
       ];
     case "blockquote_open":
-      return [{ kind: "quote", text: joined(descendants().map(content)) }];
+      return [{ kind: "quote", children: descendants() }];
     case "bullet_list_open":
     case "ordered_list_open": {
-      const items: MarkdownContent[] = [];
-      const shape: ListItemShape[] = [];
-      const following: Block[] = [];
       const ordered = token.type === "ordered_list_open";
-      const seenDepths = new Set([0]);
-      for (const item of children) {
-        const blocks = adapt(item, overflow);
-        items.push(
-          joined(
-            blocks
-              .filter(
-                (block) =>
-                  block.kind === "paragraph" ||
-                  block.kind === "heading" ||
-                  block.kind === "quote",
-              )
-              .map(content),
-          ),
-        );
-        const entry: ListItemShape = { depth: 0, ordered };
-        if (typeof item.token.meta?.checked === "boolean")
-          entry.checked = item.token.meta.checked;
-        shape.push(entry);
-        for (const block of blocks) {
-          if (block.kind === "list") {
-            for (let i = 0; i < block.items.length; i++) {
-              const nested = block.shape[i];
-              const depth = Math.min(
-                nested.depth + 1,
-                MAX_MARKDOWN_LIST_DEPTH - 1,
-              );
-              const start =
-                i === 0 && block.ordered && block.start !== 1
-                  ? { start: block.start }
-                  : {};
-              shape.push({
-                ...nested,
-                ...start,
-                depth,
-                ...(i === 0 && seenDepths.has(depth) ? { newList: true } : {}),
-              });
-              seenDepths.add(depth);
-              items.push(block.items[i]);
-            }
-          } else if (
-            block.kind === "code" ||
-            block.kind === "rule" ||
-            block.kind === "table"
-          ) {
-            if (following.length < MAX_MARKDOWN_PREVIEW_BLOCKS)
-              following.push(block);
-            else overflow();
-          }
-        }
-      }
       return [
         {
           kind: "list",
-          items,
-          shape,
+          items: children.map((item) => ({
+            children: adapt(item, overflow),
+            ...(typeof item.token.meta?.checked === "boolean"
+              ? { checked: item.token.meta.checked }
+              : {}),
+          })),
+          ...(children.some((item) =>
+            item.children.some(
+              (child) =>
+                child.token.type === "paragraph_open" && !child.token.hidden,
+            ),
+          )
+            ? { loose: true }
+            : {}),
           ...(ordered
             ? { ordered: true, start: Number(token.attrGet("start") ?? 1) }
             : {}),
         },
-        ...following,
       ];
     }
     case "table_open": {
       const align: Extract<Block, { kind: "table" }>["align"] = [];
-      const rows: MarkdownContent[][] = [];
+      const rows: string[][] = [];
       const visit = (current: Node) => {
         if (current.token.type !== "tr_open") {
           current.children.forEach(visit);
@@ -214,7 +119,7 @@ function adapt(node: Node, overflow: () => void): Block[] {
           overflow();
           return;
         }
-        const row: MarkdownContent[] = [];
+        const row: string[] = [];
         for (const cell of current.children) {
           if (row.length === MAX_MARKDOWN_TABLE_COLUMNS) {
             overflow();
@@ -231,7 +136,7 @@ function adapt(node: Node, overflow: () => void): Block[] {
                 : undefined,
             );
           }
-          row.push(joined(adapt(cell, overflow).map(content)));
+          row.push(inlineText(cell));
         }
         rows.push(row);
       };
@@ -244,7 +149,7 @@ function adapt(node: Node, overflow: () => void): Block[] {
       return children.length
         ? descendants()
         : token.content
-          ? [{ kind: "paragraph", text: [token.content] }]
+          ? [{ kind: "paragraph", text: token.content }]
           : [];
   }
 }

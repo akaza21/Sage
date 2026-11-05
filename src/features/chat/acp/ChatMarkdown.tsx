@@ -5,6 +5,7 @@ import {
   renderMarkdownStream,
   type MarkdownStream,
 } from "../../files/markdownStream";
+import { markdownListMarkerWidth } from "../../files/markdownTextLocations";
 import { MarkdownBlocks } from "../../files/MarkdownBlocks";
 import type { ResourceRef } from "../../../domain/workbench";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
@@ -93,17 +94,7 @@ export function ChatMarkdown({
     if (streaming) void loadStreamRuns();
   }, [streaming]);
   const listMarkerWidth = useMemo(
-    () =>
-      document.blocks.reduce(
-        (digits, block) =>
-          block.kind === "list" && block.ordered
-            ? Math.max(
-                digits,
-                String((block.start ?? 1) + block.items.length - 1).length,
-              )
-            : digits,
-        1,
-      ),
+    () => markdownListMarkerWidth(document.blocks),
     [document],
   );
   const ownerKey = fileReferenceOwner

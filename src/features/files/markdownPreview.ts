@@ -1,7 +1,7 @@
 import { truncateUtf8, utf8Bytes } from "../../domain/text";
+import { markdownTextLocations } from "./markdownTextLocations";
 import { adaptMarkdownTokens } from "./markdownTokens";
-import type { MarkdownContent } from "./markdownContainers";
-import type { MarkdownListBlock } from "./markdownListTypes";
+import type { MarkdownBlock } from "./markdownBlockTypes";
 
 import {
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
@@ -10,7 +10,6 @@ import {
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
-export type { ListItemShape } from "./markdownListTypes";
 export {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
@@ -23,18 +22,7 @@ export {
   MAX_CHAT_FILE_LINK_PATH_BYTES,
 } from "./markdownLimits";
 
-export type MarkdownPreviewBlock =
-  | { kind: "rule" }
-  | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { kind: "paragraph"; text: string }
-  | { kind: "quote"; text: string }
-  | MarkdownListBlock
-  | { kind: "code"; text: string; language: string; fenceClosed: boolean }
-  | {
-      kind: "table";
-      align: ("left" | "center" | "right" | undefined)[];
-      rows: string[][];
-    };
+export type MarkdownPreviewBlock = MarkdownBlock;
 
 export type InlineFormat =
   | string
@@ -100,7 +88,7 @@ export function renderMarkdownPreview(
   let formatCount = 0;
   let scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
 
-  const inline = (parts: MarkdownContent, itemIndex?: number) => {
+  const inline = (value: string, itemIndex?: number) => {
     let text = "";
     const append = (value: string) => {
       if (text.length + value.length > remaining) document.truncated = true;
@@ -189,35 +177,15 @@ export function renderMarkdownPreview(
       spans.push(append(value.slice(position)));
       return spans;
     };
-    // Coalesce adjacent prose before normalizing whitespace and parsing inline
-    // syntax. Literal code stays outside that parser, including in quote fallback.
-    const runs: MarkdownContent = [];
-    let prose: string[] = [];
-    const flush = () => {
-      if (prose.length) runs.push(prose.join(""));
-      prose = [];
-    };
-    for (const part of parts) {
-      if (typeof part === "string") prose.push(part);
-      else {
-        flush();
-        runs.push(part);
-      }
-    }
-    flush();
-    const spans = runs.flatMap((part, index) => {
-      if (typeof part !== "string") return [append(part.literal)];
-      return parse(
-        part
-          .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
-            value[0] === "`" ? value : "",
-          )
-          .replace(/`[^`]+`|\s+/gu, (value) => (value[0] === "`" ? value : " "))
-          .replace(/^\s+/u, index ? " " : "")
-          .replace(/\s+$/u, index < runs.length - 1 ? " " : ""),
-        0,
-      );
-    });
+    const spans = parse(
+      value
+        .replace(/`[^`]+`|<\/?[a-z][\w-]*(?:\s[^<>]*)?\/?>/giu, (value) =>
+          value[0] === "`" ? value : "",
+        )
+        .replace(/`[^`]+`|\s+/gu, (value) => (value[0] === "`" ? value : " "))
+        .trim(),
+      0,
+    );
     if (text)
       document.formats.push({ blockIndex: blocks.length, itemIndex, spans });
     remaining -= text.length;
@@ -232,6 +200,12 @@ export function renderMarkdownPreview(
       remaining = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
       formatCount = 0;
       scanBudget = MAX_MARKDOWN_PREVIEW_SOURCE_BYTES;
+    },
+    (text) => {
+      if (text.length > remaining) document.truncated = true;
+      const retained = text.slice(0, remaining);
+      remaining -= retained.length;
+      return retained;
     },
     prefix,
     sourceOffset,
@@ -274,12 +248,7 @@ export function latestMarkdownLine(source: string): string {
     const line = rawLine.trim().replace(/^\d+[.)]\s+/u, "");
     if (!line) continue;
     const block = renderMarkdownPreview(line).blocks[0];
-    const text =
-      block?.kind === "list"
-        ? block.items[0]
-        : block && "text" in block
-          ? block.text
-          : "";
+    const text = block ? markdownTextLocations(block).next().value?.text : "";
     if (text) return text;
   }
   return "";

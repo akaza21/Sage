@@ -3,6 +3,21 @@ import { renderMarkdownPreview } from "./markdownPreview";
 import { renderMarkdownStream } from "./markdownStream";
 
 describe("streamed markdown document", () => {
+  it("shares the component cap with a frozen quote while appending rich blocks", () => {
+    const source = "> ```python\n> ```\n>\n".repeat(60) + "\n# Kept\n\nTail";
+    const before = renderMarkdownStream(source);
+    const appended = source + "\n\n```python\n```\n\n# Skipped";
+    const after = renderMarkdownStream(appended, before);
+    expect(after.document).toEqual(renderMarkdownPreview(appended));
+    expect(after.document.blocks.map((block) => block.kind)).toEqual([
+      "quote",
+      "heading",
+      "paragraph",
+      "code",
+    ]);
+    expect(after.document.truncated).toBe(true);
+  });
+
   it.each(["- x\n", "> x\n"])(
     "keeps a huge single container (%j) truncated across streaming updates",
     (line) => {

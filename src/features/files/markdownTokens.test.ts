@@ -4,12 +4,25 @@ import {
   renderMarkdownPreview,
   type MarkdownPreviewBlock,
 } from "./markdownPreview";
+import { markdownTextLocations } from "./markdownTextLocations";
 import { parseMarkdownTokens } from "./markdownTokens";
 
 describe("nested markdown content", () => {
   it("retains a quoted warning inside a list item", () => {
     expect(renderMarkdownPreview("- > quoted warning").blocks).toEqual([
-      { kind: "list", items: ["quoted warning"] },
+      {
+        kind: "list",
+        items: [
+          {
+            children: [
+              {
+                kind: "quote",
+                children: [{ kind: "paragraph", text: "quoted warning" }],
+              },
+            ],
+          },
+        ],
+      },
     ]);
   });
 
@@ -28,17 +41,41 @@ describe("nested markdown content", () => {
     const document = renderMarkdownPreview(
       "- <br>\n".repeat(4096) + "- warning",
     );
-    expect(document.blocks).toEqual([{ kind: "list", items: ["warning"] }]);
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "paragraph", text: "warning" }] }],
+      },
+    ]);
     expect(document.truncated).toBe(false);
   });
 
-  it("retains task states when a quote cannot present list structure", () => {
+  it("retains task states in a quote's list children", () => {
     expect(
       renderMarkdownPreview("> - [x] done\n> - [ ] pending").blocks,
-    ).toEqual([{ kind: "quote", text: "[x] done [ ] pending" }]);
+    ).toEqual([
+      {
+        kind: "quote",
+        children: [
+          {
+            kind: "list",
+            items: [
+              {
+                checked: true,
+                children: [{ kind: "paragraph", text: "done" }],
+              },
+              {
+                checked: false,
+                children: [{ kind: "paragraph", text: "pending" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 
-  it("retains ordered starts and numbering when a quote flattens nested lists", () => {
+  it("retains ordered starts and nested numbering inside a quote", () => {
     expect(
       renderMarkdownPreview(
         "> 42. release\n> 43. next\n>\n>     7. nested\n>     8. nested-next\n> 44. last",
@@ -46,7 +83,34 @@ describe("nested markdown content", () => {
     ).toEqual([
       {
         kind: "quote",
-        text: "42. release 43. next 7. nested 8. nested-next 44. last",
+        children: [
+          {
+            kind: "list",
+            ordered: true,
+            start: 42,
+            loose: true,
+            items: [
+              { children: [{ kind: "paragraph", text: "release" }] },
+              {
+                children: [
+                  { kind: "paragraph", text: "next" },
+                  {
+                    kind: "list",
+                    ordered: true,
+                    start: 7,
+                    items: [
+                      { children: [{ kind: "paragraph", text: "nested" }] },
+                      {
+                        children: [{ kind: "paragraph", text: "nested-next" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              { children: [{ kind: "paragraph", text: "last" }] },
+            ],
+          },
+        ],
       },
     ]);
   });
@@ -100,7 +164,9 @@ describe("nested markdown content", () => {
   ];
   function output(block: MarkdownPreviewBlock): string {
     if (block.kind === "rule") return "---";
-    if (block.kind === "list") return block.items.join(" ");
+    if (block.kind === "list")
+      return block.items.flatMap((item) => item.children.map(output)).join(" ");
+    if (block.kind === "quote") return block.children.map(output).join(" ");
     if (block.kind === "table") return block.rows.flat().join(" ");
     return "text" in block ? block.text : "";
   }
@@ -122,15 +188,19 @@ describe("nested markdown content", () => {
           leaf.markdown,
         ),
         expected: [
+          ...chain.map((_, index) => `before-${index}`),
           ...leaf.text,
-          ...chain.flatMap((_, index) => [`before-${index}`, `after-${index}`]),
+          ...chain.map((_, index) => `after-${index}`).reverse(),
         ],
       })),
     ),
   )("retains all text through $name", ({ source, expected }) => {
     const document = renderMarkdownPreview(source);
     const text = document.blocks.map(output).join(" ");
+    let previous = -1;
     for (const value of expected) {
+      expect(text.indexOf(value)).toBeGreaterThan(previous);
+      previous = text.indexOf(value);
       expect(text).toContain(value);
       expect(text.split(value)).toHaveLength(2);
     }
@@ -140,6 +210,21 @@ describe("nested markdown content", () => {
 });
 
 describe("bounded markdown tokenization", () => {
+  it.each(["- before\n\n  ```text\n  ", "> before\n>\n> ```text\n> "])(
+    "shares the character allowance with nested literal code: %j",
+    (prefix) => {
+      const document = renderMarkdownPreview(prefix + "x".repeat(5000));
+      expect(
+        document.blocks
+          .flatMap((block) =>
+            [...markdownTextLocations(block)].map((location) => location.text),
+          )
+          .join(""),
+      ).toBe("before" + "x".repeat(4090));
+      expect(document.truncated).toBe(true);
+      expect(document.fileLinks).toEqual([]);
+    },
+  );
   it.each(["- x\n", "> - x\n", "> > - x\n"])(
     "bounds a single huge container (%j) and closes it before skipping the tail",
     (item) => {

@@ -11,16 +11,23 @@
       "expected": [
         {
           "kind": "list",
-          "items": ["foo", "bar"],
-          "shape": [
+          "items": [
             {
-              "depth": 0,
-              "ordered": false,
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "foo"
+                }
+              ],
               "checked": false
             },
             {
-              "depth": 0,
-              "ordered": false,
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "bar"
+                }
+              ],
               "checked": true
             }
           ]
@@ -35,26 +42,46 @@
       "expected": [
         {
           "kind": "list",
-          "items": ["foo", "bar", "baz", "bim"],
-          "shape": [
+          "items": [
             {
-              "depth": 0,
-              "ordered": false,
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "foo"
+                },
+                {
+                  "kind": "list",
+                  "items": [
+                    {
+                      "children": [
+                        {
+                          "kind": "paragraph",
+                          "text": "bar"
+                        }
+                      ],
+                      "checked": false
+                    },
+                    {
+                      "children": [
+                        {
+                          "kind": "paragraph",
+                          "text": "baz"
+                        }
+                      ],
+                      "checked": true
+                    }
+                  ]
+                }
+              ],
               "checked": true
             },
             {
-              "depth": 1,
-              "ordered": false,
-              "checked": false
-            },
-            {
-              "depth": 1,
-              "ordered": false,
-              "checked": true
-            },
-            {
-              "depth": 0,
-              "ordered": false,
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "bim"
+                }
+              ],
               "checked": false
             }
           ]

@@ -1,6 +1,8 @@
 import MarkdownIt from "markdown-it";
-import { markdownContainers, type MarkdownContent } from "./markdownContainers";
-import type { ListItemShape } from "./markdownListTypes";
+import {
+  markdownContainers,
+  type MarkdownRawBlock,
+} from "./markdownContainers";
 import type {
   MarkdownPreviewBlock,
   MarkdownPreviewDocument,
@@ -147,11 +149,25 @@ export function retainMarkdownPrefix(
   return prefix;
 }
 
+// List-item prose retains the existing character/item allowance. Every other
+// block, including nested containers and full code/table renderers, shares the
+// document block cap. Recount only the bounded retained streaming prefix.
+function blockCost(block: MarkdownPreviewBlock, listItem = false): number {
+  let cost = Number(!(listItem && block.kind === "paragraph"));
+  if (block.kind === "quote")
+    for (const child of block.children) cost += blockCost(child);
+  if (block.kind === "list")
+    for (const item of block.items)
+      for (const child of item.children) cost += blockCost(child, true);
+  return cost;
+}
+
 export function adaptMarkdownTokens(
   source: string,
   document: MarkdownPreviewDocument,
-  inline: (source: MarkdownContent, itemIndex?: number) => string,
+  inline: (source: string, itemIndex?: number) => string,
   reset: () => void,
+  literal: (text: string) => string,
   prefix?: MarkdownPreviewDocument,
   sourceOffset = 0,
 ) {
@@ -167,6 +183,10 @@ export function adaptMarkdownTokens(
   const truncated = prefix ? [...(positions.get(prefix)?.truncated ?? [])] : [];
   positions.set(document, { offsets: starts, truncated });
   const blocks = document.blocks as MarkdownPreviewBlock[];
+  let remainingComponents =
+    MAX_MARKDOWN_PREVIEW_BLOCKS -
+    blocks.reduce((total, block) => total + blockCost(block), 0);
+  let componentLimitExceeded = false;
   const overflow = () => {
     document.truncated = true;
   };
@@ -177,68 +197,94 @@ export function adaptMarkdownTokens(
         break containers;
       }
       reset();
-      let block: MarkdownPreviewBlock;
-      if (raw.kind === "list") {
-        const items: string[] = [];
-        const shape: ListItemShape[] = [];
-        for (let i = 0; i < raw.items.length; i++) {
-          if (items.length === MAX_MARKDOWN_PREVIEW_BLOCK_CHARS) {
-            overflow();
-            break;
+      // One bounded budget per top-level block, shared by every descendant.
+      let remainingBlocks = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS + 1;
+      let remainingItems = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
+      let slot = 0;
+      const adapt = (
+        raw: MarkdownRawBlock,
+        nested: boolean,
+        listItem = false,
+      ): MarkdownPreviewBlock | null => {
+        const cost = Number(!(listItem && raw.kind === "paragraph"));
+        if (componentLimitExceeded || (cost && !remainingComponents)) {
+          componentLimitExceeded = true;
+          overflow();
+          return null;
+        }
+        if (!remainingBlocks) {
+          overflow();
+          return null;
+        }
+        remainingBlocks--;
+        remainingComponents -= cost;
+        const children = (
+          values: readonly MarkdownRawBlock[],
+          listItem = false,
+        ) => {
+          const result: MarkdownPreviewBlock[] = [];
+          for (const value of values) {
+            const child = adapt(value, true, listItem);
+            if (child) result.push(child);
+            if (componentLimitExceeded) break;
+            if (!remainingBlocks) {
+              if (value !== values.at(-1)) overflow();
+              break;
+            }
           }
-          const text = inline(raw.items[i], items.length);
-          // Markup-only items have no visible owner for a nested list. Keep
-          // its descendants and clamp their depth to the last retained item.
-          if (
-            !text &&
-            raw.items[i].some((part) =>
-              typeof part === "string" ? part.trim() : part.literal.trim(),
-            )
-          )
-            continue;
-          const entry = {
-            ...raw.shape[i],
-            depth: Math.min(
-              raw.shape[i].depth,
-              items.length ? shape.at(-1)!.depth + 1 : 0,
+          return result;
+        };
+        if (raw.kind === "quote")
+          return { ...raw, children: children(raw.children) };
+        if (raw.kind === "list") {
+          const items: Extract<
+            MarkdownPreviewBlock,
+            { kind: "list" }
+          >["items"][number][] = [];
+          for (const item of raw.items) {
+            if (componentLimitExceeded) break;
+            if (!remainingItems) {
+              overflow();
+              break;
+            }
+            const retained = children(item.children, true);
+            // Discard markup-only paragraphs, but preserve their child containers
+            // and genuinely empty markers in their original owner.
+            if (item.children.length && !retained.length) continue;
+            remainingItems--;
+            items.push({ ...item, children: retained });
+          }
+          return { ...raw, items };
+        }
+        if (raw.kind === "table")
+          return {
+            ...raw,
+            rows: raw.rows.map((row, rowIndex) =>
+              row.map((cell, column) =>
+                inline(
+                  cell,
+                  nested ? slot++ : rowIndex * raw.align.length + column,
+                ),
+              ),
             ),
           };
-          items.push(text);
-          shape.push(entry);
+        if (raw.kind === "code") return { ...raw, text: literal(raw.text) };
+        if (raw.kind === "rule") return raw;
+        const text = inline(raw.text, nested ? slot : undefined);
+        if (raw.kind === "paragraph" && !text) {
+          remainingBlocks++;
+          remainingComponents += cost;
+          return null;
         }
-        block = {
-          kind: "list",
-          items,
-          ...(raw.ordered ? { ordered: true, start: raw.start } : {}),
-          ...(shape.some((s) => s.depth || s.checked !== undefined)
-            ? { shape }
-            : {}),
-        };
-      } else if (raw.kind === "table") {
-        block = {
-          ...raw,
-          rows: raw.rows.map((row, rowIndex) =>
-            row.map((cell, column) =>
-              inline(cell, rowIndex * raw.align.length + column),
-            ),
-          ),
-        };
-      } else if (raw.kind === "code") {
-        block = {
-          kind: "code",
-          text: raw.text,
-          language: raw.language,
-          fenceClosed: raw.fenceClosed,
-        };
-      } else if (raw.kind === "rule") block = raw;
-      else {
-        const text = inline(raw.text);
-        if (raw.kind === "paragraph" && !text) continue;
-        block = { ...raw, text };
-      }
+        if (nested) slot++;
+        return { ...raw, text };
+      };
+      const block = adapt(raw, false);
+      if (!block) continue;
       blocks.push(block);
       starts.push(sourceOffset + offsets[container.token.map?.[0] ?? 0]);
       truncated.push(document.truncated);
+      if (componentLimitExceeded) break containers;
     }
   }
   // Keep parser overflow out of per-block prefix snapshots: a later streaming

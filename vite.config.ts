@@ -71,7 +71,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
   },
   {
     name: "diff-rendering",

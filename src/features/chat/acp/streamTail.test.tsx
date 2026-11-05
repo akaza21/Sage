@@ -88,6 +88,21 @@ it.each(["**bold** tail more", "[file](src/main.ts) tail more"])(
 );
 
 describe("nextStreamRuns target", () => {
+  it.each(["- Before\n  - Child\n\n  Tail", "> Before\n>\n> Tail"])(
+    "trails a growing paragraph in its original container: %j",
+    (source) => {
+      const { container, rerender } = render(
+        <ChatMarkdown text={source} streaming />,
+      );
+      rerender(<ChatMarkdown text={source + " more"} streaming />);
+      expect(tails(container)).toEqual([" more"]);
+      expect(
+        container
+          .querySelector(".acp-stream-new")
+          ?.closest(source.startsWith(">") ? "blockquote" : "li"),
+      ).toBeTruthy();
+    },
+  );
   it("resets empty, shortened, retyped and structurally new targets", () => {
     expect(newestRuns(doc(""), doc(""))).toBeNull();
     expect(newestRuns(doc("long text"), doc("long"))).toBeNull();
@@ -369,8 +384,8 @@ it.each(["-", "+", "*", "1.", "2)"])(
   (marker) => {
     const source = `Intro\n${marker}\titem`;
     const list = /^\d/u.test(marker)
-      ? `<ol start="${marker[0]}"><li>item</li></ol>`
-      : "<ul><li>item</li></ul>";
+      ? `<ol start="${marker[0]}"><li><span data-markdown-inline="">item</span></li></ol>`
+      : '<ul><li><span data-markdown-inline="">item</span></li></ul>';
     const { container, rerender } = render(
       <ChatMarkdown text="Intro" streaming />,
     );

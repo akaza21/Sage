@@ -47,7 +47,7 @@ describe("MarkdownBlocks lists", () => {
         ),
       );
       expect(container.querySelector("ul")!.outerHTML).toBe(
-        "<ul><li>parent</li><li>sibling<ol><li>child</li></ol></li></ul>",
+        '<ul><li><span data-markdown-inline="">parent</span></li><li><span data-markdown-inline="">sibling</span><ol start="1"><li><span data-markdown-inline="">child</span></li></ol></li></ul>',
       );
       expect(container.querySelector("pre")).toHaveTextContent("const x = 1;");
       expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
@@ -62,7 +62,7 @@ describe("MarkdownBlocks lists", () => {
       "- parent\n  - dash\n  + plus\n  3. three\n  4. four\n  5) five";
     const { container } = render(<FileMarkdownPreview source={source} />);
     expect(container.querySelector("article > ul")!.outerHTML).toBe(
-      '<ul><li>parent<ul><li>dash</li></ul><ul><li>plus</li></ul><ol start="3"><li>three</li><li>four</li></ol><ol start="5"><li>five</li></ol></li></ul>',
+      '<ul><li><span data-markdown-inline="">parent</span><ul><li><span data-markdown-inline="">dash</span></li></ul><ul><li><span data-markdown-inline="">plus</span></li></ul><ol start="3"><li><span data-markdown-inline="">three</span></li><li><span data-markdown-inline="">four</span></li></ol><ol start="5"><li><span data-markdown-inline="">five</span></li></ol></li></ul>',
     );
   });
   it.each(["preview", "chat"])(
@@ -77,7 +77,7 @@ describe("MarkdownBlocks lists", () => {
         ),
       );
       expect(container.querySelector("ul")!.outerHTML).toBe(
-        "<ul><li>parent</li><li>sibling</li></ul>",
+        '<ul><li><span data-markdown-inline="">parent</span></li><li><span data-markdown-inline="">sibling</span></li></ul>',
       );
     },
   );
@@ -108,7 +108,7 @@ describe("MarkdownBlocks lists", () => {
       [...container.querySelectorAll("li")].map(
         (item) => item.firstChild?.textContent,
       ),
-    ).toEqual(["child", "sibling"]);
+    ).toEqual(["child", "child", "sibling"]);
   });
 
   it("renders task items as read-only checkboxes", () => {
@@ -151,7 +151,7 @@ it("renders the parsed rule, headings, literal code and quote as DOM blocks", ()
   );
   const { container } = render(<MarkdownBlocks document={document} />);
   expect(container.innerHTML).toBe(
-    "<h1>Title</h1><hr><h2>Subtitle</h2><div><pre>*a*</pre></div><blockquote>one two</blockquote>",
+    "<h1>Title</h1><hr><h2>Subtitle</h2><div><pre>*a*</pre></div><blockquote><p>one</p><p>two</p></blockquote>",
   );
 });
 
@@ -212,8 +212,8 @@ it.each(["-", "+", "*", "1.", "2)"])(
   (marker) => {
     const source = `Intro\n${marker}\titem\n---`;
     const list = /^\d/u.test(marker)
-      ? `<ol start="${marker[0]}"><li>item</li></ol>`
-      : "<ul><li>item</li></ul>";
+      ? `<ol start="${marker[0]}"><li><span data-markdown-inline="">item</span></li></ol>`
+      : '<ul><li><span data-markdown-inline="">item</span></li></ul>';
     const expected =
       marker === "2)" ? "<h2>Intro 2) item</h2>" : `<p>Intro</p>${list}<hr>`;
     const { container, rerender } = render(
