@@ -13,12 +13,9 @@ import {
 import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
+import { loadSettingsPasswordsPage } from "./settings/settingsPageLoaders";
 
-const SettingsPasswordsPage = lazy(() =>
-  import("./settings/SettingsPasswordsPage").then(
-    ({ SettingsPasswordsPage }) => ({ default: SettingsPasswordsPage }),
-  ),
-);
+const SettingsPasswordsPage = lazy(loadSettingsPasswordsPage);
 
 export function SettingsSurface() {
   const [query, setQuery] = useState("");

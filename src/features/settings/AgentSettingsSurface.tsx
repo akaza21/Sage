@@ -7,10 +7,13 @@ import {
   Command,
   Eye,
   Globe,
+  Lock,
   MessageSquare,
   Search,
   X,
 } from "../../ui/leanIcons";
+import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
+import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPageLoaders";
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
@@ -27,6 +30,8 @@ const loadBrowserSettings = () =>
   }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
+// The panel has no per-setting search, so the whole Passwords page shows.
+const passwordEntries = matchingSettingsEntryIds("", "passwords");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
@@ -37,7 +42,10 @@ const groups: readonly {
   pages: readonly AgentSettingsPage[];
 }[] = [
   { heading: null, pages: ["Appearance", "Keybindings"] },
-  { heading: "Agents", pages: ["Harnesses", "Chats", "Browser"] },
+  {
+    heading: "Agents",
+    pages: ["Harnesses", "Chats", "Browser", "Passwords"],
+  },
   { heading: null, pages: ["Archived chats"] },
 ];
 
@@ -47,6 +55,7 @@ const icons: Record<AgentSettingsPage, typeof Archive> = {
   Harnesses: Bot,
   Chats: MessageSquare,
   Browser: Globe,
+  Passwords: Lock,
   "Archived chats": Archive,
 };
 
@@ -167,6 +176,15 @@ export function AgentSettingsSurface({
                 label="Browser settings"
                 load={loadBrowserSettings}
                 render={(AgentBrowserSettings) => <AgentBrowserSettings />}
+              />
+            ) : null}
+            {page === "Passwords" ? (
+              <LazyModuleBoundary
+                label="Saved passwords"
+                load={loadSettingsPasswordsPage}
+                render={(SettingsPasswordsPage) => (
+                  <SettingsPasswordsPage visible={passwordEntries} />
+                )}
               />
             ) : null}
             {page === "Archived chats" ? <AgentArchivedSettings /> : null}

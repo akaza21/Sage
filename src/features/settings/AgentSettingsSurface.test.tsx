@@ -180,7 +180,7 @@ it("labels transient harness/model selection honestly and exposes only real acce
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("shows only the sections T3 Code's settings also have, in its order", () => {
+it("shows T3 Code's settings sections in its order, plus Sage's Passwords next to Browser", () => {
   render(<AgentSettingsSurface />);
   const nav = screen.getByRole("navigation", {
     name: "Agent settings sections",
@@ -193,9 +193,26 @@ it("shows only the sections T3 Code's settings also have, in its order", () => {
     "Harnesses",
     "Chats",
     "Browser",
+    "Passwords",
     "Archived chats",
   ]);
   expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
+});
+
+it("opens the saved passwords page that Editor Settings shows", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Passwords" }));
+  expect(useAgentSettingsState.getState().page).toBe("Passwords");
+  expect(
+    await screen.findByText(
+      "Saved passwords are available in the Sage desktop app.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "Passwords you've saved for websites. Each use requires your confirmation.",
+    ),
+  ).toBeVisible();
 });
 
 it("does not offer reserved shortcuts", async () => {

@@ -10,11 +10,8 @@ import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { BrowserSitePermissions } from "../browser/BrowserSitePermissions";
 import { useAgentSettingsState } from "./agentSettingsState";
 import { SettingsRow } from "./SettingsRow";
+import { loadSettingsBrowserPage } from "../../workbench/settings/settingsPageLoaders";
 
-const loadBrowserPreferences = () =>
-  import("../../workbench/settings/SettingsBrowserPage").then(
-    ({ SettingsBrowserPage }) => ({ default: SettingsBrowserPage }),
-  );
 const generalPreferences = new Set([
   "browser.showFullUrl",
   "browser.sitePermissions",
@@ -177,7 +174,7 @@ export function AgentBrowserSettings() {
     <>
       <LazyModuleBoundary
         label="Browser preferences"
-        load={loadBrowserPreferences}
+        load={loadSettingsBrowserPage}
         render={(SettingsBrowserPage) => (
           <SettingsBrowserPage visible={generalPreferences} />
         )}
