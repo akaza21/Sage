@@ -1,3 +1,4 @@
+import { hasWorkbenchNavigation } from "./navigationHistory";
 import { useEffect } from "react";
 
 import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
@@ -29,7 +30,18 @@ export function useEditorHistoryKeys(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.isComposing) return;
+      if (event.isComposing || event.defaultPrevented) return;
+      // The window owns Alt history outside editable surfaces, independent of
+      // listener mount order. Editor caret history remains inside the editor.
+      if (
+        hasWorkbenchNavigation() &&
+        event.altKey &&
+        !(
+          event.target instanceof Element &&
+          event.target.closest("input, textarea, select, [contenteditable]")
+        )
+      )
+        return;
       const apple = usesMetaModifier();
       const forward = matchesPlatformChord(
         keymapBinding("navigateForward"),

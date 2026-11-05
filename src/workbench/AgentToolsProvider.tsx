@@ -1,3 +1,4 @@
+import "./navigationPaneHistory";
 import {
   createContext,
   useCallback,

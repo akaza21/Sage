@@ -47,6 +47,21 @@ export interface KeymapChordEvent {
 export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   ...(
     [
+      ["workbenchBack", "Back", "arrowleft"],
+      ["workbenchForward", "Forward", "arrowright"],
+    ] as const
+  ).map(([id, label, key]) => ({
+    id,
+    label: `Workbench ${label.toLowerCase()}`,
+    key,
+    description: `Navigate ${label.toLowerCase()} through chats, panes and Settings.`,
+    scope: "Global" as const,
+    ctrlOrMeta: "forbidden" as const,
+    shift: "forbidden" as const,
+    alt: "required" as const,
+  })),
+  ...(
+    [
       ["agent.changes", "Changes", "g", "required", "forbidden"],
       ["agent.files", "Files", "p", "forbidden", "forbidden"],
       ["agent.sideChat", "Side chat", "s", "forbidden", "required"],

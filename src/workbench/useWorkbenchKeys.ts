@@ -3,6 +3,7 @@ import {
   useEffect,
   useEffectEvent,
   useState,
+  useRef,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -20,6 +21,12 @@ import {
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import type { WorkbenchWindowMode } from "./workbenchWindowMode";
 
+import {
+  connectNavigationHistory,
+  navigateWorkbenchBack,
+  navigateWorkbenchForward,
+} from "./navigationHistory";
+
 /** Window-level commands shared by Agent and Editor, guarded by resource modals. */
 export function useWorkbenchKeys({
   resourceModal,
@@ -32,6 +39,55 @@ export function useWorkbenchKeys({
   toggleAgentNavigation: () => void;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
+  const modeRef = useRef(windowMode);
+  const historyRef = useRef<ReturnType<typeof connectNavigationHistory> | null>(
+    null,
+  );
+  useEffect(() => {
+    modeRef.current = windowMode;
+    historyRef.current?.observe();
+  }, [windowMode]);
+  useEffect(() => {
+    const history = connectNavigationHistory(
+      () => modeRef.current,
+      (mode) => {
+        modeRef.current = mode;
+        setWindowMode(mode);
+      },
+    );
+    historyRef.current = history;
+    return () => {
+      historyRef.current = null;
+      history.dispose();
+    };
+  }, [setWindowMode]);
+  useEffect(() => {
+    const onHistoryKey = (event: KeyboardEvent) => {
+      if (resourceModal || event.defaultPrevented || event.isComposing) return;
+      const apple = usesMetaModifier();
+      const back = matchesPlatformChord(
+        keymapBinding("workbenchBack"),
+        event,
+        apple,
+      );
+      const forward = matchesPlatformChord(
+        keymapBinding("workbenchForward"),
+        event,
+        apple,
+      );
+      if (!back && !forward) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest("input, textarea, select, [contenteditable]")
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void (back ? navigateWorkbenchBack() : navigateWorkbenchForward());
+    };
+    window.addEventListener("keydown", onHistoryKey, true);
+    return () => window.removeEventListener("keydown", onHistoryKey, true);
+  }, [resourceModal]);
   // Own the Editor lifetime even while its deferred UI is still loading.
   useEffect(() => {
     if (windowMode === "editor") return closeQuickOpen;
