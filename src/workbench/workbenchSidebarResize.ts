@@ -25,7 +25,8 @@ export const AGENT_ICON_RAIL_WIDTH = 46;
 
 export const AGENT_CHAT_MIN_WIDTH = 360;
 
-const AGENT_SPLITTER_WIDTH = 8;
+export const WORKBENCH_SPLITTER_WIDTH = 8;
+const AGENT_ARTIFACT_VIEWPORT_SHARE = 0.42;
 const AGENT_ARTIFACT_FLOOR_WIDTH = 160;
 
 export const AGENT_ARTIFACT_WIDTH: WorkbenchSidebarWidth = {
@@ -48,7 +49,9 @@ function desktopSidebarBounds(viewportWidth: number): {
 } {
   const available = Math.max(
     0,
-    Math.round(viewportWidth) - AGENT_CHAT_MIN_WIDTH - AGENT_SPLITTER_WIDTH * 2,
+    Math.round(viewportWidth) -
+      AGENT_CHAT_MIN_WIDTH -
+      WORKBENCH_SPLITTER_WIDTH * 2,
   );
   const artifactMin = Math.min(
     AGENT_ARTIFACT_WIDTH.minWidth,
@@ -133,7 +136,7 @@ export function initialAgentLeftRailWidth(viewportWidth: number): number {
 export function initialAgentArtifactWidth(viewportWidth: number): number {
   return clampWorkbenchSidebarWidth(
     agentDesktopArtifactWidth(viewportWidth),
-    Math.round(viewportWidth * 0.45),
+    Math.round(viewportWidth * AGENT_ARTIFACT_VIEWPORT_SHARE),
   );
 }
 

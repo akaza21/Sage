@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
 import { useSubagentPaneStore } from "../../../app/subagentPaneStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "../../../app/agentArtifactFollowStore";
 import { CollaborationItem } from "./CollaborationItem";
 import { PrimaryActivities } from "./PrimaryActivities";
 import * as subagentActivity from "./subagentActivity";
@@ -350,15 +354,31 @@ describe("Subagent activity rows", () => {
     );
     expect(useSubagentPaneStore.getState()).toMatchObject({
       open: { itemId: "id-1", agentKey: "id-1" },
+    });
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        { projectId: "project", chatId: "chat", sessionId: "session" },
+      )?.selected,
+    ).toMatchObject({
+      kind: "subagents",
       list: false,
+      target: { itemId: "id-1", agentKey: "id-1" },
     });
     fireEvent.click(
       screen.getByRole("button", { name: "Show 298 more subagents" }),
     );
     expect(useSubagentPaneStore.getState()).toMatchObject({
       open: { agentKey: "id-0" },
-      selected: true,
-      list: true,
+    });
+    expect(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        { projectId: "project", chatId: "chat", sessionId: "session" },
+      ),
+    ).toMatchObject({
+      mode: "pinned",
+      selected: { kind: "subagents", list: true, target: { agentKey: "id-0" } },
     });
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(document.querySelectorAll(".acp-subagent-row__glyph")).toHaveLength(

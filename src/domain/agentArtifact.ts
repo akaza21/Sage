@@ -9,6 +9,19 @@ export type AgentArtifactOwner = {
   sessionId: SageAgentSessionId;
 };
 
+/** Pane selection also exists for historical Chats without a live Session. */
+export type AgentPaneOwner = {
+  projectId: string;
+  chatId: string;
+  sessionId: string | null;
+};
+
+export type AgentSubagentTarget = {
+  owner: AgentArtifactOwner;
+  itemId: string;
+  agentKey: string;
+};
+
 export type AgentArtifactOpenIntent = {
   owner: AgentArtifactOwner;
   target: "file" | "diff" | "workingTreeDiff";
@@ -29,19 +42,25 @@ export type AgentArtifactAdmission = {
 };
 
 export function validAgentArtifactOwner(
-  owner: AgentArtifactOwner | null | undefined,
+  owner: AgentPaneOwner | null | undefined,
 ): owner is AgentArtifactOwner {
+  return validAgentPaneOwner(owner) && owner.sessionId !== null;
+}
+
+export function validAgentPaneOwner(
+  owner: AgentPaneOwner | null | undefined,
+): owner is AgentPaneOwner {
   return Boolean(
     owner &&
     isShortId(owner.projectId) &&
     isShortId(owner.chatId) &&
-    isShortId(owner.sessionId),
+    (owner.sessionId === null || isShortId(owner.sessionId)),
   );
 }
 
 export function sameAgentArtifactOwner(
-  left: AgentArtifactOwner | null | undefined,
-  right: AgentArtifactOwner | null | undefined,
+  left: AgentPaneOwner | null | undefined,
+  right: AgentPaneOwner | null | undefined,
 ): boolean {
   return Boolean(
     left &&

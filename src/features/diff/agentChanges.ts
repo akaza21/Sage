@@ -5,6 +5,7 @@ import type {
   ProjectRepositoryStatus,
   ResourceRef,
 } from "../../domain/workbench";
+import type { AgentEditSummaryProjection } from "../chat/acp/agentEditSummary";
 import { projectTurnEditSummary } from "../chat/acp/chatEditSummary";
 import type { TurnWorkspaceChange } from "../chat/acp/turnWorkspaceChanges";
 
@@ -18,6 +19,20 @@ export type ChangesEntry = {
   unavailable?: string;
 };
 
+export function lastChangesTurn(page: AcpChatPage | null) {
+  for (
+    let index = (page?.turns.length ?? 0) - 1;
+    index >= Math.max(0, (page?.turns.length ?? 0) - 128);
+    index -= 1
+  ) {
+    const candidate = page!.turns[index];
+    if (candidate.sessionId === page!.currentSessionId) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export function projectChanges(
   scope: ChangesScope,
   page: AcpChatPage | null,
@@ -27,18 +42,7 @@ export function projectChanges(
 ) {
   const entries: ChangesEntry[] = [];
   if (scope === "lastTurn") {
-    let turn;
-    for (
-      let index = (page?.turns.length ?? 0) - 1;
-      index >= Math.max(0, (page?.turns.length ?? 0) - 128);
-      index -= 1
-    ) {
-      const candidate = page!.turns[index];
-      if (candidate.sessionId === page!.currentSessionId) {
-        turn = candidate;
-        break;
-      }
-    }
+    const turn = lastChangesTurn(page);
     if (!page || !turn) return { entries, truncated: false };
     const summary = projectTurnEditSummary(
       page,
@@ -46,39 +50,7 @@ export function projectChanges(
       workspaceChanges,
       workspaceIncompleteTurns.has(turn.id),
     );
-    const byResource = new Map<string, ChangesEntry>();
-    for (const change of summary.changes) {
-      const resource =
-        change.resource.kind === "resource"
-          ? change.resource.resource
-          : change.resource.reason === "missing"
-            ? change.resource.displayResource
-            : null;
-      if (!resource) continue;
-      const key = resourceKey(resource);
-      byResource.delete(key);
-      byResource.set(key, {
-        resource,
-        additions: change.additions,
-        deletions: change.deletions,
-        diffRef: change.diffRef,
-        ...(!change.diffRef
-          ? {
-              unavailable:
-                change.operation === "deleted"
-                  ? "This file was deleted. The harness did not retain an openable before/after pair."
-                  : "The harness did not retain a before/after pair for this file.",
-            }
-          : {}),
-      });
-    }
-    return {
-      entries: [...byResource.values()],
-      truncated:
-        summary.sourceTruncated ||
-        summary.omittedCount > 0 ||
-        summary.rejectedUnsafeOrStale,
-    };
+    return projectSummaryChanges(summary);
   }
   if (!repositories) return { entries, truncated: false };
   let truncated = repositories.truncated || repositories.roots.length > 32;
@@ -105,4 +77,40 @@ export function projectChanges(
     }
   }
   return { entries, truncated };
+}
+
+export function projectSummaryChanges(summary: AgentEditSummaryProjection) {
+  const byResource = new Map<string, ChangesEntry>();
+  for (const change of summary.changes) {
+    const resource =
+      change.resource.kind === "resource"
+        ? change.resource.resource
+        : change.resource.reason === "missing"
+          ? change.resource.displayResource
+          : null;
+    if (!resource) continue;
+    const key = resourceKey(resource);
+    byResource.delete(key);
+    byResource.set(key, {
+      resource,
+      additions: change.additions,
+      deletions: change.deletions,
+      diffRef: change.diffRef,
+      ...(!change.diffRef
+        ? {
+            unavailable:
+              change.operation === "deleted"
+                ? "This file was deleted. The harness did not retain an openable before/after pair."
+                : "The harness did not retain a before/after pair for this file.",
+          }
+        : {}),
+    });
+  }
+  return {
+    entries: [...byResource.values()],
+    truncated:
+      summary.sourceTruncated ||
+      summary.omittedCount > 0 ||
+      summary.rejectedUnsafeOrStale,
+  };
 }

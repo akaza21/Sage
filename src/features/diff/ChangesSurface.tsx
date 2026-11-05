@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acpProjection";
@@ -7,20 +8,39 @@ import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { useTurnWorkspaceChanges } from "../chat/acp/turnWorkspaceBridge";
 import { ChangesFileDiff } from "./ChangesFileDiff";
 import { projectChanges, type ChangesScope } from "./agentChanges";
+import { changesSnapshot, snapshotChanges } from "./changesSnapshot";
 import "./changes.css";
+
+/** Refresh completed-turn snapshots without subscribing workbench chrome. */
+export function ChatChangesSurface({ chatId }: { chatId: string | null }) {
+  const turnRevision = useStore(acpProjectionStoreFor(chatId), (state) => {
+    const turn = state.page?.turns.at(-1);
+    return turn ? `${turn.id}:${turn.state}` : "";
+  });
+  return <ChangesSurface turnRevision={turnRevision} chatId={chatId} />;
+}
 
 export const ChangesSurface = memo(function ChangesSurface({
   page: suppliedPage = null,
   chatId = null,
+  turnRevision = "",
 }: {
   page?: AcpChatPage | null;
   chatId?: string | null;
+  turnRevision?: string;
 }) {
-  const [page, setPage] = useState(
-    () =>
+  const readSnapshot = () =>
+    changesSnapshot(
       suppliedPage ??
-      (chatId ? acpProjectionStoreFor(chatId).getState().page : null),
-  );
+        (chatId ? acpProjectionStoreFor(chatId).getState().page : null),
+    );
+  const [snapshot, setSnapshot] = useState(() => ({
+    turnRevision,
+    changes: readSnapshot(),
+  }));
+  if (snapshot.turnRevision !== turnRevision)
+    setSnapshot({ turnRevision, changes: readSnapshot() });
+  const page = snapshot.changes?.page ?? null;
   const repositories = useWorkbenchStore((state) => state.repositories);
   const refreshRepository = useWorkbenchStore(
     (state) => state.refreshRepository,
@@ -36,17 +56,15 @@ export const ChangesSurface = memo(function ChangesSurface({
     revision,
   );
   const scopedRepositories = scope === "lastTurn" ? null : repositories;
-  const result = useMemo(
-    () =>
-      projectChanges(
-        scope,
-        page,
-        scopedRepositories,
-        workspaceChanges.changes,
-        workspaceChanges.incompleteTurnIds,
-      ),
-    [scope, page, scopedRepositories, workspaceChanges],
+  const gitChanges = useMemo(
+    () => projectChanges(scope, null, scopedRepositories),
+    [scope, scopedRepositories],
   );
+  const lastTurnChanges = useMemo(
+    () => snapshotChanges(snapshot.changes, workspaceChanges),
+    [snapshot.changes, workspaceChanges],
+  );
+  const result = scope === "lastTurn" ? lastTurnChanges : gitChanges;
   const gitAvailable = repositories.roots.some(
     (root) => root.state === "repository",
   );
@@ -96,12 +114,7 @@ export const ChangesSurface = memo(function ChangesSurface({
             onClick={() => {
               if (scope === "lastTurn") {
                 setRevision((value) => value + 1);
-                setPage(
-                  suppliedPage ??
-                    (chatId
-                      ? acpProjectionStoreFor(chatId).getState().page
-                      : null),
-                );
+                setSnapshot({ turnRevision, changes: readSnapshot() });
                 setExpanded(null);
                 return;
               }

@@ -130,6 +130,7 @@
 @media (max-width: 760px) {
   .workbench--editor {
     --workbench-card-margin: var(--space-1);
+    --workbench-card-leading-inset: var(--space-1);
   }
 
   /* While the floating tool sidebar covers it, the center steps aside. */

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import {
+  agentArtifactFollowRecordFor,
   useAgentArtifactFollowStore,
   type AgentArtifactTarget,
 } from "../app/agentArtifactFollowStore";
 import {
   agentArtifactOwnerKey,
   type AgentArtifactOwner,
+  type AgentPaneOwner,
 } from "../domain/agentArtifact";
 import type { WorkbenchTab } from "../domain/workbench";
 import type { HarnessBrowseSession } from "../features/preview/harnessBrowse";
@@ -36,13 +38,17 @@ export function useAgentArtifactFollowLifecycle({
   availableTargets: AgentArtifactTarget[];
   browseSession: HarnessBrowseSession | null;
   browseOwnerChatId?: string | null;
-  focusedOwner: AgentArtifactOwner | null;
+  focusedOwner: AgentPaneOwner | null;
 }) {
   // While the harness Preview still belongs to the previously focused Chat
   // (the next Chat's projection is loading), it says nothing about this
   // Chat's Preview: observing or reconciling then would misfile a selection.
   const browseSettled =
     browseOwnerChatId === null || browseOwnerChatId === focusedOwner?.chatId;
+  const observed = agentArtifactFollowRecordFor(
+    useAgentArtifactFollowStore.getState().records,
+    focusedOwner,
+  );
   useEffect(() => {
     if (!focusedOwner || !browseSession || !browseSettled) return;
     useAgentArtifactFollowStore
@@ -54,8 +60,8 @@ export function useAgentArtifactFollowLifecycle({
     if (!focusedOwner || !browseSettled) return;
     useAgentArtifactFollowStore
       .getState()
-      .reconcile(focusedOwner, availableTargets);
-  }, [availableTargets, browseSettled, focusedOwner]);
+      .reconcile(focusedOwner, availableTargets, observed);
+  }, [availableTargets, browseSettled, focusedOwner, observed]);
 }
 
 /**
@@ -72,7 +78,7 @@ export function useSelectOpenedBrowserTab({
   artifacts: readonly WorkbenchTab[];
   activeTabId: string | null;
   userOpenedBrowserTabId: string | null;
-  focusedOwner: AgentArtifactOwner | null;
+  focusedOwner: AgentPaneOwner | null;
 }): void {
   const knownBrowserTabs = useRef<ReadonlySet<string> | null>(null);
   const browserTabs = useMemo(

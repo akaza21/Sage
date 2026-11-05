@@ -1,6 +1,7 @@
 @import "./agent-right-pane.css";
 
 .workbench--agent .project-sidebar {
+  container: agent-rail / inline-size;
   grid-template-columns: var(--agent-icon-rail-width) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--agent-shell-sidebar);

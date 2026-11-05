@@ -2,7 +2,6 @@ import { Maximize2, PanelRightClose, Plus } from "../ui/leanIcons";
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { isTauriRuntime } from "../ports/nativeInvoke";
-import { useAgentChangesState } from "./agentChangesState";
 import type { ComponentProps } from "react";
 import { create } from "zustand";
 
@@ -57,7 +56,6 @@ export function AgentBrowserPaneControls(
       disabled={disabled || !isTauriRuntime()}
       newTabReason={message ?? undefined}
       onNewTab={() => {
-        useAgentChangesState.getState().select(false);
         const projectId = useWorkbenchStore.getState().project?.id;
         useBrowserPaneError.setState({ error: null });
         void useWorkbenchStore

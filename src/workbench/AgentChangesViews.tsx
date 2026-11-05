@@ -1,21 +1,40 @@
-import { lazy, Suspense } from "react";
+import { useState } from "react";
+import type { AcpChatPage } from "../domain/acp";
+import { lazyParts } from "../features/chat/lazyParts";
 
-const ChangesSurface = lazy(() =>
-  import("../features/diff/ChangesSurface").then((module) => ({
-    default: module.ChangesSurface,
-  })),
+const ObserverPart = lazyParts(
+  () => import("../features/diff/AgentChangesObserver"),
 );
-const ChangesTab = lazy(() =>
-  import("../features/diff/ChangesTab").then((module) => ({
-    default: module.ChangesTab,
-  })),
-);
+
+export function AgentChangesObserver(props: {
+  page: AcpChatPage | null;
+  generation: number;
+}) {
+  const turn = props.page?.turns.at(-1);
+  const turnKey = `${turn?.id}:${turn?.state}`;
+  const [initialTurnKey] = useState(turnKey);
+  const [observing, setObserving] = useState(false);
+  if (!observing && turnKey !== initialTurnKey) setObserving(true);
+  return observing && props.page ? (
+    <ObserverPart
+      part="AgentChangesObserver"
+      {...props}
+      page={props.page}
+      initialTurnKey={initialTurnKey}
+    />
+  ) : null;
+}
+
+const SurfacePart = lazyParts(() => import("../features/diff/ChangesSurface"));
+const TabPart = lazyParts(() => import("../features/diff/ChangesTab"));
 
 export function AgentChangesView({ chatId }: { chatId: string | null }) {
   return (
-    <Suspense fallback={<p role="status">Loading changes…</p>}>
-      <ChangesSurface chatId={chatId} />
-    </Suspense>
+    <SurfacePart
+      part="ChatChangesSurface"
+      chatId={chatId}
+      fallback={<p role="status">Loading changes…</p>}
+    />
   );
 }
 
@@ -24,9 +43,5 @@ export function AgentChangesTab(props: {
   select: () => void;
   close: () => void;
 }) {
-  return (
-    <Suspense fallback={null}>
-      <ChangesTab {...props} />
-    </Suspense>
-  );
+  return <TabPart part="ChangesTab" {...props} />;
 }

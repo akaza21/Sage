@@ -211,11 +211,11 @@ test("Codex s4/f0244: the Subagents tab lists Active · 1 and Done · 1", async 
   await expect(done).toContainText("Count math");
   await expect(done).toContainText("just now");
   await expect(rightPane).not.toContainText("private-");
-  // s4/f0244: the right pane takes about 57% beside the sidebar, the tab
-  // label sits beside its icon, and list avatars are 20 px discs.
+  // The QA layout scales the resource pane with the viewport and preserves
+  // the Chat reading column; the tab and list retain their reference styling.
   const chat = await page.locator(".agent-chat-panes").boundingBox();
   const pane = await rightPane.boundingBox();
-  expect(pane!.width / (pane!.width + chat!.width)).toBeCloseTo(0.57, 1);
+  expect(pane!.width / (pane!.width + chat!.width)).toBeCloseTo(0.51, 2);
   // The label's text, not its stretched box, starts just after the person
   // icon (f0244), which is drawn in CSS rather than shipped as an SVG.
   const gap = await rightPane

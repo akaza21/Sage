@@ -1,6 +1,15 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
+import {
+  acpProjectionStoreFor,
+  clearAcpProjectionRegistry,
+} from "../../app/acpProjectionRegistry";
 import {
   seedSnapshotOwner,
   snapshotRef,
@@ -11,6 +20,7 @@ import type { FileDiff } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { ChangesFileDiff } from "./ChangesFileDiff";
+import { ChatChangesSurface } from "./ChangesSurface";
 
 const initial = useWorkbenchStore.getState();
 beforeEach(() => {
@@ -21,6 +31,79 @@ afterEach(() => {
   vi.restoreAllMocks();
   clearAcpProjectionRegistry();
   useWorkbenchStore.setState(initial, true);
+});
+
+it("keeps the loaded staged diff and its scroll through approval and completion", async () => {
+  const projection = acpProjectionStoreFor(snapshotRef.chatId);
+  const page = projection.getState().page!;
+  projection.setState({
+    page: { ...page, turns: [{ ...page.turns[0], state: "running" }] },
+  });
+  useWorkbenchStore.setState({
+    repositories: {
+      roots: [
+        {
+          rootId: "root-a",
+          state: "repository",
+          branch: "main",
+          elapsedMs: 0,
+          truncated: false,
+          message: null,
+          changes: ["src/a.ts", "src/b.ts"].map((relativePath) => ({
+            resource: { rootId: "root-a", relativePath },
+            indexStatus: "modified",
+            worktreeStatus: "unchanged",
+            additions: 1,
+            deletions: 0,
+          })),
+        },
+      ],
+      elapsedMs: 0,
+      truncated: false,
+    },
+  });
+  vi.spyOn(getWorkbenchPorts().repository, "getFileDiff").mockImplementation(
+    async (resource) => ({
+      resource,
+      hunks: [
+        {
+          header: "@@ -0,0 +1 @@",
+          lines: [
+            { kind: "added", oldLine: null, newLine: 1, text: "staged edit" },
+          ],
+        },
+      ],
+      binary: false,
+      truncated: false,
+    }),
+  );
+  render(<ChatChangesSurface chatId={page.chatId} />);
+  fireEvent.change(screen.getByRole("combobox"), {
+    target: { value: "staged" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /src\/b.ts/ }));
+  const table = await screen.findByRole("table", { name: "Unified file diff" });
+  table.scrollTop = 75;
+  const surface = screen.getByRole("region", { name: "Chat changes" });
+  surface.scrollTop = 120;
+  for (const state of ["waitingApproval", "completed"] as const) {
+    await act(async () =>
+      projection.setState({
+        page: { ...page, turns: [{ ...page.turns[0], state }] },
+      }),
+    );
+    expect(screen.getByRole("combobox")).toHaveValue("staged");
+    expect(screen.getByRole("button", { name: /src\/b.ts/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.getByRole("table", { name: "Unified file diff" }).scrollTop,
+    ).toBe(75);
+    expect(screen.getByRole("region", { name: "Chat changes" }).scrollTop).toBe(
+      120,
+    );
+  }
 });
 
 it("loads a saved edit without requiring a pre-existing per-file workbench tab", async () => {

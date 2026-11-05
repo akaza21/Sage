@@ -45,11 +45,11 @@ describe("Agent navigation allocation", () => {
   it.each([
     [480, true, 60, 420],
     [623, true, 203, 420],
-    [624, false, 304, 320],
-    [720, false, 326, 394],
-    [761, false, 341, 420],
+    [624, true, 204, 420],
+    [720, true, 300, 420],
+    [761, true, 341, 420],
   ])(
-    "bounds overlays without overlapping interactive navigation at %i",
+    "bounds modal overlays with background navigation inert at %i",
     (viewportWidth, modal, left, width) => {
       const layout = agentWorkbenchLayout({
         viewportWidth,
@@ -110,8 +110,8 @@ describe("Agent navigation allocation", () => {
     [982, 326, 280, 360],
     [1040, 326, 338, 360],
     [1041, 326, 339, 360],
-    [1280, 326, 576, 362],
-    [1888, 326, 850, 696],
+    [1280, 326, 538, 400],
+    [1888, 326, 793, 753],
   ])(
     "admits inline resources with a usable chat at %i",
     (viewportWidth, navigation, resource, chat) => {
@@ -160,17 +160,17 @@ describe("Agent navigation allocation", () => {
   });
 
   it.each([
-    [836, 280, 360],
-    [1000, 300, 504],
+    [836, 280, 648, true],
+    [1000, 300, 504, false],
   ])(
-    "admits inline resources at %i when resized navigation leaves room",
-    (viewportWidth, artifactWidth, chatWidth) => {
+    "keeps resources modal below the inline threshold at %i even with resized navigation",
+    (viewportWidth, artifactWidth, chatWidth, overlay) => {
       const layout = agentWorkbenchLayout({
         viewportWidth,
         artifactExpanded: true,
         requestedWidths: { leftRailWidth: 180, artifactWidth },
       });
-      expect(layout.artifactOverlay).toBe(false);
+      expect(layout.artifactOverlay).toBe(overlay);
       expect(layout.leftRailWidth).toBe(180);
       expect(layout.artifactWidth).toBe(artifactWidth);
       expect(layout.chatWidth).toBe(chatWidth);

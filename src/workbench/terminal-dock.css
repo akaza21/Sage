@@ -13,26 +13,24 @@
 }
 
 .terminal-dock {
+  --radius-terminal-dock: var(--workbench-card-radius);
   display: grid;
   min-width: 0;
   min-height: 0;
-  margin-left: var(--project-sidebar-width);
+  margin: var(--workbench-card-margin);
+  margin-inline-start: calc(
+    var(--workbench-content-start) + var(--workbench-card-leading-inset)
+  );
   /* Named areas keep the viewport in the 1fr row when no message shows. */
   grid-template:
     "header" 34px
     "message" auto
     "viewport" minmax(0, 1fr)
     / minmax(0, 1fr);
-  border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-canvas);
-}
-
-.workbench--editor .terminal-dock {
-  margin-left: calc(var(--sidebar-width) + var(--editor-activity-width));
-}
-
-.workbench--compact .terminal-dock {
-  margin-left: 44px;
+  border: var(--border-width) solid var(--workbench-card-border);
+  border-radius: var(--radius-terminal-dock);
+  overflow: clip;
+  background: var(--workbench-card-fill);
 }
 
 .terminal-dock__header {
@@ -64,9 +62,15 @@
 
 .terminal-dock__actions button,
 .terminal-dock__tab button {
-  min-width: 28px;
+  min-width: var(--control-height-compact);
   height: 100%;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
   color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
 }
 
 .terminal-dock__actions button:hover,
@@ -101,7 +105,8 @@
 
 .terminal-dock__tab [aria-selected="true"] {
   color: var(--color-text-primary);
-  border-bottom: 2px solid var(--color-accent);
+  background: var(--color-surface-active);
+  box-shadow: inset 0 calc(-1 * var(--border-width)) 0 var(--color-accent);
 }
 
 .terminal-dock__close {

@@ -1,3 +1,4 @@
+import { sameAgentArtifactTarget } from "../app/agentArtifactFollowStore";
 import {
   act,
   cleanup,
@@ -260,7 +261,7 @@ beforeEach(() => {
   previewBridge.subscribe.mockResolvedValue(vi.fn());
   previewBridge.available.mockReturnValue(true);
   useAgentArtifactFollowStore.getState().clear();
-  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
+  useSubagentPaneStore.setState({ open: null });
   seedFocusedPage();
   pinAgentChatOwner(focusedOwner.chatId);
   setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]);
@@ -309,12 +310,139 @@ afterEach(() => {
   clearAgentChatOwner();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
-  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
+  useSubagentPaneStore.setState({ open: null });
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialState, true);
 });
 
 describe("Agent artifact file chips", () => {
+  it("restores each Chat's explicitly chosen child after selecting a child in another Chat", async () => {
+    const secondOwner = {
+      ...focusedOwner,
+      chatId: "chat-second",
+      sessionId: "session-second",
+    } as AgentArtifactOwner;
+    pinAcpProjectionIds([focusedOwner.chatId, secondOwner.chatId]);
+    const targets = [focusedOwner, secondOwner].map((owner, index) => {
+      const base = pageWithEdit();
+      const child = {
+        ...base.turns[0].items[0],
+        ...owner,
+        id: `child-${index}`,
+        kind: "collaboration",
+        payload: {
+          activityId: null,
+          label: "spawnAgent",
+          summary: "",
+          receiverLabels: [`Reviewer ${index}`],
+          operation: "spawnAgent",
+          agentKeys: [`agent-${index}`],
+          agentStates: [[`agent-${index}`, "running"]],
+        },
+      } as unknown as AcpItem;
+      const projection = acpProjectionStoreFor(owner.chatId);
+      projection.getState().activateScope({
+        projectId: owner.projectId,
+        chatId: owner.chatId,
+        projectGeneration: "0" as ProjectGeneration,
+      });
+      projection.setState({
+        page: {
+          ...base,
+          ...owner,
+          currentSessionId: owner.sessionId,
+          sessions: [{ ...base.sessions[0], id: owner.sessionId }],
+          turns: [
+            { ...base.turns[0], sessionId: owner.sessionId, items: [child] },
+          ],
+        },
+      });
+      return { owner, itemId: child.id, agentKey: `agent-${index}` };
+    });
+    useSubagentPaneStore.getState().show(targets[0]);
+    render(<AgentArtifactPane expanded />);
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer 0" }),
+    ).toBeVisible();
+    act(() => {
+      pinAgentChatOwner(secondOwner.chatId);
+      useSubagentPaneStore.getState().show(targets[1]);
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer 1" }),
+    ).toBeVisible();
+    act(() => pinAgentChatOwner(focusedOwner.chatId));
+    expect(
+      await screen.findByRole("heading", { name: "Reviewer 0" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Reviewer 1" })).toBeNull();
+    act(() => useAgentChangesState.getState().show(focusedOwner, 0));
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    act(() => {
+      pinAgentChatOwner(secondOwner.chatId);
+      useAgentChangesState.getState().show(secondOwner, 0);
+    });
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    act(() => pinAgentChatOwner(focusedOwner.chatId));
+    expect(await screen.findByRole("tab", { name: "Changes" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "Chat changes" })).toBeVisible();
+  });
+
+  it("keeps Subagents selected when the running editing turn completes", async () => {
+    const base = pageWithEdit();
+    const child = {
+      ...base.turns[0].items[0],
+      id: "mid-turn-child",
+      kind: "collaboration",
+      payload: {
+        activityId: null,
+        label: "spawnAgent",
+        summary: "",
+        receiverLabels: ["Reviewer"],
+        operation: "spawnAgent",
+        agentKeys: ["child-a"],
+        agentStates: [["child-a", "running"]],
+      },
+    } as unknown as AcpItem;
+    const projection = acpProjectionStoreFor("chat-focused");
+    const turn = { ...base.turns[0], items: [...base.turns[0].items, child] };
+    projection.setState({
+      page: { ...base, turns: [{ ...turn, state: "running" }] },
+    });
+    render(<AgentArtifactPane expanded />);
+    await settleLazyModules();
+    fireEvent.click(await screen.findByRole("tab", { name: "Subagents" }));
+    expect(
+      await screen.findByRole("region", { name: "Subagents" }),
+    ).toBeVisible();
+
+    act(() => projection.setState({ page: { ...base, turns: [turn] } }));
+    expect(await screen.findByRole("tab", { name: "Changes" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+
+    expect(screen.getByRole("tab", { name: "Subagents" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "Subagents" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pinned resource" }));
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Subagents" })).toBeNull();
+  });
+
   it("unmounts Changes when selecting a normal file tab", async () => {
     admit("file:app");
     render(<AgentArtifactPane expanded onExpandedChange={vi.fn()} />);
@@ -327,7 +455,15 @@ describe("Agent artifact file chips", () => {
       await screen.findByRole("region", { name: "Chat changes" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: /app.ts/ }));
-    expect(useAgentChangesState.getState().selected).toBe(false);
+    expect(
+      sameAgentArtifactTarget(
+        agentArtifactFollowRecordFor(
+          useAgentArtifactFollowStore.getState().records,
+          useAgentChangesState.getState().owner,
+        )?.selected,
+        { kind: "changes" },
+      ),
+    ).toBe(false);
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
   });
   it.each([
@@ -666,6 +802,9 @@ describe("Agent artifact file chips", () => {
     fireEvent.click(screen.getByRole("tab", { name: /File src\/app.ts/ }));
     expect(tab).toHaveAttribute("aria-selected", "false");
     expect(tab).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Next artifact" }),
+    ).toBeDisabled();
   });
   it("navigates from Changes to a child selected by its transcript name", async () => {
     const base = pageWithEdit();
@@ -766,13 +905,34 @@ describe("Agent artifact file chips", () => {
       agentKey: "hidden-child",
     });
     render(<AgentArtifactPane />);
-    expect(screen.getByRole("tab", { name: "Subagents" })).toHaveAttribute(
+    expect(
+      await screen.findByRole("tab", { name: "Subagents" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      await screen.findByRole("heading", { name: "Historian" }),
+    ).toBeVisible();
+    act(() =>
+      useAgentChangesState
+        .getState()
+        .show({ ...focusedOwner, sessionId: null }, 0),
+    );
+    expect(await screen.findByRole("tab", { name: "Changes" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Historian" })).toBeNull();
+    act(() =>
+      useSubagentPaneStore
+        .getState()
+        .show(useSubagentPaneStore.getState().open!),
+    );
+    expect(
       await screen.findByRole("heading", { name: "Historian" }),
     ).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     act(() => useWorkbenchStore.setState({ projectTransitioning: true }));
     expect(screen.queryByRole("tab", { name: "Subagents" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Historian" })).toBeNull();

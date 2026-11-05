@@ -1,6 +1,9 @@
 import { acpProjectionStoreFor } from "./acpProjectionRegistry";
 import { useAgentArtifactAdmissionStore } from "./agentArtifactAdmissionStore";
-import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
+import {
+  agentArtifactFollowRecordFor,
+  useAgentArtifactFollowStore,
+} from "./agentArtifactFollowStore";
 import { useWorkbenchStore } from "./store";
 import type {
   AgentArtifactOpenIntent,
@@ -11,8 +14,6 @@ import { sameRepository } from "../domain/diffIdentity";
 import { sameResource } from "../domain/resourceIdentity";
 import { sameAgentArtifactOwner } from "../domain/agentArtifact";
 import { agentDiffKey } from "../domain/agentDiffIdentity";
-import { useAgentChangesState } from "../workbench/agentChangesState";
-import { useSubagentPaneStore } from "./subagentPaneStore";
 import type { RepositoryRef } from "../domain/workbench";
 
 export function agentArtifactOwnerIsCurrent(
@@ -118,27 +119,18 @@ export async function openAgentArtifact(
     owner: intent.owner,
     tabId: tab.id,
   });
-  useAgentArtifactFollowStore.getState().observe(intent.owner, {
+  const follow = useAgentArtifactFollowStore.getState();
+  const selected = agentArtifactFollowRecordFor(
+    follow.records,
+    intent.owner,
+  )?.selected;
+  const select =
+    selected?.kind === "changes" || selected?.kind === "subagents"
+      ? follow.pin
+      : follow.observe;
+  select(intent.owner, {
     kind: "tab",
     tabId: tab.id,
   });
-  const changes = useAgentChangesState.getState();
-  const subagent = useSubagentPaneStore.getState();
-  const changesSelected =
-    changes.selected &&
-    changes.owner?.projectId === intent.owner.projectId &&
-    changes.owner.chatId === intent.owner.chatId &&
-    changes.owner.sessionId === intent.owner.sessionId;
-  if (
-    changesSelected ||
-    (subagent.selected &&
-      sameAgentArtifactOwner(subagent.open?.owner, intent.owner))
-  ) {
-    changes.select(false);
-    subagent.select(false);
-    useAgentArtifactFollowStore
-      .getState()
-      .pin(intent.owner, { kind: "tab", tabId: tab.id });
-  }
   return true;
 }

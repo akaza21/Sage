@@ -1,17 +1,28 @@
 import { create } from "zustand";
+import { useAgentArtifactFollowStore } from "./agentArtifactFollowStore";
+import { acpProjectionStoreFor } from "./acpProjectionRegistry";
 
-import type { AgentArtifactOwner } from "../domain/agentArtifact";
+import type {
+  AgentArtifactOwner,
+  AgentPaneOwner,
+  AgentSubagentTarget,
+} from "../domain/agentArtifact";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import {
   sameAgentArtifactOwner,
   validAgentArtifactOwner,
 } from "../domain/agentArtifact";
 
-export type SubagentPaneTarget = {
-  owner: AgentArtifactOwner;
-  itemId: string;
-  agentKey: string;
-};
+export type SubagentPaneTarget = AgentSubagentTarget;
+
+// A historical child belongs to its original Session, but selecting it pins
+// the pane of the Chat's current Session, just like opening an older Diff.
+function selectionOwner(target: SubagentPaneTarget): AgentPaneOwner {
+  const page = acpProjectionStoreFor(target.owner.chatId).getState().page;
+  return page?.projectId === target.owner.projectId
+    ? { ...target.owner, sessionId: page.currentSessionId }
+    : target.owner;
+}
 
 export function attributedSubagentKey(
   item: Extract<AcpItem, { kind: "collaboration" }>,
@@ -72,11 +83,7 @@ export function ownerFromFocusedPage(
 
 interface SubagentPaneStore {
   open: SubagentPaneTarget | null;
-  selected: boolean;
-  /** The plural tab shows its Active / Done list rather than one child. */
-  list?: boolean;
   show: (target: SubagentPaneTarget, list?: boolean) => void;
-  select: (selected: boolean) => void;
   clear: () => void;
 }
 
@@ -140,7 +147,6 @@ export function latestSubagentForPage(
 
 export const useSubagentPaneStore = create<SubagentPaneStore>((set) => ({
   open: null,
-  selected: false,
   show: (target, list = false) => {
     if (
       !validAgentArtifactOwner(target.owner) ||
@@ -148,8 +154,18 @@ export const useSubagentPaneStore = create<SubagentPaneStore>((set) => ({
       !target.agentKey
     )
       return;
-    set({ open: { ...target }, selected: true, list });
+    const next = { ...target };
+    set({ open: next });
+    useAgentArtifactFollowStore.getState().pin(selectionOwner(target), {
+      kind: "subagents",
+      target: next,
+      list,
+    });
   },
-  select: (selected) => set({ selected }),
-  clear: () => set({ open: null, selected: false }),
+  clear: () => {
+    const follow = useAgentArtifactFollowStore.getState();
+    for (const { owner } of follow.records)
+      follow.dismiss(owner, { kind: "subagents" });
+    set({ open: null });
+  },
 }));

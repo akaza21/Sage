@@ -1,4 +1,15 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  sameAgentArtifactTarget,
+  agentArtifactFollowRecordFor,
+} from "../app/agentArtifactFollowStore";
+import { useAgentArtifactFollowStore } from "../app/agentArtifactFollowStore";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { seedSnapshotOwner, snapshotRef } from "../app/agentDiff.fixture";
 import { useWorkbenchStore } from "../app/store";
@@ -6,11 +17,8 @@ import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { useAgentChangesState } from "./agentChangesState";
-import { openAgentArtifact } from "../app/openAgentArtifact";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
-
-vi.mock("../app/openAgentArtifact", () => ({ openAgentArtifact: vi.fn() }));
 
 const initial = useWorkbenchStore.getState();
 
@@ -205,7 +213,26 @@ it("selects an output instead of leaving Changes in front", async () => {
   useSubagentPaneStore
     .getState()
     .show({ owner: snapshotRef, itemId: "child", agentKey: "child" }, true);
-  vi.mocked(openAgentArtifact).mockResolvedValue(true);
+  useWorkbenchStore.setState({
+    openDiff: async (resource, repository, diffRef) => {
+      useWorkbenchStore.setState({
+        tabs: [
+          {
+            id: "output-diff",
+            kind: "diff",
+            title: resource.relativePath,
+            resource,
+            repository,
+            diffRef,
+            position: 0,
+            pinned: false,
+            dirty: false,
+          },
+        ],
+        activeTabId: "output-diff",
+      });
+    },
+  });
   render(
     <AgentTaskHeader
       tab={{
@@ -224,12 +251,37 @@ it("selects an output instead of leaving Changes in front", async () => {
   fireEvent.click(
     await screen.findByRole("button", { name: "Open output src/a.ts" }),
   );
-  await screen.findByRole("button", { name: "Show chat resources" });
-  expect(openAgentArtifact).toHaveBeenCalledWith(
-    expect.objectContaining({ target: "diff" }),
-  );
-  expect(useAgentChangesState.getState().selected).toBe(false);
-  expect(useSubagentPaneStore.getState().selected).toBe(false);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(useWorkbenchStore.getState().activeTabId).toBe("output-diff");
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        snapshotRef,
+      )?.selected,
+      { kind: "tab", tabId: "output-diff" },
+    ),
+  ).toBe(true);
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useAgentChangesState.getState().owner,
+      )?.selected,
+      { kind: "changes" },
+    ),
+  ).toBe(false);
+  expect(
+    sameAgentArtifactTarget(
+      agentArtifactFollowRecordFor(
+        useAgentArtifactFollowStore.getState().records,
+        useSubagentPaneStore.getState().open?.owner,
+      )?.selected,
+      {
+        kind: "subagents",
+      },
+    ),
+  ).toBe(false);
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 

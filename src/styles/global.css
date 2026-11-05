@@ -92,8 +92,8 @@
   --approval-primary-text: #181818;
   --approval-split-fill: #d5d5d5;
   --approval-menu-hover: #3e3e3e;
-  --rail-approval-text: #40c977;
-  --rail-approval-fill: #314c3c;
+  --rail-approval-text: var(--color-warning);
+  --rail-approval-fill: var(--color-warning-muted);
   --color-overlay: rgb(0 0 0 / 0.52);
   --color-diff-add: var(--color-success);
   --color-diff-add-muted: color-mix(
@@ -320,6 +320,7 @@
   --scrollbar-thumb: #3a3a3a;
   --scrollbar-thumb-hover: #4a4a4a;
   --reading-measure: 72ch;
+  --reading-measure-agent: 88ch;
   --chat-column-inset-block-end: var(--space-2);
   --composer-input-min-block-size: calc(
     2 * var(--font-size-md) * var(--line-height-normal) + var(--space-3) +
@@ -334,6 +335,7 @@
   --workbench-card-border: var(--color-border-subtle);
   --workbench-card-fill: var(--color-panel);
   --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
+  --workbench-card-leading-inset: 0px;
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 

@@ -13,7 +13,7 @@ import {
 } from "./workbenchSidebarResize";
 
 const NAVIGATION_RESIZE_MIN = 761;
-const INLINE_RESOURCE_MIN =
+export const AGENT_INLINE_RESOURCE_MIN_WIDTH =
   AGENT_LEFT_RAIL_WIDTH.defaultWidth +
   AGENT_CHAT_MIN_WIDTH +
   16 +
@@ -32,7 +32,7 @@ export function agentWorkbenchLayout({
   requestedWidths?: AgentDesktopSidebarWidths;
   prioritize?: AgentDesktopSidebarPriority;
 }) {
-  const desktopWidth = Math.max(INLINE_RESOURCE_MIN, viewportWidth);
+  const desktopWidth = Math.max(AGENT_INLINE_RESOURCE_MIN_WIDTH, viewportWidth);
   const navigationCap = Math.min(
     AGENT_LEFT_RAIL_WIDTH.defaultWidth,
     Math.round(262 + ((Math.max(480, viewportWidth) - 480) * 70) / 240),
@@ -61,6 +61,7 @@ export function agentWorkbenchLayout({
     ? AGENT_ICON_RAIL_WIDTH
     : clampWorkbenchSidebarWidth(navigationBounds, requested.leftRailWidth);
   const artifactInlineAvailable =
+    viewportWidth >= AGENT_INLINE_RESOURCE_MIN_WIDTH &&
     desktop &&
     viewportWidth - navigationWidth >=
       AGENT_CHAT_MIN_WIDTH + 16 + AGENT_ARTIFACT_WIDTH.minWidth;
@@ -111,11 +112,7 @@ export function agentWorkbenchLayout({
     leadingSplitter -
     (artifactInline ? widths.artifactWidth + 8 : 0);
   const artifactOverlay = artifactExpanded && !artifactInline;
-  const artifactModal = artifactOverlay && chatWidth < 320;
-  const artifactOverlayWidth = Math.min(
-    420,
-    artifactModal ? viewportWidth - 16 : chatWidth,
-  );
+  const artifactOverlayWidth = Math.min(420, viewportWidth - 16);
   return {
     ...widths,
     navigationCollapsed,
@@ -131,10 +128,11 @@ export function agentWorkbenchLayout({
     compact: !desktop,
     artifactOverlay,
     artifactOverlayOnExpand: !artifactInlineAvailable,
-    artifactModal,
+    artifactModal: artifactOverlay,
     artifactOverlayWidth,
     artifactOverlayLeft: viewportWidth - artifactOverlayWidth,
     chatWidth,
+    contentStart: widths.leftRailWidth + leadingSplitter,
     gridTemplateColumns: artifactInline
       ? `${widths.leftRailWidth}px ${navigationResizable ? "8px " : ""}minmax(0, 1fr) 8px ${widths.artifactWidth}px`
       : `${widths.leftRailWidth}px ${navigationResizable ? "8px " : ""}minmax(0, 1fr)`,

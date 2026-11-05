@@ -11,10 +11,7 @@ import {
 import { FileText, Globe2, GitCompareArrows } from "../ui/leanIcons";
 import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
-import {
-  validFocusedSubagentPage,
-  useSubagentPaneStore,
-} from "../app/subagentPaneStore";
+import { validFocusedSubagentPage } from "../app/subagentPaneStore";
 import { useWorkbenchStore } from "../app/store";
 import { openAgentArtifact } from "../app/openAgentArtifact";
 import { MenuPopover } from "../ui/MenuPopover";
@@ -24,7 +21,6 @@ import {
 } from "./agentArtifactTabPresentation";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { AgentToolsContext } from "./AgentToolsProvider";
-import { useAgentChangesState } from "./agentChangesState";
 import "./agent-resources.css";
 
 const AgentTaskSubagentSummary = lazy(() =>
@@ -179,8 +175,6 @@ export function AgentResourcesPopover({
                 ...(output.diffRef ? { diffRef: output.diffRef } : {}),
               }).then((opened) => {
                 if (opened) {
-                  useAgentChangesState.getState().select(false);
-                  useSubagentPaneStore.getState().select(false);
                   onDismiss();
                 }
               });
@@ -198,7 +192,6 @@ export function AgentResourcesPopover({
             working={workingAgents}
             counts={agentCounts}
             onSelect={() => {
-              useAgentChangesState.getState().select(false);
               resourcesTriggerRef.current?.focus();
               onDismiss();
             }}

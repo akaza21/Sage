@@ -113,6 +113,60 @@ test.beforeEach(async ({ page }) => {
   await attachNativeTerminal(page);
 });
 
+for (const mode of ["Agent", "Editor"] as const) {
+  test(`terminal chrome follows the card grid and toggles from input in ${mode}`, async ({
+    page,
+  }) => {
+    await page
+      .getByRole("radiogroup", { name: "Window mode" })
+      .locator("label")
+      .filter({ hasText: mode })
+      .click();
+    const toggle = page.getByRole("button", {
+      name: "Toggle terminal",
+      exact: true,
+    });
+    const dock = page.getByRole("region", { name: "Terminal", exact: true });
+    await toggle.click();
+    await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+    for (const width of [1872, 1280, 800]) {
+      await page.setViewportSize({ width, height: 800 });
+      const card = page.locator(
+        mode === "Agent"
+          ? ".agent-chat-center"
+          : ".workbench--editor > .workbench__body > .center-region.surface--card:visible",
+      );
+      const terminal = await dock.elementHandle();
+      // Resize can collapse the rail; sample both edges in the same frame.
+      await expect
+        .poll(() =>
+          card.evaluate(
+            (card, terminal) =>
+              terminal!.getBoundingClientRect().x -
+              card.getBoundingClientRect().x,
+            terminal,
+          ),
+        )
+        .toBeCloseTo(0, 0);
+      const selected = dock.getByRole("tab", { selected: true });
+      await expect(selected).toHaveCSS("border-top-width", "0px");
+      await expect(
+        dock.getByRole("button", { name: "New terminal", exact: true }),
+      ).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await page.screenshot({
+        path: `local-evidence/qa-after-terminal-${mode}-${width}.png`,
+      });
+    }
+    await dock.locator(".xterm-helper-textarea:visible").focus();
+    await page.keyboard.press("Control+Backquote");
+    await expect(dock).toBeHidden();
+    await page.keyboard.press("Control+Backquote");
+    await expect(dock.locator(".xterm-helper-textarea:visible")).toBeFocused();
+    await page.keyboard.press("Control+Backquote");
+    await expect(dock).toBeHidden();
+  });
+}
+
 test("defaults closed; the labelled toggle persists open and closed across reload", async ({
   page,
 }) => {

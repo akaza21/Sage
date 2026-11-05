@@ -2,13 +2,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { expect, it } from "vitest";
+import { createElement } from "react";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it } from "vitest";
+import { registerWorkbenchSurfaces } from "./registeredSurfaces";
+import { getRegisteredCanvasSurface } from "./surfaceRegistry";
+import { settleLazyModules } from "../test/settleLazyModules";
+
+afterEach(cleanup);
 
 const workbench = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const source = (file: string) =>
   readFileSync(path.join(workbench, file), "utf8");
 
-it("keeps all Q04 named surfaces behind dynamic imports", () => {
+it("keeps all Q04 named surfaces behind dynamic imports and preserves read-only Diff attribution", async () => {
   const workbenchSource = source("Workbench.tsx");
   const registrySource = source("registeredSurfaces.tsx");
   const activeEditorCanvasSource = source("ActiveEditorCanvas.tsx");
@@ -46,10 +53,26 @@ it("keeps all Q04 named surfaces behind dynamic imports", () => {
     'import("../features/preview/PreviewSurface")',
   );
   expect(registrySource).toContain('import("../features/diff/DiffSurface")');
-  expect(registrySource).toContain(
-    'registerCanvasSurface("diff", ({ tab, readOnly }) =>',
+  registerWorkbenchSurfaces();
+  render(
+    createElement(getRegisteredCanvasSurface("diff")!, {
+      tab: {
+        id: "working-diff",
+        kind: "diff",
+        title: "src/example.ts",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      },
+      readOnly: true,
+    }),
   );
-  expect(registrySource).toContain("readOnly={readOnly}");
+  await settleLazyModules();
+  expect(
+    screen.getByText(
+      "Current working-tree changes against Git; may include edits from other turns.",
+    ),
+  ).toBeVisible();
   expect(registrySource).toContain('import("../features/files/FileSurface")');
   expect(registrySource).toContain(
     'import("../features/browser/BrowserSurface")',

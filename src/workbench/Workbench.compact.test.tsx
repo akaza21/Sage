@@ -89,14 +89,21 @@ beforeEach(() => {
     "matchMedia",
     vi.fn().mockImplementation((query: string) => ({
       get matches() {
-        return compactViewport && query === "(max-width: 760px)";
+        return query === "(max-width: 760px)"
+          ? compactViewport
+          : window.innerWidth <=
+              Number(/max-width: (\d+)px/.exec(query)?.[1] ?? 0);
       },
       media: query,
       onchange: null,
-      addEventListener: (_type: string, listener: () => void) =>
-        listeners.add(listener),
-      removeEventListener: (_type: string, listener: () => void) =>
-        listeners.delete(listener),
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.add(listener);
+        window.addEventListener("resize", listener);
+      },
+      removeEventListener: (_type: string, listener: () => void) => {
+        listeners.delete(listener);
+        window.removeEventListener("resize", listener);
+      },
       addListener: vi.fn(),
       removeListener: vi.fn(),
       dispatchEvent: vi.fn(),
@@ -223,7 +230,7 @@ describe("compact Workbench project tools", () => {
     expect(trigger.closest(".agent-chat-center__header")).not.toBeNull();
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
     const body = container.querySelector(".workbench__body") as HTMLElement;
-    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",
@@ -231,11 +238,11 @@ describe("compact Workbench project tools", () => {
     );
 
     const resources = screen.getByRole("dialog", { name: "Agent artifacts" });
-    expect(resources).not.toHaveAttribute("aria-modal");
-    expect(container.querySelector(".project-sidebar")).not.toHaveAttribute(
+    expect(resources).toHaveAttribute("aria-modal", "true");
+    expect(container.querySelector(".project-sidebar")).toHaveAttribute(
       "inert",
     );
-    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
     fireEvent.keyDown(resources, { key: "Escape" });
@@ -311,25 +318,24 @@ describe("compact Workbench project tools", () => {
     expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
-  it("keeps navigation focused when resizing capped resources into full modality", async () => {
+  it("keeps the navigation toggle focused when resizing inline resources into modality", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 1280);
     const { container } = render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
       screen.getByRole("button", { name: /Show files and preview/ }),
     );
-    const navigation = screen.getByRole("complementary", {
-      name: "Projects and chats",
+    const toggle = screen.getByRole("button", {
+      name: "Hide projects and chats",
     });
-    const newChat = within(navigation).getByRole("button", {
-      name: "New chat",
-    });
-    newChat.focus();
+    toggle.focus();
     vi.stubGlobal("innerWidth", 480);
     fireEvent(window, new Event("resize"));
-    expect(newChat).toHaveFocus();
-    expect(navigation).not.toHaveAttribute("inert");
+    expect(toggle).toHaveFocus();
+    expect(container.querySelector(".project-sidebar")).not.toHaveAttribute(
+      "inert",
+    );
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
@@ -338,7 +344,7 @@ describe("compact Workbench project tools", () => {
 
   it("does not leave a focusless modal open when navigation narrows", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 1280);
     render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
@@ -441,7 +447,7 @@ describe("compact Workbench project tools", () => {
     ).not.toBeVisible();
   });
 
-  it("keeps narrow Agent navigation visible and Chat interactive", async () => {
+  it("keeps the narrow icon rail visible and expands Chat navigation on request", async () => {
     vi.stubGlobal("innerWidth", 720);
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
@@ -465,6 +471,12 @@ describe("compact Workbench project tools", () => {
     expect(
       screen.getByRole("complementary", { name: "Projects and chats" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Open chat A, pinned" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show projects and chats" }),
+    );
     expect(
       screen.getByRole("button", { name: "Open chat A, pinned" }),
     ).toBeVisible();
@@ -1109,7 +1121,7 @@ describe("compact Workbench project tools", () => {
     );
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
-    ).toHaveAttribute("aria-valuenow", "576");
+    ).toHaveAttribute("aria-valuenow", "538");
   });
 
   it("resizes untouched Agent proportions while retaining a manually sized rail", async () => {
@@ -1135,7 +1147,7 @@ describe("compact Workbench project tools", () => {
       name: "Resize files and preview",
     });
     expect(rail).toHaveAttribute("aria-valuenow", "326");
-    expect(artifact).toHaveAttribute("aria-valuenow", "576");
+    expect(artifact).toHaveAttribute("aria-valuenow", "538");
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -1143,7 +1155,7 @@ describe("compact Workbench project tools", () => {
     });
     fireEvent(window, new Event("resize"));
     expect(rail).toHaveAttribute("aria-valuenow", "326");
-    expect(artifact).toHaveAttribute("aria-valuenow", "621");
+    expect(artifact).toHaveAttribute("aria-valuenow", "580");
 
     fireEvent.keyDown(rail, { key: "ArrowRight" });
     Object.defineProperty(window, "innerWidth", {
@@ -1152,7 +1164,7 @@ describe("compact Workbench project tools", () => {
     });
     fireEvent(window, new Event("resize"));
     expect(rail).toHaveAttribute("aria-valuenow", "334");
-    expect(artifact).toHaveAttribute("aria-valuenow", "752");
+    expect(artifact).toHaveAttribute("aria-valuenow", "702");
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -1179,7 +1191,7 @@ describe("compact Workbench project tools", () => {
     const artifact = screen.getByRole("separator", {
       name: "Resize files and preview",
     });
-    expect(artifact).toHaveAttribute("aria-valuenow", "752");
+    expect(artifact).toHaveAttribute("aria-valuenow", "702");
     fireEvent.keyDown(artifact, { key: "End" });
     expect(artifact).toHaveAttribute("aria-valuenow", "1116");
     screen
@@ -1263,6 +1275,9 @@ describe("compact Workbench project tools", () => {
       screen.getByRole("separator", { name: "Resize Editor tool rail" }),
     ).toHaveAttribute("aria-valuenow", "320");
     await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show projects and chats" }),
+    );
     expect(
       screen.getByRole("separator", { name: "Resize project and chat rail" }),
     ).toHaveAttribute("aria-valuenow", "326");

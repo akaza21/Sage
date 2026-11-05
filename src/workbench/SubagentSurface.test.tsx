@@ -1,3 +1,4 @@
+import { useAgentArtifactFollowStore } from "../app/agentArtifactFollowStore";
 import {
   act,
   cleanup,
@@ -25,7 +26,7 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  useSubagentPaneStore.setState({ open: null, selected: false, list: false });
+  useSubagentPaneStore.getState().clear();
 });
 
 describe("Subagents list", () => {
@@ -126,7 +127,16 @@ describe("Subagents list", () => {
     fireEvent.click(row);
     expect(useSubagentPaneStore.getState()).toMatchObject({
       open: { itemId: "done-math", agentKey: "math" },
+    });
+    expect(
+      useAgentArtifactFollowStore
+        .getState()
+        .records.find((record) => record.owner.chatId === owner.chatId)
+        ?.selected,
+    ).toMatchObject({
+      kind: "subagents",
       list: false,
+      target: { itemId: "done-math", agentKey: "math" },
     });
   });
 

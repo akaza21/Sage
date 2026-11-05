@@ -22,6 +22,7 @@ import { StatusBar } from "./StatusBar";
 import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
+import { AGENT_INLINE_RESOURCE_MIN_WIDTH } from "./agentWorkbenchLayout";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
 import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
@@ -39,6 +40,7 @@ import {
 import {
   EDITOR_ACTIVITY_BAR_WIDTH,
   EDITOR_TOOL_RAIL_WIDTH,
+  WORKBENCH_SPLITTER_WIDTH,
 } from "./workbenchSidebarResize";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import {
@@ -91,7 +93,9 @@ export function Workbench() {
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const pendingClose = useWorkbenchStore((state) => state.pendingCloseTabId);
   const compact = useCompactWorkbenchLayout();
-  const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
+  const narrowAgent = useCompactWorkbenchLayout(
+    `(max-width: ${AGENT_INLINE_RESOURCE_MIN_WIDTH - 1}px)`,
+  );
   const [initialLayout] = useState(readWorkbenchLayout);
   const [windowMode, setWindowMode] = useState<WorkbenchWindowMode>(
     initialLayout.windowMode ?? DEFAULT_WORKBENCH_WINDOW_MODE,
@@ -211,15 +215,24 @@ export function Workbench() {
     ],
   );
   const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  const editorRailWidth = editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH;
+  const editorContentStart = compact
+    ? EDITOR_ACTIVITY_BAR_WIDTH
+    : editorRailWidth + WORKBENCH_SPLITTER_WIDTH;
   const bodyStyle = compact
     ? undefined
     : {
-        gridTemplateColumns: `${editorToolRailWidth + EDITOR_ACTIVITY_BAR_WIDTH}px 8px minmax(0, 1fr)`,
+        gridTemplateColumns: `${editorRailWidth}px ${WORKBENCH_SPLITTER_WIDTH}px minmax(0, 1fr)`,
       };
   return (
     <main
       className={`workbench workbench--${windowMode}${compact ? " workbench--compact" : ""}${agentLayout.navigationCollapsed ? " workbench--navigation-collapsed" : ""}`}
-      style={workbenchGeometryStyle}
+      style={
+        {
+          ...workbenchGeometryStyle,
+          "--workbench-content-start": `${windowMode === "agent" ? agentLayout.contentStart : editorContentStart}px`,
+        } as CSSProperties
+      }
     >
       <TitleBar
         mode={windowMode}

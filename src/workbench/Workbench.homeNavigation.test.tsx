@@ -61,7 +61,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("restores Files with collapsed navigation when split space returns and lets navigation reclaim the space", async () => {
+it("restores Files when split space returns and keeps both cards when navigation fits", async () => {
   render(<Workbench />);
   await settleLazyModules();
   fireEvent.click(
@@ -83,7 +83,7 @@ it("restores Files with collapsed navigation when split space returns and lets n
   ).toBeNull();
   expect(composer).toHaveFocus();
   act(() => {
-    vi.stubGlobal("innerWidth", 800);
+    vi.stubGlobal("innerWidth", 1000);
     window.dispatchEvent(new Event("resize"));
   });
   await settleLazyModules();
@@ -98,8 +98,8 @@ it("restores Files with collapsed navigation when split space returns and lets n
     screen.getByRole("button", { name: "Hide projects and chats" }),
   ).toBeVisible();
   expect(
-    screen.queryByRole("complementary", { name: "Agent artifacts" }),
-  ).toBeNull();
+    screen.getByRole("complementary", { name: "Agent artifacts" }),
+  ).toBeVisible();
   expect(composer).toBeVisible();
 });
 
@@ -114,7 +114,8 @@ it("keeps the visible chat title through resource activation and actual Agent Se
   }));
   render(<Workbench />);
   await settleLazyModules();
-  const heading = document.querySelector(".title-bar__session")!;
+  const heading = document.querySelector(".agent-task-header__title")!;
+  expect(document.querySelector(".title-bar__session")).toBeNull();
   expect(heading).toHaveTextContent("Visible");
   act(() =>
     useWorkbenchStore.setState((state) => ({
@@ -136,18 +137,18 @@ it("keeps the visible chat title through resource activation and actual Agent Se
   expect(heading).toHaveTextContent("Visible");
   act(() => useAgentSettingsState.getState().open());
   await settleLazyModules();
-  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
+  expect(document.querySelector(".agent-task-header__title")).toHaveTextContent(
     "Visible",
   );
   act(() => useAgentSettingsState.getState().close());
   await settleLazyModules();
-  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
+  expect(document.querySelector(".agent-task-header__title")).toHaveTextContent(
     "Visible",
   );
 });
 
 it.each([false, true])(
-  "Home dismisses a nonmodal resource overlay before focusing Chat; collapsed=%s",
+  "a modal scrim protects Home until dismissed, then Home focuses Chat; collapsed=%s",
   async (collapsed) => {
     vi.stubGlobal("innerWidth", 700);
     const before = await ports.project.getBootstrapSnapshot();
@@ -166,10 +167,13 @@ it.each([false, true])(
       screen.getByRole("button", { name: /Show files and preview/ }),
     );
     const resources = screen.getByRole("dialog", { name: "Agent artifacts" });
-    expect(resources).not.toHaveAttribute("aria-modal");
+    expect(resources).toHaveAttribute("aria-modal", "true");
     expect(composer.closest(".center-region")).toHaveAttribute("inert");
-    const home = screen.getByRole("button", { name: "Home" });
-    expect(home.closest("aside")).not.toHaveAttribute("inert");
+    const home = screen.getByRole("button", { name: "Home", hidden: true });
+    expect(home.closest("aside")).toHaveAttribute("inert");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss files and preview" }),
+    );
     home.focus();
     fireEvent.click(home);
     await settleLazyModules();

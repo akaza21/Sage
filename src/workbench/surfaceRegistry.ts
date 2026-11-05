@@ -6,10 +6,12 @@ export type CanvasSurfaceKind = "browser" | "chat" | "diff" | "file";
 export type ToolSurfaceId =
   "explorer" | "search" | "sourceControl" | "preview" | "outline";
 
-type CanvasSurface = ComponentType<{
+export type CanvasSurfaceProps = {
   tab: WorkbenchTab;
   readOnly?: boolean;
-}>;
+  onOpenInEditor?: (tabId: string) => void;
+};
+type CanvasSurface = ComponentType<CanvasSurfaceProps>;
 type ToolSurface = ComponentType;
 
 const canvasSurfaces = new Map<CanvasSurfaceKind, CanvasSurface>();
@@ -59,7 +61,7 @@ export function renderRegisteredCanvas(
 
 export function renderFileOrDiffCanvas(
   tab: WorkbenchTab,
-  options: { readOnly?: boolean } = {},
+  options: Omit<CanvasSurfaceProps, "tab"> = {},
 ): ReactNode {
   if (tab.kind !== "file" && tab.kind !== "diff") {
     return null;

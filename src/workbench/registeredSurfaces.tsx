@@ -3,7 +3,11 @@ import { useState } from "react";
 import type { WorkbenchTab } from "../domain/workbench";
 import type * as ExplorerModule from "../features/files/ExplorerSurface";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
-import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
+import {
+  registerCanvasSurface,
+  registerToolSurface,
+  type CanvasSurfaceProps,
+} from "./surfaceRegistry";
 
 // Explorer starts loading with the workbench but stays out of its startup
 // bundle, which the Agent window shares. Once loaded it renders directly, so
@@ -64,23 +68,20 @@ function LazyToolSurface({
 }
 
 function LazyCanvasSurface({
-  tab,
-  readOnly,
   label,
   load,
-}: {
-  tab: WorkbenchTab;
-  readOnly?: boolean;
+  ...props
+}: CanvasSurfaceProps & {
   label: string;
   load: () => Promise<{
-    default: React.ComponentType<{ tab: WorkbenchTab; readOnly?: boolean }>;
+    default: React.ComponentType<CanvasSurfaceProps>;
   }>;
 }) {
   return (
     <LazyModuleBoundary
       label={label}
       load={load}
-      render={(Surface) => <Surface tab={tab} readOnly={readOnly} />}
+      render={(Surface) => <Surface {...props} />}
     />
   );
 }
@@ -111,21 +112,11 @@ let registered = false;
 export function registerWorkbenchSurfaces(): void {
   if (registered) return;
   registerCanvasSurface("chat", ChatCanvas);
-  registerCanvasSurface("diff", ({ tab, readOnly }) => (
-    <LazyCanvasSurface
-      tab={tab}
-      readOnly={readOnly}
-      label="Diff"
-      load={loadDiffSurface}
-    />
+  registerCanvasSurface("diff", (props) => (
+    <LazyCanvasSurface {...props} label="Diff" load={loadDiffSurface} />
   ));
-  registerCanvasSurface("file", ({ tab, readOnly }) => (
-    <LazyCanvasSurface
-      tab={tab}
-      readOnly={readOnly}
-      label="File"
-      load={loadFileSurface}
-    />
+  registerCanvasSurface("file", (props) => (
+    <LazyCanvasSurface {...props} label="File" load={loadFileSurface} />
   ));
   registerCanvasSurface("browser", ({ tab }) => (
     <LazyCanvasSurface tab={tab} label="Browser" load={loadBrowserSurface} />

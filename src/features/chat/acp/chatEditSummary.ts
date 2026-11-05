@@ -35,7 +35,7 @@ function workspaceChange(change: TurnWorkspaceChange): AgentEditSummaryChange {
   };
 }
 
-function mergeWorkspaceChanges(
+export function mergeWorkspaceChanges(
   summary: AgentEditSummaryProjection,
   turn: TurnProjection,
   workspaceChanges: readonly TurnWorkspaceChange[],

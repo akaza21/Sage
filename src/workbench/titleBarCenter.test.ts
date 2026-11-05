@@ -29,22 +29,26 @@ function show(titles: string[], activeTabId: string | null = "chat-0") {
   render(createElement(TitleBar, { mode: "agent", onModeChange: () => {} }));
 }
 describe("title bar center labels", () => {
-  it("keeps the visible Agent chat title while a resource or Settings is active", () => {
+  it("keeps window chrome clear while a Chat owns a resource or Settings", () => {
     pinAgentChatOwner("chat-1");
     show(["Chat A", "Chat B"], "browser-1");
-    expect(screen.getByRole("heading")).toHaveTextContent("Chat B");
+    expect(screen.queryByRole("heading")).toBeNull();
     useWorkbenchStore.setState({ activeTabId: "settings" });
     releaseAgentChatOwner();
-    expect(screen.getByRole("heading")).toHaveTextContent("Chat B");
+    expect(screen.queryByRole("heading")).toBeNull();
   });
   it.each([
     ["Chat: Onboarding", "Onboarding"],
     ["Review PR", "Review PR"],
     [`Chat: ${"n".repeat(50)}`, `${"n".repeat(47)}…`],
-  ])("shows a bounded session title: %s", (input, expected) => {
-    show([input]);
-    expect(screen.getByRole("heading")).toHaveTextContent(expected);
-  });
+  ])(
+    "does not duplicate a session title in window chrome: %s",
+    (input, expected) => {
+      show([input]);
+      expect(screen.queryByText(expected)).toBeNull();
+      expect(screen.queryByRole("heading")).toBeNull();
+    },
+  );
   it.each(["", "   ", "Chat: bad\ntitle"])(
     "rejects empty or control text: %s",
     (title) => {
@@ -52,12 +56,12 @@ describe("title bar center labels", () => {
       expect(screen.queryByRole("heading")).toBeNull();
     },
   );
-  it("uses the active chat or the first remaining chat", () => {
+  it("keeps the window title clear when the active Chat changes or closes", () => {
     show(["Chat A", "Chat B"], "chat-1");
-    expect(screen.getByRole("heading")).toHaveTextContent("Chat B");
+    expect(screen.queryByRole("heading")).toBeNull();
     cleanup();
     show(["Chat A", "Chat B"], "file:app");
-    expect(screen.getByRole("heading")).toHaveTextContent("Chat A");
+    expect(screen.queryByRole("heading")).toBeNull();
     cleanup();
     show([], "file:app");
     expect(screen.queryByRole("heading")).toBeNull();

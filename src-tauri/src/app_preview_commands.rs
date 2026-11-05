@@ -128,6 +128,9 @@ pub async fn stop_preview_target(
     .map_err(|_| PreviewError::internal("Preview stop worker did not converge."))?
 }
 
+#[cfg(test)]
+pub(crate) use self::app_preview::test_support::ServingPreview;
+
 pub(crate) fn stop_preview_children_before_epoch(new_epoch: u64) {
     lifecycle::stop_before_epoch(new_epoch);
 }

@@ -6,8 +6,14 @@ import {
 
 test.use({
   deviceScaleFactor: 1,
-  // Keep rounded-card edge coverage repeatable for exact DPR 1 captures.
-  launchOptions: { args: ["--disable-gpu"] },
+  // Use full CPU raster tiles and one raster worker for exact DPR 1 edges.
+  launchOptions: {
+    args: [
+      "--disable-gpu",
+      "--disable-partial-raster",
+      "--num-raster-threads=1",
+    ],
+  },
 });
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
 
