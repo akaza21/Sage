@@ -39,7 +39,11 @@ vi.mock("../../ports/nativePasswordsPort", () => ({
 
 import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { SettingsPasswordsPage } from "./SettingsPasswordsPage";
-import { REVEAL_MS, type PasswordImportReport } from "./savedPasswords";
+import {
+  REVEAL_MS,
+  SEARCH_DEBOUNCE_MS,
+  type PasswordImportReport,
+} from "./savedPasswords";
 
 const all = () => matchingSettingsEntryIds("", "passwords");
 const ADA = { id: "a1", origin: "https://example.com", username: "ada" };
@@ -335,6 +339,42 @@ it("shows an import that finished while Settings was suspended, with Import avai
   ).toBeVisible();
   expect(screen.queryByRole("button", { name: "Cancel import" })).toBeNull();
   expect(screen.getByRole("button", { name: "Import CSV…" })).toBeEnabled();
+});
+
+it("clears a new password typed into Edit while Settings is suspended", async () => {
+  native.overview.mockResolvedValue(ready());
+  const view = render(<Suspendable mode="visible" />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+  const form = screen.getByRole("form", { name: "Edit ada on example.com" });
+  fireEvent.change(within(form).getByLabelText("Username"), {
+    target: { value: "ada@example.com" },
+  });
+  const password = within(form).getByLabelText("New password");
+  fireEvent.change(password, { target: { value: "draft-secret" } });
+  await act(async () => view.rerender(<Suspendable mode="hidden" />));
+  // The hidden tree keeps its DOM, so the draft must be gone from it too.
+  expect(password).toHaveValue("");
+  await act(async () => view.rerender(<Suspendable mode="visible" />));
+  expect(within(form).getByLabelText("New password")).toHaveValue("");
+  expect(within(form).getByLabelText("Username")).toHaveValue(
+    "ada@example.com",
+  );
+});
+
+it("keeps a password revealed just after the page opens", async () => {
+  native.overview.mockResolvedValue(ready());
+  native.reveal.mockResolvedValueOnce("early-secret");
+  render(<SettingsPasswordsPage visible={all()} />);
+  const row = await screen.findByRole("group", { name: "ada on example.com" });
+  await act(async () => {
+    fireEvent.click(within(row).getByRole("button", { name: "Show" }));
+  });
+  await act(
+    () => new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS * 2)),
+  );
+  expect(screen.getByText("early-secret")).toBeVisible();
+  expect(native.overview).toHaveBeenCalledTimes(1);
 });
 
 it("edits a username", async () => {

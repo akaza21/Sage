@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { Activity, useState } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { useDocumentVisible } from "../../ui/useDocumentVisible";
 import {
   Archive,
   Bot,
@@ -64,6 +65,7 @@ export function AgentSettingsSurface({
 }: {
   chatRuntimeOwned?: boolean;
 }) {
+  const documentVisible = useDocumentVisible();
   const page = useAgentSettingsState((state) => state.page) ?? "Appearance";
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
@@ -160,35 +162,39 @@ export function AgentSettingsSurface({
               <X size={16} aria-hidden="true" />
             </button>
           </header>
-          <div className="agent-settings__page" key={page}>
-            {page === "Appearance" ? <AgentAppearanceSettings /> : null}
-            {page === "Keybindings" ? (
-              <LazyModuleBoundary
-                label="Keybindings"
-                load={loadKeyboardSettings}
-                render={(KeyboardSettings) => <KeyboardSettings />}
-              />
-            ) : null}
-            {page === "Harnesses" ? <AgentHarnessSettings /> : null}
-            {page === "Chats" ? <AgentChatSettings /> : null}
-            {page === "Browser" ? (
-              <LazyModuleBoundary
-                label="Browser settings"
-                load={loadBrowserSettings}
-                render={(AgentBrowserSettings) => <AgentBrowserSettings />}
-              />
-            ) : null}
-            {page === "Passwords" ? (
-              <LazyModuleBoundary
-                label="Saved passwords"
-                load={loadSettingsPasswordsPage}
-                render={(SettingsPasswordsPage) => (
-                  <SettingsPasswordsPage visible={passwordEntries} />
-                )}
-              />
-            ) : null}
-            {page === "Archived chats" ? <AgentArchivedSettings /> : null}
-          </div>
+          {/* Like the Editor workbench, pages sleep while the window is
+              minimized, so they clear what they hold on suspend. */}
+          <Activity mode={documentVisible ? "visible" : "hidden"}>
+            <div className="agent-settings__page" key={page}>
+              {page === "Appearance" ? <AgentAppearanceSettings /> : null}
+              {page === "Keybindings" ? (
+                <LazyModuleBoundary
+                  label="Keybindings"
+                  load={loadKeyboardSettings}
+                  render={(KeyboardSettings) => <KeyboardSettings />}
+                />
+              ) : null}
+              {page === "Harnesses" ? <AgentHarnessSettings /> : null}
+              {page === "Chats" ? <AgentChatSettings /> : null}
+              {page === "Browser" ? (
+                <LazyModuleBoundary
+                  label="Browser settings"
+                  load={loadBrowserSettings}
+                  render={(AgentBrowserSettings) => <AgentBrowserSettings />}
+                />
+              ) : null}
+              {page === "Passwords" ? (
+                <LazyModuleBoundary
+                  label="Saved passwords"
+                  load={loadSettingsPasswordsPage}
+                  render={(SettingsPasswordsPage) => (
+                    <SettingsPasswordsPage visible={passwordEntries} />
+                  )}
+                />
+              ) : null}
+              {page === "Archived chats" ? <AgentArchivedSettings /> : null}
+            </div>
+          </Activity>
         </div>
       </section>
     </div>

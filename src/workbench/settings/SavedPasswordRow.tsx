@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
+
+import { useClearOnSuspend } from "../../ui/useClearOnSuspend";
 
 import { siteLabel, type SavedPassword } from "./savedPasswords";
 
@@ -22,15 +24,23 @@ export function SavedPasswordRow({
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  // A new password typed into Edit is a secret too, so it is held here
+  // rather than in the input and goes whenever Settings is hidden.
+  const [newPassword, setNewPassword] = useState("");
+  useClearOnSuspend(useCallback(() => setNewPassword(""), []));
   const site = siteLabel(entry.origin);
   const account = entry.username || "No username";
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const password = String(form.get("password") ?? "");
-    if (await onSave(String(form.get("username") ?? ""), password || null))
-      setEditing(false);
+    if (await onSave(String(form.get("username") ?? ""), newPassword || null))
+      finishEditing();
+  }
+
+  function finishEditing() {
+    setNewPassword("");
+    setEditing(false);
   }
 
   if (editing) {
@@ -59,6 +69,8 @@ export function SavedPasswordRow({
               className="input"
               name="password"
               type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
               autoComplete="new-password"
               placeholder="Leave blank to keep the current password"
             />
@@ -67,7 +79,7 @@ export function SavedPasswordRow({
             <button
               className="button button--compact"
               type="button"
-              onClick={() => setEditing(false)}
+              onClick={finishEditing}
             >
               Cancel
             </button>

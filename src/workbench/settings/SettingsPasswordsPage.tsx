@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { useClearOnSuspend } from "../../ui/useClearOnSuspend";
 import {
   passwordsCancelImport,
   passwordsCopy,
@@ -103,22 +104,21 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   );
 
   useEffect(() => {
+    const next = search.trim();
+    if (next === query) return;
     const timer = window.setTimeout(
-      () => refreshVault(search.trim()),
+      () => refreshVault(next),
       SEARCH_DEBOUNCE_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [search, refreshVault]);
+  }, [search, query, refreshVault]);
 
-  // Settings can stay alive under React Activity, which keeps this page's
-  // state while it is hidden and runs effect cleanups on every hide as well
-  // as on close. So the cleanup, not a mounted flag, is where nothing secret
-  // or waiting on the user outlives the page being out of sight: revealed
-  // passwords and their timers go, a reveal still at the OS prompt is
-  // dropped, and a running import is cancelled. State that only reports
+  // Settings stays alive while hidden, so on every hide, as on close,
+  // revealed passwords and their timers go, a reveal still at the OS prompt
+  // is dropped, and a running import is cancelled. State that only reports
   // results, such as an import that finishes meanwhile, is kept for wake.
-  useEffect(
-    () => () => {
+  useClearOnSuspend(
+    useCallback(() => {
       const request = activeImport.current;
       if (request) {
         request.cancelRequested = true;
@@ -126,8 +126,7 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
       }
       vaultEpoch.current += 1;
       hideAll();
-    },
-    [hideAll],
+    }, [hideAll]),
   );
 
   async function run(action: () => Promise<void>): Promise<boolean> {
