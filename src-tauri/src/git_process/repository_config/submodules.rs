@@ -31,7 +31,8 @@ use crate::error::AppResult;
 use super::super::readers::RecordFilter;
 use super::{
     AdmittedRepository, Fingerprint, GIT_DIR_NAME, GitRootAuthority, MAX_CONFIG_LIST_BYTES,
-    POINTER_FILES, Refusal, StdoutCapture, policy::submodule_refusal_message, probe_git,
+    POINTER_FILES, Refusal, StdoutCapture, listed_config_refusal,
+    policy::submodule_refusal_message, probe_git,
 };
 
 /// Gitlinks checked across the whole tree of submodules.
@@ -232,7 +233,14 @@ impl Scan {
         if listing.stdout_truncated {
             return Ok(Some(uncheckable()));
         }
-        Ok(submodule_refusal_message(&listing.stdout).map(Refusal::Config))
+        listed_config_refusal(
+            root,
+            authority,
+            submodule,
+            &listing.stdout,
+            submodule_refusal_message,
+        )
+        .await
     }
 
     /// Records `path` and returns what it held.
@@ -260,8 +268,9 @@ fn gitlinks(listing: &[u8]) -> BTreeSet<&[u8]> {
         .collect()
 }
 
-/// Joins a `/`-separated index path below `base`, refusing any component Git
-/// itself would not admit, so the result stays inside the work tree.
+/// Joins a `/`-separated index path below `base`. Every component must name
+/// one entry the same way for Git and for the checks here, so the result
+/// stays inside the work tree; see [`ambiguous_component`].
 fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
     let text = std::str::from_utf8(path).ok()?;
     let mut joined = base
@@ -269,12 +278,7 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
         .filter(|component| !matches!(component, Component::CurDir))
         .collect::<PathBuf>();
     for part in text.split('/') {
-        let unusual = part.is_empty()
-            || part == "."
-            || part == ".."
-            || part.contains(['\\', ':'])
-            || part.eq_ignore_ascii_case(GIT_DIR_NAME);
-        if unusual {
+        if ambiguous_component(part) || part.eq_ignore_ascii_case(GIT_DIR_NAME) {
             return None;
         }
         joined.push(part);
@@ -285,49 +289,75 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
 /// The root-relative git dir a `gitdir:` file in the root-relative
 /// `work_tree` names, in the only shape Git writes for an absorbed
 /// submodule: `..` components that climb exactly to the root, then
-/// `.git/modules/<name>...` with no `.`, `..` or empty component. The climb
-/// passes only directories [`Scan::open`] has proved are real, so resolving
-/// it lexically matches the operating system; any other `..` is refused,
-/// since after a symlink it would resolve somewhere else entirely.
+/// `.git/modules/<name>...`. The climb passes only directories
+/// [`Scan::open`] has proved are real, so resolving it lexically matches the
+/// operating system; any other `..` is refused, since after a symlink it
+/// would resolve somewhere else entirely.
 ///
 /// The file is read as Git's `read_gitfile` reads it: one trailing `\n`, then
 /// one trailing `\r`, are dropped, the rest must start with `gitdir: `, and
-/// everything after that is the path byte for byte. A path Git and this check
-/// could read differently is refused rather than normalised: a non-UTF-8 or
-/// control character (NUL included), whitespace at either end of a
-/// component, a backslash where it is not a separator (Unix), and on Windows
-/// a component ending in `.`, which Win32 would strip.
+/// everything after that is the path byte for byte, split on `/` (and on
+/// Windows also `\`). Each named component must pass
+/// [`ambiguous_component`].
 fn gitfile_target(work_tree: &Path, bytes: &[u8]) -> Option<PathBuf> {
     let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
     let line = line.strip_suffix(b"\r").unwrap_or(line);
     let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
-    if Path::new(target).has_root() || target.contains(':') || target.chars().any(char::is_control)
-    {
+    if Path::new(target).has_root() {
         return None;
     }
     #[cfg(windows)]
     let parts = target.split(['/', '\\']).collect::<Vec<_>>();
     #[cfg(not(windows))]
     let parts = target.split('/').collect::<Vec<_>>();
-    let ambiguous = |part: &&str| {
-        let part = *part;
-        part.trim() != part
-            || (cfg!(not(windows)) && part.contains('\\'))
-            || (cfg!(windows) && part.ends_with('.') && !matches!(part, "." | ".."))
-    };
-    if parts.iter().any(ambiguous) {
-        return None;
-    }
     let climbs = parts.iter().take_while(|part| **part == "..").count();
     let rest = &parts[climbs..];
     let well_formed = climbs == work_tree.components().count()
         && rest.len() >= 3
         && rest[0] == GIT_DIR_NAME
         && rest[1] == "modules"
-        && !rest.iter().any(|part| matches!(*part, "" | "." | ".."));
+        && !rest.iter().any(|part| ambiguous_component(part));
     well_formed.then(|| rest.iter().collect())
 }
 
+/// True when Git and the filesystem calls here could resolve `part` to
+/// different entries, or when it is not one plain name at all. Fingerprints
+/// use verbatim (`\\?\`) paths on Windows, which skip every Win32
+/// normalisation, so each name Win32 would rewrite is refused instead:
+/// a trailing `.` or space, a reserved device name, an 8.3 short-name alias
+/// (`~` and a digit) and an alternate data stream (`:`). Everywhere, a
+/// backslash, edge whitespace, control characters (NUL included) and the
+/// code points HFS+ ignores are refused, and so are empty, `.` and `..`.
+fn ambiguous_component(part: &str) -> bool {
+    let ignorable = |c: char| matches!(c, '\u{200c}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{206a}'..='\u{206f}' | '\u{feff}');
+    let short_name = part
+        .as_bytes()
+        .windows(2)
+        .any(|pair| pair[0] == b'~' && pair[1].is_ascii_digit());
+    let win32_rewrites = part.ends_with('.') || short_name || reserved_device_name(part);
+    matches!(part, "" | "." | "..")
+        || part.trim() != part
+        || (cfg!(windows) && win32_rewrites)
+        || part
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '\\' | ':') || ignorable(c))
+}
+
+/// `CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9` (and their
+/// superscript-digit forms), `CONIN$` and `CONOUT$`, with or without an
+/// extension, in any case.
+fn reserved_device_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).to_ascii_uppercase();
+    match stem.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" => true,
+        _ => ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix).is_some_and(|digit| {
+                (digit.len() == 1 && digit.as_bytes()[0].is_ascii_digit())
+                    || matches!(digit, "\u{b9}" | "\u{b2}" | "\u{b3}")
+            })
+        }),
+    }
+}
 /// What an index file's metadata said when it was listed. Git replaces the
 /// index on every write, so its size, time and (on Unix) inode all move.
 #[derive(PartialEq, Eq)]
@@ -413,5 +443,48 @@ mod gitfile_tests {
     #[test]
     fn a_component_win32_would_strip_is_refused() {
         assert_eq!(target(b"gitdir: ../.git/modules/sub.\n"), None);
+    }
+
+    fn joined(path: &str) -> Option<PathBuf> {
+        join_relative(Path::new(""), path.as_bytes())
+    }
+
+    #[test]
+    fn gitlink_paths_that_could_name_another_entry_are_refused_everywhere() {
+        assert_eq!(joined("lib/sub"), Some(PathBuf::from("lib/sub")));
+        for path in [
+            "sub ",
+            " sub",
+            "lib/sub\t",
+            "a\\b",
+            "sub:stream",
+            "sub\0",
+            "s\u{200c}ub",
+            "lib/.GIT/x",
+            "lib//sub",
+            "lib/../sub",
+        ] {
+            assert_eq!(joined(path), None, "{path:?}");
+        }
+    }
+
+    #[test]
+    fn names_win32_would_rewrite_are_refused_only_on_windows() {
+        for path in [
+            "sub.",
+            "lib/aux",
+            "nul.txt",
+            "COM1",
+            "lpt\u{b9}",
+            "CONIN$",
+            "SUBMOD~1",
+        ] {
+            let refused = joined(path).is_none();
+            if cfg!(windows) {
+                assert!(refused, "{path:?}");
+            } else {
+                assert!(!refused, "{path:?}");
+            }
+        }
     }
 }

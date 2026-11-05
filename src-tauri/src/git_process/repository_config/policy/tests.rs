@@ -74,3 +74,17 @@ filter.lfs.clean\0filter.lfs.smudge\0merge.x\x1b[2J.driver\0"
     assert!(refusal_message(worst.as_bytes()).unwrap().len() <= MAX_PUBLIC_REPOSITORY_ERROR_BYTES);
     assert_eq!(refusal_message(b"core.bare\0user.name\0"), None);
 }
+
+#[test]
+fn path_protection_keys_are_found_in_any_case_and_only_as_whole_keys() {
+    let listing = b"core.bare\0core.protectNTFS\0core.protectntfsx\0user.core.protecthfs\0";
+    assert_eq!(path_protection_keys(listing), ["core.protectntfs"]);
+    assert_eq!(
+        path_protection_keys(b"CORE.PROTECTHFS\0core.protectntfs\0"),
+        ["core.protectntfs", "core.protecthfs"]
+    );
+    assert!(path_protection_keys(b"core.bare\0").is_empty());
+    let message = path_protection_refusal("core.protectntfs");
+    assert!(message.contains("core.protectNTFS"), "{message}");
+    assert!(message.len() <= MAX_PUBLIC_REPOSITORY_ERROR_BYTES);
+}

@@ -27,6 +27,35 @@ pub(super) fn submodule_refusal_message(listing: &[u8]) -> Option<String> {
     ))
 }
 
+/// Git's checks that keep index paths from naming an entry Windows (NTFS)
+/// or macOS (HFS+) would resolve to something else, by canonical key.
+const PATH_PROTECTIONS: [&str; 2] = ["core.protectntfs", "core.protecthfs"];
+
+/// The path-protection keys the listing sets, whatever their value; the
+/// caller reads each value and refuses anything but `true`.
+pub(super) fn path_protection_keys(listing: &[u8]) -> Vec<&'static str> {
+    PATH_PROTECTIONS
+        .into_iter()
+        .filter(|key| {
+            listing
+                .split(|byte| *byte == 0)
+                .any(|listed| listed.eq_ignore_ascii_case(key.as_bytes()))
+        })
+        .collect()
+}
+
+pub(super) fn path_protection_refusal(key: &str) -> String {
+    let name = match key {
+        "core.protecthfs" => "core.protectHFS",
+        _ => "core.protectNTFS",
+    };
+    format!(
+        "Sage did not run Git here because this repository or one of its submodules turns off \
+         Git's path protection ({name}). Remove that setting, or use the terminal for Git in \
+         this folder."
+    )
+}
+
 /// The bounded, redacted list of command-running keys, or `None`.
 fn named_keys(listing: &[u8]) -> Option<String> {
     let keys = listing

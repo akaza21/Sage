@@ -1048,3 +1048,76 @@ fn a_gitfile_backslash_is_not_a_separator_on_unix() {
         "gitdir: ../.git/modules/foo\\bar\n",
     );
 }
+
+#[test]
+fn a_switched_off_path_protection_is_refused_until_restored() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    for key in ["core.protectNTFS", "core.protectHFS"] {
+        git(&root, &["config", key, "false"]);
+        let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+        assert!(message.contains(key), "{message}");
+        git(&root, &["config", key, "true"]);
+        assert!(
+            sage_git(&root, &["status", "--porcelain"])
+                .unwrap()
+                .succeeded(),
+            "{key}=true is admitted"
+        );
+    }
+}
+
+/// With `core.protectNTFS` off, the index can name the gitlink `sub.`. A
+/// verbatim path finds nothing there, but Win32 strips the dot, so Git opens
+/// the populated `sub` and runs its filter.
+#[cfg(windows)]
+#[test]
+fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
+    let gitlink = Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["rev-parse", "HEAD:sub"])
+        .output()
+        .unwrap();
+    let cacheinfo = format!(
+        "160000,{},sub.",
+        String::from_utf8(gitlink.stdout).unwrap().trim()
+    );
+    git(
+        &root,
+        &[
+            "-c",
+            "core.protectNTFS=false",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &cacheinfo,
+        ],
+    );
+    git(&root, &["update-index", "--force-remove", "sub"]);
+    git(&root, &["config", "core.protectNTFS", "false"]);
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    git(
+        &root.join("sub"),
+        &["config", "filter.sentinel.clean", &filter],
+    );
+    touch_submodule_file(&root);
+
+    for args in [
+        &["status", "--porcelain"][..],
+        &["diff", "--no-ext-diff"][..],
+    ] {
+        refusal(sage_git(&root, args));
+    }
+    assert!(!sentinel.exists());
+
+    // Control: Git without the file-system cache, as Sage runs it, opens
+    // `sub` for the gitlink `sub.` and runs the filter.
+    git(
+        &root,
+        &["-c", "core.fscache=false", "status", "--porcelain"],
+    );
+    assert!(sentinel.exists(), "the renamed gitlink is not live");
+}

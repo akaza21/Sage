@@ -53,7 +53,7 @@ mod policy;
 mod submodules;
 
 use fingerprint::{Fingerprint, watch};
-use policy::refusal_message;
+use policy::{path_protection_keys, path_protection_refusal, refusal_message};
 use submodules::Scan;
 
 const GIT_DIR_NAME: &str = ".git";
@@ -355,7 +355,14 @@ impl Probe {
             if listing.stdout_truncated {
                 Some(Refusal::Config(TOO_LARGE.to_owned()))
             } else {
-                refusal_message(&listing.stdout).map(Refusal::Config)
+                listed_config_refusal(
+                    root,
+                    authority,
+                    &repository,
+                    &listing.stdout,
+                    refusal_message,
+                )
+                .await?
             }
         };
         Ok(Self {
@@ -402,6 +409,37 @@ const UNREADABLE: &str = "Sage did not run Git here because it could not read th
 
 const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git config is too \
      large or unusual to check. Use the terminal for Git in this folder.";
+
+/// The refusal a `--name-only` config listing earns: a command-running key,
+/// named by `message`, or a Git path protection switched off. Turning
+/// `core.protectNTFS` or `core.protectHFS` off lets the index hold names the
+/// filesystem resolves to another entry, so only an explicit `true` passes.
+async fn listed_config_refusal(
+    root: &Path,
+    authority: Option<&GitRootAuthority>,
+    repository: &AdmittedRepository,
+    listing: &[u8],
+    message: fn(&[u8]) -> Option<String>,
+) -> AppResult<Option<Refusal>> {
+    if let Some(message) = message(listing) {
+        return Ok(Some(Refusal::Config(message)));
+    }
+    for key in path_protection_keys(listing) {
+        let value = probe_git(
+            root,
+            authority,
+            Some(repository),
+            &["config", "--type=bool", "--get", key],
+            StdoutCapture::Bytes(64),
+        )
+        .await?;
+        if !value.status.success() || value.stdout_truncated || value.stdout.trim_ascii() != b"true"
+        {
+            return Ok(Some(Refusal::Config(path_protection_refusal(key))));
+        }
+    }
+    Ok(None)
+}
 
 async fn probe_git(
     root: &Path,
@@ -461,11 +499,15 @@ fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool 
 }
 
 /// The directory a `gitdir: <path>` file names, relative to the file.
+/// Read as Git's `read_gitfile` reads it (one trailing `\n`, then one `\r`,
+/// dropped; the exact `gitdir: ` prefix; the rest byte for byte). It only
+/// decides whether a verdict may be cached, and any doubt means it may not.
 fn gitfile_target(entry: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let target = text.strip_prefix("gitdir:")?.trim();
+    let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    let line = line.strip_suffix(b"\r").unwrap_or(line);
+    let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
     let parent = entry.parent()?;
-    (!target.is_empty()).then(|| parent.join(target))
+    (!target.is_empty() && !target.chars().any(char::is_control)).then(|| parent.join(target))
 }
 
 struct Location {
