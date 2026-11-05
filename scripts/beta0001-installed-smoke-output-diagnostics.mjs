@@ -1,4 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const phases = [
   "script-start",
@@ -27,7 +30,7 @@ function Write-AuthorityPhase([string]$phase) {
 Write-AuthorityPhase 'script-start'
 `;
 
-function sampleCpu(child, powerShell) {
+async function sampleCpu(child, powerShell) {
   if (process.platform !== "win32" || !powerShell || !child.pid) {
     return { status: "unavailable" };
   }
@@ -39,19 +42,18 @@ function sampleCpu(child, powerShell) {
     $p.Refresh()
     @{pid=$p.Id; userMs=[long]$p.UserProcessorTime.TotalMilliseconds;
       kernelMs=[long]$p.PrivilegedProcessorTime.TotalMilliseconds} | ConvertTo-Json -Compress`;
-  const result = spawnSync(
-    powerShell.path,
-    [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-EncodedCommand",
-      Buffer.from(source, "utf16le").toString("base64"),
-    ],
-    { windowsHide: true, timeout: 1500, maxBuffer: 1024, encoding: "utf8" },
-  );
-  if (result.error || result.status !== 0) return { status: "unavailable" };
   try {
+    const result = await execFileAsync(
+      powerShell.path,
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        Buffer.from(source, "utf16le").toString("base64"),
+      ],
+      { windowsHide: true, timeout: 1500, maxBuffer: 1024, encoding: "utf8" },
+    );
     const value = JSON.parse(result.stdout);
     if (
       value.pid === child.pid &&
@@ -71,7 +73,10 @@ function sampleCpu(child, powerShell) {
   return { status: "unavailable" };
 }
 
-export function observeGuardianStartup(child) {
+export function observeGuardianStartup(
+  child,
+  { sampleCpu: cpuSampler = sampleCpu } = {},
+) {
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
@@ -158,15 +163,25 @@ export function observeGuardianStartup(child) {
   }
   return {
     snapshot,
-    timeoutError(powerShell) {
+    timeoutError() {
       const diagnostic = snapshot();
-      diagnostic.child.cpu = sampleCpu(child, powerShell);
-      diagnostic.child.cpu.observedMs = elapsed();
+      diagnostic.child.cpu = { status: "unavailable" };
       const error = new Error(
         `installed-smoke-output-authority-timeout ${JSON.stringify(diagnostic)}`,
       );
       error.diagnostic = diagnostic;
       return error;
+    },
+    collectCpu(error, powerShell) {
+      // Start only after readiness has failed and teardown has begun.
+      // Sampling must never sit on the deadline or teardown path.
+      return Promise.resolve()
+        .then(() => cpuSampler(child, powerShell))
+        .catch(() => ({ status: "unavailable" }))
+        .then((cpu) => {
+          error.diagnostic.child.cpu = { ...cpu, observedMs: elapsed() };
+          error.message = `installed-smoke-output-authority-timeout ${JSON.stringify(error.diagnostic)}`;
+        });
     },
     dispose() {
       for (const remove of listeners) remove();

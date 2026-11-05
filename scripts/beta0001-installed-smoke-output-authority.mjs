@@ -209,9 +209,10 @@ export function waitForGuardianAuthority(
   guardian,
   outputDirectory,
   powerShell,
+  diagnostics = {},
 ) {
   const { child } = guardian;
-  const startup = observeGuardianStartup(child);
+  const startup = observeGuardianStartup(child, diagnostics);
   return new Promise((resolve, reject) => {
     let stdout = Buffer.alloc(0);
     let stderrBytes = 0;
@@ -220,12 +221,15 @@ export function waitForGuardianAuthority(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(error);
+      startup.dispose();
+      // Begin teardown in this turn, before any asynchronous diagnostic work.
+      failAfterTeardown(guardian, error, { release: false }).catch(reject);
     };
-    const timer = setTimeout(
-      () => fail(startup.timeoutError(powerShell)),
-      startupTimeoutMs,
-    );
+    const timer = setTimeout(() => {
+      const error = startup.timeoutError();
+      fail(error);
+      error.diagnosticReady = startup.collectCpu(error, powerShell);
+    }, startupTimeoutMs);
     child.stdout.on("data", (chunk) => {
       if (settled) return;
       stdout = Buffer.concat([stdout, chunk]);
@@ -263,9 +267,7 @@ export function waitForGuardianAuthority(
       if (!settled)
         fail(new Error(`installed-smoke-output-authority-exit-${code}`));
     });
-  })
-    .finally(() => startup.dispose())
-    .catch((error) => failAfterTeardown(guardian, error, { release: false }));
+  }).finally(() => startup.dispose());
 }
 
 export async function acquireInstalledSmokeOutputAuthority({
@@ -301,7 +303,14 @@ export async function acquireInstalledSmokeOutputAuthority({
     guardian,
     outputDirectory,
     powerShell,
-  );
+  ).catch(async (error) => {
+    // Teardown has already settled. Only reporting may wait for accounting;
+    // preserve the original startup error if teardown also failed.
+    const startupError =
+      error instanceof AggregateError ? error.errors[1] : error;
+    await startupError.diagnosticReady;
+    throw error;
+  });
   try {
     authority.identity = await ordinaryIdentity(
       authority.root,

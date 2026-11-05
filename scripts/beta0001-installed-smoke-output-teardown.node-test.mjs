@@ -168,7 +168,8 @@ test("startup timeout reports observed phases and live child state without discl
             ),
           }
         : undefined;
-    const error = startup.timeoutError(powerShell);
+    const error = startup.timeoutError();
+    await startup.collectCpu(error, powerShell);
     assert.match(error.message, /^installed-smoke-output-authority-timeout /u);
     assert.doesNotMatch(error.message, /private|process\.stderr|setInterval/u);
     const state = error.diagnostic;
@@ -275,5 +276,95 @@ test("startup diagnostics bound and reassemble phase lines and retain exit and E
     assert.ok(JSON.stringify(state).length < 2048);
   } finally {
     startup.dispose();
+  }
+});
+
+test("a stalled CPU sampler cannot delay authority rejection or killing the guardian", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const guardian = guardianFor(child);
+  let finishSampling;
+  const sampling = new Promise((resolve) => {
+    finishSampling = resolve;
+  });
+  const waiting = waitForGuardianAuthority(
+    guardian,
+    path.resolve("unused-output"),
+    undefined,
+    { sampleCpu: () => sampling },
+  );
+  waiting.catch(() => {});
+  try {
+    await once(child, "spawn");
+    mock.timers.tick(10_000);
+    assert.equal(
+      child.killed,
+      true,
+      "deadline must issue the kill synchronously",
+    );
+    let failure;
+    await assert.rejects(waiting, (error) => {
+      failure = error;
+      assert.match(
+        error.message,
+        /^installed-smoke-output-authority-timeout /u,
+      );
+      return true;
+    });
+    assert.ok(child.exitCode !== null || child.signalCode !== null);
+    assert.ok(await pending(failure.diagnosticReady));
+    finishSampling({ status: "sampled-by-pid", userMs: 17, kernelMs: 4 });
+    await failure.diagnosticReady;
+    assert.equal(failure.diagnostic.child.cpu.userMs, 17);
+    assert.equal(failure.diagnostic.child.cpu.kernelMs, 4);
+    assert.deepEqual(
+      JSON.parse(failure.message.slice(failure.message.indexOf(" ") + 1)),
+      failure.diagnostic,
+    );
+  } finally {
+    finishSampling({ status: "unavailable" });
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await guardian.closed;
+  }
+});
+
+test("sampling cannot postpone the teardown deadline for a guardian that never closes", async () => {
+  const guardian = fakeGuardian();
+  guardian.child.stdout = new EventEmitter();
+  guardian.child.stderr = new EventEmitter();
+  let finishSampling;
+  const sampling = new Promise((resolve) => {
+    finishSampling = resolve;
+  });
+  const waiting = waitForGuardianAuthority(
+    guardian,
+    path.resolve("unused-output"),
+    undefined,
+    {
+      sampleCpu: () => {
+        mock.timers.tick(teardownTimeoutMs);
+        return sampling;
+      },
+    },
+  );
+  waiting.catch(() => {});
+  try {
+    mock.timers.tick(10_000);
+    await assert.rejects(waiting, (error) => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(
+        error.message,
+        "installed-smoke-output-authority-teardown-timeout",
+      );
+      assert.match(
+        error.errors[1].message,
+        /^installed-smoke-output-authority-timeout /u,
+      );
+      return true;
+    });
+  } finally {
+    finishSampling({ status: "unavailable" });
   }
 });
