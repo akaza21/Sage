@@ -3,6 +3,7 @@
 use super::*;
 mod developer;
 use developer::DeveloperRelease;
+#[cfg(windows)]
 pub(crate) use developer::DeveloperScope;
 
 #[derive(Clone)]
