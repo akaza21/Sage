@@ -149,7 +149,7 @@ export function AgentResourcesPopover({
           <span>Changes</span>
           {changesCount > 0 ? (
             <span>
-              {changesCount} recent {changesCount === 1 ? "file" : "files"}
+              {changesCount} {changesCount === 1 ? "file" : "files"} changed
             </span>
           ) : null}
         </button>
@@ -207,7 +207,7 @@ export function AgentResourcesPopover({
       ) : null}
       <section aria-label="Background processes">
         <strong>Background processes</strong>
-        <p>Process tracking is not exposed by this session.</p>
+        <p>No background processes reported.</p>
       </section>
       <section aria-label="Sources">
         <strong>Sources</strong>

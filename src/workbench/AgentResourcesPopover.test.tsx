@@ -72,7 +72,7 @@ it("counts deleted display resources without offering them as file outputs", asy
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(await screen.findByText("1 recent file")).toBeVisible();
+  expect(await screen.findByText("1 file changed")).toBeVisible();
   expect(screen.queryByRole("button", { name: /Open.*deleted.ts/ })).toBeNull();
 });
 afterEach(() => {
@@ -164,10 +164,8 @@ it("lists edited files through Changes rather than pretending updates are create
     </AgentToolsContext>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
-  expect(await screen.findByText("1 recent file")).toBeVisible();
-  expect(
-    screen.getByText("Process tracking is not exposed by this session."),
-  ).toBeVisible();
+  expect(await screen.findByText("1 file changed")).toBeVisible();
+  expect(screen.getByText("No background processes reported.")).toBeVisible();
   expect(screen.queryByRole("button", { name: /^Open output/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Changes" }));
   expect(launch).toHaveBeenCalledWith("changes", snapshotRef.chatId);
