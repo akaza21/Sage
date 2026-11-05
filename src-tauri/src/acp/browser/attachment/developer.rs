@@ -150,7 +150,8 @@ impl AttachmentLease {
             })
     }
 
-    /// Whether the chrome shows the Developer mode tag for this attachment.
+    /// Whether this live attachment holds developer approval. The tab's
+    /// indicator aggregates this across all attachments in `agent_control`.
     pub(crate) fn developer_mode_active(&self) -> bool {
         self.is_live()
             && !self.user_controls()

@@ -19,6 +19,10 @@ pub(crate) const MAX_POPUP_TABS_PER_SESSION: usize = 2;
 pub(crate) const MAX_AGENT_TABS_PER_SESSION: usize = 4;
 mod agent;
 mod control;
+#[cfg(test)]
+mod control_tests;
+#[cfg(test)]
+mod detach_tests;
 mod developer;
 mod popup;
 mod resources;
@@ -271,12 +275,12 @@ impl BrowserAttachments {
     }
 
     pub(crate) fn detach(&self, project: &SageProjectId, chat: &SageChatId) -> Option<String> {
-        let lease = self
-            .entries
-            .lock()
-            .ok()
-            .and_then(|mut entries| entries.remove(&(project.clone(), chat.clone())))?;
-        lease.stop();
+        let lease = self.entries.lock().ok().and_then(|mut entries| {
+            let key = (project.clone(), chat.clone());
+            // Keep the grant discoverable until its authority is stopped.
+            entries.get(&key)?.stop();
+            entries.remove(&key)
+        })?;
         self.drop_joined_popups(&lease.tab_label);
         Some(lease.tab_label)
     }

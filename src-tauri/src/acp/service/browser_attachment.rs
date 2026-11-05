@@ -239,6 +239,7 @@ impl super::AcpService {
 
     pub(crate) fn revoke_browser_chat(&self, project: &SageProjectId, chat: &SageChatId) {
         let _ = self.detach_browser_tab(project, chat);
+        self.browser_attachments.retire_agent_chat(project, chat);
         #[cfg(windows)]
         if let Some(app) = self.browser_app.lock().ok().and_then(|slot| slot.clone()) {
             for label in self
@@ -248,7 +249,6 @@ impl super::AcpService {
                 let Some(claim) = self.browser_attachments.agent_claim_sweep(&label) else {
                     continue;
                 };
-                self.browser_attachments.agent_retire_label(&label);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let _claim = claim;
