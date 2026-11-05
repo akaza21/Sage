@@ -289,13 +289,35 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
 /// passes only directories [`Scan::open`] has proved are real, so resolving
 /// it lexically matches the operating system; any other `..` is refused,
 /// since after a symlink it would resolve somewhere else entirely.
+///
+/// The file is read as Git's `read_gitfile` reads it: one trailing `\n`, then
+/// one trailing `\r`, are dropped, the rest must start with `gitdir: `, and
+/// everything after that is the path byte for byte. A path Git and this check
+/// could read differently is refused rather than normalised: a non-UTF-8 or
+/// control character (NUL included), whitespace at either end of a
+/// component, a backslash where it is not a separator (Unix), and on Windows
+/// a component ending in `.`, which Win32 would strip.
 fn gitfile_target(work_tree: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let target = text.strip_prefix("gitdir:")?.trim();
-    if Path::new(target).has_root() || target.contains(':') {
+    let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    let line = line.strip_suffix(b"\r").unwrap_or(line);
+    let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
+    if Path::new(target).has_root() || target.contains(':') || target.chars().any(char::is_control)
+    {
         return None;
     }
+    #[cfg(windows)]
     let parts = target.split(['/', '\\']).collect::<Vec<_>>();
+    #[cfg(not(windows))]
+    let parts = target.split('/').collect::<Vec<_>>();
+    let ambiguous = |part: &&str| {
+        let part = *part;
+        part.trim() != part
+            || (cfg!(not(windows)) && part.contains('\\'))
+            || (cfg!(windows) && part.ends_with('.') && !matches!(part, "." | ".."))
+    };
+    if parts.iter().any(ambiguous) {
+        return None;
+    }
     let climbs = parts.iter().take_while(|part| **part == "..").count();
     let rest = &parts[climbs..];
     let well_formed = climbs == work_tree.components().count()
@@ -335,5 +357,61 @@ impl IndexStamp {
             #[cfg(unix)]
             inode,
         })
+    }
+}
+
+#[cfg(test)]
+mod gitfile_tests {
+    use super::*;
+
+    fn target(bytes: &[u8]) -> Option<PathBuf> {
+        gitfile_target(Path::new("sub"), bytes)
+    }
+
+    #[test]
+    fn only_git_line_endings_are_stripped() {
+        let expected = Some(PathBuf::from(".git/modules/sub"));
+        for bytes in [
+            &b"gitdir: ../.git/modules/sub"[..],
+            b"gitdir: ../.git/modules/sub\n",
+            b"gitdir: ../.git/modules/sub\r\n",
+        ] {
+            assert_eq!(target(bytes), expected, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn paths_git_could_read_differently_are_refused() {
+        for bytes in [
+            &b"gitdir: ../.git/modules/sub \n"[..],
+            b"gitdir: ../.git/modules/ sub\n",
+            b"gitdir: ../.git/modules/sub\t\n",
+            b"gitdir: ../.git/modules/sub\0x\n",
+            b"gitdir: ../.git/modules/sub\n\n",
+            b"gitdir: ../.git/modules/s\xffb\n",
+            b"gitdir:../.git/modules/sub\n",
+            b"gitdir:  ../.git/modules/sub\n",
+        ] {
+            assert_eq!(target(bytes), None, "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn a_backslash_is_a_separator_only_on_windows() {
+        let separated = target(b"gitdir: ..\\.git\\modules\\sub\n");
+        let named = target(b"gitdir: ../.git/modules/foo\\bar\n");
+        if cfg!(windows) {
+            assert_eq!(separated, Some(PathBuf::from(".git/modules/sub")));
+            assert_eq!(named, Some(PathBuf::from(".git/modules/foo/bar")));
+        } else {
+            assert_eq!(separated, None);
+            assert_eq!(named, None);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_component_win32_would_strip_is_refused() {
+        assert_eq!(target(b"gitdir: ../.git/modules/sub.\n"), None);
     }
 }

@@ -991,3 +991,60 @@ fn more_gitlinks_than_the_cap_fail_closed() {
         submodules::UNCHECKABLE
     );
 }
+
+/// Moves the submodule's git data to `hostile` (a name a lenient parser
+/// would misread), gives it a live filter, leaves a benign bare repository at
+/// the `decoy` name that misreading yields, and points the gitfile at it.
+#[cfg(unix)]
+fn assert_hostile_gitfile_name_is_refused(hostile: &str, decoy: &str, gitfile: &str) {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
+    let modules = root.join(".git").join("modules");
+    fs::rename(modules.join("sub"), modules.join(hostile)).unwrap();
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    let hostile_config = format!(".git/modules/{hostile}/config");
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &hostile_config,
+            "filter.sentinel.clean",
+            &filter,
+        ],
+    );
+    git(
+        &root,
+        &["init", "-q", "--bare", &format!(".git/modules/{decoy}")],
+    );
+    fs::write(root.join("sub").join(".git"), gitfile).unwrap();
+    touch_submodule_file(&root);
+
+    for args in [
+        &["status", "--porcelain"][..],
+        &["diff", "--no-ext-diff"][..],
+    ] {
+        assert_eq!(refusal(sage_git(&root, args)), submodules::UNCHECKABLE);
+    }
+    assert!(!sentinel.exists());
+
+    // Control: plain Git opens the hostile name byte for byte.
+    git(&root, &["status", "--porcelain"]);
+    assert!(sentinel.exists(), "the hostile git dir is not live");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_gitfile_path_with_a_trailing_space_is_refused() {
+    assert_hostile_gitfile_name_is_refused("sub ", "sub", "gitdir: ../.git/modules/sub \n");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_gitfile_backslash_is_not_a_separator_on_unix() {
+    assert_hostile_gitfile_name_is_refused(
+        "foo\\bar",
+        "foo/bar",
+        "gitdir: ../.git/modules/foo\\bar\n",
+    );
+}
