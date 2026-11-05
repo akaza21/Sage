@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MAX_MARKDOWN_PREVIEW_BLOCKS } from "./markdownLimits";
+import MarkdownIt from "markdown-it";
+import {
+  MAX_MARKDOWN_PREVIEW_BLOCKS,
+  MAX_MARKDOWN_TABLE_ROWS,
+} from "./markdownLimits";
 import {
   renderMarkdownPreview,
   type MarkdownPreviewBlock,
@@ -210,6 +214,107 @@ describe("nested markdown content", () => {
 });
 
 describe("bounded markdown tokenization", () => {
+  it("bounds empty list items whose fast path does not recurse into block rules", () => {
+    const { tokens, truncated } = parseMarkdownTokens("-\n\n".repeat(40000));
+    expect(tokens.length).toBeLessThanOrEqual(24600);
+    expect(tokens.reduce((depth, token) => depth + token.nesting, 0)).toBe(0);
+    expect(truncated).toBe(true);
+  });
+
+  it.each([33, 40000])(
+    "allocates only the display prefix of a table with %i body rows",
+    (rows) => {
+      const source = "| H |\n| - |\n" + "| x |\n".repeat(rows);
+      const { tokens, truncated } = parseMarkdownTokens(source);
+      // Header plus 32 body rows, including their balanced table sections.
+      expect(tokens).toHaveLength(171);
+      expect(truncated).toBe(true);
+      expect(renderMarkdownPreview(source).truncated).toBe(true);
+    },
+  );
+
+  it("skips omitted table rows without swallowing the following paragraph", () => {
+    const document = renderMarkdownPreview(
+      "| H |\n| - |\n" + "| x |\n".repeat(40000) + "\nAfter the table",
+    );
+    expect(document.blocks).toEqual([
+      {
+        kind: "table",
+        align: [undefined],
+        rows: [["H"], ...Array.from({ length: 32 }, () => ["x"])],
+      },
+      { kind: "paragraph", text: "After the table" },
+    ]);
+    expect(document.truncated).toBe(true);
+  });
+
+  it.each([
+    ["# After", "heading"],
+    ["- After", "list"],
+    ["> After", "quote"],
+    ["```\nAfter\n```", "code"],
+    ["    After", "code"],
+    ["\nAfter", "paragraph"],
+  ])("preserves the table terminator %j as a %s", (tail, kind) => {
+    const document = renderMarkdownPreview(
+      "| H |\n| - |\n" + "| x |\n".repeat(100) + tail,
+    );
+    expect(document.blocks.map((block) => block.kind)).toEqual(["table", kind]);
+    expect(document.truncated).toBe(true);
+  });
+
+  it.each(["quote", "list"])(
+    "bounds a table within a %s and retains prose on both sides of its boundary",
+    (kind) => {
+      const body = "| H |\n| - |\n" + "| x |\n".repeat(100) + "\nInside";
+      const nested = body
+        .split("\n")
+        .map((line) => (kind === "quote" ? `> ${line}` : `  ${line}`))
+        .join("\n");
+      const source =
+        (kind === "list" ? "- Before\n\n" : "") + nested + "\n\nOutside";
+      const { tokens, truncated } = parseMarkdownTokens(source);
+      expect(tokens.length).toBeLessThan(200);
+      expect(
+        tokens
+          .filter((token) => token.type === "inline")
+          .slice(-2)
+          .map((token) => token.content),
+      ).toEqual(["Inside", "Outside"]);
+      expect(truncated).toBe(true);
+      const document = renderMarkdownPreview(source);
+      expect(document.blocks.map((block) => block.kind)).toEqual([
+        kind,
+        "paragraph",
+      ]);
+      expect(document.blocks.at(-1)).toEqual({
+        kind: "paragraph",
+        text: "Outside",
+      });
+    },
+  );
+
+  it.each([0, 1, MAX_MARKDOWN_TABLE_ROWS])(
+    "leaves normal table tokens unchanged with %i body rows",
+    (rows) => {
+      const source =
+        "| Left | Right |\n| :-- | --: |\n" + "| a\\|b | c |\n".repeat(rows);
+      const stock = new MarkdownIt();
+      stock.core.ruler.disable([
+        "inline",
+        "linkify",
+        "replacements",
+        "smartquotes",
+        "text_join",
+      ]);
+      expect(parseMarkdownTokens(source)).toEqual({
+        tokens: stock.parse(source, {}),
+        truncated: false,
+      });
+      expect(renderMarkdownPreview(source).truncated).toBe(false);
+    },
+  );
+
   it.each(["- before\n\n  ```text\n  ", "> before\n>\n> ```text\n> "])(
     "shares the character allowance with nested literal code: %j",
     (prefix) => {

@@ -108,6 +108,7 @@ function adapt(node: Node, overflow: () => void): Block[] {
       ];
     }
     case "table_open": {
+      if (token.meta?.truncated) overflow();
       const align: Extract<Block, { kind: "table" }>["align"] = [];
       const rows: string[][] = [];
       const visit = (current: Node) => {

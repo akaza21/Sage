@@ -3,6 +3,25 @@ import { renderMarkdownPreview } from "./markdownPreview";
 import { renderMarkdownStream } from "./markdownStream";
 
 describe("streamed markdown document", () => {
+  it("bounds tables in the streaming suffix and retains their truncation when frozen", () => {
+    const source = "# Kept\n\n# Also kept\n\n| H |\n| - |\n| x |\n";
+    const before = renderMarkdownStream(source);
+    const appended = source + "| x |\n".repeat(100) + "\nAfter\n\nTail";
+    const after = renderMarkdownStream(appended, before);
+    expect(after.document.blocks[0]).toBe(before.document.blocks[0]);
+    expect(after.document).toEqual(renderMarkdownPreview(appended));
+    expect(after.document.blocks.at(-1)).toEqual({
+      kind: "paragraph",
+      text: "Tail",
+    });
+    expect(after.document.truncated).toBe(true);
+
+    const frozen = renderMarkdownStream(appended + " more", after);
+    expect(frozen.document.blocks[2]).toBe(after.document.blocks[2]);
+    expect(frozen.document).toEqual(renderMarkdownPreview(appended + " more"));
+    expect(frozen.document.truncated).toBe(true);
+  });
+
   it("shares the component cap with a frozen quote while appending rich blocks", () => {
     const source = "> ```python\n> ```\n>\n".repeat(60) + "\n# Kept\n\nTail";
     const before = renderMarkdownStream(source);
