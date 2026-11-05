@@ -2,18 +2,6 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("Chat container control breakpoints", () => {
-  it("keeps the bounded queue in normal flow at every composer width", async () => {
-    const base = await readFile("src/styles/queued-messages.css", "utf8");
-    const compact = await readFile(
-      "src/styles/chat-container-controls.css",
-      "utf8",
-    );
-    expect(base).toMatch(
-      /\.composer__queued\s*\{[^}]*position:\s*static;[^}]*min-height:\s*var\(--chrome-row-height\);[^}]*max-height:\s*min\(320px, 40vh\);[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(compact).not.toMatch(/\.composer \.composer__queued\s*\{/);
-  });
-
   it("truncates rather than removes the project name in the header menu", async () => {
     const header = await readFile("src/styles/agent-task-header.css", "utf8");
     expect(header).toMatch(

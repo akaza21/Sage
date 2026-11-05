@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -78,6 +78,86 @@ for (const width of [480, 1280]) {
     expect(queuedBounds.height).toBeLessThanOrEqual(surface.height * 0.6 + 1);
   });
 }
+
+async function queuePrompts(page: Page, count: number) {
+  await page.evaluate(async (count) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    useWorkbenchStore.setState((state) => ({
+      chatUiById: {
+        ...state.chatUiById,
+        [state.activeTabId!]: {
+          ...state.chatUiById[state.activeTabId!],
+          queuedPrompts: Array.from({ length: count }, (_, index) => ({
+            id: `queue-${index}`,
+            text: `Follow-up ${index}`,
+            attachedContext: [],
+            bindingId: "fixture",
+            modelId: null,
+            status: "blocked" as const,
+          })),
+        },
+      },
+    }));
+  }, count);
+  const queue = page.getByLabel("Queued messages", { exact: true });
+  await expect(queue.locator(".composer__queued-row")).toHaveCount(count);
+  return queue;
+}
+
+function queueGeometry(queue: Locator) {
+  return queue.evaluate((element) => {
+    const rows = [...element.querySelectorAll(".composer__queued-row")];
+    const css = getComputedStyle(element);
+    return {
+      height: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      rowHeight: rows[0]!.getBoundingClientRect().height,
+      cap: Number.parseFloat(css.maxHeight),
+      floor: Number.parseFloat(css.minHeight),
+    };
+  });
+}
+
+test("the queued tray grows to its rows and stays bounded under its cap", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openScenario(page, "diff", "agent");
+  await settleChatProjections(page);
+  const roomy = await queueGeometry(await queuePrompts(page, 3));
+  // With room, every queued row shows without scrolling.
+  expect(roomy.height).toBeGreaterThanOrEqual(roomy.rowHeight * 3);
+  expect(roomy.scrollHeight).toBeLessThanOrEqual(roomy.height + 1);
+  const long = await queueGeometry(await queuePrompts(page, 12));
+  // A long queue stops at its cap and scrolls inside it.
+  expect(long.height).toBeLessThanOrEqual(long.cap + 1);
+  expect(long.height).toBeGreaterThan(long.rowHeight * 3);
+  expect(long.scrollHeight).toBeGreaterThan(long.height);
+});
+
+test("the queued tray gives way to one row when the dock runs out of height", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await openScenario(page, "diff", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const fixture = await import("/tests/ui/fixtures/cp30cEditFixture.ts");
+    fixture.installCp30cDisclosure("partial");
+  });
+  await page
+    .getByRole("region", { name: "Files edited in this chat" })
+    .getByRole("button", { name: /files changed/ })
+    .click();
+  const queue = await queuePrompts(page, 8);
+  const tight = await queueGeometry(queue);
+  expect(tight.height).toBeGreaterThanOrEqual(tight.floor - 1);
+  expect(tight.height).toBeLessThan(tight.rowHeight * 3);
+  const dock = (await page.locator(".chat-dock").boundingBox())!;
+  const box = (await queue.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(dock.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(dock.y + dock.height);
+});
 
 for (const viewport of [
   { width: 900, height: 800 },
