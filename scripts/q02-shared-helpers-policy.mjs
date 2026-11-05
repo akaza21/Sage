@@ -2,15 +2,21 @@ import { constants } from "node:fs";
 import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
 
+import { WEB_BUILD_FINGERPRINT_LIMITS } from "./web-build-fingerprint.mjs";
+
+// The scan reads one module at a time and keeps only the directory it is
+// listing, so its memory is bounded per module and per directory, not by the
+// size of the tree. The totals are the bound every whole-tree read of the
+// sources already lives under: the web build fingerprint reads all of `src`,
+// so this policy never becomes the tighter limit on how far `src` can grow.
 export const Q02_LIMITS = Object.freeze({
-  // Scanner input bound on production module reads/checks, not a code-quality
-  // budget. Keep finite headroom for focused modules; byte/entry caps still apply.
-  files: 700,
   depth: 16,
+  // One module's read buffer.
   fileBytes: 64 * 1024,
-  // Policy scanner input bound, independent of app runtime budgets.
-  aggregateBytes: 2.5 * 1024 * 1024,
-  visitedEntries: 1280,
+  // One directory's sorted listing.
+  directoryEntries: 1024,
+  files: WEB_BUILD_FINGERPRINT_LIMITS.maxFiles,
+  aggregateBytes: WEB_BUILD_FINGERPRINT_LIMITS.maxBytes,
   errors: 32,
 });
 
@@ -136,7 +142,6 @@ export async function q02SharedHelperPolicyErrors(root, options = {}) {
   const sourceDirectory = options.sourceDirectory ?? "src";
   const fileSystem = { lstat, open, opendir, ...options.fileSystem };
   const errors = [];
-  let visitedEntries = 0;
   let files = 0;
   let aggregateBytes = 0;
   const fail = (message) => {
@@ -197,10 +202,9 @@ export async function q02SharedHelperPolicyErrors(root, options = {}) {
     const entries = [];
     let ordinal = 0;
     for await (const entry of directory) {
-      visitedEntries += 1;
-      if (visitedEntries > limits.visitedEntries) {
+      if (entries.length === limits.directoryEntries) {
         fail(
-          `Q02 visited-entry limit ${limits.visitedEntries} exceeded at ${path.posix.join(relative, entry.name)}`,
+          `Q02 directory-entry limit ${limits.directoryEntries} exceeded at ${path.posix.join(relative, entry.name)}`,
         );
         return false;
       }

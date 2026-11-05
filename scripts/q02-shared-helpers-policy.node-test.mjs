@@ -25,41 +25,40 @@ async function withFixture(files, run) {
 
 const scan = (root, limits) => q02SharedHelperPolicyErrors(root, { limits });
 
-test("default production file cap accepts 700 and fails closed at 701", async () => {
-  const files = Array.from({ length: 701 }, (_, index) => [
-    `src/f${String(index).padStart(3, "0")}.${index % 2 === 0 ? "ts" : "tsx"}`,
-    "export {};",
-  ]);
-  await withFixture(Object.fromEntries(files.slice(0, 700)), async (root) => {
-    assert.deepEqual(await scan(root), []);
-  });
-  await withFixture(Object.fromEntries(files), async (root) => {
-    assert.deepEqual(await scan(root), [
-      "Q02 file limit 700 exceeded at src/f700.ts",
-    ]);
-  });
-});
-
-test("default visited-entry cap is 1280", () => {
-  assert.equal(Q02_LIMITS.visitedEntries, 1280);
-});
-
-test("default aggregate source cap accepts just under 2.5 MiB and fails closed just over", async () => {
-  const cap = 2_621_440;
+test("a tree past the scanner's former totals is still checked in full", async () => {
+  // 1,100 modules, 1,300 entries and over 3 MiB, all above the totals that
+  // used to stop the scan, with a violation in the last module read.
   const files = Object.fromEntries(
-    Array.from({ length: 80 }, (_, index) => [
-      `src/f${String(index).padStart(3, "0")}.ts`,
-      " ".repeat(index === 79 ? 32_767 : 32_768),
+    Array.from({ length: 1_100 }, (_, index) => [
+      `src/m${index % 2}/f${String(index).padStart(4, "0")}.ts`,
+      index === 1_099 ? "function isRecord() {}" : " ".repeat(3_000),
     ]),
   );
+  for (let index = 0; index < 200; index += 1)
+    files[`src/m0/f${String(index).padStart(4, "0")}.test.ts`] = "";
   await withFixture(files, async (root) => {
-    assert.deepEqual(await scan(root), []);
-    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_768));
-    assert.deepEqual(await scan(root), []);
-    await writeFile(path.join(root, "src/f079.ts"), " ".repeat(32_769));
     assert.deepEqual(await scan(root), [
-      `Q02 aggregate limit ${cap} exceeded at src/f079.ts`,
+      "Q02 forbidden isRecord at src/m1/f1099.ts",
     ]);
+  });
+});
+
+test("one directory's listing is bounded and fails closed past its cap", async () => {
+  const files = (count) =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `src/f${String(index).padStart(4, "0")}.ts`,
+        "",
+      ]),
+    );
+  await withFixture(files(1_024), async (root) => {
+    assert.deepEqual(await scan(root), []);
+  });
+  await withFixture(files(1_025), async (root) => {
+    assert.match(
+      (await scan(root))[0],
+      /^Q02 directory-entry limit 1024 exceeded at src\//u,
+    );
   });
 });
 
@@ -129,11 +128,11 @@ test("lexical traversal uses stable code-unit order and stops at every bound", a
         /forbidden isRecord at src\/c/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, visitedEntries: 2 }))[0],
-        /visited-entry/u,
+        (await scan(root, { ...Q02_LIMITS, directoryEntries: 2 }))[0],
+        /directory-entry/u,
       );
       assert.match(
-        (await scan(root, { ...Q02_LIMITS, visitedEntries: 3 }))[0],
+        (await scan(root, { ...Q02_LIMITS, directoryEntries: 3 }))[0],
         /forbidden isRecord/u,
       );
     },
