@@ -11,8 +11,9 @@
 //! below the root's own `.git/modules`. Anything else Git could open (Git data
 //! elsewhere, pointer files, links, special files) is refused, as are more
 //! than [`MAX_SUBMODULES`] gitlinks, nesting deeper than
-//! [`MAX_SUBMODULE_DEPTH`], or an index listing over
-//! [`MAX_INDEX_LISTING_BYTES`]. Refusals here never name a path.
+//! [`MAX_SUBMODULE_DEPTH`], or an index of more than [`MAX_INDEX_RECORDS`]
+//! entries. The index listing is streamed and only gitlink records are kept,
+//! so memory does not grow with the index. Refusals here never name a path.
 //!
 //! The verdict is cached against the same byte fingerprints as the
 //! repository's own admission, plus a metadata stamp of each index read: an
@@ -27,20 +28,23 @@ use std::{
 
 use crate::error::AppResult;
 
+use super::super::readers::RecordFilter;
 use super::{
     AdmittedRepository, Fingerprint, GIT_DIR_NAME, GitRootAuthority, MAX_CONFIG_LIST_BYTES,
-    POINTER_FILES, Refusal, policy::submodule_refusal_message, probe_git,
+    POINTER_FILES, Refusal, StdoutCapture, policy::submodule_refusal_message, probe_git,
 };
 
 /// Gitlinks checked across the whole tree of submodules.
 const MAX_SUBMODULES: usize = 64;
 /// Submodules nested deeper than this are refused.
 const MAX_SUBMODULE_DEPTH: usize = 4;
-/// `ls-files --stage` output for the 200k-file workspace cap, with headroom.
-const MAX_INDEX_LISTING_BYTES: usize = 32 * 1024 * 1024;
+/// Index entries listed per repository: the workspace walk limit.
+const MAX_INDEX_RECORDS: usize = 200_000;
+/// One `ls-files --stage` record: mode, object name, stage and a path.
+const MAX_INDEX_RECORD_BYTES: usize = 128 * 1024;
 const GITLINK: &[u8] = b"160000 ";
 
-const UNCHECKABLE: &str = "Sage did not run Git here because this repository's submodules are \
+pub(super) const UNCHECKABLE: &str = "Sage did not run Git here because this repository's submodules are \
      too many, too deeply nested, or too unusual to check. Use the terminal for Git in this \
      folder.";
 
@@ -96,21 +100,27 @@ impl Scan {
         authority: Option<&GitRootAuthority>,
         top: &AdmittedRepository,
     ) -> AppResult<Option<Refusal>> {
-        // Paths are compared canonically; Git still runs at the caller's root.
+        // Fingerprints use canonical paths; Git still runs at the caller's root.
         let canonical = root.canonicalize()?;
-        let modules = canonical.join(GIT_DIR_NAME).join("modules");
         let mut pending = VecDeque::from([(top.clone(), 0_usize)]);
         let mut found = 0_usize;
         while let Some((repository, depth)) = pending.pop_front() {
             let index = canonical.join(&repository.git_dir).join("index");
             let stamp = IndexStamp::of(&index);
             self.indexes.push((index, stamp));
+            // Streamed: only gitlink records are kept, and the listing fails
+            // closed at the first gitlink past the remaining budget.
             let listing = probe_git(
                 root,
                 authority,
                 Some(&repository),
                 &["ls-files", "--stage", "--full-name", "-z"],
-                MAX_INDEX_LISTING_BYTES,
+                StdoutCapture::Records(RecordFilter {
+                    keep: |record| record.starts_with(GITLINK),
+                    max_kept: MAX_SUBMODULES - found,
+                    max_records: MAX_INDEX_RECORDS,
+                    max_record_bytes: MAX_INDEX_RECORD_BYTES,
+                }),
             )
             .await?;
             if !listing.status.success() {
@@ -128,7 +138,7 @@ impl Scan {
                 else {
                     return Ok(Some(uncheckable()));
                 };
-                let submodule = match self.open(&canonical, &modules, work_tree)? {
+                let submodule = match self.open(&canonical, work_tree) {
                     Opened::Unpopulated => continue,
                     Opened::Refused(refusal) => return Ok(Some(refusal)),
                     Opened::Repository(submodule) => submodule,
@@ -145,45 +155,49 @@ impl Scan {
         Ok(None)
     }
 
-    /// Resolves the repository Git would open for the gitlink at `work_tree`,
-    /// fingerprinting everything that decides it.
-    fn open(&mut self, root: &Path, modules: &Path, work_tree: PathBuf) -> AppResult<Opened> {
-        let absolute = root.join(&work_tree);
-        match self.watch(absolute.clone()) {
-            // Git looks for `.git` below the gitlink path, which a file
-            // (a type change in progress, say) cannot hold.
-            Fingerprint::Missing | Fingerprint::Contents(_) | Fingerprint::Oversized => {
-                return Ok(Opened::Unpopulated);
+    /// Resolves the repository Git would open for the gitlink at `work_tree`
+    /// (root-relative). Every path component Git passes through is
+    /// fingerprinted and must be a real directory, never a symlink or
+    /// junction, so the operating system resolves exactly the path inspected
+    /// here and a later retarget invalidates the cached verdict.
+    fn open(&mut self, root: &Path, work_tree: PathBuf) -> Opened {
+        let mut walked = PathBuf::new();
+        for component in work_tree.components() {
+            walked.push(component);
+            match self.watch(root.join(&walked)) {
+                Fingerprint::Directory => {}
+                // Git looks for `.git` below the gitlink path, which a file
+                // (a type change in progress, say) cannot hold.
+                Fingerprint::Missing | Fingerprint::Contents(_) | Fingerprint::Oversized => {
+                    return Opened::Unpopulated;
+                }
+                _ => return Opened::Refused(uncheckable()),
             }
-            // A link anywhere on the way could lead Git out of the root.
-            Fingerprint::Directory if absolute.canonicalize()? == absolute => {}
-            _ => return Ok(Opened::Refused(uncheckable())),
         }
-        let entry = absolute.join(GIT_DIR_NAME);
-        let git_dir = match self.watch(entry.clone()) {
-            Fingerprint::Missing => return Ok(Opened::Unpopulated),
+        let git_dir = match self.watch(root.join(&work_tree).join(GIT_DIR_NAME)) {
+            Fingerprint::Missing => return Opened::Unpopulated,
             Fingerprint::Directory => work_tree.join(GIT_DIR_NAME),
             Fingerprint::Contents(bytes) => {
-                let target = gitfile_target(&absolute, &bytes)
-                    .and_then(|target| target.canonicalize().ok())
-                    .filter(|target| target.starts_with(modules) && target != modules);
-                let Some(target) = target else {
-                    return Ok(Opened::Refused(uncheckable()));
+                let Some(target) = gitfile_target(&work_tree, &bytes) else {
+                    return Opened::Refused(uncheckable());
                 };
-                if self.watch(target.clone()) != Fingerprint::Directory {
-                    return Ok(Opened::Refused(uncheckable()));
+                // `.git` itself is the root's own git dir, checked by the
+                // repository's admission; everything below it is checked here.
+                let mut walked = PathBuf::from(GIT_DIR_NAME);
+                for component in target.components().skip(1) {
+                    walked.push(component);
+                    if self.watch(root.join(&walked)) != Fingerprint::Directory {
+                        return Opened::Refused(uncheckable());
+                    }
                 }
-                match target.strip_prefix(root) {
-                    Ok(relative) => relative.to_path_buf(),
-                    Err(_) => return Ok(Opened::Refused(uncheckable())),
-                }
+                target
             }
-            _ => return Ok(Opened::Refused(uncheckable())),
+            _ => return Opened::Refused(uncheckable()),
         };
         let absolute_git_dir = root.join(&git_dir);
         for name in POINTER_FILES {
             if self.watch(absolute_git_dir.join(name)) != Fingerprint::Missing {
-                return Ok(Opened::Refused(uncheckable()));
+                return Opened::Refused(uncheckable());
             }
         }
         for name in ["config", "config.worktree"] {
@@ -191,13 +205,10 @@ impl Scan {
                 self.watch(absolute_git_dir.join(name)),
                 Fingerprint::Missing | Fingerprint::Contents(_)
             ) {
-                return Ok(Opened::Refused(uncheckable()));
+                return Opened::Refused(uncheckable());
             }
         }
-        Ok(Opened::Repository(AdmittedRepository {
-            git_dir,
-            work_tree,
-        }))
+        Opened::Repository(AdmittedRepository { git_dir, work_tree })
     }
 
     async fn check_config(
@@ -211,7 +222,7 @@ impl Scan {
             authority,
             Some(submodule),
             &["config", "--list", "--no-includes", "--name-only", "-z"],
-            MAX_CONFIG_LIST_BYTES,
+            StdoutCapture::Bytes(MAX_CONFIG_LIST_BYTES),
         )
         .await?;
         if !listing.status.success() {
@@ -237,7 +248,7 @@ fn uncheckable() -> Refusal {
     Refusal::Config(UNCHECKABLE.to_owned())
 }
 
-/// The distinct gitlink paths in a NUL-separated `ls-files --stage` listing.
+/// The distinct paths of the gitlink records the listing kept.
 fn gitlinks(listing: &[u8]) -> BTreeSet<&[u8]> {
     listing
         .split(|byte| *byte == 0)
@@ -271,28 +282,28 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
     Some(joined)
 }
 
-/// The directory a `gitdir: <relative path>` file names, resolved lexically
-/// against the submodule work tree (verbatim Windows paths keep `..`
-/// literally). An absolute target is refused.
+/// The root-relative git dir a `gitdir:` file in the root-relative
+/// `work_tree` names, in the only shape Git writes for an absorbed
+/// submodule: `..` components that climb exactly to the root, then
+/// `.git/modules/<name>...` with no `.`, `..` or empty component. The climb
+/// passes only directories [`Scan::open`] has proved are real, so resolving
+/// it lexically matches the operating system; any other `..` is refused,
+/// since after a symlink it would resolve somewhere else entirely.
 fn gitfile_target(work_tree: &Path, bytes: &[u8]) -> Option<PathBuf> {
     let text = std::str::from_utf8(bytes).ok()?;
     let target = text.strip_prefix("gitdir:")?.trim();
-    if target.is_empty() || Path::new(target).has_root() || target.contains(':') {
+    if Path::new(target).has_root() || target.contains(':') {
         return None;
     }
-    let mut resolved = work_tree.to_path_buf();
-    for part in target.split(['/', '\\']) {
-        match part {
-            "" | "." => {}
-            ".." => {
-                if !resolved.pop() {
-                    return None;
-                }
-            }
-            part => resolved.push(part),
-        }
-    }
-    Some(resolved)
+    let parts = target.split(['/', '\\']).collect::<Vec<_>>();
+    let climbs = parts.iter().take_while(|part| **part == "..").count();
+    let rest = &parts[climbs..];
+    let well_formed = climbs == work_tree.components().count()
+        && rest.len() >= 3
+        && rest[0] == GIT_DIR_NAME
+        && rest[1] == "modules"
+        && !rest.iter().any(|part| matches!(*part, "" | "." | ".."));
+    well_formed.then(|| rest.iter().collect())
 }
 
 /// What an index file's metadata said when it was listed. Git replaces the

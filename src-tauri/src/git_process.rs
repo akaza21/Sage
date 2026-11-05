@@ -21,7 +21,7 @@ mod containment;
 mod readers;
 mod repository_config;
 mod root_authority;
-use readers::{ReaderTask, ReaderTasks};
+use readers::{ReaderTask, ReaderTasks, StdoutCapture};
 #[cfg(test)]
 mod test_support;
 
@@ -248,7 +248,7 @@ async fn run_inner(
     run_admitted(
         root,
         args,
-        stdout_limit,
+        StdoutCapture::Bytes(stdout_limit),
         policy,
         root_authority,
         repository.as_ref(),
@@ -262,7 +262,7 @@ async fn run_inner(
 async fn run_admitted(
     root: &Path,
     args: &[&str],
-    stdout_limit: usize,
+    stdout_capture: StdoutCapture,
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
     repository: Option<&repository_config::AdmittedRepository>,
@@ -317,7 +317,7 @@ async fn run_admitted(
             return containment::cleanup_failure(
                 child,
                 ReaderTasks {
-                    stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
+                    stdout: Some(readers::spawn_stdout(stdout, stdout_capture)),
                     stderr: None,
                     ..ReaderTasks::default()
                 },
@@ -334,7 +334,7 @@ async fn run_admitted(
         }
     };
     let mut readers = ReaderTasks {
-        stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
+        stdout: Some(readers::spawn_stdout(stdout, stdout_capture)),
         stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
         ..ReaderTasks::default()
     };

@@ -46,7 +46,7 @@ use crate::{
     git_budget,
 };
 
-use super::{GitOutput, GitProcessPolicy, GitRootAuthority};
+use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture};
 
 mod fingerprint;
 mod policy;
@@ -261,7 +261,7 @@ impl Probe {
                 "--git-common-dir",
                 "--show-toplevel",
             ],
-            MAX_LOCATION_BYTES,
+            StdoutCapture::Bytes(MAX_LOCATION_BYTES),
         )
         .await?;
         if !location.status.success() {
@@ -344,7 +344,7 @@ impl Probe {
                 authority,
                 Some(&repository),
                 &["config", "--list", "--no-includes", "--name-only", "-z"],
-                MAX_CONFIG_LIST_BYTES,
+                StdoutCapture::Bytes(MAX_CONFIG_LIST_BYTES),
             )
             .await?;
             if !listing.status.success() {
@@ -408,13 +408,13 @@ async fn probe_git(
     authority: Option<&GitRootAuthority>,
     repository: Option<&AdmittedRepository>,
     args: &[&str],
-    stdout_limit: usize,
+    capture: StdoutCapture,
 ) -> AppResult<GitOutput> {
     let authority = authority.map(GitRootAuthority::try_clone).transpose()?;
     super::run_admitted(
         root,
         args,
-        stdout_limit,
+        capture,
         GitProcessPolicy::read(git_budget::READ),
         authority,
         repository,

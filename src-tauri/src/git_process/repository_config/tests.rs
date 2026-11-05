@@ -757,9 +757,9 @@ const IDENTITY: [&str; 4] = [
     "user.email=sage@example.invalid",
 ];
 
-#[test]
-fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
-    let scratch = Scratch::new();
+/// A repository with an absorbed submodule `sub` whose `*.txt` files use the
+/// `sentinel` filter, which no config defines yet.
+fn submodule_fixture(scratch: &Scratch) -> PathBuf {
     let source = scratch.repository("source");
     fs::write(source.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
     fs::write(source.join("a.txt"), "a\n").unwrap();
@@ -785,6 +785,41 @@ fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
         &root,
         &[&IDENTITY[..], &["commit", "-q", "-m", "submodule"]].concat(),
     );
+    root
+}
+
+/// Rewrites the submodule's checked-out bytes (line endings included) with a
+/// new timestamp, so only cleaning the file again tells Git whether it changed.
+fn touch_submodule_file(root: &Path) {
+    let file = root.join("sub").join("a.txt");
+    let checked_out = fs::read(&file).unwrap();
+    fs::write(&file, checked_out).unwrap();
+}
+
+/// A directory symlink on Unix, a junction on Windows.
+fn directory_link(link: &Path, target: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        let plain = |path: &Path| {
+            path.to_string_lossy()
+                .trim_start_matches(r"\\?\")
+                .to_owned()
+        };
+        let status = Command::new("cmd")
+            .args(["/C", "mklink", "/J", &plain(link), &plain(target)])
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "mklink /J failed");
+    }
+}
+
+#[test]
+fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
     assert!(
         sage_git(&root, &["status", "--porcelain"])
             .unwrap()
@@ -792,13 +827,12 @@ fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
         "an ordinary submodule is admitted"
     );
 
-    let submodule = root.join("sub");
     let (sentinel, filter) = sentinel_filter(&scratch.base);
-    git(&submodule, &["config", "filter.sentinel.clean", &filter]);
-    // The checked-out bytes (line endings included) with a new timestamp:
-    // only cleaning the file again tells Git whether it changed.
-    let checked_out = fs::read(submodule.join("a.txt")).unwrap();
-    fs::write(submodule.join("a.txt"), checked_out).unwrap();
+    git(
+        &root.join("sub"),
+        &["config", "filter.sentinel.clean", &filter],
+    );
+    touch_submodule_file(&root);
     for args in [
         &["status", "--porcelain=v2", "-z", "--untracked-files=all"][..],
         &["diff", "--no-ext-diff"][..],
@@ -812,4 +846,148 @@ fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
     // Control: plain Git status in the parent runs the submodule's filter.
     git(&root, &["status", "--porcelain"]);
     assert!(sentinel.exists(), "fixture filter is not live");
+}
+
+/// `.git/modules/link` leads outside the root, and the gitfile climbs back
+/// out of it: removed lexically, `link/..` names the decoy `.git/modules/repo`,
+/// but the operating system resolves it to the hostile copy.
+#[cfg(unix)]
+#[test]
+fn a_submodule_gitfile_escaping_through_a_symlink_and_dot_dot_is_refused() {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
+    let modules = root.join(".git").join("modules");
+    let hostile = scratch.base.join("hostile");
+    fs::create_dir_all(hostile.join("child")).unwrap();
+    fs::rename(modules.join("sub"), hostile.join("repo")).unwrap();
+    let hostile_config = hostile.join("repo").join("config");
+    let hostile_config = hostile_config.to_str().unwrap();
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            hostile_config,
+            "--unset",
+            "core.worktree",
+        ],
+    );
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            hostile_config,
+            "filter.sentinel.clean",
+            &filter,
+        ],
+    );
+    fs::create_dir(modules.join("repo")).unwrap();
+    directory_link(&modules.join("link"), &hostile.join("child"));
+    fs::write(
+        root.join("sub").join(".git"),
+        "gitdir: ../.git/modules/link/../repo\n",
+    )
+    .unwrap();
+    touch_submodule_file(&root);
+
+    for args in [
+        &["status", "--porcelain"][..],
+        &["diff", "--no-ext-diff"][..],
+    ] {
+        assert_eq!(refusal(sage_git(&root, args)), submodules::UNCHECKABLE);
+    }
+    assert!(!sentinel.exists());
+
+    // Control: plain Git follows the link and runs the hostile filter.
+    git(&root, &["status", "--porcelain"]);
+    assert!(sentinel.exists(), "the escape is not live");
+}
+
+#[test]
+fn a_link_on_a_submodule_git_dir_path_is_refused_even_after_admission() {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
+    let modules = root.join(".git").join("modules");
+    fs::create_dir(modules.join("group")).unwrap();
+    fs::rename(modules.join("sub"), modules.join("group").join("sub")).unwrap();
+    fs::write(
+        root.join("sub").join(".git"),
+        "gitdir: ../.git/modules/group/sub\n",
+    )
+    .unwrap();
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            ".git/modules/group/sub/config",
+            "core.worktree",
+            "../../../../sub",
+        ],
+    );
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded(),
+        "a real nested modules directory is admitted"
+    );
+
+    // Byte-identical Git data, now reached through a link: only the
+    // fingerprint of the intermediate component changes.
+    let outside = scratch.base.join("outside-group");
+    fs::rename(modules.join("group"), &outside).unwrap();
+    directory_link(&modules.join("group"), &outside);
+    assert_eq!(
+        refusal(sage_git(&root, &["status", "--porcelain"])),
+        submodules::UNCHECKABLE
+    );
+}
+
+#[test]
+fn more_gitlinks_than_the_cap_fail_closed() {
+    let scratch = Scratch::new();
+    let root = scratch.repository("repo");
+    git(
+        &root,
+        &[&IDENTITY[..], &["commit", "-q", "--allow-empty", "-m", "x"]].concat(),
+    );
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let head = String::from_utf8(head.stdout).unwrap();
+    let add_gitlinks = |range: std::ops::Range<usize>| {
+        use std::io::Write as _;
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["update-index", "--index-info"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        for index in range {
+            writeln!(stdin, "160000 {}\tlink{index}", head.trim()).unwrap();
+        }
+        drop(stdin);
+        assert!(child.wait().unwrap().success());
+    };
+
+    // Unpopulated gitlinks are counted but open nothing.
+    add_gitlinks(0..64);
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded(),
+        "the cap itself is admitted"
+    );
+    add_gitlinks(64..65);
+    assert_eq!(
+        refusal(sage_git(&root, &["status", "--porcelain"])),
+        submodules::UNCHECKABLE
+    );
 }
