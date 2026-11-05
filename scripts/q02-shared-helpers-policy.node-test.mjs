@@ -155,8 +155,10 @@ test("lexical traversal uses stable code-unit order and stops at every bound", a
     { "src/a.ts": "", "src/b.ts": "", "src/c.ts": "function isRecord() {}" },
     async (root) => {
       assert.match(
+        // The budget runs out while src is still being listed, in the
+        // filesystem's order, so any of its entries may be the one named.
         (await scan(root, { ...Q02_LIMITS, entries: 2 }))[0],
-        /c\.ts$/u,
+        /^Q02 entry limit 2 exceeded at src\/[abc]\.ts$/u,
       );
       assert.match(
         (await scan(root, { ...Q02_LIMITS, entries: 3 }))[0],
