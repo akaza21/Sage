@@ -239,12 +239,6 @@
   }
 }
 
-@media (max-width: 760px) {
-  .workbench--editor .workbench__body {
-    grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
-  }
-}
-
 .agent-artifact-pane {
   --agent-pane-header-height: 46px;
   --agent-pane-control-width: var(--control-height-compact);

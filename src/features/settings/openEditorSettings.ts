@@ -3,7 +3,7 @@ import { requestSettingsPage } from "../../app/settingsPageRequest";
 import type { StoreApi } from "zustand";
 import type { WorkbenchState } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
-import { isCompactWorkbenchViewport } from "../../workbench/workbenchViewport";
+import { editorNavigationUpdate } from "../../app/editorNavigation";
 
 export default async function openEditorSettings(
   set: StoreApi<WorkbenchState>["setState"],
@@ -58,7 +58,8 @@ export default async function openEditorSettings(
       activeEditor: null,
     });
   }
-  if (isCompactWorkbenchViewport()) set({ sidebarOpen: false });
+  const navigation = editorNavigationUpdate();
+  if (navigation) set(navigation);
   requestSettingsPage(page);
   if (activating)
     void get()

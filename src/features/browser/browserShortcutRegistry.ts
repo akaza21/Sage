@@ -9,6 +9,7 @@ export type BrowserShortcut =
   | "zoomReset"
   | "newTab"
   | "closeTab"
+  | "history"
   | "stop";
 
 interface BrowserShortcutBinding {
@@ -29,6 +30,7 @@ export const BROWSER_SHORTCUT_BINDINGS: readonly BrowserShortcutBinding[] = [
   { action: "reload", chord: "Ctrl+R", keys: ["r"], ctrl: true },
   { action: "reload", chord: "F5", keys: ["f5"] },
   { action: "find", chord: "Ctrl+F", keys: ["f"], ctrl: true },
+  { action: "history", chord: "Ctrl+H", keys: ["h"], ctrl: true },
   { action: "back", chord: "Alt+Left", keys: ["arrowleft"], alt: true },
   { action: "forward", chord: "Alt+Right", keys: ["arrowright"], alt: true },
   {

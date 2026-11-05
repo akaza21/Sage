@@ -13,6 +13,7 @@ it("covers every native browser shortcut action and its native-only aliases", ()
     Back: "Browser back",
     Forward: "Browser forward",
     Find: "Find in browser page",
+    History: "Open browser history",
     ZoomIn: "Browser zoom in",
     ZoomOut: "Browser zoom out",
     ZoomReset: "Reset browser zoom",
