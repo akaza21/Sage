@@ -33,6 +33,7 @@ const PROBE_FLOOR: Duration = Duration::from_secs(1);
 pub(crate) struct CdpPort<T> {
     pub(super) transport: T,
     world: world::AgentWorld,
+    pub(super) serializer: evaluate::Serializer,
 }
 
 impl<T: CdpTransport> CdpPort<T> {
@@ -40,6 +41,7 @@ impl<T: CdpTransport> CdpPort<T> {
         Self {
             transport,
             world: world::AgentWorld::default(),
+            serializer: evaluate::Serializer::default(),
         }
     }
 

@@ -67,6 +67,7 @@ impl DevtoolsCapability<NativePort> {
         )?;
         let mut capability = self.clone();
         capability.port_mut().transport.developer = Some(work.0.clone());
+        capability.port_mut().serializer = work.0.serializer.clone();
         let pending = (&mut capability).dispatch(request, permit)?;
         Ok(Box::new(move || {
             let _work = work;

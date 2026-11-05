@@ -4,6 +4,17 @@ use crate::acp::browser::BrowserFailure;
 
 use super::snapshot::DocumentStamp;
 
+/// Native transport envelope for Sage-built requests, independent of the
+/// smaller agent parameter allowance enforced by the browser contract.
+pub(super) const INTERNAL_REQUEST_BYTES: usize = 16_384;
+
+pub(super) fn admit_request(method: &str, params: &str) -> Result<(), BrowserFailure> {
+    if method.len() > 128 || params.len() > INTERNAL_REQUEST_BYTES {
+        return Err(BrowserFailure::Capacity);
+    }
+    Ok(())
+}
+
 /// A main-frame document that finished loading after an Agent navigation.
 pub(crate) struct Settled {
     pub url: String,

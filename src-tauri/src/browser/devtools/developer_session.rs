@@ -23,6 +23,7 @@ pub(super) struct Session {
     owner: DeveloperScope,
     slot: Weak<SharedSlot>,
     state: Mutex<State>,
+    pub(super) serializer: super::cdp_port::evaluate::Serializer,
 }
 
 #[derive(Default)]
@@ -157,6 +158,7 @@ impl Session {
                         busy: true,
                         ..State::default()
                     }),
+                    serializer: Default::default(),
                 });
                 *current = Some(session.clone());
                 (session, true)
@@ -248,6 +250,7 @@ impl Session {
     }
 
     fn finished(self: &Arc<Self>) {
+        self.serializer.clear();
         if let Ok(mut state) = self.state.lock() {
             state.phase = Phase::Closed;
         }

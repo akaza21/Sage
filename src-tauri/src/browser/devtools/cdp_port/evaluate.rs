@@ -4,7 +4,11 @@
 //! immediately on receipt, before parsing or copying, and never log payloads.
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{borrow::Cow, time::Instant};
+use std::{
+    borrow::Cow,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use super::{CdpPort, CdpTransport, world::left};
 use crate::acp::{browser::BrowserFailure, limits::BROWSER_LIMITS};
@@ -12,6 +16,19 @@ use crate::acp::{browser::BrowserFailure, limits::BROWSER_LIMITS};
 const SCRIPT: &str = include_str!("evaluate.js");
 const ENTRY_LIMIT: usize = 4096;
 const SERIALIZATION_FAILURE: &str = r#"{"result":{"type":"undefined"},"exceptionDetails":{"text":"Result could not be serialized"}}"#;
+
+/// One function handle per developer session. It closes over no page values;
+/// evaluation scratch records remain in the per-call, promptly released group.
+#[derive(Clone, Default)]
+pub(in crate::browser::devtools) struct Serializer(Arc<Mutex<Option<String>>>);
+
+impl Serializer {
+    pub(in crate::browser::devtools) fn clear(&self) {
+        if let Ok(mut cached) = self.0.lock() {
+            cached.take();
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct Evaluation<'a> {
@@ -57,24 +74,27 @@ impl<T: CdpTransport> CdpPort<T> {
         if evaluation.result.subtype.as_deref() == Some("proxy") {
             return Ok(SERIALIZATION_FAILURE.into());
         }
-        let mut kinds = vec![collection_kind(evaluation.result.subtype.as_deref())];
         let mut receiver = object_id.into_owned();
+        let mut collection_kinds = collection_mask(evaluation.result.subtype.as_deref());
+        let serializer = self.serializer_function(deadline)?;
         let mut resume = false;
         drop(response);
         let mut remaining = ENTRY_LIMIT;
+        let mut references = 1;
         // Each pass adds native-classified object/prototype references. All
         // page entries visited across passes share one budget. The separate
         // pass/reference caps also bound chains with no enumerable entries.
         for _ in 0..128 {
             let params = json!({
-                "objectId": receiver,
+                "objectId": serializer,
                 "objectGroup": crate::acp::browser::developer::DEVELOPER_OBJECT_GROUP,
-                "functionDeclaration": SCRIPT.trim_start_matches("export default ").trim(),
+                "functionDeclaration": "function(root,limit,entries,resume,kinds){return this(root,limit,entries,resume,kinds);}",
                 "arguments": [
+                    {"objectId": receiver},
                     {"value": BROWSER_LIMITS.cdp_result_bytes},
                     {"value": remaining},
                     {"value": resume},
-                    {"value": kinds},
+                    {"value": collection_kinds},
                 ],
                 "returnByValue": false,
                 "silent": true,
@@ -84,11 +104,11 @@ impl<T: CdpTransport> CdpPort<T> {
             })
             .to_string();
             let envelope_limit = 2 * BROWSER_LIMITS.cdp_result_bytes + 4096;
-            let response = self.transport.raw(
+            let response = self.serializer_request(
                 "Runtime.callFunctionOn",
                 &params,
                 envelope_limit,
-                left(deadline)?,
+                deadline,
             )?;
             if response.len() > envelope_limit {
                 return Err(BrowserFailure::Capacity);
@@ -109,34 +129,109 @@ impl<T: CdpTransport> CdpPort<T> {
                 json!({"objectId": receiver, "ownProperties": true, "generatePreview": false})
                     .to_string();
             drop(response);
-            let pending = self.transport.raw(
+            let pending = self.serializer_request(
                 "Runtime.getProperties",
                 &params,
                 envelope_limit,
-                left(deadline)?,
+                deadline,
             )?;
-            if !classify_pending(pending, &mut kinds, &mut remaining)? {
+            if !classify_pending(
+                pending,
+                &mut references,
+                &mut remaining,
+                &mut collection_kinds,
+            )? {
                 return Ok(SERIALIZATION_FAILURE.into());
             }
             resume = true;
         }
         Err(BrowserFailure::Capacity)
     }
-}
 
-fn collection_kind(subtype: Option<&str>) -> &'static str {
-    match subtype {
-        Some("map") => "map",
-        Some("set") => "set",
-        Some("typedarray") => "typedarray",
-        _ => "",
+    fn serializer_request(
+        &self,
+        method: &str,
+        params: &str,
+        max: usize,
+        deadline: Instant,
+    ) -> Result<String, BrowserFailure> {
+        super::super::transport::admit_request(method, params)?;
+        let response = self.transport.raw(method, params, max, left(deadline)?)?;
+        if response.len() > max {
+            return Err(BrowserFailure::Capacity);
+        }
+        Ok(response)
+    }
+
+    fn serializer_function(&self, deadline: Instant) -> Result<String, BrowserFailure> {
+        let cached = self
+            .serializer
+            .0
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .clone();
+        if let Some(id) = cached {
+            // Navigation destroys the context and its handle. Validate only
+            // our function, never retry the agent's expression or traversal.
+            let params = json!({
+                "objectId": id,
+                "functionDeclaration": "function(){return true;}",
+                "returnByValue": true,
+                "throwOnSideEffect": true,
+            })
+            .to_string();
+            match self.serializer_request("Runtime.callFunctionOn", &params, 4096, deadline) {
+                Ok(response)
+                    if serde_json::from_str::<Value>(&response).is_ok_and(|v| {
+                        v["result"]["value"] == true && v["exceptionDetails"].is_null()
+                    }) =>
+                {
+                    return Ok(id);
+                }
+                Ok(_) | Err(BrowserFailure::Unavailable) => self.serializer.clear(),
+                Err(error) => return Err(error),
+            }
+        }
+        // A function expression captures no receiver and publishes no globals.
+        // Its separate group lives only as long as the native session.
+        let params = json!({
+            "objectGroup": "sage-developer-serializer",
+            "expression": format!("({})", SCRIPT.trim_start_matches("export default ").trim()),
+            "returnByValue": false,
+            "silent": true,
+            "throwOnSideEffect": true,
+        })
+        .to_string();
+        // CDP's function description includes its source. Bound that envelope
+        // separately; retain only the small handle, never the description.
+        let response_limit = 2 * super::super::transport::INTERNAL_REQUEST_BYTES + 4096;
+        let response =
+            self.serializer_request("Runtime.evaluate", &params, response_limit, deadline)?;
+        let evaluation: Evaluation<'_> =
+            serde_json::from_str(&response).map_err(|_| BrowserFailure::Unavailable)?;
+        let id = evaluation
+            .result
+            .object_id
+            .filter(|_| evaluation.exception.is_none())
+            .ok_or(BrowserFailure::Unavailable)?
+            .into_owned();
+        if id.len() > 512 {
+            return Err(BrowserFailure::Capacity);
+        }
+        *self
+            .serializer
+            .0
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)? = Some(id.clone());
+        Ok(id)
     }
 }
 
 fn classify_pending(
     response: String,
-    kinds: &mut Vec<&'static str>,
+    references: &mut usize,
     remaining: &mut usize,
+    collection_kinds: &mut u8,
 ) -> Result<bool, BrowserFailure> {
     if response.len() > 2 * BROWSER_LIMITS.cdp_result_bytes + 4096 {
         return Err(BrowserFailure::Capacity);
@@ -157,25 +252,24 @@ fn classify_pending(
     let length = value("length")
         .and_then(Value::as_u64)
         .ok_or(BrowserFailure::Unavailable)?;
-    if !(2..=ENTRY_LIMIT as u64 + 1).contains(&length) || properties.len() as u64 != length + 3 {
+    if !(2..=ENTRY_LIMIT as u64 + 1).contains(&length) || properties.len() as u64 != length + 4 {
         return Err(BrowserFailure::Unavailable);
     }
     *remaining = remaining
         .checked_sub(usize::try_from(visited).map_err(|_| BrowserFailure::Capacity)?)
         .ok_or(BrowserFailure::Capacity)?;
-    let kind_offset = kinds.len();
     let count = usize::try_from(length - 1).map_err(|_| BrowserFailure::Capacity)?;
-    if kind_offset + count > ENTRY_LIMIT {
+    *references += count;
+    if *references > ENTRY_LIMIT {
         return Err(BrowserFailure::Capacity);
     }
-    // Only fixed collection labels cross back into the renderer. Preserve
-    // numeric reference order even if CDP returns descriptors out of order.
-    kinds.resize(kind_offset + count, "");
+    // Native proxy admission precedes all page-side brand checks. No
+    // per-value labels or page object IDs are echoed back in parameters.
     for property in properties {
         let name = property["name"]
             .as_str()
             .ok_or(BrowserFailure::Unavailable)?;
-        if matches!(name, "0" | "length" | "root" | "previous") {
+        if matches!(name, "0" | "length" | "root" | "previous" | "previousKinds") {
             continue;
         }
         let remote = &property["value"];
@@ -184,17 +278,25 @@ fn classify_pending(
         if remote["subtype"] == "proxy" {
             return Ok(false);
         }
+        *collection_kinds |= collection_mask(remote["subtype"].as_str());
         remote["objectId"]
             .as_str()
             .ok_or(BrowserFailure::Unavailable)?;
-        let index = name
-            .parse::<usize>()
+        name.parse::<usize>()
             .ok()
             .filter(|index| (1..=count).contains(index))
             .ok_or(BrowserFailure::Unavailable)?;
-        kinds[kind_offset + index - 1] = collection_kind(remote["subtype"].as_str());
     }
     Ok(true)
+}
+
+fn collection_mask(subtype: Option<&str>) -> u8 {
+    match subtype {
+        Some("map") => 1,
+        Some("set") => 2,
+        Some("typedarray") => 4,
+        _ => 0,
+    }
 }
 
 fn admit(response: String) -> Result<String, BrowserFailure> {
@@ -231,7 +333,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collection_labels_follow_reference_indices_not_descriptor_order() {
+    fn pending_references_are_admitted_independently_of_descriptor_order() {
         let response = json!({"result": [
             {"name": "3", "value": {"objectId": "map", "subtype": "map"}},
             {"name": "1", "value": {"objectId": "view", "subtype": "typedarray"}},
@@ -239,16 +341,24 @@ mod tests {
             {"name": "0", "value": {"value": 3}},
             {"name": "length", "value": {"value": 4}},
             {"name": "root", "value": {"objectId": "root"}},
-            {"name": "previous", "value": {"type": "object", "subtype": "null"}}
+            {"name": "previous", "value": {"type": "object", "subtype": "null"}},
+            {"name": "previousKinds", "value": {"value": ""}}
         ]})
         .to_string();
-        let mut kinds = vec![""];
+        let mut references = 1;
+        let mut collection_kinds = 0;
         let mut remaining = ENTRY_LIMIT;
         assert_eq!(
-            classify_pending(response, &mut kinds, &mut remaining),
+            classify_pending(
+                response,
+                &mut references,
+                &mut remaining,
+                &mut collection_kinds
+            ),
             Ok(true)
         );
-        assert_eq!(kinds, ["", "typedarray", "set", "map"]);
+        assert_eq!(references, 4);
+        assert_eq!(collection_kinds, 7);
         assert_eq!(remaining, ENTRY_LIMIT - 3);
     }
 
@@ -280,3 +390,7 @@ mod tests {
         assert_eq!(admitted, r#"{"result":{"type":"string","value":"small"}}"#);
     }
 }
+
+#[cfg(test)]
+#[path = "evaluate_tests.rs"]
+mod integration_tests;

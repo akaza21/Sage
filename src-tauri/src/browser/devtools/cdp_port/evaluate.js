@@ -1,10 +1,11 @@
 export default function serializeDeveloperResult(
+  receiver,
   limit,
   entries,
   resume,
-  kinds,
+  candidates,
 ) {
-  // Fixed serializer; CDP classifies every object before it is traversed.
+  // Fixed serializer; CDP rejects proxies before any object is traversed.
   "use strict";
   const capacity = {};
   const unsupported = {};
@@ -33,35 +34,68 @@ export default function serializeDeveloperResult(
         pairs: false,
       },
     };
+    const collectionKind = (value) => {
+      // Native admission supplies only a three-bit candidate table, never
+      // per-value labels. Ordinary record batches need no brand probes.
+      if (!candidates) return 0;
+      if (isArray(value)) return 0;
+      if (candidates & 4) {
+        try {
+          typedLength.call(value);
+          return 3;
+        } catch {
+          // A non-typed value (including DataView); try the other brands.
+        }
+      }
+      // A fixed table of intrinsic internal-slot checks derives brands in
+      // the page. These never read tags, getters, or conversion overrides,
+      // and work for cross-realm values and replaced prototypes as well.
+      const table = [collections.map, collections.set];
+      for (let i = 0; i < table.length; i++) {
+        if (!(candidates & (1 << i))) continue;
+        try {
+          table[i].size.call(value);
+          return i + 1;
+        } catch {
+          // A native brand mismatch; no page code executes.
+        }
+      }
+      return 0;
+    };
     const sizedCollection = (value, kind) => {
       if (isArray(value))
         return { length: descriptor(value, "length").value, indexed: true };
-      if (kind === "typedarray")
+      if (kind === 3)
         return { length: typedLength.call(value), indexed: true, typed: true };
       const collection =
-        kind === "map" || kind === "set" ? collections[kind] : null;
-      if (collection)
-        return {
-          length: collection.size.call(value),
-          iterate: collection.iterate,
-          next: collection.next,
-          pairs: collection.pairs,
-        };
-      return null;
+        kind === 1 ? collections.map : kind === 2 ? collections.set : null;
+      return collection
+        ? {
+            length: collection.size.call(value),
+            iterate: collection.iterate,
+            next: collection.next,
+            pairs: collection.pairs,
+          }
+        : null;
     };
     const ancestors = new Set();
     const approved = new Map();
-    const root = resume ? this.root : this;
-    approved.set(Object.prototype, "");
-    approved.set(root, kinds[0]);
+    const root = resume ? receiver.root : receiver;
+    approved.set(Object.prototype, 0);
+    approved.set(root, collectionKind(root));
     // Previous states are immutable, serializer-owned records. Reuse their
-    // references locally; only bounded native type labels cross CDP. Those
-    // labels avoid getter/tag reads and exception-based probes on records.
-    let kindOffset = kinds.length;
-    for (let state = resume ? this : null; state; state = state.previous) {
-      kindOffset -= state.length - 1;
-      for (let i = 1; i < state.length; i++)
-        approved.set(state[i], kinds[kindOffset + i - 1]);
+    // references locally after native proxy admission. No per-value type
+    // labels cross CDP, even for deep, wide graphs.
+    let currentKinds = "";
+    let knownKinds = null;
+    for (let state = resume ? receiver : null; state; state = state.previous) {
+      for (let i = 1; i < state.length; i++) {
+        const kind =
+          knownKinds === null ? collectionKind(state[i]) : +knownKinds[i - 1];
+        if (knownKinds === null) currentKinds += kind;
+        approved.set(state[i], kind);
+      }
+      knownKinds = state.previousKinds;
     }
     const pending = Object.create(null);
     const discovered = new Set();
@@ -228,7 +262,10 @@ export default function serializeDeveloperResult(
       pending[0] = visited;
       pending.length = pendingLength;
       pending.root = root;
-      pending.previous = resume ? this : null;
+      pending.previous = resume ? receiver : null;
+      // At most one byte per admitted reference, kept only in this call's
+      // released scratch group. Earlier passes never repeat brand probes.
+      pending.previousKinds = currentKinds;
       return pending;
     }
     let bytes = 0;

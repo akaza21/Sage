@@ -9,10 +9,16 @@ import serializeDeveloperResult from "../src-tauri/src/browser/devtools/cdp_port
 
 const serializer = serializeDeveloperResult.toString();
 const limit = 256 * 1024;
+const functions = new WeakMap();
 
 async function page(run) {
   const session = new Session();
   session.connect();
+  const post = session.post.bind(session);
+  session.post = (method, params = {}) => {
+    assert.ok(Buffer.byteLength(JSON.stringify(params)) <= 16_384, method);
+    return post(method, params);
+  };
   try {
     await run(session);
   } finally {
@@ -45,17 +51,32 @@ async function serialize(session, objectId) {
     throwOnSideEffect: true,
   });
   if (root.subtype === "proxy") return failure();
-  const kinds = [root.subtype ?? ""];
+  const mask = (subtype) => ({ map: 1, set: 2, typedarray: 4 })[subtype] ?? 0;
+  let kinds = mask(root.subtype);
+  let functionId = functions.get(session);
+  if (!functionId) {
+    const installed = await session.post("Runtime.evaluate", {
+      objectGroup: "bounded-serializer",
+      expression: `(${serializer})`,
+      returnByValue: false,
+      throwOnSideEffect: true,
+    });
+    functionId = installed.result.objectId;
+    assert.ok(functionId);
+    functions.set(session, functionId);
+  }
   let known = 1;
   let receiver = objectId;
   let resume = false;
   let remaining = 4096;
   for (let pass = 0; pass < 128; pass++) {
     const response = await session.post("Runtime.callFunctionOn", {
-      objectId: receiver,
+      objectId: functionId,
       objectGroup: "bounded-test",
-      functionDeclaration: serializer,
+      functionDeclaration:
+        "function(root,limit,entries,resume,kinds){return this(root,limit,entries,resume,kinds);}",
       arguments: [
+        { objectId: receiver },
         { value: limit },
         { value: remaining },
         { value: resume },
@@ -79,7 +100,7 @@ async function serialize(session, objectId) {
       if (child.subtype === "proxy" || !child.objectId) return failure();
       if (known >= 4096) return capacity();
       known++;
-      kinds.push(child.subtype ?? "");
+      kinds |= mask(child.subtype);
     }
     resume = true;
   }
@@ -519,6 +540,22 @@ test("a wide normal result preserves its values across native classification", a
     );
     assert.equal(bounded.result.value.length, 1000);
     assert.ok(bounded.result.value.every((item) => item.answer === 42));
+  });
+});
+
+test("a thousand typed arrays fit the native request cap", async () => {
+  await page(async (session) => {
+    const { result } = await evaluate(
+      session,
+      "Array.from({length:1000}, () => new Uint8Array([42]))",
+    );
+    const bounded = JSON.parse(
+      (await serialize(session, result.objectId)).result.value,
+    );
+    assert.deepEqual(
+      bounded.result.value,
+      Array.from({ length: 1000 }, () => ({ 0: 42 })),
+    );
   });
 });
 

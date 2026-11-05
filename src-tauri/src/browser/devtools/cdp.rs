@@ -92,9 +92,7 @@ pub(super) fn call_with_permit(
     permit: Option<BrowserDispatchPermit>,
     dispatch: Dispatch,
 ) -> Result<String, BrowserFailure> {
-    if method.len() > 128 || params.len() > 16_384 {
-        return Err(BrowserFailure::Capacity);
-    }
+    super::transport::admit_request(method, params)?;
     // Keep successful by-reference evaluation and serializer state handles
     // until the complete serialization finishes.
     // Failed and late completions release even if the caller stopped waiting.
