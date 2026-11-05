@@ -797,6 +797,19 @@ describe("desktop-native chunk topology", () => {
     const childFile = groupedGraph.moduleFiles.get(subagent);
     expect(groupedGraph.chunkNames.get(childFile!)).toBe("SubagentSurface");
     expect(childFile).not.toBe(sharedFile);
+    // Browser subscriptions load native APIs on demand, outside UI closures.
+    for (const facade of [
+      workbench,
+      agent,
+      "src/features/browser/BrowserSurface.tsx",
+    ]) {
+      expect(
+        closureForModule(groupedGraph, facade).filter((id) =>
+          /node_modules\/@tauri-apps\/api\/(?:core|event)\.js$/.test(id),
+        ),
+        facade,
+      ).toEqual([]);
+    }
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     for (const facade of [
       workbench,

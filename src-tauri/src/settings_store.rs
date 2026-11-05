@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, AppResult};
 mod access;
 mod agent_rail_view;
+mod browser_developer;
 mod browser_download_folder;
 mod browser_preferences;
 mod browser_site_permissions;
@@ -114,6 +115,7 @@ impl SettingsStore {
             // in the catalogue's rows, copied from it once.
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
+            browser_developer::migrate(&migration)?;
             agent_rail_view::migrate(&migration)?;
             browser_download_folder::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;

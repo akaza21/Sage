@@ -30,6 +30,8 @@ impl AttachmentLease {
                 authority.stop();
             }
             self.stop_retired();
+            self.release_resources();
+            self.end_developer_mode();
         }
     }
 }
@@ -41,32 +43,57 @@ pub(crate) struct AgentControl {
     pub(crate) project_id: SageProjectId,
     pub(crate) chat_id: SageChatId,
     pub(crate) user_control: bool,
+    /// An approved developer-mode grant is live on the tab (ADR-0009b).
+    pub(crate) developer_mode: bool,
 }
 
 impl BrowserAttachments {
-    /// The live Agent attachment on `tab_label`, the user's own first, so
-    /// the chrome shows its controls for as long as an Agent is attached,
-    /// not only while it acts.
+    /// End all authority before app teardown spends its budget closing native
+    /// tabs. Keep entries tracked so failed closes can still be cleaned up.
+    pub(crate) fn retire_all(&self) {
+        if let Ok(entries) = self.entries.lock() {
+            for lease in entries.values() {
+                lease.retire();
+            }
+        }
+        if let Ok(entries) = self.agent_entries.lock() {
+            for lease in entries.values() {
+                lease.retire();
+            }
+        }
+    }
+
+    /// The user's attachment supplies the identity first, but tab-wide state
+    /// comes from every live lease. In particular, adding a user attachment
+    /// must not hide a grant or an Agent that can still drive the tab.
     pub(crate) fn agent_control(&self, tab_label: &str) -> Option<AgentControl> {
-        let found = |project: &SageProjectId, chat: &SageChatId, lease: &AttachmentLease| {
-            (lease.tab_label == tab_label && lease.is_live()).then(|| AgentControl {
+        // Registry lock order: user entries, then Agent entries.
+        let entries = self.entries.lock().ok()?;
+        let agent_entries = self.agent_entries.lock().ok()?;
+        let mut control = None;
+        for (project, chat, lease) in entries
+            .iter()
+            .map(|((project, chat), lease)| (project, chat, lease))
+            .chain(
+                agent_entries
+                    .iter()
+                    .map(|((project, chat, _, _), lease)| (project, chat, lease)),
+            )
+        {
+            if lease.tab_label != tab_label || !lease.is_live() {
+                continue;
+            }
+            let control = control.get_or_insert_with(|| AgentControl {
                 project_id: project.clone(),
                 chat_id: chat.clone(),
-                user_control: lease.user_controls(),
-            })
-        };
-        if let Some(control) = self.entries.lock().ok().and_then(|entries| {
-            entries
-                .iter()
-                .find_map(|((project, chat), lease)| found(project, chat, lease))
-        }) {
-            return Some(control);
+                user_control: true,
+                developer_mode: false,
+            });
+            // The user controls the tab only when no attached Agent can act.
+            control.user_control &= lease.user_controls();
+            control.developer_mode |= lease.developer_mode_active();
         }
-        self.agent_entries.lock().ok().and_then(|entries| {
-            entries
-                .iter()
-                .find_map(|((project, chat, _, _), lease)| found(project, chat, lease))
-        })
+        control
     }
 
     /// Whether a live attachment of this chat, the user's or one its Agent
@@ -301,6 +328,7 @@ mod tests {
                 project_id: project.clone(),
                 chat_id: chat.clone(),
                 user_control,
+                developer_mode: false,
             })
         };
         assert_eq!(registry.agent_control("browser-8"), control(false));

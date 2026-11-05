@@ -64,6 +64,7 @@ let rustAgentControl: {
   projectId: string;
   chatId: string;
   userControl: boolean;
+  developerMode: boolean;
 } | null = null;
 const stopBrowserTab = vi.fn(async (_tabId: string) => {
   rustAgentControl = null;
@@ -117,9 +118,8 @@ vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
   browserHistoryPage: (query: unknown) => browserHistoryPage(query),
   browserHistoryRemove: vi.fn(async () => 1),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
-}));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 
 const tab: WorkbenchTab = {
   id: "browser-1",
@@ -195,6 +195,7 @@ it("shows a New page creation failure in the browser without changing composer f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   rustAgentControl = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -602,6 +603,7 @@ it("stops the tab's current authority even when presence names a previous chat",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -664,6 +666,7 @@ it("takes over the tab until the user hands it back", async () => {
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -730,6 +733,7 @@ it("offers Stop and Take over for as long as an Agent is attached, idle or not",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   render(<BrowserSurface tab={tab} />);
   expect(
@@ -755,6 +759,7 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
     projectId: "project-1",
     chatId: "chat-toolbar",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
