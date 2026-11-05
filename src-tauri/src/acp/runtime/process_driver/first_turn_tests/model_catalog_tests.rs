@@ -50,7 +50,7 @@ fn ready_runtime(external_session: &ExternalId) -> CodexRuntime {
     )
 }
 
-fn ready_adapter<Adapter: HarnessAdapter>(
+pub(super) fn ready_adapter<Adapter: HarnessAdapter>(
     mut adapter: Adapter,
     external_session: &ExternalId,
     confirmed_config: bool,

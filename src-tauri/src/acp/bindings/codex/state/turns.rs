@@ -5,7 +5,7 @@ use crate::acp::{
     limits::LIMITS,
 };
 
-#[derive(Default)]
+#[derive(Clone, Default, PartialEq)]
 pub(in crate::acp::bindings::codex) struct SubagentLabels {
     entries: Vec<(SafeText<512>, SafeText<512>)>,
 }
