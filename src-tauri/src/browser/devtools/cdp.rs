@@ -95,11 +95,12 @@ pub(super) fn call_with_permit(
     if method.len() > 128 || params.len() > 16_384 {
         return Err(BrowserFailure::Capacity);
     }
-    // Keep a successful evaluation's handle until the serializer finishes.
+    // Keep successful by-reference evaluation and serializer state handles
+    // until the complete serialization finishes.
     // Failed and late completions release even if the caller stopped waiting.
     let release_on_completion =
         crate::acp::browser::developer::releases_on_completion(method, params);
-    let defer_release = method == "Runtime.evaluate"
+    let defer_release = matches!(method, "Runtime.evaluate" | "Runtime.callFunctionOn")
         && serde_json::from_str::<serde_json::Value>(params)
             .is_ok_and(|params| params["returnByValue"] == false);
     let capture_clip = if dispatch.session.is_some() && method == "Page.captureScreenshot" {

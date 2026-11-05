@@ -17,21 +17,63 @@ async function page(run) {
   }
 }
 
-async function evaluate(session, expression) {
+async function evaluate(session, expression, options = {}) {
   return session.post("Runtime.evaluate", {
     expression,
     objectGroup: "bounded-test",
     returnByValue: false,
+    ...options,
   });
 }
 
 async function serialize(session, objectId) {
-  return session.post("Runtime.callFunctionOn", {
-    objectId,
-    functionDeclaration: serializer,
-    arguments: [{ value: limit }],
-    returnByValue: true,
+  const failure = () => ({
+    result: {
+      type: "string",
+      value:
+        '{"result":{"type":"undefined"},"exceptionDetails":{"text":"Result could not be serialized"}}',
+    },
   });
+  const capacity = () => ({ result: { type: "string", value: "capacity" } });
+  const { result: root } = await session.post("Runtime.callFunctionOn", {
+    objectId,
+    functionDeclaration: "function(){return this;}",
+    returnByValue: false,
+    throwOnSideEffect: true,
+  });
+  if (root.subtype === "proxy") return failure();
+  let known = 1;
+  let receiver = objectId;
+  let resume = false;
+  let remaining = 4096;
+  for (let pass = 0; pass < 128; pass++) {
+    const response = await session.post("Runtime.callFunctionOn", {
+      objectId: receiver,
+      objectGroup: "bounded-test",
+      functionDeclaration: serializer,
+      arguments: [{ value: limit }, { value: remaining }, { value: resume }],
+      returnByValue: false,
+      throwOnSideEffect: true,
+    });
+    if (response.exceptionDetails || response.result.type === "string")
+      return response;
+    receiver = response.result.objectId;
+    const properties = await session.post("Runtime.getProperties", {
+      objectId: receiver,
+      ownProperties: true,
+      generatePreview: false,
+    });
+    const values = new Map(properties.result.map((p) => [p.name, p.value]));
+    remaining -= values.get("0").value;
+    for (let i = 1; i < values.get("length").value; i++) {
+      const child = values.get(String(i));
+      if (child.subtype === "proxy" || !child.objectId) return failure();
+      if (known >= 4096) return capacity();
+      known++;
+    }
+    resume = true;
+  }
+  return capacity();
 }
 
 test("an object over the cap never transfers its full value", async () => {
@@ -55,6 +97,45 @@ test("an object over the cap never transfers its full value", async () => {
     await assert.rejects(
       session.post("Runtime.getProperties", { objectId: result.objectId }),
     );
+  });
+});
+
+test("visited entries are bounded even when their values are omitted", async () => {
+  await page(async (session) => {
+    for (const value of ["undefined", "function() {}", "Symbol('omitted')"]) {
+      for (const count of [4096, 4097]) {
+        const { result } = await evaluate(
+          session,
+          `Object.fromEntries(Array.from({length: ${count}}, (_, i) => [i, ${value}]))`,
+        );
+        const bounded = await serialize(session, result.objectId);
+        assert.equal(
+          bounded.result.value,
+          count === 4096
+            ? '{"result":{"type":"object","value":{}}}'
+            : "capacity",
+        );
+      }
+    }
+    const { result } = await evaluate(
+      session,
+      `(() => {
+        globalThis.sageGetterCalls = 0;
+        const value = {};
+        for (let i = 0; i < 100000; i++) {
+          Object.defineProperty(value, i, {
+            enumerable: true,
+            get() { globalThis.sageGetterCalls++; }
+          });
+        }
+        return value;
+      })()`,
+    );
+    assert.equal(
+      (await serialize(session, result.objectId)).result.value,
+      "capacity",
+    );
+    assert.equal((await evaluate(session, "sageGetterCalls")).result.value, 0);
   });
 });
 
@@ -112,7 +193,7 @@ test("serializer failures remain bounded and the group can still be released", a
   await page(async (session) => {
     const { result } = await evaluate(
       session,
-      "({ get fail() { throw 'x'.repeat(300 * 1024); } })",
+      "(() => { const value = {}; value.self = value; return value; })()",
     );
     const bounded = await serialize(session, result.objectId);
     assert.ok(JSON.parse(bounded.result.value).exceptionDetails);
@@ -123,5 +204,148 @@ test("serializer failures remain bounded and the group can still be released", a
     await assert.rejects(
       session.post("Runtime.getProperties", { objectId: result.objectId }),
     );
+  });
+});
+
+test("normal nested data keeps JSON values, omissions, array holes and own keys", async () => {
+  await page(async (session) => {
+    const { result } = await evaluate(
+      session,
+      `Object.assign(Object.create({inherited: 'not a result'}), {
+        answer: 42, text: 'hello', nil: null, yes: true,
+        nested: {missing: undefined, fn() {}, symbol: Symbol('omit'), kept: false},
+        array: ['text', , undefined, function() {}, Symbol('null'), null, NaN, Infinity],
+        ['__proto__']: {ordinary: 'data'}
+      })`,
+    );
+    // Define __proto__ as data; Object.assign otherwise uses its legacy setter.
+    await session.post("Runtime.callFunctionOn", {
+      objectId: result.objectId,
+      functionDeclaration:
+        "function() { Object.defineProperty(this, '__proto__', {value: {ordinary: 'data'}, enumerable: true}); }",
+    });
+    assert.deepEqual(
+      JSON.parse((await serialize(session, result.objectId)).result.value),
+      {
+        result: {
+          type: "object",
+          value: {
+            answer: 42,
+            text: "hello",
+            nil: null,
+            yes: true,
+            nested: { kept: false },
+            array: ["text", null, null, null, null, null, null, null],
+            ["__proto__"]: { ordinary: "data" },
+          },
+        },
+      },
+    );
+  });
+});
+
+test("side-effect-free evaluation never runs getters or toJSON during serialization", async () => {
+  await page(async (session) => {
+    await evaluate(
+      session,
+      `globalThis.sageSerializationState = 0;
+       globalThis.sageSerializationValue = {
+         answer: 42,
+         get change() { globalThis.sageSerializationState++; return 'changed'; },
+         toJSON() { globalThis.sageSerializationState++; return 'replaced'; }
+       };
+       Object.defineProperty(sageSerializationValue, Symbol.toStringTag, {
+         get() { globalThis.sageSerializationState++; return 'Custom'; }
+       })`,
+    );
+    const { result } = await evaluate(session, "sageSerializationValue", {
+      throwOnSideEffect: true,
+    });
+    assert.deepEqual(
+      JSON.parse((await serialize(session, result.objectId)).result.value),
+      { result: { type: "object", value: { answer: 42, change: "[getter]" } } },
+    );
+    assert.equal(
+      (await evaluate(session, "sageSerializationState")).result.value,
+      0,
+    );
+  });
+});
+
+test("boxed primitives keep their values without calling conversion overrides", async () => {
+  await page(async (session) => {
+    const { result } = await evaluate(
+      session,
+      `(() => {
+        globalThis.sageBoxConversions = 0;
+        const values = [new Number(42), new Boolean(false), new String('hello')];
+        for (const value of values) {
+          Object.defineProperty(value, 'valueOf', {get() { globalThis.sageBoxConversions++; }});
+          value.toJSON = () => { globalThis.sageBoxConversions++; return 'changed'; };
+        }
+        return values;
+      })()`,
+    );
+    assert.deepEqual(
+      JSON.parse((await serialize(session, result.objectId)).result.value),
+      {
+        result: {
+          type: "object",
+          subtype: "array",
+          value: [42, false, "hello"],
+        },
+      },
+    );
+    assert.equal(
+      (await evaluate(session, "sageBoxConversions")).result.value,
+      0,
+    );
+  });
+});
+
+test("a wide normal result preserves its values across native classification", async () => {
+  await page(async (session) => {
+    const { result } = await evaluate(
+      session,
+      "Array.from({length: 1000}, () => ({answer: 42}))",
+    );
+    const bounded = JSON.parse(
+      (await serialize(session, result.objectId)).result.value,
+    );
+    assert.equal(bounded.result.value.length, 1000);
+    assert.ok(bounded.result.value.every((item) => item.answer === 42));
+  });
+});
+
+test("proxy traps cannot run during serialization, including nested proxies", async () => {
+  await page(async (session) => {
+    await evaluate(
+      session,
+      `globalThis.sageProxyTraps = 0;
+       globalThis.sageSerializationProxy = new Proxy({answer: 42}, {
+         ownKeys() { globalThis.sageProxyTraps++; return ['answer']; },
+         getOwnPropertyDescriptor() { globalThis.sageProxyTraps++; return {value: 42, enumerable: true, configurable: true}; },
+         getPrototypeOf() { globalThis.sageProxyTraps++; return null; },
+         get() { globalThis.sageProxyTraps++; return undefined; }
+       })`,
+    );
+    for (const expression of [
+      "sageSerializationProxy",
+      "({ nested: sageSerializationProxy })",
+      "Object.create(sageSerializationProxy)",
+      "new Proxy({answer: 42}, {ownKeys() { return ['answer']; }})",
+      "({ nested: new Proxy({answer: 42}, {ownKeys() { return ['answer']; }}) })",
+      "Object.create(new Proxy({}, {ownKeys() { return []; }}))",
+      "Object.create(new Proxy(function() {}, {ownKeys() { return []; }}))",
+      "new Proxy([42], {getOwnPropertyDescriptor() { return {value: 1}; }})",
+    ]) {
+      const { result } = await evaluate(session, expression);
+      const bounded = await serialize(session, result.objectId);
+      assert.ok(
+        bounded.exceptionDetails ||
+          JSON.parse(bounded.result.value).exceptionDetails,
+      );
+      assert.equal((await evaluate(session, "sageProxyTraps")).result.value, 0);
+    }
   });
 });

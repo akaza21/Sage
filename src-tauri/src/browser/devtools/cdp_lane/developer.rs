@@ -37,6 +37,10 @@ fn a_script_runs_in_the_page_and_its_value_comes_back() {
         evaluate(&mut lane, "document.title.length > 0 && 6 * 7").unwrap(),
         json!(42)
     );
+    assert_eq!(
+        evaluate(&mut lane, "({nested: {answer: 42}})").unwrap(),
+        json!({"nested": {"answer": 42}})
+    );
     evaluate(&mut lane, "window.__developerMark = 'set'").unwrap();
     assert_eq!(lane.evaluate("window.__developerMark"), json!("set"));
 }
@@ -57,10 +61,58 @@ fn developer_evaluation_preserves_lexical_declarations_across_calls() {
 }
 
 #[test]
+fn result_serialization_preserves_page_state_even_for_proxies() {
+    let mut lane = Lane::open("/form.html");
+    lane.evaluate(
+        "window.__serializationEffects = 0; \
+         window.__safeDeveloperResult = {answer: 42, \
+           get change() { window.__serializationEffects++; return 1; }, \
+           toJSON() { window.__serializationEffects++; return 'changed'; }}; \
+         window.__proxyDeveloperResult = new Proxy({}, { \
+           ownKeys() { window.__serializationEffects++; return []; }}); \
+         window.__pureProxyDeveloperResult = new Proxy({answer: 42}, { \
+           ownKeys() { return ['answer']; }}); true",
+    );
+    for guarded in [false, true] {
+        let result = cdp(
+            &mut lane,
+            "Runtime.evaluate",
+            json!({"expression": "window.__safeDeveloperResult", "throwOnSideEffect": guarded}),
+        )
+        .unwrap();
+        let BrowserResult::Cdp { result } = result else {
+            panic!("expected CDP result");
+        };
+        assert_eq!(
+            result["result"]["value"],
+            json!({"answer": 42, "change": "[getter]"})
+        );
+        for expression in [
+            "window.__proxyDeveloperResult",
+            "({nested: window.__pureProxyDeveloperResult})",
+            "Object.create(window.__pureProxyDeveloperResult)",
+        ] {
+            let result = cdp(
+                &mut lane,
+                "Runtime.evaluate",
+                json!({"expression": expression, "throwOnSideEffect": guarded}),
+            )
+            .unwrap();
+            let BrowserResult::Cdp { result } = result else {
+                panic!("expected CDP result");
+            };
+            assert!(result.get("exceptionDetails").is_some());
+        }
+        assert_eq!(lane.evaluate("window.__serializationEffects"), json!(0));
+    }
+}
+
+#[test]
 fn completed_object_results_are_collectible_on_every_outcome() {
     let mut lane = Lane::open("/form.html");
     for (body, capacity) in [
         ("({ answer: 42 })", false),
+        ("({ nested: { answer: 42 } })", false),
         ("({ text: 'x'.repeat(300 * 1024) })", true),
         (
             "({ get text() { throw new Error('serialization failed'); } })",

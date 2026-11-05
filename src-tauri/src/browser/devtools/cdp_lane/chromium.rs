@@ -230,7 +230,9 @@ impl Chromium {
         let link = self.link.lock().map_err(|_| BrowserFailure::Unavailable)?;
         let release =
             crate::acp::browser::developer::releases_on_completion(method, &params.to_string());
-        let waiting = (release && method == "Runtime.evaluate" && params["returnByValue"] == false)
+        let waiting = (release
+            && matches!(method, "Runtime.evaluate" | "Runtime.callFunctionOn")
+            && params["returnByValue"] == false)
             .then(|| Waiting(Arc::new(AtomicBool::new(true))));
         let id = self.wire.write_waiting(
             session,
