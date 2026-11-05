@@ -107,3 +107,109 @@ fn failed_enable_is_not_reused_and_retry_replaces_it() {
     table.detach_if("browser-1", &failed.state);
     assert_eq!(table.len(), 1);
 }
+
+#[test]
+fn a_stale_sleep_registration_cannot_reuse_or_remove_a_woken_ring() {
+    use crate::acp::{
+        browser::attachment::BrowserAttachments,
+        contract::{SageChatId, SageProjectId},
+    };
+    let registry = BrowserAttachments::default();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    registry
+        .attach(
+            project.clone(),
+            chat.clone(),
+            "browser-1",
+            "https://example.com/",
+            1,
+        )
+        .unwrap();
+    let lease = registry.resolve(&project, &chat).unwrap();
+    let removed = Arc::new(Mutex::new(Vec::new()));
+    let mut table = SubscriptionTable::<FakeRegistration>::default();
+    let cancelled = AtomicBool::new(false);
+    let old_scope = lease.diagnostic_scope().unwrap();
+    let old = table
+        .attach_scoped_once(
+            "browser-1",
+            Some(old_scope.clone()),
+            &cancelled,
+            DiagnosticRings::default(),
+            |event, _| Ok(FakeRegistration(removed.clone(), event)),
+        )
+        .unwrap();
+    old.state.store(ACTIVE, Ordering::Release);
+    lease.sleep_diagnostics(None);
+    let current = table
+        .attach_scoped_once(
+            "browser-1",
+            lease.diagnostic_scope(),
+            &cancelled,
+            DiagnosticRings::default(),
+            |event, _| Ok(FakeRegistration(removed.clone(), event)),
+        )
+        .unwrap();
+    current.state.store(ACTIVE, Ordering::Release);
+    assert!(
+        old_scope
+            .with_registered_diagnostics(|| table
+                .attach_scoped_once(
+                    "browser-1",
+                    Some(old_scope.clone()),
+                    &cancelled,
+                    DiagnosticRings::default(),
+                    |event, _| Ok(FakeRegistration(removed.clone(), event))
+                )
+                .map(|lease| (lease, None)))
+            .is_err()
+    );
+    table.detach_if("browser-1", &old.state);
+    ingest(
+        &current.rings,
+        "Runtime.consoleAPICalled",
+        r#"{"type":"log","args":[{"value":"after wake"}]}"#,
+    );
+    assert_eq!(
+        current.rings.lock().unwrap().console(None, 1).unwrap().1[0].text,
+        "after wake"
+    );
+    assert!(
+        old.rings
+            .lock()
+            .unwrap()
+            .console(None, 1)
+            .unwrap()
+            .1
+            .is_empty()
+    );
+}
+
+#[test]
+fn domain_setup_completion_cannot_reactivate_a_suspended_subscription() {
+    let removed = Arc::new(Mutex::new(Vec::new()));
+    let mut table = SubscriptionTable::<FakeRegistration>::default();
+    let lease = table
+        .attach_once("browser-1", &AtomicBool::new(false), |event, _| {
+            Ok(FakeRegistration(removed.clone(), event))
+        })
+        .unwrap();
+    table.detach("browser-1");
+    assert!(lease.activate().is_err());
+    ingest(
+        &lease.rings,
+        "Runtime.consoleAPICalled",
+        r#"{"type":"log","args":[{"value":"late setup"}]}"#,
+    );
+    assert!(
+        lease
+            .rings
+            .lock()
+            .unwrap()
+            .console(None, 1)
+            .unwrap()
+            .1
+            .is_empty()
+    );
+}

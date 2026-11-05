@@ -3,6 +3,8 @@ mod capability;
 mod cdp;
 #[cfg(all(test, unix, feature = "cdp-lane"))]
 mod cdp_lane;
+#[cfg(windows)]
+pub(super) mod developer_session;
 #[cfg(any(windows, test))]
 pub(crate) mod lanes;
 #[cfg(all(feature = "cdp-lane", not(unix)))]

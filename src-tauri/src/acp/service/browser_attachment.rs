@@ -52,6 +52,10 @@ where
 }
 
 impl super::AcpService {
+    pub(crate) fn suspend_browser_tab(&self, label: &str) {
+        self.browser_attachments.suspend_tab(label);
+    }
+
     fn clear_browser_highlight(&self, label: &str) {
         #[cfg(windows)]
         {
@@ -71,6 +75,16 @@ impl super::AcpService {
 
     #[cfg(windows)]
     pub(crate) fn set_browser_app(&self, app: tauri::AppHandle) {
+        use tauri::Emitter;
+        let events = app.clone();
+        self.browser_attachments
+            .set_agent_control_emitter(std::sync::Arc::new(move |tab| {
+                let _ = events.emit_to(
+                    "main",
+                    "browser:agent-control",
+                    serde_json::json!({ "tabId": tab }),
+                );
+            }));
         if let Ok(mut slot) = self.browser_app.lock() {
             *slot = Some(app);
         }
@@ -225,6 +239,7 @@ impl super::AcpService {
 
     pub(crate) fn revoke_browser_chat(&self, project: &SageProjectId, chat: &SageChatId) {
         let _ = self.detach_browser_tab(project, chat);
+        self.browser_attachments.retire_agent_chat(project, chat);
         #[cfg(windows)]
         if let Some(app) = self.browser_app.lock().ok().and_then(|slot| slot.clone()) {
             for label in self
@@ -234,7 +249,6 @@ impl super::AcpService {
                 let Some(claim) = self.browser_attachments.agent_claim_sweep(&label) else {
                     continue;
                 };
-                self.browser_attachments.agent_retire_label(&label);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let _claim = claim;
@@ -357,6 +371,17 @@ impl super::AcpService {
                             && self.browser_owner_witness_matches(&owner)
                     })
             })
+    }
+
+    /// Ends every developer-mode grant, as the Settings switch going off
+    /// does, and returns the tabs that held one.
+    /// Ends every grant and releases each tab's developer-mode objects.
+    pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
+        let labels = self.browser_attachments.end_developer_mode();
+        for label in &labels {
+            self.clear_browser_highlight(label);
+        }
+        labels
     }
 
     pub(crate) fn browser_agent_control(

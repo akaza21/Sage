@@ -18,6 +18,7 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { browserPageIdentity, resolveBrowserAddress } from "./browserAddress";
 import type { BrowserSuggestedSites } from "./browserSuggestions";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
+import { subscribeBrowserTab } from "./browserTabEvents";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
 import { BrowserSitePermissions } from "./BrowserSitePermissions";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
@@ -126,15 +127,8 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let latestNavigationRevision = -1n;
-    let mounted = true;
-    let unlisten: (() => void) | undefined;
     const acceptNavigation = (next: BrowserNavigation, bootstrap = false) => {
-      if (
-        !mounted ||
-        (!bootstrap && next.tabId !== tab.id) ||
-        !/^(0|[1-9]\d{0,19})$/.test(next.revision)
-      )
-        return;
+      if (!/^(0|[1-9]\d{0,19})$/.test(next.revision)) return;
       const revision = BigInt(next.revision);
       if (
         bootstrap
@@ -153,26 +147,16 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         setAddress(next.url);
       projectBrowserTabStatus(tab.id, next);
     };
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        const dispose = await listen<BrowserNavigation>(
-          "browser:navigation",
-          (event) => acceptNavigation(event.payload),
-        );
-        if (!mounted) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-        acceptNavigation(await browserStatus(tab.id), true);
-      })
-      .catch((cause) => {
-        if (mounted) setError(String(cause).slice(0, 512));
-      });
+    const stop = subscribeBrowserTab(
+      "browser:navigation",
+      tab.id,
+      acceptNavigation,
+      () => browserStatus(tab.id),
+      setError,
+    );
     return () => {
-      mounted = false;
       screenshotEpoch.current += 1;
-      unlisten?.();
+      stop();
     };
   }, [tab.id, screenshotEpoch, setScreenshotStatus]);
   useBrowserPlacement(tab.id, viewport, surface, setError, historyOpen);

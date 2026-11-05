@@ -268,14 +268,7 @@ fn content(
             ItemContent::PermissionRequest {
                 request_id,
                 state,
-                label: SafeText::new(
-                    "permissionLabel",
-                    match source {
-                        PermissionRequestSource::Browser => "Browser permission",
-                        PermissionRequestSource::Harness => "Permission request",
-                    },
-                )
-                .map_err(contract)?,
+                label: SafeText::new("permissionLabel", source.label()).map_err(contract)?,
                 summary,
                 source,
                 offered_option_kinds,
