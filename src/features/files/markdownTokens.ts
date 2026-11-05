@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import { boundedTable } from "./markdownTable";
 import {
   markdownContainers,
   type MarkdownRawBlock,
@@ -11,7 +12,6 @@ import {
   MAX_MARKDOWN_PREVIEW_BLOCKS,
   MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
   MAX_MARKDOWN_LIST_DEPTH,
-  MAX_MARKDOWN_TABLE_ROWS,
 } from "./markdownLimits";
 
 // This module belongs to the demand-loaded markdown renderer. The instance
@@ -37,56 +37,13 @@ interface BlockBudget {
 }
 
 // Audited against markdown-it 15.0.3's distributed rules_block sources:
-// list/blockquote re-enter the guarded tokenizer (empty list items instead
-// consult its list continuation chain below); code/fence/reference emit
-// one token; heading/lheading/paragraph emit three; hr emits one. html_block
-// is inactive (html: false). Only table emits many tokens without recursion.
-// Table is the first stock rule; capture it before adding Sage's rules.
-const tableRule = parser.block.ruler.getRules("")[0];
-parser.block.ruler.at(
-  "table",
-  (state, start, end, silent) => {
-    if (silent) return tableRule(state, start, end, true);
-    const visibleEnd = Math.min(end, start + MAX_MARKDOWN_TABLE_ROWS + 2);
-    const tokenStart = state.tokens.length;
-    if (!tableRule(state, start, visibleEnd, false)) return false;
-    if (state.line !== visibleEnd || visibleEnd === end) return true;
-
-    // The private table continuation test has no exported helper. Reuse its
-    // terminator chain and mirror its indentation/nonblank checks. 15.0.3
-    // permits ragged and even pipe-less body rows, so do not require a fixed
-    // pipe count or split omitted cells into arrays. The source cap bounds
-    // this scan; only the admitted prefix ever allocates tokens.
-    const terminators = state.md.block.ruler.getRules("blockquote");
-    const parent = state.parentType;
-    state.parentType = "table";
-    try {
-      while (state.line < end) {
-        const line = state.line;
-        const indent = state.sCount[line] - state.blkIndent;
-        if (indent < 0 || indent >= 4) break;
-        if (terminators.some((rule) => rule(state, line, end, true))) break;
-        const text = state.src.slice(
-          state.bMarks[line] + state.tShift[line],
-          state.eMarks[line],
-        );
-        if (!text.trim()) break;
-        state.line++;
-      }
-    } finally {
-      state.parentType = parent;
-    }
-    if (state.line > visibleEnd) {
-      (state.env.sageBlockBudget as BlockBudget).truncated = true;
-      const token = state.tokens[tokenStart];
-      token.map![1] = state.line;
-      // The adapter records overflow at this block so streaming can freeze it.
-      token.meta = { truncated: true };
-    }
-    return true;
-  },
-  { alt: ["paragraph", "reference"] },
-);
+// list/blockquote re-enter the guarded tokenizer; empty list items consult
+// its continuation chain below. code/fence/hr/reference emit one token,
+// heading/lheading/paragraph three. html_block is inactive (html: false).
+// Table alone emits many tokens without recursion: bound admission in the rule.
+parser.block.ruler.at("table", boundedTable, {
+  alt: ["paragraph", "reference"],
+});
 
 // Container recursion shares tokens and the environment. Check every level so
 // a single list cannot exhaust memory before the visible block allowance.
@@ -185,8 +142,12 @@ export function parseMarkdownTokens(
     exhausted: false,
     truncated: false,
   };
-  const tokens = parser.parse(source, { sageBlockBudget });
-  return { tokens, truncated: sageBlockBudget.truncated };
+  const env = { sageBlockBudget, sageTableTruncated: false };
+  const tokens = parser.parse(source, env);
+  return {
+    tokens,
+    truncated: sageBlockBudget.truncated || env.sageTableTruncated,
+  };
 }
 
 export function retainMarkdownPrefix(
