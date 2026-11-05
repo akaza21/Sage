@@ -50,7 +50,9 @@ export function useAgentChangesPane(
 /**
  * Opening an otherwise empty pane shows the focused Chat's changes, as the
  * Codex desktop app does, instead of a waiting placeholder. Only the
- * transition to expanded opens them, so closing the Changes tab sticks.
+ * transition to expanded opens them, so closing the Changes tab sticks. A
+ * pane opened before the Chat's owner loads keeps that request until the
+ * owner arrives or the pane closes.
  */
 export function useChangesOnExpand(
   expanded: boolean,
@@ -59,10 +61,12 @@ export function useChangesOnExpand(
   generation: number,
 ) {
   const wasExpanded = useRef(expanded);
+  const pending = useRef(false);
   useEffect(() => {
-    const opened = expanded && !wasExpanded.current;
+    if (expanded !== wasExpanded.current) pending.current = expanded;
     wasExpanded.current = expanded;
-    if (opened && empty && owner)
-      useAgentChangesState.getState().show(owner, generation);
+    if (!pending.current || !owner) return;
+    pending.current = false;
+    if (empty) useAgentChangesState.getState().show(owner, generation);
   }, [expanded, empty, owner, generation]);
 }
