@@ -341,6 +341,29 @@ describe("compact Workbench project tools", () => {
     expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
+  it("keeps navigation focused when narrowing an open overlay dismisses it", async () => {
+    seedResourceChat();
+    vi.stubGlobal("innerWidth", 680);
+    const { container } = render(<Workbench />);
+    await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", { name: /Show files and preview/ }),
+    );
+    const rail = () =>
+      screen.getByRole("complementary", { name: "Projects and chats" });
+    within(rail()).getByRole("button", { name: "Home" }).focus();
+    // Below the modal threshold the overlay is dismissed, which unfolds the
+    // rail; focus follows Home into the full rail instead of dropping.
+    vi.stubGlobal("innerWidth", 360);
+    fireEvent(window, new Event("resize"));
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
+    expect(within(rail()).getByRole("button", { name: "Home" })).toHaveFocus();
+    expect(rail()).not.toHaveAttribute("inert");
+    expect(container.querySelector(".center-region")).not.toHaveAttribute(
+      "inert",
+    );
+  });
+
   it("keeps the folded navigation focused when a resource overlay widens into a docked pane", async () => {
     seedResourceChat();
     vi.stubGlobal("innerWidth", 680);
