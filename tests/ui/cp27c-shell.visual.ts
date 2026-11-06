@@ -83,11 +83,11 @@ async function expectTitleBar(page: Page) {
   // One row: never the old wrapped two-row narrow title bar.
   expect(bounds.height).toBeLessThanOrEqual(48);
   let previousRight = bounds.x;
+  // Agent has no centre: Codex leaves the chat's name to its header.
   for (const area of ["start", "center", "end"]) {
-    const rect = await expectContained(
-      titleBar.locator(`.title-bar__${area}`),
-      page,
-    );
+    const region = titleBar.locator(`.title-bar__${area}`);
+    if (area === "center" && (await region.count()) === 0) continue;
+    const rect = await expectContained(region, page);
     expectInside(rect, bounds);
     expect(rect.x).toBeGreaterThanOrEqual(previousRight);
     previousRight = rect.x + rect.width;
@@ -431,26 +431,14 @@ for (const width of [480, 720]) {
           }));
         }, longTitle);
         const titleBar = page.locator(".title-bar");
-        const session = titleBar.getByRole("heading", { level: 1 });
-        await expect(session).toContainText("Long title Long title");
+        // The chat header names the chat; the title bar never repeats it.
+        await expect(titleBar).not.toContainText("Long title");
         await expectTitleBar(page);
-        const center = await expectContained(
-          titleBar.locator(".title-bar__center"),
-          page,
-        );
-        expectInside((await session.boundingBox())!, center);
-        // The title is capped in JS and, when still too wide, ellipsized on
-        // one line inside the centre track; it never pushes the toggle.
-        expect(
-          await session.evaluate((node) => {
-            const style = getComputedStyle(node);
-            return (
-              style.textOverflow === "ellipsis" &&
-              style.whiteSpace === "nowrap" &&
-              node.textContent!.endsWith("…")
-            );
-          }),
-        ).toBe(true);
+        for (const name of ["Back", "Forward"]) {
+          await expect(
+            titleBar.getByRole("button", { name, exact: true }),
+          ).toBeVisible();
+        }
         await expectHitTarget(
           titleBar.getByRole("button", { name: "Search chats" }),
           page,
@@ -473,7 +461,7 @@ for (const width of [480, 720]) {
           .locator("..")
           .click();
         await expectTitleBar(page);
-        await expect(session).toContainText("Long title Long title");
+        await expect(titleBar).not.toContainText("Long title");
       });
     });
   }
