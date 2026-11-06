@@ -14,6 +14,8 @@ import {
 import { observeGuardianStartup } from "./beta0001-installed-smoke-output-diagnostics.mjs";
 import {
   GUARDIAN_JOURNAL_MAXIMUM_BYTES,
+  GUARDIAN_JOURNAL_MAXIMUM_RETAINED_RECORDS,
+  guardianJournalRetention,
   recordGuardianStartup,
   summarizeGuardianJournal,
 } from "./beta0001-installed-smoke-guardian-journal.mjs";
@@ -524,4 +526,49 @@ test("a journal write that never settles cannot delay killing or settling a time
     if (child.exitCode === null && child.signalCode === null) child.kill();
     await guardian.closed;
   }
+});
+
+test("a stalled journal disk keeps at most one write in flight and one record waiting", async () => {
+  let releaseStat;
+  const statStalled = new Promise((resolve) => {
+    releaseStat = resolve;
+  });
+  const appended = [];
+  const io = {
+    stat: () => statStalled,
+    appendFile: async (journal, line) => {
+      appended.push(
+        JSON.parse(line).outcome + ":" + JSON.parse(line).elapsedMs,
+      );
+    },
+  };
+  const snapshot = (elapsedMs) =>
+    phaseSnapshot({ "script-start": 600, "identity-start": 5579 }, elapsedMs);
+  const results = [];
+  let maximumLine = 0;
+  results.push(
+    recordGuardianStartup(snapshot(0), "ready", "stalled.jsonl", io),
+  );
+  results.push(
+    recordGuardianStartup(snapshot(1), "timeout", "stalled.jsonl", io),
+  );
+  for (let index = 2; index < 1000; index++) {
+    results.push(
+      recordGuardianStartup(snapshot(index), "ready", "stalled.jsonl", io),
+    );
+    const retained = guardianJournalRetention();
+    assert.ok(retained.records <= GUARDIAN_JOURNAL_MAXIMUM_RETAINED_RECORDS);
+    maximumLine = Math.max(maximumLine, retained.bytes);
+  }
+  assert.deepEqual(guardianJournalRetention().records, 2);
+  assert.ok(maximumLine <= 2 * 512, `retained ${maximumLine} bytes`);
+  // Every record behind the stalled write except the waiting timeout was
+  // dropped at once, so nothing else is held.
+  const dropped = await Promise.all(results.slice(2));
+  assert.ok(dropped.every((written) => written === false));
+  releaseStat({ size: 0 });
+  assert.equal(await results[0], true);
+  assert.equal(await results[1], true);
+  assert.deepEqual(appended, ["ready:0", "timeout:1"]);
+  assert.deepEqual(guardianJournalRetention(), { records: 0, bytes: 0 });
 });

@@ -15,21 +15,51 @@ function observedMs(phase) {
     : null;
 }
 
-// Appends run one at a time, so the size check before each one holds the cap.
-let pending = Promise.resolve();
+// At most one append is in flight and at most one record waits behind it,
+// so a stalled disk holds two short lines at most. A waiting record is
+// replaced by a newer one, except that a recorded timeout is never replaced
+// by a ready startup; replaced and dropped records resolve false.
+export const GUARDIAN_JOURNAL_MAXIMUM_RETAINED_RECORDS = 2;
+const defaultIo = { stat, appendFile };
+let inFlight = null;
+let waiting = null;
 
-async function appendWithinCap(journal, line) {
+export function guardianJournalRetention() {
+  const records = [inFlight, waiting].filter(Boolean);
+  return {
+    records: records.length,
+    bytes: records.reduce(
+      (sum, entry) => sum + Buffer.byteLength(entry.line),
+      0,
+    ),
+  };
+}
+
+async function appendWithinCap({ journal, line, io }) {
   let size = 0;
   try {
-    size = (await stat(journal)).size;
+    size = (await io.stat(journal)).size;
   } catch {
     /* A missing journal starts empty. */
   }
   if (size + Buffer.byteLength(line) > GUARDIAN_JOURNAL_MAXIMUM_BYTES) {
     return false;
   }
-  await appendFile(journal, line);
+  await io.appendFile(journal, line);
   return true;
+}
+
+function startWrite(entry) {
+  inFlight = entry;
+  appendWithinCap(entry)
+    .catch(() => false)
+    .then((written) => {
+      inFlight = null;
+      entry.settle(written);
+      const next = waiting;
+      waiting = null;
+      if (next) startWrite(next);
+    });
 }
 
 // Records fixed labels and numbers only, never paths or child output. The
@@ -41,6 +71,7 @@ export function recordGuardianStartup(
   snapshot,
   outcome,
   journal = process.env[GUARDIAN_JOURNAL_ENVIRONMENT],
+  io = defaultIo,
 ) {
   if (!journal || !outcomes.has(outcome)) return Promise.resolve(false);
   const record = {
@@ -53,14 +84,27 @@ export function recordGuardianStartup(
       ]),
     ),
   };
-  const line = `${JSON.stringify(record)}\n`;
-  const written = pending.then(() =>
-    appendWithinCap(journal, line).catch(() => false),
-  );
-  pending = written;
+  let settle;
+  const written = new Promise((resolve) => {
+    settle = resolve;
+  });
+  const entry = {
+    journal,
+    line: `${JSON.stringify(record)}\n`,
+    io,
+    outcome,
+    settle,
+  };
+  if (!inFlight) {
+    startWrite(entry);
+  } else if (waiting?.outcome === "timeout" && outcome !== "timeout") {
+    settle(false);
+  } else {
+    waiting?.settle(false);
+    waiting = entry;
+  }
   return written;
 }
-
 // One line: how many guardians started, and the slowest time each startup
 // step took across them. A step runs from the previous reached phase, or from
 // the spawn for script-start, to its own phase.
