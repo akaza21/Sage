@@ -230,33 +230,6 @@
         );
       window.chatPerf = {
         openedSubagent: () => useSubagentPaneStore.getState().open,
-        // An untimed mount of the same Chat. The spec waits for its lazy
-        // parts to load and then unmounts it, so the measured mount pays
-        // neither first-run compilation nor lazy chunk loads.
-        warmUp(mode) {
-          current = makePage(mode);
-          flushSync(render);
-          scroll.scrollTop = scroll.scrollHeight;
-        },
-        // A fixed, product-independent script workload. Its renderer cost
-        // in the same page is the unit the mount budget is expressed in, so
-        // the budget scales with the machine's speed but not its load.
-        calibrate() {
-          let checksum = 0;
-          const recent = [];
-          for (let index = 0; index < 2_000_000; index += 1) {
-            const entry = { index, label: "turn-" + (index % 97) };
-            recent.push(entry);
-            checksum += entry.label.length;
-            if (recent.length > 1_000) recent.length = 0;
-          }
-          return checksum;
-        },
-        unmount() {
-          flushSync(() => root.render(null));
-          scroll.scrollTop = 0;
-          current = undefined;
-        },
         mount(mode) {
           current = makePage(mode);
           commits = [];
