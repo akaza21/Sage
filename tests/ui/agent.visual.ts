@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { AGENT_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
@@ -621,7 +621,7 @@ test.describe("ED02 picker visual states", () => {
     );
     expect(
       await page.evaluate(async () => {
-        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
         return useWorkbenchStore.getState().chatUiById[
           "visual-chat-handoff-source"
         ]?.composerText;
@@ -696,7 +696,7 @@ test.describe("Artifact-constrained composer", () => {
     await openScenario(page, "agent-session-mode-closed", "agent");
     await page.getByRole("button", { name: /Show files and preview/ }).click();
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       const state = useWorkbenchStore.getState();
       useWorkbenchStore.setState({
         harnesses: state.harnesses.map((harness) =>
@@ -1167,10 +1167,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       await expect(splitter).toHaveAttribute("aria-valuenow", "38");
 
       await page.evaluate(async () => {
-        const { acpProjectionStoreFor } = await sageImport(
-          "/src/app/acpProjectionRegistry.ts",
-        );
-        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+        const { acpProjectionStoreFor } =
+          await import("/src/app/acpProjectionRegistry.ts");
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
         const ids = Array.from(
           document.querySelectorAll<HTMLElement>(".agent-chat-pane"),
           (node) => node.dataset.chatId!,

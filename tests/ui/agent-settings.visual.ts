@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   expectNoViewportOverflow,
   openScenario,
@@ -15,7 +15,7 @@ for (const width of [480, 1380]) {
     await page.setViewportSize({ width, height: 880 });
     await openScenario(page, "agent-single", "agent");
     const chatId = await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       return useWorkbenchStore.getState().activeTabId;
     });
     await page.keyboard.press("Control+,");
@@ -126,7 +126,7 @@ for (const width of [480, 1380]) {
     await expect(settings).toHaveCount(0);
     expect(
       await page.evaluate(async () => {
-        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
         return useWorkbenchStore.getState().activeTabId;
       }),
     ).toBe(chatId);
@@ -203,7 +203,7 @@ test("settings preserve the focused chat and split while a shared resource is ac
     .locator(".agent-chat-pane--focused")
     .getAttribute("data-chat-id");
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     useWorkbenchStore.setState((state) => ({
       tabs: [
         ...state.tabs,

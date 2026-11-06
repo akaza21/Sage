@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   waitForAnimations,
@@ -11,8 +11,8 @@ async function applyApproval(page: Page, state: "received" | "declinePending") {
   await page.evaluate(async (state) => {
     const [{ useWorkbenchStore }, { acpProjectionStoreFor }] =
       await Promise.all([
-        sageImport("/src/app/store.ts"),
-        sageImport("/src/app/acpProjectionRegistry.ts"),
+        import("/src/app/store.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
       ]);
     const store = acpProjectionStoreFor(
       useWorkbenchStore.getState().activeTabId,
@@ -90,10 +90,9 @@ for (const width of [480, 1280]) {
     await openScenario(page, "diff", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
-      const { MAX_QUEUED_CHAT_PROMPTS } = await sageImport(
-        "/src/domain/chatOwnership.ts",
-      );
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { MAX_QUEUED_CHAT_PROMPTS } =
+        await import("/src/domain/chatOwnership.ts");
       useWorkbenchStore.setState((state) => ({
         chatUiById: {
           ...state.chatUiById,

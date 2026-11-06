@@ -46,9 +46,8 @@ export async function openJourney(page: Page) {
   await page.goto("/");
   await expect(page.locator("main.workbench")).toBeVisible();
   await page.evaluate(async () => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
     await fixture.installAgentTurnJourneyFixture();
   });
   await expect(page.locator("html")).toHaveAttribute(
@@ -78,9 +77,8 @@ export async function settleRender(page: Page, projectionEvent = false) {
 
 export async function runEvent(page: Page, event: JourneyEvent) {
   const result = await page.evaluate(async (nextEvent) => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
     const result = await fixture.runJourneyEvent(nextEvent);
     return result;
   }, event);
@@ -90,9 +88,8 @@ export async function runEvent(page: Page, event: JourneyEvent) {
 
 export async function audit(page: Page) {
   return page.evaluate(async () => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
     return fixture.journeyAudit();
   });
 }
@@ -211,9 +208,8 @@ export async function focusPane(page: Page, name: "Alpha" | "Beta") {
 export async function disposeJourney(page: Page) {
   await page
     .evaluate(async () => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-      );
+      const fixture =
+        await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
       await fixture.disposeAgentTurnJourneyFixture();
     })
     .catch(() => undefined);

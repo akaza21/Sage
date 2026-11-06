@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "./shared/test";
+import { expect, test, type Locator } from "@playwright/test";
 import {
   installComposerRowSettle,
   settledComposerFit,
@@ -61,10 +61,9 @@ for (const width of [1888, 720, 480]) {
       await openScenario(page, "agent-composer-context-known", "agent");
       await settleChatProjections(page);
       await page.evaluate(async (profile) => {
-        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
-        const { acpProjectionStoreFor } = await sageImport(
-          "/src/app/acpProjectionRegistry.ts",
-        );
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const { acpProjectionStoreFor } =
+          await import("/src/app/acpProjectionRegistry.ts");
         const state = useWorkbenchStore.getState();
         const chat = state.tabs.find((tab) => tab.kind === "chat")!;
         const harnessId =
@@ -313,10 +312,9 @@ const LABEL_PRIORITY = [
 const toolbarStates = {
   "awaiting a session": {
     install: async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
-      const { acpProjectionStoreFor } = await sageImport(
-        "/src/app/acpProjectionRegistry.ts",
-      );
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { acpProjectionStoreFor } =
+        await import("/src/app/acpProjectionRegistry.ts");
       const chat = useWorkbenchStore
         .getState()
         .tabs.find((tab) => tab.kind === "chat")!;
@@ -335,9 +333,8 @@ const toolbarStates = {
   },
   "with a confirmed model and effort": {
     install: async () => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-      );
+      const fixture =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
       fixture.installVisualComposerEffortFixture({
         levels: ["medium", "extra high"],
         currentValue: "extra high",
@@ -350,9 +347,8 @@ const toolbarStates = {
   // model name starts to truncate.
   "with a short model name": {
     install: async () => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-      );
+      const fixture =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
       fixture.installVisualComposerEffortFixture({
         levels: ["medium", "extra high"],
         currentValue: "extra high",

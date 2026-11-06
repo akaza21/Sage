@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 // Sub-pixel layout may overshoot a container edge by under one device pixel.
@@ -121,9 +121,8 @@ async function openTerminal(page: Page, mode: "agent" | "editor") {
         transformCallback: () => 0,
       },
     });
-    const { useTerminalDockStore } = await sageImport(
-      "/src/app/terminalDockStore.ts",
-    );
+    const { useTerminalDockStore } =
+      await import("/src/app/terminalDockStore.ts");
     await useTerminalDockStore.getState().restore();
   });
   const modeSwitch = (name: string) =>
@@ -303,7 +302,7 @@ test("a long harness name shows whole or not at all as the composer narrows", as
   await openScenario(page, "agent-single", "agent");
   // Rename the fixture harness to the longest curated name.
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     useWorkbenchStore.setState((state) => ({
       harnesses: state.harnesses.map((harness) => ({
         ...harness,
@@ -655,7 +654,7 @@ async function openNativeBrowser(
     page.getByRole("radio", { name, exact: true });
   await modeSwitch("Editor").check({ force: true });
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     await useWorkbenchStore.getState().openBrowser("https://example.com/");
   });
   await modeSwitch("Agent").check({ force: true });

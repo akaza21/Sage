@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -14,7 +14,7 @@ test.describe("Explorer actions on the open File", () => {
     await openScenario(page, "editor", "editor");
     await expect(page.locator(".cm-content")).toBeVisible();
     const open = await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       const state = useWorkbenchStore.getState();
       const tab = state.tabs.find((item) => item.id === state.activeTabId)!;
       // Select the open File in Explorer, as a click on its row does.
@@ -41,7 +41,7 @@ test.describe("Explorer actions on the open File", () => {
     // scenario's content is a fixture, so the reload shows the browser
     // runtime's projection of the File instead.)
     const after = await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       const state = useWorkbenchStore.getState();
       const tab = state.tabs.find((item) => item.id === state.activeTabId);
       return { position: tab?.position, title: tab?.title };

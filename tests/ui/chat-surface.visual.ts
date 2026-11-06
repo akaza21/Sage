@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -19,9 +19,7 @@ for (const { width, height } of [
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/chatSurfaceFixture.ts",
-      );
+      const fixture = await import("/tests/ui/fixtures/chatSurfaceFixture.ts");
       fixture.installChatSurfaceFixture(true);
     });
     await expect(

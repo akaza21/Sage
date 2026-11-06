@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   installScenario,
   openScenario,
@@ -17,10 +17,7 @@ type TerminalActivity = {
 async function attachNativeTerminal(page: Page, waitForControls = true) {
   await page.evaluate(async () => {
     const [{ useTerminalDockStore }, { useWorkbenchStore }] = await Promise.all(
-      [
-        sageImport("/src/app/terminalDockStore.ts"),
-        sageImport("/src/app/store.ts"),
-      ],
+      [import("/src/app/terminalDockStore.ts"), import("/src/app/store.ts")],
     );
     let sequence = 0;
     const sessions = new Map<string, string>();
@@ -395,9 +392,8 @@ test("defaults closed; the labelled toggle persists open and closed across reloa
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", String(visible));
     await page.evaluate(async () => {
-      const { useTerminalDockStore } = await sageImport(
-        "/src/app/terminalDockStore.ts",
-      );
+      const { useTerminalDockStore } =
+        await import("/src/app/terminalDockStore.ts");
       await useTerminalDockStore.getState().flush();
     });
     await page.reload();

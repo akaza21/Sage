@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -18,9 +18,8 @@ for (const harness of ["claude-code", "codex", "pi"]) {
     ) => {
       await page.evaluate(
         async ({ mode, harness }) => {
-          const fixture = await sageImport(
-            "/tests/ui/fixtures/chatSurfaceFixture.ts",
-          );
+          const fixture =
+            await import("/tests/ui/fixtures/chatSurfaceFixture.ts");
           fixture.installChatSurfaceQaFixture(mode, harness);
         },
         { mode, harness },
@@ -75,9 +74,7 @@ test("Copy confirms success and transcript shares the composer measure across wi
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(async () => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/chatSurfaceFixture.ts",
-    );
+    const fixture = await import("/tests/ui/fixtures/chatSurfaceFixture.ts");
     fixture.installChatSurfaceFixture();
   });
   const actions = page.getByRole("group", { name: "Message actions" });

@@ -1,7 +1,7 @@
 // Agent Panel V1 conformance: controls, geometry, and pending target elements.
 // The fixture contract records expected presence and pending queue order.
 
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { openAgentSnapshotDiff } from "./resourceVisualHelpers";
@@ -901,9 +901,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const fixtures = await sageImport(
-        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-      );
+      const fixtures =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
       fixtures.installVisualComposerEffortFixture();
     });
     const thinking = composer(page).getByRole("button", {

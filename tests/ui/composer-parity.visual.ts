@@ -1,5 +1,5 @@
 import { waitForAnimations } from "./shared/visualBrowserPrimitives";
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
 import {

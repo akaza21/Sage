@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { editorContent } from "./fixtures/visualDocumentFixtures";
 import { openScenario } from "./shared/visualBrowserPrimitives";
@@ -14,10 +14,9 @@ async function openFile(page: Page) {
   await expect(content).toContainText("export function AgentChatPanes");
   await expect(page.locator(".file-surface .git-gutter")).toBeAttached();
   await page.evaluate(async (staged) => {
-    const { getWorkbenchPorts } = await sageImport(
-      "/src/ports/workbenchRuntime.ts",
-    );
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     getWorkbenchPorts().repository.getFileGitBase = async () => ({
       state: "ready",
       oid: "visual-staged",
@@ -100,9 +99,8 @@ test.describe("Editor change markers", () => {
   test("turns off with Change markers in Settings", async ({ page }) => {
     await openFile(page);
     await page.evaluate(async () => {
-      const { useEditorSettingsStore } = await sageImport(
-        "/src/app/editorSettingsStore.ts",
-      );
+      const { useEditorSettingsStore } =
+        await import("/src/app/editorSettingsStore.ts");
       useEditorSettingsStore.setState((state) => ({
         settings: { ...state.settings, "editor.gitGutter": false },
       }));

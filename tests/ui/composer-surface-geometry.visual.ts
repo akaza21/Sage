@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -12,9 +12,7 @@ for (const width of [480, 1280]) {
     await openScenario(page, "diff", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/cp30cEditFixture.ts",
-      );
+      const fixture = await import("/tests/ui/fixtures/cp30cEditFixture.ts");
       fixture.installCp30cDisclosure("partial");
     });
     const summary = page.getByRole("region", {
@@ -50,7 +48,7 @@ for (const width of [480, 1280]) {
       })
       .click({ trial: true });
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       useWorkbenchStore.setState((state) => ({
         chatUiById: {
           ...state.chatUiById,
@@ -95,10 +93,9 @@ for (const viewport of [
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const { acpProjectionStoreFor } = await sageImport(
-        "/src/app/acpProjectionRegistry.ts",
-      );
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { acpProjectionStoreFor } =
+        await import("/src/app/acpProjectionRegistry.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       const store = acpProjectionStoreFor(
         useWorkbenchStore.getState().activeTabId,
       );

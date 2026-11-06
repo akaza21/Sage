@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -27,7 +27,7 @@ async function guideOpacity(row: Locator) {
 
 async function setActiveFileContent(page: Page, content: string) {
   await page.evaluate(async (next) => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     useWorkbenchStore.setState((state) =>
       state.activeEditor?.phase === "ready"
         ? { activeEditor: { ...state.activeEditor, content: next } }
@@ -106,7 +106,7 @@ test.describe("Editor tool views at VS Code list density", () => {
     // A second change that is not the active resource, so its row is not
     // selected and starts with its actions hidden.
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       useWorkbenchStore.setState((state) => ({
         repositories: {
           ...state.repositories,
@@ -156,7 +156,7 @@ test.describe("Editor tool views at VS Code list density", () => {
   }) => {
     // Stage the fixture's change so the repository offers a commit.
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       useWorkbenchStore.setState((state) => ({
         repositories: {
           ...state.repositories,
@@ -250,7 +250,7 @@ test.describe("Editor tool views at VS Code list density", () => {
     page,
   }) => {
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       useWorkbenchStore.setState((state) => ({
         repositories: {
           ...state.repositories,

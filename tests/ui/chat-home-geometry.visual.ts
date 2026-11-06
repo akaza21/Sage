@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -12,10 +12,9 @@ for (const width of [1400, 900]) {
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const { installChatChromeFixture } = await sageImport(
-        "/tests/ui/fixtures/chatChromeFixture.ts",
-      );
-      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { installChatChromeFixture } =
+        await import("/tests/ui/fixtures/chatChromeFixture.ts");
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
       installChatChromeFixture("codex", true);
       const project = useWorkbenchStore.getState().project!;
       useWorkbenchStore.setState({ project: { ...project, name: "Local" } });

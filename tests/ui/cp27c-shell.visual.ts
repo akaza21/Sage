@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   waitForAnimations,
   expectNoViewportOverflow,
@@ -187,9 +187,8 @@ async function settingsContained(page: Page) {
   }
   await settings.getByRole("tab", { name: "Editor", exact: true }).click();
   await page.evaluate(async () => {
-    const { useEditorSettingsStore } = await sageImport(
-      "/src/app/editorSettingsStore.ts",
-    );
+    const { useEditorSettingsStore } =
+      await import("/src/app/editorSettingsStore.ts");
     useEditorSettingsStore.setState({
       persistencePhase: "error",
       persistenceMessage:
@@ -233,13 +232,10 @@ for (const width of [480, 720]) {
       }) => {
         await openScenario(page, "editor", "editor");
         await page.evaluate(async () => {
-          const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
-          const { fileResource, visualDiff } = await sageImport(
-            "/tests/ui/fixtures/visualDocumentFixtures.ts",
-          );
-          const { diffCacheKey } = await sageImport(
-            "/src/domain/diffIdentity.ts",
-          );
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
+          const { fileResource, visualDiff } =
+            await import("/tests/ui/fixtures/visualDocumentFixtures.ts");
+          const { diffCacheKey } = await import("/src/domain/diffIdentity.ts");
           let visible = false;
           Object.defineProperty(window, "__TAURI_INTERNALS__", {
             configurable: true,
@@ -352,9 +348,8 @@ for (const width of [480, 720]) {
       }) => {
         await openScenario(page, "editor", "editor");
         await page.evaluate(async () => {
-          const fixtures = await sageImport(
-            "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
-          );
+          const fixtures =
+            await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
           fixtures.installVisualExplorerActionFixture();
         });
         const opener = page
@@ -431,7 +426,7 @@ for (const width of [480, 720]) {
         await openScenario(page, "agent-dual", "agent");
         const longTitle = `Chat: ${"Long title ".repeat(20).trim()}`;
         await page.evaluate(async (title) => {
-          const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
           useWorkbenchStore.setState((state) => ({
             tabs: state.tabs.map((tab) =>
               tab.kind === "chat" ? { ...tab, title } : tab,

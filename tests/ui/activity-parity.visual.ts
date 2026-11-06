@@ -1,5 +1,5 @@
 import { waitForAnimations } from "./shared/visualBrowserPrimitives";
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 import os from "node:os";
 import path from "node:path";
 import { build } from "vite";

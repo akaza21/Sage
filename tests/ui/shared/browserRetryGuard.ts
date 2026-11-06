@@ -1,4 +1,4 @@
-import { expect, test } from "./test";
+import { expect, test } from "@playwright/test";
 
 export function forbidBrowserRetries() {
   test.beforeEach(({ browserName }, testInfo) => {

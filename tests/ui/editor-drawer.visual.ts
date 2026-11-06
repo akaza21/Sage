@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 test.use({ viewport: { width: 720, height: 560 } });
@@ -8,10 +8,9 @@ test("opening a file dismisses the compact Editor drawer and reveals the documen
 }) => {
   await openScenario(page, "editor", "editor");
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
-    const { fileResource } = await sageImport(
-      "/tests/ui/fixtures/visualDocumentFixtures.ts",
-    );
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { fileResource } =
+      await import("/tests/ui/fixtures/visualDocumentFixtures.ts");
     await useWorkbenchStore.getState().openFile(fileResource);
   });
   const editor = page.getByRole("textbox", {

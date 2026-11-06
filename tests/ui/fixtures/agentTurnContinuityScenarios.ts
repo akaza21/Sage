@@ -1,4 +1,4 @@
-import { expect, test } from "../shared/test";
+import { expect, test } from "@playwright/test";
 
 import {
   audit,
@@ -267,18 +267,16 @@ export function registerAgentTurnContinuityScenarios() {
   }) => {
     await openJourney(page);
     await page.evaluate(async (limit) => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-      );
+      const fixture =
+        await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
       for (let index = 0; index < limit; index += 1) {
         await fixture.runJourneyEvent({ type: "noop" });
       }
     }, MAX_SCRIPTED_EVENTS);
     await expect(
       page.evaluate(async () => {
-        const fixture = await sageImport(
-          "/tests/ui/fixtures/agentTurnJourneyFixture.ts",
-        );
+        const fixture =
+          await import("/tests/ui/fixtures/agentTurnJourneyFixture.ts");
         return fixture.runJourneyEvent({ type: "noop" });
       }),
     ).rejects.toThrow("Scripted event limit 40 exceeded");

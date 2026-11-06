@@ -11,8 +11,8 @@ export async function installDiagrams(page: Page, source: string) {
   await settleChatProjections(page);
   await page.evaluate(async (source) => {
     const [{ acpProjectionStoreFor }, ids] = await Promise.all([
-      sageImport("/src/app/acpProjectionRegistry.ts"),
-      sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
+      import("/src/app/acpProjectionRegistry.ts"),
+      import("/tests/ui/fixtures/visualFixtureIds.ts"),
     ]);
     for (const projection of document.querySelectorAll<HTMLElement>(
       ".acp-chat-projection[data-chat-id]",

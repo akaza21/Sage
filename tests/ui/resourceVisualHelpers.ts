@@ -51,9 +51,8 @@ export async function setResourceState(
   state: VisualAgentResourceState,
 ) {
   await page.evaluate(async (nextState) => {
-    const fixtures = await sageImport(
-      "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
-    );
+    const fixtures =
+      await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
     await fixtures.installVisualAgentResourceState(nextState);
   }, state);
   await expect(page.locator("html")).toHaveAttribute(

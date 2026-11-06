@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 
 import { RECOVERY_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";

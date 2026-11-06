@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 
 import {
   openScenario,
@@ -15,9 +15,9 @@ test("CP-16 refs 08/13: primary activity rows keep a 32 px scale cadence and adm
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([
-        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
-        sageImport("/src/app/acpProjectionRegistry.ts"),
-        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
+        import("/tests/ui/fixtures/visualScenarioShell.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
+        import("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
     const chatPage = buildVisualScenario("waiting").pages[0];
     const turn = chatPage.turns[0];
@@ -104,9 +104,9 @@ test("CP-16 refs 01/06/07: observed subagents have coloured start and done glyph
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([
-        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
-        sageImport("/src/app/acpProjectionRegistry.ts"),
-        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
+        import("/tests/ui/fixtures/visualScenarioShell.ts"),
+        import("/src/app/acpProjectionRegistry.ts"),
+        import("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
     const chatPage = buildVisualScenario("waiting").pages[0];
     const turn = chatPage.turns[0];

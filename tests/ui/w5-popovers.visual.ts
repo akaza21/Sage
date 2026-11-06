@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
@@ -17,7 +17,7 @@ async function openPopoverScenario(page: Page) {
   ).toBeVisible();
   await settleChatProjections(page);
   await page.evaluate(async () => {
-    await sageImport("/tests/ui/fixtures/popoverWorkbench.ts");
+    await import("/tests/ui/fixtures/popoverWorkbench.ts");
   });
 }
 

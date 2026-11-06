@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   waitForAnimations,
   openScenario,
@@ -103,9 +103,8 @@ test("settings loading and persistence errors stay in the content flow", async (
   await page.keyboard.press("Control+,");
   await expect(page.locator(".settings-surface")).toBeVisible();
   await page.evaluate(async () => {
-    const { useEditorSettingsStore } = await sageImport(
-      "/src/app/editorSettingsStore.ts",
-    );
+    const { useEditorSettingsStore } =
+      await import("/src/app/editorSettingsStore.ts");
     useEditorSettingsStore.setState({
       persistencePhase: "loading",
       persistenceMessage: "Settings could not be saved",
@@ -198,10 +197,9 @@ test("project picker target fits its chip without bleeding into adjacent control
   expect(geometry.border).toBe(geometry.borderToken);
   expect(geometry.target).toBeGreaterThanOrEqual(28);
   await page.evaluate(async () => {
-    const { acpProjectionStoreFor } = await sageImport(
-      "/src/app/acpProjectionRegistry.ts",
-    );
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     const projection = acpProjectionStoreFor(
       useWorkbenchStore.getState().activeTabId,
     );
@@ -226,7 +224,7 @@ test("queued messages and the edit disclosure share the dock and never overlap i
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     useWorkbenchStore.setState((state) => ({
       chatUiById: {
         ...state.chatUiById,

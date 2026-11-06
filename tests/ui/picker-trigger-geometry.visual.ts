@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "./shared/test";
+import { expect, test, type Locator } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -81,9 +81,8 @@ for (const width of [1280, 720]) {
       await openScenario(page, "agent-single", "agent");
       await page.evaluate(
         async ({ names, disabled }) => {
-          const fixture = await sageImport(
-            "/tests/ui/fixtures/pickerTriggerGeometryFixture.tsx",
-          );
+          const fixture =
+            await import("/tests/ui/fixtures/pickerTriggerGeometryFixture.tsx");
           fixture.mountPickerTriggerGeometryFixture(names, disabled);
         },
         { names: harnessNames, disabled },
@@ -122,9 +121,8 @@ for (const width of [1280, 960, 480]) {
       await openScenario(page, scenario, "agent");
       await settleChatProjections(page);
       await page.evaluate(async () => {
-        const { useSessionAccessModeStore } = await sageImport(
-          "/src/app/sessionAccessModeStore.ts",
-        );
+        const { useSessionAccessModeStore } =
+          await import("/src/app/sessionAccessModeStore.ts");
         useSessionAccessModeStore.setState({
           ready: true,
           modes: { "visual-binding": "readOnly" },
@@ -137,7 +135,7 @@ for (const width of [1280, 960, 480]) {
       });
       for (const name of harnessNames) {
         await page.evaluate(async (name) => {
-          const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
           useWorkbenchStore.setState((state) => ({
             harnesses: state.harnesses.map((harness) => ({ ...harness, name })),
           }));
@@ -189,9 +187,8 @@ for (const width of [1280, 960]) {
     await openScenario(page, "error", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const { installVisualComposerEffortFixture } = await sageImport(
-        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-      );
+      const { installVisualComposerEffortFixture } =
+        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
       installVisualComposerEffortFixture({
         levels: ["low", "high"],
         currentValue: "high",

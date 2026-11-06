@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 for (const width of [480, 1280]) {
@@ -15,8 +15,8 @@ for (const width of [480, 1280]) {
       await page.keyboard.press("Escape");
     await page.evaluate(async () => {
       const [{ useWorkbenchStore }, { browserEditor }] = await Promise.all([
-        sageImport("/src/app/store.ts"),
-        sageImport("/src/services/browserEditor.ts"),
+        import("/src/app/store.ts"),
+        import("/src/services/browserEditor.ts"),
       ]);
       const state = useWorkbenchStore.getState();
       const tab = state.tabs.find((tab) => tab.id === state.activeTabId);

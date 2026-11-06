@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import { expectCompactComposerTargets } from "./shared/composerGeometry";
 import {
@@ -42,9 +42,8 @@ for (const width of [1888, 720, 480]) {
       await settleChatProjections(page);
       await advertiseAlternativeModel(page);
       await page.evaluate(async (config) => {
-        const fixture = await sageImport(
-          "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-        );
+        const fixture =
+          await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
         fixture.installVisualComposerEffortFixture(config);
       }, profile);
       if (width === 480)
@@ -166,9 +165,8 @@ async function openCodexEffort(page: Page) {
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(async (config) => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
     fixture.installVisualComposerEffortFixture(config);
     // Record effort mutations from here on; every native call rejects, so the
     // confirmed level stays authoritative and each attempt is countable.

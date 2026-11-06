@@ -10,9 +10,8 @@ export async function openSelectionScenario(page: Page, longAnswer = false) {
   const workbench = await openScenario(page, "rich", "agent");
   await settleChatProjections(page);
   await page.evaluate(async (long) => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/transcriptSelectionFixtures.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/transcriptSelectionFixtures.ts");
     fixture.installTranscriptSelectionFixture(long);
   }, longAnswer);
   await settleTranscriptAtEnd(page);

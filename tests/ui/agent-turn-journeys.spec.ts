@@ -1,4 +1,4 @@
-import { test } from "./shared/test";
+import { test } from "@playwright/test";
 
 import { registerAgentTurnActionScenarios } from "./fixtures/agentTurnActionScenarios";
 import { registerAgentTurnContinuityScenarios } from "./fixtures/agentTurnContinuityScenarios";

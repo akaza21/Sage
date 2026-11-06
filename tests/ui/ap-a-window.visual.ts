@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import {
   expectNoViewportOverflow,
   openScenario,
@@ -51,9 +51,8 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
     .toBeGreaterThanOrEqual(860);
   expect(await visibleIds()).toEqual(original);
   await page.evaluate(async () => {
-    const { installWindowNewChatFixture } = await sageImport(
-      "/tests/ui/fixtures/agentWindowFixtures.ts",
-    );
+    const { installWindowNewChatFixture } =
+      await import("/tests/ui/fixtures/agentWindowFixtures.ts");
     installWindowNewChatFixture();
   });
   await page
@@ -147,9 +146,8 @@ for (const harness of ["codex", "claude-code", "pi"]) {
     const workbench = await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async (harnessId) => {
-      const { installChatChromeFixture } = await sageImport(
-        "/tests/ui/fixtures/chatChromeFixture.ts",
-      );
+      const { installChatChromeFixture } =
+        await import("/tests/ui/fixtures/chatChromeFixture.ts");
       installChatChromeFixture(harnessId, false);
     }, harness);
     const navigation = page.locator(".project-sidebar");
@@ -234,9 +232,8 @@ for (const [control, organize] of [
     // agent-dual has an unpinned chat, so Recents has a row to list.
     await openScenario(page, "agent-dual", "agent");
     await page.evaluate(async (mode) => {
-      const { setAgentRailOrganize } = await sageImport(
-        "/src/workbench/agentRailViewPrefs.ts",
-      );
+      const { setAgentRailOrganize } =
+        await import("/src/workbench/agentRailViewPrefs.ts");
       setAgentRailOrganize(mode);
     }, organize);
     await page.getByRole("button", { name: "Hide projects and chats" }).click();

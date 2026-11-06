@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
   settleChatProjections,
@@ -32,9 +32,7 @@ async function edit(
 ) {
   await page.evaluate(
     async ({ state, chatId }) => {
-      const fixture = await sageImport(
-        "/tests/ui/fixtures/cp30cEditFixture.ts",
-      );
+      const fixture = await import("/tests/ui/fixtures/cp30cEditFixture.ts");
       fixture.installCp30cEdit(state, chatId);
     },
     { state: lifecycle, chatId },
@@ -127,9 +125,8 @@ for (const width of [1888, 720, 480]) {
       await settleChatProjections(page);
       await collapseArtifactPane(page);
       await page.evaluate(async () => {
-        const fixture = await sageImport(
-          "/tests/ui/fixtures/chatContainmentFixture.ts",
-        );
+        const fixture =
+          await import("/tests/ui/fixtures/chatContainmentFixture.ts");
         fixture.installChatContainmentFixture(
           {
             name: "Codex",
@@ -198,9 +195,8 @@ for (const width of [720, 480]) {
       });
       for (const totals of ["unknown", "partial"] as const) {
         await page.evaluate(async (totals) => {
-          const fixture = await sageImport(
-            "/tests/ui/fixtures/cp30cEditFixture.ts",
-          );
+          const fixture =
+            await import("/tests/ui/fixtures/cp30cEditFixture.ts");
           fixture.installCp30cDisclosure(totals);
         }, totals);
         const pill = summary.getByRole("button", { name: /files changed/ });
@@ -353,9 +349,8 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
     await edit(page, "completed", owner!);
   }
   await page.evaluate(async () => {
-    const fixture = await sageImport(
-      "/tests/ui/fixtures/chatContainmentFixture.ts",
-    );
+    const fixture =
+      await import("/tests/ui/fixtures/chatContainmentFixture.ts");
     fixture.installChatContainmentFixture(
       { name: "Codex", effort: true, context: true, goal: true, steer: true },
       true,

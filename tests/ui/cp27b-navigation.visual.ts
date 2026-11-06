@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./shared/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { advertiseAlternativeModel } from "./shared/composerModelChoices";
 import {
   openScenario,
@@ -96,7 +96,7 @@ async function openResource(
 ) {
   await page.evaluate(async (resourceKind) => {
     const path = "/tests/ui/fixtures/cp27bResourceFixture.ts";
-    const fixture = await sageImport(path);
+    const fixture = await import(path);
     await fixture.installCp27bResource(resourceKind);
   }, kind);
   const pane = page.getByLabel("Agent artifacts", { exact: true });
@@ -140,7 +140,7 @@ for (const geometry of geometries) {
         // primary chat, which stays focused while both chats are selected.
         if (two)
           await page.evaluate(async () => {
-            const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+            const { useWorkbenchStore } = await import("/src/app/store.ts");
             await useWorkbenchStore
               .getState()
               .activateTab("visual-chat-primary");

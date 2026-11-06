@@ -1,4 +1,4 @@
-import { expect, test } from "./shared/test";
+import { expect, test } from "@playwright/test";
 import { disposeJourney } from "./fixtures/agentTurnJourneyBrowser";
 import { openNavigationChat } from "./fixtures/chatNavigationFixture";
 
@@ -114,9 +114,8 @@ test("CP-44 virtual jumps mount retained turns and retain the anchor after prepe
     )
     .toBeLessThanOrEqual(1);
   await page.evaluate(async () => {
-    const { acpProjectionStoreFor } = await sageImport(
-      "/src/app/acpProjectionRegistry.ts",
-    );
+    const { acpProjectionStoreFor } =
+      await import("/src/app/acpProjectionRegistry.ts");
     const store = acpProjectionStoreFor("journey-chat-alpha");
     const { scope, page } = store.getState();
     const first = page!.turns[0]!;

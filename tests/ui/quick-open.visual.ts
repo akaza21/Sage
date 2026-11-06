@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./shared/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -8,10 +8,9 @@ import { openScenario } from "./shared/visualBrowserPrimitives";
 // takes a while on its first call, as a cold index does.
 async function installNativeStandIn(page: Page, files: string[]) {
   await page.evaluate(async (paths) => {
-    const { setQuickOpenInvoke } = await sageImport(
-      "/src/features/quickOpen/quickOpenGateway.ts",
-    );
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { setQuickOpenInvoke } =
+      await import("/src/features/quickOpen/quickOpenGateway.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     const rootId = useWorkbenchStore.getState().project!.roots[0].id;
     // Calls in the 600 ms after the first one wait until then, as on a cold
     // index (React runs the first query's effect twice in development).
@@ -59,7 +58,7 @@ async function installNativeStandIn(page: Page, files: string[]) {
 
 async function activeFile(page: Page) {
   return page.evaluate(async () => {
-    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
     const state = useWorkbenchStore.getState();
     return (
       state.tabs.find((tab) => tab.id === state.activeTabId)?.resource
@@ -103,7 +102,7 @@ test.describe("Command palette (ED-2a)", () => {
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
           return useWorkbenchStore.getState().sidebarView;
         }),
       )
@@ -241,9 +240,8 @@ test("leaving Editor cancels Quick Open while its controller is still loading", 
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { useQuickOpenStore } = await sageImport(
-            "/src/features/quickOpen/quickOpenState.ts",
-          );
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
           return useQuickOpenStore.getState().open;
         }),
       )
@@ -254,16 +252,15 @@ test("leaving Editor cancels Quick Open while its controller is still loading", 
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { useQuickOpenStore } = await sageImport(
-            "/src/features/quickOpen/quickOpenState.ts",
-          );
+          const { useQuickOpenStore } =
+            await import("/src/features/quickOpen/quickOpenState.ts");
           return useQuickOpenStore.getState().open;
         }),
       )
       .toBe(false);
     release();
     await page.evaluate(async () => {
-      await sageImport("/src/features/quickOpen/QuickOpenHost.tsx");
+      await import("/src/features/quickOpen/QuickOpenHost.tsx");
     });
     await page
       .getByRole("radio", { name: "Editor", exact: true })
