@@ -1,3 +1,5 @@
+import type { AcpConfigOption } from "../../domain/acpSessionConfig";
+import { useComposerModelChoices } from "./useComposerModelChoices";
 import type { RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
 import "./composer-model-identities.css";
@@ -10,7 +12,7 @@ import {
 export default function ComposerModelMenu({
   triggerRef,
   panelId,
-  choices,
+  choices: source,
   selectedId,
   disabled,
   onDismiss,
@@ -18,12 +20,15 @@ export default function ComposerModelMenu({
 }: {
   triggerRef: RefObject<HTMLButtonElement | null>;
   panelId: string;
-  choices: readonly ComposerModelChoice[];
+  choices:
+    | readonly ComposerModelChoice[]
+    | Extract<AcpConfigOption, { type: "select" }>;
   selectedId: string | null;
   disabled: boolean;
   onDismiss: () => void;
   onSelect: (modelId: string) => void;
 }) {
+  const choices = useComposerModelChoices(source);
   return (
     <MenuPopover
       open

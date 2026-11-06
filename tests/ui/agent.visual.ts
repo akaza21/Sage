@@ -119,7 +119,7 @@ async function expectComposerControlRow(page: Page) {
     form.getByRole("button", { name: "Composer options", exact: true }),
     form.locator(".composer__access-label"),
     form.getByRole("button", { name: "Harness", exact: true }),
-    form.getByRole("button", { name: "Model", exact: true }),
+    form.getByLabel("Model", { exact: true }),
     form.getByRole("button", { name: "Project: Sage", exact: true }),
     form.getByRole("button", { name: "Start dictation", exact: true }),
     form.getByRole("button", { name: "Send message", exact: true }),
@@ -142,7 +142,7 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
   const geometry = await toolbar.evaluate((node) => {
     const toolbarBox = node.getBoundingClientRect();
     const buttons = [
-      ...node.querySelectorAll<HTMLButtonElement>("button"),
+      ...node.querySelectorAll<HTMLElement>("button, .composer__model-trigger"),
     ].filter((button) => button.checkVisibility());
     const harness = node.querySelector<HTMLElement>(".composer__harness")!;
     const trigger = harness.querySelector<HTMLButtonElement>("button")!;
@@ -151,6 +151,9 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
     const composer = node.closest<HTMLElement>("form.composer")!;
     const composerStyle = getComputedStyle(composer);
     return {
+      fit:
+        node.querySelector(".composer__controls")?.getAttribute("data-fit") ??
+        "",
       composerWidth:
         composer.clientWidth -
         Number.parseFloat(composerStyle.paddingLeft) -
@@ -181,11 +184,11 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
       }),
     };
   });
-  // Wave 5: at 280px and below Project folds into the composer options menu.
+  // Measured fitting moves Project into options only after lower-priority labels compact.
   // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
   // rather than in the composer.
   expect(geometry.buttons).toHaveLength(
-    !projectChip || geometry.composerWidth <= 280 ? 6 : 7,
+    !projectChip || geometry.fit.includes("project-menu") ? 6 : 7,
   );
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(
@@ -201,18 +204,17 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
     expect(button.contained, button.name ?? "toolbar button").toBe(true);
   }
   const trailing = ["Start dictation", "Send message"];
-  // Wave 5 keeps one toolbar row down to the 182px container rule.
-  const rows =
-    geometry.composerWidth < 182
-      ? [
-          geometry.buttons.filter(
-            (button) => !trailing.includes(String(button.name)),
-          ),
-          geometry.buttons.filter((button) =>
-            trailing.includes(String(button.name)),
-          ),
-        ]
-      : [geometry.buttons];
+  // The toolbar wraps only when its full sequence of compacted controls cannot fit.
+  const rows = geometry.fit.includes("wrap")
+    ? [
+        geometry.buttons.filter(
+          (button) => !trailing.includes(String(button.name)),
+        ),
+        geometry.buttons.filter((button) =>
+          trailing.includes(String(button.name)),
+        ),
+      ]
+    : [geometry.buttons];
   for (const row of rows) {
     expect(row.length).toBeGreaterThan(0);
     const centers = row.map((button) => button.center);
@@ -269,7 +271,7 @@ async function expectComposerPickerValue(
 async function expectComposerControlsLaidOut(page: Page) {
   const controls = [
     page.getByRole("button", { name: "Harness" }),
-    page.getByRole("button", { name: "Model" }),
+    page.getByLabel("Model", { exact: true }),
     page.getByRole("textbox", { name: "Message agent" }),
     page.getByRole("button", { name: "Send message" }),
   ];
@@ -324,10 +326,12 @@ async function expectArtifactConstrainedComposer(
   const harnessLabel = form
     .getByRole("button", { name: "Harness", exact: true })
     .locator(".searchable-picker__trigger-label");
-  await expectPickerLabelUnclipped(harnessLabel);
-  await expect(
-    form.getByRole("button", { name: "Model", exact: true }),
-  ).toHaveText(expectedLabels[1]!);
+  // The harness name yields to the model name: it shows whole or not at all.
+  if (await harnessLabel.isVisible())
+    await expectPickerLabelUnclipped(harnessLabel);
+  await expect(form.getByLabel("Model", { exact: true })).toHaveText(
+    expectedLabels[1]!,
+  );
   await expectComposerControlsLaidOut(page);
   await expectComposerToolbarLaidOut(form);
   const options = await openComposerOptions(page);
@@ -491,7 +495,7 @@ test.describe("ED02 picker visual states", () => {
       "data-visual-harness-selection-count",
       "1",
     );
-    const modelTrigger = page.getByRole("button", { name: "Model" });
+    const modelTrigger = page.getByLabel("Model", { exact: true });
     await expect(modelTrigger).toBeDisabled();
     await expect(
       page.getByText("Wait while Sage checks the selected Harness."),
@@ -637,6 +641,15 @@ test.describe("ED02 picker visual states", () => {
       "agent-composer-narrow",
       "agent",
     );
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState((state) => ({
+        models: [
+          ...state.models,
+          { id: "alternative", name: "Alternative model" },
+        ],
+      }));
+    });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
     // The content-sized trigger keeps its complete label when the measured
@@ -647,7 +660,7 @@ test.describe("ED02 picker visual states", () => {
       harnessTrigger.locator(".searchable-picker__trigger-label"),
     ).toBeVisible();
     await expectComposerPickerValue(
-      page.getByRole("button", { name: "Model", exact: true }),
+      page.getByLabel("Model", { exact: true }),
       "Model",
       "Model",
     );
@@ -664,7 +677,7 @@ test.describe("ED02 picker visual states", () => {
     await expectNoViewportOverflow(page);
     await page.keyboard.press("Escape");
     await expect(harnessTrigger).toBeFocused();
-    const modelTrigger = page.getByRole("button", { name: "Model" });
+    const modelTrigger = page.getByLabel("Model", { exact: true });
     await modelTrigger.click();
     await expectOpenPickerContained(
       page,
@@ -753,7 +766,7 @@ test.describe("V2-4 session mode picker", () => {
       "Codex",
     );
     await expectComposerPickerValue(
-      page.getByRole("button", { name: "Model", exact: true }),
+      page.getByLabel("Model", { exact: true }),
       "Model",
       "GPT-5",
     );
@@ -1668,7 +1681,7 @@ test.describe("Wave 2 200% zoom state", () => {
     });
     await expectOpenPickerContained(page, harnessInput, harnessListbox);
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Model" }).click();
+    await page.getByLabel("Model", { exact: true }).click();
     await expectOpenPickerContained(
       page,
       page.getByRole("option", { name: "GPT-5", exact: true }),

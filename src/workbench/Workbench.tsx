@@ -26,7 +26,7 @@ import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
-import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
+import { useHistoryKeys } from "./useHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
 import { useWorkbenchKeys, useTerminalDock } from "./useWorkbenchKeys";
 import "./workbench-window-mode.css";
@@ -136,7 +136,7 @@ export function Workbench() {
     toggleAgentNavigation,
     setWindowMode,
   });
-  useEditorHistoryKeys(windowMode === "editor");
+  useHistoryKeys(agentSettingsPage ? null : windowMode);
   useRepositoryAutoRefresh();
   useEffect(() => {
     writeWorkbenchLayout({
@@ -188,7 +188,13 @@ export function Workbench() {
       terminalDockSlot,
     ],
   );
-  const drawerOpen = isCompactDrawerOpen(compact, sidebarOpen, windowMode);
+  const editorToolMode = compact ? "overlay" : "docked";
+  const drawerOpen = isCompactDrawerOpen(
+    editorToolMode === "overlay",
+    sidebarOpen,
+    windowMode,
+  );
+  const editorCenterVisible = !drawerOpen;
   // The retained terminal session follows the region hosting its portal, not
   // the persisted open preference. Agent overlays cover the entire center;
   // Editor adopts the same dock unless its tool drawer covers that center.
@@ -196,7 +202,7 @@ export function Workbench() {
     terminal.visible &&
     documentVisible &&
     !agentSettingsPage &&
-    (windowMode === "agent" ? agentCenterVisible : !drawerOpen);
+    (windowMode === "agent" ? agentCenterVisible : editorCenterVisible);
   const bodyStyle = compact
     ? undefined
     : {
@@ -252,7 +258,11 @@ export function Workbench() {
       ) : null}
       {windowMode === "editor" && !agentSettingsPage ? (
         <Activity mode={documentVisible ? "visible" : "hidden"}>
-          <div className="workbench__body" style={bodyStyle}>
+          <div
+            className="workbench__body"
+            style={bodyStyle}
+            data-editor-tools={editorToolMode}
+          >
             <ExplorerReleasesOpenFiles.Provider value={true}>
               <RightSidebar compact={compact} railFirst />
             </ExplorerReleasesOpenFiles.Provider>
@@ -271,7 +281,7 @@ export function Workbench() {
               inert={drawerOpen}
               aria-hidden={drawerOpen || undefined}
             >
-              <Activity mode={drawerOpen ? "hidden" : "visible"}>
+              <Activity mode={editorCenterVisible ? "visible" : "hidden"}>
                 <div className="workbench__tabs">
                   <LazyModuleBoundary<TabStripProps>
                     label="tabs"

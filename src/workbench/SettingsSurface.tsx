@@ -1,5 +1,5 @@
 import { useWorkbenchStore } from "../app/store";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 
 import { useEditorSettingsStore } from "../app/editorSettingsStore";
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
@@ -13,6 +13,9 @@ import {
 import { SettingsEditorPage } from "./settings/SettingsEditorPage";
 import { SettingsKeyboardPage } from "./settings/SettingsKeyboardPage";
 import { SettingsNav } from "./settings/SettingsNav";
+import { loadSettingsPasswordsPage } from "./settings/settingsPageLoaders";
+
+const SettingsPasswordsPage = lazy(loadSettingsPasswordsPage);
 
 export function SettingsSurface() {
   const [query, setQuery] = useState("");
@@ -109,6 +112,16 @@ export function SettingsSurface() {
         </p>
       ) : activePageId === "keyboard" ? (
         <SettingsKeyboardPage scopes={EDITOR_KEYMAP_SCOPES} visible={visible} />
+      ) : activePageId === "passwords" ? (
+        <Suspense
+          fallback={
+            <p className="settings-surface__loading" role="status">
+              Loading saved passwords…
+            </p>
+          }
+        >
+          <SettingsPasswordsPage visible={visible} />
+        </Suspense>
       ) : (
         <SettingsEditorPage
           visible={visible}

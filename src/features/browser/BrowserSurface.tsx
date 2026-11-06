@@ -18,8 +18,9 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { browserPageIdentity, resolveBrowserAddress } from "./browserAddress";
 import type { BrowserSuggestedSites } from "./browserSuggestions";
 import { BrowserToolbarPageActions } from "./BrowserAttachmentControls";
+import { subscribeBrowserTab } from "./browserTabEvents";
 import { BrowserDownloadsControl } from "./BrowserDownloadsControl";
-import { BrowserDrawers } from "./BrowserSitePermissions";
+import { BrowserSitePermissions } from "./BrowserSitePermissions";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import { BrowserClearData } from "./BrowserClearData";
 import { BrowserNavigationControls } from "./BrowserNavigationControls";
@@ -30,6 +31,7 @@ import {
 import { useBrowserDeviceTrigger } from "./useBrowserDeviceTrigger";
 import { useBrowserPlacement } from "./useBrowserPlacement";
 import { useBrowserScreenshot } from "./useBrowserScreenshot";
+import { projectBrowserTabStatus } from "./browserTabProjection";
 import "./browser.css";
 
 const ClosedBrowserSurface = lazy(() => import("./ClosedBrowserSurface"));
@@ -50,14 +52,11 @@ const BrowserNewTab = lazy(() =>
     default: module.BrowserNewTab,
   })),
 );
-
-function projectBrowserTabStatus(tabId: string, status: BrowserNavigation) {
-  const store = useWorkbenchStore.getState();
-  const { favicon, url, title, revision, loading, error } = status;
-  store.updateBrowserTabFavicon(tabId, favicon, revision);
-  if (!loading && !error && url)
-    store.updateBrowserTabTitle(tabId, url, title, revision);
-}
+const BrowserHistoryPage = lazy(() =>
+  import("./BrowserHistoryPage").then((module) => ({
+    default: module.BrowserHistoryPage,
+  })),
+);
 
 export function BrowserSurface({ tab }: { tab: WorkbenchTab }) {
   if (tab.status === "closed")
@@ -79,7 +78,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const addressField = useRef<HTMLInputElement>(null);
   const findField = useRef<HTMLInputElement>(null);
   const [navigation, setNavigation] = useState<BrowserNavigation | null>(null);
-  const latestNavigationRevision = useRef<bigint>(-1n);
   const [suggestionResult, setSuggestionResult] = useState<{
     scope: string;
     sites: BrowserSuggestedSites;
@@ -104,14 +102,16 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   const ready = navigation?.loading === false;
   const page = ready ? browserPageIdentity(navigation.url) : null;
   const newTab = ready && navigation.url === "" && !navigation.error;
+  const newTabVisible = newTab && !historyOpen;
   const suggestionScope = `${projectId ?? ""}\0${tab.id}\0${navigation?.revision ?? ""}`;
   const suggestions =
     suggestionResult?.scope === suggestionScope ? suggestionResult.sites : [];
+  if (!newTabVisible && suggestionResult !== null) setSuggestionResult(null);
   useEffect(() => {
-    if (!newTab) return;
+    if (!newTabVisible) return;
     let active = true;
     void import("./browserSuggestions")
-      .then((module) => module.browserSuggestions())
+      .then((module) => (active ? module.browserSuggestions() : []))
       .then((sites) => {
         if (active)
           setSuggestionResult({
@@ -123,27 +123,20 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     return () => {
       active = false;
     };
-  }, [newTab, suggestionScope]);
+  }, [newTabVisible, suggestionScope]);
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    latestNavigationRevision.current = -1n;
-    let mounted = true;
-    let unlisten: (() => void) | undefined;
+    let latestNavigationRevision = -1n;
     const acceptNavigation = (next: BrowserNavigation, bootstrap = false) => {
-      if (
-        !mounted ||
-        (!bootstrap && next.tabId !== tab.id) ||
-        !/^(0|[1-9]\d{0,19})$/.test(next.revision)
-      )
-        return;
+      if (!/^(0|[1-9]\d{0,19})$/.test(next.revision)) return;
       const revision = BigInt(next.revision);
       if (
         bootstrap
-          ? revision < latestNavigationRevision.current
-          : revision <= latestNavigationRevision.current
+          ? revision < latestNavigationRevision
+          : revision <= latestNavigationRevision
       )
         return;
-      latestNavigationRevision.current = revision;
+      latestNavigationRevision = revision;
       if (!bootstrap) {
         screenshotEpoch.current += 1;
         setScreenshotStatus(null);
@@ -154,33 +147,24 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
         setAddress(next.url);
       projectBrowserTabStatus(tab.id, next);
     };
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        const dispose = await listen<BrowserNavigation>(
-          "browser:navigation",
-          (event) => acceptNavigation(event.payload),
-        );
-        if (!mounted) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-        acceptNavigation(await browserStatus(tab.id), true);
-      })
-      .catch((cause) => {
-        if (mounted) setError(String(cause).slice(0, 512));
-      });
+    const stop = subscribeBrowserTab(
+      "browser:navigation",
+      tab.id,
+      acceptNavigation,
+      () => browserStatus(tab.id),
+      setError,
+    );
     return () => {
-      mounted = false;
       screenshotEpoch.current += 1;
-      unlisten?.();
+      stop();
     };
   }, [tab.id, screenshotEpoch, setScreenshotStatus]);
-  useBrowserPlacement(tab.id, viewport, surface, setError);
+  useBrowserPlacement(tab.id, viewport, surface, setError, historyOpen);
   const status = navigation?.tabId === tab.id ? navigation : null;
   const device = useBrowserDeviceTrigger(tab.id, status);
   function navigate() {
     return pageAction(async () => {
+      setHistoryOpen(false);
       setScreenshotStatus(null);
       screenshotEpoch.current += 1;
       const url = resolveBrowserAddress(address);
@@ -193,6 +177,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
   }
   function control(action: BrowserControlAction) {
     return pageAction(async () => {
+      if (action !== "stop") setHistoryOpen(false);
       await browserControl(tab.id, action);
       if (action === "stop") {
         setNavigation((current) =>
@@ -210,6 +195,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     }
   }
   function navigateTo(url: string) {
+    setHistoryOpen(false);
     void pageAction(() => browserNavigate(tab.id, url));
   }
   function changeZoom(delta: number) {
@@ -240,12 +226,15 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     void openBrowser().then((message) => {
       if (message) setError(message);
     });
-  useBrowserShortcuts(surface, tab.id, Boolean(navigation?.loading), (action) =>
+  // While History shows, Escape closes it rather than stopping the page.
+  const stoppable = Boolean(navigation?.loading) && !historyOpen;
+  useBrowserShortcuts(surface, tab.id, stoppable, (action) =>
     performBrowserShortcut(action, {
       address: addressField.current,
       find: () => findField.current,
       control,
       findOpen: () => setFindOpen(true),
+      history: () => setHistoryOpen(true),
       zoom: changeZoom,
       zoomPercent: navigation?.zoomPercent ?? 100,
       newTab: openNewTab,
@@ -358,14 +347,18 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
           {screenshotStatus}
         </p>
       ) : null}
-      <BrowserDrawers
-        tabId={tab.id}
-        historyOpen={historyOpen}
-        onError={setError}
-        onCloseHistory={() => setHistoryOpen(false)}
-        onNavigate={navigateTo}
-      />
-      {newTab ? (
+      <BrowserSitePermissions tabId={tab.id} />
+      {historyOpen ? (
+        <Suspense fallback={<p role="status">Loading history…</p>}>
+          <BrowserHistoryPage
+            onNavigate={navigateTo}
+            onClose={() => {
+              setHistoryOpen(false);
+              requestAnimationFrame(() => addressField.current?.focus());
+            }}
+          />
+        </Suspense>
+      ) : newTab ? (
         <Suspense fallback={<p role="status">Loading new tab…</p>}>
           <BrowserNewTab
             suggestions={suggestions}
@@ -379,7 +372,7 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
       ) : null}
       <div
         ref={frame}
-        className={`browser-surface__frame${newTab ? " browser-surface__frame--new-tab" : ""}`}
+        className={`browser-surface__frame${newTab || historyOpen ? " browser-surface__frame--new-tab" : ""}`}
       >
         <div ref={viewport} className="browser-surface__viewport" />
       </div>

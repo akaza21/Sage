@@ -11,7 +11,7 @@
       "editorSearch": 193942,
       "editorFile": 290998
     },
-    "webTotalJsGzipBytes": 461000,
+    "webTotalJsGzipBytes": 460850,
     "webTerminalLazyJsGzipBytes": 89516,
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
@@ -118,7 +118,8 @@
       {
         "entry": "src/features/chat/ComposerEffortMenu.tsx",
         "maxGzipBytes": 1385,
-        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager."
+        "reason": "Advertised thinking-level slider; loads on the first Effort request while the chip remains eager.",
+        "maxCssGzipBytes": 180
       },
       {
         "entry": "src/features/chat/acp/TurnFileActivity.tsx",
@@ -178,9 +179,9 @@
       },
       {
         "entry": "src/features/chat/acp/PermissionPrompt.tsx",
-        "maxGzipBytes": 1777,
+        "maxGzipBytes": 1950,
         "maxCssGzipBytes": 955,
-        "reason": "Composer-slot approval card; loads only while a live Turn awaits a permission decision."
+        "reason": "Composer-slot approval card, including the elevated browser developer-mode variant and its risk text (ADR-0009b); loads only while a live Turn awaits a permission decision."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",
@@ -301,9 +302,9 @@
       },
       {
         "entry": "src/features/browser/BrowserSurface.tsx",
-        "maxGzipBytes": 8635,
+        "maxGzipBytes": 8785,
         "maxCssGzipBytes": 3147,
-        "reason": "Browser toolbar and page host; loads only when a Browser resource is opened."
+        "reason": "Browser toolbar, persistent History and page host; loads only for a Browser resource. Combined History and overflow receive 150 B transferred from the core allowance."
       },
       {
         "entry": "src/features/chat/acp/MermaidFigure.tsx",
@@ -362,8 +363,8 @@
       },
       {
         "entry": "src/workbench/SettingsSurface.tsx",
-        "maxGzipBytes": 2453,
-        "reason": "Editor Settings with EP-06 files.exclude pattern controls and array-value default checks; loads only for Settings. Merge measured 2323 B plus 7%; Agent path and core caps unchanged."
+        "maxGzipBytes": 2779,
+        "reason": "Editor Settings with EP-06 exclude controls and the BF-7b-1 Passwords entries and lazy page loader; loads only for Settings. Measured 2597 B plus 7%; Agent and core caps unchanged."
       },
       {
         "entry": "src/workbench/SourceControlView.tsx",
@@ -375,6 +376,16 @@
         "maxGzipBytes": 8160,
         "maxCssGzipBytes": 800,
         "reason": "Quick Open (Ctrl/Cmd+P, EP-08) and its command list (Ctrl/Cmd+Shift+P, ED-2a); loads while idle or on first open. Measured JS 3385 B and CSS 698 B; the JS cap is the ticket's 8 KB."
+      },
+      {
+        "entry": "src/features/chat/composerDictationRuntime.ts",
+        "maxGzipBytes": 1100,
+        "reason": "Native speech event handling loads only on a dictation request; inactive composers retain no speech subscriptions."
+      },
+      {
+        "entry": "src/features/chat/ComposerUsageContext.tsx",
+        "maxGzipBytes": 700,
+        "reason": "Reported context usage renders only after the harness supplies a known capacity; the idle composer does not load the meter."
       }
     ],
     "windowsInstallerMb": 45,
@@ -382,7 +393,8 @@
     "macosUniversalMb": 80,
     "linuxDebMb": 45,
     "linuxAppImageMb": 90,
-    "installedCoreMb": 150
+    "installedCoreMb": 150,
+    "webMarkdownLazyJsGzipBytes": 46047
   },
   "runtime": {
     "backgroundHostRssP95Mb": 45,
@@ -444,6 +456,12 @@
     },
     "excludeHarnessProcesses": true,
     "excludeTerminalChildProcesses": true,
-    "reportProcessTreesSeparately": true
+    "reportProcessTreesSeparately": true,
+    "markdownDependency": {
+      "package": "markdown-it 15.0.3 (MIT)",
+      "impact": "About 41 KB gzip, demand-loaded with the first markdown render; about 0.3 ms per typical answer and about 0.2 MB retained for one shared parser. No HTML, linkify or typographer. No plugin packages.",
+      "lifetime": "Only rules persist in the shared parser. Tokens and environments are released after each parse. Per-view bounded source, document and suffix offsets are collected on unmount; no per-message parser or global transcript cache.",
+      "budget": "markdown-rendering: original 45169 B cap plus the ordered-container measured delta of 878 B = 46047 B cap. Identical desktop-native Vite builds with locked dependencies measure 44348 B gzip at 8e57ef5f and 45226 B with ordered list/quote children, shared text traversal and descendant limits. The cap increases only by that measured delta, preserving existing headroom. All other caps remain unchanged."
+    }
   }
 }

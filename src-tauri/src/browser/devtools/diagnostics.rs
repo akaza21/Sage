@@ -11,10 +11,32 @@ pub(super) struct DiagnosticRings {
     network: VecDeque<NetworkEntry>,
     next_console: u64,
     next_network: u64,
+    suspended: bool,
 }
 
 impl DiagnosticRings {
+    /// Sleeping releases text buffers, while cursors stay monotonic when the
+    /// next subscription starts with fresh, separately owned rings.
+    pub(super) fn resumed(&self) -> Self {
+        Self {
+            next_console: self.next_console,
+            next_network: self.next_network,
+            ..Self::default()
+        }
+    }
+    pub(super) fn is_suspended(&self) -> bool {
+        self.suspended
+    }
+    pub(super) fn suspend(&mut self) {
+        self.console = VecDeque::new();
+        self.network = VecDeque::new();
+        self.suspended = true;
+    }
+
     pub(super) fn push_console(&mut self, level: &str, text: &str) {
+        if self.suspended {
+            return;
+        }
         let Some(cursor) = self.next_console.checked_add(1) else {
             self.console.clear();
             return;
@@ -32,6 +54,9 @@ impl DiagnosticRings {
     }
 
     pub(super) fn push_network(&mut self, method: &str, url: &str, status: u16) {
+        if self.suspended {
+            return;
+        }
         let Some(cursor) = self.next_network.checked_add(1) else {
             self.network.clear();
             return;

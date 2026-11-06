@@ -178,6 +178,19 @@ pub(crate) async fn browser_clear_data(
             Err(error) => result.error = Some(error),
         }
     }
+    // Every tab is closed, so no visit can follow this; visits queued
+    // before it are removed with the rest. A history failure is reported
+    // but never stops the profile clear.
+    let mut history_error = None;
+    if result.error.is_none() {
+        let history = state.browsing_history.clone();
+        history_error = tauri::async_runtime::spawn_blocking(move || history.clear())
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|outcome| outcome)
+            .err()
+            .map(|error| format!("Browsing history was not cleared: {error}"));
+    }
     if result.error.is_none() {
         #[cfg(windows)]
         let clear_webview = temporary.clone();
@@ -200,15 +213,19 @@ pub(crate) async fn browser_clear_data(
                         .into(),
                 );
                 let completion_app = app.clone();
+                let completion_history_error = history_error.clone();
                 tauri::async_runtime::spawn(async move {
                     let completion_state = completion_app.state::<BrowserState>();
                     let completion = tauri::async_runtime::spawn_blocking(move || {
                         wait_for_pending_clear(receiver, std::time::Duration::from_secs(60))
                     })
                     .await;
-                    let result = completion
-                        .map_err(|error| error.to_string())
-                        .and_then(|callback| callback);
+                    let result = pending_outcome(
+                        completion
+                            .map_err(|error| error.to_string())
+                            .and_then(|callback| callback),
+                        completion_history_error,
+                    );
                     if let Err(error) = complete_pending_clear(
                         &completion_state.clearing_data,
                         result,
@@ -234,6 +251,7 @@ pub(crate) async fn browser_clear_data(
                     }
                 });
                 gate.disarm();
+                append_error(&mut result, history_error);
                 return Ok(result);
             }
         }
@@ -247,8 +265,35 @@ pub(crate) async fn browser_clear_data(
         result.error = Some(error);
         result.cleared = false;
     }
+    append_error(&mut result, history_error);
     Ok(result)
 }
+
+/// A pending clear's final outcome: the profile cleared but history did
+/// not is not a success.
+#[cfg(windows)]
+fn pending_outcome(
+    profile: Result<(), String>,
+    history_error: Option<String>,
+) -> Result<(), String> {
+    profile.and(history_error.map_or(Ok(()), Err))
+}
+
+/// Adds a history failure to the result. Browsing data is not cleared
+/// while its history remains, so the clear no longer reports success.
+fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
+    if let Some(error) = error {
+        result.cleared = false;
+        result.error = Some(match result.error.take() {
+            Some(first) => format!("{first} {error}"),
+            None => error,
+        });
+    }
+}
+
+#[cfg(test)]
+#[path = "clear_data/history_tests.rs"]
+mod history_tests;
 
 #[cfg(all(test, windows))]
 mod tests {

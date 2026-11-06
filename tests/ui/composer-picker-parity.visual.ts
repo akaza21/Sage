@@ -9,7 +9,7 @@ import {
 test("gives harness and model triggers the same control treatment", async ({
   page,
 }) => {
-  await openScenario(page, "agent-single", "agent");
+  await openScenario(page, "agent-picker-harness-model", "agent");
   const composer = page.locator("form.composer").first();
   const harness = composer.getByRole("button", {
     name: "Harness",
@@ -362,6 +362,14 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
       .locator(".searchable-picker__trigger-label")
       .evaluate((label) => label.scrollWidth <= label.clientWidth),
   ).toBe(true);
+  // The trigger takes its name's width, so the chevron follows the name.
+  const [nameBox, chevronBox] = await Promise.all([
+    harness.locator(".searchable-picker__trigger-label").boundingBox(),
+    harness.locator(".searchable-picker__chevron").boundingBox(),
+  ]);
+  expect(chevronBox!.x - (nameBox!.x + nameBox!.width)).toBeLessThanOrEqual(
+    4.5,
+  );
 
   const popoverPaint = (popover: Locator) =>
     popover.evaluate((element) => {

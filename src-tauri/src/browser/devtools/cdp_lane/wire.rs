@@ -1,0 +1,133 @@
+//! The lane's command pipe, shared with the frame reader so that the reader
+//! can release developer mode's object group when an evaluation answers,
+//! as the WebView2 completion callback does, even after the caller stopped
+//! waiting for it (ADR-0009b).
+
+use std::{
+    collections::HashMap,
+    io::Write,
+    process::ChildStdin,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
+};
+
+use serde_json::{Value, json};
+
+use crate::acp::browser::BrowserFailure;
+
+#[derive(Default)]
+pub(super) struct Wire {
+    pub(super) commands: Mutex<Option<ChildStdin>>,
+    next_id: AtomicU64,
+    /// Developer evaluations in flight, by command id, with their session.
+    release_on_answer: Mutex<HashMap<u64, Release>>,
+    pub(super) late_releases: AtomicUsize,
+}
+
+struct Release {
+    session: Option<String>,
+    waiting: Option<Arc<AtomicBool>>,
+}
+
+impl Wire {
+    /// Writes one command. With `release_on_answer`, the id is registered
+    /// before the bytes leave, so the reader cannot see the answer first.
+    pub(super) fn write(
+        &self,
+        session: Option<&str>,
+        method: &str,
+        params: Value,
+        release_on_answer: bool,
+    ) -> Result<u64, BrowserFailure> {
+        self.write_waiting(session, method, params, release_on_answer, None)
+    }
+
+    pub(super) fn write_waiting(
+        &self,
+        session: Option<&str>,
+        method: &str,
+        params: Value,
+        release_on_answer: bool,
+        waiting: Option<Arc<AtomicBool>>,
+    ) -> Result<u64, BrowserFailure> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+        if release_on_answer && let Ok(mut pending) = self.release_on_answer.lock() {
+            pending.insert(
+                id,
+                Release {
+                    session: session.map(str::to_owned),
+                    waiting,
+                },
+            );
+        }
+        let mut frame = json!({"id": id, "method": method, "params": params});
+        if let Some(session) = session {
+            frame["sessionId"] = session.into();
+        }
+        let mut bytes = frame.to_string().into_bytes();
+        bytes.push(0);
+        self.commands
+            .lock()
+            .map_err(|_| BrowserFailure::Unavailable)?
+            .as_mut()
+            .ok_or(BrowserFailure::Unavailable)?
+            .write_all(&bytes)
+            .map_err(|_| BrowserFailure::Unavailable)?;
+        Ok(id)
+    }
+
+    /// Called by the reader for every command answer.
+    pub(super) fn answered(&self, id: u64) {
+        let session = self
+            .release_on_answer
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&id));
+        if let Some(release) = session {
+            // Timely object handles belong to the serializer until its finally
+            // cleanup. A late evaluation answer must release its own group.
+            if release
+                .waiting
+                .as_ref()
+                .is_some_and(|waiting| waiting.load(Ordering::SeqCst))
+            {
+                return;
+            }
+            let params = serde_json::from_str(&crate::acp::browser::developer::release_params())
+                .unwrap_or_default();
+            if self
+                .write(
+                    release.session.as_deref(),
+                    "Runtime.releaseObjectGroup",
+                    params,
+                    false,
+                )
+                .is_ok()
+            {
+                self.late_releases.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_answer_after_the_pipe_closed_releases_nothing_and_forgets_the_call() {
+        let wire = Wire::default();
+        assert_eq!(
+            wire.write(Some("page"), "Runtime.evaluate", json!({}), true),
+            Err(BrowserFailure::Unavailable)
+        );
+        assert_eq!(wire.release_on_answer.lock().unwrap().len(), 1);
+        wire.answered(1);
+        assert!(wire.release_on_answer.lock().unwrap().is_empty());
+        assert_eq!(wire.late_releases.load(Ordering::SeqCst), 0);
+        wire.answered(1);
+        assert_eq!(wire.late_releases.load(Ordering::SeqCst), 0);
+    }
+}

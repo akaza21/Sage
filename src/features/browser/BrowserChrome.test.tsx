@@ -10,6 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
 import type { WorkbenchTab } from "../../domain/workbench";
 import { BrowserSurface } from "./BrowserSurface";
 import { BrowserNewTab } from "./BrowserNewTab";
@@ -42,9 +43,17 @@ const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
 const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
-const browserHistory = vi.fn(async (_tabId: string) => [
-  "https://example.com/",
-]);
+const browserHistoryPage = vi.fn(async (_query: unknown) => ({
+  visits: [
+    {
+      id: 1,
+      url: "https://history.example/page",
+      title: "History Example",
+      visitedAt: Date.now(),
+    },
+  ],
+  next: null,
+}));
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
@@ -64,8 +73,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserPrint: (tabId: string) => browserPrint(tabId),
   browserCaptureScreenshot: (tabId: string, revision: string) =>
     browserCaptureScreenshot(tabId, revision),
-  browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistory: (tabId: string) => browserHistory(tabId),
   attachBrowserTab: vi.fn(),
   detachBrowserTab: (projectId: string, chatId: string) =>
     detachBrowserTab(projectId, chatId),
@@ -85,14 +92,19 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserSuggestedSites: () => browserSuggestedSites(),
+
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
+}));
 const browserPreferences = vi.fn(async () => ({ showFullUrl: false }));
 vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: () => browserPreferences(),
   browserSetPreferences: vi.fn(async (value: unknown) => value),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
-}));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 const tab: WorkbenchTab = {
   id: "browser-1",
   kind: "browser",
@@ -140,6 +152,41 @@ it("shows an inert new tab with Sage tools and suggested sites", async () => {
     ),
   );
 });
+it("discards New Tab suggestions while History is open and fetches fresh sites on return", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "",
+    revision: "0",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  let started!: () => void;
+  const pending = new Promise<void>((resolve) => (started = resolve));
+  let finish!: (sites: string[]) => void;
+  browserSuggestedSites
+    .mockImplementationOnce(() => {
+      started();
+      return new Promise((resolve) => (finish = resolve));
+    })
+    .mockResolvedValueOnce(["https://fresh-suggestion.example/"]);
+  render(<BrowserSurface tab={tab} />);
+  await pending;
+  await screen.findByText("Tools");
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  await screen.findByRole("region", { name: "History" });
+  await act(async () => finish(["https://stale-suggestion.example/"]));
+  fireEvent.click(screen.getByRole("button", { name: "Close history" }));
+  expect(
+    screen.queryByRole("button", { name: "stale-suggestion.example" }),
+  ).toBeNull();
+  expect(
+    await screen.findByRole("button", { name: "fresh-suggestion.example" }),
+  ).toBeVisible();
+});
+
 it("shows a known open page title on its suggested tile", async () => {
   const previous = useWorkbenchStore.getState();
   useWorkbenchStore.setState({ tabs: [tab] });
@@ -711,6 +758,7 @@ it("keeps Editor browser bounds at the frame rect", async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -814,16 +862,20 @@ it("shows a failed history retry without offering a mismatched origin", async ()
   ).toBeNull();
 });
 
-it("discards a closed history drawer's pending page and reopens with fresh native history", async () => {
-  let finish!: (entries: string[]) => void;
-  browserHistory
+it("discards a closed History page's pending result and reopens with fresh native history", async () => {
+  let finish!: (page: Awaited<ReturnType<typeof browserHistoryPage>>) => void;
+  const pageFor = (url: string) => ({
+    visits: [{ id: 1, url, title: url, visitedAt: Date.now() }],
+    next: null,
+  });
+  browserHistoryPage
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
         }),
     )
-    .mockResolvedValueOnce(["https://fresh.example/"]);
+    .mockResolvedValueOnce(pageFor("https://fresh.example/"));
   render(<BrowserSurface tab={tab} />);
   await screen.findByLabelText("Secure connection");
   const openHistory = () => {
@@ -831,17 +883,24 @@ it("discards a closed history drawer's pending page and reopens with fresh nativ
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
   };
   openHistory();
-  await screen.findByRole("complementary", { name: "Browser history" });
+  await screen.findByRole("region", { name: "History" });
   fireEvent.click(screen.getByRole("button", { name: "Close history" }));
   openHistory();
-  await screen.findByRole("button", { name: "https://fresh.example/" });
-  await act(async () => finish(["https://stale.example/"]));
+  await screen.findByRole("button", {
+    name: /^(?!Remove ).*https:\/\/fresh\.example/,
+  });
+  await act(async () => finish(pageFor("https://stale.example/")));
   expect(screen.queryByText("https://stale.example/")).toBeNull();
   expect(
-    screen.getByRole("button", { name: "https://fresh.example/" }),
+    screen.queryByRole("button", {
+      name: /^(?!Remove ).*https:\/\/stale\.example/,
+    }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", {
+      name: /^(?!Remove ).*https:\/\/fresh\.example/,
+    }),
   ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Close history" }));
-  expect(
-    screen.queryByRole("complementary", { name: "Browser history" }),
-  ).toBeNull();
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
 });

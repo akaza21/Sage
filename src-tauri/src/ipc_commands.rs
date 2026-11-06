@@ -166,6 +166,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::navigation::browser_status,
         browser::state_query::browser_live_tabs,
         browser::state_query::browser_history,
+        browser::browsing_history::commands::browser_history_page,
+        browser::browsing_history::commands::browser_history_remove,
         browser::state_query::browser_suggested_sites,
         browser::page_context::browser_page_context,
         browser::user_screenshot::browser_capture_screenshot,
@@ -176,10 +178,24 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         browser::page_controls::browser_open_external,
         browser::page_controls::browser_print,
         browser::page_controls::browser_find,
+        browser::passwords::commands::browser_passwords,
+        browser::passwords::commands::browser_passwords_import_csv,
+        browser::passwords::commands::browser_passwords_cancel_import,
+        browser::passwords::commands::browser_passwords_delete_imported_file,
+        browser::passwords::commands::browser_passwords_update,
+        browser::passwords::commands::browser_passwords_delete,
+        browser::passwords::commands::browser_passwords_delete_all,
+        browser::passwords::commands::browser_passwords_reveal,
+        browser::passwords::commands::browser_passwords_copy,
         settings_commands::agent_rail_view::agent_rail_view,
         settings_commands::agent_rail_view::agent_rail_set_view,
         settings_commands::browser_preferences::browser_preferences,
-        settings_commands::browser_preferences::browser_set_preferences
+        settings_commands::browser_preferences::browser_set_preferences,
+        settings_commands::browser_developer::browser_developer_mode,
+        settings_commands::browser_developer::browser_set_developer_mode,
+        settings_commands::browser_download_folder::browser_download_folder,
+        settings_commands::browser_download_folder::browser_choose_download_folder,
+        settings_commands::browser_download_folder::browser_reset_download_folder
     ];
     handle(invoke)
 }

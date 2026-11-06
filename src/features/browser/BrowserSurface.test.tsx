@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
@@ -32,14 +33,25 @@ const browserNavigate = vi.fn(
   async (_tabId: string, _url: string) => undefined,
 );
 const hideBrowser = vi.fn(async (_tabId: string) => undefined);
+const browserControl = vi.fn(
+  async (_tabId: string, _action: string) => undefined,
+);
 const coverBrowser = vi.fn(async (_tabId: string) => undefined);
 const positionBrowser = vi.fn(
   async (_tabId: string, _bounds: unknown) => undefined,
 );
 const browserSuggestedSites = vi.fn(async () => ["https://example.com/"]);
-const browserHistory = vi.fn(async (_tabId: string) => [
-  "https://example.com/",
-]);
+const browserHistoryPage = vi.fn(async (_query: unknown) => ({
+  visits: [
+    {
+      id: 1,
+      url: "https://history.example/page",
+      title: "History Example",
+      visitedAt: Date.now(),
+    },
+  ],
+  next: null,
+}));
 const attachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string, _tabId: string) =>
     ({}) as unknown,
@@ -52,6 +64,7 @@ let rustAgentControl: {
   projectId: string;
   chatId: string;
   userControl: boolean;
+  developerMode: boolean;
 } | null = null;
 const stopBrowserTab = vi.fn(async (_tabId: string) => {
   rustAgentControl = null;
@@ -77,8 +90,6 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   browserFind: (tabId: string, action: string, query?: string) =>
     browserFind(tabId, action, query),
   browserOpenExternal: (tabId: string) => browserOpenExternal(tabId),
-  browserSuggestedSites: () => browserSuggestedSites(),
-  browserHistory: (tabId: string) => browserHistory(tabId),
   attachBrowserTab: (projectId: string, chatId: string, tabId: string) =>
     attachBrowserTab(projectId, chatId, tabId),
   detachBrowserTab: (projectId: string, chatId: string) =>
@@ -91,7 +102,8 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
     pending: [],
     decisions: [],
   })),
-  browserControl: vi.fn(),
+  browserControl: (tabId: string, action: string) =>
+    browserControl(tabId, action),
   browserAgentControl: (tabId: string, action: string) =>
     browserAgentControl(tabId, action),
   browserNavigate: (tabId: string, url: string) => browserNavigate(tabId, url),
@@ -100,9 +112,14 @@ vi.mock("../../ports/nativeBrowserPort", () => ({
   positionBrowser: (tabId: string, bounds: unknown) =>
     positionBrowser(tabId, bounds),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
+vi.mock("../../ports/nativeBrowserHistoryPort", () => ({
+  browserSuggestedSites: () => browserSuggestedSites(),
+
+  browserHistoryPage: (query: unknown) => browserHistoryPage(query),
+  browserHistoryRemove: vi.fn(async () => 1),
 }));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 
 const tab: WorkbenchTab = {
   id: "browser-1",
@@ -178,6 +195,7 @@ it("shows a New page creation failure in the browser without changing composer f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   rustAgentControl = null;
   vi.stubGlobal(
     "ResizeObserver",
@@ -585,6 +603,7 @@ it("stops the tab's current authority even when presence names a previous chat",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -647,6 +666,7 @@ it("takes over the tab until the user hands it back", async () => {
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -713,6 +733,7 @@ it("offers Stop and Take over for as long as an Agent is attached, idle or not",
     projectId: "project-1",
     chatId: "chat-1",
     userControl: false,
+    developerMode: false,
   };
   render(<BrowserSurface tab={tab} />);
   expect(
@@ -738,6 +759,7 @@ it("keeps page attachment, agent presence, and downloads in one toolbar row", as
     projectId: "project-1",
     chatId: "chat-toolbar",
     userControl: false,
+    developerMode: false,
   };
   recordBrowserAgentOperation({
     ...browserOperationFixture,
@@ -926,6 +948,66 @@ it("still hides the native page for real when the centre pane is hidden", async 
   act(() => center.setAttribute("aria-hidden", "true"));
   await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   center.remove();
+});
+
+it("hides the native page under History and opens a chosen visit in this tab", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 }),
+  );
+  render(<BrowserSurface tab={tab} />);
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+  hideBrowser.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+  const history = await screen.findByRole("region", { name: "History" });
+  positionBrowser.mockClear();
+  // History stays up indefinitely, so the page hides for real (ending
+  // Annotate, as a tab switch does) rather than being briefly covered.
+  await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
+  expect(positionBrowser).not.toHaveBeenCalled();
+  expect(browserHistoryPage).toHaveBeenCalledWith({
+    search: "",
+    before: null,
+    limit: 50,
+  });
+  fireEvent.click(
+    await within(history).findByRole("button", {
+      name: /^(?!Remove ).*History Example/,
+    }),
+  );
+  await waitFor(() =>
+    expect(browserNavigate).toHaveBeenCalledWith(
+      tab.id,
+      "https://history.example/page",
+    ),
+  );
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
+  await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
+});
+
+it("opens History with Ctrl+H and closes it with Escape even while the page loads", async () => {
+  browserStatus.mockResolvedValue({
+    tabId: tab.id,
+    url: "https://example.com/path",
+    revision: "1",
+    loading: true,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100,
+  });
+  render(<BrowserSurface tab={tab} />);
+  const address = await screen.findByRole("textbox", {
+    name: "Address or search",
+  });
+  fireEvent.keyDown(address, { key: "h", ctrlKey: true });
+  const search = await screen.findByRole("searchbox", {
+    name: "Search history",
+  });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(screen.queryByRole("region", { name: "History" })).toBeNull();
+  expect(browserControl).not.toHaveBeenCalledWith(tab.id, "stop");
+  await waitFor(() => expect(address).toHaveFocus());
 });
 
 it("shows a failed attach in the surface's error row and clears it on a successful retry", async () => {

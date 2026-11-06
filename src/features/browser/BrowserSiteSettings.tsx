@@ -60,11 +60,10 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
 
   useEffect(() => {
     let mounted = true;
-    let sawEvent = false;
     let unlisten: (() => void) | undefined;
     // Subscribe before the first read, so a change made in a browser tab
-    // between the two is not lost; an event that lands before the read
-    // returns is newer than it.
+    // between the two is not lost. Only events after the read starts
+    // invalidate its reply.
     void (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -72,7 +71,6 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
           "browser:site-settings",
           (event) => {
             if (!mounted) return;
-            sawEvent = true;
             events.current += 1;
             show(event.payload);
             setError(null);
@@ -85,12 +83,13 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
         // its own changes.
       }
       if (!mounted) return;
+      const seen = events.current;
       try {
         const loaded = await browserSiteSettings();
-        if (!mounted || sawEvent) return;
+        if (!mounted || seen !== events.current) return;
         show(loaded);
       } catch {
-        if (mounted && !sawEvent) setError(LOAD_FAILURE);
+        if (mounted && seen === events.current) setError(LOAD_FAILURE);
       }
     })();
     return () => {

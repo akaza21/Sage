@@ -1857,7 +1857,7 @@ const CANCEL_BOUND_MARGIN_MS = 20_000;
 
 function composerContextSource() {
   return readFileSync(
-    new URL("../src/features/chat/ComposerContext.tsx", import.meta.url),
+    new URL("../src/features/chat/ComposerUsageContext.tsx", import.meta.url),
     "utf8",
   );
 }

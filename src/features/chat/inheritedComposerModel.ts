@@ -1,5 +1,3 @@
-import { create } from "zustand";
-
 import type {
   AcpConfigOption,
   AcpSessionConfig,
@@ -7,20 +5,18 @@ import type {
 import { sessionConfigControls } from "../../domain/acpSessionConfigControls";
 import { capitalizeLabel } from "../../domain/text";
 import { composerOptionLabel } from "./composerChrome";
+import {
+  useInheritedStore,
+  type InheritedComposerModel,
+} from "./inheritedComposerModelState";
 
-/** Show only parent-harness-confirmed model/effort until the child reports its own config. */
-export interface InheritedComposerModel {
-  model: string;
-  effort: string | null;
-  id?: string;
-}
+export {
+  useInheritedComposerModel,
+  type InheritedComposerModel,
+} from "./inheritedComposerModelState";
 
 /** Side chats are capped at eight; forks are short-lived until first send. */
 const MAX_INHERITED = 16;
-
-const useInheritedStore = create<
-  Readonly<Record<string, InheritedComposerModel>>
->(() => ({}));
 
 const category = (option: AcpConfigOption) =>
   (option.category ?? option.id).toLocaleLowerCase();
@@ -74,8 +70,4 @@ export function inheritComposerModel(
       ]),
     true,
   );
-}
-
-export function useInheritedComposerModel(chatId: string | null) {
-  return useInheritedStore((state) => (chatId ? state[chatId] : undefined));
 }

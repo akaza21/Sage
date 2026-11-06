@@ -2,7 +2,7 @@ Set-StrictMode -Version Latest
 
 function Wait-FootprintJobProcess {
   param(
-    [Parameter(Mandatory)]$Process,
+    [Parameter(Mandatory)][AllowNull()]$Process,
     [Parameter(Mandatory)][SageFootprint.NativeJobBoundary]$Boundary,
     [ValidateRange(100, 1500000)][int]$TimeoutMilliseconds = 120000,
     [ValidateRange(100, 5000)][int]$OrphanObservationMilliseconds = 500

@@ -108,14 +108,8 @@ export default function TerminalDockForWorkbench({
         visible={visible}
         open={open}
       />
-    ) : (
-      <section
-        className="terminal-dock"
-        aria-label="Terminal"
-        hidden={!visible}
-        inert={inert}
-        aria-hidden={inert}
-      >
+    ) : visible ? (
+      <section className="terminal-dock" aria-label="Terminal" inert={inert}>
         <div className="terminal-dock__header">Terminal</div>
         <p className="terminal-dock__message" role="status">
           Open a chat first.
@@ -124,7 +118,7 @@ export default function TerminalDockForWorkbench({
           Close terminal
         </button>
       </section>
-    ),
+    ) : null,
   );
 }
 
@@ -281,7 +275,6 @@ export function TerminalDockShell({
       aria-label="Terminal"
       hidden={!visible}
       inert={inert}
-      aria-hidden={inert}
     >
       <div className="terminal-dock__header">
         <div

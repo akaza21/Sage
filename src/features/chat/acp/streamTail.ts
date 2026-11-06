@@ -1,3 +1,4 @@
+import { markdownTextTail } from "../../files/markdownTextLocations";
 import type { MarkdownPreviewDocument } from "../../files/markdownPreview";
 
 /** Oldest-first lengths of appended runs forming a contiguous suffix of a block/item/cell. */
@@ -23,29 +24,25 @@ export default function nextStreamRuns(
     !before ||
     previous.blocks.length !== blockIndex + 1 ||
     before.kind !== block.kind ||
-    block.kind === "code"
+    block.kind === "code" ||
+    block.kind === "rule"
   )
     return null;
-  let itemIndex: number | undefined;
-  let prior: string;
-  let text: string;
-  if (block.kind === "list") {
-    if ((before as typeof block).items.length !== block.items.length)
-      return null;
-    itemIndex = block.items.length - 1;
-    prior = (before as typeof block).items[itemIndex] ?? "";
-    text = block.items[itemIndex] ?? "";
-  } else if (block.kind === "table") {
-    const row = block.rows.length - 1;
-    if ((before as typeof block).rows.length - 1 !== row || row < 1)
-      return null;
-    itemIndex = row * block.align.length + block.rows[row].length - 1;
-    prior = (before as typeof block).rows[row].at(-1) ?? "";
-    text = block.rows[row].at(-1) ?? "";
-  } else {
-    prior = (before as typeof block).text;
-    text = block.text;
-  }
+  const oldEnd = markdownTextTail(before);
+  const nextEnd = markdownTextTail(block);
+  if (oldEnd.count !== nextEnd.count) return null;
+  const oldTail = oldEnd.tail;
+  const tail = nextEnd.tail;
+  if (
+    !oldTail ||
+    !tail ||
+    oldTail.code ||
+    tail.code ||
+    oldTail.itemIndex !== tail.itemIndex
+  )
+    return null;
+  const { text, itemIndex } = tail;
+  const prior = oldTail.text;
   if (text === prior || !text.startsWith(prior)) return null;
   const chars = text.length - prior.length;
   return {

@@ -277,7 +277,10 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("addresses simulator prompts by Chat and adopts the durable session head", async () => {
     const messages = [
@@ -2115,6 +2118,31 @@ describe("workbench resource and project navigation", () => {
 
     expect(useWorkbenchStore.getState().fileNavigationTarget).toBeNull();
   });
+
+  it.each([true, false])(
+    "reveals new and existing files with compact drawer dismissal (%s)",
+    async (compact) => {
+      vi.stubGlobal("matchMedia", () => ({ matches: compact }));
+      const target = resource("src/new-file.ts");
+      vi.spyOn(editorPort, "openEditorDocument").mockResolvedValue(
+        document(target, "export const value = 1;", 0, false),
+      );
+      await useWorkbenchStore.getState().openFile(target);
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "ready",
+        resource: target,
+      });
+      expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+
+      useWorkbenchStore.setState({ sidebarOpen: true });
+      await useWorkbenchStore.getState().openFile(target);
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        phase: "ready",
+        resource: target,
+      });
+      expect(useWorkbenchStore.getState().sidebarOpen).toBe(!compact);
+    },
+  );
 
   it("opens a changed resource as a diff and focuses Explorer", async () => {
     const target = resource("src/app/store.ts");

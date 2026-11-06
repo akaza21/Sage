@@ -7,6 +7,7 @@ use std::{
 };
 
 use rusqlite::OptionalExtension;
+use tauri::Manager;
 
 use crate::acp::{
     browser::{
@@ -121,6 +122,10 @@ impl super::AcpService {
             .unwrap_or_default();
         let (mut server, token) =
             BrowserMcpServer::issue_for_session(port, owner.session_id.as_str().to_owned(), now);
+        let settings = app.state::<crate::state::AppState>().settings.clone();
+        server.set_developer_tools(Box::new(move || {
+            settings.browser_developer_mode().unwrap_or(false)
+        }));
         server.set_operation_observer(Box::new(
             super::browser_operation::ServiceBrowserOperationObserver::new(app, owner.clone()),
         ));

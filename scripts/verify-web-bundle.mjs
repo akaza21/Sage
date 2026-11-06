@@ -177,6 +177,7 @@ export function verifyWebBundle(root) {
   const totalLimit = budgets.bundle?.webTotalJsGzipBytes;
   const terminalLimit = budgets.bundle?.webTerminalLazyJsGzipBytes;
   const subagentLimit = budgets.bundle?.webSubagentLazyJsGzipBytes;
+  const markdownLimit = budgets.bundle?.webMarkdownLazyJsGzipBytes;
   if (
     !Number.isInteger(entryLimit) ||
     !Number.isInteger(initialStaticClosureLimit) ||
@@ -187,7 +188,9 @@ export function verifyWebBundle(root) {
     (terminalLimit !== undefined &&
       (!Number.isInteger(terminalLimit) || terminalLimit < 1)) ||
     (subagentLimit !== undefined &&
-      (!Number.isInteger(subagentLimit) || subagentLimit < 1))
+      (!Number.isInteger(subagentLimit) || subagentLimit < 1)) ||
+    (markdownLimit !== undefined &&
+      (!Number.isInteger(markdownLimit) || markdownLimit < 1))
   )
     fail("web bundle limits are missing or invalid");
   const lazyFeatures = parseLazyFeatureBudgets(
@@ -259,6 +262,7 @@ export function verifyWebBundle(root) {
   let terminalLazyEmittedGzipBytes = 0;
   let subagentLazyGzipBytes = 0;
   let coreTotalGzipBytes = totalGzipBytes;
+  let markdownLazyGzipBytes = 0;
   const reachable = new Set();
   const visitReachable = (key) => {
     if (reachable.has(key)) return;
@@ -272,6 +276,24 @@ export function verifyWebBundle(root) {
       visitReachable(imported);
   };
   visitReachable(entries[0][0]);
+  if (markdownLimit !== undefined) {
+    const markdown = Object.entries(manifest).filter(
+      ([key, record]) =>
+        record.name === "markdown-rendering" && reachable.has(key),
+    );
+    if (markdown.length !== 1)
+      fail("markdown must own one reachable rendering chunk");
+    const file = markdown[0][1].file;
+    const paths = measureWebBundlePaths(root, manifest);
+    if (initial.has(file) || paths.agentOneChat.files.includes(file))
+      fail("markdown entered a startup static closure");
+    markdownLazyGzipBytes = gzipBytes(assetPath(root, file));
+    coreTotalGzipBytes -= markdownLazyGzipBytes;
+    if (markdownLazyGzipBytes > markdownLimit)
+      fail(
+        `markdown lazy gzip ${markdownLazyGzipBytes} exceeds ${markdownLimit}`,
+      );
+  }
   if (terminalLimit !== undefined) {
     const terminalKey = "src/workbench/TerminalDock.tsx";
     const terminal = manifest[terminalKey];
@@ -485,6 +507,7 @@ export function verifyWebBundle(root) {
     terminalLazyGzipBytes,
     terminalLazyEmittedGzipBytes,
     subagentLazyGzipBytes,
+    markdownLazyGzipBytes,
     lazyFeatureChunks,
     coreTotalGzipBytes,
     initialFiles: [...initial].sort(),

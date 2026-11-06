@@ -129,6 +129,39 @@ const rows = document.cases.map((fixtureCase) => {
 
 const journeyCases = [
   {
+    id: "codex-browse-preview",
+    steps: [
+      { op: "awaitClient", kind: "codexInitialize" },
+      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      // Replay the native browse item lifecycle. The regular adapter and
+      // dispatchBrowse path open Preview; Start still runs the project's dev script.
+      ...["inProgress", "completed"].map((status) => ({
+        op: "emitKnownFrame",
+        shape: "codexNative",
+        method: status === "inProgress" ? "item/started" : "item/completed",
+        params: {
+          item: {
+            type: "dynamicToolCall",
+            id: "fixture-browse-preview",
+            tool: "sage_browse",
+            arguments: { url: "http://127.0.0.1:5173/" },
+            status,
+          },
+        },
+      })),
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexUnsubscribe" },
+      { op: "emitKnownFrame", shape: "codexAck" },
+    ],
+  },
+  {
     id: "codex-steer-lost-result",
     steps: [
       { op: "awaitClient", kind: "codexInitialize" },

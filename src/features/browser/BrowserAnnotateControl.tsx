@@ -2,13 +2,13 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   browserControl,
-  type BrowserAnnotateChange,
   type BrowserAnnotateSelection,
   type BrowserControlAction,
   type BrowserNavigation,
 } from "../../ports/nativeBrowserPort";
 import { registerBrowserElementSink } from "../../app/browserAnnotations";
 import { browserElementChatSink } from "../../app/browserElementChatSink";
+import { subscribeBrowserTab } from "./browserTabEvents";
 const BrowserAnnotateComment = lazy(() => import("./BrowserAnnotatePopover"));
 
 // Stateless: it reads the pinned Agent Chat at each pick, so one
@@ -48,24 +48,22 @@ export function BrowserAnnotateControl({
   const set = (on: boolean) => onControl(on ? "annotateOn" : "annotateOff");
   useEffect(() => {
     if (!tabId) return;
-    const unlisten = import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<BrowserAnnotateChange>("browser:annotate", ({ payload }) => {
-          if (payload.tabId !== tabId) return;
-          setActive(payload.active);
-          setSelection(payload.selection ?? null);
-          if (payload.error) onError(payload.error);
-        }),
-      )
+    const stop = subscribeBrowserTab(
+      "browser:annotate",
+      tabId,
+      (payload) => {
+        setActive(payload.active);
+        setSelection(payload.selection ?? null);
+        if (payload.error) onError(payload.error);
+      },
       // A new chrome has no comment box: drop any element still waiting,
       // which shows the page again.
-      .then((stop) => {
-        void browserControl(tabId, "annotateCancel").catch(() => undefined);
-        return stop;
-      })
-      .catch(() => () => undefined);
+      async () => {
+        await browserControl(tabId, "annotateCancel").catch(() => undefined);
+      },
+    );
     return () => {
-      void unlisten.then((stop) => stop());
+      stop();
       setActive(false);
       setSelection(null);
     };

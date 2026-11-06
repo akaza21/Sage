@@ -4,6 +4,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
+import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 
 export function ProjectScopeChip({
   projectName,
@@ -11,12 +12,14 @@ export function ProjectScopeChip({
   open,
   onOpenChange,
   menuItem = false,
+  popoverPlacement,
 }: {
   projectName: string;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   menuItem?: boolean;
+  popoverPlacement?: MenuPlacement;
 }) {
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
@@ -39,6 +42,7 @@ export function ProjectScopeChip({
   );
   return (
     <span
+      data-overflow-control="project"
       role={candidates.length === 0 ? "img" : undefined}
       aria-label={
         candidates.length === 0 ? `Project: ${projectName}` : undefined
@@ -59,6 +63,7 @@ export function ProjectScopeChip({
           triggerRole={menuItem ? "menuitem" : undefined}
           triggerClassName={menuItem ? "menu-item" : undefined}
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
+          popoverPlacement={popoverPlacement}
           ariaLabel={`Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}
           triggerIcon={

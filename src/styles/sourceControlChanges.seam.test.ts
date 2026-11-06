@@ -18,12 +18,8 @@ describe("Source Control changes stylesheet seam", () => {
     expect(shellCss).not.toMatch(/^\.source-change__discard-confirmation\b/m);
     expect(surfaceCss).toMatch(/^\.source-change-row\b/m);
     expect(surfaceCss).toMatch(/^\.source-change__discard-confirmation\b/m);
-    expect(surfaceCss).toMatch(
-      /\.source-change--selected\s*\{[^}]*background:\s*var\(--color-surface-selected\)[^}]*box-shadow:/s,
-    );
-    expect(surfaceCss).toMatch(
-      /\.source-change:hover\s*\{[^}]*background:\s*var\(--color-surface-hover\)/s,
-    );
+    // Selection and hover paint is read from computed styles in
+    // tests/ui/editor-highlight-roles.visual.ts.
     expect(surfaceCss).not.toMatch(
       /\.source-change:hover\s*,\s*\.source-change--selected/,
     );

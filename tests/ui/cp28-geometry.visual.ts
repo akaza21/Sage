@@ -1,3 +1,8 @@
+import {
+  geometryAnswers,
+  geometryOrderedStarts,
+  orderedGeometryAnswer,
+} from "./fixtures/markdownAnswerInputs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   openScenario,
@@ -161,7 +166,7 @@ async function expectColumnAlignment(pane: Locator) {
 }
 
 for (const paneWidth of [360, 384]) {
-  test(`CP-28 compact composer model trigger keeps its leading edge and toolbar controls inside a ${paneWidth}px resource Chat pane`, async ({
+  test(`CP-28 compact composer model label keeps its leading edge and toolbar controls inside a ${paneWidth}px resource Chat pane`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1380, height: 880 });
@@ -178,8 +183,9 @@ for (const paneWidth of [360, 384]) {
     expect(paneBox).toBeTruthy();
     expect(paneBox!.width).toBeCloseTo(paneWidth, 0);
     const composer = pane.locator(".composer");
+    // A singleton model keeps the same picker trigger as a longer catalog.
     const model = composer.getByRole("button", { name: "Model", exact: true });
-    await expect(model).toHaveAccessibleName("Model");
+    await expect(model).toBeEnabled();
     // Wave 5 (Codex ref 36): a composer this wide keeps the model label and
     // truncates it; icon-only compaction starts at 320px.
     const label = model.locator(".composer__model-label");
@@ -219,7 +225,7 @@ for (const width of [1888, 720, 480]) {
       await settleChatProjections(page);
       const panes = page.locator(".agent-chat-pane");
       await expect(panes).toHaveCount(1);
-      await installAnswers(page, "Short completed answer.");
+      await installAnswers(page, geometryAnswers.short);
       for (const pane of await panes.all()) {
         expect(
           await pane
@@ -228,11 +234,7 @@ for (const width of [1888, 720, 480]) {
         ).toBe(false);
         await expectColumnAlignment(pane);
       }
-      await installAnswers(
-        page,
-        "Long wrapped answer with retained content. ".repeat(400),
-        true,
-      );
+      await installAnswers(page, geometryAnswers.long, true);
       await settleTranscriptAtEnd(page);
       for (const pane of await panes.all()) {
         expect(
@@ -303,7 +305,7 @@ test("CP-28 answer Copy has a visible keyboard tooltip and announces feedback", 
   await page.setViewportSize({ width: 720, height: 1096 });
   await openScenario(page, "rich", "agent");
   await settleChatProjections(page);
-  await installAnswers(page, "Copy this answer.");
+  await installAnswers(page, geometryAnswers.copy);
   await settleTranscriptAtEnd(page);
   await page.evaluate(() =>
     Object.defineProperty(navigator, "clipboard", {
@@ -346,21 +348,7 @@ test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, 
   await page.setViewportSize({ width: 720, height: 1096 });
   await openScenario(page, "rich", "agent");
   await settleChatProjections(page);
-  const listItem = "Wrapped list prose ".repeat(10);
-  await installAnswers(
-    page,
-    [
-      "Prose edge.",
-      "",
-      "| Database | Status |",
-      "| --- | ---: |",
-      "| SQLite | Ready |",
-      "",
-      `- ${listItem}`,
-      "",
-      ...[1, 9, 10, 100].flatMap((start) => [`${start}. ${listItem}`, ""]),
-    ].join("\n"),
-  );
+  await installAnswers(page, geometryAnswers.lists);
   const markdown = page.locator(".acp-message--assistant .acp-markdown");
   await expect(markdown.locator("th").first()).toHaveText("Database");
   const geometry = await markdown.evaluate((element) => {
@@ -401,8 +389,8 @@ test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, 
     for (const line of lines)
       expect(line.x).toBeCloseTo(geometry.lists[0][0].x, 0);
   }
-  for (const start of [1, 9, 10, 100]) {
-    await installAnswers(page, `Prose edge.\n\n${start}. ${listItem}`);
+  for (const start of geometryOrderedStarts) {
+    await installAnswers(page, orderedGeometryAnswer(start));
     const marker = await markdown.evaluate((element) => {
       const item = element.querySelector("ol li")!;
       const markerStyle = getComputedStyle(item, "::marker");
@@ -437,7 +425,7 @@ test("CP-28 forced colors keep Canvas code panels, highlighted pressed controls 
   // the rich fixture's activity-free turn has no Worked row since slice 4.
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  await installAnswers(page, "```python\nprint('retained')\n```");
+  await installAnswers(page, geometryAnswers.code);
   const code = page.getByRole("region", { name: "Python code" });
   await expect(code.getByRole("button", { name: "Wrap code" })).toBeVisible();
   await expect(code.getByRole("button", { name: "Copy code" })).toBeVisible();

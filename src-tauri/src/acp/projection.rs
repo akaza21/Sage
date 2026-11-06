@@ -34,6 +34,19 @@ pub enum TextRole {
 pub enum PermissionRequestSource {
     Harness,
     Browser,
+    /// A developer-mode card (ADR-0009b).
+    BrowserDeveloper,
+}
+
+impl PermissionRequestSource {
+    /// The card's heading in the transcript.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Browser => "Browser permission",
+            Self::BrowserDeveloper => "Browser developer mode",
+            Self::Harness => "Permission request",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

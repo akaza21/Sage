@@ -57,14 +57,11 @@
   justify-content: center;
 }
 
-.title-bar__session {
-  overflow: hidden;
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Back and Forward sit together, as in Codex's title bar. */
+.title-bar__history {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .title-bar__search {
@@ -359,24 +356,25 @@
     background: var(--color-panel);
     box-shadow: var(--elevation-floating);
   }
+}
 
-  /* The leading (Editor) tool sidebar floats as an inset card beside the
-     activity rail. */
-  .right-region--leading .sidebar {
-    top: var(--space-1);
-    right: auto;
-    bottom: var(--space-1);
-    left: var(--editor-activity-width);
-    width: min(
-      272px,
-      calc(100vw - var(--editor-activity-width) - 3 * var(--space-1))
-    );
-    height: auto;
-    margin: 0 var(--space-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    box-shadow: var(--elevation-floating);
-  }
+/* Overlay geometry and center sleep share the Workbench layout decision. */
+.workbench__body[data-editor-tools="overlay"] {
+  position: relative;
+  grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading {
+  position: static;
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading .sidebar {
+  position: absolute;
+  z-index: var(--z-sidebar-overlay);
+  inset: 0 0 0 var(--editor-activity-width);
+  width: auto;
+  height: auto;
+  margin: var(--space-1);
 }
 
 @media (max-width: 640px) {
