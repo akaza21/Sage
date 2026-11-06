@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 const label = (element: Element) =>
   element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "";
@@ -6,13 +6,19 @@ const label = (element: Element) =>
 /**
  * Folding or unfolding the Agent rail swaps the icon rail for the full rail,
  * which unmounts the focused control. When focus was in the rail, carry it to
- * the control with the same name in the new rail instead of dropping it to
- * the document body.
+ * the control with the same name in the new rail (or its first control)
+ * instead of dropping it to the document body. The folded rail loads lazily,
+ * so each rail reports its own mount through the returned callback ref and
+ * focus is restored once, at that moment. Any other focus in the meantime
+ * cancels the restore.
  */
 export function useNavigationFocusCarry(collapsed: boolean) {
   const focused = useRef<Element | null>(null);
+  const pending = useRef<string | null>(null);
+  const rail = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const enter = (event: FocusEvent) => {
+      pending.current = null;
       const target = event.target as Element;
       focused.current = target.closest?.(".project-sidebar") ? target : null;
     };
@@ -32,30 +38,31 @@ export function useNavigationFocusCarry(collapsed: boolean) {
       document.removeEventListener("focusout", leave);
     };
   }, []);
+  const restore = useCallback((node: HTMLElement) => {
+    const name = pending.current;
+    pending.current = null;
+    if (name === null) return;
+    if ((document.activeElement ?? document.body) !== document.body) return;
+    const controls = [...node.querySelectorAll<HTMLElement>("button")];
+    (
+      controls.find((control) => label(control) === name) ?? controls[0]
+    )?.focus();
+  }, []);
   useLayoutEffect(() => {
     const previous = focused.current;
+    pending.current = null;
     if (!previous || previous.isConnected) return;
     focused.current = null;
-    const name = label(previous);
-    // Focus the same-named control, or keep waiting while the new rail is
-    // still loading. Give up once focus has gone anywhere else.
-    const settle = () => {
-      if ((document.activeElement ?? document.body) !== document.body)
-        return true;
-      for (const control of document.querySelectorAll<HTMLElement>(
-        ".project-sidebar button",
-      ))
-        if (label(control) === name) {
-          control.focus();
-          return true;
-        }
-      return false;
-    };
-    if (settle()) return;
-    const observer = new MutationObserver(() => {
-      if (settle()) observer.disconnect();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [collapsed]);
+    pending.current = label(previous);
+    // A rail that mounted in this commit is ready now; a lazy one restores
+    // from its ref when it arrives.
+    if (rail.current) restore(rail.current);
+  }, [collapsed, restore]);
+  return useCallback(
+    (node: HTMLElement | null) => {
+      rail.current = node;
+      if (node) restore(node);
+    },
+    [restore],
+  );
 }

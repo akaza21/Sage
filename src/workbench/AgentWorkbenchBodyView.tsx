@@ -57,7 +57,7 @@ export default function AgentWorkbenchBodyView({
   const openSettings = useAgentSettingsState((state) => state.open);
   const [artifactHeader, setArtifactHeader] =
     useRetainedElement<HTMLDivElement>();
-  useNavigationFocusCarry(navigationCollapsed);
+  const railRef = useNavigationFocusCarry(navigationCollapsed);
   const homeFocusPending = useRef(false);
   useEffect(() => {
     if (!homeFocusPending.current || drawerOpen) return;
@@ -92,9 +92,10 @@ export default function AgentWorkbenchBodyView({
                 inert={backgroundInert}
                 onOpenSettings={() => openSettings()}
                 onExpand={onExpandNavigation}
+                railRef={railRef}
               />
             ) : (
-              <LeftSidebar inert={backgroundInert} />
+              <LeftSidebar inert={backgroundInert} railRef={railRef} />
             )}
           </AgentHomeNavigationContext.Provider>
           {layout.navigationResizable ? (
