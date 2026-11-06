@@ -193,14 +193,14 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
 
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
     let moved = attacker.join("linked");
-    let spawned = Arc::new(AtomicBool::new(false));
-    let (hook_from, hook_to, hook_spawned) = (linked.clone(), moved.clone(), Arc::clone(&spawned));
+    let swapped = Arc::new(AtomicBool::new(false));
+    let (hook_from, hook_to, hook_swapped) = (linked.clone(), moved.clone(), Arc::clone(&swapped));
     let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
-        hook_spawned.store(true, Ordering::SeqCst);
-        fs::rename(&hook_from, &hook_to).unwrap();
+        // On Windows the retained root handles make the move fail.
+        hook_swapped.store(fs::rename(&hook_from, &hook_to).is_ok(), Ordering::SeqCst);
     });
 
-    let result = tokio::runtime::Runtime::new()
+    let _ = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(run_git_with_policy(
             &workspace,
@@ -209,18 +209,13 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
             policy,
         ));
 
-    // Git data outside the root has no retained handle, so admission refuses
-    // the worktree before any spawn the move could race.
-    assert!(matches!(
-        result,
-        Err(AppError::RepositoryOutsideRoot(
-            RepositoryLayout::ExternalGitDir
-        ))
-    ));
-    assert!(!spawned.load(Ordering::SeqCst));
-    assert!(!sentinel.exists());
-    // Control: a git dir relative to the moved worktree reaches the decoy.
-    fs::rename(&linked, &moved).unwrap();
+    // Admission pins Git to the worktree's `.git` file, whose absolute target
+    // names the safe repository's git dir, so a moved worktree never reaches
+    // the neighbouring one.
+    assert!(!sentinel.exists(), "the neighbouring git dir's filter ran"); // Control: a git dir relative to the moved worktree reaches the decoy.
+    if !swapped.load(Ordering::SeqCst) {
+        fs::rename(&linked, &moved).unwrap();
+    }
     let control = Command::new("git")
         .arg("-C")
         .arg(&moved)

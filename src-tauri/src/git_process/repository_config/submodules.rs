@@ -28,17 +28,24 @@ use std::{
 
 use crate::error::AppResult;
 
+use super::super::process_tree::{MAX_TREE_PROCESSES, PROCESSES_PER_JOB, TREE_HEADROOM};
 use super::super::readers::RecordFilter;
 use super::{
     AdmittedRepository, Fingerprint, GIT_DIR_NAME, GitRootAuthority, MAX_CONFIG_LIST_BYTES,
-    POINTER_FILES, Refusal, StdoutCapture, listed_config_refusal,
-    policy::submodule_refusal_message, probe_git,
+    POINTER_FILES, Refusal, StdoutCapture, fingerprint::watch_reading, listed_config_refusal,
+    paths, policy::submodule_refusal_message, probe_git,
 };
 
 /// Gitlinks checked across the whole tree of submodules.
 const MAX_SUBMODULES: usize = 64;
 /// Submodules nested deeper than this are refused.
 const MAX_SUBMODULE_DEPTH: usize = 4;
+
+// A recursive fetch runs one job per level once submodules exist (see
+// `parallel_limits`), so its whole chain must fit the Git job's process limit.
+const _: () = assert!(
+    (MAX_SUBMODULE_DEPTH as u32 + 1) * PROCESSES_PER_JOB + TREE_HEADROOM <= MAX_TREE_PROCESSES
+);
 /// Index entries listed per repository: the workspace walk limit.
 const MAX_INDEX_RECORDS: usize = 200_000;
 /// One `ls-files --stage` record: mode, object name, stage and a path.
@@ -55,6 +62,8 @@ pub(super) struct Scan {
     refusal: Option<Refusal>,
     /// False when Git failed mid-scan, so the next call scans again.
     cacheable: bool,
+    /// Whether Git would open at least one submodule.
+    populated: bool,
 }
 
 enum Opened {
@@ -74,6 +83,7 @@ impl Scan {
             indexes: Vec::new(),
             refusal: None,
             cacheable: true,
+            populated: false,
         };
         scan.refusal = scan.walk(root, authority, repository).await?;
         Ok(scan)
@@ -91,6 +101,23 @@ impl Scan {
                 .all(|(path, stamp)| IndexStamp::of(path) == *stamp)
     }
 
+    /// Roughly what this scan keeps alive: its watched paths and stamps.
+    pub(super) fn retained_bytes(&self) -> usize {
+        let watched = self
+            .watched
+            .iter()
+            .map(|(path, _)| path.as_os_str().len() + size_of::<(PathBuf, Fingerprint)>());
+        let indexes = self
+            .indexes
+            .iter()
+            .map(|(path, _)| path.as_os_str().len() + size_of::<(PathBuf, Option<IndexStamp>)>());
+        watched.chain(indexes).sum()
+    }
+
+    pub(super) fn has_submodules(&self) -> bool {
+        self.populated
+    }
+
     pub(super) fn refusal(&self) -> Option<&Refusal> {
         self.refusal.as_ref()
     }
@@ -106,7 +133,7 @@ impl Scan {
         let mut pending = VecDeque::from([(top.clone(), 0_usize)]);
         let mut found = 0_usize;
         while let Some((repository, depth)) = pending.pop_front() {
-            let index = canonical.join(&repository.git_dir).join("index");
+            let index = repository.data_dir(&canonical).join("index");
             let stamp = IndexStamp::of(&index);
             self.indexes.push((index, stamp));
             // Streamed: only gitlink records are kept, and the listing fails
@@ -150,6 +177,7 @@ impl Scan {
                 if let Some(refusal) = self.check_config(root, authority, &submodule).await? {
                     return Ok(Some(refusal));
                 }
+                self.populated = true;
                 pending.push_back((submodule, depth + 1));
             }
         }
@@ -169,16 +197,17 @@ impl Scan {
                 Fingerprint::Directory => {}
                 // Git looks for `.git` below the gitlink path, which a file
                 // (a type change in progress, say) cannot hold.
-                Fingerprint::Missing | Fingerprint::Contents(_) | Fingerprint::Oversized => {
+                Fingerprint::Missing | Fingerprint::Contents { .. } | Fingerprint::Oversized => {
                     return Opened::Unpopulated;
                 }
                 _ => return Opened::Refused(uncheckable()),
             }
         }
-        let git_dir = match self.watch(root.join(&work_tree).join(GIT_DIR_NAME)) {
-            Fingerprint::Missing => return Opened::Unpopulated,
-            Fingerprint::Directory => work_tree.join(GIT_DIR_NAME),
-            Fingerprint::Contents(bytes) => {
+        let (fingerprint, bytes) = self.watch_reading(root.join(&work_tree).join(GIT_DIR_NAME));
+        let git_dir = match (fingerprint, bytes) {
+            (Fingerprint::Missing, _) => return Opened::Unpopulated,
+            (Fingerprint::Directory, _) => work_tree.join(GIT_DIR_NAME),
+            (Fingerprint::Contents { .. }, Some(bytes)) => {
                 let Some(target) = gitfile_target(&work_tree, &bytes) else {
                     return Opened::Refused(uncheckable());
                 };
@@ -204,18 +233,14 @@ impl Scan {
         for name in ["config", "config.worktree"] {
             if !matches!(
                 self.watch(absolute_git_dir.join(name)),
-                Fingerprint::Missing | Fingerprint::Contents(_)
+                Fingerprint::Missing | Fingerprint::Contents { .. }
             ) {
                 return Opened::Refused(uncheckable());
             }
         }
         // A submodule's own parallel-job keys are not capped here: the caps
         // the parent passes with `-c` reach its Git children too.
-        Opened::Repository(AdmittedRepository {
-            git_dir,
-            work_tree,
-            parallel: Vec::new(),
-        })
+        Opened::Repository(AdmittedRepository::submodule(git_dir, work_tree))
     }
 
     async fn check_config(
@@ -249,6 +274,13 @@ impl Scan {
         .await
     }
 
+    /// Like [`Self::watch`], also returning a regular file's bytes to parse now.
+    fn watch_reading(&mut self, path: PathBuf) -> (Fingerprint, Option<Vec<u8>>) {
+        let ((path, fingerprint), bytes) = watch_reading(path);
+        self.watched.push((path, fingerprint.clone()));
+        (fingerprint, bytes)
+    }
+
     /// Records `path` and returns what it held.
     fn watch(&mut self, path: PathBuf) -> Fingerprint {
         let fingerprint = Fingerprint::of(&path);
@@ -276,7 +308,7 @@ fn gitlinks(listing: &[u8]) -> BTreeSet<&[u8]> {
 
 /// Joins a `/`-separated index path below `base`. Every component must name
 /// one entry the same way for Git and for the checks here, so the result
-/// stays inside the work tree; see [`ambiguous_component`].
+/// stays inside the work tree; see [`paths::ambiguous_component`].
 fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
     let text = std::str::from_utf8(path).ok()?;
     let mut joined = base
@@ -284,7 +316,7 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
         .filter(|component| !matches!(component, Component::CurDir))
         .collect::<PathBuf>();
     for part in text.split('/') {
-        if ambiguous_component(part) || part.eq_ignore_ascii_case(GIT_DIR_NAME) {
+        if paths::ambiguous_component(part) || part.eq_ignore_ascii_case(GIT_DIR_NAME) {
             return None;
         }
         joined.push(part);
@@ -304,66 +336,23 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
 /// one trailing `\r`, are dropped, the rest must start with `gitdir: `, and
 /// everything after that is the path byte for byte, split on `/` (and on
 /// Windows also `\`). Each named component must pass
-/// [`ambiguous_component`].
+/// [`paths::ambiguous_component`].
 fn gitfile_target(work_tree: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    let line = line.strip_suffix(b"\r").unwrap_or(line);
-    let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
-    if Path::new(target).has_root() {
+    let target = paths::gitfile_path(bytes)?;
+    if paths::has_root(target) {
         return None;
     }
-    #[cfg(windows)]
-    let parts = target.split(['/', '\\']).collect::<Vec<_>>();
-    #[cfg(not(windows))]
-    let parts = target.split('/').collect::<Vec<_>>();
+    let parts = paths::split(target);
     let climbs = parts.iter().take_while(|part| **part == "..").count();
     let rest = &parts[climbs..];
     let well_formed = climbs == work_tree.components().count()
         && rest.len() >= 3
         && rest[0] == GIT_DIR_NAME
         && rest[1] == "modules"
-        && !rest.iter().any(|part| ambiguous_component(part));
+        && !rest.iter().any(|part| paths::ambiguous_component(part));
     well_formed.then(|| rest.iter().collect())
 }
 
-/// True when Git and the filesystem calls here could resolve `part` to
-/// different entries, or when it is not one plain name at all. Fingerprints
-/// use verbatim (`\\?\`) paths on Windows, which skip every Win32
-/// normalisation, so each name Win32 would rewrite is refused instead:
-/// a trailing `.` or space, a reserved device name, an 8.3 short-name alias
-/// (`~` and a digit) and an alternate data stream (`:`). Everywhere, a
-/// backslash, edge whitespace, control characters (NUL included) and the
-/// code points HFS+ ignores are refused, and so are empty, `.` and `..`.
-fn ambiguous_component(part: &str) -> bool {
-    let ignorable = |c: char| matches!(c, '\u{200c}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{206a}'..='\u{206f}' | '\u{feff}');
-    let short_name = part
-        .as_bytes()
-        .windows(2)
-        .any(|pair| pair[0] == b'~' && pair[1].is_ascii_digit());
-    let win32_rewrites = part.ends_with('.') || short_name || reserved_device_name(part);
-    matches!(part, "" | "." | "..")
-        || part.trim() != part
-        || (cfg!(windows) && win32_rewrites)
-        || part
-            .chars()
-            .any(|c| c.is_control() || matches!(c, '\\' | ':') || ignorable(c))
-}
-
-/// `CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9` (and their
-/// superscript-digit forms), `CONIN$` and `CONOUT$`, with or without an
-/// extension, in any case.
-fn reserved_device_name(part: &str) -> bool {
-    let stem = part.split('.').next().unwrap_or(part).to_ascii_uppercase();
-    match stem.as_str() {
-        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$" => true,
-        _ => ["COM", "LPT"].iter().any(|prefix| {
-            stem.strip_prefix(prefix).is_some_and(|digit| {
-                (digit.len() == 1 && digit.as_bytes()[0].is_ascii_digit())
-                    || matches!(digit, "\u{b9}" | "\u{b2}" | "\u{b3}")
-            })
-        }),
-    }
-}
 /// What an index file's metadata said when it was listed. Git replaces the
 /// index on every write, so its size, time and (on Unix) inode all move.
 #[derive(PartialEq, Eq)]

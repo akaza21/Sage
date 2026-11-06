@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 
-use super::{Fingerprint, GitOutput};
+use super::{Fingerprint, GitOutput, paths};
 
 /// Keeps the `.git` entries from the root up to the one Git used. The verdict
 /// is cacheable only when every entry below that one is missing, because an
@@ -33,7 +33,7 @@ pub(super) fn discovery_path(
 fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool {
     let target = match fingerprint {
         Fingerprint::Directory => entry.to_path_buf(),
-        Fingerprint::Contents(bytes) => match gitfile_target(entry, bytes) {
+        Fingerprint::Contents { .. } => match gitfile_target(entry) {
             Some(target) => target,
             None => return false,
         },
@@ -45,18 +45,13 @@ fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool 
     }
 }
 
-/// The directory a `gitdir: <path>` file names, relative to the file.
-/// Read as Git's `read_gitfile` reads it (one trailing `\n`, then one `\r`,
-/// dropped; the exact `gitdir: ` prefix; the rest byte for byte). It only
-/// decides whether a verdict may be cached, and any doubt means it may not.
-fn gitfile_target(entry: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    let line = line.strip_suffix(b"\r").unwrap_or(line);
-    let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
-    let parent = entry.parent()?;
-    (!target.is_empty() && !target.chars().any(char::is_control)).then(|| parent.join(target))
+/// The directory the `gitdir:` file at `entry` names, read as Git reads it.
+/// It only decides whether a verdict may be cached, and any doubt means it
+/// may not; the layout itself is checked in [`super::layout`].
+fn gitfile_target(entry: &Path) -> Option<PathBuf> {
+    let bytes = std::fs::read(entry).ok()?;
+    paths::resolve(entry.parent()?, paths::gitfile_path(&bytes)?)
 }
-
 pub(super) struct Location {
     pub(super) git_dir: PathBuf,
     pub(super) common_dir: PathBuf,

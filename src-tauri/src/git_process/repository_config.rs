@@ -9,37 +9,28 @@
 //! submodules Git would open from that repository get the same check (see
 //! [`submodules`]).
 //!
-//! The verdict is cached per root against the exact bytes of every file that
-//! decides which config Git reads. Each call re-reads those few small files
-//! in-process and compares them, so steady-state polling starts no process,
-//! and Git itself stays the only config parser.
+//! The verdict is cached per root against a length and SHA-256 digest of
+//! every file that decides which config Git reads. Each call re-reads those
+//! few small files in-process and compares them, so steady-state polling
+//! starts no process, and Git itself stays the only config parser.
 //!
 //! # Threat model
 //!
 //! This defends against untrusted repository content: a cloned, downloaded,
 //! extracted or synced folder whose `.git` config tries to run commands when
-//! Sage runs Git there. Only the root's own `.git` directory is admitted, as
-//! both git dir and common dir, and it may not be a symlink or junction, so
-//! every location Git reads is a fixed name below the identity-checked root
-//! handle. A `.git` file, or a `commondir` or `gitdir` file inside `.git`, is
-//! refused by its presence, wherever it resolves: it could route through an
-//! intermediate directory or link that is later repointed outside the root
-//! without changing any watched bytes. Every cache hit re-checks that `.git`
-//! is still a plain directory (on Windows, not any reparse point) and that
-//! neither pointer file has appeared.
+//! Sage runs Git there. The admitted layouts are the root's own `.git`
+//! directory, a separate git dir and a linked worktree (see [`layout`]).
+//! Every `gitdir:` and `commondir` file is read the way Git reads it, and
+//! every directory on the paths they name is fingerprinted and must be a real
+//! directory, never a symlink or junction, so nothing can be repointed later
+//! without changing a watched entry. Every cache hit re-checks all of them.
 //!
 //! A hostile process writing `.git/config` concurrently, between this check
 //! and the spawn, is out of scope: it already runs with the user's full
 //! privileges, and closing that window would need Git to read its config from
 //! a validated snapshot. The next call sees the change, because watched files
-//! are compared by their bytes. Admitting `.git` files, linked worktrees and
-//! Git data outside the root is tracked in issue #87.
-
-use std::{
-    collections::HashMap,
-    path::{Component, Path, PathBuf},
-    sync::{Arc, LazyLock, Mutex, PoisonError},
-};
+//! are compared by their contents.
+use std::path::{Path, PathBuf};
 
 use crate::{
     error::{AppError, AppResult, RepositoryLayout},
@@ -48,10 +39,17 @@ use crate::{
 
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture, parallel_limits};
 
+mod cache;
 mod discovery;
 mod fingerprint;
+mod layout;
+mod paths;
 mod policy;
 mod submodules;
+
+#[cfg(test)]
+use cache::{MAX_CACHED_ROOTS, slot_in};
+pub(super) use layout::AdmittedRepository;
 
 use discovery::{Location, discovery_path};
 use fingerprint::{Fingerprint, watch};
@@ -63,66 +61,6 @@ const GIT_DIR_NAME: &str = ".git";
 const POINTER_FILES: [&str; 2] = ["commondir", "gitdir"];
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
-/// Idle entries are dropped once this many roots are cached.
-const MAX_CACHED_ROOTS: usize = 256;
-
-type AdmissionSlot = Arc<tokio::sync::Mutex<Option<Admission>>>;
-
-static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::new(Mutex::default);
-
-/// The repository admission inspected. Admitted Git calls run with these
-/// explicit locations, so they open exactly this repository.
-///
-/// Only a repository whose work tree is the opened root and whose git data is
-/// the root's own `.git` directory is admitted, and both locations are
-/// relative to it. The child's working
-/// directory is the identity-checked root handle, so a directory swapped in
-/// at the root's name, or a move of the root, cannot redirect them. Git data
-/// reached any other way (a `gitdir:` file, a `commondir` pointer, a linked
-/// worktree, or a root nested below the top level) is refused.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct AdmittedRepository {
-    git_dir: PathBuf,
-    work_tree: PathBuf,
-    /// `-c` caps on the parallel jobs this repository's config asks for.
-    parallel: Vec<String>,
-}
-
-impl AdmittedRepository {
-    fn inside(root: &Path, location: &Location) -> AppResult<Result<Self, RepositoryLayout>> {
-        let root = root.canonicalize()?;
-        if location.work_tree.canonicalize()? != root {
-            return Ok(Err(RepositoryLayout::NestedRoot));
-        }
-        // Only the root's own `.git` directory is admitted, as both the git
-        // dir and the common dir. A `gitdir:` file or a `commondir` pointer
-        // can name a path through an intermediate directory that is later
-        // swapped for a link outside the root without changing any watched
-        // bytes.
-        let git_dir = PathBuf::from(GIT_DIR_NAME);
-        let own = root.join(&git_dir);
-        if location.git_dir.canonicalize()? != own || location.common_dir.canonicalize()? != own {
-            return Ok(Err(RepositoryLayout::ExternalGitDir));
-        }
-        Ok(Ok(Self {
-            git_dir,
-            work_tree: PathBuf::from(Component::CurDir.as_os_str()),
-            parallel: Vec::new(),
-        }))
-    }
-
-    pub(super) fn git_dir(&self) -> &Path {
-        &self.git_dir
-    }
-
-    pub(super) fn work_tree(&self) -> &Path {
-        &self.work_tree
-    }
-
-    pub(super) fn parallel_overrides(&self) -> &[String] {
-        &self.parallel
-    }
-}
 
 /// Fails with [`AppError::UnsafeRepositoryConfig`] when the repository that
 /// Git would open at `root` configures a command-running key. Otherwise
@@ -131,11 +69,12 @@ pub(super) async fn admit(
     root: &Path,
     authority: Option<&GitRootAuthority>,
 ) -> AppResult<Option<AdmittedRepository>> {
-    let slot = admission_slot(root);
+    let slot = cache::admission_slot(root);
     // Holding the per-root lock makes concurrent first reads share one probe.
     let mut cached = slot.lock().await;
     if let Some(admission) = cached.as_mut().filter(|admission| admission.is_current()) {
         admission.check_submodules(root, authority).await?;
+        cache::account(admission);
         return admission.verdict();
     }
     let Probe {
@@ -144,28 +83,8 @@ pub(super) async fn admit(
     } = Probe::run(root, authority).await?;
     admission.check_submodules(root, authority).await?;
     let verdict = admission.verdict();
-    *cached = cacheable.then_some(admission);
+    cache::store(&mut cached, cacheable.then_some(admission));
     verdict
-}
-
-fn admission_slot(root: &Path) -> AdmissionSlot {
-    slot_in(
-        &mut ADMISSIONS.lock().unwrap_or_else(PoisonError::into_inner),
-        root,
-    )
-}
-
-/// Returns the slot for `root`, first dropping every idle slot when the map is
-/// full. Slots in use stay, so an in-flight probe keeps its lock. When every
-/// slot is in use, `root` gets a private slot, so its admission is not cached.
-fn slot_in(admissions: &mut HashMap<PathBuf, AdmissionSlot>, root: &Path) -> AdmissionSlot {
-    if !admissions.contains_key(root) && admissions.len() >= MAX_CACHED_ROOTS {
-        admissions.retain(|_, slot| Arc::strong_count(slot) > 1);
-        if admissions.len() >= MAX_CACHED_ROOTS {
-            return AdmissionSlot::default();
-        }
-    }
-    Arc::clone(admissions.entry(root.to_path_buf()).or_default())
 }
 
 /// Admits `root` without checking its config, for tests that use a repository
@@ -173,16 +92,16 @@ fn slot_in(admissions: &mut HashMap<PathBuf, AdmissionSlot>, root: &Path) -> Adm
 #[cfg(test)]
 pub(crate) fn trust_for_test(root: &Path) {
     let root = root.canonicalize().expect("trusted test root exists");
-    let slot = AdmissionSlot::new(tokio::sync::Mutex::new(Some(Admission {
-        watched: Vec::new(),
-        refusal: None,
-        repository: None,
-        submodules: None,
-    })));
-    ADMISSIONS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(root, slot);
+    cache::trust(
+        root,
+        Admission {
+            watched: Vec::new(),
+            refusal: None,
+            repository: None,
+            submodules: None,
+            accounted: 0,
+        },
+    );
 }
 
 struct Admission {
@@ -191,6 +110,8 @@ struct Admission {
     repository: Option<AdmittedRepository>,
     /// The submodules Git would open from `repository`, checked lazily.
     submodules: Option<Scan>,
+    /// The bytes this verdict was counted at in the cache's budget.
+    accounted: usize,
 }
 
 #[derive(Clone)]
@@ -210,6 +131,17 @@ impl From<Refusal> for AppError {
 }
 
 impl Admission {
+    /// Roughly what this verdict keeps alive: every watched path and its
+    /// fingerprint, and the same for its submodule scan.
+    fn retained_bytes(&self) -> usize {
+        let watched = self
+            .watched
+            .iter()
+            .map(|(path, _)| path.as_os_str().len() + size_of::<(PathBuf, Fingerprint)>())
+            .sum::<usize>();
+        watched + self.submodules.as_ref().map_or(0, Scan::retained_bytes)
+    }
+
     fn is_current(&self) -> bool {
         self.watched
             .iter()
@@ -220,7 +152,16 @@ impl Admission {
         let submodules = self.submodules.as_ref().and_then(Scan::refusal);
         match self.refusal.as_ref().or(submodules) {
             Some(refusal) => Err(refusal.clone().into()),
-            None => Ok(self.repository.clone()),
+            None => Ok(self.repository.clone().map(|mut repository| {
+                // A fetch can recurse into the submodules, multiplying any
+                // parallelism per level, so it runs one job at a time.
+                if self.submodules.as_ref().is_some_and(Scan::has_submodules) {
+                    repository.parallel = repository
+                        .parallel
+                        .map(parallel_limits::ParallelLimits::without_parallel_fetches);
+                }
+                repository
+            })),
         }
     }
 
@@ -293,14 +234,15 @@ impl Probe {
                     refusal: None,
                     repository: None,
                     submodules: None,
+                    accounted: 0,
                 },
                 cacheable,
             });
         }
         let location = Location::parse(&location)?;
         let (mut watched, cacheable) = discovery_path(ancestors, &location.git_dir);
-        let mut repository = match AdmittedRepository::inside(root, &location)? {
-            Ok(repository) => repository,
+        let layout = match layout::resolve(root, &location)? {
+            Ok(layout) => layout,
             Err(layout) => {
                 return Ok(Self {
                     admission: Admission {
@@ -308,33 +250,18 @@ impl Probe {
                         refusal: Some(Refusal::Layout(layout)),
                         repository: None,
                         submodules: None,
+                        accounted: 0,
                     },
                     cacheable,
                 });
             }
         };
-        let Location { git_dir, .. } = location;
-        // Git follows these files wherever they lead, and a link they pass
-        // through can be repointed without changing their bytes, so their
-        // mere presence is refused. Watching them keeps a cached admission
-        // from outliving one created later.
-        let pointers = POINTER_FILES
+        let mut repository = layout.repository;
+        watched.extend(layout.watched);
+        watched.extend(layout.config_files.into_iter().map(watch));
+        let refusal = if watched
             .iter()
-            .map(|name| watch(git_dir.join(name)))
-            .collect::<Vec<_>>();
-        let has_pointer = pointers
-            .iter()
-            .any(|(_, fingerprint)| *fingerprint != Fingerprint::Missing);
-        watched.extend(pointers);
-        watched.extend(
-            [git_dir.join("config"), git_dir.join("config.worktree")]
-                .into_iter()
-                .map(watch),
-        );
-        let refusal = if has_pointer
-            || watched
-                .iter()
-                .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
+            .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
         {
             Some(Refusal::Layout(RepositoryLayout::ExternalGitDir))
         } else if watched
@@ -374,8 +301,12 @@ impl Probe {
                 .await?;
                 // Only a repository that sets a parallel-job key pays for
                 // reading the values, once per changed config.
-                if refusal.is_none() && parallel_limits::lists_any(&listing.stdout) {
-                    repository.parallel = read_parallel_caps(root, authority, &repository).await;
+                if refusal.is_none() {
+                    repository.parallel = Some(if parallel_limits::lists_any(&listing.stdout) {
+                        read_parallel_caps(root, authority, &repository).await
+                    } else {
+                        parallel_limits::ParallelLimits::default()
+                    });
                 }
                 refusal
             }
@@ -386,6 +317,7 @@ impl Probe {
                 refusal,
                 repository: Some(repository),
                 submodules: None,
+                accounted: 0,
             },
             cacheable,
         })
@@ -398,6 +330,7 @@ impl Probe {
                 refusal: Some(Refusal::Config(message.to_owned())),
                 repository: None,
                 submodules: None,
+                accounted: 0,
             },
             cacheable: false,
         }
@@ -429,13 +362,13 @@ const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git
 /// named by `message`, or a Git path protection switched off. Turning
 /// `core.protectNTFS` or `core.protectHFS` off lets the index hold names the
 /// filesystem resolves to another entry, so only an explicit `true` passes.
-/// The caps the repository's parallel-job settings call for. A read that
-/// fails holds every key to one.
+/// The effective values of the repository's parallel-job settings. A read
+/// that fails holds every key to one.
 async fn read_parallel_caps(
     root: &Path,
     authority: Option<&GitRootAuthority>,
     repository: &AdmittedRepository,
-) -> Vec<String> {
+) -> parallel_limits::ParallelLimits {
     let values = probe_git(
         root,
         authority,
@@ -444,7 +377,7 @@ async fn read_parallel_caps(
         StdoutCapture::Bytes(parallel_limits::MAX_PROBE_BYTES),
     )
     .await;
-    parallel_limits::from_probe(values.as_ref().ok())
+    parallel_limits::ParallelLimits::from_probe(values.as_ref().ok())
 }
 
 async fn listed_config_refusal(

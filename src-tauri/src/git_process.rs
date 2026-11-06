@@ -451,9 +451,13 @@ fn configured_command(
         .args(["-c", "protocol.ext.allow=never"])
         .args(["-c", "protocol.file.allow=user"])
         .args(["-c", "safe.bareRepository=explicit"]);
-    // Caps on the parallel jobs the admitted repository asks for; see
-    // `parallel_limits`. Command-line config wins over the repository's.
-    for setting in repository.map_or(&[][..], |repository| repository.parallel_overrides()) {
+    // The capped effective value of every setting that starts parallel
+    // children; see `parallel_limits`. Command-line config wins over every
+    // config file and reaches every Git child, submodules included.
+    for setting in repository
+        .into_iter()
+        .flat_map(repository_config::AdmittedRepository::parallel_overrides)
+    {
         command.arg("-c").arg(setting);
     }
     if let Some(root_authority) = root_authority {

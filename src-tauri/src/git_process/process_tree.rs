@@ -17,13 +17,13 @@
 //! process limit is never what stops Git.
 
 /// Processes a Git tree may run at once. More fail to start.
-const MAX_TREE_PROCESSES: u32 = 32;
+pub(super) const MAX_TREE_PROCESSES: u32 = 32;
 /// Slots kept for the root, Git for Windows' launcher, and the filters,
 /// credential and askpass helpers that run alongside parallel jobs.
-const TREE_HEADROOM: u32 = 8;
+pub(super) const TREE_HEADROOM: u32 = 8;
 /// Processes one parallel job may need: a submodule fetch can be Git, its
 /// transport and a helper; a checkout worker is one process.
-const PROCESSES_PER_JOB: u32 = 3;
+pub(super) const PROCESSES_PER_JOB: u32 = 3;
 /// The most parallel jobs Git may run, whatever the repository configures.
 pub(super) const MAX_PARALLEL_JOBS: u32 = (MAX_TREE_PROCESSES - TREE_HEADROOM) / PROCESSES_PER_JOB;
 

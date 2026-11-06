@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::{LazyLock, Mutex, PoisonError},
+    sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
 use uuid::Uuid;
@@ -458,9 +458,11 @@ fn only_git_data_inside_the_root_is_admitted() {
     let elsewhere_in_root = root.join("metadata").join("repo.git");
     fs::create_dir_all(&elsewhere_in_root).unwrap();
 
-    let exact = AdmittedRepository::inside(&root, &location(&inside, &inside, &root))
+    let exact = layout::resolve(&root, &location(&inside, &inside, &root))
         .unwrap()
-        .unwrap();
+        .ok()
+        .unwrap()
+        .repository;
     assert_eq!(exact.git_dir(), Path::new(".git"));
     assert_eq!(exact.work_tree(), Path::new("."));
 
@@ -471,30 +473,40 @@ fn only_git_data_inside_the_root_is_admitted() {
         (&inside, &elsewhere_in_root),
     ] {
         assert_eq!(
-            AdmittedRepository::inside(&root, &location(git_dir, common_dir, &root)).unwrap(),
-            Err(RepositoryLayout::ExternalGitDir)
+            layout::resolve(&root, &location(git_dir, common_dir, &root))
+                .unwrap()
+                .err(),
+            Some(RepositoryLayout::ExternalGitDir)
         );
     }
     assert_eq!(
-        AdmittedRepository::inside(&root.join(".git"), &location(&inside, &inside, &root)).unwrap(),
-        Err(RepositoryLayout::NestedRoot)
+        layout::resolve(&root.join(".git"), &location(&inside, &inside, &root))
+            .unwrap()
+            .err(),
+        Some(RepositoryLayout::NestedRoot)
     );
 }
 
-/// A `gitdir:` file names its target through an intermediate directory that
-/// could later be replaced by a link outside the root with the `.git` bytes
-/// unchanged, so it is refused even while the target sits inside the root.
+/// A `gitdir:` file naming a separate git dir is admitted, with every
+/// directory on its path fingerprinted: replacing one with a link (a junction
+/// on Windows) to byte-identical Git data elsewhere invalidates the verdict.
 #[test]
-fn a_gitdir_file_is_refused_even_when_it_points_inside_the_root() {
+fn a_separate_git_dir_is_admitted_until_a_link_appears_on_its_path() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     let metadata = root.join("metadata");
     fs::create_dir_all(&metadata).unwrap();
     fs::rename(root.join(".git"), metadata.join("repo.git")).unwrap();
     fs::write(root.join(".git"), "gitdir: metadata/repo.git\n").unwrap();
-    // Control: Git itself opens this layout.
-    git(&root, &["status", "--porcelain"]);
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
 
+    let outside = scratch.base.join("outside-metadata");
+    fs::rename(&metadata, &outside).unwrap();
+    directory_link(&metadata, &outside);
     assert!(matches!(
         sage_git(&root, &["status", "--porcelain"]),
         Err(AppError::RepositoryOutsideRoot(
@@ -503,6 +515,27 @@ fn a_gitdir_file_is_refused_even_when_it_points_inside_the_root() {
     ));
 }
 
+/// `git init --separate-git-dir` keeps the git data outside the work tree.
+/// Status and diff work, and a filter in that git dir's config is refused.
+#[test]
+fn a_separate_git_dir_repository_is_admitted_and_its_config_checked() {
+    let scratch = Scratch::new();
+    let root = scratch.directory("work");
+    git(
+        &scratch.base,
+        &["init", "-q", "--separate-git-dir", "data.git", "work"],
+    );
+    fs::write(root.join("a.txt"), "a\n").unwrap();
+    for args in [&["status", "--porcelain"][..], &["diff"][..]] {
+        assert!(sage_git(&root, args).unwrap().succeeded(), "{args:?}");
+    }
+    git(
+        &root,
+        &["config", "filter.sentinel.clean", "touch filter-ran"],
+    );
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+}
 /// A `commondir` file redirects the shared config the same way.
 #[test]
 fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
@@ -612,32 +645,41 @@ fn a_pointer_file_created_after_admission_is_refused() {
     }
 }
 
+/// A real `git worktree add` worktree is admitted: status and diff work, and
+/// a filter in the common config it shares with the main worktree is refused.
 #[test]
-fn a_linked_worktree_is_refused_before_git_runs() {
+fn a_linked_worktree_is_admitted_and_its_common_config_checked() {
     let scratch = Scratch::new();
     let main = scratch.repository("main");
     git(&main, &["config", "user.email", "sage@example.invalid"]);
     git(&main, &["config", "user.name", "Sage Test"]);
-    git(&main, &["commit", "-q", "--allow-empty", "-m", "x"]);
+    fs::write(main.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
+    fs::write(main.join("a.txt"), "a\n").unwrap();
+    git(&main, &["add", "."]);
+    git(&main, &["commit", "-q", "-m", "x"]);
     let worktree = scratch.base.join("linked");
     git(
         &main,
         &["worktree", "add", "-q", "../linked", "-b", "linked"],
     );
-    assert!(matches!(
-        sage_git(&worktree, &["status", "--porcelain"]),
-        Err(AppError::RepositoryOutsideRoot(
-            RepositoryLayout::ExternalGitDir
-        ))
-    ));
-    // The main repository itself is still admitted.
-    assert!(
-        sage_git(&main, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded()
-    );
-}
+    fs::write(worktree.join("a.txt"), "changed\n").unwrap();
+    for args in [&["status", "--porcelain"][..], &["diff"][..]] {
+        assert!(sage_git(&worktree, args).unwrap().succeeded(), "{args:?}");
+    }
 
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    git(&main, &["config", "filter.sentinel.clean", &filter]);
+    for args in [&["status", "--porcelain"][..], &["diff"][..]] {
+        let message = refusal(sage_git(&worktree, args));
+        assert!(message.contains("filter.sentinel.clean"), "{message}");
+    }
+    assert!(!sentinel.exists());
+    // The main worktree reads the same config and is refused too.
+    refusal(sage_git(&main, &["status", "--porcelain"]));
+    // Control: plain Git in the linked worktree runs the shared filter.
+    git(&worktree, &["add", "--", "a.txt"]);
+    assert!(sentinel.exists(), "the shared filter is not live");
+}
 #[cfg(unix)]
 #[test]
 fn a_cached_root_whose_git_dir_becomes_a_link_is_refused() {
@@ -1120,4 +1162,35 @@ fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
         &["-c", "core.fscache=false", "status", "--porcelain"],
     );
     assert!(sentinel.exists(), "the renamed gitlink is not live");
+}
+
+/// A submodule's own `submodule.fetchJobs=32` cannot fan out under the Git
+/// job: with submodules present, every admitted call pins both fetch
+/// settings to one, and command-line config wins in every submodule too.
+#[test]
+fn a_submodule_asking_for_parallel_fetches_is_held_to_one() {
+    let scratch = Scratch::new();
+    let root = submodule_fixture(&scratch);
+    git(&root.join("sub"), &["config", "submodule.fetchJobs", "32"]);
+    git(&root, &["config", "fetch.parallel", "32"]);
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    let overrides = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(admit(&root, None))
+        .unwrap()
+        .expect("the repository is admitted")
+        .parallel_overrides()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        overrides,
+        [
+            "checkout.workers=1",
+            "fetch.parallel=1",
+            "submodule.fetchJobs=1"
+        ]
+    );
 }

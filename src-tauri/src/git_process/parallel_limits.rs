@@ -1,20 +1,26 @@
-//! Caps the parallel children a repository asks Git to start, never raising
-//! them.
+//! The effective, capped value of each Git setting that starts parallel
+//! children, passed on every admitted Git call.
 //!
 //! `checkout.workers`, `fetch.parallel` and `submodule.fetchJobs` let a
 //! repository's config start many Git children at once (a value of 0 or less
 //! means one per CPU). On Windows they all run inside the call's Job Object,
-//! whose process limit leaves room for [`MAX_PARALLEL_JOBS`] of them. A key
-//! the repository sets above that, or to a per-CPU value, is passed back to
-//! Git as `-c key=<capped value>`. A key it leaves unset gets no override, so
-//! Git keeps its own default of one.
+//! whose process limit leaves room for [`MAX_PARALLEL_JOBS`] of them. Sage
+//! passes all three as `-c key=<value>` on every admitted call:
+//! - unset: Git's default of 1, so nothing is raised;
+//! - above the cap: the cap;
+//! - 0 or less: the CPU count, capped;
+//! - unreadable: 1.
+//!
+//! Command-line config wins over every config file and reaches every Git
+//! child, submodules included, so no repository below the root can ask for
+//! more. When the repository has populated submodules, both fetch settings
+//! are held to 1, because each submodule fetch can fetch its own submodules
+//! in turn and parallelism would multiply per level.
 //!
 //! The values come from repository admission: when the name-only listing it
 //! already reads shows one of these keys, it reads their values once with
-//! [`PROBE_ARGS`] and keeps the caps in its cached verdict, so a steady-state
-//! call starts no extra process and they go stale exactly when the config
-//! does. Includes are refused there, and global and system config are
-//! cleared for every Git call.
+//! [`PROBE_ARGS`] and keeps them in its cached verdict, so a steady-state call
+//! starts no extra process and they go stale exactly when the config does.
 
 use std::collections::HashMap;
 
@@ -26,6 +32,8 @@ const KEYS: [(&str, &str); 3] = [
     ("fetch.parallel", "fetch.parallel"),
     ("submodule.fetchjobs", "submodule.fetchJobs"),
 ];
+/// Git's default for every key.
+const GIT_DEFAULT: u32 = 1;
 
 /// Lists only the capped keys, NUL-separated.
 pub(super) const PROBE_ARGS: [&str; 4] = [
@@ -36,6 +44,74 @@ pub(super) const PROBE_ARGS: [&str; 4] = [
 ];
 pub(super) const MAX_PROBE_BYTES: usize = 64 * 1024;
 
+/// The effective value of each key in [`KEYS`] order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ParallelLimits([u32; 3]);
+
+impl Default for ParallelLimits {
+    fn default() -> Self {
+        Self([GIT_DEFAULT; 3])
+    }
+}
+
+impl ParallelLimits {
+    /// The limits a probe's result calls for. A probe that did not run or
+    /// failed fails safe: every key is held to one.
+    pub(super) fn from_probe(probe: Option<&GitOutput>) -> Self {
+        let Some(probe) = probe.filter(|probe| !probe.stdout_truncated) else {
+            return Self::default();
+        };
+        // `git config --get-regexp` exits 1 when no key is set.
+        if !probe.status.success() {
+            return Self::default();
+        }
+        Self::from_listing(&probe.stdout, cpu_count())
+    }
+
+    /// Holds both fetch settings to one, for a repository whose fetches can
+    /// recurse into submodules.
+    pub(super) fn without_parallel_fetches(self) -> Self {
+        let Self([checkout, _, _]) = self;
+        Self([checkout, GIT_DEFAULT, GIT_DEFAULT])
+    }
+
+    /// The `-c` settings that pin every key to its effective value.
+    pub(super) fn overrides(self) -> impl Iterator<Item = String> {
+        KEYS.iter()
+            .zip(self.0)
+            .map(|((_, name), value)| format!("{name}={value}"))
+    }
+
+    /// Limits for a `-z` listing of `key\nvalue` records; the last value of a
+    /// key wins, as in Git.
+    fn from_listing(listing: &[u8], cpus: u32) -> Self {
+        let mut values = HashMap::new();
+        for record in listing
+            .split(|byte| *byte == 0)
+            .filter(|record| !record.is_empty())
+        {
+            let (key, value) = match record.iter().position(|byte| *byte == b'\n') {
+                Some(newline) => (&record[..newline], Some(&record[newline + 1..])),
+                None => (record, None),
+            };
+            values.insert(key.to_ascii_lowercase(), value);
+        }
+        Self(KEYS.map(|(key, _)| {
+            match values.get(key.as_bytes()) {
+                None => GIT_DEFAULT,
+                Some(value) => match value.and_then(parse_int) {
+                    // Zero or less means one per CPU.
+                    Some(requested) if requested <= 0 => cpus.min(MAX_PARALLEL_JOBS),
+                    Some(requested) => u32::try_from(requested)
+                        .unwrap_or(u32::MAX)
+                        .min(MAX_PARALLEL_JOBS),
+                    None => GIT_DEFAULT,
+                },
+            }
+        }))
+    }
+}
+
 /// Whether a `--name-only -z` listing sets any capped key, so their values
 /// need reading at all.
 pub(super) fn lists_any(listing: &[u8]) -> bool {
@@ -45,59 +121,9 @@ pub(super) fn lists_any(listing: &[u8]) -> bool {
     })
 }
 
-/// The overrides a probe's result calls for. A probe that did not run or
-/// failed fails safe: every key is held to one.
-pub(super) fn from_probe(probe: Option<&GitOutput>) -> Vec<String> {
-    let Some(probe) = probe.filter(|probe| !probe.stdout_truncated) else {
-        return fail_safe();
-    };
-    // `git config --get-regexp` exits 1 when no key is set.
-    if !probe.status.success() {
-        return if probe.status.code() == Some(1) && probe.stdout.is_empty() {
-            Vec::new()
-        } else {
-            fail_safe()
-        };
-    }
-    overrides_for(&probe.stdout, cpu_count())
-}
-
-fn fail_safe() -> Vec<String> {
-    KEYS.iter().map(|(_, name)| format!("{name}=1")).collect()
-}
-
 fn cpu_count() -> u32 {
     std::thread::available_parallelism()
         .map_or(1, |count| u32::try_from(count.get()).unwrap_or(u32::MAX))
-}
-
-/// Overrides for a `-z` listing of `key\nvalue` records; the last value of a
-/// key wins, as in Git. Values within the cap are left alone.
-fn overrides_for(listing: &[u8], cpus: u32) -> Vec<String> {
-    let mut values = HashMap::new();
-    for record in listing
-        .split(|byte| *byte == 0)
-        .filter(|record| !record.is_empty())
-    {
-        let (key, value) = match record.iter().position(|byte| *byte == b'\n') {
-            Some(newline) => (&record[..newline], Some(&record[newline + 1..])),
-            None => (record, None),
-        };
-        values.insert(key.to_ascii_lowercase(), value);
-    }
-    KEYS.iter()
-        .filter_map(|(key, name)| {
-            let value = values.get(key.as_bytes())?;
-            let capped = match value.and_then(parse_int) {
-                // Zero or less means one per CPU.
-                Some(requested) if requested <= 0 => cpus.min(MAX_PARALLEL_JOBS),
-                Some(requested) if requested > i64::from(MAX_PARALLEL_JOBS) => MAX_PARALLEL_JOBS,
-                Some(_) => return None,
-                None => 1,
-            };
-            Some(format!("{name}={capped}"))
-        })
-        .collect()
 }
 
 /// Git's integer syntax: an optional sign, digits, and an optional `k`, `m`

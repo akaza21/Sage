@@ -71,7 +71,7 @@ fn wide_switch(workers: Option<&str>) -> Vec<String> {
         .unwrap()
         .expect("the repository is admitted")
         .parallel_overrides()
-        .to_vec();
+        .collect::<Vec<_>>();
     fs::remove_dir_all(root).unwrap();
     cached
 }
@@ -81,15 +81,12 @@ fn wide_switch(workers: Option<&str>) -> Vec<String> {
 /// makes Git abort the switch.
 #[test]
 fn a_wide_parallel_checkout_succeeds_inside_the_job() {
-    assert_eq!(
-        wide_switch(Some("32")),
-        [format!("checkout.workers={MAX_PARALLEL_JOBS}")]
-    );
+    assert!(wide_switch(Some("32")).contains(&format!("checkout.workers={MAX_PARALLEL_JOBS}")));
 }
 
-/// A repository that leaves `checkout.workers` unset gets no override, so
-/// Git keeps its default of one worker: Sage caps, it never raises.
+/// A repository that leaves `checkout.workers` unset is pinned to Git's own
+/// default of one worker: Sage caps, it never raises.
 #[test]
-fn an_unset_worker_count_gets_no_override() {
-    assert!(wide_switch(None).is_empty());
+fn an_unset_worker_count_keeps_gits_single_worker() {
+    assert!(wide_switch(None).contains(&"checkout.workers=1".to_owned()));
 }
