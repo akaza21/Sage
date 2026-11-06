@@ -157,6 +157,12 @@ impl GitProcessPolicy {
         )
     }
 
+    /// Records Git's trace2 events, from this call and every Git it starts.
+    pub(crate) fn with_trace2_event(mut self, target: std::path::PathBuf) -> Self {
+        self.trace2_event = Some(target);
+        self
+    }
+
     pub(crate) fn nonconvergent_reap(command_timeout: Duration) -> Self {
         Self {
             reap_timeout: None,
@@ -180,6 +186,7 @@ impl GitProcessPolicy {
             after_process_hook: None,
             spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -205,6 +212,7 @@ impl GitProcessPolicy {
             after_process_hook: None,
             spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -224,6 +232,7 @@ impl GitProcessPolicy {
             after_process_hook: None,
             spawned_hook: None,
             deadline_wait_gate: None,
+            trace2_event: None,
         }
     }
 
@@ -355,6 +364,7 @@ impl GitProcessTestHarness {
                 after_process_hook: None,
                 spawned_hook: None,
                 deadline_wait_gate: None,
+                trace2_event: None,
             },
             GitReaperTestHandle {
                 registry: Arc::clone(&self.registry),

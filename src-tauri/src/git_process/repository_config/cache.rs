@@ -75,7 +75,7 @@ pub(super) fn store(slot: &mut Option<Admission>, admission: Option<Admission>) 
     });
 }
 
-/// Re-counts a cached admission whose submodule scan changed.
+/// Counts an admission's retained bytes into the budget.
 pub(super) fn account(admission: &mut Admission) {
     let retained = admission.retained_bytes();
     RETAINED.fetch_add(retained, Ordering::SeqCst);

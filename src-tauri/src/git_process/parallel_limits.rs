@@ -11,11 +11,8 @@
 //! - 0 or less: the CPU count, capped;
 //! - unreadable: 1.
 //!
-//! Command-line config wins over every config file and reaches every Git
-//! child, submodules included, so no repository below the root can ask for
-//! more. When the repository has populated submodules, both fetch settings
-//! are held to 1, because each submodule fetch can fetch its own submodules
-//! in turn and parallelism would multiply per level.
+//! Command-line config wins over every config file. Sage's Git never recurses
+//! into submodules (see `SUBMODULE_ISOLATION`), so no fetch fans out further.
 //!
 //! The values come from repository admission: when the name-only listing it
 //! already reads shows one of these keys, it reads their values once with
@@ -66,13 +63,6 @@ impl ParallelLimits {
             return Self::default();
         }
         Self::from_listing(&probe.stdout, cpu_count())
-    }
-
-    /// Holds both fetch settings to one, for a repository whose fetches can
-    /// recurse into submodules.
-    pub(super) fn without_parallel_fetches(self) -> Self {
-        let Self([checkout, _, _]) = self;
-        Self([checkout, GIT_DEFAULT, GIT_DEFAULT])
     }
 
     /// The `-c` settings that pin every key to its effective value.

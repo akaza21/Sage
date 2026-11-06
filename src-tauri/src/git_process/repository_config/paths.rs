@@ -32,20 +32,32 @@ pub(super) fn split(path: &str) -> Vec<&str> {
     return path.split('/').collect();
 }
 
+/// Paths longer than this, or with more components, are refused.
+const MAX_PATH_BYTES: usize = 4096;
+const MAX_PATH_COMPONENTS: usize = 64;
+
 /// The paths the operating system walks to reach `target`, as Git reaches
 /// it: joined to `base` as written unless absolute, never normalised here,
 /// one entry per component and the full path last. Git and the filesystem
 /// calls here then resolve every `..`, symlink and junction the same way:
-/// lexically through Win32 on Windows, physically elsewhere. Every name other
-/// than `.` and `..` must pass [`ambiguous_component`].
+/// lexically through Win32 on Windows, physically elsewhere. Each component
+/// is validated as it is added: every name other than `.` and `..` must pass
+/// [`ambiguous_component`], and a path over [`MAX_PATH_BYTES`] or
+/// [`MAX_PATH_COMPONENTS`] fails closed.
 pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>> {
-    let (mut walked, rest) = match absolute_root(target) {
-        Some((root, rest)) => (root, rest),
-        None => (os_path(base), target),
+    if target.len() > MAX_PATH_BYTES {
+        return None;
+    }
+    let (mut walked, rest) = match start(target) {
+        Start::Relative => (os_path(base), target),
+        Start::Absolute(root, rest) => (root, rest),
+        Start::Refused => return None,
     };
     let mut prefixes = Vec::new();
     for part in split(rest) {
-        if !matches!(part, "." | "..") && ambiguous_component(part) {
+        if prefixes.len() == MAX_PATH_COMPONENTS
+            || (!matches!(part, "." | "..") && ambiguous_component(part))
+        {
             return None;
         }
         walked.push(part);
@@ -54,28 +66,68 @@ pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>
     (!prefixes.is_empty()).then_some(prefixes)
 }
 
-/// For an absolute `target`, the root it starts at and the rest of the path.
-fn absolute_root(target: &str) -> Option<(PathBuf, &str)> {
+/// Where a path Git reads starts.
+#[derive(Debug, PartialEq, Eq)]
+enum Start<'a> {
+    Relative,
+    /// An absolute path: the root it starts at, and the rest.
+    Absolute(PathBuf, &'a str),
+    /// A path Git and the filesystem calls here could start differently.
+    Refused,
+}
+
+/// Git's `is_absolute_path`: on Windows a drive (`C:/`), or two separators
+/// for a UNC share (`//server/share/`, `\\server\share\`); a single leading
+/// separator means the current drive's root, which is refused as ambiguous.
+/// Elsewhere a leading `/`.
+fn start(target: &str) -> Start<'_> {
     #[cfg(windows)]
     {
+        let separator = |byte: Option<&u8>| matches!(byte, Some(b'/' | b'\\'));
         let bytes = target.as_bytes();
-        let drive = bytes.first().filter(|byte| byte.is_ascii_alphabetic())?;
-        if bytes.get(1) != Some(&b':') || !matches!(bytes.get(2), Some(b'/' | b'\\')) {
-            return None;
+        if separator(bytes.first()) && separator(bytes.get(1)) {
+            let mut parts = target[2..].splitn(3, ['/', '\\']);
+            let (Some(server), Some(share)) = (parts.next(), parts.next()) else {
+                return Start::Refused;
+            };
+            // `\\?\` and `\\.\` are the verbatim and device namespaces.
+            if matches!(server, "?" | ".")
+                || ambiguous_component(server)
+                || ambiguous_component(share)
+            {
+                return Start::Refused;
+            }
+            return Start::Absolute(
+                PathBuf::from(format!(r"\\{server}\{share}\")),
+                parts.next().unwrap_or(""),
+            );
         }
-        Some((
-            PathBuf::from(format!("{}:\\", char::from(*drive))),
-            &target[3..],
-        ))
+        if separator(bytes.first()) {
+            return Start::Refused;
+        }
+        match bytes.first() {
+            Some(drive) if drive.is_ascii_alphabetic() && bytes.get(1) == Some(&b':') => {
+                if separator(bytes.get(2)) {
+                    Start::Absolute(
+                        PathBuf::from(format!("{}:\\", char::from(*drive))),
+                        &target[3..],
+                    )
+                } else {
+                    // `C:name` is relative to that drive's current directory.
+                    Start::Refused
+                }
+            }
+            _ => Start::Relative,
+        }
     }
     #[cfg(not(windows))]
     {
-        target
-            .strip_prefix('/')
-            .map(|rest| (PathBuf::from("/"), rest))
+        match target.strip_prefix('/') {
+            Some(rest) => Start::Absolute(PathBuf::from("/"), rest),
+            None => Start::Relative,
+        }
     }
 }
-
 /// `path` in the form the operating system normalises the way Git's paths
 /// are normalised. A canonical Windows path is verbatim (`\\?\C:\...`), which
 /// would take `..` literally, so its plain form is used instead.
@@ -135,3 +187,6 @@ pub(super) fn reserved_device_name(part: &str) -> bool {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests;

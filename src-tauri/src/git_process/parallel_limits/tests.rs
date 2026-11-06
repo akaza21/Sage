@@ -65,20 +65,3 @@ fn unreadable_values_and_failed_probes_fail_safe_to_one() {
     );
     assert_eq!(ParallelLimits::from_probe(None), ParallelLimits::default());
 }
-
-#[test]
-fn repositories_with_submodules_never_fetch_in_parallel() {
-    let limits = ParallelLimits::from_listing(
-        b"checkout.workers\n6\0fetch.parallel\n32\0submodule.fetchjobs\n32\0",
-        64,
-    )
-    .without_parallel_fetches();
-    assert_eq!(
-        limits.overrides().collect::<Vec<_>>(),
-        [
-            "checkout.workers=6",
-            "fetch.parallel=1",
-            "submodule.fetchJobs=1"
-        ]
-    );
-}

@@ -23,8 +23,9 @@ mod process_tree;
 mod readers;
 mod repository_config;
 mod root_authority;
+mod submodule_isolation;
 use process_tree::{GitChild, ProcessTree};
-use readers::{ReaderTask, ReaderTasks, StdoutCapture};
+use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
@@ -75,6 +76,9 @@ pub(crate) struct GitProcessPolicy {
     spawned_hook: Option<GitSpawnHook>,
     #[cfg(test)]
     deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
+    /// A Git trace2 event target, to prove which repositories Git opened.
+    #[cfg(test)]
+    trace2_event: Option<std::path::PathBuf>,
 }
 
 impl GitProcessPolicy {
@@ -103,6 +107,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -131,6 +137,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -159,6 +167,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -251,7 +261,7 @@ async fn run_inner(
     run_admitted(
         root,
         args,
-        StdoutCapture::Bytes(stdout_limit),
+        stdout_limit,
         policy,
         root_authority,
         repository.as_ref(),
@@ -265,7 +275,7 @@ async fn run_inner(
 async fn run_admitted(
     root: &Path,
     args: &[&str],
-    stdout_capture: StdoutCapture,
+    stdout_limit: usize,
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
     repository: Option<&repository_config::AdmittedRepository>,
@@ -287,6 +297,10 @@ async fn run_admitted(
         containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
     let mut command = configured_command(root, args, root_authority.as_ref(), repository);
+    #[cfg(test)]
+    if let Some(trace) = &policy.trace2_event {
+        command.env("GIT_TRACE2_EVENT", trace);
+    }
     #[cfg(test)]
     if let Some(hook) = &policy.before_spawn_hook {
         hook();
@@ -328,7 +342,7 @@ async fn run_admitted(
             return containment::cleanup_failure(
                 GitChild { root: child, tree },
                 ReaderTasks {
-                    stdout: Some(readers::spawn_stdout(stdout, stdout_capture)),
+                    stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
                     stderr: None,
                     ..ReaderTasks::default()
                 },
@@ -345,7 +359,7 @@ async fn run_admitted(
         }
     };
     let mut readers = ReaderTasks {
-        stdout: Some(readers::spawn_stdout(stdout, stdout_capture)),
+        stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
         stderr: Some(tokio::spawn(read_bounded(stderr, MAX_STDERR_BYTES))),
         ..ReaderTasks::default()
     };
@@ -451,6 +465,9 @@ fn configured_command(
         .args(["-c", "protocol.ext.allow=never"])
         .args(["-c", "protocol.file.allow=user"])
         .args(["-c", "safe.bareRepository=explicit"]);
+    for setting in submodule_isolation::CONFIG {
+        command.arg("-c").arg(setting);
+    }
     // The capped effective value of every setting that starts parallel
     // children; see `parallel_limits`. Command-line config wins over every
     // config file and reaches every Git child, submodules included.
@@ -466,7 +483,7 @@ fn configured_command(
         command.arg("-C").arg(root);
     }
     command
-        .args(args)
+        .args(submodule_isolation::arguments(args))
         .env_clear()
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")

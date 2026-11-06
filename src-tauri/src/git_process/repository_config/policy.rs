@@ -17,16 +17,6 @@ pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
     ))
 }
 
-/// The same refusal for the config of a submodule Git would open.
-pub(super) fn submodule_refusal_message(listing: &[u8]) -> Option<String> {
-    let named = named_keys(listing)?;
-    Some(format!(
-        "Sage did not run Git here because a submodule's Git config sets keys that run \
-         programs ({named}). Remove them from that submodule's config, or use the terminal \
-         for Git in this folder."
-    ))
-}
-
 /// Git's checks that keep index paths from naming an entry Windows (NTFS)
 /// or macOS (HFS+) would resolve to something else, by canonical key.
 const PATH_PROTECTIONS: [&str; 2] = ["core.protectntfs", "core.protecthfs"];
@@ -50,7 +40,7 @@ pub(super) fn path_protection_refusal(key: &str) -> String {
         _ => "core.protectNTFS",
     };
     format!(
-        "Sage did not run Git here because this repository or one of its submodules turns off \
+        "Sage did not run Git here because this repository turns off \
          Git's path protection ({name}). Remove that setting, or use the terminal for Git in \
          this folder."
     )

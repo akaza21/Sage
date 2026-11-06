@@ -5,9 +5,9 @@
 //! program Git runs: content filters, diff and merge drivers, transport
 //! commands, credential helpers. A folder that ships its own `.git` directory
 //! would otherwise run code as soon as Sage refreshes status, so Sage refuses
-//! to run Git for a root whose repository config sets any of them. The
-//! submodules Git would open from that repository get the same check (see
-//! [`submodules`]).
+//! to run Git for a root whose repository config sets any of them. Sage's
+//! Git never runs in a submodule repository (see `submodule_isolation`),
+//! so submodule configs need no admission.
 //!
 //! The verdict is cached per root against a length and SHA-256 digest of
 //! every file that decides which config Git reads. Each call re-reads those
@@ -37,7 +37,7 @@ use crate::{
     git_budget,
 };
 
-use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture, parallel_limits};
+use super::{GitOutput, GitProcessPolicy, GitRootAuthority, parallel_limits};
 
 mod cache;
 mod discovery;
@@ -45,7 +45,6 @@ mod fingerprint;
 mod layout;
 mod paths;
 mod policy;
-mod submodules;
 
 #[cfg(test)]
 use cache::{MAX_CACHED_ROOTS, slot_in};
@@ -54,7 +53,6 @@ pub(super) use layout::AdmittedRepository;
 use discovery::{Location, discovery_path};
 use fingerprint::{Fingerprint, watch};
 use policy::{path_protection_keys, path_protection_refusal, refusal_message};
-use submodules::Scan;
 
 const GIT_DIR_NAME: &str = ".git";
 /// Files inside a git dir that make Git read repository data from elsewhere.
@@ -72,16 +70,13 @@ pub(super) async fn admit(
     let slot = cache::admission_slot(root);
     // Holding the per-root lock makes concurrent first reads share one probe.
     let mut cached = slot.lock().await;
-    if let Some(admission) = cached.as_mut().filter(|admission| admission.is_current()) {
-        admission.check_submodules(root, authority).await?;
-        cache::account(admission);
+    if let Some(admission) = cached.as_ref().filter(|admission| admission.is_current()) {
         return admission.verdict();
     }
     let Probe {
-        mut admission,
+        admission,
         cacheable,
     } = Probe::run(root, authority).await?;
-    admission.check_submodules(root, authority).await?;
     let verdict = admission.verdict();
     cache::store(&mut cached, cacheable.then_some(admission));
     verdict
@@ -98,7 +93,6 @@ pub(crate) fn trust_for_test(root: &Path) {
             watched: Vec::new(),
             refusal: None,
             repository: None,
-            submodules: None,
             accounted: 0,
         },
     );
@@ -108,8 +102,6 @@ struct Admission {
     watched: Vec<(PathBuf, Fingerprint)>,
     refusal: Option<Refusal>,
     repository: Option<AdmittedRepository>,
-    /// The submodules Git would open from `repository`, checked lazily.
-    submodules: Option<Scan>,
     /// The bytes this verdict was counted at in the cache's budget.
     accounted: usize,
 }
@@ -132,14 +124,12 @@ impl From<Refusal> for AppError {
 
 impl Admission {
     /// Roughly what this verdict keeps alive: every watched path and its
-    /// fingerprint, and the same for its submodule scan.
+    /// fingerprint.
     fn retained_bytes(&self) -> usize {
-        let watched = self
-            .watched
+        self.watched
             .iter()
             .map(|(path, _)| path.as_os_str().len() + size_of::<(PathBuf, Fingerprint)>())
-            .sum::<usize>();
-        watched + self.submodules.as_ref().map_or(0, Scan::retained_bytes)
+            .sum()
     }
 
     fn is_current(&self) -> bool {
@@ -149,36 +139,10 @@ impl Admission {
     }
 
     fn verdict(&self) -> AppResult<Option<AdmittedRepository>> {
-        let submodules = self.submodules.as_ref().and_then(Scan::refusal);
-        match self.refusal.as_ref().or(submodules) {
+        match &self.refusal {
             Some(refusal) => Err(refusal.clone().into()),
-            None => Ok(self.repository.clone().map(|mut repository| {
-                // A fetch can recurse into the submodules, multiplying any
-                // parallelism per level, so it runs one job at a time.
-                if self.submodules.as_ref().is_some_and(Scan::has_submodules) {
-                    repository.parallel = repository
-                        .parallel
-                        .map(parallel_limits::ParallelLimits::without_parallel_fetches);
-                }
-                repository
-            })),
+            None => Ok(self.repository.clone()),
         }
-    }
-
-    /// Scans the submodules of an admitted repository again once anything the
-    /// last scan relied on has changed.
-    async fn check_submodules(
-        &mut self,
-        root: &Path,
-        authority: Option<&GitRootAuthority>,
-    ) -> AppResult<()> {
-        let Some(repository) = self.repository.as_ref().filter(|_| self.refusal.is_none()) else {
-            return Ok(());
-        };
-        if !self.submodules.as_ref().is_some_and(Scan::is_current) {
-            self.submodules = Some(Scan::run(root, authority, repository).await?);
-        }
-        Ok(())
     }
 }
 
@@ -211,7 +175,7 @@ impl Probe {
                 "--git-common-dir",
                 "--show-toplevel",
             ],
-            StdoutCapture::Bytes(MAX_LOCATION_BYTES),
+            MAX_LOCATION_BYTES,
         )
         .await?;
         if !location.status.success() {
@@ -233,7 +197,6 @@ impl Probe {
                     watched: ancestors,
                     refusal: None,
                     repository: None,
-                    submodules: None,
                     accounted: 0,
                 },
                 cacheable,
@@ -249,7 +212,6 @@ impl Probe {
                         watched,
                         refusal: Some(Refusal::Layout(layout)),
                         repository: None,
-                        submodules: None,
                         accounted: 0,
                     },
                     cacheable,
@@ -275,7 +237,7 @@ impl Probe {
                 authority,
                 Some(&repository),
                 &["config", "--list", "--no-includes", "--name-only", "-z"],
-                StdoutCapture::Bytes(MAX_CONFIG_LIST_BYTES),
+                MAX_CONFIG_LIST_BYTES,
             )
             .await?;
             if !listing.status.success() {
@@ -311,7 +273,6 @@ impl Probe {
                 watched,
                 refusal,
                 repository: Some(repository),
-                submodules: None,
                 accounted: 0,
             },
             cacheable,
@@ -324,7 +285,6 @@ impl Probe {
                 watched,
                 refusal: Some(Refusal::Config(message.to_owned())),
                 repository: None,
-                submodules: None,
                 accounted: 0,
             },
             cacheable: false,
@@ -369,7 +329,7 @@ async fn read_parallel_caps(
         authority,
         Some(repository),
         &parallel_limits::PROBE_ARGS,
-        StdoutCapture::Bytes(parallel_limits::MAX_PROBE_BYTES),
+        parallel_limits::MAX_PROBE_BYTES,
     )
     .await;
     parallel_limits::ParallelLimits::from_probe(values.as_ref().ok())
@@ -391,7 +351,7 @@ async fn listed_config_refusal(
             authority,
             Some(repository),
             &["config", "--type=bool", "--get", key],
-            StdoutCapture::Bytes(64),
+            64,
         )
         .await?;
         if !value.status.success() || value.stdout_truncated || value.stdout.trim_ascii() != b"true"
@@ -407,13 +367,13 @@ async fn probe_git(
     authority: Option<&GitRootAuthority>,
     repository: Option<&AdmittedRepository>,
     args: &[&str],
-    capture: StdoutCapture,
+    stdout_limit: usize,
 ) -> AppResult<GitOutput> {
     let authority = authority.map(GitRootAuthority::try_clone).transpose()?;
     super::run_admitted(
         root,
         args,
-        capture,
+        stdout_limit,
         GitProcessPolicy::read(git_budget::READ),
         authority,
         repository,

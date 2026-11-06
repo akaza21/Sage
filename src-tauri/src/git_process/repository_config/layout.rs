@@ -32,14 +32,12 @@ use crate::{
 /// `git_dir` and `work_tree` are relative to the root: the child's working
 /// directory is the identity-checked root handle, so a directory swapped in
 /// at the root's name, or a move of the root, cannot redirect them. For a
-/// separate git dir, a linked worktree or a submodule, `git_dir` is a `.git`
+/// separate git dir or a linked worktree, `git_dir` is the root's `.git`
 /// file, which Git follows to the data admission inspected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::git_process) struct AdmittedRepository {
     pub(super) git_dir: PathBuf,
     pub(super) work_tree: PathBuf,
-    /// Where the git data lives, resolved, when `git_dir` is a `.git` file.
-    pub(super) data_dir: Option<PathBuf>,
     /// The effective values of the settings that start parallel children,
     /// once admission has read them. Until then (and for the admission
     /// probes themselves) nothing is pinned, so the probes read the
@@ -48,30 +46,12 @@ pub(in crate::git_process) struct AdmittedRepository {
 }
 
 impl AdmittedRepository {
-    /// A submodule's repository: its `.git` entry and work tree, relative to
-    /// the root, and its resolved git dir.
-    pub(super) fn submodule(git_dir: PathBuf, work_tree: PathBuf, data_dir: PathBuf) -> Self {
-        Self {
-            git_dir,
-            work_tree,
-            data_dir: Some(data_dir),
-            parallel: None,
-        }
-    }
-
     pub(in crate::git_process) fn git_dir(&self) -> &Path {
         &self.git_dir
     }
 
     pub(in crate::git_process) fn work_tree(&self) -> &Path {
         &self.work_tree
-    }
-
-    /// Where the repository's own git data (its index, say) lives.
-    pub(super) fn data_dir(&self, root: &Path) -> PathBuf {
-        self.data_dir
-            .clone()
-            .unwrap_or_else(|| root.join(&self.git_dir))
     }
 
     pub(in crate::git_process) fn parallel_overrides(&self) -> impl Iterator<Item = String> {
@@ -113,15 +93,14 @@ pub(super) fn resolve(
         _ => None,
     };
     Ok(match admitted {
-        Some(admitted) => Ok(Layout {
+        Some(config_files) => Ok(Layout {
             repository: AdmittedRepository {
                 git_dir: PathBuf::from(GIT_DIR_NAME),
                 work_tree: PathBuf::from(Component::CurDir.as_os_str()),
-                data_dir: admitted.data_dir,
                 parallel: None,
             },
             watched,
-            config_files: admitted.config_files,
+            config_files,
         }),
         None => Err(RepositoryLayout::ExternalGitDir),
     })
@@ -133,10 +112,8 @@ struct Reported {
     common_dir: PathBuf,
 }
 
-struct Admitted {
-    data_dir: Option<PathBuf>,
-    config_files: Vec<PathBuf>,
-}
+/// The config files Git reads for an admitted layout.
+type Admitted = Vec<PathBuf>;
 
 fn own_directory(
     entry: &Path,
@@ -153,10 +130,7 @@ fn own_directory(
         watched.push(pointer);
         missing.then_some(())?;
     }
-    Some(Admitted {
-        data_dir: None,
-        config_files: configs(entry, entry),
-    })
+    Some(configs(entry, entry))
 }
 
 fn gitfile(
@@ -182,11 +156,7 @@ fn gitfile(
         _ => return None,
     };
     (reported.common_dir == common_dir).then_some(())?;
-    let config_files = configs(&common_dir, &git_dir);
-    Some(Admitted {
-        data_dir: Some(git_dir),
-        config_files,
-    })
+    Some(configs(&common_dir, &git_dir))
 }
 
 fn push_watch(watched: &mut Vec<(PathBuf, Fingerprint)>, path: PathBuf) -> Fingerprint {
@@ -199,7 +169,7 @@ fn push_watch(watched: &mut Vec<(PathBuf, Fingerprint)>, path: PathBuf) -> Finge
 /// Walks `written` from `base` the way the operating system (and so Git)
 /// resolves it, stamping every directory on the way with `watch`, and returns
 /// the canonical directory it reaches.
-pub(super) fn walk(
+fn walk(
     base: &Path,
     written: &str,
     watch: &mut dyn FnMut(PathBuf) -> Fingerprint,

@@ -896,240 +896,6 @@ fn directory_link(link: &Path, target: &Path) {
     }
 }
 
-#[test]
-fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
-    let scratch = Scratch::new();
-    let root = submodule_fixture(&scratch);
-    assert!(
-        sage_git(&root, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded(),
-        "an ordinary submodule is admitted"
-    );
-
-    let (sentinel, filter) = sentinel_filter(&scratch.base);
-    git(
-        &root.join("sub"),
-        &["config", "filter.sentinel.clean", &filter],
-    );
-    touch_submodule_file(&root);
-    for args in [
-        &["status", "--porcelain=v2", "-z", "--untracked-files=all"][..],
-        &["diff", "--no-ext-diff"][..],
-    ] {
-        let message = refusal(sage_git(&root, args));
-        assert!(message.contains("a submodule's Git config"), "{message}");
-        assert!(message.contains("filter.sentinel.clean"), "{message}");
-    }
-    assert!(!sentinel.exists());
-
-    // Control: plain Git status in the parent runs the submodule's filter.
-    git(&root, &["status", "--porcelain"]);
-    assert!(sentinel.exists(), "fixture filter is not live");
-}
-
-/// `.git/modules/link` leads outside the root, and the gitfile climbs back
-/// out of it: removed lexically, `link/..` names the decoy `.git/modules/repo`,
-/// but the operating system resolves it to the hostile copy.
-#[cfg(unix)]
-#[test]
-fn a_submodule_gitfile_through_a_symlink_and_dot_dot_inspects_the_real_target() {
-    let scratch = Scratch::new();
-    let root = submodule_fixture(&scratch);
-    let modules = root.join(".git").join("modules");
-    let hostile = scratch.base.join("hostile");
-    fs::create_dir_all(hostile.join("child")).unwrap();
-    fs::rename(modules.join("sub"), hostile.join("repo")).unwrap();
-    let hostile_config = hostile.join("repo").join("config");
-    let hostile_config = hostile_config.to_str().unwrap();
-    let (sentinel, filter) = sentinel_filter(&scratch.base);
-    git(
-        &root,
-        &[
-            "config",
-            "--file",
-            hostile_config,
-            "--unset",
-            "core.worktree",
-        ],
-    );
-    git(
-        &root,
-        &[
-            "config",
-            "--file",
-            hostile_config,
-            "filter.sentinel.clean",
-            &filter,
-        ],
-    );
-    fs::create_dir(modules.join("repo")).unwrap();
-    directory_link(&modules.join("link"), &hostile.join("child"));
-    fs::write(
-        root.join("sub").join(".git"),
-        "gitdir: ../.git/modules/link/../repo\n",
-    )
-    .unwrap();
-    touch_submodule_file(&root);
-
-    // Sage resolves the gitfile the way Git does, reaches the hostile copy,
-    // and inspects that copy's config.
-    for args in [
-        &["status", "--porcelain"][..],
-        &["diff", "--no-ext-diff"][..],
-    ] {
-        let message = refusal(sage_git(&root, args));
-        assert!(message.contains("filter.sentinel.clean"), "{message}");
-    }
-    assert!(!sentinel.exists());
-
-    // Control: plain Git follows the link and runs the hostile filter.
-    git(&root, &["status", "--porcelain"]);
-    assert!(sentinel.exists(), "the escape is not live");
-}
-
-/// A link (a junction on Windows) on a submodule's git dir path is followed;
-/// retargeting it at hostile Git data is checked again, not served cached.
-#[test]
-fn a_retargeted_link_on_a_submodule_git_dir_path_is_checked_again() {
-    let scratch = Scratch::new();
-    let root = submodule_fixture(&scratch);
-    let modules = root.join(".git").join("modules");
-    let real = scratch.directory("real-group");
-    fs::rename(modules.join("sub"), real.join("sub")).unwrap();
-    directory_link(&modules.join("group"), &real);
-    fs::write(
-        root.join("sub").join(".git"),
-        "gitdir: ../.git/modules/group/sub\n",
-    )
-    .unwrap();
-    git(
-        &root,
-        &[
-            "config",
-            "--file",
-            &config_operand(&real.join("sub")),
-            "--unset",
-            "core.worktree",
-        ],
-    );
-    assert!(
-        sage_git(&root, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded(),
-        "a submodule git dir through a link is admitted"
-    );
-
-    let hostile = scratch.directory("hostile-group");
-    copy_tree(&real.join("sub"), &hostile.join("sub"));
-    git(
-        &root,
-        &[
-            "config",
-            "--file",
-            &config_operand(&hostile.join("sub")),
-            "filter.sentinel.clean",
-            "touch ran",
-        ],
-    );
-    remove_link(&modules.join("group"));
-    directory_link(&modules.join("group"), &hostile);
-    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
-    assert!(message.contains("filter.sentinel.clean"), "{message}");
-}
-
-/// An absorbed, populated submodule in a linked worktree: status works, and a
-/// filter in the submodule's own config is refused.
-#[test]
-fn a_linked_worktree_with_an_absorbed_submodule_is_checked() {
-    let scratch = Scratch::new();
-    let main = submodule_fixture(&scratch);
-    git(
-        &main,
-        &["worktree", "add", "-q", "../linked", "-b", "linked"],
-    );
-    let worktree = scratch.base.join("linked");
-    git(
-        &worktree,
-        &[
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "--quiet",
-            "update",
-            "--init",
-        ],
-    );
-    assert!(
-        fs::metadata(worktree.join("sub").join(".git"))
-            .unwrap()
-            .is_file()
-    );
-    assert!(
-        sage_git(&worktree, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded()
-    );
-    git(
-        &worktree.join("sub"),
-        &["config", "filter.sentinel.clean", "touch ran"],
-    );
-    let message = refusal(sage_git(&worktree, &["status", "--porcelain"]));
-    assert!(message.contains("a submodule's Git config"), "{message}");
-    assert!(message.contains("filter.sentinel.clean"), "{message}");
-}
-
-/// An absorbed, populated submodule in a separate-git-dir repository, whose
-/// metadata lives under that git dir's `modules`: status works, and a filter
-/// in the submodule's own config is refused.
-#[test]
-fn a_separate_git_dir_with_an_absorbed_submodule_is_checked() {
-    let scratch = Scratch::new();
-    let source = scratch.repository("source");
-    fs::write(source.join("a.txt"), "a\n").unwrap();
-    git(&source, &["add", "."]);
-    git(
-        &source,
-        &[&IDENTITY[..], &["commit", "-q", "-m", "source"]].concat(),
-    );
-    git(
-        &scratch.base,
-        &["init", "-q", "--separate-git-dir", "data.git", "work"],
-    );
-    let root = scratch.base.join("work");
-    git(
-        &root,
-        &[
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "--quiet",
-            "add",
-            "../source",
-            "sub",
-        ],
-    );
-    assert!(
-        scratch
-            .base
-            .join("data.git")
-            .join("modules")
-            .join("sub")
-            .is_dir()
-    );
-    assert!(
-        sage_git(&root, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded()
-    );
-    git(
-        &root.join("sub"),
-        &["config", "filter.sentinel.clean", "touch ran"],
-    );
-    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
-    assert!(message.contains("a submodule's Git config"), "{message}");
-}
-
 /// Copies a directory tree, for Git data that must be byte-identical.
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
@@ -1159,109 +925,6 @@ fn remove_link(link: &Path) {
     fs::remove_file(link).unwrap();
     #[cfg(windows)]
     fs::remove_dir(link).unwrap();
-}
-#[test]
-fn more_gitlinks_than_the_cap_fail_closed() {
-    let scratch = Scratch::new();
-    let root = scratch.repository("repo");
-    git(
-        &root,
-        &[&IDENTITY[..], &["commit", "-q", "--allow-empty", "-m", "x"]].concat(),
-    );
-    let head = Command::new("git")
-        .arg("-C")
-        .arg(&root)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .unwrap();
-    let head = String::from_utf8(head.stdout).unwrap();
-    let add_gitlinks = |range: std::ops::Range<usize>| {
-        use std::io::Write as _;
-        let mut child = Command::new("git")
-            .arg("-C")
-            .arg(&root)
-            .args(["update-index", "--index-info"])
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut stdin = child.stdin.take().unwrap();
-        for index in range {
-            writeln!(stdin, "160000 {}\tlink{index}", head.trim()).unwrap();
-        }
-        drop(stdin);
-        assert!(child.wait().unwrap().success());
-    };
-
-    // Unpopulated gitlinks are counted but open nothing.
-    add_gitlinks(0..64);
-    assert!(
-        sage_git(&root, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded(),
-        "the cap itself is admitted"
-    );
-    add_gitlinks(64..65);
-    assert_eq!(
-        refusal(sage_git(&root, &["status", "--porcelain"])),
-        submodules::UNCHECKABLE
-    );
-}
-
-/// Moves the submodule's git data to `hostile` (a name a lenient parser
-/// would misread), gives it a live filter, leaves a benign bare repository at
-/// the `decoy` name that misreading yields, and points the gitfile at it.
-#[cfg(unix)]
-fn assert_hostile_gitfile_name_is_refused(hostile: &str, decoy: &str, gitfile: &str) {
-    let scratch = Scratch::new();
-    let root = submodule_fixture(&scratch);
-    let modules = root.join(".git").join("modules");
-    fs::rename(modules.join("sub"), modules.join(hostile)).unwrap();
-    let (sentinel, filter) = sentinel_filter(&scratch.base);
-    let hostile_config = format!(".git/modules/{hostile}/config");
-    git(
-        &root,
-        &[
-            "config",
-            "--file",
-            &hostile_config,
-            "filter.sentinel.clean",
-            &filter,
-        ],
-    );
-    git(
-        &root,
-        &["init", "-q", "--bare", &format!(".git/modules/{decoy}")],
-    );
-    fs::write(root.join("sub").join(".git"), gitfile).unwrap();
-    touch_submodule_file(&root);
-
-    for args in [
-        &["status", "--porcelain"][..],
-        &["diff", "--no-ext-diff"][..],
-    ] {
-        assert_eq!(refusal(sage_git(&root, args)), submodules::UNCHECKABLE);
-    }
-    assert!(!sentinel.exists());
-
-    // Control: plain Git opens the hostile name byte for byte.
-    git(&root, &["status", "--porcelain"]);
-    assert!(sentinel.exists(), "the hostile git dir is not live");
-}
-
-#[cfg(unix)]
-#[test]
-fn a_gitfile_path_with_a_trailing_space_is_refused() {
-    assert_hostile_gitfile_name_is_refused("sub ", "sub", "gitdir: ../.git/modules/sub \n");
-}
-
-#[cfg(unix)]
-#[test]
-fn a_gitfile_backslash_is_not_a_separator_on_unix() {
-    assert_hostile_gitfile_name_is_refused(
-        "foo\\bar",
-        "foo/bar",
-        "gitdir: ../.git/modules/foo\\bar\n",
-    );
 }
 
 #[test]
@@ -1337,33 +1000,152 @@ fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
     assert!(sentinel.exists(), "the renamed gitlink is not live");
 }
 
-/// A submodule's own `submodule.fetchJobs=32` cannot fan out under the Git
-/// job: with submodules present, every admitted call pins both fetch
-/// settings to one, and command-line config wins in every submodule too.
+/// A repository with a populated submodule, an upstream to fetch from, and
+/// config that would make Git recurse into the submodule everywhere: in the
+/// parent, in `.gitmodules`, and in the submodule's own config, which also
+/// carries a live clean filter and a hostile `core.worktree`.
+fn isolation_fixture(scratch: &Scratch) -> (PathBuf, PathBuf) {
+    let root = submodule_fixture(scratch);
+    git(
+        &scratch.base,
+        &["clone", "-q", "--bare", "repo", "upstream.git"],
+    );
+    git(&root, &["remote", "add", "origin", "../upstream.git"]);
+    for (key, value) in [
+        ("submodule.recurse", "true"),
+        ("fetch.recurseSubmodules", "yes"),
+        ("diff.submodule", "diff"),
+        ("status.submoduleSummary", "true"),
+    ] {
+        git(&root, &["config", key, value]);
+    }
+    for (key, value) in [
+        ("submodule.sub.ignore", "none"),
+        ("submodule.sub.fetchRecurseSubmodules", "yes"),
+    ] {
+        git(&root, &["config", "--file", ".gitmodules", key, value]);
+    }
+    let (sentinel, filter) = sentinel_filter(&scratch.base);
+    // A worktree elsewhere with the submodule's files, stat-dirty, so Git in
+    // the submodule would clean them through the filter.
+    let hostile = scratch.base.join("hostile-worktree");
+    copy_tree(&root.join("sub"), &hostile);
+    let bytes = fs::read(hostile.join("a.txt")).unwrap();
+    fs::write(hostile.join("a.txt"), bytes).unwrap();
+    let submodule = root.join(".git").join("modules").join("sub");
+    let submodule_config = config_operand(&submodule);
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &submodule_config,
+            "filter.sentinel.clean",
+            &filter,
+        ],
+    );
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &submodule_config,
+            "core.worktree",
+            &plain(&hostile).replace('\\', "/"),
+        ],
+    );
+    (root, sentinel)
+}
+
+/// Runs Sage's Git with a trace2 target and returns its events.
+fn traced_git(root: &Path, args: &[&str], trace: &Path) -> (AppResult<GitOutput>, String) {
+    let _ = fs::remove_file(trace);
+    let result = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(super::super::run(
+            root,
+            args,
+            64 * 1024,
+            GitProcessPolicy::read(git_budget::READ).with_trace2_event(PathBuf::from(plain(trace))),
+        ));
+    (result, fs::read_to_string(trace).unwrap_or_default())
+}
+
+/// Whether any Git process opened `repository` as its own repository: its
+/// `def_repo` event (repository 1) names that work tree, or a process was
+/// started to fetch a submodule.
+fn git_opened(events: &str, repository: &str) -> bool {
+    events.lines().any(|event| {
+        (event.contains(r#""event":"def_repo""#)
+            && event.contains(r#""repo":1,"#)
+            && event.contains(repository))
+            || event.contains("--submodule-prefix")
+    })
+}
+
+/// `path` without a verbatim `\\?\` prefix, which Git for Windows rejects in
+/// operands and trace targets.
+fn plain(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
+}
+
+/// Status, diff and fetch work in a repository whose submodule config would
+/// run a filter (through a hostile `core.worktree`) as soon as Git ran in
+/// the submodule, and no Git process ever opens the submodule.
 #[test]
-fn a_submodule_asking_for_parallel_fetches_is_held_to_one() {
+fn status_diff_and_fetch_never_run_git_in_a_submodule() {
     let scratch = Scratch::new();
-    let root = submodule_fixture(&scratch);
-    git(&root.join("sub"), &["config", "submodule.fetchJobs", "32"]);
-    git(&root, &["config", "fetch.parallel", "32"]);
-    assert!(
-        sage_git(&root, &["status", "--porcelain"])
-            .unwrap()
-            .succeeded()
-    );
-    let overrides = tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(admit(&root, None))
-        .unwrap()
-        .expect("the repository is admitted")
-        .parallel_overrides()
-        .collect::<Vec<_>>();
-    assert_eq!(
-        overrides,
-        [
-            "checkout.workers=1",
-            "fetch.parallel=1",
-            "submodule.fetchJobs=1"
-        ]
-    );
+    let (root, sentinel) = isolation_fixture(&scratch);
+    touch_submodule_file(&root);
+    let trace = scratch.base.join("trace2.json");
+    for args in [
+        &["status", "--porcelain=v2", "-z", "--untracked-files=all"][..],
+        &["diff"][..],
+        &["fetch", "-q", "origin"][..],
+    ] {
+        let (result, events) = traced_git(&root, args, &trace);
+        assert!(result.unwrap().succeeded(), "{args:?}");
+        assert!(
+            events.contains(r#""event":"def_repo""#),
+            "trace2 is not live"
+        );
+        assert!(
+            !git_opened(&events, r#"/sub""#),
+            "{args:?} ran Git in the submodule"
+        );
+        assert!(
+            !git_opened(&events, "/modules/sub"),
+            "{args:?} opened its git dir"
+        );
+    }
+    assert!(!sentinel.exists(), "the submodule's filter ran");
+    assert!(!root.join(".git/modules/sub/FETCH_HEAD").exists());
+
+    // Control: plain Git, honouring the same config, runs it in the submodule.
+    git(&root, &["status", "--porcelain"]);
+    assert!(sentinel.exists(), "the submodule's filter is not live");
+}
+
+/// With the checkout gone but its git dir retained under `.git/modules`, a
+/// recursive fetch would still open that git dir. Sage's never does.
+#[test]
+fn a_retained_submodule_git_dir_without_a_checkout_is_never_opened() {
+    let scratch = Scratch::new();
+    let (root, sentinel) = isolation_fixture(&scratch);
+    fs::remove_dir_all(root.join("sub")).unwrap();
+    let trace = scratch.base.join("trace2.json");
+    for args in [
+        &["fetch", "-q", "origin"][..],
+        &["status", "--porcelain=v2", "-z"][..],
+    ] {
+        let (result, events) = traced_git(&root, args, &trace);
+        assert!(result.unwrap().succeeded(), "{args:?}");
+        assert!(
+            !git_opened(&events, "/modules/sub"),
+            "{args:?} opened its git dir"
+        );
+    }
+    assert!(!root.join(".git/modules/sub/FETCH_HEAD").exists());
+    assert!(!sentinel.exists());
 }
