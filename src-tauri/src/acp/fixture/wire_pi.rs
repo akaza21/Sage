@@ -67,16 +67,17 @@ pub(super) fn await_request(
                 Err(FixtureError::InvalidArguments)
             };
         }
-        let config = matches!(
+        let session_request = matches!(
             command,
             "get_state"
                 | "get_available_models"
                 | "get_available_thinking_levels"
+                | "get_commands"
                 | "set_model"
                 | "set_thinking_level"
         );
         if command != expected
-            && !(config
+            && !(session_request
                 && matches!(
                     expected,
                     "prompt" | "abort" | "idle" | "get_available_thinking_levels"
@@ -128,6 +129,7 @@ fn response_data(
             json!({"models":[model("fixture-model"),model("fixture-model-two")]})
         }
         "get_available_thinking_levels" => json!({"levels":["off","low","medium","high"]}),
+        "get_commands" => json!({"commands":[]}),
         "set_model" => {
             if request["provider"] != "openai" {
                 return Err(FixtureError::InvalidArguments);

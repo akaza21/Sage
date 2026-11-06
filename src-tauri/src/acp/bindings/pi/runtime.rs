@@ -375,7 +375,9 @@ impl HarnessAdapter for PiRuntime {
                 if reservation.phase != DeliveryPhase::Queued
                     && !matches!(
                         reservation.kind,
-                        RequestKind::SetModel | RequestKind::SetThinkingLevel
+                        RequestKind::SetModel
+                            | RequestKind::SetThinkingLevel
+                            | RequestKind::Commands
                     )
                 {
                     return Err(AdapterRuntimeError::EgressIntent);

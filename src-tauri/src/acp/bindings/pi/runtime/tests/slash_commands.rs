@@ -1,4 +1,56 @@
 use super::*;
+
+#[test]
+fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
+    use crate::acp::limits::LIMITS;
+
+    let mut runtime = fixture_runtime(1);
+    ready(&mut runtime);
+    for turn in 0..=LIMITS.queues.outstanding_rpc_per_session {
+        let egress = runtime
+            .discover_commands()
+            .unwrap()
+            .expect("idle discovery must remain available");
+        let query = request(&egress);
+        runtime
+            .resolve_egress(egress.into_token(), EgressResolution::Written)
+            .expect("idle discovery writes directly to the transport");
+        assert_eq!(query["type"], "get_commands");
+        runtime
+            .ingest(
+                &response(
+                    &query,
+                    json!({"commands":[{"name":"review","source":"extension"}]}),
+                ),
+                &Mapper,
+            )
+            .unwrap();
+        let catalog = runtime.available_commands().snapshot();
+        assert_eq!(catalog.revision, turn + 1);
+        catalog.validate(catalog.revision, "/review").unwrap();
+        let mut prompt = Prompt::new("prompt", "/review").unwrap();
+        prompt.command_revision = Some(catalog.revision);
+        let send = runtime
+            .command(AdapterCommand::Prompt {
+                prompt,
+                client_message_id: RequiredText::new("client", format!("review-{turn}")).unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
+            .expect("discovery must not exhaust prompt capacity");
+        let send = deliver(&mut runtime, send);
+        let batch = runtime
+            .ingest(&response(&send, Value::Null), &Mapper)
+            .unwrap();
+        assert!(batch.events().iter().any(|event| matches!(
+            event,
+            AdapterEvent::Turn {
+                state: crate::acp::lifecycle::TurnState::Completed,
+                ..
+            }
+        )));
+    }
+}
+
 #[test]
 fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
     let mut runtime = PiRuntime::fixture(
