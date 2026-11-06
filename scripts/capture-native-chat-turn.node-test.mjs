@@ -716,7 +716,7 @@ test("every acceptance-matrix pair preserves capability admission at reachable w
   }
 });
 
-test("context-meter is admitted at 480, where the toolbar fit keeps its meter", () => {
+test("context-meter is admitted at every capture width; the rendered fit decides the meter", () => {
   const args = (width) => [
     "--harness",
     "codex",
