@@ -35,8 +35,15 @@ const ABSOLUTE_PATHS = [
   ],
   // Drive paths: C:\..., c:/....
   [new RegExp(String.raw`(?<![\w/\\])[A-Za-z]:[\\/]${REST}`, "gu"), "<path>"],
-  // POSIX paths of at least two segments, so "/" and "and/or" stay.
-  [new RegExp(String.raw`${BOUNDARY}/[^\s/"\x60]+/${REST}`, "gmu"), "$1<path>"],
+  // POSIX paths of at least two segments, so "/" and "and/or" stay. A
+  // segment, the first included, can hold spaces.
+  [
+    new RegExp(
+      String.raw`${BOUNDARY}/[^/\r\n"\x60]*[^\s/"\x60][^/\r\n"\x60]*/${REST}`,
+      "gmu",
+    ),
+    "$1<path>",
+  ],
 ];
 
 /**
@@ -56,4 +63,21 @@ export function createDiagnosticSanitizer(roots) {
       clean = clean.replace(pattern, replacement);
     return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
   };
+}
+
+/**
+ * The redacted end of an output tail, at most limit characters of whole
+ * lines. Text is redacted before it is cut, so a cut never strips a path's
+ * absolute prefix. A leading line that was cut, here or by whoever kept the
+ * tail (partial), is dropped.
+ */
+export function redactedTail(sanitize, text, limit, { partial = false } = {}) {
+  const clean = sanitize(text, Number.POSITIVE_INFINITY);
+  const cut = clean.length > limit;
+  let tail = cut ? clean.slice(-limit) : clean;
+  if (cut || partial) {
+    const lineEnd = tail.indexOf("\n");
+    tail = lineEnd === -1 ? "" : tail.slice(lineEnd + 1);
+  }
+  return tail.trim();
 }

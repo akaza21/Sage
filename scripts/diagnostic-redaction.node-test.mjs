@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDiagnosticSanitizer } from "./lib/diagnostic-redaction.mjs";
+import {
+  createDiagnosticSanitizer,
+  redactedTail,
+} from "./lib/diagnostic-redaction.mjs";
 
 const sanitize = createDiagnosticSanitizer([
   ["/home/dev/Sage", "<repo>"],
@@ -36,6 +39,8 @@ const CASES = [
     'open "<path>" failed',
   ],
   ["error at (/Users/some one/work/file.js:1:2)", "error at (<path>"],
+  ["/Private Work/Secret Client/config.json", "<path>"],
+  ["read / Private/config.json", "read <path>"],
   // Vite /@fs/ URLs name an absolute path after the prefix.
   [
     "http://127.0.0.1:1431/@fs/C:/External Work/x.js?v=1",
@@ -68,5 +73,28 @@ test("bounds the text after redaction", () => {
   assert.equal(
     sanitize(`${"y".repeat(8)} C:\\Secret Folder\\a`, 9),
     `${"y".repeat(8)} …`,
+  );
+});
+
+test("a tail is redacted before it is cut, and keeps whole lines only", () => {
+  const output = `ready\nfailed to load C:\\Secret Client\\config.json\nlast line`;
+  // The cut falls inside the path; redacting first leaves no fragment.
+  assert.equal(redactedTail(sanitize, output, 22), "last line");
+  assert.equal(
+    redactedTail(sanitize, output, 1_000),
+    "ready\nfailed to load <path>\nlast line",
+  );
+});
+
+test("a tail cut by its keeper drops its partial first line", () => {
+  assert.equal(
+    redactedTail(sanitize, "Client\\config.json\nnext", 1_000, {
+      partial: true,
+    }),
+    "next",
+  );
+  assert.equal(
+    redactedTail(sanitize, "Client\\config.json", 1_000, { partial: true }),
+    "",
   );
 });

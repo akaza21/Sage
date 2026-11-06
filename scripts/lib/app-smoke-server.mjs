@@ -28,12 +28,15 @@ function within(promise, timeoutMs) {
 }
 
 function captureOutput(child) {
-  const output = { text: "" };
+  // truncated: the tail no longer starts at the output's first character.
+  const output = { text: "", truncated: false };
   for (const stream of [child.stdout, child.stderr]) {
     if (!stream) continue;
     stream.setEncoding("utf8");
     stream.on("data", (chunk) => {
-      output.text = (output.text + chunk).slice(-OUTPUT_TAIL_LIMIT);
+      const text = output.text + chunk;
+      if (text.length > OUTPUT_TAIL_LIMIT) output.truncated = true;
+      output.text = text.slice(-OUTPUT_TAIL_LIMIT);
     });
   }
   return output;

@@ -41,7 +41,10 @@ import { runCaptureActions } from "./capture-native-chat-drive.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
 import { resolveUiPort } from "./lib/ui-test-port.mjs";
-import { createDiagnosticSanitizer } from "./lib/diagnostic-redaction.mjs";
+import {
+  createDiagnosticSanitizer,
+  redactedTail,
+} from "./lib/diagnostic-redaction.mjs";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -200,7 +203,12 @@ function recordBoot(page) {
         page.off(name, listener);
     },
     report: (headline) => {
-      const server = lane.server.output?.text.trim();
+      const output = lane.server.output;
+      const server =
+        output &&
+        redactedTail(sanitize, output.text, BOOT_SERVER_LIMIT, {
+          partial: output.truncated,
+        });
       return [
         headline,
         ...events,
@@ -211,11 +219,7 @@ function recordBoot(page) {
         ...(unfinished > pending.size
           ? [`${unfinished - pending.size} more requests still loading`]
           : []),
-        ...(server
-          ? [
-              `dev server output:\n${sanitize(server.slice(-BOOT_SERVER_LIMIT), BOOT_SERVER_LIMIT)}`,
-            ]
-          : []),
+        ...(server ? [`dev server output:\n${server}`] : []),
       ].join("\n");
     },
   };
@@ -242,17 +246,21 @@ async function bootWorkbench(page) {
   const workbench = page.locator("main.workbench");
   const failure = page.locator(BOOT_FAILURE).first();
   try {
-    try {
-      await page.goto(lane.url);
-      await workbench.or(failure).first().waitFor();
-    } catch (error) {
+    const stopped = await page
+      .goto(lane.url)
+      .then(() => workbench.or(failure).first().waitFor())
+      .then(
+        () => null,
+        (error) => error,
+      );
+    // Only the sanitized first line of a browser error is reported: its full
+    // message carries browser call logs, so it is not attached as a cause.
+    if (stopped)
       throw new Error(
         boot.report(
-          `the Workbench did not boot (${sanitize(error.message.split("\n")[0], BOOT_TEXT_LIMIT)}); the page shows ${await shownText(page.locator("body"))}`,
+          `the Workbench did not boot (${sanitize(String(stopped.message).split("\n")[0], BOOT_TEXT_LIMIT)}); the page shows ${await shownText(page.locator("body"))}`,
         ),
-        { cause: error },
       );
-    }
     if (await workbench.count()) return;
     throw new Error(
       boot.report(`the Workbench booted to ${await shownText(failure)}`),
