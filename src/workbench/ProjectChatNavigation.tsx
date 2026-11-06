@@ -312,7 +312,10 @@ export function ProjectChatNavigation({
                 }}
                 onMarkUnread={() => {
                   markAgentRailUnread(tab.id);
-                  markChatUnread(tab.id);
+                  // A refused request leaves the chat read in the store.
+                  void markChatUnread(tab.id).then((stored) => {
+                    if (!stored) clearAgentRailUnread(tab.id);
+                  });
                 }}
                 onArchive={archive}
                 triggerRef={(node) => {
