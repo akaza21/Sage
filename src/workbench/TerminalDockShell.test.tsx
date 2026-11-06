@@ -156,11 +156,16 @@ it("creates a second tab, switches sessions, and closes only the selected tab", 
   expect(
     await screen.findByText(`Active session ${session(1).sessionId}`),
   ).toBeInTheDocument();
+  // A lone tab is named after its shell; numbers only tell tabs apart.
+  expect(screen.getByRole("tab")).toHaveTextContent(/^cmd\.exe$/);
   fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
   expect(
     await screen.findByText(`Active session ${session(2).sessionId}`),
   ).toBeInTheDocument();
-  expect(screen.getAllByRole("tab")).toHaveLength(2);
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "cmd.exe 1",
+    "cmd.exe 2",
+  ]);
   fireEvent.click(screen.getAllByRole("tab")[0]);
   expect(
     screen.getByText(`Active session ${session(1).sessionId}`),

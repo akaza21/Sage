@@ -61,6 +61,9 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   const [dispositionError, setDispositionError] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   if (summary.changes.length === 0) return null;
+  // A single-root project names its root nowhere else in the row, so only
+  // a multi-root project repeats it on each changed file.
+  const multiRoot = Object.keys(rootLabels).length > 1;
   const summaryIncomplete =
     countIncomplete ||
     summary.omittedCount > 0 ||
@@ -193,7 +196,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
             const chip = admitted ? (
               <ChatFileChip
                 path={resource.relativePath}
-                rootLabel={rootName}
+                rootLabel={multiRoot ? rootName : null}
                 additions={change.additions}
                 deletions={change.deletions}
               />

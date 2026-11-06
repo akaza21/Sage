@@ -294,7 +294,8 @@ export function TerminalDockShell({
               >
                 <TerminalSquare size={14} />
                 <span>
-                  {session.shellPath.split(/[\\/]/u).at(-1)} {index + 1}
+                  {session.shellPath.split(/[\\/]/u).at(-1)}
+                  {entries.length > 1 ? ` ${index + 1}` : null}
                 </span>
               </button>
               <IconButton
