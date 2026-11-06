@@ -214,6 +214,14 @@ export function waitForGuardianAuthority(
 ) {
   const { child } = guardian;
   const startup = observeGuardianStartup(child, diagnostics);
+  const recordStartup = diagnostics.recordStartup ?? recordGuardianStartup;
+  // The journal is written only after the guardian is settled, and nothing
+  // waits on it: a stalled disk must not delay the kill or the teardown.
+  const journal = (snapshot, outcome) => {
+    Promise.resolve()
+      .then(() => recordStartup(snapshot, outcome))
+      .catch(() => {});
+  };
   return new Promise((resolve, reject) => {
     let stdout = Buffer.alloc(0);
     let stderrBytes = 0;
@@ -228,9 +236,9 @@ export function waitForGuardianAuthority(
     };
     const timer = setTimeout(() => {
       const error = startup.timeoutError();
-      recordGuardianStartup(error.diagnostic, "timeout");
       fail(error);
       error.diagnosticReady = startup.collectCpu(error, powerShell);
+      journal(error.diagnostic, "timeout");
     }, startupTimeoutMs);
     child.stdout.on("data", (chunk) => {
       if (settled) return;
@@ -253,8 +261,8 @@ export function waitForGuardianAuthority(
         }
         settled = true;
         clearTimeout(timer);
-        recordGuardianStartup(startup.snapshot(), "ready");
         resolve({ ...guardian, root: path.resolve(outputDirectory) });
+        journal(startup.snapshot(), "ready");
       } catch (error) {
         fail(error);
       }

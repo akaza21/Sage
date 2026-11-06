@@ -1,4 +1,5 @@
-import { appendFileSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { appendFile, stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { guardianPhases } from "./beta0001-installed-smoke-output-diagnostics.mjs";
 
@@ -14,14 +15,34 @@ function observedMs(phase) {
     : null;
 }
 
-// Records fixed labels and numbers only, never paths or child output. A
-// journal that is unset, full or unwritable never affects the guardian.
+// Appends run one at a time, so the size check before each one holds the cap.
+let pending = Promise.resolve();
+
+async function appendWithinCap(journal, line) {
+  let size = 0;
+  try {
+    size = (await stat(journal)).size;
+  } catch {
+    /* A missing journal starts empty. */
+  }
+  if (size + Buffer.byteLength(line) > GUARDIAN_JOURNAL_MAXIMUM_BYTES) {
+    return false;
+  }
+  await appendFile(journal, line);
+  return true;
+}
+
+// Records fixed labels and numbers only, never paths or child output. The
+// write is asynchronous and the promise never rejects: callers settle the
+// guardian first and never wait on this, because the journal exists to
+// diagnose a stalled disk. An unset, full or unwritable journal records
+// nothing.
 export function recordGuardianStartup(
   snapshot,
   outcome,
   journal = process.env[GUARDIAN_JOURNAL_ENVIRONMENT],
 ) {
-  if (!journal || !outcomes.has(outcome)) return false;
+  if (!journal || !outcomes.has(outcome)) return Promise.resolve(false);
   const record = {
     outcome,
     elapsedMs: snapshot.elapsedMs,
@@ -33,21 +54,11 @@ export function recordGuardianStartup(
     ),
   };
   const line = `${JSON.stringify(record)}\n`;
-  try {
-    let size = 0;
-    try {
-      size = statSync(journal).size;
-    } catch {
-      /* A missing journal starts empty. */
-    }
-    if (size + Buffer.byteLength(line) > GUARDIAN_JOURNAL_MAXIMUM_BYTES) {
-      return false;
-    }
-    appendFileSync(journal, line);
-    return true;
-  } catch {
-    return false;
-  }
+  const written = pending.then(() =>
+    appendWithinCap(journal, line).catch(() => false),
+  );
+  pending = written;
+  return written;
 }
 
 // One line: how many guardians started, and the slowest time each startup

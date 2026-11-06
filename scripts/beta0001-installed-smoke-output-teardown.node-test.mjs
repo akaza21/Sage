@@ -386,12 +386,12 @@ function phaseSnapshot(observed, elapsedMs) {
   return { elapsedMs, phases, stderr: { bytes: 99 }, child: { pid: 7 } };
 }
 
-test("the guardian journal records only outcome and phase times, and summarizes the slowest steps", () => {
+test("the guardian journal records only outcome and phase times, and summarizes the slowest steps", async () => {
   const temp = mkdtempSync(path.join(os.tmpdir(), "sage-guardian-journal-"));
   try {
     const journal = path.join(temp, "journal.jsonl");
     assert.equal(
-      recordGuardianStartup(
+      await recordGuardianStartup(
         phaseSnapshot({ "script-start": 600 }, 10),
         "ready",
         "",
@@ -399,7 +399,7 @@ test("the guardian journal records only outcome and phase times, and summarizes 
       false,
     );
     assert.equal(
-      recordGuardianStartup(
+      await recordGuardianStartup(
         phaseSnapshot({ "script-start": 600 }, 10),
         "unknown",
         journal,
@@ -407,7 +407,7 @@ test("the guardian journal records only outcome and phase times, and summarizes 
       false,
     );
     assert.equal(
-      recordGuardianStartup(
+      await recordGuardianStartup(
         phaseSnapshot(
           {
             "script-start": 600,
@@ -427,7 +427,7 @@ test("the guardian journal records only outcome and phase times, and summarizes 
       true,
     );
     assert.equal(
-      recordGuardianStartup(
+      await recordGuardianStartup(
         phaseSnapshot({ "script-start": 614, "identity-start": 5579 }, 10001),
         "timeout",
         journal,
@@ -465,7 +465,7 @@ test("the guardian journal records only outcome and phase times, and summarizes 
   }
 });
 
-test("the guardian journal stops appending at its byte cap", () => {
+test("the guardian journal stops appending at its byte cap", async () => {
   const temp = mkdtempSync(
     path.join(os.tmpdir(), "sage-guardian-journal-cap-"),
   );
@@ -473,7 +473,7 @@ test("the guardian journal stops appending at its byte cap", () => {
     const journal = path.join(temp, "journal.jsonl");
     writeFileSync(journal, "x".repeat(GUARDIAN_JOURNAL_MAXIMUM_BYTES - 10));
     assert.equal(
-      recordGuardianStartup(
+      await recordGuardianStartup(
         phaseSnapshot({ "script-start": 600 }, 10),
         "ready",
         journal,
@@ -486,5 +486,42 @@ test("the guardian journal stops appending at its byte cap", () => {
     );
   } finally {
     rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a journal write that never settles cannot delay killing or settling a timed-out guardian", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const guardian = guardianFor(child);
+  const journalled = [];
+  const waiting = waitForGuardianAuthority(
+    guardian,
+    path.resolve("unused-output"),
+    undefined,
+    {
+      sampleCpu: async () => ({ status: "unavailable" }),
+      recordStartup: (snapshot, outcome) => {
+        journalled.push(outcome);
+        return new Promise(() => {});
+      },
+    },
+  );
+  waiting.catch(() => {});
+  try {
+    await once(child, "spawn");
+    mock.timers.tick(10_000);
+    assert.equal(child.killed, true, "the kill must not wait on the journal");
+    assert.deepEqual(journalled, [], "the journal is written after the kill");
+    await assert.rejects(
+      waiting,
+      /^Error: installed-smoke-output-authority-timeout /u,
+    );
+    assert.ok(child.exitCode !== null || child.signalCode !== null);
+    assert.deepEqual(journalled, ["timeout"]);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await guardian.closed;
   }
 });
