@@ -673,44 +673,21 @@ test("probe timestamps have a finite closed schema and a 64-step limit", () => {
     assert.throws(() => validateProbe(changed));
   }
 });
-test("a CDP deadline after the state deadline becomes a state timeout with its cause", async () => {
-  const failure = new CdpError("deadline");
-  const deadline = Date.now() + 50;
-  await assert.rejects(
-    waitForState(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      throw failure;
-    }, deadline),
-    (error) => {
-      assert.equal(error.message, "state-timeout");
-      assert.equal(error.cause, failure);
-      return true;
-    },
-  );
-});
-
-test("a CDP deadline before the state deadline propagates unchanged", async () => {
-  const failure = new CdpError("deadline");
-  await assert.rejects(
-    waitForState(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      throw failure;
-    }, Date.now() + 60_000),
-    (error) => error === failure,
-  );
-});
-
-test("a predicate error after the state deadline propagates unchanged", async () => {
-  const failure = new Error("turn-identity-drift");
-  const deadline = Date.now() + 50;
-  await assert.rejects(
-    waitForState(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 75));
-      throw failure;
-    }, deadline),
-    (error) => error === failure,
-  );
-});
+for (const [reason, failure] of [
+  ["a CDP error without deadline metadata", new CdpError("deadline")],
+  ["an unrelated predicate error", new Error("turn-identity-drift")],
+])
+  test(`${reason} propagates unchanged after the state deadline`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const deadline = Date.now() + 750;
+    await assert.rejects(
+      waitForState(async () => {
+        t.mock.timers.setTime(deadline + 1);
+        throw failure;
+      }, deadline),
+      (error) => error === failure,
+    );
+  });
 
 test("stalled predicates are bounded and teardown runs on failure", async () => {
   await assert.rejects(

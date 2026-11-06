@@ -362,9 +362,12 @@ export async function waitForState(predicate, deadline) {
     try {
       if (await predicate()) return;
     } catch (error) {
-      // Predicates can pass this state's deadline down to CDP. Expiry then
-      // belongs to this wait; an earlier CDP timeout remains a CDP failure.
-      if (error?.message === "journey-cdp-deadline" && Date.now() >= deadline)
+      // Classify by the bound CDP enforced, not by when its failure arrived.
+      if (
+        error?.message === "journey-cdp-deadline" &&
+        Number.isSafeInteger(error.deadline) &&
+        error.deadline <= deadline
+      )
         throw new Error("state-timeout", { cause: error });
       throw error;
     }
