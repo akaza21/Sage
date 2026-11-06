@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, type RefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type RefObject,
+} from "react";
 import { Brain, ChevronDown, Sparkles } from "../../ui/leanIcons";
 import {
   type AcpConfigOption,
@@ -68,6 +76,16 @@ export function ComposerModelControls({
   // The model is always a picker, so it reads as one control in every chat;
   // with a single advertised model its menu shows that model as selected.
   const available = !disabled && !pending && count > 0;
+  // Callers pass a fresh handler on every render; a stable one lets the menu's
+  // memoised options skip re-rendering on each focus or selection change.
+  const latestSelect = useRef(onSelectModel);
+  useLayoutEffect(() => {
+    latestSelect.current = onSelectModel;
+  });
+  const selectModel = useCallback(
+    (modelId: string) => latestSelect.current(modelId),
+    [],
+  );
   const hasEffortControl = !!selectedConfigChoice(effortOption);
   const modelDescription =
     modelLabel === "Model"
@@ -176,7 +194,7 @@ export function ComposerModelControls({
             selectedId={selectedId}
             disabled={disabled || pending}
             onDismiss={onDismiss}
-            onSelect={onSelectModel}
+            onSelect={selectModel}
           />
         </Suspense>
       ) : null}

@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { useAgentChangesPane } from "./useAgentChangesPane";
+import { useAgentChangesPane, useChangesOnExpand } from "./useAgentChangesPane";
 import { useAgentChangesState } from "./agentChangesState";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 
@@ -30,4 +30,38 @@ it("scopes the Changes tab to its Chat, session and project lifetime", () => {
   expect(result.current.open).toBe(false);
   rerender({ generation: 2, chatId: "chat" });
   expect(result.current.open).toBe(false);
+});
+
+it("opens Changes once the owner loads after the pane expands", () => {
+  const owner = {
+    projectId: "project",
+    chatId: "chat",
+    sessionId: "session",
+  } as AgentArtifactOwner;
+  const { rerender } = renderHook(
+    ({ expanded, current }) => useChangesOnExpand(expanded, true, current, 1),
+    {
+      initialProps: {
+        expanded: false,
+        current: null as AgentArtifactOwner | null,
+      },
+    },
+  );
+  rerender({ expanded: true, current: null });
+  expect(useAgentChangesState.getState().owner).toBeNull();
+  rerender({ expanded: true, current: owner });
+  expect(useAgentChangesState.getState()).toMatchObject({
+    owner,
+    selected: true,
+  });
+  // An explicit close sticks for the rest of this expansion.
+  act(() => useAgentChangesState.getState().close());
+  rerender({ expanded: true, current: { ...owner } });
+  expect(useAgentChangesState.getState().owner).toBeNull();
+  // Collapsing before the owner loads drops the request.
+  rerender({ expanded: false, current: null });
+  rerender({ expanded: true, current: null });
+  rerender({ expanded: false, current: null });
+  rerender({ expanded: false, current: owner });
+  expect(useAgentChangesState.getState().owner).toBeNull();
 });

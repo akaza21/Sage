@@ -25,6 +25,17 @@
   background: var(--color-canvas);
 }
 
+/* In Agent the dock is a card of its own, inset like the Chat card above
+   it. Editor's dock already sits inside the editor card. */
+.workbench--agent .terminal-dock {
+  --radius-terminal-dock: var(--workbench-card-radius);
+  margin: var(--workbench-card-margin);
+  margin-block-start: 0;
+  overflow: clip;
+  border: var(--border-width) solid var(--workbench-card-border);
+  border-radius: var(--radius-terminal-dock);
+}
+
 .terminal-dock--collapsed {
   height: auto;
   grid-template: "header" var(--terminal-dock-header-height) / minmax(0, 1fr);

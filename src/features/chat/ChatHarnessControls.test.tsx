@@ -22,6 +22,7 @@ import {
   getWorkbenchPorts,
   resetWorkbenchPortsForTests,
 } from "../../ports/workbenchRuntime";
+import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
 const noop = () => Promise.resolve();
@@ -1176,27 +1177,87 @@ describe("composer permission mode picker", () => {
     const onSelectModel = vi.fn();
     renderControls({ selectedHarnessId: "codex", onSelectModel });
     const trigger = screen.getByLabelText("Model", { exact: true });
+    // Each role query re-checks the visibility of all 200 options, so list
+    // them once and find a named option by its label within the list.
+    const option = (listbox: HTMLElement, name: string) => {
+      const found = within(listbox).getByText(name).closest('[role="option"]');
+      expect(found).toHaveAccessibleName(name);
+      expect(found).toBeVisible();
+      return found as HTMLElement;
+    };
     fireEvent.click(trigger);
-    await screen.findByRole("listbox", { name: "Select model" });
-    expect(screen.getAllByRole("option")).toHaveLength(200);
-    fireEvent.click(screen.getByRole("option", { name: "Default" }));
+    const listbox = await screen.findByRole("listbox", {
+      name: "Select model",
+    });
+    expect(within(listbox).getAllByRole("option")).toHaveLength(200);
+    fireEvent.click(option(listbox, "Default"));
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual-default");
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Default" }), {
-      key: "End",
+    const reopened = screen.getByRole("listbox", { name: "Select model" });
+    fireEvent.keyDown(option(reopened, "Default"), { key: "End" });
+    expect(option(reopened, "Advertised model 199")).toHaveFocus();
+    expect(within(reopened).queryByText("Advertised model 200")).toBeNull();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Showing first 200 models");
+    expect(reopened).not.toContainElement(status);
+  });
+
+  it("moves to the last model on End without re-rendering any model option", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: Array.from({ length: 40 }, (_, index) => ({
+        id: `model-${index + 1}`,
+        name: `Advertised model ${index + 1}`,
+      })),
     });
-    expect(
-      screen.getByRole("option", { name: "Advertised model 199" }),
-    ).toHaveFocus();
-    expect(
-      screen.queryByRole("option", { name: "Advertised model 200" }),
-    ).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Showing first 200 models",
-    );
-    expect(
-      screen.getByRole("listbox", { name: "Select model" }),
-    ).not.toContainElement(screen.getByRole("status"));
+    // Count renders of the production option through its memoised render
+    // function, so React's own memo bail-out decides what is counted.
+    const memoised = PickerOption as unknown as {
+      type: (props: object) => unknown;
+    };
+    const renders = vi.spyOn(memoised, "type");
+    try {
+      renderControls({ selectedHarnessId: "codex", onSelectModel: vi.fn() });
+      fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+      const listbox = await screen.findByRole("listbox", {
+        name: "Select model",
+      });
+      expect(renders).toHaveBeenCalledTimes(40);
+      renders.mockClear();
+      const first = within(listbox).getByText("Advertised model 1");
+      fireEvent.keyDown(first, { key: "End" });
+      expect(
+        within(listbox).getByText("Advertised model 40").closest("button"),
+      ).toHaveFocus();
+      expect(renders).not.toHaveBeenCalled();
+    } finally {
+      renders.mockRestore();
+    }
+  });
+
+  it("sends a model chosen from an open menu to the latest selection callback", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: [
+        { id: "actual", name: "Actual model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
+    });
+    const stale = vi.fn();
+    const latest = vi.fn();
+    const view = renderControls({
+      selectedHarnessId: "codex",
+      onSelectModel: stale,
+    });
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+    await screen.findByRole("listbox", { name: "Select model" });
+    view.rerenderControls({
+      selectedHarnessId: "codex",
+      onSelectModel: latest,
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Alternative model" }));
+    expect(stale).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledExactlyOnceWith("alternative");
   });
 
   it("dismisses the model list on Tab and preserves its restored trigger focus", async () => {

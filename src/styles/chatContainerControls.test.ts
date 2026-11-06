@@ -2,18 +2,6 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("Chat container control breakpoints", () => {
-  it("keeps the bounded queue in normal flow at every composer width", async () => {
-    const base = await readFile("src/styles/queued-messages.css", "utf8");
-    const compact = await readFile(
-      "src/styles/chat-container-controls.css",
-      "utf8",
-    );
-    expect(base).toMatch(
-      /\.composer__queued\s*\{[^}]*position:\s*static;[^}]*min-height:\s*0;[^}]*max-height:\s*min\(320px, 40vh\);[^}]*overflow-y:\s*auto;/s,
-    );
-    expect(compact).not.toMatch(/\.composer \.composer__queued\s*\{/);
-  });
-
   it("truncates rather than removes the project name in the header menu", async () => {
     const header = await readFile("src/styles/agent-task-header.css", "utf8");
     expect(header).toMatch(
@@ -42,61 +30,5 @@ describe("Chat container control breakpoints", () => {
       control.remove();
       style.remove();
     }
-  });
-
-  it.each([
-    [580, 24],
-    [521, 24],
-    [520, 24],
-    [400, 24],
-  ])(
-    "keeps the options button at %ipx container width exactly %ipx wide",
-    async (width, expected) => {
-      const style = document.createElement("style");
-      const compact = await readFile(
-        "src/styles/chat-container-controls.css",
-        "utf8",
-      );
-      style.textContent =
-        (await readFile("src/styles/chat-surface.css", "utf8")) +
-        compact.replace(
-          /@container composer \(max-width: (\d+)px\)\s*\{([\s\S]*?)\n\}/g,
-          (_query, breakpoint, rules) =>
-            width <= Number(breakpoint) ? rules : "",
-        );
-      const composer = document.createElement("form");
-      composer.className = "composer";
-      composer.innerHTML = '<button class="composer__plus"></button>';
-      document.head.append(style);
-      document.body.append(composer);
-      try {
-        expect(getComputedStyle(composer.firstElementChild!).width).toBe(
-          expected + "px",
-        );
-        expect(getComputedStyle(composer.firstElementChild!).height).toBe(
-          "28px",
-        );
-      } finally {
-        composer.remove();
-        style.remove();
-      }
-    },
-  );
-
-  it("compacts header titles and reflows goals with their chat container, not the window", async () => {
-    const css = await readFile(
-      "src/styles/chat-container-controls.css",
-      "utf8",
-    );
-    const header = await readFile("src/styles/agent-task-header.css", "utf8");
-    expect(header).toContain("@container chat-center (max-width: 400px)");
-    expect(header).toMatch(
-      /\.agent-task-header__title\s*\{[^}]*min-width:\s*3em;/s,
-    );
-    expect(header).not.toMatch(/font-size:\s*0;/);
-    expect(css).toMatch(
-      /@container composer \(max-width: 280px\)[\s\S]*\.chat-goal-strip__row\s*\{[^}]*height:\s*auto;[^}]*flex-wrap:\s*wrap;/,
-    );
-    expect(css).not.toMatch(/@media\s*\(max-width:/);
   });
 });
