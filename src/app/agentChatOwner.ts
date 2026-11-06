@@ -65,6 +65,11 @@ export function usePinnedAgentChatOwner(): string | null {
   );
 }
 
+/** The Agent body's retained focus, read outside React. */
+export function agentChatFocus(): string | null {
+  return useAgentChatOwnerStore.getState().agentFocusId;
+}
+
 /** Window chrome follows retained Agent focus while Settings sleeps the body. */
 export function useAgentChatFocus(): string | null {
   return useAgentChatOwnerStore((state) => state.agentFocusId);

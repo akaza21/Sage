@@ -206,9 +206,8 @@ export function ChatHarnessControls({
       Boolean(projectName),
       active !== null && active !== "options",
     );
-  // The options trigger appears once a control moves into its menu; that
-  // refits the row with the trigger in place, so the controls only return to
-  // the toolbar once they fit beside it.
+  // "+" is always the row's first control, as in Codex, so the toolbar keeps
+  // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
     imageAction ||
     onOpenGoal ||
@@ -233,20 +232,23 @@ export function ChatHarnessControls({
           }
         }}
       >
-        {hasActions || active === "options" ? (
-          <IconButton
-            ref={optionsTriggerRef}
-            className="composer__plus"
-            aria-label="Composer options"
-            aria-controls={optionsId}
-            aria-haspopup="menu"
-            aria-expanded={active === "options"}
-            disabled={turnBusy || projectTransitioning}
-            onClick={() => toggle("options")}
-          >
-            <Plus size={16} aria-hidden="true" />
-          </IconButton>
-        ) : null}
+        <IconButton
+          ref={optionsTriggerRef}
+          className="composer__plus"
+          aria-label="Composer options"
+          title={hasActions ? undefined : "No options for this harness"}
+          aria-controls={optionsId}
+          aria-haspopup="menu"
+          aria-expanded={active === "options"}
+          disabled={
+            turnBusy ||
+            projectTransitioning ||
+            (!hasActions && active !== "options")
+          }
+          onClick={() => toggle("options")}
+        >
+          <Plus size={16} aria-hidden="true" />
+        </IconButton>
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
@@ -270,6 +272,7 @@ export function ChatHarnessControls({
             candidates={harnessCandidates}
             popoverClassName="composer__popover composer__harness-menu"
             popoverGap={8}
+            popoverPlacement="above-start"
             triggerClassName="composer__control-trigger composer__picker-trigger"
             sectionLabel="Harnesses"
             searchable={false}
@@ -325,6 +328,7 @@ export function ChatHarnessControls({
           <ProjectScopeChip
             projectName={projectName}
             disabled={projectTransitioning || turnBusy}
+            popoverPlacement="above-end"
             open={active === "project"}
             onOpenChange={(open) => {
               if (open && active !== "project") toggle("project");

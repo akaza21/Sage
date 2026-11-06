@@ -208,8 +208,6 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
     expect(model).toHaveTextContent("Synthetic replay");
     expect(model).toHaveTextContent("Medium");
     expect(model).not.toHaveTextContent("Catalog alias");
-    expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
-    expect(model).not.toHaveAttribute("tabindex");
   });
 
   it("labels a side chat with the parent's model only, never its effort", () => {

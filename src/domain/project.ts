@@ -153,8 +153,23 @@ export interface CreateProjectRequest {
   sourceTokens: string[];
 }
 
-/** Matches the native project-name limit. */
+/** Matches the native limit on a name typed for a new project. */
 export const MAX_PROJECT_NAME_CHARS = 64;
+/**
+ * A project added from a folder takes the folder's name, which can be as long
+ * as a file-system name component (255 on every supported platform).
+ */
+export const MAX_PROJECT_LABEL_UNITS = 255;
+
+/**
+ * The name to show for a listed project. It is whole for every name the
+ * native layer can store; layouts shorten it with an ellipsis, not here.
+ */
+export function projectLabel(name: unknown): string {
+  return typeof name === "string" && name.length > 0
+    ? name.slice(0, MAX_PROJECT_LABEL_UNITS)
+    : "Project";
+}
 /** Matches the native per-project root limit. */
 export const MAX_PROJECT_SOURCE_FOLDERS = 8;
 

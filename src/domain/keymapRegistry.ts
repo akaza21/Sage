@@ -249,8 +249,9 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
   {
     id: "navigateBack",
     label: "Go back",
-    description: "Returns to the previous place in the editor.",
-    scope: "Editor",
+    description:
+      "Returns to the previous chat in Agent, or the previous place in the editor.",
+    scope: "Global",
     key: "arrowleft",
     ctrlOrMeta: "forbidden",
     shift: "forbidden",
@@ -267,7 +268,7 @@ export const KEYMAP_BINDINGS: readonly KeymapBinding[] = Object.freeze([
     id: "navigateForward",
     label: "Go forward",
     description: "Undoes a Go back.",
-    scope: "Editor",
+    scope: "Global",
     key: "arrowright",
     ctrlOrMeta: "forbidden",
     shift: "forbidden",

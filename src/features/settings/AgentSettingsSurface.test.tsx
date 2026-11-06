@@ -93,7 +93,7 @@ it("states each harness's install state once and puts the sign-in command before
   ).toBeVisible();
   expect(
     screen.getByText(
-      "Not installed. Install it, then refresh harness discovery in Settings.",
+      "Not installed. Install it, then choose Refresh discovery.",
     ),
   ).toBeVisible();
   expect(screen.queryByText(/missing login/)).toBeNull();
@@ -278,6 +278,47 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
     page: "Browser",
     browserTabId: "tab-a",
   });
+});
+
+it("returns focus to what opened it when Escape closes it (B-16)", () => {
+  const opener = document.createElement("button");
+  document.body.append(opener);
+  useAgentSettingsState.getState().close();
+  opener.focus();
+  // Opening hides the Agent workspace, and focus with it, before Settings
+  // mounts; only the open call still sees the opener.
+  useAgentSettingsState.getState().open("Chats");
+  opener.blur();
+  try {
+    const { rerender } = render(<AgentSettingsSurface />);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Chats" }), {
+      key: "Escape",
+    });
+    // The workbench unmounts Settings once no page is open.
+    rerender(<></>);
+    expect(opener).toHaveFocus();
+  } finally {
+    opener.remove();
+  }
+});
+
+it("moves between sections with the arrow keys, wrapping at either end", () => {
+  render(<AgentSettingsSurface />);
+  const appearance = screen.getByRole("button", { name: "Appearance" });
+  appearance.focus();
+  fireEvent.keyDown(appearance, { key: "ArrowDown" });
+  expect(screen.getByRole("button", { name: "Keybindings" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Keybindings" }), {
+    key: "ArrowUp",
+  });
+  expect(appearance).toHaveFocus();
+  fireEvent.keyDown(appearance, { key: "ArrowUp" });
+  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+    key: "ArrowDown",
+  });
+  expect(appearance).toHaveFocus();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {

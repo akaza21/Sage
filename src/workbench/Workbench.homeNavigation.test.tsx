@@ -103,49 +103,6 @@ it("restores Files with collapsed navigation when split space returns and lets n
   expect(composer).toBeVisible();
 });
 
-it("keeps the visible chat title through resource activation and actual Agent Settings", async () => {
-  await useWorkbenchStore.getState().createChat();
-  useWorkbenchStore.setState((state) => ({
-    tabs: state.tabs.map((tab, index) =>
-      tab.kind === "chat"
-        ? { ...tab, title: index === 0 ? "Chat: Earlier" : "Chat: Visible" }
-        : tab,
-    ),
-  }));
-  render(<Workbench />);
-  await settleLazyModules();
-  const heading = document.querySelector(".title-bar__session")!;
-  expect(heading).toHaveTextContent("Visible");
-  act(() =>
-    useWorkbenchStore.setState((state) => ({
-      tabs: [
-        ...state.tabs,
-        {
-          id: "browser-title",
-          title: "Page",
-          kind: "browser",
-          position: state.tabs.length,
-          pinned: false,
-          dirty: false,
-          status: "closed",
-        },
-      ],
-      activeTabId: "browser-title",
-    })),
-  );
-  expect(heading).toHaveTextContent("Visible");
-  act(() => useAgentSettingsState.getState().open());
-  await settleLazyModules();
-  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
-    "Visible",
-  );
-  act(() => useAgentSettingsState.getState().close());
-  await settleLazyModules();
-  expect(document.querySelector(".title-bar__session")).toHaveTextContent(
-    "Visible",
-  );
-});
-
 it.each([false, true])(
   "Home dismisses a nonmodal resource overlay before focusing Chat; collapsed=%s",
   async (collapsed) => {

@@ -114,12 +114,17 @@
 /* The model name takes the room the other controls leave and truncates no
    shorter than a readable prefix. Its base width is that prefix, capped at
    the whole name, and it never shrinks below it, so a name shorter than the
-   prefix needs no more room than before this step. */
-.composer [data-fit~="model-shrink"] > .composer__model-group {
+   prefix needs no more room than before this step. Once the model step
+   replaces the name with its icon, the trigger keeps the icon target. */
+.composer
+  [data-fit~="model-shrink"]:not([data-fit~="model"])
+  > .composer__model-group {
   flex: 1 1 0;
 }
 
-.composer [data-fit~="model-shrink"] .composer__model-trigger {
+.composer
+  [data-fit~="model-shrink"]:not([data-fit~="model"])
+  .composer__model-trigger {
   min-width: min-content;
   flex: 1 1 auto;
 }
@@ -147,7 +152,9 @@
   padding-inline: 4px;
 }
 
-.composer__toolbar:has([data-fit~="dense"]) .composer__context-slot {
+/* The context step frees the meter's column for the controls in the same
+   measurement pass; the meter itself unmounts once the step is settled. */
+.composer__toolbar:has([data-fit~="context"]) .composer__context-slot {
   display: none;
 }
 

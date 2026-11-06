@@ -73,11 +73,16 @@ export function AgentHarnessSettings() {
                     : phase === "checking"
                       ? "Checking sign-in..."
                       : "Sign-in status unknown.";
+          // This page has the refresh button the chat picker points to.
+          const reason =
+            harness.installState === "notInstalled"
+              ? "Install it, then choose Refresh discovery."
+              : availability.disabledReason;
           return (
             <div key={harness.id}>
               <SettingsRow
                 title={harness.name}
-                description={`${status}. ${availability.disabledReason ?? signIn}`}
+                description={`${status}. ${reason ?? signIn}`}
               >
                 <button
                   className="button button--compact"

@@ -815,3 +815,46 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
         (Some(9000), Some(5_000))
     );
 }
+
+#[test]
+fn project_list_keeps_its_order_when_another_project_opens() {
+    let folders = Folders::new();
+    let database = Database::open(Path::new(":memory:")).unwrap();
+    let names = ["first", "second", "third"];
+    for (created_at, name) in (1_i64..).zip(names) {
+        let project = database
+            .create_project_from_root(&folders.root(name))
+            .unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE projects SET created_at=?2 WHERE id=?1",
+                rusqlite::params![project.id, created_at],
+            )
+            .unwrap();
+    }
+    let listed_names = |database: &Database| -> Vec<String> {
+        database
+            .project_list()
+            .unwrap()
+            .into_iter()
+            .map(|item| item.name)
+            .collect()
+    };
+    assert_eq!(listed_names(&database), ["third", "second", "first"]);
+
+    let first = database
+        .project_list()
+        .unwrap()
+        .into_iter()
+        .find(|item| item.name == "first")
+        .unwrap();
+    database
+        .switch_project(&ProjectSwitchRequest {
+            target_project_id: first.id,
+            current_layout: layout(&database.bootstrap_snapshot().unwrap()),
+        })
+        .unwrap();
+
+    assert_eq!(listed_names(&database), ["third", "second", "first"]);
+}

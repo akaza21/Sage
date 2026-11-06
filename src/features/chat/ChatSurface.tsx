@@ -21,7 +21,7 @@ import {
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice } from "./lazyParts";
-import { isNewProjectChat, newProjectScopeName } from "./newProjectChat";
+import { isSideChatId } from "../../workbench/sideChatState";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
@@ -210,14 +210,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
   ]);
 
-  const newProjectChat = isNewProjectChat({
-    useNativeAcp,
-    page: acpPage,
-    project,
-    projectTransitioning,
-    ...acpHistory,
-    retentionIncomplete: acpRetentionIncomplete,
-  });
   return (
     <section
       ref={surfaceRef}
@@ -354,8 +346,10 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={newProjectChat ? null : project}
-        projectScopeName={newProjectScopeName(newProjectChat, acpPage, project)}
+        // The project chip keeps one place in the toolbar before and after
+        // the first turn. A side chat belongs to its parent's project and
+        // cannot switch it, so it has no chip.
+        project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         usage={usage}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
