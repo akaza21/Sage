@@ -50,15 +50,16 @@ beforeEach(() => {
   useSessionAccessModeStore.setState({ ready: true, modes: {}, error: null });
 });
 
-it("shows installation and sign-in evidence without treating an installed adapter as signed in", () => {
+it("shows installation and sign-in evidence without treating an installed adapter as signed in", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
-  expect(screen.getByText("Test harness")).toBeVisible();
+  // The Harnesses page loads on demand.
+  expect(await screen.findByText("Test harness")).toBeVisible();
   expect(screen.getByText(/Sign-in status is not exposed/)).toBeVisible();
   expect(screen.queryByText("Signed in")).toBeNull();
 });
 
-it("states each harness's install state once and puts the sign-in command before its follow-up step", () => {
+it("states each harness's install state once and puts the sign-in command before its follow-up step", async () => {
   const harness = useWorkbenchStore.getState().harnesses[0];
   useWorkbenchStore.setState({
     harnesses: [
@@ -81,7 +82,7 @@ it("states each harness's install state once and puts the sign-in command before
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   expect(
-    screen.getByText(
+    await screen.findByText(
       "Available · 0.9.0. Sign-in status is not exposed by this harness.",
     ),
   ).toBeVisible();

@@ -25,7 +25,6 @@ import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
-import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import {
   returnFocusToAgentSettingsOpener,
   useAgentSettingsState,
@@ -35,6 +34,11 @@ import {
 const loadBrowserSettings = () =>
   import("./AgentBrowserSettings").then(({ AgentBrowserSettings }) => ({
     default: AgentBrowserSettings,
+  }));
+
+const loadHarnessSettings = () =>
+  import("./AgentHarnessSettings").then(({ AgentHarnessSettings }) => ({
+    default: AgentHarnessSettings,
   }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
@@ -210,7 +214,13 @@ export function AgentSettingsSurface({
                   render={(KeyboardSettings) => <KeyboardSettings />}
                 />
               ) : null}
-              {page === "Harnesses" ? <AgentHarnessSettings /> : null}
+              {page === "Harnesses" ? (
+                <LazyModuleBoundary
+                  label="Harness settings"
+                  load={loadHarnessSettings}
+                  render={(AgentHarnessSettings) => <AgentHarnessSettings />}
+                />
+              ) : null}
               {page === "Chats" ? <AgentChatSettings /> : null}
               {page === "Browser" ? (
                 <LazyModuleBoundary
