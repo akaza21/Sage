@@ -121,7 +121,8 @@ export function AgentSettingsSurface({
   const [, setHarnessReady] = useState(Boolean(HarnessSettings));
   const [harnessFailed, setHarnessFailed] = useState(false);
   const [shownPage, setShownPage] = useState(page);
-  const deferred = useRef(false);
+  // The element that had focus when a deferred Harnesses page was asked for.
+  const deferredFrom = useRef<Element | null>(null);
   if (
     page !== shownPage &&
     (page !== "Harnesses" || HarnessSettings || harnessFailed)
@@ -129,7 +130,7 @@ export function AgentSettingsSurface({
     setShownPage(page);
   useEffect(() => {
     if (page !== "Harnesses" || HarnessSettings) return;
-    deferred.current = true;
+    deferredFrom.current = document.activeElement;
     let active = true;
     loadHarnessSettings().then(
       () => active && setHarnessReady(true),
@@ -140,11 +141,12 @@ export function AgentSettingsSurface({
     };
   }, [page]);
   useEffect(() => {
-    if (shownPage !== "Harnesses" || !deferred.current) return;
-    deferred.current = false;
-    // The section button had focus while the page loaded; move on to it.
-    const nav = surfaceRef.current?.querySelector(".agent-settings__nav");
-    if (!nav?.contains(document.activeElement)) return;
+    if (shownPage !== "Harnesses" || !deferredFrom.current) return;
+    const from = deferredFrom.current;
+    deferredFrom.current = null;
+    // Move into the page only if focus never left the section button that
+    // asked for it, so searching or moving on while it loads is kept.
+    if (document.activeElement !== from) return;
     pageRef.current
       ?.querySelector<HTMLElement>("button, input, select, textarea, a[href]")
       ?.focus();
