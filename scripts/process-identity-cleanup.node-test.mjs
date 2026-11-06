@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { OWNED_RUNTIME_CLEANUP_FUNCTIONS } from "./lib/owned-runtime-cleanup-functions.mjs";
 
 const powershell = path.join(
   process.env.SystemRoot ?? "C:\\Windows",
@@ -245,7 +246,7 @@ test("a Vite snapshot query failure leaves the live process untouched and blocks
   const observed = runPowerShellFixture(String.raw`
 $wrapper=Join-Path (Get-Location) 'scripts/run-source-functional-native-ide-journey.ps1';
 $tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseFile($wrapper,[ref]$tokens,[ref]$errors);
-foreach($name in @('Get-CleanupRootTuple','Resolve-CleanupFailureClass','Update-OwnedRuntimeTree','Write-RuntimeCleanupQuarantine','Stop-OwnedRuntimeTree','Publish-PendingJourneyReceipt')){
+foreach($name in @(${OWNED_RUNTIME_CLEANUP_FUNCTIONS.map((name) => `'${name}'`).join(",")})){
   $fn=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true);
   Invoke-Expression $fn.Extent.Text
 };
