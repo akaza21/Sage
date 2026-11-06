@@ -126,7 +126,7 @@ async function expectSingleHeaderRow(page: Page, width: number) {
       truncated: title.scrollWidth > title.clientWidth,
     };
   });
-  expect(geometry.height).toBe(44);
+  expect(geometry.height).toBe(48);
   expect(geometry.oneRow).toBe(true);
   expect(geometry.contained).toBe(true);
   expect(geometry.titleWidth).toBeGreaterThanOrEqual(24);
@@ -289,11 +289,11 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
 for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
   for (const width of [1888, 720, 480]) {
     test(`${harness} compact status variants at ${width}`, async ({ page }) => {
-      for (const [status, tone, harnessStatus] of [
-        ["Running", "working", "Live"],
-        ["Waiting for approval", "waiting", "Live"],
-        ["Failed", "failed", "Live"],
-        ["Queued", "working", "Sign in required"],
+      for (const [status, tone, harnessStatus, label] of [
+        ["Running", "working", "Live", "Working…"],
+        ["Waiting for approval", "waiting", "Live", "Awaiting approval"],
+        ["Failed", "failed", "Live", "Failed"],
+        ["Queued", "working", "Sign in required", "Working…"],
       ]) {
         await openChrome(
           page,
@@ -306,29 +306,37 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
         );
         await expectSingleHeaderRow(page, width);
         const indicator = page.getByRole("status", {
-          name: `Chat status: ${status}`,
+          name: `Chat status: ${label}`,
           exact: true,
         });
-        await expect(indicator).toHaveAttribute("title", status);
-        await expect(
-          page.getByLabel(`Harness status: ${harnessStatus}`, { exact: true }),
-        ).toHaveAttribute("title", harnessStatus);
-        await expect(
-          indicator.locator(".agent-chat-chip__spinner"),
-        ).toHaveCount(tone === "working" ? 1 : 0);
-        await indicator.focus();
-        await expect(indicator).toBeFocused();
-        if (tone === "waiting" || tone === "failed")
-          await expect(indicator.locator("svg")).toBeVisible();
+        await expect(indicator).toHaveAttribute("title", label);
+        await expect(indicator).toHaveText(label);
+        const announcementBounds = await indicator.boundingBox();
+        expect(announcementBounds!.width).toBeLessThanOrEqual(1);
+        expect(announcementBounds!.height).toBeLessThanOrEqual(1);
         const harnessIndicator = page.getByLabel(
           `Harness status: ${harnessStatus}`,
           { exact: true },
         );
-        await harnessIndicator.focus();
-        await page.keyboard.press("Enter");
-        await expect(
-          page.locator(".agent-task-header__harness-status > p"),
-        ).toHaveText(harnessStatus);
+        await page
+          .locator(".agent-task-header")
+          .getByRole("button", { name: /^Chat actions for / })
+          .focus();
+        await page.keyboard.press("Shift+Tab");
+        if (harnessStatus === "Live") {
+          await expect(harnessIndicator).toHaveCount(0);
+          await expect(indicator).not.toBeFocused();
+        } else {
+          await expect(harnessIndicator).toHaveAttribute(
+            "title",
+            harnessStatus,
+          );
+          await expect(harnessIndicator).toBeFocused();
+          await page.keyboard.press("Enter");
+          await expect(
+            page.locator(".agent-task-header__harness-status > p"),
+          ).toHaveText(harnessStatus);
+        }
         await expectNoOverflow(page);
       }
     });

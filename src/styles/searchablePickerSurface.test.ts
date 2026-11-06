@@ -5,6 +5,7 @@ it("shrinks the nested picker list into the bounded panel without shrinking its 
   const style = document.createElement("style");
   style.textContent =
     (await readFile("src/styles/shared-controls.css", "utf8")) +
+    (await readFile("src/styles/searchable-picker.css", "utf8")) +
     (await readFile(
       "src/styles/searchable-picker-bounded-popover.css",
       "utf8",

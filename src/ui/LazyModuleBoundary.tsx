@@ -1,5 +1,4 @@
 import {
-  Activity,
   Component,
   Suspense,
   useEffect,
@@ -38,7 +37,6 @@ class ModuleLoadErrorBoundary extends Component<
     children: ReactNode;
     label: string;
     onRetry: () => void;
-    resetKey: number;
   },
   { error: boolean }
 > {
@@ -46,12 +44,6 @@ class ModuleLoadErrorBoundary extends Component<
 
   static getDerivedStateFromError() {
     return { error: true };
-  }
-
-  componentDidUpdate(previousProps: Readonly<{ resetKey: number }>) {
-    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
-      this.setState({ error: false });
-    }
   }
 
   render() {
@@ -140,9 +132,9 @@ export function LazyModuleBoundary<Props extends object>({
   const [attempt, setAttempt] = useState(0);
   return (
     <ModuleLoadErrorBoundary
+      key={attempt}
       label={label}
       onRetry={() => setAttempt((value) => value + 1)}
-      resetKey={attempt}
     >
       <Suspense fallback={fallback}>
         <DeferredModuleSurface
@@ -155,18 +147,4 @@ export function LazyModuleBoundary<Props extends object>({
       </Suspense>
     </ModuleLoadErrorBoundary>
   );
-}
-
-/** Mounts children on their first visible render, then keeps them asleep under Activity while hidden. */
-export function RetainedActivity({
-  visible,
-  children,
-}: {
-  visible: boolean;
-  children: ReactNode;
-}) {
-  const [visited, setVisited] = useState(visible);
-  if (visible && !visited) setVisited(true);
-  if (!visited) return null;
-  return <Activity mode={visible ? "visible" : "hidden"}>{children}</Activity>;
 }

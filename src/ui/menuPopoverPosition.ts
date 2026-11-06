@@ -8,10 +8,12 @@ export const PopoverPlacementContext = createContext<{
 } | null>(null);
 
 /**
- * "below-end" aligns the menu's right edge with the trigger's; the "-start"
- * placements open from the trigger's left edge toward the right.
+ * The side names where the menu prefers to open (it flips when the other side
+ * has more room); "-end" aligns the menu's right edge with the trigger's and
+ * "-start" opens from the trigger's left edge toward the right.
  */
-export type MenuPlacement = "below-end" | "below-start" | "above-start";
+export type MenuPlacement =
+  "below-end" | "below-start" | "above-start" | "above-end";
 
 export function menuPopoverPosition(
   trigger: HTMLElement,
@@ -100,25 +102,17 @@ export function menuPopoverPosition(
   }
   const roomBelow = window.innerHeight - anchor.bottom - gap - GUTTER;
   const roomAbove = anchor.top - gap - GUTTER;
-  const aboveStart = placement === "above-start";
-  const placeAbove = aboveStart
+  const preferAbove = placement.startsWith("above-");
+  const placeAbove = preferAbove
     ? surface.height <= roomAbove || roomAbove > roomBelow
     : surface.height > roomBelow && roomAbove > roomBelow;
-  let top = placeAbove
+  const top = placeAbove
     ? anchor.top - surface.height - gap
     : anchor.bottom + gap;
-  const edits =
-    dock &&
-    origin
-      .closest(".chat-surface")
-      ?.querySelector(".chat-edit-summary-zone:not(:empty)")
-      ?.getBoundingClientRect();
-  if (edits && placeAbove && top < edits.bottom)
-    top = Math.min(top, edits.top - surface.height - gap);
   return {
     ...shared,
     left: clampLeft(
-      placement === "below-end" ? anchor.right - width : anchor.left,
+      placement.endsWith("-end") ? anchor.right - width : anchor.left,
     ),
     top: clampTop(top),
   };

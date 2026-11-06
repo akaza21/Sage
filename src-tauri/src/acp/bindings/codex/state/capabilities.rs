@@ -28,16 +28,18 @@ impl CodexAdapter {
             },
         );
         if !valid {
-            tracing::warn!(
-                runtime_version = self.runtime_version,
-                observed = self.observed_build_characterisation.is_some(),
-                result_fields = ?result.keys().collect::<Vec<_>>(),
-                user_agent = ?result.get("userAgent"),
-                codex_home = ?result.get("codexHome"),
-                platform_family = ?result.get("platformFamily"),
-                platform_os = ?result.get("platformOs"),
-                "Codex discovery initialize identity validation failed"
-            );
+            if crate::acp::bindings::codex::incoming::reports_diagnostics() {
+                tracing::warn!(
+                    runtime_version = self.runtime_version,
+                    observed = self.observed_build_characterisation.is_some(),
+                    result_fields = ?result.keys().collect::<Vec<_>>(),
+                    user_agent = ?result.get("userAgent"),
+                    codex_home = ?result.get("codexHome"),
+                    platform_family = ?result.get("platformFamily"),
+                    platform_os = ?result.get("platformOs"),
+                    "Codex discovery initialize identity validation failed"
+                );
+            }
             return Err(AdapterError::CapabilityUnavailable);
         }
 

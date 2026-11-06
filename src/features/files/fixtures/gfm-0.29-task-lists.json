@@ -1,0 +1,92 @@
+{
+  "source": "https://github.github.com/gfm/#task-list-items-extension-",
+  "version": "0.29-gfm",
+  "license": "CC-BY-SA-4.0; GitHub Flavored Markdown specification, GitHub and contributors",
+  "examples": [
+    {
+      "example": 279,
+      "section": "Task list items (extension)",
+      "markdown": "- [ ] foo\n- [x] bar\n",
+      "html": "<ul>\n<li><input disabled=\"\" type=\"checkbox\"> foo</li>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> bar</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "items": [
+            {
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "foo"
+                }
+              ],
+              "checked": false
+            },
+            {
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "bar"
+                }
+              ],
+              "checked": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "example": 280,
+      "section": "Task list items (extension)",
+      "markdown": "- [x] foo\n  - [ ] bar\n  - [x] baz\n- [ ] bim\n",
+      "html": "<ul>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> foo\n<ul>\n<li><input disabled=\"\" type=\"checkbox\"> bar</li>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> baz</li>\n</ul>\n</li>\n<li><input disabled=\"\" type=\"checkbox\"> bim</li>\n</ul>\n",
+      "expected": [
+        {
+          "kind": "list",
+          "items": [
+            {
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "foo"
+                },
+                {
+                  "kind": "list",
+                  "items": [
+                    {
+                      "children": [
+                        {
+                          "kind": "paragraph",
+                          "text": "bar"
+                        }
+                      ],
+                      "checked": false
+                    },
+                    {
+                      "children": [
+                        {
+                          "kind": "paragraph",
+                          "text": "baz"
+                        }
+                      ],
+                      "checked": true
+                    }
+                  ]
+                }
+              ],
+              "checked": true
+            },
+            {
+              "children": [
+                {
+                  "kind": "paragraph",
+                  "text": "bim"
+                }
+              ],
+              "checked": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

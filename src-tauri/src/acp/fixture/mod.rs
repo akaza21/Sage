@@ -24,6 +24,8 @@ mod generated_cases;
 mod host;
 mod interpreter;
 #[cfg(test)]
+mod ledger_limit_tests;
+#[cfg(test)]
 mod oracle;
 mod process_ops;
 #[cfg(all(test, windows))]

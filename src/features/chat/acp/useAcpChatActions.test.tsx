@@ -181,8 +181,9 @@ describe("useAcpChatActions per-Chat ownership", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    const apply = await screen.findByRole("menuitemradio", { name: "Apply" });
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitemradio", { name: "Apply" }));
+      fireEvent.click(apply);
     });
     expect(setSessionMode).toHaveBeenCalledExactlyOnceWith({
       projectId: "project-a",

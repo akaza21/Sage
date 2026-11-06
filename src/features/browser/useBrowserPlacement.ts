@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import {
   nativePageOverlapped,
   subscribeNativePageLayers,
@@ -14,7 +14,16 @@ export function useBrowserPlacement(
   frame: RefObject<HTMLDivElement | null>,
   surface: RefObject<HTMLElement | null>,
   onError: (message: string) => void,
+  hidden = false,
 ) {
+  // A page that replaces the browser for a while (History) hides it for
+  // real, ending Annotate, as a tab switch does.
+  const hiddenRef = useRef(hidden);
+  const placeRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    hiddenRef.current = hidden;
+    placeRef.current();
+  }, [hidden]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -38,7 +47,7 @@ export function useBrowserPlacement(
       cancelAnimationFrame(frameId);
       // The page is a native window above Sage's DOM, so it hides while the
       // centre pane is hidden, and a resize must not show it again.
-      if (center?.getAttribute("aria-hidden") === "true") {
+      if (center?.getAttribute("aria-hidden") === "true" || hiddenRef.current) {
         update("hidden", () => hideBrowser(tabId));
         return;
       }
@@ -91,6 +100,7 @@ export function useBrowserPlacement(
       watchResolution();
       place();
     };
+    placeRef.current = place;
     watchResolution();
     const observer = new ResizeObserver(place);
     observer.observe(element);
@@ -117,6 +127,7 @@ export function useBrowserPlacement(
     place();
     return () => {
       active = false;
+      placeRef.current = () => undefined;
       cancelAnimationFrame(frameId);
       observer.disconnect();
       unsubscribe();

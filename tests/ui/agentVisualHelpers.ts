@@ -1,10 +1,12 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 import type {
   VisualScenarioMode,
   VisualScenarioName,
 } from "./fixtures/visualScenarioTypes";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   openScenario,
   settleTranscriptAtEnd,
@@ -114,6 +116,8 @@ export async function openComposerOptions(page: Page) {
     name: "Composer options",
     exact: true,
   });
+  // The open menu holds the toolbar's steps, so let the row settle first.
+  await settledComposerFit(form);
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
@@ -185,6 +189,7 @@ export async function expectAgentImageContained(page: Page) {
     )
     .toBe(true);
   await image.evaluate((node) => (node as HTMLImageElement).decode());
+  await waitForAnimations(page.locator(".acp-image"));
   expect(
     await image.evaluate((node) => {
       const element = node as HTMLImageElement;
@@ -341,6 +346,8 @@ export async function runAgentCanonicalTest(
     );
     await expect(page.locator('[data-activity-kind="thought"]')).toHaveCount(0);
     await settleTranscriptAtEnd(page);
+    await waitForAnimations(execution);
+    await waitForAnimations(fetch);
     const command = page.locator(".acp-tool-command--line");
     await expect(command).toBeVisible();
     expect(

@@ -81,14 +81,6 @@ export function browserPopupAbandon(
   });
 }
 
-export function browserSuggestedSites(): Promise<string[]> {
-  return invokeNative("browser_suggested_sites");
-}
-
-export function browserHistory(tabId: string): Promise<string[]> {
-  return invokeNative("browser_history", { tabId });
-}
-
 export function closeBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_close", { tabId });
 }
@@ -218,6 +210,8 @@ export interface BrowserAgentControl {
   chatId: string;
   /** The user took the tab over; the Agent waits until Hand back. */
   userControl: boolean;
+  /** An approved developer-mode grant (CDP) is live on the tab. */
+  developerMode: boolean;
 }
 
 /** Reads, takes over or hands back the tab; Rust answers with the state after it. */

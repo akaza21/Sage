@@ -137,7 +137,7 @@ export const SETTINGS_KEYMAP_BINDINGS: readonly KeymapBinding[] = [
   ...FIND_BAR_BINDINGS,
 ];
 
-export type SettingsPageId = "editor" | "keyboard" | "browser";
+export type SettingsPageId = "editor" | "keyboard" | "browser" | "passwords";
 
 export interface SettingsEntry {
   id: string;
@@ -204,10 +204,48 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
     group: "General",
   },
   {
+    id: "browser.developerMode",
+    label: "Enable CDP access",
+    description:
+      "Let agents use the Chrome DevTools Protocol on a browser tab after you approve it.",
+    group: "Developer mode",
+  },
+  {
+    id: "browser.downloadFolder",
+    label: "Download location",
+    description:
+      "The folder downloads save to without asking. Programs and scripts always ask.",
+    group: "Downloads",
+  },
+  {
     id: "browser.sitePermissions",
     label: "Site permissions",
     description: "Camera, microphone, location, notifications, clipboard",
     group: "Site permissions",
+  },
+]);
+
+// BF-7b-1: the saved-password vault (Codex ref 48). Import is CSV only here.
+const PASSWORD_ENTRIES: readonly SettingsEntry[] = Object.freeze([
+  {
+    id: "passwords.saved",
+    label: "Saved passwords",
+    description:
+      "Search, show, copy, edit, and delete the passwords saved for websites.",
+    group: "Passwords",
+  },
+  {
+    id: "passwords.import",
+    label: "Import passwords",
+    description:
+      "Import passwords from a CSV file exported by a browser or password manager.",
+    group: "Passwords",
+  },
+  {
+    id: "passwords.deleteAll",
+    label: "Delete all saved passwords",
+    description: "Remove every saved password from Sage.",
+    group: "Passwords",
   },
 ]);
 
@@ -229,6 +267,12 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = Object.freeze([
     label: "Browser",
     description: "Manage the built-in browser's preferences and data.",
     entries: BROWSER_ENTRIES,
+  },
+  {
+    id: "passwords",
+    label: "Passwords",
+    description: "Passwords you've saved for websites.",
+    entries: PASSWORD_ENTRIES,
   },
 ]);
 

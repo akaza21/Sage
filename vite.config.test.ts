@@ -72,10 +72,15 @@ const CODEMIRROR_LANGUAGE_DYNAMIC_FACADES = {
 
 const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerAccessMenu.tsx",
+  "src/features/chat/ComposerAddActions.tsx",
   "src/features/chat/ComposerEffortMenu.tsx",
   "src/features/chat/ComposerModelMenu.tsx",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
+  "src/features/chat/acp/ChatMarkdown.tsx",
+  "src/features/files/FileMarkdownPreview.tsx",
+  "src/features/chat/ComposerUsageContext.tsx",
+  "src/features/chat/composerDictationRuntime.ts",
   "src/workbench/DirtyTabDialog.tsx",
   "src/ports/editorWatchSession.ts",
   "src/features/files/newFileResult.ts",
@@ -88,6 +93,7 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/BrowserFindControls.tsx",
   "src/features/browser/BrowserAnnotatePopover.tsx",
   "src/features/browser/ClosedBrowserSurface.tsx",
+  "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
 ];
@@ -107,12 +113,15 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/features/browser/BrowserDownloadsPanel.tsx",
   // Annotate's composer chips and hover card load with the first element.
   "src/features/browser/BrowserElementChips.tsx",
+  // The History page loads on its first open (BF-7c).
+  "src/features/browser/BrowserHistoryPage.tsx",
   // The Agent New tab page and its chat resource picker load on first use.
   "src/features/browser/BrowserNewTab.tsx",
   "src/features/browser/BrowserSurface.tsx",
   "src/features/chat/ChatHandoffDialog.tsx",
   "src/features/chat/ChatNavigation.tsx",
   "src/features/chat/ChatQueueExecution.tsx",
+  "src/features/chat/ChatQueueRuntime.tsx",
   // Recovery notices and sign-in actions stay off the ready Chat path.
   "src/features/chat/HarnessDiscoveryNotice.tsx",
   "src/features/chat/ClaudeAuthActions.tsx",
@@ -190,6 +199,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   "src/workbench/SettingsSurface.tsx",
   // The Browser settings page remains a lazy facade.
   "src/workbench/settings/SettingsBrowserPage.tsx",
+  // So does the Passwords settings page (BF-7b-1).
+  "src/workbench/settings/SettingsPasswordsPage.tsx",
   "src/workbench/SourceControlView.tsx",
   "src/workbench/SubagentSurface.tsx",
   "src/workbench/TerminalDock.tsx",
@@ -479,6 +490,8 @@ describe("desktop-native runtime resolver", () => {
         "/src/features/chat/composerChrome.ts",
         "/src/workbench/agentChatRail.ts",
         "/src/workbench/agentRailStatusView.ts",
+        "/src/ui/IconButton.tsx",
+        "/src/ui/RetainedActivity.tsx",
       ]) {
         expect(
           closureForModule(graph, facade).some((id) => id.endsWith(module)),
@@ -784,6 +797,19 @@ describe("desktop-native chunk topology", () => {
     const childFile = groupedGraph.moduleFiles.get(subagent);
     expect(groupedGraph.chunkNames.get(childFile!)).toBe("SubagentSurface");
     expect(childFile).not.toBe(sharedFile);
+    // Browser subscriptions load native APIs on demand, outside UI closures.
+    for (const facade of [
+      workbench,
+      agent,
+      "src/features/browser/BrowserSurface.tsx",
+    ]) {
+      expect(
+        closureForModule(groupedGraph, facade).filter((id) =>
+          /node_modules\/@tauri-apps\/api\/(?:core|event)\.js$/.test(id),
+        ),
+        facade,
+      ).toEqual([]);
+    }
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     for (const facade of [
       workbench,
@@ -974,6 +1000,8 @@ describe("desktop-native chunk topology", () => {
     );
     for (const snapshotModule of [
       ...REQUEST_ONLY_DYNAMIC_FACADES.map((file) => `/${file}`),
+      "/src/features/files/markdownPreview.ts",
+      "/src/features/files/markdownTokens.ts",
       "/src/domain/agentDiff.ts",
       "/src/services/acpFileSnapshot.ts",
       "/src/app/agentDiffAdmission.ts",
@@ -1013,6 +1041,21 @@ describe("desktop-native chunk topology", () => {
     ).toBe(false);
     expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);
+
+    const fileClosure = closureForModule(
+      groupedGraph,
+      "src/features/files/FileSurface.tsx",
+    );
+    expect(fileClosure).toBeDefined();
+    for (const module of [
+      "markdownPreview.ts",
+      "markdownTokens.ts",
+      "MarkdownBlocks.tsx",
+    ]) {
+      expect(
+        fileClosure!.some((id) => id.endsWith(`/src/features/files/${module}`)),
+      ).toBe(false);
+    }
 
     const editorRuntimeClosure = closureForModule(
       groupedGraph,

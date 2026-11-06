@@ -408,6 +408,7 @@ mod tests {
                 project_id: project.clone(),
                 chat_id: chat.clone(),
                 user_control: false,
+                developer_mode: false,
             })
         );
         let child = registry

@@ -10,10 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import type { HarnessBrand } from "../domain/harness";
+import "../styles/searchable-picker.css";
 import { ChevronDown } from "./leanIcons";
 import { PickerOption, PickerLogo } from "./PickerOption";
 
 import { MenuPopover, type MenuDismissReason } from "./MenuPopover";
+import type { MenuPlacement } from "./menuPopoverPosition";
 import { ResourceStateNotice } from "./ResourceStateNotice";
 
 export const SEARCHABLE_PICKER_MAX_CANDIDATES = 500;
@@ -28,7 +31,7 @@ export interface SearchablePickerOption {
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;
-  icon?: "claude" | "codex" | "opencode" | "generic";
+  icon?: HarnessBrand | "generic";
   logo?: string;
   /** A secondary action rendered beside the option, e.g. "Sign in". */
   action?: { label: string; accessibleLabel?: string; onAction: () => void };
@@ -52,6 +55,7 @@ export function SearchablePicker({
   onOpenChange,
   popoverClassName,
   popoverGap,
+  popoverPlacement,
   triggerClassName,
   triggerRole,
   triggerIcon,
@@ -75,6 +79,8 @@ export function SearchablePicker({
   onOpenChange?: (open: boolean) => void;
   popoverClassName?: string;
   popoverGap?: number;
+  /** Where the list opens relative to its trigger; see MenuPlacement. */
+  popoverPlacement?: MenuPlacement;
   triggerClassName?: string;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
@@ -90,25 +96,26 @@ export function SearchablePicker({
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
+  const expanded = open && !disabled;
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const invalid = candidates.length > SEARCHABLE_PICKER_MAX_CANDIDATES;
   const admittedCandidates = invalid ? EMPTY_CANDIDATES : candidates;
-  const selected = useMemo(
-    () => admittedCandidates.find((candidate) => candidate.id === selectedId),
-    [admittedCandidates, selectedId],
+  const selected = admittedCandidates.find(
+    (candidate) => candidate.id === selectedId,
   );
+  const selectedLabel = selected?.triggerLabel ?? selected?.label;
   const visible = useMemo(() => {
+    if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
     return admittedCandidates.filter((candidate) =>
       candidate.label.toLocaleLowerCase().includes(normalized),
     );
-  }, [admittedCandidates, query]);
+  }, [admittedCandidates, query, expanded]);
   const rendered = useMemo(
     () => visible.slice(0, SEARCHABLE_PICKER_MAX_RENDERED),
     [visible],
@@ -117,18 +124,8 @@ export function SearchablePicker({
     () => rendered.filter((candidate) => !candidate.disabledReason),
     [rendered],
   );
-  const active = useMemo(
-    () => selectable.find((candidate) => candidate.id === activeId) ?? null,
-    [activeId, selectable],
-  );
-
-  const setOptionElement = useCallback(
-    (option: string, element: HTMLButtonElement | null) => {
-      if (element) optionRefs.current.set(option, element);
-      else optionRefs.current.delete(option);
-    },
-    [],
-  );
+  const active =
+    selectable.find((candidate) => candidate.id === activeId) ?? null;
 
   useEffect(() => {
     if (!open || disabled) return;
@@ -145,8 +142,10 @@ export function SearchablePicker({
   }, [disabled, open, searchable]);
   useLayoutEffect(() => {
     if (!active) return;
-    optionRefs.current.get(active.id)?.scrollIntoView?.({ block: "nearest" });
-  }, [active]);
+    triggerRef.current?.ownerDocument
+      .getElementById(optionId(id, active.id))
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [active, id]);
 
   const close = useCallback(
     (reason?: MenuDismissReason) => {
@@ -158,13 +157,8 @@ export function SearchablePicker({
     [searchable, setOpen],
   );
   useLayoutEffect(() => {
-    if (!disabled) return;
-    queueMicrotask(() => close());
-  }, [close, disabled]);
-  useLayoutEffect(() => {
-    if (!invalid) return;
-    queueMicrotask(() => close());
-  }, [close, invalid]);
+    if (disabled || invalid) queueMicrotask(() => close());
+  }, [close, disabled, invalid]);
   const moveActive = (direction: number, page = false) => {
     if (selectable.length === 0) return;
     const found = selectable.findIndex(
@@ -179,12 +173,6 @@ export function SearchablePicker({
         )
       : (current + direction * offset + selectable.length) % selectable.length;
     setActiveId(selectable[next]?.id ?? null);
-  };
-  const selectActive = () => {
-    if (!active) return;
-    onSelect(active.id);
-    close();
-    triggerRef.current?.focus();
   };
   const selectCandidate = useCallback(
     (next: string) => {
@@ -213,7 +201,7 @@ export function SearchablePicker({
       moveActive(event.key === "PageDown" ? 1 : -1, true);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      selectActive();
+      if (active) selectCandidate(active.id);
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -229,7 +217,7 @@ export function SearchablePicker({
     }
   };
 
-  const listed = open && !disabled ? rendered : EMPTY_CANDIDATES;
+  const listed = expanded ? rendered : EMPTY_CANDIDATES;
 
   if (invalid) {
     return (
@@ -250,9 +238,9 @@ export function SearchablePicker({
           .filter(Boolean)
           .join(" ")}
         aria-label={ariaLabel}
-        aria-description={selected?.triggerLabel ?? selected?.label}
-        title={stateTitle ?? selected?.triggerLabel ?? selected?.label}
-        aria-expanded={open && !disabled}
+        aria-description={selectedLabel}
+        title={stateTitle ?? selectedLabel}
+        aria-expanded={expanded}
         aria-haspopup="listbox"
         aria-controls={`${id}-listbox`}
         role={triggerRole}
@@ -274,7 +262,7 @@ export function SearchablePicker({
           triggerIcon
         )}
         <span className="searchable-picker__trigger-label">
-          {selected?.triggerLabel ?? selected?.label ?? emptyLabel}
+          {selectedLabel ?? emptyLabel}
         </span>
         <ChevronDown
           className="searchable-picker__chevron"
@@ -301,8 +289,9 @@ export function SearchablePicker({
         id={`${id}-popover`}
         matchTriggerWidth
         gap={popoverGap}
+        placement={popoverPlacement}
         onDismiss={close}
-        open={open && !disabled}
+        open={expanded}
         portalTarget={portalTarget}
         role="none"
         triggerRef={triggerRef}
@@ -316,7 +305,7 @@ export function SearchablePicker({
             aria-activedescendant={active ? optionId(id, active.id) : undefined}
             aria-autocomplete="list"
             aria-controls={`${id}-listbox`}
-            aria-expanded={open && !disabled}
+            aria-expanded={expanded}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
@@ -347,44 +336,19 @@ export function SearchablePicker({
           />
         ) : null}
         <div id={`${id}-listbox`} role="listbox" aria-label={ariaLabel}>
-          {listed.map((candidate) => {
-            const option = (
-              <PickerOption
-                key={candidate.id}
-                active={candidate.id === active?.id}
-                candidate={candidate}
-                id={optionId(id, candidate.id)}
-                onActivate={searchable ? setActiveId : undefined}
-                onOptionElement={setOptionElement}
-                onRender={onOptionRender}
-                onSelect={selectCandidate}
-                selected={candidate.id === selectedId}
-              />
-            );
-            const action = candidate.action;
-            if (!action) return option;
-            return (
-              <div
-                key={candidate.id}
-                className="searchable-picker__option-row"
-                role="none"
-              >
-                {option}
-                <button
-                  type="button"
-                  className="searchable-picker__option-action"
-                  aria-label={action.accessibleLabel ?? action.label}
-                  disabled={disabled}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    action.onAction();
-                  }}
-                >
-                  {action.label}
-                </button>
-              </div>
-            );
-          })}
+          {listed.map((candidate) => (
+            <PickerOption
+              key={candidate.id}
+              active={candidate.id === active?.id}
+              candidate={candidate}
+              id={optionId(id, candidate.id)}
+              onActivate={searchable ? setActiveId : undefined}
+              onRender={onOptionRender}
+              onSelect={selectCandidate}
+              selected={candidate.id === selectedId}
+              disabled={disabled}
+            />
+          ))}
           {visible.length > rendered.length ? (
             <p className="searchable-picker__limit">
               {visible.length - rendered.length} more — refine

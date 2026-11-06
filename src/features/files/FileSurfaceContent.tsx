@@ -16,8 +16,12 @@ import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { type FindControl, type FindOpenRequest } from "./FileFindBar";
 import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
-import { FileMarkdownPreview } from "./FileMarkdownPreview";
-import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
+import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
+
+const loadMarkdownPreview = () =>
+  import("./FileMarkdownPreview").then(({ FileMarkdownPreview }) => ({
+    default: FileMarkdownPreview,
+  }));
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
@@ -146,9 +150,15 @@ export function FileSurfaceContent({
         <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
-        <FileMarkdownPreview
-          source={contentText(editor.content)}
-          asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+        <LazyModuleBoundary
+          load={loadMarkdownPreview}
+          label="Markdown preview"
+          render={(FileMarkdownPreview) => (
+            <FileMarkdownPreview
+              source={contentText(editor.content)}
+              asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+            />
+          )}
         />
       ) : (
         <div className="file-editor-stage">

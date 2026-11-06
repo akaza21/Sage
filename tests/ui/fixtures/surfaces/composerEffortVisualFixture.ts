@@ -6,8 +6,10 @@ export function installVisualComposerEffortFixture({
   levels = ["low", "medium", "high"],
   currentValue = "medium",
   defaultValue,
+  modelName = "GPT-6 Astra",
 }: {
   id?: string;
+  modelName?: string;
   levels?: string[];
   currentValue?: string;
   defaultValue?: string;
@@ -37,7 +39,7 @@ export function installVisualComposerEffortFixture({
       configRevision: "1",
       confirmedModel: {
         id: session.modelId ?? "visual-model",
-        name: "GPT-6 Astra",
+        name: modelName,
       },
       modes: null,
       configOptions: [

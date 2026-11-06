@@ -534,17 +534,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // `Project /` segment; the project name lives in the header "…" menu.
     const location = header.locator('[aria-label="Chat location"]');
     await expect(location).toHaveCount(1);
-    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
+    const folder = location.locator(".agent-task-header__folder");
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveCSS("width", "16px");
+    await expect(folder).toHaveCSS("height", "16px");
+    await expect(folder).not.toHaveCSS("mask-image", "none");
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
       0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
-    // C2 — different. The status is announced, but renders as bare coloured
-    // text rather than the target's pill with a leading icon.
+    // Chat surface: status is announced without adding visible header chrome.
     const status = header.getByRole("status");
     await expect(status).toHaveCount(1);
     await expect(status).toHaveAccessibleName(/^Chat status: /);
+    await expect(status).toHaveClass("sr-only");
     await expect(
       status.locator("svg"),
       "C2: the status still has no leading icon",
@@ -1009,7 +1013,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     await expect(
       page.getByRole("menu", { name: "Composer options menu" }),
     ).toHaveCount(0);
@@ -1070,7 +1075,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     const project = composer(page).getByRole("button", {
       name: "Project: Sage",
       exact: true,
@@ -1085,6 +1091,25 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
+  });
+
+  test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 480, height: 900 });
+    await openScenario(page, "agent-composer-context-known", "agent");
+    await settleChatProjections(page);
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toHaveCount(0);
+    await expect(composer(page).locator(".composer__controls")).toHaveAttribute(
+      "data-fit",
+      /(^| )context( |$)/,
+    );
+    await page.setViewportSize({ width: 1888, height: 900 });
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toBeVisible();
   });
 
   test("keeps reported context in the toolbar without overlapping the prompt", async ({

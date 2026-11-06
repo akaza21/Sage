@@ -23,7 +23,9 @@ use crate::launch_profile::LaunchProfile;
 mod admission;
 pub(crate) mod annotate;
 pub(crate) mod bounds;
+pub(crate) mod browsing_history;
 pub(crate) mod clear_data;
+mod commit;
 pub(crate) mod device;
 pub(crate) mod devtools;
 pub(crate) mod downloads;
@@ -36,6 +38,7 @@ pub mod native_lane;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
+pub(crate) mod passwords;
 pub(crate) mod popups;
 mod profile;
 mod shortcuts;
@@ -54,10 +57,8 @@ use history::BrowserHistory;
 #[cfg(test)]
 use history::MAX_BROWSER_HISTORY;
 #[cfg(test)]
-#[path = "clear_conformance_tests.rs"]
 mod clear_conformance_tests;
 #[cfg(test)]
-#[path = "policy_conformance_tests.rs"]
 mod policy_conformance_tests;
 use popups::PopupRequests;
 #[cfg(test)]
@@ -75,6 +76,7 @@ pub(crate) struct BrowserState {
     popups: Mutex<PopupRequests>,
     annotate: annotate::Annotate,
     clearing_data: AtomicBool,
+    browsing_history: browsing_history::BrowsingHistory,
     /// Device toolbar updates apply one at a time across tabs.
     #[cfg_attr(not(windows), allow(dead_code))]
     device_updates: Mutex<()>,
@@ -116,6 +118,8 @@ impl BrowserState {
 
 struct BrowserTab<T> {
     handle: T,
+    #[cfg(windows)]
+    developer: devtools::developer_session::Slot,
     visibility: Arc<visibility::PageVisibility>,
     loading: bool,
     title: Option<String>,
@@ -126,6 +130,10 @@ struct BrowserTab<T> {
     revision: u64,
     document_revision: u64,
     committed_url: Option<String>,
+    /// The URL of this tab's latest visit queued to the browsing history,
+    /// which its later titles and same-document changes name; `None` when
+    /// none was queued, as when a full queue dropped it.
+    visited_url: Option<String>,
     history: BrowserHistory,
     fallback_url: Option<String>,
     last_error: Option<&'static str>,
@@ -153,6 +161,7 @@ struct BrowserTabs<T> {
     opening: BTreeSet<String>,
     closing: BTreeSet<String>,
     teardown: lifecycle::TeardownQuarantine,
+    browsing_history: browsing_history::BrowsingHistory,
 }
 
 impl<T> BrowserTabs<T> {
@@ -163,6 +172,7 @@ impl<T> BrowserTabs<T> {
             opening: BTreeSet::new(),
             closing: BTreeSet::new(),
             teardown: lifecycle::TeardownQuarantine::default(),
+            browsing_history: browsing_history::BrowsingHistory::default(),
         }
     }
 
@@ -207,6 +217,8 @@ impl<T> BrowserTabs<T> {
             label,
             BrowserTab {
                 handle,
+                #[cfg(windows)]
+                developer: devtools::developer_session::Slot::default(),
                 visibility: Arc::default(),
                 loading,
                 title: None,
@@ -217,6 +229,7 @@ impl<T> BrowserTabs<T> {
                 revision: 0,
                 document_revision: 0,
                 committed_url: None,
+                visited_url: None,
                 history: BrowserHistory::default(),
                 fallback_url: None,
                 last_error: None,
@@ -289,29 +302,6 @@ impl<T> BrowserTabs<T> {
         true
     }
 
-    fn finish_navigation(&mut self, label: &str, navigation_id: u64, url: Option<&str>) -> bool {
-        let Some(tab) = self.entries.get_mut(label) else {
-            return false;
-        };
-        if tab.navigation_id != Some(navigation_id) || !tab.loading {
-            return false;
-        }
-        if url.is_some_and(|url| admit_url(url).is_err()) {
-            return false;
-        }
-        tab.fallback_url = tab.history.finish(navigation_id, url);
-        if tab.history.take_failure() {
-            tab.last_error = Some("Back or Forward could not reach the saved page");
-            tab.loading = false;
-        } else if tab.fallback_url.is_none() {
-            tab.committed_url = url.map(str::to_owned);
-            tab.loading = false;
-        }
-        tab.revision = tab.revision.wrapping_add(1);
-        tab.document_revision = tab.document_revision.wrapping_add(1);
-        true
-    }
-
     fn set_zoom_percent(&mut self, label: &str, percent: u16) -> bool {
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
@@ -367,35 +357,6 @@ impl<T> BrowserTabs<T> {
             tab.revision = tab.revision.wrapping_add(1);
             tab.document_revision = tab.document_revision.wrapping_add(1);
         }
-    }
-
-    fn source_changed(&mut self, label: &str, url: &str) -> bool {
-        if admit_url(url).is_err() {
-            return false;
-        }
-        let Some(tab) = self.entries.get_mut(label) else {
-            return false;
-        };
-        if (tab.loading && !tab.history.pending_target_is(url))
-            || tab.last_error.is_some()
-            || tab.committed_url.is_none()
-            || tab.committed_url.as_deref() == Some(url)
-        {
-            return false;
-        }
-        tab.fallback_url = tab.history.same_document(url);
-        if tab.history.take_failure() {
-            tab.last_error = Some("Back or Forward could not reach the saved page");
-            tab.loading = false;
-        } else if tab.fallback_url.is_none() {
-            tab.committed_url = Some(url.to_owned());
-            tab.loading = false;
-        } else {
-            tab.loading = true;
-        }
-        tab.revision = tab.revision.wrapping_add(1);
-        tab.document_revision = tab.document_revision.wrapping_add(1);
-        true
     }
 
     #[cfg(test)]

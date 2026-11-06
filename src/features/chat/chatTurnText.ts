@@ -3,11 +3,12 @@ import {
   renderMarkdownPreview,
   type InlineFormat,
 } from "../files/markdownPreview";
+import { markdownTextLocations } from "../files/markdownTextLocations";
 import { terminalTurnStates } from "./acp/statusSemantics";
 
 type TextItem = Extract<AcpItem, { kind: "text" }>;
 
-/** One rendered markdown block (or list item / table cell), in DOM order. */
+/** One rendered text leaf (paragraph, heading, table cell or code), in DOM order. */
 export interface ChatTextSegment {
   text: string;
   bullet: boolean;
@@ -39,7 +40,7 @@ function flatten(spans: readonly InlineFormat[]): string {
 
 /**
  * Plain text of the blocks ChatMarkdown renders, in the same order as the
- * `p, h1-h6, blockquote, li, th, td, pre > code` elements it produces. Text
+ * `p, h1-h6, [data-markdown-inline], th, td, pre > code` elements it produces. Text
  * past the renderer's bounds is not shown, so it is not searchable either.
  */
 function segments(source: string) {
@@ -55,23 +56,12 @@ function segments(source: string) {
     return spans?.length ? flatten(spans) : text;
   };
   const values = document.blocks.flatMap<ChatTextSegment>((block, index) => {
-    if (block.kind === "code")
-      return block.language.toLowerCase() === "mermaid"
-        ? []
-        : [{ text: block.text, bullet: false }];
-    if (block.kind === "list")
-      return block.items.map((text, item) => ({
-        text: inline(text, index, item),
-        bullet: true,
-      }));
-    if (block.kind === "table")
-      return block.rows.flatMap((row, rowIndex) =>
-        row.map((text, column) => ({
-          text: inline(text, index, rowIndex * block.align.length + column),
-          bullet: false,
-        })),
-      );
-    return [{ text: inline(block.text, index), bullet: false }];
+    return [...markdownTextLocations(block)].map(
+      ({ text, itemIndex, bullet, code }) => ({
+        text: code ? text : inline(text, index, itemIndex),
+        bullet,
+      }),
+    );
   });
   return {
     segments: values,

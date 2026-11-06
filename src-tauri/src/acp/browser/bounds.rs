@@ -41,10 +41,32 @@ pub(crate) fn admit_screenshot(
     }
     if width > limits.screenshot_width
         || height > limits.screenshot_height
-        || u64::from(width) * u64::from(height) > limits.screenshot_pixels
         || bytes > limits.screenshot_bytes
     {
         return Err(BrowserFailure::Capacity);
     }
-    Ok(())
+    admit_capture_pixels(f64::from(width), f64::from(height), 1.0).map(|_| ())
+}
+
+/// Bounds the bitmap before native capture and after image decoding. Round
+/// each side outward before multiplying, without integer casts or overflow.
+pub(crate) fn admit_capture_pixels(
+    width: f64,
+    height: f64,
+    scale: f64,
+) -> Result<(f64, f64), BrowserFailure> {
+    if [width, height, scale]
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+    {
+        return Err(BrowserFailure::InvalidRequest);
+    }
+    let (width, height) = (
+        (width * scale).ceil().max(1.0),
+        (height * scale).ceil().max(1.0),
+    );
+    if width * height > BROWSER_LIMITS.screenshot_pixels as f64 {
+        return Err(BrowserFailure::Capacity);
+    }
+    Ok((width, height))
 }

@@ -4,7 +4,7 @@
   max-height: 100%;
   flex-direction: column;
   width: min(
-    var(--reading-measure),
+    var(--chat-column-measure),
     calc(
       100% - var(--chat-column-gutter) - var(--chat-column-gutter) -
         var(--chat-column-trailing)
@@ -12,7 +12,7 @@
   );
   margin-inline-start: max(
     var(--chat-column-gutter),
-    calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2)
+    calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2)
   );
 }
 
@@ -86,23 +86,6 @@
   grid-area: body;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-/* The dock clips its unpainted slots; menus use the shared portal. */
-.composer__scope {
-  display: flex;
-  min-width: 0;
-  flex: none;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  overflow-wrap: anywhere;
-}
-
-.composer__scope > svg {
-  flex: none;
 }
 
 .composer__input-area {
@@ -303,6 +286,9 @@
 
 /* Interactive scope delegates its entire box to the picker trigger. */
 .project-scope.select-control {
+  --select-control-trigger-min-width: var(--control-height-compact);
+  --select-control-trigger-padding: 0 var(--space-1);
+  --radius-select-control-trigger: var(--radius-md);
   --select-control-trigger-border: var(
     --project-scope-trigger-border,
     var(--border-width) solid var(--glass-border)
@@ -329,13 +315,6 @@
 
 .project-scope .searchable-picker {
   width: 100%;
-}
-
-.project-scope .searchable-picker__trigger {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-md);
 }
 
 .project-scope__icon,

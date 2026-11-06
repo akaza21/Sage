@@ -59,7 +59,7 @@ export const AV01_PREVIEW_UI = Object.freeze({
   openPreview:
     '(()=>{const panes=[...document.querySelectorAll(\'aside[aria-label="Agent artifacts"]\')];if(panes.length!==1)return false;const tabs=[...panes[0].querySelectorAll(\'[role="tab"][aria-label="Preview"]\')];if(tabs.length!==1||tabs[0].getAttribute("aria-selected")==="true")return tabs.length===1;tabs[0].click();return true})()',
   previewReady:
-    "(()=>{const stacks=[...document.querySelectorAll('.agent-preview-stack[data-preview-listener-ready=\"true\"]')];return stacks.length===1})()",
+    "(()=>{const stacks=[...document.querySelectorAll('[data-preview-phase][data-preview-listener-ready]')];return stacks.length===1&&stacks[0].dataset.previewListenerReady==='true'})()",
   startEnabled:
     '(()=>{const groups=[...document.querySelectorAll(\'[role="group"][aria-label="Preview targets"]\')];if(groups.length!==1)return false;const buttons=[...groups[0].querySelectorAll("button")].filter(x=>x.textContent.trim()==="Start"&&!x.disabled);return buttons.length===1})()',
   clickStart:
@@ -71,7 +71,7 @@ export const AV01_PREVIEW_UI = Object.freeze({
   collapse:
     "(()=>{const panes=[...document.querySelectorAll('aside[aria-label=\"Agent artifacts\"]')];if(panes.length!==1)return false;const buttons=[...panes[0].querySelectorAll('button[aria-label=\"Collapse files, changes, and preview\"]')];if(buttons.length!==1)return false;buttons[0].click();return true})()",
   reopen:
-    "(()=>{const panes=[...document.querySelectorAll('aside[aria-label=\"Agent artifacts\"]')];if(panes.length!==1)return false;const buttons=[...panes[0].querySelectorAll('button[aria-label^=\"Open files, changes, and preview\"]')];if(buttons.length!==1)return false;buttons[0].click();return true})()",
+    '(()=>{const panes=[...document.querySelectorAll(\'aside[aria-label="Agent artifacts"]\')];if(panes.length!==0)return false;const buttons=[...document.querySelectorAll(\'button[aria-label^="Show files and preview"][aria-expanded="false"]\')];if(buttons.length!==1)return false;buttons[0].click();return true})()',
   leaveAgent:
     '(()=>{const groups=[...document.querySelectorAll(\'[role="radiogroup"][aria-label="Window mode"]\')];if(groups.length!==1)return false;const editor=[...groups[0].querySelectorAll(\'input[name="workbench-window-mode"][value="editor"]\')];if(editor.length!==1)return false;editor[0].click();return true})()',
 });
@@ -138,7 +138,7 @@ async function waitForFixtureManualOrigin(options, deadline) {
   );
 }
 
-export const AV01_PREVIEW_SNAPSHOT = `(()=>{const stacks=document.querySelectorAll('.agent-preview-stack'),panes=document.querySelectorAll('aside[aria-label="Agent artifacts"]');if(stacks.length>1||panes.length!==1)return null;const stack=stacks.length===1?stacks[0]:null,group=stack?.querySelector('[role="group"][aria-label="Preview targets"]')||null,buttons=group?.querySelectorAll('button')||[],frames=stack?.querySelectorAll('iframe[title="Sage browser"]')||[],noticeNodes=stack?.querySelectorAll('.resource-state')||[];if(buttons.length>16||frames.length>1||noticeNodes.length>4)return null;const text=node=>{const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let value='',next;while((next=walker.nextNode())){const part=next.nodeValue||'';if(part.length>4096-value.length)return null;value+=part;}return value.trim();};let starts=0,stops=0;for(const button of buttons){const label=text(button);if(label===null)return null;if(label==='Start'&&!button.disabled)starts++;if(label==='Stop'&&!button.disabled)stops++;}const frameUrls=[];for(const frame of frames)frameUrls.push(frame.getAttribute('src')||'');const notices=[];for(const node of noticeNodes){const notice=text(node);if(notice===null)return null;if(notice)notices.push(notice);}return {listenerReady:stack?.dataset.previewListenerReady||'false',phase:stack?.dataset.previewPhase||'none',targetIdentity:stack?.dataset.previewTargetIdentity||null,startEnabled:starts===1,stopVisible:stops===1,frameUrls,notices,collapsed:panes[0].classList.contains('agent-artifact-pane--collapsed')};})()`;
+export const AV01_PREVIEW_SNAPSHOT = `(()=>{const stacks=document.querySelectorAll('[data-preview-phase][data-preview-listener-ready]'),panes=document.querySelectorAll('aside[aria-label="Agent artifacts"]'),reopen=document.querySelectorAll('button[aria-label^="Show files and preview"][aria-expanded="false"]');if(stacks.length>1||panes.length+reopen.length!==1)return null;const stack=stacks.length===1?stacks[0]:null,group=stack?.querySelector('[role="group"][aria-label="Preview targets"]')||null,buttons=group?.querySelectorAll('button')||[],frames=stack?.querySelectorAll('iframe[title="Sage browser"]')||[],noticeNodes=stack?.querySelectorAll('[role="status"],[role="alert"]')||[];if(buttons.length>16||frames.length>1||noticeNodes.length>4)return null;const text=node=>{const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let value='',next;while((next=walker.nextNode())){const part=next.nodeValue||'';if(part.length>4096-value.length)return null;value+=part;}return value.trim();};let starts=0,stops=0;for(const button of buttons){const label=text(button);if(label===null)return null;if(label==='Start'&&!button.disabled)starts++;if(label==='Stop'&&!button.disabled)stops++;}const frameUrls=[];for(const frame of frames)frameUrls.push(frame.getAttribute('src')||'');const notices=[];for(const node of noticeNodes){const notice=text(node);if(notice===null)return null;if(notice)notices.push(notice);}return {listenerReady:stack?.dataset.previewListenerReady||'false',phase:stack?.dataset.previewPhase||'none',targetIdentity:stack?.dataset.previewTargetIdentity||null,startEnabled:starts===1,stopVisible:stops===1,frameUrls,notices,collapsed:panes.length===0};})()`;
 
 export function validatePreviewSnapshot(value) {
   if (
@@ -490,7 +490,7 @@ export async function runAv01PreviewJourney(
     await waitUntil(
       () =>
         cdp.evaluate(
-          "document.querySelectorAll('.agent-preview-stack').length===0",
+          "document.querySelectorAll('[data-preview-phase][data-preview-listener-ready]').length===0",
           operationDeadline(deadline),
         ),
       deadline,

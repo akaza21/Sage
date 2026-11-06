@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useWorkbenchStore } from "../../app/store";
 
-export function ClosedBrowserSurface({ tabId }: { tabId: string }) {
+export default function ClosedBrowserSurface({ tabId }: { tabId: string }) {
   const openBrowser = useWorkbenchStore((state) => state.openBrowser);
   const closeTab = useWorkbenchStore((state) => state.closeTab);
   const [error, setError] = useState<string | null>(null);

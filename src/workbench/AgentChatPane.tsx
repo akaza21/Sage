@@ -1,12 +1,16 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../app/acpProjectionRegistry";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { type WorkbenchTab } from "../domain/workbench";
-import { type ChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
+import {
+  projectChatLiveSnapshot,
+  type ChatLiveSnapshot,
+} from "../features/chat/acp/chatLiveSnapshot";
 import {
   ackChatUnread,
   chatActivityFingerprint,
 } from "../features/chat/acp/chatUnread";
-import { useAcpChatLiveSnapshot } from "../features/chat/acp/useAcpChatLiveSnapshot";
 import { renderRegisteredCanvas } from "./surfaceRegistry";
 
 /** Memoized so pane-host state (session chrome, focus memory) does not re-render the transcript. */
@@ -21,8 +25,13 @@ export const AgentChatPane = memo(function AgentChatPane({
   activateTab: (tabId: string) => Promise<void>;
   snapshot?: ChatLiveSnapshot;
 }) {
-  const ownSnapshot = useAcpChatLiveSnapshot(tab.id, !providedSnapshot);
-  const snapshot = providedSnapshot ?? ownSnapshot;
+  const page = useStore(acpProjectionStoreFor(tab.id), (state) =>
+    providedSnapshot ? null : state.page,
+  );
+  const snapshot = useMemo(
+    () => providedSnapshot ?? projectChatLiveSnapshot(tab.id, page),
+    [providedSnapshot, tab.id, page],
+  );
   const title = chatDisplayTitle(tab.title);
   const activityFingerprint = chatActivityFingerprint(snapshot);
   if (focused && activityFingerprint.length > 0) {

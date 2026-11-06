@@ -7,10 +7,10 @@ import {
   MAX_CHAT_FILE_LINKS,
   MAX_CHAT_FILE_LINK_PATH_BYTES,
   MAX_MARKDOWN_LIST_DEPTH,
-  canPreviewDiagram,
-  canPreviewMarkdown,
   renderMarkdownPreview,
+  type MarkdownPreviewBlock,
 } from "./markdownPreview";
+import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
 
 describe("canPreviewMarkdown", () => {
   it("accepts only markdown path languages", () => {
@@ -85,15 +85,24 @@ describe("renderMarkdownPreview", () => {
     );
     expect(document.blocks.map((block) => block.kind)).toEqual([
       "list",
-      "code",
       "table",
     ]);
-    expect(document.blocks[1]).toMatchObject({
-      text: "print(1)",
-      language: "python",
-      fenceClosed: true,
+    expect(document.blocks[0]).toMatchObject({
+      items: [
+        {
+          children: [
+            { kind: "paragraph", text: "example" },
+            {
+              kind: "code",
+              text: "print(1)",
+              language: "python",
+              fenceClosed: true,
+            },
+          ],
+        },
+      ],
     });
-    expect(document.blocks[2]).toMatchObject({ align: [undefined, "center"] });
+    expect(document.blocks[1]).toMatchObject({ align: [undefined, "center"] });
   });
   it("bounds literal markup list items and their formatting records", () => {
     const document = renderMarkdownPreview(
@@ -103,9 +112,13 @@ describe("renderMarkdownPreview", () => {
     const block = document.blocks[0];
     expect(block.kind).toBe("list");
     if (block.kind === "list")
-      expect(block.items.join("")).toHaveLength(
-        MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
-      );
+      expect(
+        block.items
+          .flatMap((item) =>
+            item.children.map((child) => ("text" in child ? child.text : "")),
+          )
+          .join(""),
+      ).toHaveLength(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS);
     expect(document.formats.length).toBeLessThanOrEqual(
       MAX_MARKDOWN_PREVIEW_BLOCK_CHARS,
     );
@@ -177,9 +190,12 @@ describe("renderMarkdownPreview", () => {
     );
     expect(document.blocks[0]).toMatchObject({
       kind: "list",
+      items: [
+        { children: [{ kind: "paragraph", text: "Database" }] },
+        { children: [{ kind: "paragraph", text: "validator" }] },
+      ],
       ordered: true,
       start: 3,
-      items: ["Database", "validator"],
     });
     expect(document.blocks[1]).toEqual({
       kind: "table",
@@ -282,8 +298,14 @@ describe("renderMarkdownPreview", () => {
         kind: "paragraph",
         text: "Hello world and docs.",
       },
-      { kind: "list", items: ["one", "two"] },
-      { kind: "quote", text: "quoted" },
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          { children: [{ kind: "paragraph", text: "two" }] },
+        ],
+      },
+      { kind: "quote", children: [{ kind: "paragraph", text: "quoted" }] },
       {
         kind: "code",
         text: "code <em>line</em>",
@@ -313,23 +335,44 @@ describe("renderMarkdownPreview", () => {
       {
         kind: "list",
         items: [
-          "one",
-          "one.a",
-          "deep",
-          "one.b",
-          "two",
-          "sibling, indented one space",
-        ],
-        shape: [
-          { depth: 0, ordered: false },
-          { depth: 1, ordered: false },
-          { depth: 2, ordered: true },
-          { depth: 1, ordered: false },
-          { depth: 0, ordered: false },
-          { depth: 0, ordered: false },
+          {
+            children: [
+              { kind: "paragraph", text: "one" },
+              {
+                kind: "list",
+                items: [
+                  {
+                    children: [
+                      { kind: "paragraph", text: "one.a" },
+                      {
+                        kind: "list",
+                        items: [
+                          { children: [{ kind: "paragraph", text: "deep" }] },
+                        ],
+                        ordered: true,
+                        start: 1,
+                      },
+                    ],
+                  },
+                  { children: [{ kind: "paragraph", text: "one.b" }] },
+                ],
+              },
+            ],
+          },
+          { children: [{ kind: "paragraph", text: "two" }] },
+          {
+            children: [
+              { kind: "paragraph", text: "sibling, indented one space" },
+            ],
+          },
         ],
       },
-      { kind: "list", items: ["other list"], ordered: true, start: 1 },
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "paragraph", text: "other list" }] }],
+        ordered: true,
+        start: 1,
+      },
     ]);
   });
 
@@ -338,18 +381,54 @@ describe("renderMarkdownPreview", () => {
       ["- <br>", "  - child", "    - grandchild", "- sibling"].join("\n"),
     ).blocks;
     expect(dropped).toMatchObject({
-      items: ["child", "grandchild", "sibling"],
-      shape: [{ depth: 0 }, { depth: 1 }, { depth: 0 }],
+      kind: "list",
+      items: [
+        {
+          children: [
+            {
+              kind: "list",
+              items: [
+                {
+                  children: [
+                    { kind: "paragraph", text: "child" },
+                    {
+                      kind: "list",
+                      items: [
+                        {
+                          children: [{ kind: "paragraph", text: "grandchild" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { children: [{ kind: "paragraph", text: "sibling" }] },
+      ],
     });
     const [uneven] = renderMarkdownPreview(
       ["- a", "    - b", "  1. c"].join("\n"),
     ).blocks;
     expect(uneven).toMatchObject({
-      items: ["a", "b", "c"],
-      shape: [
-        { depth: 0, ordered: false },
-        { depth: 1, ordered: false },
-        { depth: 1, ordered: true },
+      kind: "list",
+      items: [
+        {
+          children: [
+            { kind: "paragraph", text: "a" },
+            {
+              kind: "list",
+              items: [{ children: [{ kind: "paragraph", text: "b" }] }],
+            },
+            {
+              kind: "list",
+              items: [{ children: [{ kind: "paragraph", text: "c" }] }],
+              ordered: true,
+              start: 1,
+            },
+          ],
+        },
       ],
     });
   });
@@ -367,9 +446,74 @@ describe("renderMarkdownPreview", () => {
       (_, depth) => `${"  ".repeat(depth)}- level ${depth}`,
     );
     const block = renderMarkdownPreview(lines.join("\n")).blocks[0];
-    expect(block.kind === "list" && block.shape?.at(-1)?.depth).toBe(
-      MAX_MARKDOWN_LIST_DEPTH - 1,
-    );
+    let depth = 0;
+    let children: readonly MarkdownPreviewBlock[] = [block];
+    while (children[0]?.kind === "list") {
+      depth++;
+      children = children[0].items[0].children.filter(
+        (child) => child.kind === "list",
+      );
+    }
+    expect(depth).toBe(MAX_MARKDOWN_LIST_DEPTH);
+  });
+
+  it("keeps excess same-line nesting literal at the container depth limit", () => {
+    const document = renderMarkdownPreview("- ".repeat(10000) + "leaf");
+    expect(document.truncated).toBe(true);
+    const block = document.blocks[0];
+    expect(block.kind).toBe("list");
+    if (block.kind !== "list") throw new Error("Expected a list");
+    let leaf: MarkdownPreviewBlock = block;
+    let depth = 0;
+    while (leaf.kind === "list") {
+      depth++;
+      expect(leaf.items).toHaveLength(1);
+      expect(leaf.items[0].children).toHaveLength(1);
+      leaf = leaf.items[0].children[0];
+    }
+    expect(depth).toBe(MAX_MARKDOWN_LIST_DEPTH);
+    expect(leaf).toEqual({
+      kind: "paragraph",
+      text: "- ".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS / 2),
+    });
+  });
+
+  it("uses absolute tab stops for same-line nested list markers", () => {
+    expect(
+      renderMarkdownPreview("- -\tchild\n    1. grandchild").blocks,
+    ).toEqual([
+      {
+        kind: "list",
+        items: [
+          {
+            children: [
+              {
+                kind: "list",
+                items: [
+                  {
+                    children: [
+                      { kind: "paragraph", text: "child" },
+                      {
+                        kind: "list",
+                        items: [
+                          {
+                            children: [
+                              { kind: "paragraph", text: "grandchild" },
+                            ],
+                          },
+                        ],
+                        ordered: true,
+                        start: 1,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 
   it("reads task list items as checked or unchecked", () => {
@@ -381,12 +525,28 @@ describe("renderMarkdownPreview", () => {
     expect(document.blocks).toEqual([
       {
         kind: "list",
-        items: ["todo", "done", "also done", "[] not a task"],
-        shape: [
-          { depth: 0, ordered: false, checked: false },
-          { depth: 0, ordered: false, checked: true },
-          { depth: 0, ordered: false, checked: true },
-          { depth: 0, ordered: false },
+        items: [
+          { children: [{ kind: "paragraph", text: "todo" }], checked: false },
+          { children: [{ kind: "paragraph", text: "done" }], checked: true },
+          {
+            children: [{ kind: "paragraph", text: "also done" }],
+            checked: true,
+          },
+          { children: [{ kind: "paragraph", text: "[] not a task" }] },
+        ],
+      },
+    ]);
+  });
+
+  it("decorates a task whose label starts on the next continuation line", () => {
+    expect(renderMarkdownPreview("- [ ]\n  continued label").blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          {
+            children: [{ kind: "paragraph", text: "continued label" }],
+            checked: false,
+          },
         ],
       },
     ]);
@@ -397,7 +557,13 @@ describe("renderMarkdownPreview", () => {
       renderMarkdownPreview("Steps:\n  + first\n  + second").blocks,
     ).toEqual([
       { kind: "paragraph", text: "Steps:" },
-      { kind: "list", items: ["first", "second"] },
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "first" }] },
+          { children: [{ kind: "paragraph", text: "second" }] },
+        ],
+      },
     ]);
   });
 
@@ -483,7 +649,15 @@ describe("renderMarkdownPreview", () => {
     const first = "A".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS - 2);
     const document = renderMarkdownPreview(`- ${first}\n- leftover`);
     expect(document.truncated).toBe(true);
-    expect(document.blocks).toEqual([{ kind: "list", items: [first, "le"] }]);
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: first }] },
+          { children: [{ kind: "paragraph", text: "le" }] },
+        ],
+      },
+    ]);
   });
 
   it("clamps visible block text", () => {
@@ -498,5 +672,636 @@ describe("renderMarkdownPreview", () => {
       },
     ]);
     expect(document.truncated).toBe(true);
+  });
+});
+
+describe("CommonMark block syntax", () => {
+  it.each(["---", "***", "___", "* * *", "- - -", "   _ _ _ _", "  ----  "])(
+    "renders %s as a rule",
+    (rule) => {
+      expect(renderMarkdownPreview(`Intro\n\n${rule}\n\nAfter`).blocks).toEqual(
+        [
+          { kind: "paragraph", text: "Intro" },
+          { kind: "rule" },
+          { kind: "paragraph", text: "After" },
+        ],
+      );
+    },
+  );
+  it.each(["--", "**", "__", "-_*", "    ---", "--- text"])(
+    "does not turn %s into a rule",
+    (source) => {
+      expect(renderMarkdownPreview(source).blocks).toEqual([
+        ...(source.startsWith("    ")
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: source.trim(),
+                fenceClosed: true,
+              },
+            ]
+          : [{ kind: "paragraph", text: source.trim() }]),
+      ]);
+    },
+  );
+  it.each(["- - -", "* * *", "___"])("ends a list before %s", (rule) => {
+    expect(renderMarkdownPreview(`- item\n${rule}\nAfter`).blocks).toEqual([
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "paragraph", text: "item" }] }],
+      },
+      { kind: "rule" },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it("keeps table delimiter rows as tables", () => {
+    expect(
+      renderMarkdownPreview("| Name |\n| --- |\n| value |").blocks,
+    ).toEqual([
+      { kind: "table", align: [undefined], rows: [["Name"], ["value"]] },
+    ]);
+  });
+  it.each([
+    ["===", 1],
+    ["---", 2],
+    ["  ==  ", 1],
+    ["-", 2],
+  ])("uses %s as a setext underline", (underline, level) => {
+    expect(
+      renderMarkdownPreview(`A **title**\ncontinued\n${underline}\nAfter`)
+        .blocks,
+    ).toEqual([
+      { kind: "heading", level, text: "A title continued" },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it("lets spaced rules interrupt paragraphs without becoming headings", () => {
+    expect(renderMarkdownPreview("Intro\n- - -\nAfter").blocks).toEqual([
+      { kind: "paragraph", text: "Intro" },
+      { kind: "rule" },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it("keeps tilde code literal until a matching fence of sufficient length", () => {
+    expect(
+      renderMarkdownPreview(
+        "Before\n~~~~js\nconst a = *b*;\n```\n~~~\n~~~~ trailing\n~~~~~\nAfter",
+      ).blocks,
+    ).toEqual([
+      { kind: "paragraph", text: "Before" },
+      {
+        kind: "code",
+        language: "js",
+        text: "const a = *b*;\n```\n~~~\n~~~~ trailing",
+        fenceClosed: true,
+      },
+      { kind: "paragraph", text: "After" },
+    ]);
+  });
+  it.each(["~~~", "```"])("reports an unclosed %s fence", (fence) => {
+    expect(renderMarkdownPreview(`${fence}js\n*a*`).blocks).toEqual([
+      { kind: "code", language: "js", text: "*a*", fenceClosed: false },
+    ]);
+  });
+  it("joins blank and unspaced quote lines into one quote", () => {
+    expect(renderMarkdownPreview("> one\n>\n> two\n>text").blocks).toEqual([
+      {
+        kind: "quote",
+        children: [
+          { kind: "paragraph", text: "one" },
+          { kind: "paragraph", text: "two text" },
+        ],
+      },
+    ]);
+  });
+  it("counts rules toward the block cap", () => {
+    const document = renderMarkdownPreview(
+      "***\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCKS) + "After",
+    );
+    expect(document.blocks).toEqual(
+      Array.from({ length: MAX_MARKDOWN_PREVIEW_BLOCKS }, () => ({
+        kind: "rule",
+      })),
+    );
+    expect(document.truncated).toBe(true);
+    expect(
+      renderMarkdownPreview("***\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCKS))
+        .truncated,
+    ).toBe(false);
+  });
+});
+
+describe("fence indentation and empty list precedence", () => {
+  it.each(["~~~", "```"])(
+    "keeps a four-space %s closer inside literal code",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(`${fence}js\ncode\n    ${fence}\nAfter`).blocks,
+      ).toEqual([
+        {
+          kind: "code",
+          language: "js",
+          text: `code\n    ${fence}\nAfter`,
+          fenceClosed: false,
+        },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "admits a three-space %s opener and closer",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(
+          `Before\n   ${fence}js\n   code\n   ${fence}\nAfter`,
+        ).blocks,
+      ).toEqual([
+        { kind: "paragraph", text: "Before" },
+        { kind: "code", language: "js", text: "code", fenceClosed: true },
+        { kind: "paragraph", text: "After" },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "does not open a four-space %s fence or interrupt a paragraph",
+    (fence) => {
+      expect(renderMarkdownPreview(`    ${fence}js\ncode`).blocks).toEqual([
+        { kind: "code", language: "", text: `${fence}js`, fenceClosed: true },
+        { kind: "paragraph", text: "code" },
+      ]);
+      expect(
+        renderMarkdownPreview(`Before\n    ${fence}js\ncode`).blocks,
+      ).toEqual([{ kind: "paragraph", text: `Before ${fence}js code` }]);
+    },
+  );
+  it.each(["-", "+", "*", "-   ", "+\t"])(
+    "classifies empty %s as a list before a rule",
+    (marker) => {
+      expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
+        { kind: "list", items: [{ children: [] }] },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each(["1.", "2)"])(
+    "retains empty ordered marker %s before a rule",
+    (marker) => {
+      expect(renderMarkdownPreview(`${marker}\n---`).blocks).toEqual([
+        {
+          kind: "list",
+          items: [{ children: [] }],
+          ordered: true,
+          start: Number(marker[0]),
+        },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it("keeps empty items among nonempty items without converting them to headings", () => {
+    expect(renderMarkdownPreview("- one\n-\n- two\n---").blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          { children: [] },
+          { children: [{ kind: "paragraph", text: "two" }] },
+        ],
+      },
+      { kind: "rule" },
+    ]);
+  });
+  it("does not use an equals underline to turn an empty list into a heading", () => {
+    expect(renderMarkdownPreview("-\n===").blocks).toEqual([
+      { kind: "list", items: [{ children: [] }] },
+      { kind: "paragraph", text: "===" },
+    ]);
+  });
+  it("bounds retained empty items just like one-character items", () => {
+    const document = renderMarkdownPreview(
+      "-\n".repeat(MAX_MARKDOWN_PREVIEW_BLOCK_CHARS + 1),
+    );
+    expect(document.blocks).toEqual([
+      {
+        kind: "list",
+        items: Array.from({ length: MAX_MARKDOWN_PREVIEW_BLOCK_CHARS }, () => ({
+          children: [],
+        })),
+      },
+    ]);
+    expect(document.truncated).toBe(true);
+  });
+});
+
+describe("ATX classification before setext", () => {
+  it.each([
+    ["#", 1, ""],
+    [" #", 1, ""],
+    ["  ##  ", 2, ""],
+    ["   ######\t", 6, ""],
+    [" # Title", 1, "Title"],
+    ["  ## Title", 2, "Title"],
+    ["   # Title", 1, "Title"],
+    ["###\tTitle", 3, "Title"],
+  ])("classifies %s before a following rule", (source, level, text) => {
+    expect(renderMarkdownPreview(`${source}\n---`).blocks).toEqual([
+      { kind: "heading", level, text },
+      { kind: "rule" },
+    ]);
+    expect(renderMarkdownPreview(`Intro\n${source}\n---`).blocks).toEqual([
+      { kind: "paragraph", text: "Intro" },
+      { kind: "heading", level, text },
+      { kind: "rule" },
+    ]);
+  });
+  it.each(["####### Title", "#Title", "    # Title"])(
+    "classifies non-ATX %s using CommonMark indentation before setext",
+    (source) => {
+      expect(renderMarkdownPreview(`${source}\n---`).blocks).toEqual([
+        ...(source.startsWith("    ")
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: source.trim(),
+                fenceClosed: true,
+              },
+              { kind: "rule" },
+            ]
+          : [{ kind: "heading", level: 2, text: source.trim() }]),
+      ]);
+    },
+  );
+});
+
+describe("shared list interruption classification", () => {
+  it("keeps a quote paragraph open across marked indented continuation", () => {
+    expect(renderMarkdownPreview("> foo\n>     bar\nbaz\n").blocks).toEqual([
+      { kind: "quote", children: [{ kind: "paragraph", text: "foo bar baz" }] },
+    ]);
+  });
+
+  it.each([
+    [">     foo\n    bar\n", "foo", "bar"],
+    ["> ```\nfoo\n```\n", "```", "foo"],
+    ["> ```\n> code\noutside\n", "``` code", "outside"],
+  ])(
+    "does not lazily continue a quote opened by code: %j",
+    (source, text, outside) => {
+      expect(renderMarkdownPreview(source).blocks.slice(0, 2)).toEqual([
+        {
+          kind: "quote",
+          children: [
+            {
+              kind: "code",
+              language: "",
+              text: text === "```" ? "" : text === "``` code" ? "code\n" : text,
+              fenceClosed: source.startsWith(">     "),
+            },
+          ],
+        },
+        ...(source.startsWith(">     ")
+          ? [{ kind: "code", language: "", text: outside, fenceClosed: true }]
+          : [{ kind: "paragraph", text: outside }]),
+      ]);
+    },
+  );
+
+  it("does not collect a fenced list child's code as paragraph continuation", () => {
+    expect(renderMarkdownPreview("- ```\n  code\n").blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          {
+            children: [
+              {
+                kind: "code",
+                language: "",
+                text: "code\n",
+                fenceClosed: false,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it.each(["- one", "-\n  one"])(
+    "keeps an empty nested marker in the paragraph opened by %j",
+    (prefix) => {
+      expect(renderMarkdownPreview(`${prefix}\n  +\n  two`).blocks).toEqual([
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "one + two" }] }],
+        },
+      ]);
+    },
+  );
+
+  it("admits an empty nested list before a paragraph has opened", () => {
+    expect(renderMarkdownPreview("-\n  +").blocks).toEqual([
+      {
+        kind: "list",
+        items: [{ children: [{ kind: "list", items: [{ children: [] }] }] }],
+      },
+    ]);
+  });
+
+  it.each(["-    ", "-\t"])(
+    "uses the current sibling's content column after %j",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n- sibling\n  1. child`).blocks,
+      ).toEqual([
+        {
+          kind: "list",
+          items: [
+            { children: [{ kind: "paragraph", text: "parent" }] },
+            {
+              children: [
+                { kind: "paragraph", text: "sibling" },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                  ordered: true,
+                  start: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+    },
+  );
+  it.each(["~~~", "```"])(
+    "reads %s indentation relative to a two-digit list item's content",
+    (fence) => {
+      expect(
+        renderMarkdownPreview(
+          `10. example\n    ${fence}js\n    const x = 1;\n    ${fence}`,
+        ).blocks,
+      ).toEqual([
+        {
+          kind: "list",
+          items: [
+            {
+              children: [
+                { kind: "paragraph", text: "example" },
+                {
+                  kind: "code",
+                  language: "js",
+                  text: "const x = 1;",
+                  fenceClosed: true,
+                },
+              ],
+            },
+          ],
+          ordered: true,
+          start: 10,
+        },
+      ]);
+    },
+  );
+  it.each(["-\t", "+\t", "*\t", " -\t", "  -\t", "- \t", "-   "])(
+    "keeps a two-space item beside a parent separated by %j",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n  - sibling`).blocks,
+      ).toEqual(
+        prefix.trim() === "+" || prefix.trim() === "*"
+          ? [
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "parent" }] }],
+              },
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "sibling" }] }],
+              },
+            ]
+          : [
+              {
+                kind: "list",
+                items: [
+                  { children: [{ kind: "paragraph", text: "parent" }] },
+                  { children: [{ kind: "paragraph", text: "sibling" }] },
+                ],
+              },
+            ],
+      );
+    },
+  );
+
+  it.each([
+    ["-\t", 4, false],
+    [" -\t", 4, false],
+    ["  -\t", 4, false],
+    ["   -\t", 8, false],
+    ["1.\t", 4, true],
+    ["12)\t", 4, true],
+    ["123.\t", 8, true],
+    [" 1.\t", 4, true],
+    ["-\t ", 5, false],
+  ] as const)(
+    "uses %j to nest at column %i and classifies the preceding column by its indentation",
+    (prefix, column, ordered) => {
+      const source = [
+        `${prefix}parent`,
+        `${" ".repeat(column)}- child`,
+        `${" ".repeat(column - 1)}${ordered ? "2." : "-"} sibling`,
+      ].join("\n");
+      const changesDelimiter = prefix.includes(")");
+      const indentedCode = column > 4;
+      expect(renderMarkdownPreview(source).blocks).toEqual([
+        {
+          kind: "list",
+          items: [
+            {
+              children: [
+                { kind: "paragraph", text: "parent" },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                },
+              ],
+            },
+            ...(!changesDelimiter && !indentedCode
+              ? [{ children: [{ kind: "paragraph", text: "sibling" }] }]
+              : []),
+          ],
+          ...(ordered ? { ordered: true, start: Number.parseInt(prefix) } : {}),
+        },
+        ...(indentedCode
+          ? [
+              {
+                kind: "code",
+                language: "",
+                text: `${" ".repeat(column - 5)}${ordered ? "2." : "-"} sibling`,
+                fenceClosed: true,
+              },
+            ]
+          : changesDelimiter
+            ? [
+                {
+                  kind: "list",
+                  items: [
+                    { children: [{ kind: "paragraph", text: "sibling" }] },
+                  ],
+                  ordered: true,
+                  start: 2,
+                },
+              ]
+            : []),
+      ]);
+    },
+  );
+
+  it("aligns mixed space and tab indentation at the same nesting level", () => {
+    expect(
+      renderMarkdownPreview("- parent\n \t- child\n    - sibling").blocks,
+    ).toEqual([
+      {
+        kind: "list",
+        items: [
+          {
+            children: [
+              { kind: "paragraph", text: "parent" },
+              {
+                kind: "list",
+                items: [
+                  { children: [{ kind: "paragraph", text: "child" }] },
+                  { children: [{ kind: "paragraph", text: "sibling" }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps the default content indentation after an empty tab-separated item", () => {
+    expect(renderMarkdownPreview("- one\n-\t\n  - child").blocks).toEqual([
+      {
+        kind: "list",
+        items: [
+          { children: [{ kind: "paragraph", text: "one" }] },
+          {
+            children: [
+              {
+                kind: "list",
+                items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it.each(["-     ", "-\t\t", "- \t\t"])(
+    "keeps an overpadded %j item as indented code beside its nested list",
+    (prefix) => {
+      expect(
+        renderMarkdownPreview(`${prefix}parent\n  - child`).blocks,
+      ).toEqual([
+        {
+          kind: "list",
+          items: [
+            {
+              children: [
+                {
+                  kind: "code",
+                  language: "",
+                  text: prefix === "-     " ? "parent" : "  parent",
+                  fenceClosed: true,
+                },
+                {
+                  kind: "list",
+                  items: [{ children: [{ kind: "paragraph", text: "child" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+    },
+  );
+
+  it.each(["-\tx", "   -\tx"])(
+    "interrupts a paragraph with short tab-separated content: %j",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}`).blocks).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "x" }] }],
+        },
+      ]);
+    },
+  );
+
+  it.each(["-", "+", "*", "1."])(
+    "interrupts a paragraph at a tab-separated %s item",
+    (marker) => {
+      const ordered = /^\d/u.test(marker);
+      expect(
+        renderMarkdownPreview(`Intro\n${marker}\titem\n---`).blocks,
+      ).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "item" }] }],
+          ...(ordered ? { ordered: true, start: Number(marker[0]) } : {}),
+        },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each(["- item", "   -\titem", "1. item"])(
+    "preserves admitted indentation and ordered starts for %s",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+        { kind: "paragraph", text: "Intro" },
+        {
+          kind: "list",
+          items: [{ children: [{ kind: "paragraph", text: "item" }] }],
+          ...(line.startsWith("1") ? { ordered: true, start: 1 } : {}),
+        },
+        { kind: "rule" },
+      ]);
+    },
+  );
+  it.each([
+    "+",
+    "2.",
+    "2)\titem",
+    "2. item",
+    "    -\titem",
+    "\t- item",
+    "1234567890. item",
+    "-item",
+  ])("keeps %s inside the paragraph", (line) => {
+    expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+      {
+        kind: "heading",
+        level: 2,
+        text: `Intro ${line.trim().replace(/\s+/gu, " ")}`,
+      },
+    ]);
+  });
+  it.each(["+ ", "+\t", "* \t"])(
+    "keeps separator-bearing empty markers inside a setext heading: %s",
+    (line) => {
+      expect(renderMarkdownPreview(`Intro\n${line}\n---`).blocks).toEqual([
+        { kind: "heading", level: 2, text: `Intro ${line.trim()}` },
+      ]);
+    },
+  );
+  it("keeps setext precedence over a marker with trailing whitespace", () => {
+    expect(renderMarkdownPreview("Intro\n-\t\n---").blocks).toEqual([
+      { kind: "heading", level: 2, text: "Intro" },
+      { kind: "rule" },
+    ]);
   });
 });

@@ -13,7 +13,7 @@ import type {
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
-import { ChatMarkdown } from "./ChatMarkdown";
+import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
@@ -21,6 +21,11 @@ import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
 import { isWorkingTool, workingToolStatus } from "./workingTool";
+
+const loadMarkdown = () =>
+  import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
+    default: ChatMarkdown,
+  }));
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
@@ -88,16 +93,23 @@ export const ItemView = memo(
                 </time>
               ) : null}
             </header>
-            <ChatMarkdown
-              text={item.payload.text}
-              streaming={
-                item.lifecycle === "started" || item.lifecycle === "streaming"
-              }
-              fileReferenceOwner={
-                item.payload.role === "assistant"
-                  ? fileReferenceOwner
-                  : undefined
-              }
+            <LazyModuleBoundary
+              label="Markdown renderer"
+              load={loadMarkdown}
+              render={(ChatMarkdown) => (
+                <ChatMarkdown
+                  text={item.payload.text}
+                  streaming={
+                    item.lifecycle === "started" ||
+                    item.lifecycle === "streaming"
+                  }
+                  fileReferenceOwner={
+                    item.payload.role === "assistant"
+                      ? fileReferenceOwner
+                      : undefined
+                  }
+                />
+              )}
             />
           </article>
         );
@@ -278,14 +290,20 @@ function ErrorActivity({
     >
       <header>
         <strong>
-          {item.payload.code === "browserMcpUnavailable"
-            ? "Browser tools unavailable"
-            : item.payload.code === "clientFileWriteRefused"
-              ? "File write unavailable"
-              : "Agent notice"}
+          {item.payload.kind === "attempt"
+            ? item.payload.code
+            : item.payload.code === "browserMcpUnavailable"
+              ? "Browser tools unavailable"
+              : item.payload.code === "clientFileWriteRefused"
+                ? "File write unavailable"
+                : "Agent notice"}
         </strong>
         <span className="acp-state">
-          {item.payload.recoverable ? "Retry available" : "Needs attention"}
+          {item.payload.kind === "attempt"
+            ? "Automatic retry"
+            : item.payload.recoverable
+              ? "Retry available"
+              : "Needs attention"}
         </span>
       </header>
       <p>{item.payload.message}</p>

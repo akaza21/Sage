@@ -1,6 +1,7 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
+  --chat-column-measure: 42rem;
   --chat-column-gutter: var(--space-1);
   --chat-column-trailing: var(--scrollbar-size);
   position: relative;
@@ -11,7 +12,7 @@
   min-width: 0;
   height: 100%;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--color-canvas);
+  background: var(--agent-shell-center);
 }
 
 .chat-surface--agent {
@@ -21,6 +22,7 @@
 }
 
 .chat-surface--agent > .composer__notice,
+.chat-surface--agent > .build-notice,
 .chat-surface--agent > .composer__error {
   grid-area: notice;
 }
@@ -144,16 +146,13 @@
 
 .project-intro__icon {
   display: grid;
-  place-items: center;
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.project-intro__icon {
   width: var(--control-height-compact);
   height: var(--control-height-compact);
   flex: 0 0 var(--control-height-compact);
+  place-items: center;
   border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .project-intro strong {
@@ -243,9 +242,9 @@
   }
 }
 
-.composer__control-trigger:hover,
-.composer__control-trigger:has([aria-expanded="true"]),
-.composer__control-trigger[aria-expanded="true"] {
+button.composer__control-trigger:hover,
+button.composer__control-trigger:has([aria-expanded="true"]),
+button.composer__control-trigger[aria-expanded="true"] {
   color: var(--color-status-foreground);
   background: var(--composer-control-hover);
 }
@@ -327,17 +326,6 @@
 
 .composer__access-label--write {
   color: var(--composer-access-write);
-}
-
-.composer__model-trigger {
-  max-width: 155px;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__plus:hover,

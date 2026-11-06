@@ -116,7 +116,10 @@ describe("Compact chat controls", () => {
         onToggle={() => {}}
         onToggleEffort={() => {}}
         onDismiss={() => {}}
-        choices={[{ id: "model", name: "Advertised long model" }]}
+        choices={[
+          { id: "model", name: "Advertised long model" },
+          { id: "other", name: "Other model" },
+        ]}
         selectedId="model"
         modelLabel="Advertised long model"
         effortLabel={null}
@@ -133,6 +136,7 @@ describe("Compact chat controls", () => {
       "aria-description",
       "Advertised long model",
     );
+    expect(trigger).toHaveAttribute("data-selected-id", "model");
     expect(
       trigger.querySelector(".composer__model-icon.lucide-sparkles"),
     ).toHaveAttribute("aria-hidden", "true");

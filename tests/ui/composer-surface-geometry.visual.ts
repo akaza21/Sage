@@ -107,82 +107,41 @@ for (const viewport of [
         nextCursor: null,
       });
     });
-    const scope = page.getByRole("group", {
-      name: "Project scope",
-      exact: true,
-    });
-    await expect(scope).toBeVisible();
     const composer = page.locator("form.composer");
+    await expect(composer).toBeVisible();
     const geometry = await composer.evaluate((form) => {
       const dock = form.closest(".chat-dock")!;
-      const scope = document.querySelector(
-        '[role="group"][aria-label="Project scope"]',
-      )!;
       const body = form.querySelector(".composer__body")!;
       const style = getComputedStyle(dock);
       const box = dock.getBoundingClientRect();
-      const row = scope.getBoundingClientRect();
       const input = body.getBoundingClientRect();
-      const corners = (element: Element) => {
-        const css = getComputedStyle(element);
-        return [
-          css.borderTopLeftRadius,
-          css.borderTopRightRadius,
-          css.borderBottomRightRadius,
-          css.borderBottomLeftRadius,
-        ];
-      };
+      const css = getComputedStyle(body);
       return {
         token: style.getPropertyValue("--radius-xl").trim(),
-        corners: corners(dock),
-        ownsScope: dock.contains(scope),
-        touching: [
-          getComputedStyle(scope).borderBottomLeftRadius,
-          getComputedStyle(scope).borderBottomRightRadius,
-          ...corners(body).slice(0, 2),
+        corners: [
+          style.borderTopLeftRadius,
+          style.borderTopRightRadius,
+          style.borderBottomRightRadius,
+          style.borderBottomLeftRadius,
         ],
-        edges: [
-          row.left - box.left,
-          box.right - row.right,
-          input.left - box.left,
-          box.right - input.right,
-        ],
+        edges: [input.left - box.left, box.right - input.right],
         border: Number.parseFloat(style.borderLeftWidth),
         borderToken: Number.parseFloat(
           style.getPropertyValue("--border-width"),
         ),
-        childBackgrounds: [
-          getComputedStyle(scope).backgroundColor,
-          getComputedStyle(body).backgroundColor,
-        ],
-        childShadows: [
-          getComputedStyle(scope).boxShadow,
-          getComputedStyle(body).boxShadow,
-        ],
-        join: input.top - row.bottom,
-        childBorders: [
-          getComputedStyle(scope).borderBottomWidth,
-          getComputedStyle(body).borderTopWidth,
-        ],
+        bodyPaint: [css.backgroundColor, css.boxShadow, css.borderTopWidth],
       };
     });
+    // The new chat's input is painted by the dock alone: no inner card,
+    // shadow or border, inset by exactly the dock's border.
     expect.soft(geometry.corners).toEqual(Array(4).fill(geometry.token));
-    expect.soft(geometry.ownsScope).toBe(true);
-    expect.soft(geometry.touching).toEqual(Array(4).fill("0px"));
-    expect.soft(geometry.childBorders).toEqual(["0px", "0px"]);
     expect.soft(geometry.border).toBe(geometry.borderToken);
     expect
-      .soft(geometry.childBackgrounds)
-      .toEqual(Array(2).fill("rgba(0, 0, 0, 0)"));
-    expect.soft(geometry.childShadows).toEqual(["none", "none"]);
-    expect.soft(geometry.join).toBe(0);
+      .soft(geometry.bodyPaint)
+      .toEqual(["rgba(0, 0, 0, 0)", "none", "0px"]);
     for (const edge of geometry.edges) expect.soft(edge).toBe(geometry.border);
 
-    if (!(await page.locator(".agent-artifact-pane").isVisible()))
-      await page
-        .getByRole("button", { name: /Show files and preview/ })
-        .click();
-    for (const selector of [".agent-chat-center", ".agent-artifact-pane"]) {
+    const assertInsetCard = async (selector: string) => {
       const card = page.locator(selector);
       await expect(card).toBeVisible();
       const bounds = await card.evaluate((element) => {
@@ -219,7 +178,8 @@ for (const viewport of [
       }
       if (selector === ".agent-artifact-pane")
         expect.soft(bounds.right).toBe(bounds.inset);
-    }
+    };
+    await assertInsetCard(".agent-chat-center");
     const rules = await composer.evaluate((form) => {
       const bottom = form.getBoundingClientRect().bottom;
       return [...document.querySelectorAll("body *")]
@@ -241,7 +201,39 @@ for (const viewport of [
         })
         .map((element) => element.className || element.tagName);
     });
-    expect(rules).toEqual([]);
+    // The window status bar owns the single full-width divider below the
+    // inset cards; the composer must not introduce another separator.
+    expect(rules).toEqual(["status-bar"]);
+    const status = page.locator(".status-bar");
+    await expect(status).toHaveCSS(
+      "border-top-width",
+      await status.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--border-width").trim(),
+      ),
+    );
+    await expect(status).toHaveCSS("border-top-style", "solid");
+
+    if (!(await page.locator(".agent-artifact-pane").isVisible()))
+      await page
+        .getByRole("button", { name: /Show files and preview/ })
+        .click();
+    await assertInsetCard(".agent-artifact-pane");
+    const center = page.locator(".agent-chat-center");
+    if (await page.locator(".workbench__body--artifact-overlay").count()) {
+      await expect(center).toBeHidden();
+      await page
+        .getByRole("button", {
+          name: "Collapse files, changes, and preview",
+          exact: true,
+        })
+        .click();
+      await expect(center).toBeVisible();
+      await assertInsetCard(".agent-chat-center");
+      await page
+        .getByRole("button", { name: /Show files and preview/ })
+        .click();
+      await expect(center).toBeHidden();
+    } else await assertInsetCard(".agent-chat-center");
 
     await page
       .getByRole("button", { name: "Expand resource pane", exact: true })
