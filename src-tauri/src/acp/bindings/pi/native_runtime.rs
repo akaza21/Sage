@@ -1,5 +1,4 @@
-//! Launchable production Pi runtime: the read-only RPC translator plus the
-//! curated native launch of an admitted Pi package.
+//! Launchable Pi runtime with read-only fallback and optional curated bridge.
 
 use std::sync::Arc;
 
@@ -36,11 +35,21 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
         self.binding
             .revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let adapter = PiRuntime::from_native_binding(
+        let mut adapter = PiRuntime::from_native_binding(
             self.binding.binding_digest(),
             runtime_epoch,
             session_id,
         );
+        if super::bridge::install::installed(self.binding.harness_version()).is_some() {
+            let (project, _, root_id) = self.root.scope();
+            let workspace = crate::workspace::Workspace::open(
+                project.as_str(),
+                root_id.as_str(),
+                self.root.as_path(),
+            )
+            .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+            adapter.enable_bridge(workspace);
+        }
         Ok(NativeRuntime::new(PiNativeRuntime {
             adapter,
             binding: self.binding,

@@ -5,7 +5,8 @@
 //! mode, within a bounded version range whose wire behaviour the pinned
 //! translator covers. Launch is read-only by construction: Pi is started with
 //! only its `read` tool, no extensions, skills, prompt templates, themes or
-//! session files, and the translator still rejects any other tool.
+//! session files. An exact Sage-bundled bridge may explicitly register managed
+//! tools on the pinned release; missing or stale resources leave only read.
 
 use std::{
     ffi::OsString,
@@ -108,6 +109,7 @@ impl AdmittedPiBinding {
             .len();
         let binding_digest: [u8; 32] = Sha256::new()
             .chain_update(BINDING_DIGEST_DOMAIN)
+            .chain_update(super::bridge::install::SOURCE)
             .chain_update(launch.package_version.as_bytes())
             .chain_update(launch.entrypoint_sha256.as_bytes())
             .chain_update(launch.node_sha256.as_bytes())
@@ -180,6 +182,10 @@ impl AdmittedPiBinding {
         let identity = uuid::Uuid::from_bytes(identity);
         let mut fixed_args = vec![self.launch.entrypoint_path.clone().into_os_string()];
         fixed_args.extend(PI_READ_ONLY_ARGS.map(OsString::from));
+        if let Some(bridge) = super::bridge::install::installed(self.harness_version()) {
+            fixed_args.push(OsString::from("--extension"));
+            fixed_args.push(bridge.into_os_string());
+        }
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,

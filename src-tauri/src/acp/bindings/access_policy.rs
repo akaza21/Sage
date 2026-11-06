@@ -45,6 +45,18 @@ pub(crate) fn access_modes(
             "Ask each time",
             "Review each permission request; no filesystem sandbox.",
         )],
+        "pi-rpc" if characterised && super::pi::bridge::install::installed(version).is_some() => &[
+            (
+                ReadOnly,
+                "Read-only",
+                "Sage declines every Pi write and shell command.",
+            ),
+            (
+                WorkspaceWrite,
+                "Workspace edits",
+                "Ask before each verified workspace edit; shell commands are denied.",
+            ),
+        ],
         "pi-rpc" => &[(
             ReadOnly,
             "Read-only",

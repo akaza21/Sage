@@ -99,6 +99,7 @@ struct CompletedResponse {
 
 #[derive(Debug)]
 pub struct PiTranslator {
+    pub(crate) bridge_tools: bool,
     epoch: u64,
     next_command: u64,
     launch_admission: Option<LaunchAdmission>,
@@ -156,6 +157,7 @@ impl PiTranslator {
 
     fn new(epoch: u64, launch_admission: Option<LaunchAdmission>) -> Self {
         Self {
+            bridge_tools: false,
             epoch,
             next_command: 0,
             launch_admission,

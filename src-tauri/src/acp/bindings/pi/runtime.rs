@@ -71,6 +71,7 @@ pub(super) struct DenyIntent {
 }
 
 pub(crate) struct PiRuntime {
+    pub(super) bridge: Option<super::bridge::Bridge>,
     pub(super) translator: PiTranslator,
     pub(super) binding_digest: [u8; 32],
     pub(super) runtime_epoch: RuntimeEpoch,
@@ -157,6 +158,7 @@ impl PiRuntime {
         session_id: SageAgentSessionId,
     ) -> Self {
         Self {
+            bridge: None,
             translator,
             binding_digest,
             runtime_epoch,
@@ -235,10 +237,13 @@ impl HarnessAdapter for PiRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
-                ..
+                access_mode,
             } => {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
+                }
+                if let Some(bridge) = self.bridge.as_mut() {
+                    bridge.begin_turn(access_mode);
                 }
                 let external_id =
                     ExternalId::new("piTurnId", client_message_id.as_str().to_owned())
@@ -267,6 +272,9 @@ impl HarnessAdapter for PiRuntime {
                 Ok(egress)
             }
             AdapterCommand::Cancel if self.active_turn.is_some() => {
+                if let Some(bridge) = self.bridge.as_mut() {
+                    bridge.pending = None;
+                }
                 self.begin_one(Operation::Abort, RequestKind::Cancel)
             }
             AdapterCommand::Cancel => Err(AdapterRuntimeError::Operation),
@@ -297,6 +305,21 @@ impl HarnessAdapter for PiRuntime {
         token: EgressToken,
         resolution: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
+        self.resolve_bridge_egress(&token, resolution)?;
+        if token.is_notification() {
+            return if matches!(
+                resolution,
+                EgressResolution::Queued | EgressResolution::Written
+            ) {
+                Ok(())
+            } else {
+                if let Some(bridge) = self.bridge.as_mut() {
+                    bridge.pending = None;
+                }
+                self.poisoned = true;
+                Err(AdapterRuntimeError::MandatoryDenyTeardown)
+            };
+        }
         if token.cancelled_permission_request().is_some() {
             return self.resolve_dialog_cancel(token, resolution);
         }

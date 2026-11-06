@@ -1,0 +1,154 @@
+use super::*;
+use serde_json::json;
+use std::path::PathBuf;
+struct Fixture {
+    path: PathBuf,
+    workspace: crate::workspace::Workspace,
+}
+impl Fixture {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("sage-pi-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&path).unwrap();
+        let workspace = crate::workspace::Workspace::open("project", "root", &path).unwrap();
+        Self { path, workspace }
+    }
+    fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, ()> {
+        files::prepare(
+            &self.workspace,
+            files::Request {
+                version: 1,
+                tool_call_id: "tool-1".into(),
+                tool: tool.into(),
+                args,
+            },
+        )
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+#[test]
+fn pi_bridge_write_edit_and_conflict() {
+    let f = Fixture::new();
+    let create = f
+        .edit("write", json!({"path":"a.txt", "content":"hello world"}))
+        .unwrap();
+    assert!(create.created);
+    write::commit(&f.workspace, &create).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(f.path.join("a.txt")).unwrap(),
+        "hello world"
+    );
+    assert!(write::commit(&f.workspace, &create).is_err());
+    let edit = f
+        .edit(
+            "edit",
+            json!({"path":"a.txt", "oldText":"world", "newText":"Sage"}),
+        )
+        .unwrap();
+    assert_eq!(edit.old, "hello world");
+    assert_eq!(edit.new, "hello Sage");
+    std::fs::write(f.path.join("a.txt"), "concurrent edit").unwrap();
+    assert!(write::commit(&f.workspace, &edit).is_err());
+    assert_eq!(
+        std::fs::read_to_string(f.path.join("a.txt")).unwrap(),
+        "concurrent edit"
+    );
+}
+#[test]
+fn pi_bridge_denies_shell_escapes_ambiguous_and_oversized_edits() {
+    let f = Fixture::new();
+    for path in ["../escape", ".git/config", "node_modules/file", "a/../file"] {
+        assert!(f.edit("write", json!({"path":path,"content":"x"})).is_err());
+    }
+    assert!(f.edit("bash", json!({"command":"echo unsafe"})).is_err());
+    assert!(
+        f.edit(
+            "write",
+            json!({"path":"a.txt","content":"x".repeat(files::MAX_BYTES + 1)})
+        )
+        .is_err()
+    );
+    std::fs::write(f.path.join("a.txt"), "xx").unwrap();
+    assert!(
+        f.edit("edit", json!({"path":"a.txt","oldText":"x","newText":"y"}))
+            .is_err()
+    );
+    assert!(!f.path.join("escape").exists());
+}
+#[cfg(unix)]
+#[test]
+fn pi_bridge_denies_symlink_escape_at_prepare_and_commit() {
+    let f = Fixture::new();
+    let outside = Fixture::new();
+    std::fs::write(outside.path.join("secret"), "safe").unwrap();
+    std::os::unix::fs::symlink(&outside.path, f.path.join("link")).unwrap();
+    assert!(
+        f.edit("write", json!({"path":"link/secret","content":"bad"}))
+            .is_err()
+    );
+    let edit = f
+        .edit("write", json!({"path":"a.txt","content":"bad"}))
+        .unwrap();
+    std::os::unix::fs::symlink(outside.path.join("secret"), f.path.join("a.txt")).unwrap();
+    assert!(write::commit(&f.workspace, &edit).is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside.path.join("secret")).unwrap(),
+        "safe"
+    );
+}
+#[test]
+fn pi_bridge_install_requires_exact_owned_bytes() {
+    let f = Fixture::new();
+    let path = f.path.join("sage-pi-bridge.mjs");
+    assert!(!install::matches_install(&f.path, &path));
+    std::fs::write(&path, include_bytes!("extension.mjs")).unwrap();
+    assert!(install::matches_install(&f.path, &path));
+    std::fs::write(&path, "outdated").unwrap();
+    assert!(!install::matches_install(&f.path, &path));
+    assert!(install::installed("0.82.0").is_none());
+    let outside = Fixture::new();
+    std::fs::write(
+        outside.path.join("bridge.mjs"),
+        include_bytes!("extension.mjs"),
+    )
+    .unwrap();
+    assert!(!install::matches_install(
+        &f.path,
+        &outside.path.join("bridge.mjs")
+    ));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn pi_bridge_memory_peak_and_settled() {
+    fn rss() -> u64 {
+        std::fs::read_to_string("/proc/self/status")
+            .unwrap()
+            .lines()
+            .find(|line| line.starts_with("VmRSS:"))
+            .unwrap()
+            .split_whitespace()
+            .nth(1)
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+    let f = Fixture::new();
+    std::fs::write(f.path.join("a.txt"), "x".repeat(files::MAX_BYTES)).unwrap();
+    let baseline = rss();
+    let edit = f.edit("edit", json!({"path":"a.txt","oldText":"x".repeat(files::MAX_BYTES),"newText":"y".repeat(files::MAX_BYTES)})).unwrap();
+    let retained = edit.old.capacity()
+        + edit.new.capacity()
+        + edit.relative.capacity()
+        + edit.tool_id.capacity();
+    let peak = rss();
+    assert!(retained <= files::MAX_BYTES * 2 + 1024);
+    drop(edit);
+    let settled = rss();
+    println!(
+        "Pi bridge memory (KiB): baseline RSS={baseline}, pending RSS={peak}, settled RSS={settled}; pending content allocation bytes={retained}, settled content allocation bytes=0"
+    );
+}
