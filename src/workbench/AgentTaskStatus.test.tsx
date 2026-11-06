@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { projectChatLiveSnapshot } from "../features/chat/acp/chatLiveSnapshot";
 import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
@@ -50,4 +50,30 @@ it("uses the rail's approval status before the turn reports waiting", () => {
     />,
   );
   expect(screen.getByRole("status")).toHaveTextContent("Awaiting approval");
+});
+
+it("keeps a harness problem behind its icon until opened", () => {
+  render(
+    <AgentTaskStatus
+      chatId="chat-1"
+      snapshot={null}
+      harnessStatus="Disconnected"
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveAccessibleName("Chat status: Idle");
+  const explanation = screen.getByText("Disconnected", { selector: "p" });
+  expect(explanation).not.toBeVisible();
+  fireEvent.click(screen.getByLabelText("Harness status: Disconnected"));
+  expect(explanation).toBeVisible();
+});
+
+it("shows no harness control for a neutral harness status", () => {
+  const view = render(
+    <AgentTaskStatus chatId="chat-1" snapshot={null} harnessStatus="Ready" />,
+  );
+  expect(screen.queryByLabelText("Harness status: Ready")).toBeNull();
+  view.rerender(
+    <AgentTaskStatus chatId="chat-1" snapshot={null} harnessStatus="Live" />,
+  );
+  expect(screen.queryByLabelText("Harness status: Live")).toBeNull();
 });

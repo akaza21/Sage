@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resourceKey } from "../domain/resourceIdentity";
+import { childResource, resourceKey } from "../domain/resourceIdentity";
 import type {
   BootstrapSnapshot,
   RenameProjectFolderResult,
 } from "../domain/workbench";
+import { ExplorerSurface } from "../features/files/ExplorerSurface";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { useWorkbenchStore } from "./store";
 
@@ -109,6 +109,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -128,24 +129,71 @@ describe("folder lifecycle public seam", () => {
     );
   });
 
-  it("keeps Explorer selector-only and gives truncated listings a Project-port refresh path", () => {
-    const explorerFiles = ["ExplorerSurface.tsx", "ExplorerActions.tsx"];
-    for (const file of explorerFiles) {
-      const source = readFileSync(
-        path.resolve(import.meta.dirname, `../features/files/${file}`),
-        "utf8",
-      );
-      expect(source).not.toMatch(
-        /from\s+["'][^"']*(?:desktop|workbenchRuntime)[^"']*["']/,
-      );
-    }
-    const resourceSlice = readFileSync(
-      path.resolve(import.meta.dirname, "./resourceSlice.ts"),
-      "utf8",
-    );
-    expect(resourceSlice).toMatch(
-      /getWorkbenchPorts\(\)\.project\.listDirectory/,
-    );
+  it("refreshes a truncated Explorer listing through the Project port and shows the new entries", async () => {
+    const entry = (name: string) => ({
+      name,
+      resource: { rootId: "root-a", relativePath: `src/${name}` },
+      kind: "file" as const,
+      byteLen: 1,
+    });
+    const listDirectory = vi
+      .spyOn(fakeProjectPort, "listDirectory")
+      .mockResolvedValue({
+        resource: parent,
+        truncated: false,
+        entries: [entry("first.ts"), entry("second.ts"), entry("third.ts")],
+      });
+    useWorkbenchStore.setState({
+      project: snapshot().project,
+      selectedResource: null,
+      expandedDirectories: { [resourceKey(parent)]: true },
+      directoryListings: {
+        [resourceKey(childResource("root-a"))]: {
+          phase: "ready",
+          value: {
+            resource: childResource("root-a"),
+            truncated: false,
+            entries: [
+              {
+                name: "src",
+                resource: parent,
+                kind: "directory",
+                byteLen: null,
+              },
+            ],
+          },
+        },
+        [resourceKey(parent)]: {
+          phase: "ready",
+          value: {
+            resource: parent,
+            truncated: true,
+            entries: [entry("first.ts")],
+          },
+        },
+      },
+    });
+
+    render(<ExplorerSurface />);
+    expect(
+      screen.getByText("More entries are hidden by the view limit."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("treeitem", { name: "Open file src/third.ts" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh folder" }));
+
+    expect(
+      await screen.findByRole("treeitem", { name: "Open file src/third.ts" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("treeitem", { name: "Open file src/second.ts" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("More entries are hidden by the view limit."),
+    ).toBeNull();
+    expect(listDirectory).toHaveBeenCalledWith(parent);
   });
 
   it("lets the current generation retry while an old directory listing is still hung", async () => {

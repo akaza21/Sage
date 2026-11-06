@@ -21,6 +21,7 @@ import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 
 import { useSettingsPageRequest } from "../app/settingsPageRequest";
 import { useWorkbenchStore } from "../app/store";
+import type { TabKind } from "../domain/chat";
 import type { EditorDocument } from "../domain/workbench";
 import { contentText } from "../features/files/editorContent";
 import { settleLazyModules } from "../test/settleLazyModules";
@@ -28,7 +29,6 @@ import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import {
   DEFAULT_WORKBENCH_WINDOW_MODE,
-  EDITOR_CANVAS_KINDS,
   isWorkbenchWindowMode,
   WORKBENCH_WINDOW_MODES,
 } from "./workbenchWindowMode";
@@ -126,8 +126,50 @@ describe("D0 workbench window mode seam", () => {
     expect(isWorkbenchWindowMode(1)).toBe(false);
   });
 
-  it("admits only File, Diff, and Settings to the one Editor tab strip", () => {
-    expect([...EDITOR_CANVAS_KINDS]).toEqual(["file", "diff", "settings"]);
+  it("admits only File, Diff, and Settings to the one Editor tab strip", async () => {
+    const tab = (
+      id: string,
+      kind: TabKind,
+      title: string,
+      position: number,
+    ) => ({
+      id,
+      kind,
+      title,
+      position,
+      pinned: false,
+      dirty: false,
+      ...(kind === "file" || kind === "diff"
+        ? { resource: { rootId: "root-a", relativePath: `src/${title}` } }
+        : {}),
+    });
+    useWorkbenchStore.setState({
+      sidebarOpen: false,
+      tabs: [
+        tab("chat:one", "chat", "Chat one", 0),
+        tab("file:current", "file", "current.ts", 1),
+        // Its native session already ended, so the reset after the test does
+        // not ask a native browser to close.
+        { ...tab("browser:docs", "browser", "Docs page", 2), status: "closed" },
+        tab("diff:other", "diff", "other.ts", 3),
+        tab("terminal:shell", "terminal", "Shell", 4),
+        tab("search:all", "search", "Search results", 5),
+        tab("problems:all", "problems", "Problems list", 6),
+        tab("output:log", "output", "Output log", 7),
+        tab("settings:appearance", "settings", "Settings", 8),
+      ],
+      activeTabId: "file:current",
+      loadEditor: vi.fn(async () => undefined),
+    });
+    render(createElement(Workbench));
+    await settleLazyModules();
+
+    const strip = screen.getByRole("navigation", { name: "Open tabs" });
+    expect(
+      within(strip)
+        .getAllByRole("tab")
+        .map((element) => element.textContent),
+    ).toEqual(["current.ts", "other.ts", "Settings"]);
   });
 
   it("shows Settings as a selected, closable Editor tab and returns to the exact file", async () => {

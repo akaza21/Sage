@@ -150,33 +150,6 @@
   height: var(--icon-size-sm);
 }
 
-@container chat-center (max-width: 400px) {
-  .agent-task-header {
-    gap: var(--space-1);
-    padding-inline: var(--space-2);
-  }
-
-  .agent-task-header__breadcrumb {
-    gap: var(--space-1);
-  }
-
-  .agent-task-header__title {
-    min-width: 3em;
-  }
-
-  .agent-task-header__rename [role="alert"] {
-    position: absolute;
-    z-index: var(--z-raised);
-    inset: 100% var(--space-2) auto;
-    padding: var(--space-2);
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-sm);
-    background: var(--color-panel);
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-}
-
 .agent-task-header .project-chat__actions {
   opacity: 1;
 }
@@ -222,4 +195,32 @@
   color: var(--color-danger);
   font-size: var(--font-size-xs);
   white-space: nowrap;
+}
+
+/* Compact overrides come last so they win over the base rules above. */
+@container chat-center (max-width: 400px) {
+  .agent-task-header {
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+  }
+
+  .agent-task-header__breadcrumb {
+    gap: var(--space-1);
+  }
+
+  .agent-task-header__title {
+    min-width: 3em;
+  }
+
+  .agent-task-header__rename [role="alert"] {
+    position: absolute;
+    z-index: var(--z-raised);
+    inset: 100% var(--space-2) auto;
+    padding: var(--space-2);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    background: var(--color-panel);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }

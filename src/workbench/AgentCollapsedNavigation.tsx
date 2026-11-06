@@ -10,10 +10,12 @@ export function AgentCollapsedNavigation({
   inert,
   onOpenSettings,
   onExpand,
+  railRef,
 }: {
   inert: boolean;
   onOpenSettings: () => void;
   onExpand: () => void;
+  railRef?: (node: HTMLElement | null) => void;
 }) {
   const project = useWorkbenchStore((state) => state.project);
   const transitioning = useWorkbenchStore(
@@ -22,6 +24,7 @@ export function AgentCollapsedNavigation({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   return (
     <aside
+      ref={railRef}
       className="project-sidebar"
       aria-label="Projects and chats"
       inert={inert}

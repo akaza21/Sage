@@ -4,6 +4,7 @@ import {
   expectNoViewportOverflow,
   openScenario,
 } from "./shared/visualBrowserPrimitives";
+import { settleEditorGutter } from "./editorVisualHelpers";
 
 test.describe("Wave 2 accessibility and responsive states", () => {
   test("shows selected, pressed, disabled, dirty, and confirmation states", async ({
@@ -175,6 +176,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "export function AgentChatPanes() {",
     );
     await expectNoViewportOverflow(page);
+    await settleEditorGutter(page);
     await expect(workbench).toHaveScreenshot("editor-search-populated.png");
   });
 

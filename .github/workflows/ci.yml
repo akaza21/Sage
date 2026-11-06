@@ -219,14 +219,26 @@ jobs:
       # a download.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
+      # Keep what each PowerShell start reads and writes off C:, for the same
+      # Defender burst as the rustup step above. TEMP and TMP (where csc and
+      # Add-Type compile) also need the long-path spelling: hosted TEMP can be
+      # an 8.3 short name, which the native-IDE journey scripts refuse. The
+      # module analysis cache moves with PSModuleAnalysisCachePath. Windows
+      # PowerShell's startup profile data has no override and stays on C:.
+      # The journal lets the summary step report every guardian's startup.
+      - name: Keep PowerShell per-start files on the runner's local disk
+        run: |
+          $psCache = Join-Path $env:RUNNER_TEMP "powershell"
+          New-Item -ItemType Directory -Force $psCache | Out-Null
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "PSModuleAnalysisCachePath=$(Join-Path $psCache 'ModuleAnalysisCache')" >> $env:GITHUB_ENV
+          "SAGE_GUARDIAN_PHASE_JOURNAL=$(Join-Path $env:RUNNER_TEMP 'guardian-phases.jsonl')" >> $env:GITHUB_ENV
       - name: Run the Windows budget lane
-        # Hosted TEMP can use an 8.3 short spelling, which
-        # the native-IDE journey scripts refuse as non-canonical.
-        # Point temp files at the runner's long-path temp directory instead.
-        env:
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
         run: npm run test:budgets:windows
+      - name: Summarize guardian startup phases
+        if: always()
+        run: node scripts/beta0001-installed-smoke-guardian-journal.mjs "$env:SAGE_GUARDIAN_PHASE_JOURNAL"
 
   rust:
     name: Rust (${{ matrix.os }})

@@ -748,6 +748,43 @@ mod tests {
         );
     }
 
+    /// The cases `src/domain/editorSettingsCatalogue.test.ts` also runs, so
+    /// what this store sends and admits is what the webview reads.
+    #[test]
+    fn sends_and_admits_the_cases_shared_with_the_webview_catalogue() {
+        let cases: Value = serde_json::from_str(include_str!("editor_settings_cases.json"))
+            .expect("shared editor settings cases");
+        let defaults = &cases["defaults"];
+        let wire =
+            |store: &SettingsStore| serde_json::to_value(store.editor_settings().unwrap()).unwrap();
+        assert_eq!(wire(&SettingsStore::in_memory().unwrap()), *defaults);
+        for case in cases["writes"].as_array().expect("writes") {
+            let store = SettingsStore::in_memory().unwrap();
+            let written = store
+                .set_editor_settings(&changes(case["changes"].clone()))
+                .unwrap();
+            let mut expected = defaults.clone();
+            for (key, value) in case["stored"].as_object().expect("stored") {
+                expected[key.as_str()] = value.clone();
+            }
+            assert_eq!(
+                serde_json::to_value(written).unwrap(),
+                expected,
+                "{}",
+                case["changes"]
+            );
+            assert_eq!(wire(&store), expected, "{}", case["changes"]);
+        }
+        for change in cases["rejected"].as_array().expect("rejected") {
+            let store = SettingsStore::in_memory().unwrap();
+            assert!(
+                store.set_editor_settings(&changes(change.clone())).is_err(),
+                "{change}"
+            );
+            assert_eq!(wire(&store), *defaults, "{change}");
+        }
+    }
+
     #[test]
     fn admits_a_bounded_list_of_glob_patterns() {
         let store = SettingsStore::in_memory().unwrap();

@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const phases = [
+export const guardianPhases = Object.freeze([
   "script-start",
   "identity-start",
   "identity-verified",
@@ -12,7 +12,8 @@ const phases = [
   "seal-start",
   "seal-acquired",
   "ready-written",
-];
+]);
+const phases = guardianPhases;
 
 // Fixed labels and numeric accounting only: never include paths, requests,
 // environment values or arbitrary child output in the diagnostic.

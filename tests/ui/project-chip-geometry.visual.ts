@@ -1,5 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { settledComposerFit } from "./shared/composerGeometry";
+import {
+  expectComposerSweep,
+  settledComposerFit,
+  sweepComposerToolbar,
+} from "./shared/composerGeometry";
 import {
   openScenario,
   settleChatProjections,
@@ -267,6 +271,91 @@ for (const paneWidth of [560, 414, 400]) {
     await expectResponsiveToolbar(composer);
   });
 }
+
+test("composer controls compact by their own container width, not the window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  // The Goal fixture offers composer options, so the Add button is present.
+  await openScenario(page, "agent-composer-goal", "agent");
+  await settleChatProjections(page);
+  const composer = page.locator("form.composer").first();
+  const contentWidths = [580, 521, 520, 401, 400, 321, 320, 281, 280, 180];
+  const borders = await composer.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return (
+      Number.parseFloat(computed.borderLeftWidth) +
+      Number.parseFloat(computed.borderRightWidth)
+    );
+  });
+  const widths = contentWidths.map((width) => width + borders);
+  // The window never changes, so whatever compacts follows the composer's
+  // own width, and only as far as its measured row needs.
+  expectComposerSweep(await sweepComposerToolbar(composer, widths));
+
+  const access = composer.getByRole("button", { name: "Access options" });
+  const harnessLabel = composer
+    .getByRole("button", { name: "Harness", exact: true })
+    .locator(".searchable-picker__trigger-label");
+  const model = composer.getByRole("button", { name: "Model", exact: true });
+  const modelLabel = model.locator(".composer__model-label");
+  const modelIcon = model.locator(".composer__model-icon");
+  for (const [index, width] of widths.entries()) {
+    await composer.evaluate(
+      (element, width) => (element.style.width = `${width}px`),
+      width,
+    );
+    const at = `at ${contentWidths[index]}px`;
+    expect(await composer.evaluate((element) => element.clientWidth), at).toBe(
+      contentWidths[index],
+    );
+    await settledComposerFit(composer);
+    const plus = (await composer
+      .getByRole("button", { name: "Composer options", exact: true })
+      .boundingBox())!;
+    expect(plus.width, at).toBe(24);
+    expect(plus.height, at).toBe(28);
+    // The access control stays a target with or without its text.
+    await expect(access, at).toBeVisible();
+    expect((await access.boundingBox())!.width, at).toBeGreaterThanOrEqual(24);
+    // The harness name shows whole or not at all, leaving its mark.
+    if (await harnessLabel.isVisible())
+      expect(
+        await harnessLabel.evaluate(
+          (label) => label.scrollWidth <= label.clientWidth,
+        ),
+        at,
+      ).toBe(true);
+    await expect(composer.locator(".composer__shortcut"), at).toBeHidden();
+    if (!(await modelLabel.isVisible())) {
+      // The model name gives way to its icon, never to a bare chevron.
+      await expect(modelIcon, at).toBeVisible();
+      continue;
+    }
+    await expect(modelIcon, at).toBeHidden();
+    // The label truncates inside its own box, before the chevron, without
+    // clipping the trigger's leading edge.
+    const geometry = await model.evaluate((trigger) => {
+      const label = trigger.querySelector(".composer__model-label")!;
+      const chevron = trigger.querySelector("svg:last-child")!;
+      const box = trigger.getBoundingClientRect();
+      const text = label.getBoundingClientRect();
+      const glyph = chevron.getBoundingClientRect();
+      return {
+        labelStart: text.left - box.left,
+        beforeChevron: text.right <= glyph.left + 0.5,
+        chevron: [glyph.width, glyph.height],
+        chevronInside: glyph.left >= box.left && glyph.right <= box.right + 0.5,
+        ellipsis: getComputedStyle(label).textOverflow,
+      };
+    });
+    expect(geometry.labelStart, at).toBeGreaterThanOrEqual(0);
+    expect(geometry.beforeChevron, at).toBe(true);
+    expect(geometry.chevron, at).toEqual([16, 16]);
+    expect(geometry.chevronInside, at).toBe(true);
+    expect(geometry.ellipsis, at).toBe("ellipsis");
+  }
+});
 
 test.describe("Project chip 200% zoom reflow proxy", () => {
   test.use({ viewport: { width: 480, height: 360 }, deviceScaleFactor: 2 });

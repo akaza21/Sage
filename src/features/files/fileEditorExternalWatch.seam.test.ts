@@ -293,7 +293,7 @@ describe("IDE-2 editor external watch seam", () => {
     ).toBe(false);
   });
 
-  it("observes a native watch notice without peekEditorDiskVersion", async () => {
+  it("delivers a native watch notice for its File to the subscriber", async () => {
     expect(EDITOR_EXTERNAL_WATCH_EVENT).toBe("editor-external-watch-v1");
     const editor = fakeEditorPort();
     const injected = createInjectedEditorWatchDelivery();
@@ -319,18 +319,67 @@ describe("IDE-2 editor external watch seam", () => {
     expect(seen).toEqual([notice]);
     expect(subscription.delivery).toBe(injected.delivery);
     expect(subscription.resource).toEqual(resource);
+  });
 
-    const watchSource = readFileSync(
-      path.resolve(import.meta.dirname, "./editorExternalWatch.ts"),
-      "utf8",
+  it("reloads a clean File with the new disk bytes when the watch reports a change", async () => {
+    const editor = getWorkbenchPorts().editor;
+    const injected = createInjectedEditorWatchDelivery();
+    vi.spyOn(editor, "watchEditorDocument").mockResolvedValue({
+      resource,
+      cancel: vi.fn().mockResolvedValue(undefined),
+      delivery: injected.delivery,
+    });
+    const changedVersion = {
+      fingerprint: "changed-outside",
+      byteLen: 15,
+      modifiedAt: 9,
+    };
+    const changedOnDisk: EditorDocument = {
+      ...document,
+      disk: changedVersion,
+      base: changedVersion,
+      buffer: {
+        fingerprint: changedVersion.fingerprint,
+        byteLen: changedVersion.byteLen,
+        revision: 0,
+        content: "edited outside\n",
+      },
+    };
+    let disk = document;
+    vi.spyOn(editor, "openEditorDocument").mockImplementation(async () => disk);
+    const controller = bindFileEditorController(editor);
+    let activeEditor = controller.ready(document);
+    const updates: { dirty?: boolean; tabStatus?: "failed" | null }[] = [];
+    const bridge: EditorStateBridge = {
+      getActiveEditor: () => activeEditor,
+      setActiveEditor: (next, update) => {
+        activeEditor = next;
+        if (update) updates.push(update);
+      },
+    };
+    function WatchedEditor() {
+      useEditorExternalWatch(resource, bridge, () => null);
+      return null;
+    }
+    render(createElement(WatchedEditor));
+    await waitFor(() => {
+      expect(editor.watchEditorDocument).toHaveBeenCalledWith(resource);
+    });
+
+    // The bytes change outside Sage and the native watch reports it.
+    disk = changedOnDisk;
+    act(() => {
+      injected.emit({ resource, generation: 1, kind: "changed" });
+    });
+    await waitFor(() => {
+      expect(activeEditor.phase === "ready" && activeEditor.content).toBe(
+        "edited outside\n",
+      );
+    });
+    expect(activeEditor.phase === "ready" && activeEditor.document).toEqual(
+      changedOnDisk,
     );
-    const controllerSource = readFileSync(
-      path.resolve(import.meta.dirname, "./fileEditorController.ts"),
-      "utf8",
-    );
-    expect(watchSource).not.toContain("peekEditorDiskVersion");
-    expect(controllerSource).not.toContain("peekEditorDiskVersion");
-    expect(watchSource).toContain("EDITOR_EXTERNAL_WATCH_EVENT");
+    expect(updates.at(-1)).toEqual({ dirty: false, tabStatus: null });
   });
 
   it("does not reopen a dirty buffer when a deletion notice arrives", async () => {

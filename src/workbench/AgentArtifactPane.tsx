@@ -51,7 +51,7 @@ import {
   useSelectOpenedBrowserTab,
 } from "./useAgentArtifactFollowLifecycle";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
-import { useAgentChangesPane } from "./useAgentChangesPane";
+import { useAgentChangesPane, useChangesOnExpand } from "./useAgentChangesPane";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
 const SubagentSurface = lazy(() =>
@@ -65,6 +65,9 @@ const AgentArtifactHeader = lazy(() =>
     default: module.AgentArtifactHeader,
   })),
 );
+
+// The pane's header names the resource, so canvases leave out their own.
+const PANE_CANVAS = { readOnly: true, hostHeader: true };
 
 export function AgentArtifactPane({
   expanded = true,
@@ -163,6 +166,7 @@ export function AgentArtifactPane({
     onExpandedChange,
     projectTransitioning ? null : (project?.id ?? null),
     focusedChatId,
+    focusedPageValid && focusedPage?.currentSessionId === null,
   );
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;
@@ -276,6 +280,7 @@ export function AgentArtifactPane({
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
+  useChangesOnExpand(expanded, !hasResources, changes.owner, projectGeneration);
   useExpandOnNewArtifact({
     artifacts,
     previewOpen,
@@ -385,7 +390,7 @@ export function AgentArtifactPane({
             {!previewSelected && activeArtifact
               ? activeArtifact.kind === "browser"
                 ? renderRegisteredCanvas("browser", activeArtifact)
-                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+                : renderFileOrDiffCanvas(activeArtifact, PANE_CANVAS)
               : null}
             {!changes.selected &&
             !subagentSelected &&
