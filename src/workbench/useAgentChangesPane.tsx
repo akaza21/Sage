@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { useAgentChangesState, type ChangesOwner } from "./agentChangesState";
 
@@ -34,19 +34,32 @@ export function useAgentChangesPane(
   sessionless = false,
 ) {
   const state = useAgentChangesState();
-  const open =
+  const sameChat =
     !!state.owner &&
     state.owner.projectId === projectId &&
     state.owner.chatId === chatId &&
-    (state.owner.sessionId === null ||
-      state.owner.sessionId === (owner?.sessionId ?? null)) &&
     state.generation === generation;
+  // A sessionless tab needs a validated projection: one confirming there is
+  // still no session, or one naming the session the Chat has since started,
+  // which the layout effect below then adopts as the tab's owner.
+  const open =
+    sameChat &&
+    (state.owner!.sessionId === null
+      ? sessionless || owner !== null
+      : state.owner!.sessionId === owner?.sessionId);
   const selected = open && state.selected;
+  useLayoutEffect(() => {
+    if (open && owner && state.owner?.sessionId === null) state.adopt(owner);
+  }, [open, owner, state]);
   const previousOwner = useRef(state.owner);
   useEffect(() => {
-    const changed = previousOwner.current !== state.owner;
+    const previous = previousOwner.current;
     previousOwner.current = state.owner;
-    if (selected && !expanded && changed) onExpandedChange?.(true);
+    // Adopting the started session is the same tab, not a new request.
+    const adopted =
+      previous?.sessionId === null && previous.chatId === state.owner?.chatId;
+    if (selected && !expanded && previous !== state.owner && !adopted)
+      onExpandedChange?.(true);
   }, [selected, expanded, onExpandedChange, state.owner]);
   return {
     open,

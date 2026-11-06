@@ -2702,6 +2702,10 @@ describe("Agent artifact pane Changes ownership", () => {
       JSON.stringify(pageWithEdit()).replaceAll("chat-focused", "chat-late"),
     ) as AcpChatPage & { currentSessionId: string | null };
     page.currentSessionId = sessionId as AcpChatPage["currentSessionId"];
+    // Starting a session is a newer projection revision.
+    page.projectionRevision = (
+      sessionId ? "9" : "8"
+    ) as AcpChatPage["projectionRevision"];
     return page;
   };
   function focusLateChat() {
@@ -2748,6 +2752,52 @@ describe("Agent artifact pane Changes ownership", () => {
     });
     expect(
       await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+  });
+
+  it("adopts a started session into the sessionless tab and needs a loaded projection to reuse it", async () => {
+    focusLateChat();
+    const store = acpProjectionStoreFor("chat-late");
+    act(() => {
+      store.getState().applyAuthoritativePage(lateScope, pageFor(null));
+    });
+    const { rerender } = render(<AgentArtifactPane expanded={false} />);
+    rerender(<AgentArtifactPane expanded />);
+    expect(useAgentChangesState.getState().owner?.sessionId).toBeNull();
+    // A session starts: the same tab now belongs to it, still selected, so
+    // an exact-session open of one of its resources can reveal over it.
+    act(() => {
+      store.getState().applyAuthoritativePage(lateScope, pageFor("session-a"));
+    });
+    expect(useAgentChangesState.getState()).toMatchObject({
+      owner: { chatId: "chat-late", sessionId: "session-a" },
+      selected: true,
+    });
+    // Leaving releases the projection; the retained tab must not show a
+    // review again until the Chat's projection reloads.
+    act(() => store.getState().clear());
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+    ).toBeVisible();
+  });
+
+  it("does not reuse a sessionless tab while the projection is unloaded", () => {
+    focusLateChat();
+    act(() =>
+      useAgentChangesState.getState().show(
+        {
+          projectId: "project-a",
+          chatId: "chat-late",
+          sessionId: null,
+        },
+        0,
+      ),
+    );
+    render(<AgentArtifactPane expanded />);
+    expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Waiting for this Chat" }),
     ).toBeVisible();
   });
 
