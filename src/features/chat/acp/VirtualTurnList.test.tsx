@@ -168,6 +168,7 @@ function History({
               renderTurn={(turn) => (
                 <article className="acp-turn" data-turn-id={turn.id}>
                   {turn.id}
+                  <p>{streamedText(turn)}</p>
                 </article>
               )}
             />
@@ -269,19 +270,51 @@ it("keeps the same visible Turn when a measured overscan row grows", () => {
   expect(visibleAnchor()).toEqual(before);
 });
 
-it("keeps height-stable end-pinned streaming to one commit per delta", () => {
+function streamedText(turn: TurnProjection) {
+  const [item] = turn.items;
+  return item?.kind === "text" ? item.payload.text : "";
+}
+
+function withText(turn: TurnProjection, text: string, revision: number) {
+  const [item] = turn.items;
+  return {
+    ...turn,
+    revision: String(revision) as TurnProjection["revision"],
+    items: [{ ...item, payload: { role: "assistant", text } }],
+  } as TurnProjection;
+}
+
+it("streams each delta into the pinned final Turn in one commit, staying at the end", () => {
   let current = turns();
-  const commits = vi.fn();
-  const view = render(<History turns={current} onCommit={commits} />);
+  let commits = 0;
+  const view = render(
+    <History turns={current} onCommit={() => (commits += 1)} />,
+  );
   scrollTo(scrollHeight());
-  commits.mockClear();
-  for (let index = 0; index < 30; index += 1) {
-    const last = current.at(-1)!;
+  const pinnedTop = scrollTop;
+  expect(scrollHeight() - pinnedTop - 400).toBeLessThanOrEqual(1);
+  commits = 0;
+
+  let streamed = "";
+  for (let delta = 1; delta <= 30; delta += 1) {
+    streamed += `delta ${delta} `;
     current = [
       ...current.slice(0, -1),
-      { ...last, revision: String(index + 2) as TurnProjection["revision"] },
+      withText(current.at(-1)!, streamed, delta + 1),
     ];
-    view.rerender(<History turns={current} onCommit={commits} />);
+    view.rerender(<History turns={current} onCommit={() => (commits += 1)} />);
+
+    const last = document.querySelector('[data-turn-id="turn-100"]');
+    expect(last).toHaveTextContent(streamed.trim());
+    // The row keeps its height, so following the end leaves the scroll put.
+    expect(scrollTop).toBe(pinnedTop);
+    // No extra layout or measurement pass rides along with a delta.
+    expect(commits).toBe(delta);
   }
-  expect(commits).toHaveBeenCalledTimes(30);
+  act(() => vi.advanceTimersByTime(50));
+  expect(scrollHeight() - scrollTop - 400).toBeLessThanOrEqual(1);
+  expect(
+    document.querySelector('[data-turn-id="turn-100"]')!.getBoundingClientRect()
+      .bottom,
+  ).toBeLessThanOrEqual(400);
 });

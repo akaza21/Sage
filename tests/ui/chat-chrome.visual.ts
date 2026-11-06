@@ -224,12 +224,25 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
           ),
         )
         .toBeLessThanOrEqual(1);
+      const followingBox = (await transcript.boundingBox())!;
+      const composerBox = (await page.locator("form.composer").boundingBox())!;
       await transcript.evaluate((element) => element.scrollTo(0, 0));
       const jump = page.getByRole("button", {
         name: "Jump to latest",
         exact: true,
       });
       await expect(jump).toBeVisible();
+      // The control overlays the transcript: neither the transcript nor the
+      // composer row moves when it appears.
+      expect(await transcript.boundingBox()).toEqual(followingBox);
+      expect(await page.locator("form.composer").boundingBox()).toEqual(
+        composerBox,
+      );
+      const overlay = (await jump.boundingBox())!;
+      expect(overlay.y).toBeGreaterThanOrEqual(followingBox.y);
+      expect(overlay.y + overlay.height).toBeLessThanOrEqual(
+        followingBox.y + followingBox.height,
+      );
       await expect(jump).toHaveText("");
       await expect(jump.locator('svg[aria-hidden="true"]')).toHaveCount(1);
       await expect(jump).toHaveCSS("border-radius", "50%");
@@ -355,6 +368,43 @@ for (const harness of ["codex", "claude-code", "pi", "opencode", "oh-my-pi"]) {
     await expectNoOverflow(page);
   });
 }
+
+test("header title compacts with its chat column, not the window", async ({
+  page,
+}) => {
+  await openChrome(page, "codex", 1888);
+  const center = page.locator(".agent-chat-center");
+  const header = page.locator(".agent-task-header");
+  for (const width of [401, 400, 160]) {
+    // Size the column's content box, which is what the container query reads.
+    await center.evaluate((element, width) => {
+      const style = getComputedStyle(element);
+      (element as HTMLElement).style.width = `${
+        width +
+        Number.parseFloat(style.borderLeftWidth) +
+        Number.parseFloat(style.borderRightWidth)
+      }px`;
+    }, width);
+    await expectSingleHeaderRow(page, width);
+    const geometry = await header.evaluate((element) => {
+      const title = element.querySelector(".agent-task-header__title")!;
+      return {
+        padding: getComputedStyle(element).paddingLeft,
+        title: title.getBoundingClientRect().width,
+        em: Number.parseFloat(getComputedStyle(title).fontSize),
+      };
+    });
+    // The window stays 1888px wide; only the chat column decides.
+    expect(geometry.padding, `at ${width}px`).toBe(
+      width > 400 ? "16px" : "8px",
+    );
+    // A squeezed column keeps at least three characters of the title.
+    if (width <= 400)
+      expect(geometry.title, `at ${width}px`).toBeGreaterThanOrEqual(
+        3 * geometry.em - 0.5,
+      );
+  }
+});
 
 async function expectNoOverflow(page: Page) {
   expect(

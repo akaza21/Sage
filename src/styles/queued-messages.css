@@ -1,8 +1,9 @@
 .composer__queued {
   position: static;
-  min-height: 0;
-  /* Start at one row; spare composer space expands the queue. */
-  flex: 1 1 40px;
+  /* Size to the queued rows (up to the cap) and give way down to one row
+     when the dock runs out of height. */
+  min-height: var(--chrome-row-height);
+  flex: 0 1 auto;
   display: grid;
   grid-auto-rows: max-content;
   max-height: min(320px, 40vh);

@@ -106,9 +106,19 @@ export function menuPopoverPosition(
   const placeAbove = preferAbove
     ? surface.height <= roomAbove || roomAbove > roomBelow
     : surface.height > roomBelow && roomAbove > roomBelow;
-  const top = placeAbove
+  let top = placeAbove
     ? anchor.top - surface.height - gap
     : anchor.bottom + gap;
+  // A composer menu that opens upward clears the changed-files summary above
+  // the composer instead of covering it.
+  const edits =
+    dock &&
+    origin
+      .closest(".chat-surface")
+      ?.querySelector(".chat-edit-summary-zone:not(:empty)")
+      ?.getBoundingClientRect();
+  if (edits && placeAbove && top < edits.bottom)
+    top = Math.min(top, edits.top - surface.height - gap);
   return {
     ...shared,
     left: clampLeft(

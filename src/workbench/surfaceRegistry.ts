@@ -6,10 +6,17 @@ export type CanvasSurfaceKind = "browser" | "chat" | "diff" | "file";
 export type ToolSurfaceId =
   "explorer" | "search" | "sourceControl" | "preview" | "outline";
 
-type CanvasSurface = ComponentType<{
-  tab: WorkbenchTab;
+export type CanvasSurfaceOptions = {
   readOnly?: boolean;
-}>;
+  /**
+   * The host already shows the resource's name, path, counts and view-only
+   * state above the canvas, so the surface leaves out its own copy.
+   */
+  hostHeader?: boolean;
+};
+type CanvasSurface = ComponentType<
+  { tab: WorkbenchTab } & CanvasSurfaceOptions
+>;
 type ToolSurface = ComponentType;
 
 const canvasSurfaces = new Map<CanvasSurfaceKind, CanvasSurface>();
@@ -59,7 +66,7 @@ export function renderRegisteredCanvas(
 
 export function renderFileOrDiffCanvas(
   tab: WorkbenchTab,
-  options: { readOnly?: boolean } = {},
+  options: CanvasSurfaceOptions = {},
 ): ReactNode {
   if (tab.kind !== "file" && tab.kind !== "diff") {
     return null;

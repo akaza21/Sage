@@ -161,10 +161,15 @@ for (const mode of ["agent", "editor"] as const) {
         };
       });
     const statusBar = await bounds(page.locator(".status-bar"));
-    // The dock spans the center region's width and ends at its bottom edge.
-    expect(Math.abs(dockBox.x - center.x)).toBeLessThanOrEqual(SUBPIXEL);
+    // Editor's dock spans its card; Agent's dock is a card of its own, inset
+    // to the Chat card's edges above it.
+    const span =
+      mode === "agent"
+        ? await bounds(page.locator(".agent-chat-center").first())
+        : center;
+    expect(Math.abs(dockBox.x - span.x)).toBeLessThanOrEqual(SUBPIXEL);
     expect(
-      Math.abs(dockBox.x + dockBox.width - (center.x + center.width)),
+      Math.abs(dockBox.x + dockBox.width - (span.x + span.width)),
     ).toBeLessThanOrEqual(SUBPIXEL);
     expectInside(dockBox, center);
     // Nothing sits left of the dock but the rail, which runs down to the
@@ -254,7 +259,8 @@ test("terminal dock header controls are whole, hit-testable and unfilled at rest
   }
   await dock.getByRole("button", { name: "Collapse terminal" }).click();
   const collapsed = await bounds(dock);
-  expect(collapsed.height).toBeLessThanOrEqual(header.height + 1 + SUBPIXEL);
+  // Only the card's top and bottom borders add to the header row.
+  expect(collapsed.height).toBeLessThanOrEqual(header.height + 2 + SUBPIXEL);
   await expect(
     dock.getByRole("button", { name: "Expand terminal" }),
   ).toBeVisible();
