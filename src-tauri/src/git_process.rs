@@ -400,6 +400,9 @@ fn configured_command(
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
         .args(["-c", "gc.auto=0"]);
+    for setting in process_tree::parallel_job_overrides() {
+        command.arg("-c").arg(setting);
+    }
     if let Some(root_authority) = root_authority {
         root_authority.bind_child(&mut command, root);
     } else {
