@@ -208,6 +208,59 @@ fn deleted_and_recreated_subfolder_is_watched_again() {
 }
 
 #[test]
+fn resync_rearms_before_a_client_recreates_then_writes() {
+    let root = test_root("resync-order");
+    fs::create_dir(root.join("src")).expect("create src");
+    let prepared = linux::prepare(std::slice::from_ref(&root), true).expect("prepare tree watch");
+    // Queue both parent and self attribute events and the entire deletion
+    // before reading. Neither attribute event may acknowledge a tree resync.
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(root.join("src"), fs::Permissions::from_mode(0o700))
+        .expect("change src permissions");
+    fs::remove_dir(root.join("src")).expect("delete src");
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = Arc::clone(&cancelled);
+    let worker_root = root.clone();
+    let (sender, notices) = mpsc::sync_channel(256);
+    let (finished, ended) = mpsc::sync_channel(1);
+    let worker = std::thread::spawn(move || {
+        let mut resyncs = 0;
+        let result = run_prepared(prepared, &worker_cancelled, &mut |relative, action| {
+            if action == OVERFLOW_NOTIFY_ACTION {
+                resyncs += 1;
+                match resyncs {
+                    1 => fs::create_dir(worker_root.join("src")).expect("client recreates src"),
+                    2 => fs::write(worker_root.join("src/main.ts"), "created")
+                        .expect("client writes immediately after resync"),
+                    _ => {}
+                }
+            }
+            let _ = sender.try_send((relative, action));
+        });
+        let _ = finished.send(result);
+    });
+    let watch = Watch {
+        cancelled,
+        notices,
+        ended,
+    };
+    let written = watch.until(&created("src/main.ts"));
+    watch.stop();
+    worker.join().expect("watch worker should not panic");
+    fs::remove_dir_all(&root).expect("remove test root");
+    assert_eq!(
+        written,
+        vec![
+            ("src".to_string(), 3),
+            ("src".to_string(), 3),
+            overflow(),
+            overflow(),
+            created("src/main.ts")
+        ]
+    );
+}
+
+#[test]
 fn folder_past_the_watch_cap_resyncs_and_the_watch_keeps_running() {
     let root = test_root("cap");
     for index in 1..unix_events::MAX_UNIX_WATCH_DIRECTORIES {
