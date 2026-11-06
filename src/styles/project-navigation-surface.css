@@ -117,7 +117,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.agent-task-header__resource-panel section[aria-label="Outputs"] > p {
+.agent-task-header__resource-panel section[aria-label="Outputs"] > p,
+.agent-task-header__resource-panel section[aria-label="Sources"] > p {
   grid-column: 1 / -1;
 }
 

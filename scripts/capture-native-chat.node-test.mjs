@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CdpError } from "./source-functional-native-ide-cdp.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import path from "node:path";
 import {
@@ -672,6 +673,22 @@ test("probe timestamps have a finite closed schema and a 64-step limit", () => {
     assert.throws(() => validateProbe(changed));
   }
 });
+for (const [reason, failure] of [
+  ["a CDP error without deadline metadata", new CdpError("deadline")],
+  ["an unrelated predicate error", new Error("turn-identity-drift")],
+])
+  test(`${reason} propagates unchanged after the state deadline`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const deadline = Date.now() + 750;
+    await assert.rejects(
+      waitForState(async () => {
+        t.mock.timers.setTime(deadline + 1);
+        throw failure;
+      }, deadline),
+      (error) => error === failure,
+    );
+  });
+
 test("stalled predicates are bounded and teardown runs on failure", async () => {
   await assert.rejects(
     waitForState(async () => false, Date.now() + 5),

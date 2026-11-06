@@ -16,7 +16,7 @@ async function savedChats(page: Page) {
 }
 
 for (const collapsed of [false, true]) {
-  test(`Home dismisses nonmodal resources before focusing Chat; collapsed=${collapsed}`, async ({
+  test(`Home focuses Chat beside inline resources; collapsed=${collapsed}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 720, height: 1000 });
@@ -28,17 +28,19 @@ for (const collapsed of [false, true]) {
       await page
         .getByRole("button", { name: "Hide projects and chats" })
         .click();
-    await composer.fill("Overlay Home draft");
+    await composer.fill("Inline Home draft");
     await page.getByRole("button", { name: /Show files and preview/ }).click();
-    const resources = page.getByRole("dialog", { name: "Agent artifacts" });
+    // At 720px the resources dock beside Chat instead of covering it.
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(resources).toBeVisible();
-    await expect(resources).not.toHaveAttribute("aria-modal");
-    await expect(page.locator(".center-region")).toHaveAttribute("inert");
-    await page.getByRole("button", { name: "Home", exact: true }).click();
-    await expect(resources).toHaveCount(0);
+    await expect(
+      page.getByRole("dialog", { name: "Agent artifacts" }),
+    ).toHaveCount(0);
     await expect(page.locator(".center-region")).not.toHaveAttribute("inert");
+    await page.getByRole("button", { name: "Home", exact: true }).click();
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Overlay Home draft");
+    await expect(composer).toHaveValue("Inline Home draft");
+    await expect(resources).toBeVisible();
     expect(await savedChats(page)).toEqual(before);
   });
 

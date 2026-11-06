@@ -144,7 +144,7 @@ describe("compact workbench window mode seam", () => {
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
-      value: 960,
+      value: 680,
     });
     onTestFinished(() => {
       Object.defineProperty(window, "innerWidth", {

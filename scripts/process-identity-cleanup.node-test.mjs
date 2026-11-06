@@ -19,7 +19,9 @@ const identityModule = path.resolve(
 );
 
 function runPowerShellFixture(body, { timeout = 10_000 } = {}) {
-  const source = `$ErrorActionPreference='Stop';Set-StrictMode -Version Latest;Import-Module $env:SAGE_PROCESS_IDENTITY_MODULE -Force;${body}`;
+  // Progress records reach a redirected stderr as CLIXML and bury the real
+  // error in a failure message.
+  const source = `$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';Set-StrictMode -Version Latest;Import-Module $env:SAGE_PROCESS_IDENTITY_MODULE -Force;${body}`;
   const result = spawnSync(
     powershell,
     [
@@ -493,28 +495,34 @@ try{
 });
 
 test("a launch through a junction is identified by the caller's path and still rejects a different executable", () => {
+  // The junctions point at the installed node and System32, so no executable
+  // is copied and cleanup deletes only the junctions. Deleting a copied image
+  // just after its process was killed raced other openers of that file on
+  // hosted runners and failed with a sharing violation.
   const node = process.execPath.replaceAll("'", "''");
   const observed = runPowerShellFixture(
     String.raw`
 $root=Join-Path ([IO.Path]::GetTempPath()) ('sage-launch-junction-'+[Guid]::NewGuid().ToString('N'));
-$real=Join-Path $root 'real-1.0';$latest=Join-Path $root 'latest';$child=$null;
+$latest=Join-Path $root 'latest';$system=Join-Path $root 'system';$child=$null;
+$realNode=[SageFootprint.ProcessImageIdentity]::FinalPath('${node}');
+if(-not $realNode){throw 'node executable has no final path'};
 try{
-  [void][IO.Directory]::CreateDirectory($real);
-  Copy-Item -LiteralPath '${node}' -Destination (Join-Path $real 'app.exe');
-  Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination (Join-Path $real 'other.exe');
-  $mklink=& cmd.exe /d /c mklink /J $latest $real;
-  if($LASTEXITCODE -ne 0){throw "mklink failed: $mklink"};
-  $expected=(Resolve-Path -LiteralPath (Join-Path $latest 'app.exe')).Path;
+  [void][IO.Directory]::CreateDirectory($root);
+  foreach($link in @(@($latest,[IO.Path]::GetDirectoryName($realNode)),@($system,(Join-Path $env:SystemRoot 'System32')))){
+    $mklink=& cmd.exe /d /c mklink /J $link[0] $link[1];
+    if($LASTEXITCODE -ne 0){throw "mklink failed: $mklink"}
+  };
+  $expected=(Resolve-Path -LiteralPath (Join-Path $latest ([IO.Path]::GetFileName($realNode)))).Path;
   $child=Start-Process -FilePath $expected -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
   $kernelPath=[SageFootprint.ProcessImageIdentity]::Query([int]$child.Id);
   $identity=Get-FootprintLaunchIdentity $child $expected;
   $upperCase=Get-FootprintLaunchIdentity $child $expected.ToUpperInvariant();
-  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child (Join-Path $latest 'other.exe'))}catch{$wrong=$_.Exception.Message};
-  [ordered]@{kernelPathResolvesJunction=($kernelPath -like '*\real-1.0\app.exe');processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($expected));upperCaseAccepted=($upperCase.processId -eq $child.Id);wrong=$wrong}|ConvertTo-Json -Compress
+  $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child (Join-Path $system 'cmd.exe'))}catch{$wrong=$_.Exception.Message};
+  [ordered]@{kernelPathResolvesJunction=[string]::Equals($kernelPath,$realNode,[StringComparison]::OrdinalIgnoreCase);processIdMatches=($identity.processId -eq $child.Id);executablePathIsCallerForm=($identity.executablePath -ceq [IO.Path]::GetFullPath($expected));upperCaseAccepted=($upperCase.processId -eq $child.Id);wrong=$wrong}|ConvertTo-Json -Compress
 }finally{
   if($null -ne $child){Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue;[void]$child.WaitForExit(5000)};
-  if(Test-Path -LiteralPath $latest){[IO.Directory]::Delete($latest)};
-  if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
+  foreach($link in @($latest,$system)){if(Test-Path -LiteralPath $link){[IO.Directory]::Delete($link)}};
+  if(Test-Path -LiteralPath $root){[IO.Directory]::Delete($root)}
 }
 `,
     { timeout: 60_000 },
@@ -529,6 +537,9 @@ try{
   });
 });
 
+// The copied image is started on the fixture's own console. Start-Process
+// would give it a new console, whose host opens the image while it starts and
+// can still hold it when cleanup deletes the copy.
 test("long and 8.3 short-name expected paths identify the same executable", (t) => {
   const node = process.execPath.replaceAll("'", "''");
   const observed = runPowerShellFixture(
@@ -544,7 +555,8 @@ try{
   if([IO.Path]::GetFileName($short) -eq [IO.Path]::GetFileName($long) -or [IO.Path]::GetFileName($otherShort) -eq [IO.Path]::GetFileName($otherLong)){
     [ordered]@{shortNameAvailable=$false;shortPath=$short}|ConvertTo-Json -Compress
   }else{
-    $child=Start-Process -FilePath $long -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+    $start=[Diagnostics.ProcessStartInfo]::new($long,'-e "setTimeout(()=>{},30000)"');$start.UseShellExecute=$false;
+    $child=[Diagnostics.Process]::Start($start);
     $longIdentity=Get-FootprintLaunchIdentity $child $long;
     $shortIdentity=Get-FootprintLaunchIdentity $child $short;
     $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child $otherShort)}catch{$wrong=$_.Exception.Message};
