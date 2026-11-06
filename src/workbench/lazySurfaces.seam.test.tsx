@@ -62,7 +62,7 @@ vi.mock("./TerminalDockShell", async (importOriginal) => {
 vi.mock("./TerminalDock", () => {
   evaluated.add("TerminalDock");
   return {
-    TerminalDock: ({ session }: { session: { sessionId: string } }) =>
+    default: ({ session }: { session: { sessionId: string } }) =>
       createElement("output", null, `Shell ${session.sessionId}`),
   };
 });

@@ -36,7 +36,7 @@ vi.mock("../features/chat/ChatSurface", () => ({
     createElement("p", null, `Chat canvas for ${chatId}`),
 }));
 vi.mock("../features/files/FileSurface", () => ({
-  FileSurface: canvas("File"),
+  default: canvas("File"),
 }));
 vi.mock("../features/diff/DiffSurface", () => ({
   DiffSurface: canvas("Diff"),
@@ -45,10 +45,10 @@ vi.mock("../features/browser/BrowserSurface", () => ({
   BrowserSurface: canvas("Browser"),
 }));
 vi.mock("../features/files/ExplorerSurface", () => ({
-  ExplorerSurface: tool("Explorer"),
+  default: tool("Explorer"),
 }));
 vi.mock("../features/search/SearchSurface", () => ({
-  SearchSurface: tool("Search"),
+  default: tool("Search"),
 }));
 vi.mock("../features/outline/OutlineSurface", () => ({
   OutlineSurface: tool("Outline"),
