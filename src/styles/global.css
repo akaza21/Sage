@@ -356,6 +356,8 @@
   /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);
   --radius-title-bar-search: var(--radius-pill);
+  --radius-activity-button: var(--radius-md);
+  --radius-activity-indicator: var(--radius-pill);
   --radius-circle: 50%;
   --composer-fill: #363636;
   --composer-border: #383838;

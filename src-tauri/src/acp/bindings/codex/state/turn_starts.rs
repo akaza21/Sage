@@ -82,7 +82,9 @@ impl CodexAdapter {
             return false;
         }
         if !self.unknown_child_notification_reported {
-            tracing::warn!("Codex unbound-thread notification ignored after subagent activity");
+            if super::super::incoming::reports_diagnostics() {
+                tracing::warn!("Codex unbound-thread notification ignored after subagent activity");
+            }
             self.unknown_child_notification_reported = true;
         }
         true
@@ -112,21 +114,21 @@ impl CodexAdapter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum CorrelationState {
     Pending,
     Active(ExternalId),
     Terminal(ExternalId),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct TurnStartCorrelation {
     request_id: u64,
     client_message_id: RequiredText<512>,
     state: CorrelationState,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct TurnStartCorrelations {
     entries: Vec<TurnStartCorrelation>,
 }

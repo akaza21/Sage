@@ -33,7 +33,7 @@
 
 .sidebar:focus-visible {
   outline: 0;
-  box-shadow: var(--focus-ring-inset);
+  box-shadow: var(--region-focus-shadow, var(--focus-ring-inset));
 }
 
 .sidebar__heading {
@@ -263,7 +263,7 @@
 .source-change-group > summary span:last-child {
   padding: 2px 4px;
   border-radius: var(--radius-pill);
-  background: var(--color-plane-raised);
+  background: var(--count-badge-fill, var(--color-plane-raised));
   font-variant-numeric: tabular-nums;
 }
 

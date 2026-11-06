@@ -1,5 +1,12 @@
-import { useState } from "react";
+import {
+  Activity,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
+import { useDocumentVisible } from "../../ui/useDocumentVisible";
 import {
   Archive,
   Bot,
@@ -7,16 +14,20 @@ import {
   Command,
   Eye,
   Globe,
+  Lock,
   MessageSquare,
   Search,
   X,
 } from "../../ui/leanIcons";
+import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
+import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPageLoaders";
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
 import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import {
+  returnFocusToAgentSettingsOpener,
   useAgentSettingsState,
   type AgentSettingsPage,
 } from "./agentSettingsState";
@@ -27,6 +38,8 @@ const loadBrowserSettings = () =>
   }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
+// The panel has no per-setting search, so the whole Passwords page shows.
+const passwordEntries = matchingSettingsEntryIds("", "passwords");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
@@ -37,9 +50,32 @@ const groups: readonly {
   pages: readonly AgentSettingsPage[];
 }[] = [
   { heading: null, pages: ["Appearance", "Keybindings"] },
-  { heading: "Agents", pages: ["Harnesses", "Chats", "Browser"] },
+  {
+    heading: "Agents",
+    pages: ["Harnesses", "Chats", "Browser", "Passwords"],
+  },
   { heading: null, pages: ["Archived chats"] },
 ];
+
+const SECTION_STEPS: Partial<Record<string, number>> = {
+  ArrowDown: 1,
+  ArrowUp: -1,
+};
+
+/** ArrowUp and ArrowDown move between the section buttons, wrapping. */
+function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
+  const step = SECTION_STEPS[event.key];
+  if (!step) return;
+  const sections = [
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      ".agent-settings__nav-group > button",
+    ),
+  ];
+  const index = sections.indexOf(event.target as HTMLButtonElement);
+  if (index < 0) return;
+  event.preventDefault();
+  sections[(index + step + sections.length) % sections.length]?.focus();
+}
 
 const icons: Record<AgentSettingsPage, typeof Archive> = {
   Appearance: Eye,
@@ -47,6 +83,7 @@ const icons: Record<AgentSettingsPage, typeof Archive> = {
   Harnesses: Bot,
   Chats: MessageSquare,
   Browser: Globe,
+  Passwords: Lock,
   "Archived chats": Archive,
 };
 
@@ -55,10 +92,18 @@ export function AgentSettingsSurface({
 }: {
   chatRuntimeOwned?: boolean;
 }) {
+  const documentVisible = useDocumentVisible();
   const page = useAgentSettingsState((state) => state.page) ?? "Appearance";
   const open = useAgentSettingsState((state) => state.open);
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
+  const surfaceRef = useRef<HTMLElement | null>(null);
+  // Settings covers the Agent workspace without unmounting it, so closing
+  // it hands focus back to whatever opened it.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    return () => returnFocusToAgentSettingsOpener(surface);
+  }, []);
   const normalized = query.trim().toLowerCase();
   const matching = groups
     .map((group) => ({
@@ -73,6 +118,7 @@ export function AgentSettingsSurface({
     // usable, with the settings dialog centred in it.
     <div className="agent-settings-layer">
       <section
+        ref={surfaceRef}
         className="agent-settings"
         role="dialog"
         aria-modal="true"
@@ -96,6 +142,7 @@ export function AgentSettingsSurface({
         <nav
           className="agent-settings__nav"
           aria-label="Agent settings sections"
+          onKeyDown={moveSectionFocus}
         >
           <label className="input agent-settings__search">
             <Search size={14} aria-hidden="true" />
@@ -151,26 +198,39 @@ export function AgentSettingsSurface({
               <X size={16} aria-hidden="true" />
             </button>
           </header>
-          <div className="agent-settings__page" key={page}>
-            {page === "Appearance" ? <AgentAppearanceSettings /> : null}
-            {page === "Keybindings" ? (
-              <LazyModuleBoundary
-                label="Keybindings"
-                load={loadKeyboardSettings}
-                render={(KeyboardSettings) => <KeyboardSettings />}
-              />
-            ) : null}
-            {page === "Harnesses" ? <AgentHarnessSettings /> : null}
-            {page === "Chats" ? <AgentChatSettings /> : null}
-            {page === "Browser" ? (
-              <LazyModuleBoundary
-                label="Browser settings"
-                load={loadBrowserSettings}
-                render={(AgentBrowserSettings) => <AgentBrowserSettings />}
-              />
-            ) : null}
-            {page === "Archived chats" ? <AgentArchivedSettings /> : null}
-          </div>
+          {/* Like the Editor workbench, pages sleep while the window is
+              minimized, so they clear what they hold on suspend. */}
+          <Activity mode={documentVisible ? "visible" : "hidden"}>
+            <div className="agent-settings__page" key={page}>
+              {page === "Appearance" ? <AgentAppearanceSettings /> : null}
+              {page === "Keybindings" ? (
+                <LazyModuleBoundary
+                  label="Keybindings"
+                  load={loadKeyboardSettings}
+                  render={(KeyboardSettings) => <KeyboardSettings />}
+                />
+              ) : null}
+              {page === "Harnesses" ? <AgentHarnessSettings /> : null}
+              {page === "Chats" ? <AgentChatSettings /> : null}
+              {page === "Browser" ? (
+                <LazyModuleBoundary
+                  label="Browser settings"
+                  load={loadBrowserSettings}
+                  render={(AgentBrowserSettings) => <AgentBrowserSettings />}
+                />
+              ) : null}
+              {page === "Passwords" ? (
+                <LazyModuleBoundary
+                  label="Saved passwords"
+                  load={loadSettingsPasswordsPage}
+                  render={(SettingsPasswordsPage) => (
+                    <SettingsPasswordsPage visible={passwordEntries} />
+                  )}
+                />
+              ) : null}
+              {page === "Archived chats" ? <AgentArchivedSettings /> : null}
+            </div>
+          </Activity>
         </div>
       </section>
     </div>

@@ -38,6 +38,7 @@ pub enum PermissionChoice {
     AllowOnce,
     AllowAlways,
     AllowForOriginSession,
+    AllowDeveloperMode,
     Deny,
 }
 
@@ -61,7 +62,7 @@ pub async fn resolve_permission_decision(
             reason: AcpUnavailableReason::CapabilityUnavailable,
             message: safe_message("The permission request is unavailable."),
         })?;
-    if kind == "browserPermission" {
+    if crate::acp::service::browser_permission::is_browser_request_kind(&kind) {
         let choice = match request.decision {
             PermissionChoice::AllowOnce => BrowserPermissionChoice::AllowOnce,
             PermissionChoice::AllowAlways => {
@@ -73,6 +74,7 @@ pub async fn resolve_permission_decision(
             PermissionChoice::AllowForOriginSession => {
                 BrowserPermissionChoice::AllowForOriginSession
             }
+            PermissionChoice::AllowDeveloperMode => BrowserPermissionChoice::AllowDeveloperMode,
             PermissionChoice::Deny => BrowserPermissionChoice::Deny,
             PermissionChoice::Ask => {
                 return Err(AcpIpcError::Unavailable {
@@ -97,7 +99,7 @@ pub async fn resolve_permission_decision(
         PermissionChoice::AllowOnce => PermissionDecision::AllowOnce,
         PermissionChoice::AllowAlways => PermissionDecision::AllowAlways,
         PermissionChoice::Deny => PermissionDecision::Deny,
-        PermissionChoice::AllowForOriginSession => {
+        PermissionChoice::AllowForOriginSession | PermissionChoice::AllowDeveloperMode => {
             return Err(AcpIpcError::Unavailable {
                 reason: AcpUnavailableReason::CapabilityUnavailable,
                 message: safe_message("This permission choice is unavailable."),

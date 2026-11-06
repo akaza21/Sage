@@ -146,16 +146,13 @@
 
 .project-intro__icon {
   display: grid;
-  place-items: center;
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.project-intro__icon {
   width: var(--control-height-compact);
   height: var(--control-height-compact);
   flex: 0 0 var(--control-height-compact);
+  place-items: center;
   border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .project-intro strong {
@@ -329,17 +326,6 @@ button.composer__control-trigger[aria-expanded="true"] {
 
 .composer__access-label--write {
   color: var(--composer-access-write);
-}
-
-.composer__model-trigger {
-  max-width: 155px;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composer__plus:hover,

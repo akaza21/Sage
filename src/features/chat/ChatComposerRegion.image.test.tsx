@@ -77,6 +77,34 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("unmounts hidden toolbar controls while preserving the draft", () => {
+    const { container, rerenderComposer } = renderComposer();
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    rerenderComposer({
+      hidden: true,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 0,
+        totalTokens: 1000,
+        contextWindow: 272000,
+      },
+    });
+    expect(container.querySelector(".composer__context")).toBeNull();
+    expect(container.querySelector(".composer__controls")).toBeNull();
+    rerenderComposer({ hidden: false });
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Message agent" })).toHaveValue(
+      "A prompt",
+    );
+  });
+  it("leaves prompt paths and code uncorrected", () => {
+    renderComposer({ text: "src/loong_file.ts npm --flag" });
+    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    expect(prompt).toHaveAttribute("spellcheck", "false");
+    expect(prompt).toHaveAttribute("autocorrect", "off");
+    expect(prompt).toHaveAttribute("autocapitalize", "off");
+    expect(prompt).toHaveValue("src/loong_file.ts npm --flag");
+  });
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
     const prompt = screen.getByRole("textbox", { name: "Message agent" });
@@ -115,7 +143,7 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) {
+      if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
@@ -213,7 +241,7 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) {
+      if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
@@ -262,7 +290,7 @@ describe("composer image input", () => {
     const { onAddImages } = renderComposer();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(screen.queryByText("Add images", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {

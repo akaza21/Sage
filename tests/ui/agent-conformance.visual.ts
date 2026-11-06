@@ -1013,7 +1013,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     await expect(
       page.getByRole("menu", { name: "Composer options menu" }),
     ).toHaveCount(0);
@@ -1074,7 +1075,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     const project = composer(page).getByRole("button", {
       name: "Project: Sage",
       exact: true,
@@ -1089,6 +1091,25 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
+  });
+
+  test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 480, height: 900 });
+    await openScenario(page, "agent-composer-context-known", "agent");
+    await settleChatProjections(page);
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toHaveCount(0);
+    await expect(composer(page).locator(".composer__controls")).toHaveAttribute(
+      "data-fit",
+      /(^| )context( |$)/,
+    );
+    await page.setViewportSize({ width: 1888, height: 900 });
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toBeVisible();
   });
 
   test("keeps reported context in the toolbar without overlapping the prompt", async ({

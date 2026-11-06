@@ -45,3 +45,33 @@ it("offers Hand back while the user controls the tab", () => {
   expect(onTakeOver).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Stop agent" })).toBeEnabled();
 });
+
+it("tags the tab while developer mode is on, and not once the user takes over", () => {
+  const handlers = {
+    onStop: vi.fn(),
+    onTakeOver: vi.fn(),
+    onHandBack: vi.fn(),
+  };
+  const { rerender } = render(
+    <BrowserAgentPresence
+      pending={false}
+      userControl={false}
+      developerMode
+      chatTitle="Research chat"
+      {...handlers}
+    />,
+  );
+  expect(screen.getByText("Developer mode")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Take over" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Stop agent" })).toBeEnabled();
+  rerender(
+    <BrowserAgentPresence
+      pending={false}
+      userControl
+      developerMode
+      chatTitle="Research chat"
+      {...handlers}
+    />,
+  );
+  expect(screen.queryByText("Developer mode")).toBeNull();
+});

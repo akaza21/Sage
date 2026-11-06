@@ -20,10 +20,12 @@ function controls(
     effortOption = option,
     pending = false,
     disabled = false,
+    singleton = false,
   }: {
     effortOption?: AcpConfigOption | null;
     pending?: boolean;
     disabled?: boolean;
+    singleton?: boolean;
   }) {
     const [active, setActive] = useState<"model" | "effort" | null>(null);
     const modelTrigger = useRef<HTMLButtonElement>(null);
@@ -40,7 +42,14 @@ function controls(
             setActive(active === "effort" ? null : "effort")
           }
           onDismiss={() => setActive(null)}
-          choices={[{ id: "actual", name: "Actual model" }]}
+          choices={
+            singleton
+              ? [{ id: "actual", name: "Actual model" }]
+              : [
+                  { id: "actual", name: "Actual model" },
+                  { id: "other", name: "Other model" },
+                ]
+          }
           selectedId="actual"
           modelLabel="Actual model"
           effortLabel="High"
@@ -73,11 +82,29 @@ function effort(
 }
 
 describe("Advertised composer effort", () => {
+  it("keeps a sole advertised model as a picker beside its editable effort", async () => {
+    const { rerender, Host } = controls(
+      effort("effort", ["low", "medium"], "medium"),
+    );
+    rerender(<Host singleton />);
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toBeEnabled();
+    expect(model).toHaveTextContent("Actual model");
+    fireEvent.click(model);
+    const option = await screen.findByRole("option", { name: /Actual model/ });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.keyDown(option, { key: "Escape" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Thinking level: Medium" }),
+    );
+    expect(await screen.findByRole("slider")).toBeEnabled();
+  });
   it("distinguishes model and thinking controls when only their icons fit", async () => {
     controls(effort("effort", ["low", "high"], "high"));
     const model = screen.getByRole("button", { name: "Model" });
     const thinking = screen.getByRole("button", {
-      name: "Thinking level: high",
+      name: "Thinking level: High",
     });
     expect(model.querySelector(".lucide-sparkles")).not.toBeNull();
     expect(thinking.querySelector(".lucide-brain")).not.toBeNull();
@@ -95,9 +122,11 @@ describe("Advertised composer effort", () => {
           { value: "medium", name: label },
         ],
       });
-      fireEvent.click(
-        screen.getByRole("button", { description: "Select effort" }),
-      );
+      const trigger = screen.getByRole("button", {
+        description: "Select effort",
+      });
+      expect(trigger).toHaveTextContent(label === "medium" ? "Medium" : label);
+      fireEvent.click(trigger);
       const dialog = await screen.findByRole("dialog", {
         name: "Thinking level",
       });
@@ -132,7 +161,10 @@ describe("Advertised composer effort", () => {
       }
       expect(onSetOption).not.toHaveBeenCalled();
       expect(slider).toHaveValue(String(values.length - 1));
-      expect(slider).toHaveAttribute("aria-valuetext", final);
+      expect(slider).toHaveAttribute(
+        "aria-valuetext",
+        final[0].toUpperCase() + final.slice(1),
+      );
       fireEvent.pointerUp(slider, { pointerId: 1 });
       fireEvent.blur(slider);
       expect(onSetOption).toHaveBeenCalledExactlyOnceWith(id, {
@@ -156,7 +188,7 @@ describe("Advertised composer effort", () => {
     fireEvent.change(slider, { target: { value: "2" } });
     rerender(<Host effortOption={effort("pi.thinking", ["off", "high"])} />);
     fireEvent.pointerUp(slider);
-    expect(slider).toHaveAttribute("aria-valuetext", "off");
+    expect(slider).toHaveAttribute("aria-valuetext", "Off");
     expect(onSetOption).not.toHaveBeenCalled();
   });
   it("places the model link and reset before the slider in DOM focus order", async () => {
@@ -178,12 +210,12 @@ describe("Advertised composer effort", () => {
   });
   it("shows the current level on the trigger with Select effort as its description", async () => {
     const { rerender, Host } = controls(effort("effort", ["low", "high"]));
-    const trigger = screen.getByRole("button", { name: "Thinking level: low" });
-    expect(trigger).toHaveTextContent("low");
+    const trigger = screen.getByRole("button", { name: "Thinking level: Low" });
+    expect(trigger).toHaveTextContent("Low");
     expect(trigger).toHaveAccessibleDescription("Select effort");
     rerender(<Host effortOption={effort("effort", ["low", "high"], "high")} />);
-    expect(trigger).toHaveAccessibleName("Thinking level: high");
-    expect(trigger).toHaveTextContent("high");
+    expect(trigger).toHaveAccessibleName("Thinking level: High");
+    expect(trigger).toHaveTextContent("High");
   });
   it("restores the surviving effort trigger when closing from the model link", async () => {
     controls(effort("effort", ["low", "high"]));
@@ -278,7 +310,10 @@ describe("Advertised composer effort", () => {
       const slider = screen.getByRole("slider", { name: "Thinking level" });
       expect(slider).toHaveAttribute("min", "0");
       expect(slider).toHaveAttribute("max", String(values.length - 1));
-      expect(slider).toHaveAttribute("aria-valuetext", values[0]);
+      expect(slider).toHaveAttribute(
+        "aria-valuetext",
+        values[0][0].toUpperCase() + values[0].slice(1),
+      );
       for (let index = 1; index < values.length; index++) {
         fireEvent.change(slider, { target: { value: String(index) } });
       }
@@ -379,13 +414,13 @@ describe("Advertised composer effort", () => {
     fireEvent.keyDown(slider, { key: "Home" });
     rerender(<Host pending />);
     expect(slider).toHaveFocus();
-    expect(slider).toHaveAttribute("aria-valuetext", "high");
+    expect(slider).toHaveAttribute("aria-valuetext", "High");
     fireEvent.keyDown(slider, { key: "Home" });
     expect(onSetOption).toHaveBeenCalledTimes(1);
     const replacement = effort("pi.thinking", ["off", "high"], "off");
     rerender(<Host effortOption={replacement} />);
     await act(async () => resolve({ currentValue: "low" }));
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuetext", "off");
+    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuetext", "Off");
   });
 
   it("opens the plain model list from the model link and keeps menus exclusive", async () => {

@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
 import type { WorkbenchTab } from "../../domain/workbench";
 import type { BrowserDevice } from "../../ports/nativeBrowserPort";
 import { BrowserSurface } from "./BrowserSurface";
@@ -61,9 +62,8 @@ vi.mock("../../ports/nativeBrowserPreferencesPort", () => ({
   browserPreferences: vi.fn(async () => ({ showFullUrl: false })),
   browserSetPreferences: vi.fn(async (value: unknown) => value),
 }));
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => undefined),
-}));
+// Automatic mocks also cover concurrent demand imports of the event API.
+vi.mock("@tauri-apps/api/event");
 
 const tab: WorkbenchTab = {
   id: "browser-1",
@@ -95,6 +95,7 @@ function frameRect(this: HTMLElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listen).mockResolvedValue(() => undefined);
   vi.stubGlobal(
     "ResizeObserver",
     class {

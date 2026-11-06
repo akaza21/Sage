@@ -60,7 +60,6 @@ export interface ChatComposerRegionProps {
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
   project: { name: string } | null | undefined;
-  projectScopeName?: string | null;
   usage: ChatUsage | null;
   goal: AcpGoalState;
   onSubmit: FormEventHandler<HTMLFormElement>;

@@ -62,6 +62,42 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it.each(["registration", "read"])(
+  "keeps the newest download state when an event arrives during %s",
+  async (gap) => {
+    let register!: () => void;
+    let deliver!: (downloads: BrowserDownload[]) => void;
+    vi.mocked(listen).mockImplementationOnce(
+      (_name, handler) =>
+        new Promise((resolve) => {
+          register = () => resolve(() => undefined);
+          deliver = (downloads) =>
+            handler({
+              event: "browser:downloads",
+              id: 1,
+              payload: { tabId: "browser-1", downloads },
+            });
+        }),
+    );
+    let answer!: (downloads: BrowserDownload[]) => void;
+    browserDownloads.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    render(<Harness />);
+    await waitFor(() => expect(register).toBeDefined());
+    const completed = { ...download, state: "completed" as const };
+    if (gap === "registration") act(() => deliver([download]));
+    await act(async () => register());
+    if (gap === "read") act(() => deliver([completed]));
+    await act(async () => answer([gap === "read" ? download : completed]));
+    const button = screen.getByRole("button", { name: "Downloads" });
+    fireEvent.click(button);
+    expect(await screen.findByText("Downloaded · example.com")).toBeVisible();
+  },
+);
+
 it("disposes late downloads registration after Activity sleeps without reading hidden state", async () => {
   let finish: ((dispose: () => void) => void) | undefined;
   const dispose = vi.fn();

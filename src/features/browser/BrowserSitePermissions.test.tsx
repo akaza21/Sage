@@ -53,6 +53,51 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it.each(["registration", "read"])(
+  "keeps revoked site access when an event arrives during %s",
+  async (gap) => {
+    const granted = {
+      tabId: "browser-1",
+      origin: "https://a.example",
+      pending: [],
+      decisions: [
+        { origin: "https://a.example", kind: "camera", decision: "allow" },
+      ],
+    };
+    const revoked = { ...granted, decisions: [], staleAccess: true };
+    let register!: () => void;
+    let deliver!: (payload: unknown) => void;
+    vi.mocked(listen).mockImplementationOnce(
+      (_name, handler) =>
+        new Promise((resolve) => {
+          register = () => resolve(() => undefined);
+          deliver = (payload) =>
+            handler({ event: "browser:permissions", id: 1, payload });
+        }),
+    );
+    let answer!: (snapshot: unknown) => void;
+    status.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    render(<BrowserSitePermissions tabId="browser-1" showEmpty />);
+    await waitFor(() => expect(register).toBeDefined());
+    if (gap === "registration") act(() => deliver(granted));
+    await act(async () => register());
+    if (gap === "read") act(() => deliver(revoked));
+    await act(async () => answer(gap === "read" ? granted : revoked));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Reload this page to end revoked access.",
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "Revoke camera for https://a.example",
+      }),
+    ).toBeNull();
+  },
+);
+
 it("disposes a permission subscription that finishes registering after the drawer closes", async () => {
   let registered!: (dispose: () => void) => void;
   const dispose = vi.fn();

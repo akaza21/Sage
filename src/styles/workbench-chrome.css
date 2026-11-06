@@ -57,14 +57,11 @@
   justify-content: center;
 }
 
-.title-bar__session {
-  overflow: hidden;
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Back and Forward sit together, as in Codex's title bar. */
+.title-bar__history {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .title-bar__search {

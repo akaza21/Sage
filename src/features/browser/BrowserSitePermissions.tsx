@@ -8,6 +8,7 @@ import {
   type BrowserPermissionSnapshot,
 } from "../../ports/nativeBrowserPort";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { subscribeBrowserTab } from "./browserTabEvents";
 
 const labels: Record<BrowserPermissionKind, string> = {
   camera: "camera",
@@ -34,36 +35,22 @@ export function BrowserSitePermissions({
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    let mounted = true;
-    let sawEvent = false;
-    let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        if (!mounted) return;
-        const dispose = await listen<BrowserPermissionSnapshot>(
-          "browser:permissions",
-          (event) => {
-            if (mounted && event.payload.tabId === tabId) {
-              sawEvent = true;
-              setSnapshot(event.payload);
-            }
-          },
-        );
-        if (!mounted) {
-          dispose();
-          return;
-        }
-        unlisten = dispose;
-        const initial = await browserPermissionStatus(tabId);
-        if (mounted && !sawEvent) setSnapshot(initial);
-      })
-      .catch((cause) => {
-        if (mounted) setError(String(cause).slice(0, 512));
-      });
-    return () => {
-      mounted = false;
-      unlisten?.();
-    };
+    let events = 0;
+    let readEpoch = 0;
+    return subscribeBrowserTab(
+      "browser:permissions",
+      tabId,
+      (payload, initial) => {
+        if (initial && readEpoch !== events) return;
+        if (!initial) events += 1;
+        setSnapshot(payload);
+      },
+      () => {
+        readEpoch = events;
+        return browserPermissionStatus(tabId);
+      },
+      setError,
+    );
   }, [tabId]);
 
   async function decide(id: number, allow: boolean) {

@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 import type {
   VisualScenarioMode,
@@ -115,6 +116,8 @@ export async function openComposerOptions(page: Page) {
     name: "Composer options",
     exact: true,
   });
+  // The open menu holds the toolbar's steps, so let the row settle first.
+  await settledComposerFit(form);
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();

@@ -74,6 +74,7 @@ fn s8_click_and_fill_use_pristine_dom_methods_and_hide_the_value_from_page_and_i
     });
     assert_eq!(click, Ok(BrowserResult::Act { applied: true }));
     assert!(lane.wait_text("Pressed for real", 2_000));
+    let (_, _, nodes) = lane.snapshot();
     let fill = lane.act(BrowserAction::Fill {
         handle: handle(&nodes, "textbox", "Name"),
         value: FillSecret::new(secret.into()),

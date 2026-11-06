@@ -60,7 +60,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",
@@ -71,7 +71,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownList|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
   },
   {
     name: "diff-rendering",

@@ -466,29 +466,27 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeDisabled();
   });
 
-  it("attaches the full project name above the input only for an established empty chat", () => {
+  it("keeps the project chip in the composer toolbar before and after the first turn", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };
-    const name =
-      "Sage parity project with a long but authoritative workspace name";
     useWorkbenchStore.setState({
-      project: { id: "project-a", name, roots: [] },
+      project: { id: "project-a", name: "Sage", roots: [] },
     });
     const { rerender, container } = render(<ChatSurface />);
-    const row = screen.getByRole("group", { name: "Project scope" });
-    expect(row).toHaveTextContent(name);
-    expect(container.querySelector("form.composer")).toContainElement(row);
+    const chip = () =>
+      container.querySelector(
+        "form.composer .composer__controls .project-scope",
+      );
     expect(
       screen.getByRole("region", { name: "New chat" }),
-    ).not.toContainElement(row);
-    expect(
-      container.querySelector(".chat-edit-summary-zone"),
-    ).not.toContainElement(row);
+    ).toBeInTheDocument();
+    expect(chip()).toHaveTextContent("Sage");
     hooks.page = projection();
     rerender(<ChatSurface />);
-    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+    expect(chip()).toHaveTextContent("Sage");
   });
 
-  it("adds no project scope row above an empty side chat's input (Codex s2/f0244)", () => {
+  it("gives a side chat no project chip before or after its first turn (Codex s2/f0244)", () => {
     hooks.page = {
       ...projection(),
       turns: [],
@@ -498,8 +496,11 @@ describe("ChatSurface ACP resource integration", () => {
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Sage", roots: [] },
     });
-    render(<ChatSurface chatId="side-1" />);
-    expect(screen.queryByRole("group", { name: "Project scope" })).toBeNull();
+    const { rerender } = render(<ChatSurface chatId="side-1" />);
+    expect(document.querySelector("form.composer .project-scope")).toBeNull();
+    hooks.page = { ...projection(), chatId: "side-1" as never };
+    rerender(<ChatSurface chatId="side-1" />);
+    expect(document.querySelector("form.composer .project-scope")).toBeNull();
   });
 
   it("retains composer project scope while an empty retained page is not the new-chat home", () => {
@@ -1909,7 +1910,10 @@ describe("ChatSurface ACP resource integration", () => {
             name: "Model",
             type: "select",
             currentValue: "sonnet",
-            options: [{ value: "sonnet", name: "Sonnet 5" }],
+            options: [
+              { value: "sonnet", name: "Sonnet 5" },
+              { value: "other", name: "Other model" },
+            ],
           },
         ],
       },
@@ -1921,7 +1925,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByText("Thinking budget")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -4995,7 +4999,7 @@ describe("ChatSurface composer focus hotkey", () => {
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(composer).toHaveAttribute("placeholder", "Do anything");
     composer.blur();
     expect(composer).not.toHaveFocus();
@@ -5127,7 +5131,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Voice input unavailable" }),
     ).toBeDisabled();
   });
-  it("cancels active dictation on a chat switch and ignores late speech", () => {
+  it("cancels active dictation on a chat switch and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -5178,6 +5182,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     act(() =>
@@ -5196,7 +5201,7 @@ describe("ChatSurface composer context", () => {
     expect(useWorkbenchStore.getState().composerText).toBe("Second draft");
   });
 
-  it("aborts active dictation on unmount and ignores late speech", () => {
+  it("aborts active dictation on unmount and ignores late speech", async () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -5228,6 +5233,7 @@ describe("ChatSurface composer context", () => {
     vi.stubGlobal("webkitSpeechRecognition", FakeRecognition);
     const view = render(<ChatSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const listening = FakeRecognition.current;
     expect(listening.start).toHaveBeenCalledOnce();
     view.unmount();
@@ -5297,6 +5303,7 @@ describe("ChatSurface composer context", () => {
       expect.stringMatching(/online service/i),
     );
     fireEvent.click(mic);
+    await screen.findByRole("button", { name: "Stop dictation" });
     expect(FakeRecognition.current.start).toHaveBeenCalledOnce();
     act(() =>
       FakeRecognition.current.onresult?.({
@@ -5314,6 +5321,7 @@ describe("ChatSurface composer context", () => {
       screen.getByRole("button", { name: "Start dictation" }),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const disabling = FakeRecognition.current;
     useWorkbenchStore.setState({ projectTransitioning: true });
     view.rerender(<ChatSurface />);
@@ -5333,6 +5341,7 @@ describe("ChatSurface composer context", () => {
       ).toBeVisible(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
     const previous = FakeRecognition.current;
     act(() =>
       previous.onresult?.({
@@ -5391,7 +5400,7 @@ describe("ChatSurface composer context", () => {
     expect(screen.queryByLabelText("Composer actions")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
   });
 
   it("names the active project in the composer scope control", async () => {

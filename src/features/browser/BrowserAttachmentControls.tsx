@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import {
   Link2,
   MessageCircleQuestion,
@@ -10,6 +10,8 @@ import { useWorkbenchStore } from "../../app/store";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";
 import { clearBrowserAgentPresence } from "../../app/browserAgentActivityStore";
 import { BrowserAgentPresence } from "./BrowserAgentPresence";
+import { subscribeBrowserTab } from "./browserTabEvents";
+import { isTauriRuntime } from "../../ports/desktopRuntime";
 import {
   attachBrowserTab,
   browserAgentControl,
@@ -29,6 +31,8 @@ interface ChatChoice {
  * happens here: mounting (also after a reload), an Agent operation, a page
  * change, and attaching or detaching. Rust answers Take over and Hand back
  * with the state after them, so nothing here is a mirror that can go stale.
+ * Rust also says when something outside the tab changed it, such as the
+ * developer-mode switch going off.
  */
 function useBrowserAgentControl(
   tabId: string,
@@ -36,10 +40,36 @@ function useBrowserAgentControl(
   visible: boolean,
 ) {
   const [control, setControl] = useState<BrowserAgentControl | null>(null);
+  const [nativeChange, refresh] = useReducer(
+    (current: number) => current + 1,
+    0,
+  );
   const sequence = useRef(0);
+  const registered = useRef(false);
   useEffect(() => {
+    if (!visible || !isTauriRuntime()) return;
+    const stop = subscribeBrowserTab(
+      "browser:agent-control",
+      tabId,
+      () => {
+        // Invalidate pending reads immediately, before React runs the effect.
+        sequence.current += 1;
+        refresh();
+      },
+      async () => {
+        registered.current = true;
+        refresh();
+      },
+    );
+    return () => {
+      registered.current = false;
+      sequence.current += 1;
+      stop();
+    };
+  }, [tabId, visible]);
+  useEffect(() => {
+    if (!visible || (isTauriRuntime() && !registered.current)) return;
     const current = ++sequence.current;
-    if (!visible) return;
     void browserAgentControl(tabId, "agentControl")
       .catch(() => null)
       .then((next) => {
@@ -48,7 +78,7 @@ function useBrowserAgentControl(
     return () => {
       sequence.current += 1;
     };
-  }, [tabId, refreshKey, visible]);
+  }, [tabId, refreshKey, nativeChange, visible]);
   return {
     control,
     apply(next: BrowserAgentControl | null) {
@@ -89,13 +119,16 @@ export function BrowserToolbarPageActions({
     visible,
   );
   const agent = control?.projectId === projectId ? control : null;
-  function run<T>(command: () => Promise<T>, after: (result: T) => void) {
+  async function run<T>(command: () => Promise<T>, after: (result: T) => void) {
     if (busy) return;
     setBusy(true);
-    void command()
-      .then(after)
-      .catch((cause) => onError(String(cause).slice(0, 512)))
-      .finally(() => setBusy(false));
+    try {
+      after(await command());
+    } catch (cause) {
+      onError(String(cause).slice(0, 512));
+    } finally {
+      setBusy(false);
+    }
   }
   const attachmentControls = useBrowserAttachmentControls({
     visible: visible && (ready || Boolean(agent)),
@@ -117,6 +150,7 @@ export function BrowserToolbarPageActions({
             operation?.phase === "started" && operation.chatId === agent.chatId
           }
           userControl={agent.userControl}
+          developerMode={agent.developerMode}
           chatTitle={
             chats.find((chat) => chat.id === agent.chatId)?.title ?? "Chat"
           }
@@ -236,6 +270,7 @@ function useBrowserAttachmentControls({
           aria-hidden="true"
         />
         <select
+          data-overflow-control="chat"
           aria-label="Chat for browser tab"
           title={chats.find((chat) => chat.id === chosen)?.title}
           value={chosen}
@@ -252,6 +287,7 @@ function useBrowserAttachmentControls({
       <button
         type="button"
         aria-label={attachmentLabel}
+        data-overflow-control="attachment"
         title={attachmentLabel}
         onClick={() => void changeAttachment(attached ? "detach" : "attach")}
         disabled={busy || (!attached && (!projectId || !chosen || !ready))}
@@ -299,6 +335,7 @@ function BrowserAskPageButton({
     <button
       type="button"
       aria-label={pending ? "Attaching page…" : "Ask about this page"}
+      data-overflow-control="ask"
       disabled={!ready || !focusedChatId || pending}
       title={!focusedChatId ? "Focus a Chat to ask about this page" : undefined}
       onClick={attach}

@@ -198,6 +198,7 @@ fn operation(command: &BrowserCommand) -> &'static str {
         BrowserCommand::Screenshot { .. } => "screenshot",
         BrowserCommand::ReadConsole { .. } => "readConsole",
         BrowserCommand::ReadNetwork { .. } => "readNetwork",
+        BrowserCommand::Cdp { .. } => "cdp",
     }
 }
 
@@ -217,6 +218,7 @@ fn summary(command: &BrowserCommand) -> String {
         BrowserCommand::Screenshot { .. } => "Capture screenshot".into(),
         BrowserCommand::ReadConsole { .. } => "Read console metadata".into(),
         BrowserCommand::ReadNetwork { .. } => "Read network metadata".into(),
+        BrowserCommand::Cdp { method, .. } => format!("CDP {method}"),
     }
 }
 
@@ -259,6 +261,7 @@ fn outcome_summary(outcome: &Result<BrowserResponse, BrowserFailure>) -> (&'stat
                 BrowserResult::ReadNetwork { entries, .. } => {
                     format!("{} network entries", entries.len())
                 }
+                BrowserResult::Cdp { .. } => "CDP command completed".into(),
             },
         ),
         // Stored as denied, as the gate refused it; the summary tells the

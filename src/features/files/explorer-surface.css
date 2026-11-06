@@ -114,8 +114,8 @@
 
 .tree__row--selected {
   color: var(--color-text-primary);
-  background: var(--color-surface-selected);
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  background: var(--row-selected-fill, var(--color-surface-selected));
+  box-shadow: var(--row-selected-shadow, inset 2px 0 0 var(--color-accent));
 }
 
 .tree__row svg {

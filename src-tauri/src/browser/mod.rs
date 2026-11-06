@@ -38,6 +38,7 @@ pub mod native_lane;
 pub(crate) mod navigation;
 pub(crate) mod page_context;
 pub(crate) mod page_controls;
+pub(crate) mod passwords;
 pub(crate) mod popups;
 mod profile;
 mod shortcuts;
@@ -56,10 +57,8 @@ use history::BrowserHistory;
 #[cfg(test)]
 use history::MAX_BROWSER_HISTORY;
 #[cfg(test)]
-#[path = "clear_conformance_tests.rs"]
 mod clear_conformance_tests;
 #[cfg(test)]
-#[path = "policy_conformance_tests.rs"]
 mod policy_conformance_tests;
 use popups::PopupRequests;
 #[cfg(test)]
@@ -119,6 +118,8 @@ impl BrowserState {
 
 struct BrowserTab<T> {
     handle: T,
+    #[cfg(windows)]
+    developer: devtools::developer_session::Slot,
     visibility: Arc<visibility::PageVisibility>,
     loading: bool,
     title: Option<String>,
@@ -216,6 +217,8 @@ impl<T> BrowserTabs<T> {
             label,
             BrowserTab {
                 handle,
+                #[cfg(windows)]
+                developer: devtools::developer_session::Slot::default(),
                 visibility: Arc::default(),
                 loading,
                 title: None,

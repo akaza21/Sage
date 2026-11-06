@@ -180,7 +180,7 @@ it("labels transient harness/model selection honestly and exposes only real acce
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("shows only the sections T3 Code's settings also have, in its order", () => {
+it("shows T3 Code's settings sections in its order, plus Sage's Passwords next to Browser", () => {
   render(<AgentSettingsSurface />);
   const nav = screen.getByRole("navigation", {
     name: "Agent settings sections",
@@ -193,9 +193,26 @@ it("shows only the sections T3 Code's settings also have, in its order", () => {
     "Harnesses",
     "Chats",
     "Browser",
+    "Passwords",
     "Archived chats",
   ]);
   expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
+});
+
+it("opens the saved passwords page that Editor Settings shows", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Passwords" }));
+  expect(useAgentSettingsState.getState().page).toBe("Passwords");
+  expect(
+    await screen.findByText(
+      "Saved passwords are available in the Sage desktop app.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "Passwords you've saved for websites. Each use requires your confirmation.",
+    ),
+  ).toBeVisible();
 });
 
 it("does not offer reserved shortcuts", async () => {
@@ -220,6 +237,47 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
     page: "Browser",
     browserTabId: "tab-a",
   });
+});
+
+it("returns focus to what opened it when Escape closes it (B-16)", () => {
+  const opener = document.createElement("button");
+  document.body.append(opener);
+  useAgentSettingsState.getState().close();
+  opener.focus();
+  // Opening hides the Agent workspace, and focus with it, before Settings
+  // mounts; only the open call still sees the opener.
+  useAgentSettingsState.getState().open("Chats");
+  opener.blur();
+  try {
+    const { rerender } = render(<AgentSettingsSurface />);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Chats" }), {
+      key: "Escape",
+    });
+    // The workbench unmounts Settings once no page is open.
+    rerender(<></>);
+    expect(opener).toHaveFocus();
+  } finally {
+    opener.remove();
+  }
+});
+
+it("moves between sections with the arrow keys, wrapping at either end", () => {
+  render(<AgentSettingsSurface />);
+  const appearance = screen.getByRole("button", { name: "Appearance" });
+  appearance.focus();
+  fireEvent.keyDown(appearance, { key: "ArrowDown" });
+  expect(screen.getByRole("button", { name: "Keybindings" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Keybindings" }), {
+    key: "ArrowUp",
+  });
+  expect(appearance).toHaveFocus();
+  fireEvent.keyDown(appearance, { key: "ArrowUp" });
+  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+    key: "ArrowDown",
+  });
+  expect(appearance).toHaveFocus();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {
@@ -404,6 +462,45 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   });
   expect(apply).not.toHaveBeenCalled();
   expect(screen.getByText("Native discovery")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Refresh discovery" }),
+  ).toBeEnabled();
+});
+
+it("records a discovery refresh that finishes while the window is minimized", async () => {
+  const oldInventory = useWorkbenchStore.getState().harnesses;
+  const freshInventory = [{ ...oldInventory[0], name: "Fresh discovery" }];
+  let finishRefresh!: (value: typeof oldInventory) => void;
+  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses").mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRefresh = resolve;
+      }),
+  );
+  useWorkbenchStore.setState({
+    applyHarnessDiscovery: async (harnesses) => {
+      useWorkbenchStore.setState({ harnesses });
+    },
+  });
+  let visibility: DocumentVisibilityState = "visible";
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => visibility,
+  );
+  const setVisibility = (next: DocumentVisibilityState) => {
+    visibility = next;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const { act } = await import("@testing-library/react");
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
+  expect(
+    screen.getByRole("button", { name: "Checking harnesses..." }),
+  ).toBeDisabled();
+  await act(async () => setVisibility("hidden"));
+  await act(async () => finishRefresh(freshInventory));
+  await act(async () => setVisibility("visible"));
+  expect(screen.getByText("Fresh discovery")).toBeVisible();
   expect(
     screen.getByRole("button", { name: "Refresh discovery" }),
   ).toBeEnabled();

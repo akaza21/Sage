@@ -329,14 +329,6 @@ impl DriverMailbox {
         message
     }
 
-    pub(super) fn is_quiescent(&self) -> bool {
-        let state = self.lock();
-        state.queue.data_usage() == (0, 0)
-            && state.queue.control_usage() == (0, 0)
-            && !state.terminal_queued
-            && !state.closed
-    }
-
     pub(super) fn reader_terminal_queued(&self) -> bool {
         self.lock().terminal_queued
     }

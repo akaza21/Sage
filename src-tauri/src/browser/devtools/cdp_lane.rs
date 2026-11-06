@@ -11,6 +11,7 @@
 mod agent_marker;
 mod annotate;
 mod chromium;
+mod developer;
 mod device;
 mod isolation;
 mod select;
@@ -208,6 +209,23 @@ fn click_fill_and_key_reach_the_page_and_fill_never_echoes_its_value() {
     });
     assert_eq!(click, Ok(BrowserResult::Act { applied: true }));
     assert!(lane.wait_text("Submitted once", 2_000));
+    // Every dispatched action invalidates the snapshot it was taken from.
+    assert_eq!(
+        lane.act(BrowserAction::Fill {
+            handle: handle(&nodes, "textbox", "Email"),
+            value: FillSecret::new(secret.into()),
+        }),
+        Err(BrowserFailure::StaleHandle)
+    );
+    let (_, _, nodes) = lane.snapshot();
+    let key = lane.act(BrowserAction::Key {
+        handle: handle(&nodes, "textbox", "Notes"),
+        key: "Enter".into(),
+    });
+    assert_eq!(key, Ok(BrowserResult::Act { applied: true }));
+    assert!(lane.wait_text("Notes saw Enter", 2_000));
+    // Fill last: a snapshot after it would read the value back (see below).
+    let (_, _, nodes) = lane.snapshot();
     let fill = lane.act(BrowserAction::Fill {
         handle: handle(&nodes, "textbox", "Email"),
         value: FillSecret::new(secret.into()),
@@ -218,12 +236,6 @@ fn click_fill_and_key_reach_the_page_and_fill_never_echoes_its_value() {
         lane.evaluate("document.getElementById('email').value"),
         secret
     );
-    let key = lane.act(BrowserAction::Key {
-        handle: handle(&nodes, "textbox", "Notes"),
-        key: "Enter".into(),
-    });
-    assert_eq!(key, Ok(BrowserResult::Act { applied: true }));
-    assert!(lane.wait_text("Notes saw Enter", 2_000));
     lane.assert_never_leaked(&[secret]);
 
     // Known limitation: a plain text field renders its content, so a later

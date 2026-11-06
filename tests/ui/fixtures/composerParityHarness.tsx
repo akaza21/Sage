@@ -169,8 +169,7 @@ export function Host({ state }: { state: ParityState }) {
                 onSelectModel={() => {}}
                 missingBindingNotice={false}
                 disabledReason={null}
-                project={home ? null : project}
-                projectScopeName={home ? project.name : null}
+                project={project}
                 usage={null}
                 goal={{ kind: "unsupported" }}
                 onSubmit={(event) => event.preventDefault()}
