@@ -9,8 +9,8 @@ const MAX_VALUE_DEPTH = 32;
 const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
 
 export class CdpError extends Error {
-  constructor(code, deadline) {
-    super(`journey-cdp-${code}`);
+  constructor(code, deadline, options) {
+    super(`journey-cdp-${code}`, options);
     this.name = "CdpError";
     if (deadline !== undefined) this.deadline = deadline;
   }
@@ -272,7 +272,9 @@ export async function connectCdp({
   };
   const terminate = (error) => {
     if (terminal) return;
-    terminal = error;
+    // Only the in-flight operation receives its failure. Later operations
+    // fail because the connection is dead, not because their deadline fired.
+    terminal = new CdpError("terminated", undefined, { cause: error });
     if (pending) {
       const waiter = pending;
       pending = null;
