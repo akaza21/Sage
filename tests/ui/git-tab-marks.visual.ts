@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 // EP-13: a File tab's Git mark must take exactly the room the tab held for it
 // while the decoration chunk loaded, so the strip never shifts. These check

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import type { SessionAccessModeCapability } from "../../src/domain/sessionAccessMode";
 import {
   waitForAnimations,
@@ -66,8 +66,9 @@ for (const width of [1888, 720, 480]) {
       await openScenario(page, "agent-single", "agent");
       await settleChatProjections(page);
       await page.evaluate(async (modes) => {
-        const fixture =
-          await import("/tests/ui/fixtures/surfaces/composerAccessVisualFixture.ts");
+        const fixture = await sageImport(
+          "/tests/ui/fixtures/surfaces/composerAccessVisualFixture.ts",
+        );
         fixture.installVisualComposerAccessFixture(modes);
       }, profile.modes);
       const composer = page.locator("form.composer").first();
@@ -101,8 +102,9 @@ for (const width of [1888, 720, 480]) {
       // Give Add a capability-backed action and open it first, so the
       // "Access closes Add" assertion below proves a real dismissal.
       await page.evaluate(async () => {
-        const fixture =
-          await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
+        const fixture = await sageImport(
+          "/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts",
+        );
         fixture.installVisualComposerActionsFixture([
           { id: "default", name: "Default" },
           { id: "plan", name: "Plan" },

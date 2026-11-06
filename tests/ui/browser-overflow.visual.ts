@@ -1,5 +1,5 @@
 import { waitForAnimations } from "./shared/visualBrowserPrimitives";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import { forbidBrowserRetries } from "./shared/browserRetryGuard";
 import { installComposerRowSettle } from "./shared/composerGeometry";
 

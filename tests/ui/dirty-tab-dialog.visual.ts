@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
 test("closing a dirty file loads its confirmation and preserves Cancel and Discard", async ({

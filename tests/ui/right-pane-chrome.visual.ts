@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./shared/test";
 import {
   openAgentScenario,
   openAgentSnapshotDiff,
@@ -173,8 +173,9 @@ for (const viewport of [
     // shape as a chat whose last turn edited a file. The saved diff remains
     // the one opened above, rather than invented totals or file contents.
     await page.evaluate(async () => {
-      const { acpProjectionStoreFor } =
-        await import("/src/app/acpProjectionRegistry.ts");
+      const { acpProjectionStoreFor } = await sageImport(
+        "/src/app/acpProjectionRegistry.ts",
+      );
       const projection = acpProjectionStoreFor("visual-chat-diff");
       const current = projection.getState().page!;
       projection.setState({

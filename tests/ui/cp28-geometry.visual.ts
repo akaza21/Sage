@@ -3,7 +3,7 @@ import {
   geometryOrderedStarts,
   orderedGeometryAnswer,
 } from "./fixtures/markdownAnswerInputs";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./shared/test";
 import {
   openScenario,
   settleChatProjections,
@@ -23,10 +23,10 @@ async function installAnswers(page: Page, text: string, queued = false) {
         ids,
         { buildVisualScenario },
       ] = await Promise.all([
-        import("/src/app/acpProjectionRegistry.ts"),
-        import("/src/app/store.ts"),
-        import("/tests/ui/fixtures/visualFixtureIds.ts"),
-        import("/tests/ui/fixtures/visualScenarioShell.ts"),
+        sageImport("/src/app/acpProjectionRegistry.ts"),
+        sageImport("/src/app/store.ts"),
+        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
+        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
       ]);
       for (const projection of document.querySelectorAll<HTMLElement>(
         ".acp-chat-projection[data-chat-id]",

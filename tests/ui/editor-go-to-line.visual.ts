@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -7,16 +7,18 @@ import { openScenario } from "./shared/visualBrowserPrimitives";
 async function openStandaloneCommand(page: Page) {
   await page.goto("/");
   await page.evaluate(async () => {
-    const { mountGoToLineCommand } =
-      await import("/tests/ui/fixtures/goToLineCommand.tsx");
+    const { mountGoToLineCommand } = await sageImport(
+      "/tests/ui/fixtures/goToLineCommand.tsx",
+    );
     mountGoToLineCommand();
   });
   const editor = page.getByRole("textbox", { name: "Command editor" });
   await editor.click();
   await page.keyboard.press("Control+Home");
   await editor.evaluate(async (element) => {
-    const { observeSelections } =
-      await import("/tests/ui/fixtures/goToLineCommand.tsx");
+    const { observeSelections } = await sageImport(
+      "/tests/ui/fixtures/goToLineCommand.tsx",
+    );
     observeSelections(element);
   });
   return editor;

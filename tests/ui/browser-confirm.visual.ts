@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import { forbidBrowserRetries } from "./shared/browserRetryGuard";
 
 forbidBrowserRetries();

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import {
   waitForAnimations,
   openScenario,
@@ -211,7 +211,7 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
 
     // Short names render as before: whole, with the action pinned at 24 px.
     const shortName = await page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
       return useWorkbenchStore.getState().project!.name;
     });
     await more.click();
@@ -227,7 +227,7 @@ test.describe("CP-48 Agent chrome (Codex references 67 and 68)", () => {
     const longName = `Long project ${"name ".repeat(40)}`.slice(0, 200);
     expect(longName).toHaveLength(200);
     await page.evaluate(async (projectName) => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
       useWorkbenchStore.setState((state) => ({
         project: { ...state.project!, name: projectName },
       }));

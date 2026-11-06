@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 const style = readFileSync(
   "src-tauri/src/window_frame/window-controls.css",

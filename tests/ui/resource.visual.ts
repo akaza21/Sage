@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import {
   fileResource,
@@ -125,8 +125,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.setViewportSize({ width: 1_380, height: 880 });
     await openAgentScenario(page, "diff");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
+      );
       await fixtures.installVisualAgentArtifactPinnedFixture();
     });
     const resources = page.getByLabel("Agent artifacts", { exact: true });
@@ -144,8 +145,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(file.getByTitle("Unsaved changes")).toBeVisible();
     await expect(diff).toHaveCount(0);
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
+      );
       await fixtures.openVisualPinnedDiffThroughProduction();
     });
     await expect(diff).toHaveAttribute("aria-selected", "false");
@@ -179,8 +181,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(secondPane).toHaveClass(/agent-chat-pane--focused/);
 
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
+      );
       await fixtures.installVisualAgentArtifactFollowFixture();
     });
 
@@ -385,15 +388,17 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       await expect
         .poll(() =>
           target.evaluate(async () => {
-            const { useEditorSettingsStore } =
-              await import("/src/app/editorSettingsStore.ts");
+            const { useEditorSettingsStore } = await sageImport(
+              "/src/app/editorSettingsStore.ts",
+            );
             return useEditorSettingsStore.getState().persistenceReady;
           }),
         )
         .toBe(true);
       await target.evaluate(async () => {
-        const { useEditorSettingsStore } =
-          await import("/src/app/editorSettingsStore.ts");
+        const { useEditorSettingsStore } = await sageImport(
+          "/src/app/editorSettingsStore.ts",
+        );
         useEditorSettingsStore.getState().setSettings({
           "editor.fontSize": 16,
           "editor.tabSize": 4,
@@ -593,9 +598,10 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await openScenario(editorDiffPage, "editor", "editor");
     await editorDiffPage.evaluate(
       async ({ resource, diff }) => {
-        const { useWorkbenchStore } = await import("/src/app/store.ts");
-        const { diffCacheKey: cacheKey } =
-          await import("/src/domain/diffIdentity.ts");
+        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+        const { diffCacheKey: cacheKey } = await sageImport(
+          "/src/domain/diffIdentity.ts",
+        );
         const snapshot = useWorkbenchStore.getState();
         await snapshot.openDiff(resource);
         useWorkbenchStore.setState({
@@ -758,8 +764,9 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await installLayoutMode(page, "agent");
     await page.goto("/");
     await page.evaluate(async () => {
-      const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
+      const { getWorkbenchPorts } = await sageImport(
+        "/src/ports/workbenchRuntime.ts",
+      );
       const repository = getWorkbenchPorts().repository;
       const getFileDiff = repository.getFileDiff.bind(repository);
       repository.getFileDiff = async (...args) => {
@@ -808,8 +815,9 @@ test.describe("AV-03 Agent document ready baselines", () => {
     await page.goto("/");
     await installScenario(page, "diff");
     await page.evaluate(async () => {
-      const { AcpDesktopError, acpDesktop } =
-        await import("/src/services/acpDesktop.ts");
+      const { AcpDesktopError, acpDesktop } = await sageImport(
+        "/src/services/acpDesktop.ts",
+      );
       acpDesktop.getFileSnapshot = async () => {
         throw new AcpDesktopError({
           kind: "unavailable",
@@ -1068,8 +1076,9 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
   test("agent-preview-idle stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
+      );
       await fixtures.installVisualAgentPreviewIdleFixture();
     });
     const resources = page.getByLabel("Agent artifacts", { exact: true });
@@ -1214,8 +1223,9 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
   test("agent-artifacts-long-paths stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "file");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/resourceVisualFixtures.ts",
+      );
       await fixtures.installVisualAgentLongPathFixture();
     });
     const resources = page.getByLabel("Agent artifacts", { exact: true });

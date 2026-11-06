@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import {
   dragAnswerPhrase,
   openSelectionScenario,
@@ -60,8 +60,9 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
   await expect(page.locator(".project-chat__working").first()).toBeVisible();
   await expect(workbench).toHaveScreenshot("side-chat-running.png");
   await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/transcriptSelectionFixtures.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/transcriptSelectionFixtures.ts",
+    );
     fixture.completeSideChatFixture();
   });
   await expect(right).toContainText(

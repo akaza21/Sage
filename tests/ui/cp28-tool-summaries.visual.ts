@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 
 import { revealWorkedContent } from "./agentVisualHelpers";
 import {
@@ -65,8 +65,8 @@ for (const layout of [
     await page.evaluate(async () => {
       const [{ acpProjectionStoreFor }, { buildVisualScenario }] =
         await Promise.all([
-          import("/src/app/acpProjectionRegistry.ts"),
-          import("/tests/ui/fixtures/visualScenarioShell.ts"),
+          sageImport("/src/app/acpProjectionRegistry.ts"),
+          sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
         ]);
       const template = buildVisualScenario(
         "agent-command-rollup",

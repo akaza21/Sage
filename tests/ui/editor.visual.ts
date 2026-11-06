@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./shared/test";
 
 import { EDITOR_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
@@ -190,8 +190,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { useEditorSettingsStore } =
-            await import("/src/app/editorSettingsStore.ts");
+          const { useEditorSettingsStore } = await sageImport(
+            "/src/app/editorSettingsStore.ts",
+          );
           return useEditorSettingsStore.getState().persistencePhase;
         }),
       )
@@ -278,8 +279,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await settingsSearch.fill("");
 
     await page.evaluate(async () => {
-      const { useEditorSettingsStore } =
-        await import("/src/app/editorSettingsStore.ts");
+      const { useEditorSettingsStore } = await sageImport(
+        "/src/app/editorSettingsStore.ts",
+      );
       useEditorSettingsStore.setState({
         persistencePhase: "error",
         persistenceErrorKind: "save",
@@ -338,8 +340,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "editor",
     );
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualRepositoryPickerFixture();
     });
     await page
@@ -374,8 +377,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "editor",
     );
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualRepositoryPickerFixture();
     });
     await page
@@ -442,8 +446,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       "editor",
     );
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualRepositoryPickerFixture();
     });
     await page
@@ -466,8 +471,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.setViewportSize({ width: 1_000, height: 560 });
     await openScenario(page, "editor", "editor");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       await fixtures.installVisualExplorerScrollFixture();
     });
 
@@ -497,8 +503,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.setViewportSize({ width: 720, height: 560 });
     const workbench = await openScenario(page, "editor", "editor");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualExplorerActionFixture();
     });
 
@@ -606,8 +613,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(more).toBeFocused();
 
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualExplorerUnavailableActionFixture();
     });
     await more.press("ArrowDown");
@@ -715,8 +723,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await page.setViewportSize({ width: 1380, height: 880 });
     const workbench = await openScenario(page, "editor", "editor");
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualEmptyEditorCanvas();
     });
 
@@ -828,8 +837,9 @@ test.describe("Wave 2 200% zoom state", () => {
       "editor",
     );
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualRepositoryPickerFixture();
     });
     await page
@@ -945,8 +955,9 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect(renameTrigger).toBeFocused();
     await page.getByRole("button", { name: "Explorer", exact: true }).click();
     await page.evaluate(async () => {
-      const fixtures =
-        await import("/tests/ui/fixtures/surfaces/editorVisualFixtures.ts");
+      const fixtures = await sageImport(
+        "/tests/ui/fixtures/surfaces/editorVisualFixtures.ts",
+      );
       fixtures.installVisualExplorerActionFixture();
     });
     await page.getByRole("button", { name: "More Explorer actions" }).click();

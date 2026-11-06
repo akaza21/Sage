@@ -23,9 +23,9 @@ export async function openNavigationChat(
         { appendTurn, updateLatestTurn, JOURNEY_IDS },
         { publishJourneyPage },
       ] = await Promise.all([
-        import("/src/app/acpProjectionRegistry.ts"),
-        import("/tests/ui/fixtures/agentTurnJourneyModel.ts"),
-        import("/tests/ui/fixtures/agentTurnJourneyFixture.ts"),
+        sageImport("/src/app/acpProjectionRegistry.ts"),
+        sageImport("/tests/ui/fixtures/agentTurnJourneyModel.ts"),
+        sageImport("/tests/ui/fixtures/agentTurnJourneyFixture.ts"),
       ]);
       const store = acpProjectionStoreFor(JOURNEY_IDS.alpha);
       const { page: initial } = store.getState();

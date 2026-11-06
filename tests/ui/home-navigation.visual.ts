@@ -1,9 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 async function savedChats(page: Page) {
   return page.evaluate(async () => {
-    const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
+    const { getWorkbenchPorts } = await sageImport(
+      "/src/ports/workbenchRuntime.ts",
+    );
     const snapshot = await getWorkbenchPorts().project.getBootstrapSnapshot();
     return {
       chats: snapshot.tabs.filter((tab) => tab.kind === "chat"),
@@ -102,9 +103,10 @@ for (const owner of ["single", "parent", "side"] as const) {
       page.getByRole("textbox", { name: "Message agent" }),
     ).toBeVisible();
     const focusedId = await page.evaluate(async (owner) => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
-      const { useSideChatState } =
-        await import("/src/workbench/sideChatState.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { useSideChatState } = await sageImport(
+        "/src/workbench/sideChatState.ts",
+      );
       const parentId = useWorkbenchStore.getState().activeTabId!;
       if (owner !== "single") {
         await useWorkbenchStore.getState().createChat();

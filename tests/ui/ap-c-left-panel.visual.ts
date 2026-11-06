@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 import {
   waitForAnimations,
   openScenario,
@@ -7,9 +7,10 @@ import {
 
 async function installRailBrowseFixture(page: Page) {
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
-    const { projectChatSearchDesktop } =
-      await import("/src/features/chatSearch/chatSearchDesktop.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { projectChatSearchDesktop } = await sageImport(
+      "/src/features/chatSearch/chatSearchDesktop.ts",
+    );
     const state = useWorkbenchStore.getState();
     const chats = Array.from({ length: 10 }, (_, position) => ({
       id: `rail-fixture-${position}`,
@@ -106,7 +107,7 @@ test("AP-C long chat titles truncate before the trailing time or state", async (
 }) => {
   await openScenario(page, "agent-dual", "agent");
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     const state = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
       tabs: state.tabs.map((tab) =>
@@ -179,8 +180,9 @@ test("Search Chats keeps Cancel reachable when a pending search fails", async ({
   await page.setViewportSize({ width: 690, height: 440 });
   await openScenario(page, "agent-composer-narrow", "agent");
   const pending = await page.evaluateHandle(async () => {
-    const { projectChatSearchDesktop } =
-      await import("/src/features/chatSearch/chatSearchDesktop.ts");
+    const { projectChatSearchDesktop } = await sageImport(
+      "/src/features/chatSearch/chatSearchDesktop.ts",
+    );
     let reject!: (reason: Error) => void;
     projectChatSearchDesktop.search = () =>
       new Promise<never>((_, fail) => {
@@ -276,7 +278,7 @@ test("AP-C Show more lists a project's hidden chats in place", async ({
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
         return useWorkbenchStore.getState().activeTabId;
       }),
     )
@@ -298,7 +300,7 @@ test("AP-C hover Pin and Archive take a real pointer click without opening the c
   // The fixture's chats live only in the store, so pin and archive change the
   // store's projection directly; what is under test is where the click lands.
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     useWorkbenchStore.setState({
       pinChat: async (chatId: string) =>
         useWorkbenchStore.setState((state) => ({
@@ -321,7 +323,7 @@ test("AP-C hover Pin and Archive take a real pointer click without opening the c
   const projects = sidebar.getByRole("region", { name: "Projects" });
   const activeChat = () =>
     page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
       return useWorkbenchStore.getState().activeTabId;
     });
   const before = await activeChat();
@@ -365,7 +367,7 @@ test("AP-C resting on a chat row shows its title, age and project beside the rai
   await openScenario(page, "agent-dual", "agent");
   await installRailBrowseFixture(page);
   const projectName = await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     // Pin the clock so the age reads the same on every run.
     Date.now = () => Date.UTC(2026, 9, 1, 9, 29, 0);
     return useWorkbenchStore.getState().project?.name ?? "";
@@ -493,7 +495,7 @@ test("AP-C chat rows keep one box in both organize modes, with the dot where Arc
 
   await page.mouse.move(900, 900);
   await page.evaluate(async () => {
-    const prefs = await import("/src/workbench/agentRailViewPrefs.ts");
+    const prefs = await sageImport("/src/workbench/agentRailViewPrefs.ts");
     prefs.setAgentRailOrganize("list");
   });
   await page.getByRole("region", { name: "Recents" }).waitFor();

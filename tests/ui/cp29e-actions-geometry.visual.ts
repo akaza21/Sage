@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import {
   waitForAnimations,
   openScenario,
@@ -33,8 +33,9 @@ for (const width of [1888, 720, 480]) {
       await expect(page.locator(".acp-chat-projection").first()).toBeVisible();
       await settleChatProjections(page);
       await page.evaluate(async (modes) => {
-        const fixture =
-          await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
+        const fixture = await sageImport(
+          "/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts",
+        );
         fixture.installVisualComposerActionsFixture(modes);
       }, profile.modes);
       const composer = page.locator("form.composer").first();

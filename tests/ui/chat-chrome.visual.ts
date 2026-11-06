@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 import {
   openScenario,
   settleChatProjections,
@@ -23,8 +23,9 @@ async function openChrome(
   await settleChatProjections(page);
   await page.evaluate(
     async ({ harness, state, status, tone, harnessStatus }) => {
-      const { installChatChromeFixture } =
-        await import("/tests/ui/fixtures/chatChromeFixture.ts");
+      const { installChatChromeFixture } = await sageImport(
+        "/tests/ui/fixtures/chatChromeFixture.ts",
+      );
       const turnState =
         status === "Queued"
           ? "queued"
@@ -90,8 +91,9 @@ test("transcript replacement keeps following through a queued old-layout scroll"
     );
   await expect.poll(remaining).toBeLessThanOrEqual(1);
   const revisions = await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/chatChromeReplacementRace.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/chatChromeReplacementRace.ts",
+    );
     return fixture.replaceChatChromeWithQueuedScroll();
   });
   await expect.poll(remaining).toBeLessThanOrEqual(1);

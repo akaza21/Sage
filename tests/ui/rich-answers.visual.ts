@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 import { build } from "vite";
 import { flowchartSource } from "./fixtures/cp22Answers";
 

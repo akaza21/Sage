@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./shared/test";
 import { settledComposerFit } from "./shared/composerGeometry";
 import {
   openScenario,
@@ -241,8 +241,9 @@ for (const contentWidth of [
     }, contentWidth);
     await expectResponsiveToolbar(composer);
     await page.evaluate(async () => {
-      const fixture =
-        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      const fixture = await sageImport(
+        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+      );
       fixture.installVisualComposerEffortFixture({
         levels: ["low", "medium", "extraordinarily high"],
         currentValue: "extraordinarily high",
@@ -309,8 +310,9 @@ test("keeps the split chip nonshrinking after the later composer styles load", a
     page.locator("form.composer").nth(1).locator(".project-scope"),
   ).toHaveCount(0);
   await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+    );
     fixture.installVisualComposerEffortFixture({
       modelName: "A long advertised model name",
       currentValue: "high",
@@ -340,8 +342,9 @@ test("reserves clickable icon targets while allowing the harness to shrink", asy
   await settleChatProjections(page);
   const composer = page.locator("form.composer").first();
   await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+    );
     fixture.installVisualComposerEffortFixture({
       levels: ["low", "medium", "high"],
       currentValue: "high",
@@ -379,8 +382,9 @@ test("uses the same nonshrinking icon-only chip below 400px and in split panes",
         page.locator("form.composer").nth(1).locator(".project-scope"),
       ).toHaveCount(0);
     await page.evaluate(async () => {
-      const fixture =
-        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      const fixture = await sageImport(
+        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+      );
       fixture.installVisualComposerEffortFixture({
         modelName: "A long advertised model name",
         currentValue: "high",

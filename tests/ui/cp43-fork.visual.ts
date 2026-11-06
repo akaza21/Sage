@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 import {
   waitForAnimations,
   openScenario,
@@ -13,8 +13,9 @@ async function openForkableAnswer(page: Page) {
   const workbench = await openScenario(page, "rich", "agent");
   await settleChatProjections(page);
   await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/transcriptSelectionFixtures.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/transcriptSelectionFixtures.ts",
+    );
     fixture.installTranscriptSelectionFixture(false, true);
   });
   await settleTranscriptAtEnd(page);

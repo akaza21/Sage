@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import {
   disposeJourney,
   focusPane,
@@ -143,9 +143,9 @@ test("CP-45 finds unmounted retained turns and truthfully reports partial histor
       { appendTurn, updateLatestTurn, JOURNEY_IDS },
       { publishJourneyPage },
     ] = await Promise.all([
-      import("/src/app/acpProjectionRegistry.ts"),
-      import("/tests/ui/fixtures/agentTurnJourneyModel.ts"),
-      import("/tests/ui/fixtures/agentTurnJourneyFixture.ts"),
+      sageImport("/src/app/acpProjectionRegistry.ts"),
+      sageImport("/tests/ui/fixtures/agentTurnJourneyModel.ts"),
+      sageImport("/tests/ui/fixtures/agentTurnJourneyFixture.ts"),
     ]);
     const initial = acpProjectionStoreFor(JOURNEY_IDS.beta).getState().page;
     if (!initial) throw new Error("Beta projection not ready");

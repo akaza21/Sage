@@ -42,7 +42,7 @@ async function gotoWorkbench(page: Page): Promise<Locator> {
 
 export async function installScenario(page: Page, name: VisualScenarioName) {
   await page.evaluate(async (scenarioName) => {
-    const fixtures = await import("/tests/ui/fixtures/visualScenarios.ts");
+    const fixtures = await sageImport("/tests/ui/fixtures/visualScenarios.ts");
     await fixtures.installVisualScenario(scenarioName);
   }, name);
   await expect(page.locator("html")).toHaveAttribute(
@@ -95,8 +95,9 @@ export async function settleChatProjections(page: Page) {
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const { acpProjectionStoreFor } =
-          await import("/src/app/acpProjectionRegistry.ts");
+        const { acpProjectionStoreFor } = await sageImport(
+          "/src/app/acpProjectionRegistry.ts",
+        );
         const projections = [
           ...document.querySelectorAll<HTMLElement>(
             ".acp-chat-projection[data-chat-id]",

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./shared/test";
 import {
   waitForAnimations,
   openScenario,
@@ -287,8 +287,9 @@ async function expectNestedPlacement(picker: Locator, parent: Locator) {
 
 async function installModeActions(page: Page, chatIndex = 0) {
   await page.evaluate(async (index) => {
-    const fixture =
-      await import("/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/surfaces/composerActionsVisualFixture.ts",
+    );
     fixture.installVisualComposerActionsFixture(
       [
         { id: "review", name: "Review changes" },

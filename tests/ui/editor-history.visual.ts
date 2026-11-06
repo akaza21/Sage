@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -7,7 +7,7 @@ import { openScenario } from "./shared/visualBrowserPrimitives";
 // so the place is told by the caret's column.
 async function activeFile(page: Page) {
   return page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     const state = useWorkbenchStore.getState();
     return (
       state.tabs.find((tab) => tab.id === state.activeTabId)?.resource
@@ -19,7 +19,7 @@ async function activeFile(page: Page) {
 // As a click on its row in Explorer opens it.
 async function openFile(page: Page, relativePath: string) {
   await page.evaluate(async (path) => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     const state = useWorkbenchStore.getState();
     await state.openFile({
       rootId: state.project!.roots[0].id,

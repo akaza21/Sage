@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import { settledComposerFit } from "./shared/composerGeometry";
 import {
   openScenario,
@@ -14,8 +14,9 @@ for (const control of ["effort", "project"]) {
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const fixture =
-        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      const fixture = await sageImport(
+        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+      );
       fixture.installVisualComposerEffortFixture();
     });
     const composer = page.locator("form.composer").first();
@@ -74,9 +75,10 @@ test("dense fitting unmounts the usage meter and restores current usage on expan
   await expect(composer.locator("[role=progressbar]")).toHaveCount(0);
   await expect(composer.locator(".composer__context")).toHaveCount(0);
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
-    const { acpProjectionStoreFor } =
-      await import("/src/app/acpProjectionRegistry.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+    const { acpProjectionStoreFor } = await sageImport(
+      "/src/app/acpProjectionRegistry.ts",
+    );
     const chat = useWorkbenchStore
       .getState()
       .tabs.find((tab) => tab.kind === "chat")!;
@@ -104,8 +106,9 @@ for (const width of [1888, 720]) {
     await openScenario(page, "agent-single", "agent");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const fixture =
-        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+      const fixture = await sageImport(
+        "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+      );
       fixture.installVisualComposerEffortFixture();
     });
     const composer = page.locator("form.composer").first();
@@ -143,8 +146,9 @@ test("Composer options keeps fitting and unmounts overflowed controls", async ({
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(async () => {
-    const fixture =
-      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    const fixture = await sageImport(
+      "/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts",
+    );
     fixture.installVisualComposerEffortFixture();
   });
   const composer = page.locator("form.composer").first();

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import {
   openScenario,
@@ -15,9 +15,9 @@ async function installSubagents(
   await page.evaluate(async (mode) => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([
-        import("/tests/ui/fixtures/visualScenarioShell.ts"),
-        import("/src/app/acpProjectionRegistry.ts"),
-        import("/tests/ui/fixtures/visualFixtureIds.ts"),
+        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
+        sageImport("/src/app/acpProjectionRegistry.ts"),
+        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
     const chatPage = buildVisualScenario("waiting").pages[0];
     const turn = chatPage.turns[0];

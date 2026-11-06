@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import { openScenario } from "./shared/visualBrowserPrimitives";
 import { expectScrollStop, installDiagrams } from "./cp31DiagramHelpers";
 import {

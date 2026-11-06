@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 import {
   openAgentScenario,
   openAgentSnapshotDiff,
@@ -65,7 +65,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await openAgentScenario(page, "diff");
     await openAgentSnapshotDiff(page);
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
       const state = useWorkbenchStore.getState();
       useWorkbenchStore.setState({
         tabs: [
@@ -135,11 +135,13 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
   }) => {
     await openAgentScenario(page, "file");
     await page.evaluate(async () => {
-      const { useWorkbenchStore } = await import("/src/app/store.ts");
-      const { getWorkbenchPorts } =
-        await import("/src/ports/workbenchRuntime.ts");
-      const { createInjectedEditorWatchDelivery } =
-        await import("/src/domain/editorWatch.ts");
+      const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
+      const { getWorkbenchPorts } = await sageImport(
+        "/src/ports/workbenchRuntime.ts",
+      );
+      const { createInjectedEditorWatchDelivery } = await sageImport(
+        "/src/domain/editorWatch.ts",
+      );
       const state = useWorkbenchStore.getState();
       // The shown Agent File is the active editor's resource; the scenario
       // also holds other File tabs.
@@ -221,8 +223,9 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await openAgentScenario(page, "agent-single");
     await settleChatProjections(page);
     await page.evaluate(async () => {
-      const { installPopoverSubagents } =
-        await import("/tests/ui/fixtures/popoverSubagentsFixture.ts");
+      const { installPopoverSubagents } = await sageImport(
+        "/tests/ui/fixtures/popoverSubagentsFixture.ts",
+      );
       installPopoverSubagents("children");
     });
     const trigger = page.getByRole("button", {

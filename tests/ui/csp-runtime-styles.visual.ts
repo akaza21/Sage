@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import { openScenario } from "./shared/visualBrowserPrimitives";
 
@@ -163,7 +163,7 @@ test("the real terminal keeps its monospace cell grid under the packaged CSP", a
         },
       },
     });
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     useWorkbenchStore.setState((state) => ({
       sidebarOpen: !state.sidebarOpen,
     }));

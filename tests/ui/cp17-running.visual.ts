@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 
 import {
   waitForAnimations,
@@ -18,9 +18,9 @@ test("CP-17(b) refs 08/15/17/19: running header and chronological rows fit a 560
   await page.evaluate(async () => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([
-        import("/tests/ui/fixtures/visualScenarioShell.ts"),
-        import("/src/app/acpProjectionRegistry.ts"),
-        import("/tests/ui/fixtures/visualFixtureIds.ts"),
+        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
+        sageImport("/src/app/acpProjectionRegistry.ts"),
+        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
     const scenario = buildVisualScenario("waiting");
     const chatPage = scenario.pages[0];

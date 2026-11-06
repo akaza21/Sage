@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./shared/test";
 import {
   openScenario,
   settleChatProjections,
@@ -51,9 +51,9 @@ async function installAnswer(page: Page, text: string, streaming = false) {
     async ({ text, streaming }) => {
       const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
         await Promise.all([
-          import("/tests/ui/fixtures/visualScenarioShell.ts"),
-          import("/src/app/acpProjectionRegistry.ts"),
-          import("/tests/ui/fixtures/visualFixtureIds.ts"),
+          sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
+          sageImport("/src/app/acpProjectionRegistry.ts"),
+          sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
         ]);
       const chatPage = buildVisualScenario("rich").pages[0];
       const turn = chatPage.turns[0];

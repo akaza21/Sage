@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./shared/test";
 
 import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import {
@@ -55,7 +55,7 @@ test("gives single-line harness rows bounded scrolling and visible keyboard focu
 }) => {
   await openScenario(page, "agent-picker-harness-model", "agent");
   await page.evaluate(async () => {
-    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { useWorkbenchStore } = await sageImport("/src/app/store.ts");
     useWorkbenchStore.setState((state) => ({
       harnesses: Array.from({ length: 24 }, (_, index) => ({
         ...state.harnesses[0],

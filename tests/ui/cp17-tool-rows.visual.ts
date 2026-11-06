@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./shared/test";
 
 import {
   openScenario,
@@ -23,9 +23,9 @@ async function applyTools(page: Page, spec: Spec) {
   await page.evaluate(async (spec) => {
     const [{ buildVisualScenario }, { acpProjectionStoreFor }, ids] =
       await Promise.all([
-        import("/tests/ui/fixtures/visualScenarioShell.ts"),
-        import("/src/app/acpProjectionRegistry.ts"),
-        import("/tests/ui/fixtures/visualFixtureIds.ts"),
+        sageImport("/tests/ui/fixtures/visualScenarioShell.ts"),
+        sageImport("/src/app/acpProjectionRegistry.ts"),
+        sageImport("/tests/ui/fixtures/visualFixtureIds.ts"),
       ]);
     const scenario = buildVisualScenario("waiting");
     const chatPage = scenario.pages[0];
