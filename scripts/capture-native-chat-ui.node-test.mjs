@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -139,79 +140,141 @@ test.after(async () => {
   }
 });
 
-/** Boot outcomes other than the Workbench, each with the text it shows. */
-const BOOT_FAILURES = [
-  "main.launch-screen h1",
-  'section[role="alert"][aria-label="Workbench failed to load"]',
-];
+/** Boot outcomes other than the Workbench: the startup and module errors. */
+const BOOT_FAILURE =
+  'main.launch-screen:has(h1), section[role="alert"][aria-label="Workbench failed to load"]';
 const BOOT_EVENT_LIMIT = 20;
+const BOOT_TEXT_LIMIT = 300;
+const BOOT_SERVER_LIMIT = 1_000;
+
+/** Matches a local root under either separator, case-insensitively. */
+function rootPattern(root) {
+  const escaped = root
+    .replace(/[\\/]+$/u, "")
+    .split(/[\\/]/u)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join("[\\\\/]");
+  return new RegExp(escaped, "giu");
+}
+const LOCAL_ROOTS = [
+  [rootPattern(repositoryRoot), "<repo>"],
+  [rootPattern(homedir()), "<home>"],
+];
 
 /**
- * What the page reported while it booted (crashes, errors, failed loads) and
- * the requests it is still waiting on.
+ * Diagnostic text without local paths: the repository and home roots, Vite
+ * /@fs/ URLs and any other absolute path are replaced, then the text is
+ * bounded.
+ */
+function sanitize(text, limit = BOOT_TEXT_LIMIT) {
+  let clean = String(text);
+  for (const [pattern, label] of LOCAL_ROOTS)
+    clean = clean.replace(pattern, label);
+  clean = clean
+    .replace(/\/@fs\/[^\s"'`)]+/gu, "/@fs/<path>")
+    .replace(/\b[A-Za-z]:[\\/][^\s"'`)]*/gu, "<path>")
+    .replace(/(^|[\s"'`(=])\/(?!@fs\/)[^\s"'`):]+\/[^\s"'`)]*/gmu, "$1<path>");
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
+}
+
+/**
+ * Records what the page reports until boot ends: crashes, errors, failed
+ * loads and the requests it is still waiting on, each bounded and sanitized.
  */
 function recordBoot(page) {
   const events = [];
+  const pending = new Set();
+  let unfinished = 0;
   const started = Date.now();
   const note = (text) => {
     if (events.length < BOOT_EVENT_LIMIT)
-      events.push(`+${Date.now() - started}ms ${text}`);
+      events.push(`+${Date.now() - started}ms ${sanitize(text)}`);
   };
-  page.on("crash", () => note("renderer crashed"));
-  page.on("pageerror", (error) => note(`page error: ${error.message}`));
-  const pending = new Set();
-  page.on("request", (request) => pending.add(request));
-  page.on("requestfinished", (request) => pending.delete(request));
-  page.on("requestfailed", (request) => {
+  const finish = (request) => {
+    unfinished = Math.max(0, unfinished - 1);
     pending.delete(request);
-    note(`request failed: ${request.url()} ${request.failure()?.errorText}`);
-  });
-  page.on("response", (response) => {
-    if (response.status() >= 400)
-      note(`response ${response.status()}: ${response.url()}`);
-  });
-  page.on("framenavigated", (frame) => {
-    if (frame === page.mainFrame()) note(`navigated: ${frame.url()}`);
-  });
-  return { events, pending };
+  };
+  const listeners = {
+    crash: () => note("renderer crashed"),
+    pageerror: (error) => note(`page error: ${error.message}`),
+    request: (request) => {
+      unfinished += 1;
+      if (pending.size < BOOT_EVENT_LIMIT) pending.add(request);
+    },
+    requestfinished: finish,
+    requestfailed: (request) => {
+      finish(request);
+      note(`request failed: ${request.url()} ${request.failure()?.errorText}`);
+    },
+    response: (response) => {
+      if (response.status() >= 400)
+        note(`response ${response.status()}: ${response.url()}`);
+    },
+    framenavigated: (frame) => {
+      if (frame === page.mainFrame()) note(`navigated: ${frame.url()}`);
+    },
+  };
+  for (const [name, listener] of Object.entries(listeners))
+    page.on(name, listener);
+  return {
+    detach: () => {
+      for (const [name, listener] of Object.entries(listeners))
+        page.off(name, listener);
+    },
+    report: (headline) => {
+      const server = lane.server.output?.text.trim();
+      return [
+        headline,
+        ...events,
+        ...[...pending].map(
+          (request) => `still loading: ${sanitize(request.url())}`,
+        ),
+        ...(unfinished > pending.size
+          ? [`${unfinished - pending.size} more requests still loading`]
+          : []),
+        ...(server
+          ? [
+              `dev server output:\n${sanitize(server.slice(-BOOT_SERVER_LIMIT), BOOT_SERVER_LIMIT)}`,
+            ]
+          : []),
+      ].join("\n");
+    },
+  };
+}
+
+/** The bounded, sanitized text a boot screen shows. */
+async function shownText(locator) {
+  return locator
+    .innerText({ timeout: 1_000 })
+    .then((text) => JSON.stringify(sanitize(text.trim())))
+    .catch((error) => `unreadable (${sanitize(error.message)})`);
 }
 
 /**
  * Waits for the Workbench, and fails with what the page showed and reported
  * when it boots to an error screen or not at all.
  */
-async function bootWorkbench(page, { events, pending }) {
+async function bootWorkbench(page, boot) {
   const workbench = page.locator("main.workbench");
-  const failure = page.locator(BOOT_FAILURES.join(", "));
+  const failure = page.locator(BOOT_FAILURE).first();
   try {
-    await workbench.or(failure).first().waitFor();
-  } catch (error) {
-    const shown = await page
-      .locator("body")
-      .innerText({ timeout: 1_000 })
-      .then((text) => text.trim().slice(0, 500))
-      .catch((reason) => `unreadable: ${reason.message}`);
-    const server = lane.server.output?.text.trim().slice(-1_000);
+    try {
+      await workbench.or(failure).first().waitFor();
+    } catch (error) {
+      throw new Error(
+        boot.report(
+          `the Workbench did not boot; the page shows ${await shownText(page.locator("body"))}`,
+        ),
+        { cause: error },
+      );
+    }
+    if (await workbench.count()) return;
     throw new Error(
-      [
-        "the Workbench did not boot",
-        `page shows: ${JSON.stringify(shown)}`,
-        ...events,
-        ...[...pending]
-          .slice(0, BOOT_EVENT_LIMIT)
-          .map((request) => `still loading: ${request.url()}`),
-        ...(server ? [`dev server output:\n${server}`] : []),
-      ].join("\n"),
-      { cause: error },
+      boot.report(`the Workbench booted to ${await shownText(failure)}`),
     );
+  } finally {
+    boot.detach();
   }
-  if (await workbench.count()) return;
-  throw new Error(
-    [
-      `the Workbench booted to: ${await failure.first().innerText()}`,
-      ...events,
-    ].join("\n"),
-  );
 }
 
 /**
