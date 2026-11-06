@@ -1,6 +1,7 @@
 use std::{fs, path::Path, process::Command, time::Duration};
 
-use super::super::{GitProcessPolicy, run};
+use super::super::{GitProcessPolicy, parallel_limits, run};
+use super::MAX_PARALLEL_JOBS;
 
 fn git(root: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -18,28 +19,31 @@ fn git(root: &Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} failed");
 }
 
-/// `checkout.workers=32` starts one worker per slot as soon as at least
-/// 100 files change. Under the job, Sage's own bound must win, or the
-/// tree's process limit makes Git abort the switch.
-#[test]
-fn a_wide_parallel_checkout_succeeds_inside_the_job() {
+const FILES: usize = 160;
+
+/// Switches through Sage, under containment, to a branch that changes every
+/// one of [`FILES`] files, with `checkout.workers` set to `workers` (or left
+/// unset), and returns the caps Sage cached for the repository.
+fn wide_switch(workers: Option<&str>) -> Vec<String> {
     let root = std::env::temp_dir().join(format!("sage-git-workers-{}", uuid::Uuid::new_v4()));
     fs::create_dir(&root).unwrap();
     git(&root, &["init", "-q", "-b", "main"]);
     git(&root, &["config", "core.autocrlf", "false"]);
-    let files = 160;
-    for index in 0..files {
+    for index in 0..FILES {
         fs::write(root.join(format!("f{index:03}.txt")), b"main\n").unwrap();
     }
     git(&root, &["add", "."]);
     git(&root, &["commit", "-q", "-m", "main"]);
     git(&root, &["switch", "-q", "-c", "wide"]);
-    for index in 0..files {
+    for index in 0..FILES {
         fs::write(root.join(format!("f{index:03}.txt")), b"wide\n").unwrap();
     }
     git(&root, &["commit", "-q", "-a", "-m", "wide"]);
     git(&root, &["switch", "-q", "main"]);
-    git(&root, &["config", "checkout.workers", "32"]);
+    if let Some(workers) = workers {
+        git(&root, &["config", "checkout.workers", workers]);
+    }
+    // Parallel checkout applies from the first changed file.
     git(&root, &["config", "checkout.thresholdForParallelism", "1"]);
 
     let output = tokio::runtime::Runtime::new()
@@ -56,11 +60,31 @@ fn a_wide_parallel_checkout_succeeds_inside_the_job() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for index in [0, files - 1] {
+    for index in [0, FILES - 1] {
         assert_eq!(
             fs::read(root.join(format!("f{index:03}.txt"))).unwrap(),
             b"wide\n"
         );
     }
+    let cached = parallel_limits::cached(&root).expect("the probe result is cached");
     fs::remove_dir_all(root).unwrap();
+    cached
+}
+
+/// `checkout.workers=32` starts one worker per slot as soon as enough files
+/// change. Under the job, Sage's cap must win, or the tree's process limit
+/// makes Git abort the switch.
+#[test]
+fn a_wide_parallel_checkout_succeeds_inside_the_job() {
+    assert_eq!(
+        wide_switch(Some("32")),
+        [format!("checkout.workers={MAX_PARALLEL_JOBS}")]
+    );
+}
+
+/// A repository that leaves `checkout.workers` unset gets no override, so
+/// Git keeps its default of one worker: Sage caps, it never raises.
+#[test]
+fn an_unset_worker_count_gets_no_override() {
+    assert!(wide_switch(None).is_empty());
 }

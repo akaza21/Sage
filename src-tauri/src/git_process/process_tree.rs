@@ -12,9 +12,9 @@
 //! Elsewhere the tree is just the spawned process, as before.
 //!
 //! Git can also run several children at once (parallel checkout workers,
-//! parallel fetches). Sage bounds that parallelism on every call with
-//! [`parallel_job_overrides`], derived from the same capacity, so a repository
-//! that asks for more never reaches the job's process limit.
+//! parallel fetches). [`MAX_PARALLEL_JOBS`] is derived from the same capacity,
+//! and `parallel_limits` caps any repository that asks for more, so the job's
+//! process limit is never what stops Git.
 
 /// Processes a Git tree may run at once. More fail to start.
 const MAX_TREE_PROCESSES: u32 = 32;
@@ -25,22 +25,9 @@ const TREE_HEADROOM: u32 = 8;
 /// transport and a helper; a checkout worker is one process.
 const PROCESSES_PER_JOB: u32 = 3;
 /// The most parallel jobs Git may run, whatever the repository configures.
-const MAX_PARALLEL_JOBS: u32 = (MAX_TREE_PROCESSES - TREE_HEADROOM) / PROCESSES_PER_JOB;
+pub(super) const MAX_PARALLEL_JOBS: u32 = (MAX_TREE_PROCESSES - TREE_HEADROOM) / PROCESSES_PER_JOB;
 
 const _: () = assert!(TREE_HEADROOM + MAX_PARALLEL_JOBS * PROCESSES_PER_JOB <= MAX_TREE_PROCESSES);
-
-/// Git settings that start parallel children. A value of 0 or less would
-/// otherwise mean one per CPU.
-const PARALLEL_JOB_SETTINGS: [&str; 3] =
-    ["checkout.workers", "fetch.parallel", "submodule.fetchJobs"];
-
-/// `-c` overrides capping each of them at [`MAX_PARALLEL_JOBS`]. Command-line
-/// config wins over every config file.
-pub(super) fn parallel_job_overrides() -> impl Iterator<Item = String> {
-    PARALLEL_JOB_SETTINGS
-        .into_iter()
-        .map(|setting| format!("{setting}={MAX_PARALLEL_JOBS}"))
-}
 
 #[cfg(not(windows))]
 use std::io;

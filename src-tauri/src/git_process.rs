@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod containment;
+mod parallel_limits;
 mod process_tree;
 mod readers;
 mod root_authority;
@@ -226,6 +227,43 @@ async fn run_inner(
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
+    let parallel = match parallel_limits::cached(root) {
+        Some(parallel) => parallel,
+        None => probe_parallel_limits(root).await,
+    };
+    spawn_contained(root, args, stdout_limit, policy, root_authority, &parallel).await
+}
+
+/// Reads the repository's parallel-job settings once, without overrides of
+/// its own, and caches the caps they call for against the config it read.
+async fn probe_parallel_limits(root: &Path) -> Vec<String> {
+    let stamp = parallel_limits::stamp(root);
+    let probe = spawn_contained(
+        root,
+        &parallel_limits::PROBE_ARGS,
+        parallel_limits::MAX_PROBE_BYTES,
+        GitProcessPolicy::read(git_budget::READ),
+        None,
+        &[],
+    )
+    .await;
+    let parallel = parallel_limits::from_probe(probe.as_ref().ok());
+    if let (Ok(_), Some(stamp)) = (&probe, stamp) {
+        parallel_limits::store(root, stamp, &parallel);
+    }
+    parallel
+}
+
+/// Spawns Git in its contained process tree. `parallel` caps the parallel
+/// jobs the repository asks for; see `parallel_limits`.
+async fn spawn_contained(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    root_authority: Option<GitRootAuthority>,
+    parallel: &[String],
+) -> AppResult<GitOutput> {
     #[cfg(test)]
     let registry = policy
         .containment_registry
@@ -239,7 +277,7 @@ async fn run_inner(
     let reaper_lease =
         containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
-    let mut command = configured_command(root, args, root_authority.as_ref());
+    let mut command = configured_command(root, args, root_authority.as_ref(), parallel);
     #[cfg(test)]
     if let Some(hook) = &policy.before_spawn_hook {
         hook();
@@ -391,6 +429,7 @@ fn configured_command(
     root: &Path,
     args: &[&str],
     root_authority: Option<&GitRootAuthority>,
+    parallel: &[String],
 ) -> Command {
     let mut command = Command::new("git");
     command
@@ -400,7 +439,7 @@ fn configured_command(
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
         .args(["-c", "gc.auto=0"]);
-    for setting in process_tree::parallel_job_overrides() {
+    for setting in parallel {
         command.arg("-c").arg(setting);
     }
     if let Some(root_authority) = root_authority {
