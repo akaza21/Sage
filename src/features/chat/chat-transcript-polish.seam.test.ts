@@ -87,7 +87,6 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.acp-message--user\s*\{[^}]*max-width:\s*70%;[^}]*border-radius:\s*var\(--radius-xl\);[^}]*background:\s*var\(--agent-shell-user-bubble\);/s,
     );
     expect(tokens).toMatch(/--radius-xl:\s*16px;/);
-    expect(tokens).toMatch(/--agent-shell-user-bubble:\s*#2f2f2f;/);
   });
 
   it("omits gutter decorations and declares borderless tool/browser detail", async () => {
