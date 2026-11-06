@@ -230,7 +230,7 @@ pub(crate) async fn send_acp_turn_inner(
             message: safe_message("Attachments changed while preparing the prompt; send again."),
         }));
     }
-    if prompt.retained_bytes() + files.retained_bytes() > 120 * 1024 {
+    if !files.0.is_empty() && prompt.retained_bytes() + files.retained_bytes() > 120 * 1024 {
         super::turn_workspace::forget_unprepared(state, &session_id, &client_intent_id);
         return Err(prompt_not_dispatched(AcpIpcError::InvalidRequest {
             message: safe_message(
