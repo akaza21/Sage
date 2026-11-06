@@ -54,7 +54,8 @@ it("shows installation and sign-in evidence without treating an installed adapte
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
   // The Harnesses page loads on demand.
-  expect(await screen.findByText("Test harness")).toBeVisible();
+  await screen.findByRole("button", { name: "Refresh discovery" });
+  expect(screen.getByText("Test harness")).toBeVisible();
   expect(screen.getByText(/Sign-in status is not exposed/)).toBeVisible();
   expect(screen.queryByText("Signed in")).toBeNull();
 });
