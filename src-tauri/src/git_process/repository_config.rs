@@ -261,11 +261,6 @@ impl Probe {
         watched.extend(layout.config_files.into_iter().map(watch));
         let refusal = if watched
             .iter()
-            .any(|(_, fingerprint)| *fingerprint == Fingerprint::Link)
-        {
-            Some(Refusal::Layout(RepositoryLayout::ExternalGitDir))
-        } else if watched
-            .iter()
             .any(|(_, fingerprint)| matches!(fingerprint, Fingerprint::Unreadable(_)))
         {
             return Ok(Self::uncached_refusal(watched, UNREADABLE));
@@ -344,7 +339,7 @@ fn has_unreadable_config(ancestors: &[(PathBuf, Fingerprint)]) -> bool {
         .iter()
         .any(|(entry, fingerprint)| match fingerprint {
             Fingerprint::Unreadable(_) => true,
-            Fingerprint::Directory => matches!(
+            Fingerprint::Directory(_) => matches!(
                 Fingerprint::of(&entry.join("config")),
                 Fingerprint::Unreadable(_)
             ),

@@ -487,34 +487,45 @@ fn only_git_data_inside_the_root_is_admitted() {
     );
 }
 
-/// A `gitdir:` file naming a separate git dir is admitted, with every
-/// directory on its path fingerprinted: replacing one with a link (a junction
-/// on Windows) to byte-identical Git data elsewhere invalidates the verdict.
+/// A separate git dir reached through a junctioned (or symlinked) ancestor is
+/// resolved the way Git resolves it, and the directory reached is inspected.
+/// Each directory on the way is stamped by identity, so retargeting the link
+/// at hostile Git data is checked again rather than served from the cache.
 #[test]
-fn a_separate_git_dir_is_admitted_until_a_link_appears_on_its_path() {
+fn a_separate_git_dir_reached_through_a_junctioned_ancestor_is_checked() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
+    let real = scratch.directory("real-metadata");
+    fs::rename(root.join(".git"), real.join("repo.git")).unwrap();
     let metadata = root.join("metadata");
-    fs::create_dir_all(&metadata).unwrap();
-    fs::rename(root.join(".git"), metadata.join("repo.git")).unwrap();
+    directory_link(&metadata, &real);
     fs::write(root.join(".git"), "gitdir: metadata/repo.git\n").unwrap();
     assert!(
         sage_git(&root, &["status", "--porcelain"])
             .unwrap()
             .succeeded()
     );
+    assert_eq!(probes(&root), 1);
 
-    let outside = scratch.base.join("outside-metadata");
-    fs::rename(&metadata, &outside).unwrap();
-    directory_link(&metadata, &outside);
-    assert!(matches!(
-        sage_git(&root, &["status", "--porcelain"]),
-        Err(AppError::RepositoryOutsideRoot(
-            RepositoryLayout::ExternalGitDir
-        ))
-    ));
+    // The same layout, now through a link to Git data with a filter.
+    let hostile = scratch.directory("hostile-metadata");
+    copy_tree(&real.join("repo.git"), &hostile.join("repo.git"));
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &config_operand(&hostile.join("repo.git")),
+            "filter.sentinel.clean",
+            "touch ran",
+        ],
+    );
+    remove_link(&metadata);
+    directory_link(&metadata, &hostile);
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+    assert_eq!(probes(&root), 2, "the retarget must invalidate the verdict");
 }
-
 /// `git init --separate-git-dir` keeps the git data outside the work tree.
 /// Status and diff work, and a filter in that git dir's config is refused.
 #[test]
@@ -680,9 +691,13 @@ fn a_linked_worktree_is_admitted_and_its_common_config_checked() {
     git(&worktree, &["add", "--", "a.txt"]);
     assert!(sentinel.exists(), "the shared filter is not live");
 }
-#[cfg(unix)]
+/// A `.git` that is itself a link (a junction on Windows, which is also how a
+/// reparse point such as a cloud placeholder looks to the filesystem) is
+/// followed the way Git follows it, and admitted. Retargeting it at another
+/// directory changes its identity, so the new target is checked rather than
+/// served from the cache.
 #[test]
-fn a_cached_root_whose_git_dir_becomes_a_link_is_refused() {
+fn a_git_dir_reached_through_a_link_is_admitted_and_checked_again_on_retarget() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     assert!(
@@ -690,42 +705,65 @@ fn a_cached_root_whose_git_dir_becomes_a_link_is_refused() {
             .unwrap()
             .succeeded()
     );
-    assert_eq!(probes(&root), 1);
-
-    // Byte-identical Git data outside the root, reached through a symlink.
     let outside = scratch.base.join("outside.git");
     fs::rename(root.join(".git"), &outside).unwrap();
-    std::os::unix::fs::symlink(&outside, root.join(".git")).unwrap();
-    assert!(matches!(
-        sage_git(&root, &["status", "--porcelain"]),
-        Err(AppError::RepositoryOutsideRoot(
-            RepositoryLayout::ExternalGitDir
-        ))
-    ));
-    assert_eq!(
-        probes(&root),
-        2,
-        "the link must invalidate the cached verdict"
+    directory_link(&root.join(".git"), &outside);
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
     );
+    // The link reaches the very directory that was admitted (a rename keeps
+    // its identity), so the verdict stands.
+    assert_eq!(probes(&root), 1);
+
+    let hostile = scratch.base.join("hostile.git");
+    copy_tree(&outside, &hostile);
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &config_operand(&hostile),
+            "filter.sentinel.clean",
+            "touch ran",
+        ],
+    );
+    remove_link(&root.join(".git"));
+    directory_link(&root.join(".git"), &hostile);
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+    assert_eq!(probes(&root), 2, "the retarget must invalidate the verdict");
 }
 
+/// A linked config file is followed the way Git follows it and checked.
 #[cfg(unix)]
 #[test]
-fn a_linked_config_file_is_refused() {
+fn a_linked_config_file_is_followed_and_checked() {
     let scratch = Scratch::new();
     let root = scratch.repository("repo");
     let config = root.join(".git").join("config");
     let outside = scratch.base.join("outside-config");
     fs::rename(&config, &outside).unwrap();
     std::os::unix::fs::symlink(&outside, &config).unwrap();
-    assert!(matches!(
-        sage_git(&root, &["status", "--porcelain"]),
-        Err(AppError::RepositoryOutsideRoot(
-            RepositoryLayout::ExternalGitDir
-        ))
-    ));
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            outside.to_str().unwrap(),
+            "filter.sentinel.clean",
+            "touch ran",
+        ],
+    );
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
-
 /// Keeps `path` unreadable to every other opener until dropped.
 struct ReadDenied {
     #[cfg(windows)]
@@ -895,7 +933,7 @@ fn a_submodule_config_filter_refuses_status_and_diff_before_git_can_run_it() {
 /// but the operating system resolves it to the hostile copy.
 #[cfg(unix)]
 #[test]
-fn a_submodule_gitfile_escaping_through_a_symlink_and_dot_dot_is_refused() {
+fn a_submodule_gitfile_through_a_symlink_and_dot_dot_inspects_the_real_target() {
     let scratch = Scratch::new();
     let root = submodule_fixture(&scratch);
     let modules = root.join(".git").join("modules");
@@ -934,11 +972,14 @@ fn a_submodule_gitfile_escaping_through_a_symlink_and_dot_dot_is_refused() {
     .unwrap();
     touch_submodule_file(&root);
 
+    // Sage resolves the gitfile the way Git does, reaches the hostile copy,
+    // and inspects that copy's config.
     for args in [
         &["status", "--porcelain"][..],
         &["diff", "--no-ext-diff"][..],
     ] {
-        assert_eq!(refusal(sage_git(&root, args)), submodules::UNCHECKABLE);
+        let message = refusal(sage_git(&root, args));
+        assert!(message.contains("filter.sentinel.clean"), "{message}");
     }
     assert!(!sentinel.exists());
 
@@ -947,13 +988,16 @@ fn a_submodule_gitfile_escaping_through_a_symlink_and_dot_dot_is_refused() {
     assert!(sentinel.exists(), "the escape is not live");
 }
 
+/// A link (a junction on Windows) on a submodule's git dir path is followed;
+/// retargeting it at hostile Git data is checked again, not served cached.
 #[test]
-fn a_link_on_a_submodule_git_dir_path_is_refused_even_after_admission() {
+fn a_retargeted_link_on_a_submodule_git_dir_path_is_checked_again() {
     let scratch = Scratch::new();
     let root = submodule_fixture(&scratch);
     let modules = root.join(".git").join("modules");
-    fs::create_dir(modules.join("group")).unwrap();
-    fs::rename(modules.join("sub"), modules.join("group").join("sub")).unwrap();
+    let real = scratch.directory("real-group");
+    fs::rename(modules.join("sub"), real.join("sub")).unwrap();
+    directory_link(&modules.join("group"), &real);
     fs::write(
         root.join("sub").join(".git"),
         "gitdir: ../.git/modules/group/sub\n",
@@ -964,29 +1008,158 @@ fn a_link_on_a_submodule_git_dir_path_is_refused_even_after_admission() {
         &[
             "config",
             "--file",
-            ".git/modules/group/sub/config",
+            &config_operand(&real.join("sub")),
+            "--unset",
             "core.worktree",
-            "../../../../sub",
         ],
     );
     assert!(
         sage_git(&root, &["status", "--porcelain"])
             .unwrap()
             .succeeded(),
-        "a real nested modules directory is admitted"
+        "a submodule git dir through a link is admitted"
     );
 
-    // Byte-identical Git data, now reached through a link: only the
-    // fingerprint of the intermediate component changes.
-    let outside = scratch.base.join("outside-group");
-    fs::rename(modules.join("group"), &outside).unwrap();
-    directory_link(&modules.join("group"), &outside);
-    assert_eq!(
-        refusal(sage_git(&root, &["status", "--porcelain"])),
-        submodules::UNCHECKABLE
+    let hostile = scratch.directory("hostile-group");
+    copy_tree(&real.join("sub"), &hostile.join("sub"));
+    git(
+        &root,
+        &[
+            "config",
+            "--file",
+            &config_operand(&hostile.join("sub")),
+            "filter.sentinel.clean",
+            "touch ran",
+        ],
     );
+    remove_link(&modules.join("group"));
+    directory_link(&modules.join("group"), &hostile);
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
 
+/// An absorbed, populated submodule in a linked worktree: status works, and a
+/// filter in the submodule's own config is refused.
+#[test]
+fn a_linked_worktree_with_an_absorbed_submodule_is_checked() {
+    let scratch = Scratch::new();
+    let main = submodule_fixture(&scratch);
+    git(
+        &main,
+        &["worktree", "add", "-q", "../linked", "-b", "linked"],
+    );
+    let worktree = scratch.base.join("linked");
+    git(
+        &worktree,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "--quiet",
+            "update",
+            "--init",
+        ],
+    );
+    assert!(
+        fs::metadata(worktree.join("sub").join(".git"))
+            .unwrap()
+            .is_file()
+    );
+    assert!(
+        sage_git(&worktree, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    git(
+        &worktree.join("sub"),
+        &["config", "filter.sentinel.clean", "touch ran"],
+    );
+    let message = refusal(sage_git(&worktree, &["status", "--porcelain"]));
+    assert!(message.contains("a submodule's Git config"), "{message}");
+    assert!(message.contains("filter.sentinel.clean"), "{message}");
+}
+
+/// An absorbed, populated submodule in a separate-git-dir repository, whose
+/// metadata lives under that git dir's `modules`: status works, and a filter
+/// in the submodule's own config is refused.
+#[test]
+fn a_separate_git_dir_with_an_absorbed_submodule_is_checked() {
+    let scratch = Scratch::new();
+    let source = scratch.repository("source");
+    fs::write(source.join("a.txt"), "a\n").unwrap();
+    git(&source, &["add", "."]);
+    git(
+        &source,
+        &[&IDENTITY[..], &["commit", "-q", "-m", "source"]].concat(),
+    );
+    git(
+        &scratch.base,
+        &["init", "-q", "--separate-git-dir", "data.git", "work"],
+    );
+    let root = scratch.base.join("work");
+    git(
+        &root,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "--quiet",
+            "add",
+            "../source",
+            "sub",
+        ],
+    );
+    assert!(
+        scratch
+            .base
+            .join("data.git")
+            .join("modules")
+            .join("sub")
+            .is_dir()
+    );
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+    git(
+        &root.join("sub"),
+        &["config", "filter.sentinel.clean", "touch ran"],
+    );
+    let message = refusal(sage_git(&root, &["status", "--porcelain"]));
+    assert!(message.contains("a submodule's Git config"), "{message}");
+}
+
+/// Copies a directory tree, for Git data that must be byte-identical.
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// A `config` path Git accepts as an operand (Git for Windows rejects
+/// verbatim `\\?\` paths there).
+fn config_operand(git_dir: &Path) -> String {
+    let path = git_dir.join("config");
+    let text = path.to_string_lossy();
+    text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
+}
+
+/// Removes a directory link made by [`directory_link`] without touching its
+/// target.
+fn remove_link(link: &Path) {
+    #[cfg(unix)]
+    fs::remove_file(link).unwrap();
+    #[cfg(windows)]
+    fs::remove_dir(link).unwrap();
+}
 #[test]
 fn more_gitlinks_than_the_cap_fail_closed() {
     let scratch = Scratch::new();

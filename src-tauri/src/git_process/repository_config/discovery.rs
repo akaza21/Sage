@@ -32,7 +32,7 @@ pub(super) fn discovery_path(
 
 fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool {
     let target = match fingerprint {
-        Fingerprint::Directory => entry.to_path_buf(),
+        Fingerprint::Directory(_) => entry.to_path_buf(),
         Fingerprint::Contents { .. } => match gitfile_target(entry) {
             Some(target) => target,
             None => return false,
@@ -50,7 +50,7 @@ fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool 
 /// may not; the layout itself is checked in [`super::layout`].
 fn gitfile_target(entry: &Path) -> Option<PathBuf> {
     let bytes = std::fs::read(entry).ok()?;
-    paths::resolve(entry.parent()?, paths::gitfile_path(&bytes)?)
+    paths::written_prefixes(entry.parent()?, paths::gitfile_path(&bytes)?)?.pop()
 }
 pub(super) struct Location {
     pub(super) git_dir: PathBuf,

@@ -32,8 +32,8 @@ use super::super::process_tree::{MAX_TREE_PROCESSES, PROCESSES_PER_JOB, TREE_HEA
 use super::super::readers::RecordFilter;
 use super::{
     AdmittedRepository, Fingerprint, GIT_DIR_NAME, GitRootAuthority, MAX_CONFIG_LIST_BYTES,
-    POINTER_FILES, Refusal, StdoutCapture, fingerprint::watch_reading, listed_config_refusal,
-    paths, policy::submodule_refusal_message, probe_git,
+    POINTER_FILES, Refusal, StdoutCapture, fingerprint::watch_reading, layout::walk,
+    listed_config_refusal, paths, policy::submodule_refusal_message, probe_git,
 };
 
 /// Gitlinks checked across the whole tree of submodules.
@@ -185,16 +185,17 @@ impl Scan {
     }
 
     /// Resolves the repository Git would open for the gitlink at `work_tree`
-    /// (root-relative). Every path component Git passes through is
-    /// fingerprinted and must be a real directory, never a symlink or
-    /// junction, so the operating system resolves exactly the path inspected
-    /// here and a later retarget invalidates the cached verdict.
+    /// (root-relative), the way Git resolves it: through any symlink or
+    /// junction, to the `.git` directory there or the git dir its `gitdir:`
+    /// file names. That resolved git dir is what is inspected, and every
+    /// directory on the way is stamped with the identity of what it reaches,
+    /// so a later retarget invalidates the cached verdict.
     fn open(&mut self, root: &Path, work_tree: PathBuf) -> Opened {
         let mut walked = PathBuf::new();
         for component in work_tree.components() {
             walked.push(component);
             match self.watch(root.join(&walked)) {
-                Fingerprint::Directory => {}
+                Fingerprint::Directory(_) => {}
                 // Git looks for `.git` below the gitlink path, which a file
                 // (a type change in progress, say) cannot hold.
                 Fingerprint::Missing | Fingerprint::Contents { .. } | Fingerprint::Oversized => {
@@ -203,46 +204,50 @@ impl Scan {
                 _ => return Opened::Refused(uncheckable()),
             }
         }
-        let (fingerprint, bytes) = self.watch_reading(root.join(&work_tree).join(GIT_DIR_NAME));
-        let git_dir = match (fingerprint, bytes) {
+        let entry = root.join(&work_tree).join(GIT_DIR_NAME);
+        let (fingerprint, bytes) = self.watch_reading(entry.clone());
+        let data_dir = match (fingerprint, bytes) {
             (Fingerprint::Missing, _) => return Opened::Unpopulated,
-            (Fingerprint::Directory, _) => work_tree.join(GIT_DIR_NAME),
+            (Fingerprint::Directory(_), _) => entry.canonicalize().ok(),
             (Fingerprint::Contents { .. }, Some(bytes)) => {
-                let Some(target) = gitfile_target(&work_tree, &bytes) else {
-                    return Opened::Refused(uncheckable());
-                };
-                // `.git` itself is the root's own git dir, checked by the
-                // repository's admission; everything below it is checked here.
-                let mut walked = PathBuf::from(GIT_DIR_NAME);
-                for component in target.components().skip(1) {
-                    walked.push(component);
-                    if self.watch(root.join(&walked)) != Fingerprint::Directory {
-                        return Opened::Refused(uncheckable());
-                    }
-                }
-                target
+                paths::gitfile_path(&bytes).and_then(|written| {
+                    walk(&root.join(&work_tree), written, &mut |path| {
+                        self.watch(path)
+                    })
+                })
             }
-            _ => return Opened::Refused(uncheckable()),
+            _ => None,
         };
-        let absolute_git_dir = root.join(&git_dir);
+        let Some(data_dir) = data_dir else {
+            return Opened::Refused(uncheckable());
+        };
         for name in POINTER_FILES {
-            if self.watch(absolute_git_dir.join(name)) != Fingerprint::Missing {
+            if self.watch(data_dir.join(name)) != Fingerprint::Missing {
                 return Opened::Refused(uncheckable());
             }
         }
         for name in ["config", "config.worktree"] {
             if !matches!(
-                self.watch(absolute_git_dir.join(name)),
+                self.watch(data_dir.join(name)),
                 Fingerprint::Missing | Fingerprint::Contents { .. }
             ) {
                 return Opened::Refused(uncheckable());
             }
         }
-        // A submodule's own parallel-job keys are not capped here: the caps
-        // the parent passes with `-c` reach its Git children too.
-        Opened::Repository(AdmittedRepository::submodule(git_dir, work_tree))
+        // Git is pointed at the submodule's `.git` entry, which it follows
+        // to the git dir inspected here. Git resolves a relative `gitdir:`
+        // against the part of `GIT_DIR` before its last `/`, so the entry is
+        // named with `/` separators on every platform.
+        let entry = format!(
+            "{}/{GIT_DIR_NAME}",
+            work_tree.to_string_lossy().replace('\\', "/")
+        );
+        Opened::Repository(AdmittedRepository::submodule(
+            PathBuf::from(entry),
+            work_tree,
+            data_dir,
+        ))
     }
-
     async fn check_config(
         &mut self,
         root: &Path,
@@ -324,35 +329,6 @@ fn join_relative(base: &Path, path: &[u8]) -> Option<PathBuf> {
     Some(joined)
 }
 
-/// The root-relative git dir a `gitdir:` file in the root-relative
-/// `work_tree` names, in the only shape Git writes for an absorbed
-/// submodule: `..` components that climb exactly to the root, then
-/// `.git/modules/<name>...`. The climb passes only directories
-/// [`Scan::open`] has proved are real, so resolving it lexically matches the
-/// operating system; any other `..` is refused, since after a symlink it
-/// would resolve somewhere else entirely.
-///
-/// The file is read as Git's `read_gitfile` reads it: one trailing `\n`, then
-/// one trailing `\r`, are dropped, the rest must start with `gitdir: `, and
-/// everything after that is the path byte for byte, split on `/` (and on
-/// Windows also `\`). Each named component must pass
-/// [`paths::ambiguous_component`].
-fn gitfile_target(work_tree: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let target = paths::gitfile_path(bytes)?;
-    if paths::has_root(target) {
-        return None;
-    }
-    let parts = paths::split(target);
-    let climbs = parts.iter().take_while(|part| **part == "..").count();
-    let rest = &parts[climbs..];
-    let well_formed = climbs == work_tree.components().count()
-        && rest.len() >= 3
-        && rest[0] == GIT_DIR_NAME
-        && rest[1] == "modules"
-        && !rest.iter().any(|part| paths::ambiguous_component(part));
-    well_formed.then(|| rest.iter().collect())
-}
-
 /// What an index file's metadata said when it was listed. Git replaces the
 /// index on every write, so its size, time and (on Unix) inode all move.
 #[derive(PartialEq, Eq)]
@@ -389,13 +365,15 @@ impl IndexStamp {
 mod gitfile_tests {
     use super::*;
 
+    /// The path a submodule gitfile in `sub` names, as walked from there.
     fn target(bytes: &[u8]) -> Option<PathBuf> {
-        gitfile_target(Path::new("sub"), bytes)
+        let written = paths::gitfile_path(bytes)?;
+        paths::written_prefixes(Path::new("sub"), written)?.pop()
     }
 
     #[test]
     fn only_git_line_endings_are_stripped() {
-        let expected = Some(PathBuf::from(".git/modules/sub"));
+        let expected = Some(PathBuf::from("sub/../.git/modules/sub"));
         for bytes in [
             &b"gitdir: ../.git/modules/sub"[..],
             b"gitdir: ../.git/modules/sub\n",
@@ -426,8 +404,8 @@ mod gitfile_tests {
         let separated = target(b"gitdir: ..\\.git\\modules\\sub\n");
         let named = target(b"gitdir: ../.git/modules/foo\\bar\n");
         if cfg!(windows) {
-            assert_eq!(separated, Some(PathBuf::from(".git/modules/sub")));
-            assert_eq!(named, Some(PathBuf::from(".git/modules/foo/bar")));
+            assert_eq!(separated, Some(PathBuf::from("sub/../.git/modules/sub")));
+            assert_eq!(named, Some(PathBuf::from("sub/../.git/modules/foo/bar")));
         } else {
             assert_eq!(separated, None);
             assert_eq!(named, None);

@@ -2,7 +2,7 @@
 //! refusing any path Git and the filesystem calls here could resolve to
 //! different entries.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// The path a `gitdir:` file names, read as Git's `read_gitfile` reads it:
 /// one trailing `\n`, then one trailing `\r`, are dropped, the rest must start
@@ -32,41 +32,30 @@ pub(super) fn split(path: &str) -> Vec<&str> {
     return path.split('/').collect();
 }
 
-/// Resolves `target`, relative to `base` unless absolute, the way Git does,
-/// for a path whose every directory the caller then proves is real (no link
-/// or junction). Only `..` components that lead the path are accepted: they
-/// climb out of `base`, which is real, so lexical and physical resolution
-/// agree. Every other component must pass [`ambiguous_component`].
-pub(super) fn resolve(base: &Path, target: &str) -> Option<PathBuf> {
-    let (mut resolved, rest) = match absolute_prefix(target) {
-        Some((prefix, rest)) => (prefix, rest),
-        None => (base.to_path_buf(), target),
+/// The paths the operating system walks to reach `target`, as Git reaches
+/// it: joined to `base` as written unless absolute, never normalised here,
+/// one entry per component and the full path last. Git and the filesystem
+/// calls here then resolve every `..`, symlink and junction the same way:
+/// lexically through Win32 on Windows, physically elsewhere. Every name other
+/// than `.` and `..` must pass [`ambiguous_component`].
+pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>> {
+    let (mut walked, rest) = match absolute_root(target) {
+        Some((root, rest)) => (root, rest),
+        None => (os_path(base), target),
     };
-    let parts = split(rest);
-    let climbs = parts.iter().take_while(|part| **part == "..").count();
-    if climbs > 0 && absolute_prefix(target).is_some() {
-        return None;
-    }
-    for _ in 0..climbs {
-        if !matches!(
-            resolved.components().next_back(),
-            Some(Component::Normal(_))
-        ) {
+    let mut prefixes = Vec::new();
+    for part in split(rest) {
+        if !matches!(part, "." | "..") && ambiguous_component(part) {
             return None;
         }
-        resolved.pop();
+        walked.push(part);
+        prefixes.push(walked.clone());
     }
-    let names = &parts[climbs..];
-    if (climbs == 0 && names.is_empty()) || names.iter().any(|part| ambiguous_component(part)) {
-        return None;
-    }
-    resolved.extend(names);
-    Some(resolved)
+    (!prefixes.is_empty()).then_some(prefixes)
 }
 
-/// For an absolute `target`, the root it starts at, in the verbatim form
-/// canonical paths use on Windows, and the rest of the path.
-fn absolute_prefix(target: &str) -> Option<(PathBuf, &str)> {
+/// For an absolute `target`, the root it starts at and the rest of the path.
+fn absolute_root(target: &str) -> Option<(PathBuf, &str)> {
     #[cfg(windows)]
     {
         let bytes = target.as_bytes();
@@ -74,11 +63,10 @@ fn absolute_prefix(target: &str) -> Option<(PathBuf, &str)> {
         if bytes.get(1) != Some(&b':') || !matches!(bytes.get(2), Some(b'/' | b'\\')) {
             return None;
         }
-        let root = PathBuf::from(format!(
-            r"\\?\{}:\",
-            char::from(*drive).to_ascii_uppercase()
-        ));
-        Some((root, &target[3..]))
+        Some((
+            PathBuf::from(format!("{}:\\", char::from(*drive))),
+            &target[3..],
+        ))
     }
     #[cfg(not(windows))]
     {
@@ -88,12 +76,22 @@ fn absolute_prefix(target: &str) -> Option<(PathBuf, &str)> {
     }
 }
 
-/// True when `path` names a real location Git would read differently:
-/// anything with a root or prefix that [`resolve`] does not build itself.
-pub(super) fn has_root(path: &str) -> bool {
-    Path::new(path).has_root() || path.contains(':')
+/// `path` in the form the operating system normalises the way Git's paths
+/// are normalised. A canonical Windows path is verbatim (`\\?\C:\...`), which
+/// would take `..` literally, so its plain form is used instead.
+pub(super) fn os_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
 }
-
 /// True when Git and the filesystem calls here could resolve `part` to
 /// different entries, or when it is not one plain name at all. Fingerprints
 /// use verbatim (`\\?\`) paths on Windows, which skip every Win32

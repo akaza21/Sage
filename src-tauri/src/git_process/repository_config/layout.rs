@@ -2,17 +2,19 @@
 //!
 //! Three layouts are admitted, all with the opened root as the work tree:
 //! - the root's own `.git` directory, as both git dir and common dir;
-//! - a separate git dir: `.git` is a `gitdir:` file naming a directory that
-//!   holds no `commondir` or `gitdir` pointer of its own;
-//! - a linked worktree: `.git` names `<common>/worktrees/<name>`, whose
-//!   `commondir` file names `<common>`, an ordinary git dir.
+//! - a separate git dir: `.git` is a `gitdir:` file naming a git dir with no
+//!   `commondir` file;
+//! - a linked worktree: `.git` names a git dir whose `commondir` file names
+//!   the shared common dir.
 //!
-//! Each `gitdir:` and `commondir` file is read exactly as Git reads it. Every
-//! directory on the paths they name is fingerprinted and must be real, never
-//! a symlink or junction, so the operating system resolves exactly the path
-//! inspected here and a later retarget invalidates the cached verdict. The
-//! layout Git reports (`rev-parse`) must be the one read here. Anything else,
-//! or anything ambiguous, is refused.
+//! Each `gitdir:` and `commondir` file is read exactly as Git reads it, and
+//! the path it names is joined to the file's directory as written and
+//! resolved by the operating system, through any symlink, junction or `..`,
+//! just as Git resolves it. The directory reached is what Git opens, so that
+//! is what is inspected: its config goes through the same policy. Every
+//! directory on the way is stamped with the identity of what it reaches, so a
+//! later retarget invalidates the cached verdict. The layout Git reports
+//! (`rev-parse`) must be the one resolved here.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -30,13 +32,13 @@ use crate::{
 /// `git_dir` and `work_tree` are relative to the root: the child's working
 /// directory is the identity-checked root handle, so a directory swapped in
 /// at the root's name, or a move of the root, cannot redirect them. For a
-/// separate git dir or a linked worktree, `git_dir` is the root's `.git`
-/// file, which Git follows to the data admission checked.
+/// separate git dir, a linked worktree or a submodule, `git_dir` is a `.git`
+/// file, which Git follows to the data admission inspected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::git_process) struct AdmittedRepository {
     pub(super) git_dir: PathBuf,
     pub(super) work_tree: PathBuf,
-    /// The repository's git data when it lies outside the root.
+    /// Where the git data lives, resolved, when `git_dir` is a `.git` file.
     pub(super) data_dir: Option<PathBuf>,
     /// The effective values of the settings that start parallel children,
     /// once admission has read them. Until then (and for the admission
@@ -46,12 +48,13 @@ pub(in crate::git_process) struct AdmittedRepository {
 }
 
 impl AdmittedRepository {
-    /// A submodule's repository, at root-relative locations.
-    pub(super) fn submodule(git_dir: PathBuf, work_tree: PathBuf) -> Self {
+    /// A submodule's repository: its `.git` entry and work tree, relative to
+    /// the root, and its resolved git dir.
+    pub(super) fn submodule(git_dir: PathBuf, work_tree: PathBuf, data_dir: PathBuf) -> Self {
         Self {
             git_dir,
             work_tree,
-            data_dir: None,
+            data_dir: Some(data_dir),
             parallel: None,
         }
     }
@@ -64,7 +67,7 @@ impl AdmittedRepository {
         &self.work_tree
     }
 
-    /// Where the repository's git data (its index, say) lives.
+    /// Where the repository's own git data (its index, say) lives.
     pub(super) fn data_dir(&self, root: &Path) -> PathBuf {
         self.data_dir
             .clone()
@@ -103,22 +106,22 @@ pub(super) fn resolve(
     let ((path, fingerprint), bytes) = watch_reading(entry.clone());
     watched.push((path, fingerprint.clone()));
     let admitted = match (fingerprint, bytes) {
-        (Fingerprint::Directory, _) => own_directory(&entry, &reported, &mut watched),
+        (Fingerprint::Directory(_), _) => own_directory(&entry, &reported, &mut watched),
         (Fingerprint::Contents { .. }, Some(bytes)) => {
             gitfile(&root, &bytes, &reported, &mut watched)
         }
         _ => None,
     };
     Ok(match admitted {
-        Some((data_dir, config_files)) => Ok(Layout {
+        Some(admitted) => Ok(Layout {
             repository: AdmittedRepository {
                 git_dir: PathBuf::from(GIT_DIR_NAME),
                 work_tree: PathBuf::from(Component::CurDir.as_os_str()),
-                data_dir,
+                data_dir: admitted.data_dir,
                 parallel: None,
             },
             watched,
-            config_files,
+            config_files: admitted.config_files,
         }),
         None => Err(RepositoryLayout::ExternalGitDir),
     })
@@ -130,17 +133,30 @@ struct Reported {
     common_dir: PathBuf,
 }
 
-/// The data dir outside the root, if any, and the config files Git reads.
-type Admitted = (Option<PathBuf>, Vec<PathBuf>);
+struct Admitted {
+    data_dir: Option<PathBuf>,
+    config_files: Vec<PathBuf>,
+}
 
 fn own_directory(
     entry: &Path,
     reported: &Reported,
     watched: &mut Vec<(PathBuf, Fingerprint)>,
 ) -> Option<Admitted> {
-    (reported.git_dir == entry && reported.common_dir == entry).then_some(())?;
-    no_pointers(entry, watched)?;
-    Some((None, configs(entry, entry)))
+    let git_dir = entry.canonicalize().ok()?;
+    (reported.git_dir == git_dir && reported.common_dir == git_dir).then_some(())?;
+    // A `commondir` or `gitdir` file in a `.git` directory belongs to no
+    // layout Git creates; it is refused as ambiguous.
+    for name in POINTER_FILES {
+        let pointer = watch(entry.join(name));
+        let missing = pointer.1 == Fingerprint::Missing;
+        watched.push(pointer);
+        missing.then_some(())?;
+    }
+    Some(Admitted {
+        data_dir: None,
+        config_files: configs(entry, entry),
+    })
 }
 
 fn gitfile(
@@ -149,35 +165,52 @@ fn gitfile(
     reported: &Reported,
     watched: &mut Vec<(PathBuf, Fingerprint)>,
 ) -> Option<Admitted> {
-    let git_dir = paths::resolve(root, paths::gitfile_path(bytes)?)?;
-    real_directories(&git_dir, watched)?;
+    let written = paths::gitfile_path(bytes)?;
+    let git_dir = walk(root, written, &mut |path| push_watch(watched, path))?;
     (reported.git_dir == git_dir).then_some(())?;
     let ((path, fingerprint), commondir) = watch_reading(git_dir.join("commondir"));
     watched.push((path, fingerprint.clone()));
-    match (fingerprint, commondir) {
+    let common_dir = match (fingerprint, commondir) {
         // A separate git dir.
-        (Fingerprint::Missing, _) => {
-            (reported.common_dir == git_dir).then_some(())?;
-            no_pointers(&git_dir, watched)?;
-            let configs = configs(&git_dir, &git_dir);
-            Some((Some(git_dir), configs))
-        }
-        // A linked worktree of `<common>`, at `<common>/worktrees/<name>`.
+        (Fingerprint::Missing, _) => git_dir.clone(),
+        // A linked worktree's git dir, sharing `<common>`.
         (Fingerprint::Contents { .. }, Some(commondir)) => {
-            let common = paths::resolve(&git_dir, paths::commondir_path(&commondir)?)?;
-            real_directories(&common, watched)?;
-            let in_worktrees = git_dir.parent() == Some(common.join("worktrees").as_path());
-            (reported.common_dir == common && in_worktrees).then_some(())?;
-            no_pointers(&common, watched)?;
-            // The worktree's back-pointer, which `git worktree` maintains.
-            let back_pointer = watch(git_dir.join("gitdir"));
-            matches!(back_pointer.1, Fingerprint::Contents { .. }).then_some(())?;
-            watched.push(back_pointer);
-            let configs = configs(&common, &git_dir);
-            Some((Some(git_dir), configs))
+            walk(&git_dir, paths::commondir_path(&commondir)?, &mut |path| {
+                push_watch(watched, path)
+            })?
         }
-        _ => None,
+        _ => return None,
+    };
+    (reported.common_dir == common_dir).then_some(())?;
+    let config_files = configs(&common_dir, &git_dir);
+    Some(Admitted {
+        data_dir: Some(git_dir),
+        config_files,
+    })
+}
+
+fn push_watch(watched: &mut Vec<(PathBuf, Fingerprint)>, path: PathBuf) -> Fingerprint {
+    let watched_entry = watch(path);
+    let fingerprint = watched_entry.1.clone();
+    watched.push(watched_entry);
+    fingerprint
+}
+
+/// Walks `written` from `base` the way the operating system (and so Git)
+/// resolves it, stamping every directory on the way with `watch`, and returns
+/// the canonical directory it reaches.
+pub(super) fn walk(
+    base: &Path,
+    written: &str,
+    watch: &mut dyn FnMut(PathBuf) -> Fingerprint,
+) -> Option<PathBuf> {
+    let prefixes = paths::written_prefixes(base, written)?;
+    for prefix in &prefixes {
+        if !watch(prefix.clone()).is_directory() {
+            return None;
+        }
     }
+    prefixes.last()?.canonicalize().ok()
 }
 
 /// The config Git reads from `common`, and the per-worktree config from
@@ -188,30 +221,4 @@ fn configs(common: &Path, git_dir: &Path) -> Vec<PathBuf> {
         configs.push(git_dir.join("config.worktree"));
     }
     configs
-}
-
-/// Watches the pointer files a plain git dir must not hold.
-fn no_pointers(git_dir: &Path, watched: &mut Vec<(PathBuf, Fingerprint)>) -> Option<()> {
-    for name in POINTER_FILES {
-        let pointer = watch(git_dir.join(name));
-        let missing = pointer.1 == Fingerprint::Missing;
-        watched.push(pointer);
-        missing.then_some(())?;
-    }
-    Some(())
-}
-
-/// Watches every directory on `path`, which must each be real.
-fn real_directories(path: &Path, watched: &mut Vec<(PathBuf, Fingerprint)>) -> Option<()> {
-    let mut walked = PathBuf::new();
-    for component in path.components() {
-        walked.push(component);
-        if matches!(component, Component::Normal(_)) {
-            let directory = watch(walked.clone());
-            let real = directory.1 == Fingerprint::Directory;
-            watched.push(directory);
-            real.then_some(())?;
-        }
-    }
-    Some(())
 }
