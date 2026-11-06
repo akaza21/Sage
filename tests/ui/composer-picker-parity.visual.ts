@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import { releasePickerHarnessReadiness } from "./agentVisualHelpers";
 import {
@@ -235,6 +235,50 @@ for (const forcedColors of ["none", "active"] as const) {
     } else {
       expect(keyboardFocused.shadow).not.toBe("none");
     }
+    const menu = page.locator(".composer__model-menu");
+    const paint = await menu.evaluate((popover) => {
+      const system = document.createElement("span");
+      system.style.cssText = "color: Highlight; background-color: Canvas";
+      document.body.append(system);
+      const systemStyle = getComputedStyle(system);
+      const title = popover.querySelector(".composer-model-picker__title")!;
+      const titleStyle = getComputedStyle(title);
+      const titleBox = title.getBoundingClientRect();
+      const options = [...popover.querySelectorAll('[role="option"]')];
+      const focused = options.find(
+        (option) => option === document.activeElement,
+      )!;
+      const result = {
+        canvas: systemStyle.backgroundColor,
+        highlight: systemStyle.color,
+        popover: getComputedStyle(popover).backgroundColor,
+        focusedFill: getComputedStyle(focused).backgroundColor,
+        // A whole-pixel title whose line box is 16px inside its padding.
+        titleLine:
+          title.clientHeight -
+          Number.parseFloat(titleStyle.paddingTop) -
+          Number.parseFloat(titleStyle.paddingBottom),
+        titleWhole:
+          Number.isInteger(titleBox.top) && Number.isInteger(titleBox.height),
+        optionHeights: [
+          ...new Set(
+            options
+              .slice(0, 8)
+              .map((option) => option.getBoundingClientRect().height),
+          ),
+        ],
+      };
+      system.remove();
+      return result;
+    });
+    expect(paint.titleLine).toBe(16);
+    expect(paint.titleWhole).toBe(true);
+    // Compact options: one 28px row each.
+    expect(paint.optionHeights).toEqual([28]);
+    if (forcedColors === "active") {
+      expect(paint.popover).toBe(paint.canvas);
+      expect(paint.focusedFill).toBe(paint.highlight);
+    }
     await page.keyboard.press("Escape");
     await expect(model).toBeFocused();
     await model.click();
@@ -267,6 +311,34 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
   expect(columnBox).not.toBeNull();
   expect(composerBox!.width).toBeCloseTo(columnBox!.width, 1);
   expect(composerBox!.x).toBeCloseTo(columnBox!.x, 1);
+  // A single rounded card with a hairline edge and a round, white send.
+  const footprint = await page
+    .locator(".chat-dock")
+    .first()
+    .evaluate((card) => {
+      const style = getComputedStyle(card);
+      const send = card.querySelector(".send-button")!;
+      const sendStyle = getComputedStyle(send);
+      const sendBox = send.getBoundingClientRect();
+      return {
+        borders: [
+          style.borderTopWidth,
+          style.borderRightWidth,
+          style.borderBottomWidth,
+          style.borderLeftWidth,
+        ],
+        radius: Number.parseFloat(style.borderTopLeftRadius),
+        send: [sendBox.width, sendBox.height],
+        sendRadius: Number.parseFloat(sendStyle.borderTopLeftRadius),
+        sendFill: sendStyle.backgroundColor.match(/[\d.]+/g)!.map(Number),
+      };
+    });
+  expect(footprint.borders).toEqual(["1px", "1px", "1px", "1px"]);
+  expect(footprint.radius).toBeGreaterThanOrEqual(12);
+  expect(footprint.send).toEqual([28, 28]);
+  expect(footprint.sendRadius).toBeGreaterThanOrEqual(14);
+  for (const channel of footprint.sendFill.slice(0, 3))
+    expect(channel).toBeGreaterThanOrEqual(230);
 
   const harness = composer.getByRole("button", { name: "Harness" });
   const triggerBox = await harness.boundingBox();
@@ -299,12 +371,25 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
     4.5,
   );
 
+  const popoverPaint = (popover: Locator) =>
+    popover.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [
+        style.borderTopWidth,
+        style.borderTopColor,
+        style.backgroundColor,
+        style.color,
+        style.boxShadow,
+        style.borderTopLeftRadius,
+      ];
+    });
   await harness.click();
   const listbox = page.getByRole("listbox", { name: "Harness" });
   const card = listbox.locator(
     "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
   );
   await waitForAnimations(card);
+  const harnessPaint = await popoverPaint(card);
   const cardBox = await card.boundingBox();
   expect(cardBox).not.toBeNull();
   expect(cardBox!.width).toBeGreaterThanOrEqual(228);
@@ -346,14 +431,13 @@ test("composer and harness picker match the owner's 96-DPI geometry", async ({
     }),
   ).toBeVisible();
   await expect(modelCard.locator('[aria-selected="true"]')).toHaveCount(0);
-  await waitForAnimations(
-    modelCard.locator(
-      "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
-    ),
+  const modelPopover = modelCard.locator(
+    "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
   );
-  const modelBox = await modelCard
-    .locator("xpath=ancestor::div[contains(@class, 'menu-popover')][1]")
-    .boundingBox();
+  await waitForAnimations(modelPopover);
+  // Harness and model menus share one popover treatment.
+  expect(await popoverPaint(modelPopover)).toEqual(harnessPaint);
+  const modelBox = await modelPopover.boundingBox();
   expect(modelBox).not.toBeNull();
   expect(modelBox!.width).toBeGreaterThanOrEqual(228);
   expect(modelBox!.width).toBeLessThanOrEqual(236);
@@ -405,4 +489,164 @@ test("known context and Goal fit the reference composer without invented native 
   expect(goalBox!.width).toBeCloseTo(composerBox!.width - insets, 1);
   expect(goalBox!.x - composerBox!.x).toBeGreaterThanOrEqual(8);
   expect(goalBox!.x - composerBox!.x).toBeLessThanOrEqual(16);
+});
+
+for (const forcedColors of ["none", "active"] as const) {
+  test(`token meter sits in the toolbar with a keyboard focus ring and system edges (${forcedColors})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ forcedColors, reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1888, height: 1096 });
+    await openScenario(page, "agent-composer-goal", "agent");
+    const composer = page.locator("form.composer").first();
+    const meter = composer.getByRole("progressbar", {
+      name: "6,000 used / 272,000 total tokens",
+    });
+    await expect(meter).toBeVisible();
+    // The meter is laid out in the toolbar row between the controls and
+    // the send action, not floated over the prompt.
+    const placement = await meter.evaluate((element) => {
+      const toolbar = element.closest(".composer__toolbar")!;
+      const row = toolbar.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      const controls = toolbar
+        .querySelector(".composer__controls")!
+        .getBoundingClientRect();
+      const send = toolbar
+        .querySelector(".send-button")!
+        .getBoundingClientRect();
+      const prompt = element
+        .closest("form")!
+        .querySelector("textarea")!
+        .getBoundingClientRect();
+      return {
+        inRow: box.top >= row.top && box.bottom <= row.bottom,
+        afterControls: box.left >= controls.right,
+        beforeSend: box.right <= send.left,
+        belowPrompt: box.top >= prompt.bottom,
+      };
+    });
+    expect(placement).toEqual({
+      inRow: true,
+      afterControls: true,
+      beforeSend: true,
+      belowPrompt: true,
+    });
+    await composer.getByRole("textbox").focus();
+    await page.keyboard.press("Tab");
+    while (
+      !(await meter.evaluate((element) => element === document.activeElement))
+    )
+      await page.keyboard.press("Tab");
+    const ring = await meter.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        focusVisible: element.matches(":focus-visible"),
+        style: style.outlineStyle,
+        width: Number.parseFloat(style.outlineWidth),
+      };
+    });
+    expect(ring.focusVisible).toBe(true);
+    expect(ring.style).not.toBe("none");
+    expect(ring.width).toBeGreaterThan(0);
+    if (forcedColors === "active") {
+      const edges = await meter.evaluate((element) => {
+        const system = document.createElement("span");
+        system.style.cssText = "color: CanvasText; background-color: Highlight";
+        document.body.append(system);
+        const systemStyle = getComputedStyle(system);
+        const fill = getComputedStyle(element, "::before");
+        const send = getComputedStyle(
+          element.closest("form")!.querySelector(".send-button")!,
+        );
+        const result = {
+          canvasText: systemStyle.color,
+          highlight: systemStyle.backgroundColor,
+          fillBorder: [fill.borderTopStyle, fill.borderTopColor],
+          fillAdjust: fill.forcedColorAdjust,
+          fillImage: fill.backgroundImage,
+          sendBorder: [
+            send.borderTopWidth,
+            send.borderTopStyle,
+            send.borderTopColor,
+          ],
+        };
+        system.remove();
+        return result;
+      });
+      expect(edges.fillBorder).toEqual(["solid", edges.canvasText]);
+      // The used share keeps a system Highlight fill instead of being
+      // flattened away by forced colors.
+      expect(edges.fillAdjust).toBe("none");
+      expect(edges.fillImage).toContain("conic-gradient");
+      expect(edges.fillImage).toContain(edges.highlight);
+      expect(edges.sendBorder).toEqual(["1px", "solid", edges.canvasText]);
+    }
+  });
+}
+
+test("a long harness list scrolls inside its menu and shows keyboard focus", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 600 });
+  await openScenario(page, "agent-picker-harness-model", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    const template = state.harnesses[0];
+    useWorkbenchStore.setState({
+      harnesses: [
+        ...state.harnesses,
+        ...Array.from({ length: 30 }, (_, index) => ({
+          ...template,
+          id: `geometry-harness-${index}`,
+          name: `Geometry harness ${index}`,
+        })),
+      ],
+    });
+  });
+  const harness = page
+    .locator("form.composer")
+    .first()
+    .getByRole("button", { name: "Harness" });
+  await harness.focus();
+  await page.keyboard.press("Enter");
+  const listbox = page.getByRole("listbox", { name: "Harness" });
+  const popover = listbox.locator(
+    "xpath=ancestor::div[contains(@class, 'menu-popover')][1]",
+  );
+  await expect(listbox.getByRole("option").first()).toBeFocused();
+  const bounds = await popover.boundingBox();
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(600);
+  expect(
+    await listbox.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  const rows = await listbox
+    .getByRole("option")
+    .evaluateAll((options) =>
+      options
+        .slice(0, 6)
+        .map((option) => option.getBoundingClientRect().height),
+    );
+  for (const height of rows) expect(height).toBeGreaterThanOrEqual(32);
+  const fill = (option: Locator) =>
+    option.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const resting = await fill(listbox.getByRole("option").nth(1));
+  await page.keyboard.press("End");
+  // End lands on the last selectable row; unavailable harnesses follow it.
+  const last = listbox.locator('[role="option"]:not([disabled])').last();
+  await expect(last).toBeFocused();
+  expect(
+    await last.evaluate((element) => element.matches(":focus-visible")),
+  ).toBe(true);
+  expect(await fill(last)).not.toBe(resting);
+  const lastBox = (await last.boundingBox())!;
+  const listBox = (await listbox.boundingBox())!;
+  expect(lastBox.y).toBeGreaterThanOrEqual(listBox.y);
+  expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(
+    listBox.y + listBox.height + 0.5,
+  );
 });

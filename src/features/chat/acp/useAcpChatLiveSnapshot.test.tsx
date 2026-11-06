@@ -1,4 +1,4 @@
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../../../app/store";
@@ -64,6 +64,46 @@ const pageB = {
   ],
 } as unknown as AcpChatPage;
 
+function pageWithText(page: AcpChatPage, text: string): AcpChatPage {
+  const [turn] = page.turns;
+  return {
+    ...page,
+    turns: [
+      {
+        ...turn,
+        items: [{ ...turn!.items[0], payload: { role: "assistant", text } }],
+      },
+    ],
+  } as unknown as AcpChatPage;
+}
+
+// The desktop's projection-change channel: a listener stays registered until
+// the hook disposes it, and `granted` lets a test hold the subscription back.
+function projectionBus(granted: Promise<void> = Promise.resolve()) {
+  const listeners = new Set<(event: AcpProjectionChangedEvent) => void>();
+  vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
+    async (callback) => {
+      await granted;
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
+  );
+  return {
+    listeners: () => listeners.size,
+    notify(event: { chatId: string; projectionRevision: string }) {
+      for (const listener of [...listeners]) {
+        listener({
+          projectId: "project-1",
+          sessionId: "session-1",
+          ...event,
+        } as AcpProjectionChangedEvent);
+      }
+    },
+  };
+}
+
 beforeEach(() => {
   useWorkbenchStore.setState({
     project: { id: "project-1" } as never,
@@ -112,55 +152,99 @@ describe("useAcpChatLiveSnapshot", () => {
     );
   });
 
-  it("ignores other-chat notices and coalesces matching ones", async () => {
+  it("ignores other-chat notices and coalesces matching ones into the latest page", async () => {
     vi.useFakeTimers();
-    const load = vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(pageB);
-    type Handler = (event: AcpProjectionChangedEvent) => void;
-    let notify: Handler | null = null;
-    vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
-      async (callback) => {
-        notify = callback;
-        return () => undefined;
-      },
+    // The desktop projection as it stands now; every load reads it afresh.
+    let current = pageWithText(pageB, "Waiting in B");
+    const load = vi
+      .spyOn(acpDesktop, "getChatPage")
+      .mockImplementation(async () => current);
+    const backend = projectionBus();
+    const { result } = renderHook(() => useAcpChatLiveSnapshot("chat-2", true));
+    await vi.waitFor(() =>
+      expect(result.current.latestText).toBe("Waiting in B"),
     );
-    renderHook(() => useAcpChatLiveSnapshot("chat-2", true));
-    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
 
-    const send = notify as unknown as Handler;
-    send({
-      projectId: "project-1",
-      chatId: "chat-1",
-      sessionId: "session-1",
-      projectionRevision: "9",
-    } as AcpProjectionChangedEvent);
-    send({
-      projectId: "project-1",
-      chatId: "chat-2",
-      sessionId: "session-1",
-      projectionRevision: "3",
-    } as AcpProjectionChangedEvent);
-    send({
-      projectId: "project-1",
-      chatId: "chat-2",
-      sessionId: "session-1",
-      projectionRevision: "4",
-    } as AcpProjectionChangedEvent);
-    await vi.advanceTimersByTimeAsync(50);
-    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    current = pageWithText(pageB, "Changed while chat-1 spoke");
+    backend.notify({ chatId: "chat-1", projectionRevision: "9" });
+    await act(() => vi.advanceTimersByTimeAsync(50));
+    expect(result.current.latestText).toBe("Waiting in B");
+
+    current = pageWithText(pageB, "First reply in B");
+    backend.notify({ chatId: "chat-2", projectionRevision: "3" });
+    current = pageWithText(pageB, "Second reply in B");
+    backend.notify({ chatId: "chat-2", projectionRevision: "4" });
+    await act(() => vi.advanceTimersByTimeAsync(50));
+    await vi.waitFor(() =>
+      expect(result.current.latestText).toBe("Second reply in B"),
+    );
+    // The initial load plus one refresh that served both notices.
+    expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("drops its listener when the live pane unmounts", async () => {
-    const dispose = vi.fn();
+  it("keeps a page that arrives after the pane moved on out of the new chat", async () => {
+    let finishLate!: (page: AcpChatPage) => void;
+    let chat2Loads = 0;
+    vi.spyOn(acpDesktop, "getChatPage").mockImplementation(async (request) => {
+      if (request.chatId === "chat-1") return pageA;
+      chat2Loads += 1;
+      if (chat2Loads === 1) return pageB;
+      return new Promise<AcpChatPage>((resolve) => {
+        finishLate = resolve;
+      });
+    });
+    const backend = projectionBus();
+    const { result, rerender } = renderHook(
+      ({ chatId }) => useAcpChatLiveSnapshot(chatId, true),
+      { initialProps: { chatId: "chat-2" } },
+    );
+    await waitFor(() => expect(result.current.latestText).toBe("Waiting in B"));
+
+    backend.notify({ chatId: "chat-2", projectionRevision: "3" });
+    await waitFor(() => expect(finishLate).toBeTypeOf("function"));
+    rerender({ chatId: "chat-1" });
+    await waitFor(() =>
+      expect(result.current.latestText).toBe("Streaming from A"),
+    );
+    expect(backend.listeners()).toBe(1);
+
+    await act(async () => {
+      finishLate(pageWithText(pageB, "Late reply for B"));
+    });
+    expect(result.current.chatId).toBe("chat-1");
+    expect(result.current.latestText).toBe("Streaming from A");
+  });
+
+  it("releases its projection listener when the live pane unmounts", async () => {
     vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(pageB);
-    const subscribe = vi
-      .spyOn(acpDesktop, "subscribeProjectionChanges")
-      .mockResolvedValue(dispose);
+    const backend = projectionBus();
+    const { result, unmount } = renderHook(() =>
+      useAcpChatLiveSnapshot("chat-2", true),
+    );
+    await waitFor(() => expect(result.current.latestText).toBe("Waiting in B"));
+    expect(backend.listeners()).toBe(1);
+
+    unmount();
+    expect(backend.listeners()).toBe(0);
+  });
+
+  it("releases a listener that is granted only after the pane unmounted", async () => {
+    vi.spyOn(acpDesktop, "getChatPage").mockResolvedValue(pageB);
+    let grant!: () => void;
+    const backend = projectionBus(
+      new Promise<void>((resolve) => {
+        grant = resolve;
+      }),
+    );
     const { unmount } = renderHook(() =>
       useAcpChatLiveSnapshot("chat-2", true),
     );
-    await waitFor(() => expect(subscribe).toHaveBeenCalledTimes(1));
     unmount();
-    expect(dispose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      grant();
+    });
+    expect(backend.listeners()).toBe(0);
   });
 });
 
