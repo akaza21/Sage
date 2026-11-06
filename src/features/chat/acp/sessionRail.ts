@@ -70,6 +70,15 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
 }
 
 /**
+ * Whether the chat's last Turn finished (Done or Failed). Only such a chat
+ * has a finish time to be read through, so only it can be marked read or
+ * unread.
+ */
+export function sessionRailFinished(status: SessionStatus | undefined) {
+  return status === "complete" || status === "failed";
+}
+
+/**
  * A finished chat shows Unread until its latest Turn has been seen: the
  * stored read mark (chatReadMarks) covers that Turn's finish time. Runtime
  * bookkeeping, such as parking a session, never moves that time.
@@ -82,7 +91,7 @@ export function sessionRailUnreadVisible(input: {
 }): boolean {
   if (input.focused) return false;
   if (sessionRailLive(input.status)) return true;
-  if (!sessionRailStatusLabel(input.status)) return false;
+  if (!sessionRailFinished(input.status)) return false;
   return (
     input.readThrough === undefined ||
     (input.finishedAt ?? 0) > input.readThrough

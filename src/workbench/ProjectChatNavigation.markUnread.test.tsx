@@ -12,14 +12,31 @@ import { clearAgentRailUnread } from "./agentRailInteractions";
 
 const FINISHED_AT = 5_000;
 
-// The settings store holds Beta's read mark and refuses to delete it.
+// The settings store holds Beta's read mark; it can refuse deletes.
+const store = vi.hoisted(() => ({
+  marks: new Map<string, number>(),
+  refuseUnread: false,
+}));
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
-  invokeNative: async (command: string) => {
+  invokeNative: async (
+    command: string,
+    args?: { chatId?: string; mark?: { chatId: string; readThrough: number } },
+  ) => {
     if (command === "chat_read_marks")
-      return [{ chatId: "chat:b", readThrough: FINISHED_AT }];
-    if (command === "chat_mark_unread")
-      throw new Error("settings store is busy");
+      return [...store.marks].map(([chatId, readThrough]) => ({
+        chatId,
+        readThrough,
+      }));
+    if (command === "chat_mark_unread") {
+      if (store.refuseUnread) throw new Error("settings store is busy");
+      store.marks.delete(args!.chatId!);
+      return null;
+    }
+    if (command === "chat_mark_read") {
+      store.marks.set(args!.mark!.chatId, args!.mark!.readThrough);
+      return args!.mark;
+    }
     return null;
   },
 }));
@@ -28,6 +45,8 @@ const initialState = useWorkbenchStore.getState();
 
 beforeEach(async () => {
   Object.assign(window, { __TAURI_INTERNALS__: {} });
+  store.marks = new Map([["chat:b", FINISHED_AT]]);
+  store.refuseUnread = false;
   resetChatReadMarks();
   await restoreChatReadMarks();
   useWorkbenchStore.setState({
@@ -71,7 +90,50 @@ const betaUnread = () =>
     .closest(".project-chat-row")
     ?.querySelector("[aria-label='Unread updates']") ?? null;
 
+function renderRail() {
+  return render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={useWorkbenchStore.getState().tabs}
+      selected
+    />,
+  );
+}
+
+async function markBetaUnread() {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Chat actions for Beta" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Mark unread" }));
+}
+
+it("keeps a chat marked unread Unread after a restart", async () => {
+  renderRail();
+  await markBetaUnread();
+  await vi.waitFor(() => expect(store.marks.has("chat:b")).toBe(false));
+  // Restart: the rail starts from the store alone.
+  cleanup();
+  clearAgentRailUnread();
+  resetChatReadMarks();
+  await restoreChatReadMarks();
+  renderRail();
+  expect(betaUnread()).not.toBeNull();
+});
+
+it("offers Mark unread only on a chat whose last Turn finished", async () => {
+  renderRail();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Chat actions for Alpha" }),
+  );
+  expect(
+    await screen.findByRole("menu", { name: "Actions for Alpha" }),
+  ).toBeInTheDocument();
+  // Alpha's last Turn was cancelled, so it has nothing to read through.
+  expect(screen.queryByRole("menuitem", { name: "Mark unread" })).toBeNull();
+});
+
 it("shows the chat read again when the store refuses Mark unread", async () => {
+  store.refuseUnread = true;
   render(
     <ProjectChatNavigation
       projectId="project-a"

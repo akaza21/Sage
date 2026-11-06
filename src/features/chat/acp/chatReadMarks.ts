@@ -34,31 +34,71 @@ interface Lane {
 }
 
 const listeners = new Set<() => void>();
-// The rendered projection. Insertion order is read order.
+// The rendered projection: the known marks with pending requests laid
+// over them, so at most twice the bound.
 let marks = new Map<string, number>();
-// Known states. A chat missing here is unknown until the stored marks load,
-// and has no mark after that.
-let acked = new Map<string, ReadState>();
+// What the store acknowledged: chats with a mark, and chats known to have
+// none. Each is bounded on its own, so "no mark" entries never push out a
+// stored mark. A chat in neither is unknown until the stored marks load and
+// has no mark after that; a "no mark" entry that overflows simply falls
+// back to that.
+let known = new Map<string, number>();
+let absent = new Set<string>();
 const lanes = new Map<string, Lane>();
 // Bumped on reset, so answers to an earlier session's requests are ignored.
 let epoch = 0;
 let restoring: Promise<void> | null = null;
 let restored = false;
+// A failed load is retried while the rail is mounted, backing off.
+const RETRY_BASE_MS = 1_000;
+const RETRY_MAX_MS = 30_000;
+let loadFailures = 0;
+// A read the store applies prunes its oldest mark, which a snapshot taken
+// meanwhile still lists. Snapshots are only trusted when no read was in
+// flight while they were taken; otherwise they are taken again once the
+// reads land.
+let readsInFlight = 0;
+let readsSent = 0;
+let reloadWanted = false;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emit() {
   marks = new Map(marks);
   for (const listener of listeners) listener();
 }
 
-function touch<V>(map: Map<string, V>, chatId: string, value: V) {
-  map.delete(chatId);
-  map.set(chatId, value);
-  while (map.size > MAX_CHAT_READ_MARKS) map.delete(map.keys().next().value!);
+/** Records an acknowledged state; returns chats whose mark was evicted. */
+function record(chatId: string, state: ReadState): string[] {
+  if (state === null) {
+    known.delete(chatId);
+    absent.delete(chatId);
+    absent.add(chatId);
+    if (absent.size > MAX_CHAT_READ_MARKS)
+      absent.delete(absent.values().next().value!);
+    return [];
+  }
+  absent.delete(chatId);
+  known.delete(chatId);
+  known.set(chatId, state);
+  const evicted: string[] = [];
+  while (known.size > MAX_CHAT_READ_MARKS) {
+    const oldest = known.keys().next().value!;
+    known.delete(oldest);
+    evicted.push(oldest);
+  }
+  return evicted;
 }
 
 function acknowledged(chatId: string): ReadState | undefined {
-  if (acked.has(chatId)) return acked.get(chatId)!;
+  if (known.has(chatId)) return known.get(chatId)!;
+  if (absent.has(chatId)) return null;
   return restored || !isTauriRuntime() ? null : undefined;
+}
+
+function acknowledge(chatId: string, state: ReadState) {
+  // The store prunes its oldest marks the same way.
+  for (const evicted of record(chatId, state)) project(evicted);
+  project(chatId);
 }
 
 /** Re-derives what the rail shows for the chat; emits when it changes. */
@@ -69,24 +109,20 @@ function project(chatId: string) {
   if (state === null) {
     if (marks.delete(chatId)) emit();
   } else if (marks.get(chatId) !== state) {
-    touch(marks, chatId, state);
+    marks.set(chatId, state);
     emit();
   }
 }
 
-/** Re-derives every chat, keeping the newest requests within the bound. */
+/** Re-derives every chat. */
 function reproject() {
-  const next = new Map<string, number>();
-  for (const [chatId, state] of acked)
-    if (state !== null) next.set(chatId, state);
+  marks = new Map(known);
   for (const [chatId, lane] of lanes) {
     const pending = lane.next ?? lane.inFlight;
     if (!pending) continue;
-    next.delete(chatId);
-    if (pending.state !== null) next.set(chatId, pending.state);
+    if (pending.state === null) marks.delete(chatId);
+    else marks.set(chatId, pending.state);
   }
-  marks = new Map();
-  for (const [chatId, state] of next) touch(marks, chatId, state);
   emit();
 }
 
@@ -109,35 +145,63 @@ function admitMark(mark: unknown): [string, number] | null {
  */
 export function restoreChatReadMarks(): Promise<void> {
   if (restored || !isTauriRuntime()) return Promise.resolve();
+  if (restoring) return restoring;
+  if (readsInFlight > 0) {
+    reloadWanted = true;
+    return Promise.resolve();
+  }
   const started = epoch;
-  restoring ??= invokeNative("chat_read_marks")
-    .then((stored) => {
+  const sentAtStart = readsSent;
+  const load = invokeNative("chat_read_marks").then(
+    (stored) => {
       if (started !== epoch) return;
+      if (readsSent !== sentAtStart) {
+        // A read may have pruned a mark this snapshot lists.
+        reloadWanted = true;
+        return;
+      }
       const snapshot = (Array.isArray(stored) ? stored : [])
         .slice(0, MAX_CHAT_READ_MARKS)
         .flatMap((mark: unknown) => {
           const admitted = admitMark(mark);
           return admitted ? [admitted] : [];
         });
-      // The stored marks are older than any answer that arrived meanwhile:
-      // lay them down first (oldest first), then those answers, and only
-      // then apply the bound.
-      const merged = new Map<string, ReadState>();
+      // The stored marks are older than any answer that arrived before the
+      // query: lay them down first (oldest first), then those answers, in
+      // the order the store applied them.
+      const answered = known;
+      known = new Map();
       for (const [chatId, readThrough] of snapshot.reverse())
-        if (!acked.has(chatId)) merged.set(chatId, readThrough);
-      for (const [chatId, state] of acked) merged.set(chatId, state);
-      acked = new Map();
-      for (const [chatId, state] of merged) touch(acked, chatId, state);
+        if (!answered.has(chatId) && !absent.has(chatId))
+          record(chatId, readThrough);
+      for (const [chatId, readThrough] of answered) record(chatId, readThrough);
       restored = true;
+      loadFailures = 0;
       reproject();
-    })
-    .catch(() => {
-      // Unknown states only show finished chats as Unread; a later render
-      // tries again.
-    })
-    .finally(() => {
-      if (started === epoch) restoring = null;
-    });
+    },
+    () => {
+      if (started !== epoch) return;
+      // Unknown states only show finished chats as Unread. Try again while
+      // the rail is mounted, backing off.
+      loadFailures += 1;
+      if (listeners.size === 0 || retryTimer) return;
+      retryTimer = setTimeout(
+        () => {
+          retryTimer = null;
+          void restoreChatReadMarks();
+        },
+        Math.min(RETRY_BASE_MS * 2 ** (loadFailures - 1), RETRY_MAX_MS),
+      );
+    },
+  );
+  restoring = load.then(() => {
+    if (started !== epoch) return;
+    restoring = null;
+    if (reloadWanted && readsInFlight === 0) {
+      reloadWanted = false;
+      return restoreChatReadMarks();
+    }
+  });
   return restoring;
 }
 
@@ -148,8 +212,7 @@ export function chatReadThrough(chatId: string): number | undefined {
 
 function request(chatId: string, state: ReadState): Promise<boolean> {
   if (!isTauriRuntime()) {
-    touch(acked, chatId, state);
-    project(chatId);
+    acknowledge(chatId, state);
     return Promise.resolve(true);
   }
   let lane = lanes.get(chatId);
@@ -174,18 +237,26 @@ async function drain(chatId: string, lane: Lane, started: number) {
     const current = (lane.inFlight = lane.next);
     lane.next = null;
     let stored = true;
+    let evicted: string[] = [];
     try {
       if (current.state === null) {
         await invokeNative("chat_mark_unread", { chatId });
         if (started !== epoch) return;
-        touch(acked, chatId, null);
+        evicted = record(chatId, null);
       } else {
-        const answer = await invokeNative("chat_mark_read", {
-          mark: { chatId, readThrough: current.state },
-        });
+        readsInFlight += 1;
+        readsSent += 1;
+        let answer: unknown;
+        try {
+          answer = await invokeNative("chat_mark_read", {
+            mark: { chatId, readThrough: current.state },
+          });
+        } finally {
+          if (started === epoch) readsInFlight -= 1;
+        }
         if (started !== epoch) return;
         // The store keeps the later mark; take the one it reports.
-        touch(acked, chatId, admitMark(answer)?.[1] ?? current.state);
+        evicted = record(chatId, admitMark(answer)?.[1] ?? current.state);
       }
     } catch {
       if (started !== epoch) return;
@@ -193,7 +264,13 @@ async function drain(chatId: string, lane: Lane, started: number) {
     }
     lane.inFlight = null;
     if (!lane.next) lanes.delete(chatId);
+    // The store prunes its oldest marks the same way.
+    for (const pruned of evicted) project(pruned);
     project(chatId);
+    if (reloadWanted && readsInFlight === 0 && !restoring) {
+      reloadWanted = false;
+      void restoreChatReadMarks();
+    }
     // A refusal matters only when no newer request followed.
     current.settle(stored || lane.next !== null);
   }
@@ -219,10 +296,17 @@ export function markChatUnread(chatId: string): Promise<boolean> {
 export function resetChatReadMarks() {
   epoch += 1;
   marks = new Map();
-  acked = new Map();
+  known = new Map();
+  absent = new Set();
   lanes.clear();
   restoring = null;
   restored = false;
+  loadFailures = 0;
+  readsInFlight = 0;
+  readsSent = 0;
+  reloadWanted = false;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
   for (const listener of listeners) listener();
 }
 

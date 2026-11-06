@@ -2,10 +2,7 @@ import { useEffect } from "react";
 
 import { useWorkbenchStore } from "../app/store";
 import { markChatRead } from "../features/chat/acp/chatReadMarks";
-import {
-  sessionRailLive,
-  sessionRailStatusLabel,
-} from "../features/chat/acp/sessionRail";
+import { sessionRailFinished } from "../features/chat/acp/sessionRail";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 
 /**
@@ -42,9 +39,7 @@ export function ViewedChatReadMark({
         const tab = state.tabs.find(
           (item) => item.id === chatId && item.kind === "chat",
         );
-        return tab &&
-          sessionRailStatusLabel(tab.status) &&
-          !sessionRailLive(tab.status)
+        return tab && sessionRailFinished(tab.status)
           ? [`${tab.id}\n${tab.finishedAt ?? 0}`]
           : [];
       })

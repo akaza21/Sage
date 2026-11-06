@@ -1,3 +1,4 @@
+import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import {
@@ -7,6 +8,7 @@ import {
   markChatUnread,
   resetChatReadMarks,
   restoreChatReadMarks,
+  useChatReadMarks,
 } from "./chatReadMarks";
 import { sessionRailUnreadVisible } from "./sessionRail";
 
@@ -244,4 +246,22 @@ it("keeps the newest Mark unread when an earlier one is refused", async () => {
   await expect(second).resolves.toBe(true);
   expect(chatReadThrough("chat-a")).toBeUndefined();
   expect(store.marks.has("chat-a")).toBe(false);
+});
+
+it("loads the stored marks again after a failed load while the rail is mounted", async () => {
+  vi.useFakeTimers();
+  try {
+    store.marks.set("chat-a", 1_000);
+    store.failLoad = true;
+    const rail = renderHook(() => useChatReadMarks());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(chatReadThrough("chat-a")).toBeUndefined();
+    // The store recovers; the next attempt backs off, then lands.
+    store.failLoad = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(chatReadThrough("chat-a")).toBe(1_000);
+    rail.unmount();
+  } finally {
+    vi.useRealTimers();
+  }
 });

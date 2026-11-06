@@ -21,7 +21,7 @@ import {
   useChatReadMarks,
 } from "../features/chat/acp/chatReadMarks";
 import {
-  sessionRailLive,
+  sessionRailFinished,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -235,10 +235,7 @@ export function ProjectChatNavigation({
                 if (selected) {
                   // Opening the chat acknowledges its finished Turn, even
                   // when it is already on screen after "Mark unread".
-                  if (
-                    sessionRailStatusLabel(status) &&
-                    !sessionRailLive(status)
-                  )
+                  if (sessionRailFinished(status))
                     markChatRead(tab.id, tab.finishedAt ?? 0);
                   void activateTab(tab.id);
                   return;
@@ -310,13 +307,19 @@ export function ProjectChatNavigation({
                   setRenameDraft(displayTitle);
                   setRenamingChatId(tab.id);
                 }}
-                onMarkUnread={() => {
-                  markAgentRailUnread(tab.id);
-                  // A refused request leaves the chat read in the store.
-                  void markChatUnread(tab.id).then((stored) => {
-                    if (!stored) clearAgentRailUnread(tab.id);
-                  });
-                }}
+                // Only a finished Turn has a time to read through (Codex
+                // offers Mark unread on the same chats).
+                onMarkUnread={
+                  sessionRailFinished(status)
+                    ? () => {
+                        markAgentRailUnread(tab.id);
+                        // A refused request leaves the chat read in the store.
+                        void markChatUnread(tab.id).then((stored) => {
+                          if (!stored) clearAgentRailUnread(tab.id);
+                        });
+                      }
+                    : undefined
+                }
                 onArchive={archive}
                 triggerRef={(node) => {
                   if (node) renameTriggerRefs.current.set(tab.id, node);
