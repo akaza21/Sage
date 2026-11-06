@@ -56,7 +56,11 @@ impl OpenCodeRuntime {
         self.handshake
             .accept_initialize(&value)
             .map_err(handshake_error)?;
-        let capabilities = capabilities()?;
+        let mut capabilities = capabilities()?;
+        capabilities.prompt_resources = value
+            .pointer("/result/agentCapabilities/promptCapabilities/embeddedContext")
+            .and_then(Value::as_bool)
+            == Some(true);
         self.capabilities = Some(capabilities.clone());
         AdapterBatch::new(vec![SharedEvent::Initialized { capabilities }], Vec::new())
     }
@@ -342,6 +346,7 @@ fn capabilities() -> Result<CapabilitySnapshotV1, AdapterRuntimeError> {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
         config_count: 0,
     })
 }

@@ -118,6 +118,7 @@ fn observe_runner(
     runner: &Arc<LiveRunnerHandle>,
     recovery: &Arc<std::sync::Mutex<Option<PendingCodexRecovery>>>,
     active: Arc<std::sync::Mutex<Option<ActiveCodexOperation>>>,
+    files: Arc<std::sync::Mutex<crate::acp::attached_context::files::FileStages>>,
     #[cfg(any(debug_assertions, feature = "diagnostics"))] identity: Arc<
         super::runtime_identity::CodexRuntimeIdentityLedger,
     >,
@@ -127,6 +128,10 @@ fn observe_runner(
     let recovery = Arc::downgrade(recovery);
     let owner = owner.clone();
     runner.observe_exit_once(move |exit| {
+        files
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_chat(owner.project_id.as_str(), owner.chat_id.as_str());
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         identity.clear_exact(&owner);
         // The runner invokes this observer only after its own finish path has
@@ -185,6 +190,7 @@ pub(super) fn observe_runner_failure_for_test(
         runner,
         recovery,
         active,
+        Arc::new(std::sync::Mutex::new(Default::default())),
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         Arc::new(super::runtime_identity::CodexRuntimeIdentityLedger::new()),
     );

@@ -105,6 +105,10 @@ impl AcpService {
         {
             return Err(CodexSessionError::Intent);
         }
+        self.file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_chat(project.as_str(), chat.as_str());
         self.revoke_browser_chat(project, chat);
         let lane = self.lanes().find(|lane| {
             lane.scheduler.active().is_some_and(|active| {

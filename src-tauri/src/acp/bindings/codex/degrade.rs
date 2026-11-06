@@ -141,6 +141,7 @@ pub(crate) fn projected_capabilities(
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
         config_count: 0,
     };
     Ok((snapshot, optional.model_list))

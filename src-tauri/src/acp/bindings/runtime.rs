@@ -172,6 +172,13 @@ impl HarnessAdapter for NativeRuntime {
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
+        if let AdapterCommand::Prompt { prompt, .. } | AdapterCommand::Steer { prompt, .. } =
+            &command
+            && !prompt.resources.0.is_empty()
+            && !self.capabilities().is_some_and(|c| c.prompt_resources)
+        {
+            return Err(AdapterRuntimeError::UnsupportedCommand);
+        }
         self.0.command(command)
     }
 

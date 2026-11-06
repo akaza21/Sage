@@ -301,6 +301,7 @@ impl Lane<'_> {
             &runner,
             &self.codex_recovery,
             Arc::clone(&active),
+            Arc::clone(&self.file_stages),
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             Arc::clone(&self.codex_runtime_identity),
         );

@@ -557,3 +557,72 @@ fn an_annotation_on_a_durable_native_answer_is_admitted_and_a_stale_range_is_ref
         }
     });
 }
+
+#[test]
+fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        for new_session in [false, true] {
+            let fixture = Fixture::new().await;
+            let (calls, _) = fixture.install_host();
+            let before = fixture.counts();
+            fixture
+                .state
+                .acp
+                .file_stages
+                .lock()
+                .unwrap()
+                .stage(
+                    fixture.owner.project_id.as_str(),
+                    fixture.owner.chat_id.as_str(),
+                    None,
+                    Resources(Arc::new(vec![Resource {
+                        id: "file-1".into(),
+                        name: "test.txt".into(),
+                        bytes: b"context".to_vec(),
+                    }])),
+                )
+                .unwrap();
+            let error = acp::send_acp_turn_inner(&fixture.state, fixture.request(new_session))
+                .await
+                .unwrap_err();
+            assert_eq!(error.prompt_dispatch, PromptDispatch::NotStarted);
+            assert!(matches!(error.failure, AcpIpcError::InvalidRequest { .. }));
+            assert!(calls.lock().unwrap().is_empty());
+            assert_eq!(fixture.counts(), before);
+            assert_eq!(
+                fixture
+                    .state
+                    .acp
+                    .file_stages
+                    .lock()
+                    .unwrap()
+                    .get(
+                        fixture.owner.project_id.as_str(),
+                        fixture.owner.chat_id.as_str()
+                    )
+                    .0
+                    .len(),
+                1
+            );
+        }
+    });
+}
+
+#[test]
+fn staged_files_are_consumed_after_admitted_dispatch() {
+    use crate::acp::attached_context::files::{Resource, Resources};
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let fixture = Fixture::new().await;
+        let (calls, _) = fixture.install_host();
+        fixture.state.database.connection().execute(
+            "UPDATE agent_sessions SET capabilities_json=json_set(capabilities_json,'$.promptResources',json('true')) WHERE id=?1",
+            [fixture.owner.session_id.as_str()],
+        ).unwrap();
+        let resources = Resources(Arc::new(vec![Resource { id:"file-1".into(), name:"test.txt".into(), bytes:b"context".to_vec() }]));
+        fixture.state.acp.file_stages.lock().unwrap().stage(fixture.owner.project_id.as_str(),fixture.owner.chat_id.as_str(),None,resources).unwrap();
+        acp::send_acp_turn_inner(&fixture.state,fixture.request(false)).await.unwrap();
+        assert!(!calls.lock().unwrap().is_empty());
+        assert!(fixture.state.acp.file_stages.lock().unwrap().get(fixture.owner.project_id.as_str(),fixture.owner.chat_id.as_str()).0.is_empty());
+    });
+}

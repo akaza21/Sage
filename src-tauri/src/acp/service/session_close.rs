@@ -11,6 +11,10 @@ impl AcpService {
         let binding = self
             .session_operation_binding(binding_id)
             .map_err(|_| SessionDispatchError::Binding)?;
+        self.file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_chat(command.project_id.as_str(), command.chat_id.as_str());
         self.revoke_browser_chat(&command.project_id, &command.chat_id);
         binding
             .dispatch_close(self, command)

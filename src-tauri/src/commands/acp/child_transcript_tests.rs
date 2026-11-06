@@ -239,6 +239,7 @@ async fn child_ipc_journey(
             collaboration_event_projection: false,
             multi_root_extension_schema_id: None,
             model_count: 1,
+            prompt_resources: false,
             config_count: 0,
         };
         complete_activation(

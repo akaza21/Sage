@@ -1,3 +1,4 @@
+pub(crate) mod prompt_files;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -126,6 +127,8 @@ impl<E> PromptSendError<E> {
 }
 
 pub(crate) struct AcpService {
+    pub(crate) file_stages: Arc<Mutex<crate::acp::attached_context::files::FileStages>>,
+    pub(crate) file_stage_reader: Arc<tokio::sync::Mutex<()>>,
     database: Database,
     journal: JournalHandle,
     journal_thread: Mutex<Option<BoundedThread>>,

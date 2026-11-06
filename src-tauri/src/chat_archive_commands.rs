@@ -47,6 +47,12 @@ async fn archive_chat_inner(
         if let Err(error) = state.terminals.close_chat(&project, &chat) {
             tracing::warn!(?error, "terminal Chat-close cleanup remains unsettled");
         }
+        state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_chat(project.as_str(), chat.as_str());
         state.acp.revoke_browser_chat(&project, &chat);
     }
     result
@@ -129,7 +135,35 @@ mod tests {
                 .browser_attachment(&browser_project, &browser_chat)
                 .unwrap();
 
+            state
+                .acp
+                .file_stages
+                .lock()
+                .unwrap()
+                .stage(
+                    &project.id,
+                    &first_chat_id,
+                    None,
+                    crate::acp::attached_context::files::Resources(std::sync::Arc::new(vec![
+                        crate::acp::attached_context::files::Resource {
+                            id: "file-archive".into(),
+                            name: "notes.txt".into(),
+                            bytes: b"context".to_vec(),
+                        },
+                    ])),
+                )
+                .unwrap();
             let archived = archive_chat_inner(&state, request.clone(), 0).await;
+            assert!(
+                state
+                    .acp
+                    .file_stages
+                    .lock()
+                    .unwrap()
+                    .get(&project.id, &first_chat_id)
+                    .0
+                    .is_empty()
+            );
             assert!(archived.committed);
             assert!(!browser_lease.is_live());
             assert!(

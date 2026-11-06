@@ -167,6 +167,7 @@ fn capabilities() -> CapabilitySnapshotV1 {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 2,
+        prompt_resources: false,
         config_count: 2,
     }
 }
