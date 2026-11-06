@@ -12,6 +12,13 @@ import {
   waitForGuardianAuthority,
 } from "./beta0001-installed-smoke-output-authority.mjs";
 import { observeGuardianStartup } from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import {
+  GUARDIAN_JOURNAL_MAXIMUM_BYTES,
+  recordGuardianStartup,
+  summarizeGuardianJournal,
+} from "./beta0001-installed-smoke-guardian-journal.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 
 const releaseGraceMs = 5000;
 const teardownTimeoutMs = 10_000;
@@ -366,5 +373,118 @@ test("sampling cannot postpone the teardown deadline for a guardian that never c
     });
   } finally {
     finishSampling({ status: "unavailable" });
+  }
+});
+
+function phaseSnapshot(observed, elapsedMs) {
+  const phases = Object.fromEntries(
+    Object.entries(observed).map(([phase, observedMs]) => [
+      phase,
+      { elapsedMs: observedMs, userMs: 1, kernelMs: 1, observedMs },
+    ]),
+  );
+  return { elapsedMs, phases, stderr: { bytes: 99 }, child: { pid: 7 } };
+}
+
+test("the guardian journal records only outcome and phase times, and summarizes the slowest steps", () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), "sage-guardian-journal-"));
+  try {
+    const journal = path.join(temp, "journal.jsonl");
+    assert.equal(
+      recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "ready",
+        "",
+      ),
+      false,
+    );
+    assert.equal(
+      recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "unknown",
+        journal,
+      ),
+      false,
+    );
+    assert.equal(
+      recordGuardianStartup(
+        phaseSnapshot(
+          {
+            "script-start": 600,
+            "identity-start": 650,
+            "identity-verified": 700,
+            "compile-start": 700,
+            "compile-complete": 900,
+            "seal-start": 900,
+            "seal-acquired": 950,
+            "ready-written": 960,
+          },
+          961,
+        ),
+        "ready",
+        journal,
+      ),
+      true,
+    );
+    assert.equal(
+      recordGuardianStartup(
+        phaseSnapshot({ "script-start": 614, "identity-start": 5579 }, 10001),
+        "timeout",
+        journal,
+      ),
+      true,
+    );
+    const lines = readFileSync(journal, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(lines[1], {
+      outcome: "timeout",
+      elapsedMs: 10001,
+      phases: {
+        "script-start": 614,
+        "identity-start": 5579,
+        "identity-verified": null,
+        "compile-start": null,
+        "compile-complete": null,
+        "seal-start": null,
+        "seal-acquired": null,
+        "ready-written": null,
+      },
+    });
+    assert.equal(
+      summarizeGuardianJournal(readFileSync(journal, "utf8")),
+      "guardian startup: 2 starts, 1 timed out, slowest total 10001 ms; slowest step ms: script-start 614, identity-start 4965, identity-verified 50, compile-start 0, compile-complete 200, seal-start 0, seal-acquired 50, ready-written 10",
+    );
+    assert.equal(
+      summarizeGuardianJournal(""),
+      "guardian startup: no guardian started",
+    );
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the guardian journal stops appending at its byte cap", () => {
+  const temp = mkdtempSync(
+    path.join(os.tmpdir(), "sage-guardian-journal-cap-"),
+  );
+  try {
+    const journal = path.join(temp, "journal.jsonl");
+    writeFileSync(journal, "x".repeat(GUARDIAN_JOURNAL_MAXIMUM_BYTES - 10));
+    assert.equal(
+      recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "ready",
+        journal,
+      ),
+      false,
+    );
+    assert.equal(
+      readFileSync(journal, "utf8").length,
+      GUARDIAN_JOURNAL_MAXIMUM_BYTES - 10,
+    );
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
   }
 });

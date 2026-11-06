@@ -5,6 +5,7 @@ import {
   guardianPhaseSource,
   observeGuardianStartup,
 } from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import { recordGuardianStartup } from "./beta0001-installed-smoke-guardian-journal.mjs";
 
 const requestEnvironment = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY";
 const startupTimeoutMs = 10_000;
@@ -227,6 +228,7 @@ export function waitForGuardianAuthority(
     };
     const timer = setTimeout(() => {
       const error = startup.timeoutError();
+      recordGuardianStartup(error.diagnostic, "timeout");
       fail(error);
       error.diagnosticReady = startup.collectCpu(error, powerShell);
     }, startupTimeoutMs);
@@ -251,6 +253,7 @@ export function waitForGuardianAuthority(
         }
         settled = true;
         clearTimeout(timer);
+        recordGuardianStartup(startup.snapshot(), "ready");
         resolve({ ...guardian, root: path.resolve(outputDirectory) });
       } catch (error) {
         fail(error);
