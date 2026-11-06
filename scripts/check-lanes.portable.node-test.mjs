@@ -18,6 +18,7 @@ import {
   executeCommand,
   runCommandGroups,
 } from "./lib/check-process.mjs";
+import { processAlive } from "./lib/process-liveness.mjs";
 import {
   consumeWindowsCargoJobFrames,
   MAX_PROTOCOL_LINE_BYTES,
@@ -1299,14 +1300,9 @@ function fixtureReadiness() {
   return { promise, output };
 }
 
+// A zombie the container never reaps has exited, so it does not count.
 async function processExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
+  return processAlive(pid);
 }
 
 async function waitForProcessExit(pid, timeoutMs = 2_000) {

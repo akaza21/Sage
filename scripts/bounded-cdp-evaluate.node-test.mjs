@@ -140,6 +140,8 @@ test("huge sized collections fail closed without transferring their contents", a
         "--test",
         "--experimental-test-isolation=none",
         "--test-concurrency=1",
+        // The assertions read TAP, which is not the default on a terminal.
+        "--test-reporter=tap",
         `--test-name-pattern=^${t.name}$`,
         fileURLToPath(import.meta.url),
       ],
