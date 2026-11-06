@@ -1,5 +1,6 @@
 import { IDENTIFIER } from "./capture-native-chat-shared.mjs";
 import { richContentReadiness } from "./capture-native-chat-rich-content.mjs";
+import { contextMeterFit } from "./capture-native-chat-meter.mjs";
 import {
   paneSelector,
   ownedPaneNodes,
@@ -228,7 +229,7 @@ export function observationFor(binding) {
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
   const parity=(${parityObservation.toString()})(document,queryAll,visible,{sideParentChatId:sideChats?.useSideChatState.getState().sides.find(entry=>entry.id===chatId)?.parentChatId,forkedFrom:page?.forkedFrom});
-  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,...parity,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(allSelectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,...parity,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(allSelectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,meterFit:(${contextMeterFit.toString()})(query('form.composer')),overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
 
@@ -410,7 +411,9 @@ export function namedState(options, observation, captureChat) {
       terminal && assistantRendered && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
     "access-menu": view.accessMenu,
-    "context-meter": view.meter,
+    // The capture witnesses the measured toolbar fit: the meter shown, or
+    // dropped where the fit needs its column (Codex reference 37).
+    "context-meter": ["shown", "dropped"].includes(observation.meterFit),
     "responsive-wide":
       terminal && assistantRendered && observation.controls.send,
     "responsive-720":

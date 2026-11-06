@@ -401,28 +401,64 @@ for (const [drift, mutation] of [
   );
 
 test(
-  "the context meter follows the toolbar fit: hidden at its dense step, shown again at 480",
-  { timeout: OPEN_MS + SETTLE_MS },
+  "the context meter follows the measured toolbar fit: dropped when narrow, shown again when widened",
+  { timeout: OPEN_MS + SETTLE_MS * 2 },
   async (t) => {
-    // 320 is below every capture width: there the composer toolbar compacts
-    // to its dense step and drops the meter while the usage data stays known.
-    const options = admitted("codex", "context-meter", 480);
+    // 320 is below every capture width: the toolbar needs the meter's column
+    // there, so the fit drops it while the usage data stays known.
+    const options = admitted("codex", "context-meter", 1888);
     const capture = await openCapture(t, "agent-composer-context-known", {
       ...options,
       width: 320,
+      height: 1000,
     });
+    await settled(
+      async () => (await capture.observe()).meterFit === "dropped",
+      "context meter dropped at 320",
+    );
     const narrow = await capture.observe();
     assert.equal(narrow.visible.meter, false);
     assert.equal(narrow.controls.meter, false);
     assert.equal(narrow.controls.send, true);
-    // Widening the same Chat to the admitted 480 refits the toolbar.
+    // Widening the same Chat refits the toolbar and the meter returns.
     await capture.page.setViewportSize({
       width: options.width,
       height: options.height,
     });
-    await settled(
-      async () => (await capture.observe()).controls.meter === true,
-      "context meter at 480",
+    await settled(async () => {
+      const wide = await capture.observe();
+      return wide.meterFit === "shown" && wide.controls.meter === true;
+    }, "context meter shown again once widened");
+  },
+);
+
+test(
+  "a context meter hidden though its column fits fails the context-meter state",
+  { timeout: OPEN_MS + SETTLE_MS * 2 },
+  async (t) => {
+    const options = admitted("codex", "context-meter", 1888);
+    const capture = await openCapture(
+      t,
+      "agent-composer-context-known",
+      options,
     );
+    await settled(
+      async () => (await capture.observe()).meterFit === "shown",
+      "context meter shown",
+    );
+    // Hide the meter's column outside the fitter, so nothing justifies it.
+    await capture.evaluate(
+      `(()=>{const style=document.createElement('style');style.textContent='.composer__context-slot{display:none!important}';document.head.append(style);return true})()`,
+    );
+    await settled(
+      async () => (await capture.observe()).meterFit === "hiddenThoughItFits",
+      "meter hidden though it fits",
+    );
+    const predicates = namedState(
+      options,
+      await capture.observe(),
+      capture.captureChat,
+    );
+    assert.equal(predicates.namedState, false);
   },
 );
