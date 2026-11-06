@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -40,6 +41,10 @@ import { runCaptureActions } from "./capture-native-chat-drive.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
 import { resolveUiPort } from "./lib/ui-test-port.mjs";
+import {
+  createDiagnosticSanitizer,
+  redactedTail,
+} from "./lib/diagnostic-redaction.mjs";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -139,6 +144,132 @@ test.after(async () => {
   }
 });
 
+/** Boot outcomes other than the Workbench: the startup and module errors. */
+const BOOT_FAILURE =
+  'main.launch-screen:has(h1), section[role="alert"][aria-label="Workbench failed to load"]';
+const BOOT_EVENT_LIMIT = 20;
+const BOOT_TEXT_LIMIT = 300;
+const BOOT_SERVER_LIMIT = 1_000;
+
+const sanitize = createDiagnosticSanitizer([
+  [repositoryRoot, "<repo>"],
+  [homedir(), "<home>"],
+]);
+
+/**
+ * Records what the page reports until boot ends: crashes, errors, failed
+ * loads and the requests it is still waiting on, each bounded and sanitized.
+ */
+function recordBoot(page) {
+  const events = [];
+  const pending = new Set();
+  let unfinished = 0;
+  const started = Date.now();
+  const note = (text) => {
+    if (events.length < BOOT_EVENT_LIMIT)
+      events.push(
+        `+${Date.now() - started}ms ${sanitize(text, BOOT_TEXT_LIMIT)}`,
+      );
+  };
+  const finish = (request) => {
+    unfinished = Math.max(0, unfinished - 1);
+    pending.delete(request);
+  };
+  const listeners = {
+    crash: () => note("renderer crashed"),
+    pageerror: (error) => note(`page error: ${error.message}`),
+    request: (request) => {
+      unfinished += 1;
+      if (pending.size < BOOT_EVENT_LIMIT) pending.add(request);
+    },
+    requestfinished: finish,
+    requestfailed: (request) => {
+      finish(request);
+      note(`request failed: ${request.url()} ${request.failure()?.errorText}`);
+    },
+    response: (response) => {
+      if (response.status() >= 400)
+        note(`response ${response.status()}: ${response.url()}`);
+    },
+    framenavigated: (frame) => {
+      if (frame === page.mainFrame()) note(`navigated: ${frame.url()}`);
+    },
+  };
+  for (const [name, listener] of Object.entries(listeners))
+    page.on(name, listener);
+  return {
+    detach: () => {
+      for (const [name, listener] of Object.entries(listeners))
+        page.off(name, listener);
+    },
+    report: (headline) => {
+      const output = lane.server.output;
+      const server =
+        output &&
+        redactedTail(sanitize, output.text, BOOT_SERVER_LIMIT, {
+          partial: output.truncated,
+        });
+      return [
+        headline,
+        ...events,
+        ...[...pending].map(
+          (request) =>
+            `still loading: ${sanitize(request.url(), BOOT_TEXT_LIMIT)}`,
+        ),
+        ...(unfinished > pending.size
+          ? [`${unfinished - pending.size} more requests still loading`]
+          : []),
+        ...(server ? [`dev server output:\n${server}`] : []),
+      ].join("\n");
+    },
+  };
+}
+
+/** The bounded, sanitized text a boot screen shows. */
+async function shownText(locator) {
+  return locator
+    .innerText({ timeout: 1_000 })
+    .then((text) => JSON.stringify(sanitize(text.trim(), BOOT_TEXT_LIMIT)))
+    .catch(
+      (error) => `unreadable (${sanitize(error.message, BOOT_TEXT_LIMIT)})`,
+    );
+}
+
+/**
+ * Navigates to the app and waits for the Workbench, recording the page from
+ * before navigation until boot ends. A navigation that fails or a boot that
+ * reaches an error screen or never finishes fails with what the page showed
+ * and reported.
+ */
+async function bootWorkbench(page) {
+  const boot = recordBoot(page);
+  const workbench = page.locator("main.workbench");
+  const failure = page.locator(BOOT_FAILURE).first();
+  try {
+    const stopped = await page
+      .goto(lane.url)
+      .then(() => workbench.or(failure).first().waitFor())
+      .then(
+        () => null,
+        (error) => error,
+      );
+    // Only the sanitized first line of a browser error is reported: its full
+    // message carries browser call logs, so it is not attached as a cause.
+    if (stopped)
+      throw new Error(
+        boot.report(
+          `the Workbench did not boot (${sanitize(String(stopped.message).split("\n")[0], BOOT_TEXT_LIMIT)}); the page shows ${await shownText(page.locator("body"))}`,
+        ),
+      );
+    if (await workbench.count()) return;
+    throw new Error(
+      boot.report(`the Workbench booted to ${await shownText(failure)}`),
+    );
+  } finally {
+    boot.detach();
+  }
+}
+
 /**
  * Opens one owned page on the fixture Chat and attaches the capture CDP
  * client to it exactly as a native capture attaches to WebView2.
@@ -162,8 +293,7 @@ async function openCapture(t, scenario, options) {
     ),
   );
   const page = await context.newPage();
-  await page.goto(lane.url);
-  await page.locator("main.workbench").waitFor();
+  await bootWorkbench(page);
   const target = await discoverOwnedTarget(
     async () => {
       let response;
@@ -231,7 +361,7 @@ async function reached(capture, options) {
       return predicates.namedState;
     }, Date.now() + SETTLE_MS);
   } catch (error) {
-    if (error.message !== "state-timeout") throw error;
+    if (error.message !== "state-timeout" || !predicates) throw error;
   }
   return predicates;
 }
@@ -396,7 +526,17 @@ for (const [drift, mutation] of [
         drive(capture, options, Date.now() + 2_000),
         /state-timeout/u,
       );
-      assert.equal((await reached(capture, options)).namedState, false);
+      // Drive may terminate its CDP connection mid-request. Playwright's
+      // independent connection still witnesses the same page and predicate;
+      // lack of an observation must never count as evidence of failure closed.
+      const witness = {
+        ...capture,
+        observe: () =>
+          capture.page.evaluate(
+            observationFor(HARNESS[options.harness].binding),
+          ),
+      };
+      assert.equal((await reached(witness, options)).namedState, false);
     },
   );
 

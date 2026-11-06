@@ -5,6 +5,7 @@ import {
   guardianPhaseSource,
   observeGuardianStartup,
 } from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import { recordGuardianStartup } from "./beta0001-installed-smoke-guardian-journal.mjs";
 
 const requestEnvironment = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY";
 const startupTimeoutMs = 10_000;
@@ -213,6 +214,14 @@ export function waitForGuardianAuthority(
 ) {
   const { child } = guardian;
   const startup = observeGuardianStartup(child, diagnostics);
+  const recordStartup = diagnostics.recordStartup ?? recordGuardianStartup;
+  // The journal is written only after the guardian is settled, and nothing
+  // waits on it: a stalled disk must not delay the kill or the teardown.
+  const journal = (snapshot, outcome) => {
+    Promise.resolve()
+      .then(() => recordStartup(snapshot, outcome))
+      .catch(() => {});
+  };
   return new Promise((resolve, reject) => {
     let stdout = Buffer.alloc(0);
     let stderrBytes = 0;
@@ -229,6 +238,7 @@ export function waitForGuardianAuthority(
       const error = startup.timeoutError();
       fail(error);
       error.diagnosticReady = startup.collectCpu(error, powerShell);
+      journal(error.diagnostic, "timeout");
     }, startupTimeoutMs);
     child.stdout.on("data", (chunk) => {
       if (settled) return;
@@ -252,6 +262,7 @@ export function waitForGuardianAuthority(
         settled = true;
         clearTimeout(timer);
         resolve({ ...guardian, root: path.resolve(outputDirectory) });
+        journal(startup.snapshot(), "ready");
       } catch (error) {
         fail(error);
       }

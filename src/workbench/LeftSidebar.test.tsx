@@ -10,7 +10,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import {
   clearChatSearchFolderRequest,
   hasChatSearchFolderRequest,
@@ -199,7 +199,7 @@ afterEach(() => {
   resetAgentRailInteractions();
   useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   resetAgentRailViewPrefs();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);

@@ -149,6 +149,11 @@
         "reason": "Agent settings dialog , loaded only by a settings entry; Browser controls load separately. CSS measured 1158 B plus 7%; startup caps unchanged."
       },
       {
+        "entry": "src/features/settings/AgentHarnessSettings.tsx",
+        "maxGzipBytes": 1075,
+        "reason": "Harnesses settings page: install, version and sign-in status per harness; loaded only by Settings > Harnesses. Measured 1003 B plus 7%."
+      },
+      {
         "entry": "src/features/settings/AgentBrowserSettings.tsx",
         "maxGzipBytes": 1668,
         "reason": "live-tab browser settings, history and reused native controls; loaded only by Settings > Browser. No browser commands run on the initial chat path."

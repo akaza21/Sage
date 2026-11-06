@@ -18,7 +18,7 @@ import {
   clearUnreadAcks,
   seenChatUnreadFingerprint,
 } from "../../../src/features/chat/acp/chatUnread";
-import { clearSessionRailAcks } from "../../../src/features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../../../src/features/chat/acp/chatReadMarks";
 import { AcpDesktopError } from "../../../src/services/acpDesktop";
 import {
   appendTurn,
@@ -290,7 +290,7 @@ export async function disposeAgentTurnJourneyFixture(): Promise<void> {
   }
   clearAcpProjectionRegistry();
   clearUnreadAcks();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   pinAgentChatOwner(null);

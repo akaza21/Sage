@@ -219,7 +219,7 @@ fn rejects_no_staged_change_and_missing_repository_local_identity() {
 }
 
 #[test]
-fn repository_config_cannot_launch_hooks_signing_editor_or_fsmonitor() {
+fn repository_config_cannot_launch_hooks_signing_or_fsmonitor() {
     let repository = TestRepository::new();
     fs::write(repository.root.join("staged.txt"), "staged\n").unwrap();
     git(&repository.root, &["add", "--", "staged.txt"]);
@@ -238,12 +238,16 @@ fn repository_config_cannot_launch_hooks_signing_editor_or_fsmonitor() {
         &repository.root.join("sentinel-tool"),
         "#!/bin/sh\ntouch tool-ran\nexit 91\n",
     );
-    fs::write(
-        repository.root.join(".git").join("evil.inc"),
-        "[core]\n\thooksPath = ../.sage-hooks\n\tfsmonitor = ./sentinel-tool\n\teditor = ./sentinel-tool\n[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = ./sentinel-tool\n[maintenance]\n\tauto = true\n[gc]\n\tauto = 1\n",
-    )
-    .unwrap();
-    git(&repository.root, &["config", "include.path", "evil.inc"]);
+    // These keys are admitted because Sage overrides them on every Git call.
+    for (key, value) in [
+        ("core.hooksPath", ".sage-hooks"),
+        ("core.fsmonitor", "./sentinel-tool"),
+        ("commit.gpgSign", "true"),
+        ("maintenance.auto", "true"),
+        ("gc.auto", "1"),
+    ] {
+        git(&repository.root, &["config", key, value]);
+    }
 
     tokio::runtime::Runtime::new()
         .unwrap()
@@ -259,7 +263,7 @@ fn repository_config_cannot_launch_hooks_signing_editor_or_fsmonitor() {
 }
 
 #[test]
-fn repository_content_filters_cannot_launch_during_commit_projection() {
+fn repository_content_filters_refuse_the_commit_before_git_runs() {
     let repository = TestRepository::new();
     fs::write(
         repository.root.join(".gitattributes"),
@@ -292,19 +296,19 @@ fn repository_content_filters_cannot_launch_during_commit_projection() {
         &repository.root,
         &["config", "filter.sentinel.required", "true"],
     );
-    tokio::runtime::Runtime::new()
+    let error = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(commit_staged(&repository.workspace(), "safe commit"))
-        .unwrap();
+        .unwrap_err();
 
+    assert!(
+        matches!(error, AppError::UnsafeRepositoryConfig(_)),
+        "{error}"
+    );
     assert!(!sentinel.exists());
     assert_eq!(
         git_stdout(&repository.root, &["show", "HEAD:partial.txt"]),
-        "staged\n"
-    );
-    assert_eq!(
-        fs::read_to_string(repository.root.join("partial.txt")).unwrap(),
-        "unstaged\n"
+        "base\n"
     );
 }
 
@@ -679,6 +683,9 @@ fn rejects_worktree_git_path_files_and_directories() {
     );
     fs::write(linked.join("tracked.txt"), "staged\n").unwrap();
     git(&linked, &["add", "--", "tracked.txt"]);
+    // Admission refuses linked worktrees; trusting this one keeps testing the
+    // marker checks that sit underneath it.
+    crate::git_process::trust_repository_config_for_test(&linked);
     let workspace = Workspace::open("project-a", "root-a", &linked).unwrap();
     let head = git_stdout(&linked, &["rev-parse", "HEAD"]);
 

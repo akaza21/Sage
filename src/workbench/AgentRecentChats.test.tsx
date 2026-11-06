@@ -9,14 +9,14 @@ import { afterEach, expect, it } from "vitest";
 import { useWorkbenchStore } from "../app/store";
 import { clearAgentChatOwner, pinAgentChatOwner } from "../app/agentChatOwner";
 import {
-  ackSessionRailUnread,
-  clearSessionRailAcks,
-} from "../features/chat/acp/sessionRail";
+  markChatRead,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { AgentRecentChats } from "./AgentRecentChats";
 const initialState = useWorkbenchStore.getState();
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   clearAgentChatOwner();
   useWorkbenchStore.setState(initialState, true);
 });
@@ -26,7 +26,7 @@ it.each(["chat-current", "diff:current"])(
   (activeTabId) => {
     useWorkbenchStore.setState({ activeTabId });
     pinAgentChatOwner("chat-current");
-    ackSessionRailUnread("chat-current", "Done:100");
+    markChatRead("chat-current", 100);
     const item = {
       projectId: "project",
       projectName: "Project",
@@ -38,11 +38,16 @@ it.each(["chat-current", "diff:current"])(
         position: 0,
         status: "complete" as const,
         updatedAt: 100,
+        finishedAt: 100,
       },
     };
-    const recent = (title: string, updatedAt: number) => (
+    // A rename moves the chat's update time; only a new Turn moves its
+    // finish time.
+    const recent = (title: string, updatedAt: number, finishedAt = 100) => (
       <AgentRecentChats
-        items={[{ ...item, chat: { ...item.chat, title, updatedAt } }]}
+        items={[
+          { ...item, chat: { ...item.chat, title, updatedAt, finishedAt } },
+        ]}
         currentProjectId="project"
         recent
       />
@@ -60,7 +65,7 @@ it.each(["chat-current", "diff:current"])(
     });
     expect(screen.queryByLabelText("Unread updates")).toBeNull();
     // New activity while away still produces an unread indicator.
-    view.rerender(recent("Renamed", 300));
+    view.rerender(recent("Renamed", 300, 300));
     expect(screen.getByLabelText("Unread updates")).toBeVisible();
   },
 );

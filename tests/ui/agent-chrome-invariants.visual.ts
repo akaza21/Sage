@@ -200,13 +200,19 @@ test.describe("artifact pane", () => {
     expect(edges.header - edges.collapse.right).toBeLessThanOrEqual(16);
   });
 
-  test("starts the empty pane's content exactly below the tab header", async ({
+  test("starts the Changes review exactly below the tab header when the pane opens with nothing open", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
     await page.getByRole("button", { name: /^Show files and preview/ }).click();
     const pane = page.getByLabel("Agent artifacts", { exact: true });
-    await expect(pane.getByText("Files, changes, and preview")).toBeVisible();
+    // With nothing open, the pane opens the chat's Changes.
+    await expect(
+      pane.getByRole("tab", { name: "Changes", selected: true }),
+    ).toBeVisible();
+    await expect(
+      pane.getByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
     await expectStacked(pane, [
       ".agent-artifact-pane__header",
       ".agent-artifact-pane__canvas",
@@ -481,4 +487,55 @@ test("sets Add menu descriptions under their labels and wraps them in the item",
       aligned: true,
       contained: true,
     });
+});
+
+test("shows access as a plain label, unboxed in every mode", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const access = page
+    .locator("form.composer")
+    .first()
+    .getByRole("button", { name: "Access options", exact: true });
+  const plain = {
+    fill: "rgba(0, 0, 0, 0)",
+    border: ["0px", "0px", "0px", "0px"],
+    padding: "0px",
+    shadow: "none",
+  };
+
+  // Write access changes the label's colour only, never boxes it.
+  for (const [id, label] of [
+    ["readOnly", "Read-only"],
+    ["workspaceWrite", "Workspace edits"],
+  ] as const) {
+    await page.evaluate(
+      async ([id, label]) => {
+        const fixture =
+          await import("/tests/ui/fixtures/surfaces/composerAccessVisualFixture.ts");
+        fixture.installVisualComposerAccessFixture([
+          { id, label, description: label, fallback: true },
+        ]);
+      },
+      [id, label] as const,
+    );
+    await expect(access).toHaveText(label);
+    await page.mouse.move(1, 1);
+    expect(
+      await access.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          fill: style.backgroundColor,
+          border: ["top", "right", "bottom", "left"].map((side) =>
+            style.getPropertyValue(`border-${side}-width`),
+          ),
+          padding: style.paddingLeft,
+          shadow: style.boxShadow,
+        };
+      }),
+      label,
+    ).toEqual(plain);
+  }
+  await expect(access).toHaveClass(/composer__access-label--write/);
 });

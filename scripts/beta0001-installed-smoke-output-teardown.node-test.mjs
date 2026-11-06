@@ -12,6 +12,15 @@ import {
   waitForGuardianAuthority,
 } from "./beta0001-installed-smoke-output-authority.mjs";
 import { observeGuardianStartup } from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import {
+  GUARDIAN_JOURNAL_MAXIMUM_BYTES,
+  GUARDIAN_JOURNAL_MAXIMUM_RETAINED_RECORDS,
+  guardianJournalRetention,
+  recordGuardianStartup,
+  summarizeGuardianJournal,
+} from "./beta0001-installed-smoke-guardian-journal.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 
 const releaseGraceMs = 5000;
 const teardownTimeoutMs = 10_000;
@@ -367,4 +376,199 @@ test("sampling cannot postpone the teardown deadline for a guardian that never c
   } finally {
     finishSampling({ status: "unavailable" });
   }
+});
+
+function phaseSnapshot(observed, elapsedMs) {
+  const phases = Object.fromEntries(
+    Object.entries(observed).map(([phase, observedMs]) => [
+      phase,
+      { elapsedMs: observedMs, userMs: 1, kernelMs: 1, observedMs },
+    ]),
+  );
+  return { elapsedMs, phases, stderr: { bytes: 99 }, child: { pid: 7 } };
+}
+
+test("the guardian journal records only outcome and phase times, and summarizes the slowest steps", async () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), "sage-guardian-journal-"));
+  try {
+    const journal = path.join(temp, "journal.jsonl");
+    assert.equal(
+      await recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "ready",
+        "",
+      ),
+      false,
+    );
+    assert.equal(
+      await recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "unknown",
+        journal,
+      ),
+      false,
+    );
+    assert.equal(
+      await recordGuardianStartup(
+        phaseSnapshot(
+          {
+            "script-start": 600,
+            "identity-start": 650,
+            "identity-verified": 700,
+            "compile-start": 700,
+            "compile-complete": 900,
+            "seal-start": 900,
+            "seal-acquired": 950,
+            "ready-written": 960,
+          },
+          961,
+        ),
+        "ready",
+        journal,
+      ),
+      true,
+    );
+    assert.equal(
+      await recordGuardianStartup(
+        phaseSnapshot({ "script-start": 614, "identity-start": 5579 }, 10001),
+        "timeout",
+        journal,
+      ),
+      true,
+    );
+    const lines = readFileSync(journal, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(lines[1], {
+      outcome: "timeout",
+      elapsedMs: 10001,
+      phases: {
+        "script-start": 614,
+        "identity-start": 5579,
+        "identity-verified": null,
+        "compile-start": null,
+        "compile-complete": null,
+        "seal-start": null,
+        "seal-acquired": null,
+        "ready-written": null,
+      },
+    });
+    assert.equal(
+      summarizeGuardianJournal(readFileSync(journal, "utf8")),
+      "guardian startup: 2 starts, 1 timed out, slowest total 10001 ms; slowest step ms: script-start 614, identity-start 4965, identity-verified 50, compile-start 0, compile-complete 200, seal-start 0, seal-acquired 50, ready-written 10",
+    );
+    assert.equal(
+      summarizeGuardianJournal(""),
+      "guardian startup: no guardian started",
+    );
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the guardian journal stops appending at its byte cap", async () => {
+  const temp = mkdtempSync(
+    path.join(os.tmpdir(), "sage-guardian-journal-cap-"),
+  );
+  try {
+    const journal = path.join(temp, "journal.jsonl");
+    writeFileSync(journal, "x".repeat(GUARDIAN_JOURNAL_MAXIMUM_BYTES - 10));
+    assert.equal(
+      await recordGuardianStartup(
+        phaseSnapshot({ "script-start": 600 }, 10),
+        "ready",
+        journal,
+      ),
+      false,
+    );
+    assert.equal(
+      readFileSync(journal, "utf8").length,
+      GUARDIAN_JOURNAL_MAXIMUM_BYTES - 10,
+    );
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a journal write that never settles cannot delay killing or settling a timed-out guardian", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  const guardian = guardianFor(child);
+  const journalled = [];
+  const waiting = waitForGuardianAuthority(
+    guardian,
+    path.resolve("unused-output"),
+    undefined,
+    {
+      sampleCpu: async () => ({ status: "unavailable" }),
+      recordStartup: (snapshot, outcome) => {
+        journalled.push(outcome);
+        return new Promise(() => {});
+      },
+    },
+  );
+  waiting.catch(() => {});
+  try {
+    await once(child, "spawn");
+    mock.timers.tick(10_000);
+    assert.equal(child.killed, true, "the kill must not wait on the journal");
+    assert.deepEqual(journalled, [], "the journal is written after the kill");
+    await assert.rejects(
+      waiting,
+      /^Error: installed-smoke-output-authority-timeout /u,
+    );
+    assert.ok(child.exitCode !== null || child.signalCode !== null);
+    assert.deepEqual(journalled, ["timeout"]);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await guardian.closed;
+  }
+});
+
+test("a stalled journal disk keeps at most one write in flight and one record waiting", async () => {
+  let releaseStat;
+  const statStalled = new Promise((resolve) => {
+    releaseStat = resolve;
+  });
+  const appended = [];
+  const io = {
+    stat: () => statStalled,
+    appendFile: async (journal, line) => {
+      appended.push(
+        JSON.parse(line).outcome + ":" + JSON.parse(line).elapsedMs,
+      );
+    },
+  };
+  const snapshot = (elapsedMs) =>
+    phaseSnapshot({ "script-start": 600, "identity-start": 5579 }, elapsedMs);
+  const results = [];
+  let maximumLine = 0;
+  results.push(
+    recordGuardianStartup(snapshot(0), "ready", "stalled.jsonl", io),
+  );
+  results.push(
+    recordGuardianStartup(snapshot(1), "timeout", "stalled.jsonl", io),
+  );
+  for (let index = 2; index < 1000; index++) {
+    results.push(
+      recordGuardianStartup(snapshot(index), "ready", "stalled.jsonl", io),
+    );
+    const retained = guardianJournalRetention();
+    assert.ok(retained.records <= GUARDIAN_JOURNAL_MAXIMUM_RETAINED_RECORDS);
+    maximumLine = Math.max(maximumLine, retained.bytes);
+  }
+  assert.deepEqual(guardianJournalRetention().records, 2);
+  assert.ok(maximumLine <= 2 * 512, `retained ${maximumLine} bytes`);
+  // Every record behind the stalled write except the waiting timeout was
+  // dropped at once, so nothing else is held.
+  const dropped = await Promise.all(results.slice(2));
+  assert.ok(dropped.every((written) => written === false));
+  releaseStat({ size: 0 });
+  assert.equal(await results[0], true);
+  assert.equal(await results[1], true);
+  assert.deepEqual(appended, ["ready:0", "timeout:1"]);
+  assert.deepEqual(guardianJournalRetention(), { records: 0, bytes: 0 });
 });

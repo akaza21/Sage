@@ -36,6 +36,7 @@ import type * as SplitterChunk from "./AgentChatSplitter";
 import { canShowAgentChatSplit } from "./agentChatSplit";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
+import { ViewedChatReadMark } from "./ViewedChatReadMark";
 import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 
 const SplitterPart = lazyParts<typeof SplitterChunk>(
@@ -223,6 +224,7 @@ export function AgentChatPanes({
   return (
     <AgentSessionChromeContext.Provider value={publishSessionChrome}>
       <AcpProjectionOwnerContext value={projectionIds}>
+        <ViewedChatReadMark chatIds={displayedIds} visible={visible} />
         <Activity mode={visible ? "visible" : "hidden"}>
           <div className="agent-chat-center surface surface--card">
             <AgentChatCenterHeader
