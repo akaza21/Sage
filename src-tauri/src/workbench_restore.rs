@@ -558,6 +558,7 @@ mod tests {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(resource.clone()),
             repository: None,
             diff_ref: None,
