@@ -179,9 +179,9 @@
       },
       {
         "entry": "src/features/chat/acp/PermissionPrompt.tsx",
-        "maxGzipBytes": 1777,
+        "maxGzipBytes": 1950,
         "maxCssGzipBytes": 955,
-        "reason": "Composer-slot approval card; loads only while a live Turn awaits a permission decision."
+        "reason": "Composer-slot approval card, including the elevated browser developer-mode variant and its risk text (ADR-0009b); loads only while a live Turn awaits a permission decision."
       },
       {
         "entry": "src/features/chatSearch/ChatSearchControl.tsx",

@@ -18,9 +18,12 @@ use crate::{
 };
 
 mod containment;
+mod parallel_limits;
+mod process_tree;
 mod readers;
 mod repository_config;
 mod root_authority;
+use process_tree::{GitChild, ProcessTree};
 use readers::{ReaderTask, ReaderTasks, StdoutCapture};
 #[cfg(test)]
 mod test_support;
@@ -289,6 +292,14 @@ async fn run_admitted(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    // Created suspended on Windows: it runs only once its whole tree is held.
+    let tree = match ProcessTree::contain(&child) {
+        Ok(tree) => tree,
+        Err(error) => {
+            let _ = child.start_kill();
+            return Err(AppError::Io(error));
+        }
+    };
     #[cfg(test)]
     if let (Some(hook), Some(pid)) = (&policy.spawned_hook, child.id()) {
         hook(pid);
@@ -297,7 +308,7 @@ async fn run_admitted(
         Some(stdout) => stdout,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks::default(),
                 reaper_lease,
                 PostSpawnFailure {
@@ -315,7 +326,7 @@ async fn run_admitted(
         Some(stderr) => stderr,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks {
                     stdout: Some(readers::spawn_stdout(stdout, stdout_capture)),
                     stderr: None,
@@ -341,7 +352,7 @@ async fn run_admitted(
     #[cfg(test)]
     if policy.post_spawn_failure {
         return containment::cleanup_failure(
-            child,
+            GitChild { root: child, tree },
             readers,
             reaper_lease,
             PostSpawnFailure {
@@ -395,7 +406,7 @@ async fn run_admitted(
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 failure,
@@ -407,7 +418,7 @@ async fn run_admitted(
         }
         Err(_) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 PostSpawnFailure {
@@ -440,6 +451,11 @@ fn configured_command(
         .args(["-c", "protocol.ext.allow=never"])
         .args(["-c", "protocol.file.allow=user"])
         .args(["-c", "safe.bareRepository=explicit"]);
+    // Caps on the parallel jobs the admitted repository asks for; see
+    // `parallel_limits`. Command-line config wins over the repository's.
+    for setting in repository.map_or(&[][..], |repository| repository.parallel_overrides()) {
+        command.arg("-c").arg(setting);
+    }
     if let Some(root_authority) = root_authority {
         root_authority.bind_child(&mut command, root);
     } else {
@@ -473,7 +489,7 @@ fn configured_command(
             .env("GIT_WORK_TREE", repository.work_tree());
     }
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
+    command.creation_flags(CREATE_NO_WINDOW | process_tree::CREATION_FLAGS);
     command
 }
 

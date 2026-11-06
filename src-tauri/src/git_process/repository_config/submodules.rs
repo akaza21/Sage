@@ -209,7 +209,13 @@ impl Scan {
                 return Opened::Refused(uncheckable());
             }
         }
-        Opened::Repository(AdmittedRepository { git_dir, work_tree })
+        // A submodule's own parallel-job keys are not capped here: the caps
+        // the parent passes with `-c` reach its Git children too.
+        Opened::Repository(AdmittedRepository {
+            git_dir,
+            work_tree,
+            parallel: Vec::new(),
+        })
     }
 
     async fn check_config(

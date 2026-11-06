@@ -480,13 +480,25 @@ for (const profile of profiles) {
                   exact: true,
                 }),
               ).toBeVisible();
-              // Like Codex refs 36/37, the narrowest composer drops the context meter.
-              const contentWidth = await composer.evaluate(
-                (element) => element.clientWidth,
+              // Like Codex refs 36/37, the context meter is the first thing a
+              // tight composer drops: it never outlasts a control label.
+              // (The width sweep in composer-compaction checks it returns.)
+              const labelsCompacted = await composer.evaluate((element) =>
+                [
+                  ".composer__access-text",
+                  ".composer__harness .searchable-picker__trigger-label",
+                  ".composer__model-label",
+                  ".composer__effort-picker[aria-controls] .composer__effort-label",
+                  ".project-scope .searchable-picker__trigger-label",
+                ].some((selector) => {
+                  const label = element.querySelector(selector);
+                  return (
+                    label !== null && label.getBoundingClientRect().width === 0
+                  );
+                }),
               );
-              await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context && contentWidth > 280 ? 1 : 0,
-              );
+              if (!profile.context || labelsCompacted)
+                await expect(composer.getByRole("progressbar")).toHaveCount(0);
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
               );
@@ -735,12 +747,13 @@ for (const profile of profiles) {
             name: "Composer options",
             exact: true,
           }),
-        ).toHaveCount(0);
+        ).toBeDisabled();
         const options = page.getByRole("menu", {
           name: "Composer options menu",
         });
         // The fixture renames the project, so match the picker by its prefix.
-        // A new chat scopes its project from the heading caption, not the composer.
+        // This exercises the new-chat heading's picker; the composer's own
+        // chip is covered by the project-chip geometry tests.
         const project = page
           .getByRole("region", { name: "New chat", exact: true })
           .first()

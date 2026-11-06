@@ -65,7 +65,7 @@ impl JobBoundary {
 
     /// Job accounting is the membership authority. No PID is reopened, so a
     /// recycled system PID can never make teardown wait on an unrelated process.
-    pub(super) fn active_processes(&self, capacity: u32) -> Result<u32, LaunchError> {
+    pub(crate) fn active_processes(&self, capacity: u32) -> Result<u32, LaunchError> {
         let accounting = self.accounting()?;
         if accounting.ActiveProcesses > capacity {
             return Err(LaunchError::ContainmentFailure);

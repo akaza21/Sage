@@ -134,7 +134,7 @@ it("keeps Harness and Access mutually exclusive without pointer events", async (
 
 async function openOptions() {
   const options = screen.queryByRole("button", { name: "Composer options" });
-  if (options) {
+  if (options && !options.hasAttribute("disabled")) {
     fireEvent.click(options);
     await screen.findByRole("menu", { name: "Composer options menu" });
   }
@@ -151,9 +151,11 @@ it("waits for session confirmation before labeling the active model", () => {
   );
 });
 
-it("hides the add button when there are no composer actions", () => {
+it("disables the add button when there are no composer actions", () => {
   renderControls();
-  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
 });
 
 it("shows harness, unconfirmed model, effort availability and access before a first turn", async () => {
@@ -297,7 +299,7 @@ describe("last confirmed model label", () => {
       expect(screen.queryByRole("menu")).toBeNull();
       expect(
         screen.queryByRole("button", { name: "Composer options" }),
-      ).toBeNull();
+      ).toBeDisabled();
       expect(composer).toHaveFocus();
     } finally {
       composer.remove();
@@ -655,7 +657,7 @@ describe("last confirmed model label", () => {
     renderControls({ sessionConfig: confirmedModelConfig(), canPrompt: false });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
   });
 
   it("shows only the selected harness's confirmed model and effort in its picker row", async () => {
@@ -1267,7 +1269,7 @@ describe("composer permission mode picker", () => {
     renderControls({ projectName: "Alpha", turnBusy: true });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Project: Alpha" }),
     ).toBeDisabled();
@@ -1401,7 +1403,7 @@ describe("composer permission mode picker", () => {
     renderControls({ projectName: "Alpha" });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -1541,7 +1543,7 @@ describe("composer permission mode picker", () => {
     renderControls();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
     expect(screen.getByLabelText("Model", { exact: true })).toBeVisible();
     expect(
@@ -1596,7 +1598,7 @@ describe("composer permission mode picker", () => {
     ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
   });
 
   it("shows the selected harness even when a previous session belongs to another", async () => {
@@ -1829,11 +1831,15 @@ describe("composer permission mode picker", () => {
       /^OpenCode$/,
     );
     expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
-    expect(
-      screen
-        .getByRole("option", { name: /Missing/ })
-        .querySelector(".searchable-picker__option-copy"),
-    ).toHaveTextContent(/^Missing$/);
+    // The unavailable reason is a visible line under the name, not only
+    // the option's accessible description.
+    const missingCopy = screen
+      .getByRole("option", { name: /Missing/ })
+      .querySelector(".searchable-picker__option-copy")!;
+    expect(missingCopy.firstElementChild).toHaveTextContent(/^Missing$/);
+    expect(missingCopy.lastElementChild).toHaveTextContent(
+      /^Harness is not installed\.$/,
+    );
     expect(
       screen.getByRole("option", { name: /Missing/ }),
     ).toHaveAccessibleDescription("Harness is not installed.");

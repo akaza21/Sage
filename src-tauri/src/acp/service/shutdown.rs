@@ -129,6 +129,7 @@ impl AcpService {
 
 impl Drop for AcpService {
     fn drop(&mut self) {
+        self.browser_attachments.retire_all();
         self.clear_lane_channels();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();

@@ -545,7 +545,7 @@ function Start-FootprintJobProcess {
 
 function Stop-FootprintJobProcess {
   param(
-    [Parameter(Mandatory)]$Process,
+    [Parameter(Mandatory)][AllowNull()]$Process,
     [Parameter(Mandatory)][SageFootprint.NativeJobBoundary]$Boundary,
     [ValidateRange(0, 5000)][int]$GraceMilliseconds = 1000,
     [ValidateRange(100, 5000)][int]$OrphanObservationMilliseconds = 5000

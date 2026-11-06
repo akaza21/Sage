@@ -7,6 +7,12 @@
   border-right-color: var(--agent-shell-divider);
 }
 
+/* The rail's own border is the edge; the splitter beside it lights only on
+   hover, drag and focus, so the edge never draws twice. */
+.workbench--agent .workbench-sidebar-splitter--leading {
+  --sidebar-splitter-fill: transparent;
+}
+
 .workbench--agent .project-sidebar__icon-rail {
   display: flex;
   grid-column: 1;

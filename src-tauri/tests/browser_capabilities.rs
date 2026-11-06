@@ -97,6 +97,8 @@ fn every_browser_command_is_registered_once_behind_the_main_invoke_guard() {
         "browser::passwords::commands::browser_passwords_copy",
         "settings_commands::browser_preferences::browser_preferences",
         "settings_commands::browser_preferences::browser_set_preferences",
+        "settings_commands::browser_developer::browser_developer_mode",
+        "settings_commands::browser_developer::browser_set_developer_mode",
         "settings_commands::browser_download_folder::browser_download_folder",
         "settings_commands::browser_download_folder::browser_choose_download_folder",
         "settings_commands::browser_download_folder::browser_reset_download_folder",

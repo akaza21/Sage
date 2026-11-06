@@ -111,6 +111,12 @@ pub(crate) async fn browser_hide(
     app.clone()
         .run_on_main_thread(move || {
             visibility.hide();
+            if cover != Some(true) {
+                visibility.sleep();
+                app.state::<crate::state::AppState>()
+                    .acp
+                    .suspend_browser_tab(&tab_id);
+            }
             let state = app.state::<BrowserState>();
             if let Some(exit) = state.annotate.hiding(&tab_id, cover == Some(true)) {
                 super::annotate::leave(&app, &tab_id, exit);

@@ -14,7 +14,8 @@ export interface BrowserOperationProjection {
     | "waitFor"
     | "screenshot"
     | "readConsole"
-    | "readNetwork";
+    | "readNetwork"
+    | "cdp";
   phase: "started" | "completed" | "denied" | "failed" | "outcomeUnknown";
   origin: string;
   summary: string;

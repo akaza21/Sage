@@ -141,17 +141,44 @@
   clip-path: inset(50%);
 }
 
+.composer__harness-menu {
+  --picker-option-inline-padding: var(--space-2);
+  --picker-option-icon-size: var(--icon-size-lg);
+  --picker-option-gap: var(--space-2);
+}
+
 .composer__harness-menu .searchable-picker__option {
-  min-height: var(--picker-option-min-height, var(--control-height-default));
+  min-height: var(--control-height-default);
   grid-template-columns:
-    var(--picker-option-icon-size, var(--icon-size-lg)) minmax(0, 1fr)
-    var(--picker-option-check-size, var(--icon-size-md));
-  gap: var(--picker-option-gap, var(--space-2));
-  padding: var(--picker-option-padding, var(--space-1) var(--space-2));
+    var(--picker-option-icon-size) minmax(0, 1fr)
+    var(--icon-size-md);
+  gap: var(--picker-option-gap);
+  padding: var(--space-1) var(--picker-option-inline-padding);
   border-radius: var(--radius-md);
 }
 
-.composer__harness-menu > [role="listbox"] {
+/* A sign-in action sits on its own line under the harness name and detail,
+   aligned with them, so it never takes their width in the narrow menu. */
+.composer__harness-menu .searchable-picker__option-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.composer__harness-menu .searchable-picker__option-action {
+  align-self: flex-start;
+  margin: 0 0 var(--space-1)
+    calc(
+      var(--picker-option-inline-padding) + var(--picker-option-icon-size) +
+        var(--picker-option-gap)
+    );
+}
+
+/* The list grows to the popover's own height cap instead of the shared
+   picker's shorter one, so a full harness catalogue needs no scrollbar while
+   the window has room above the composer. */
+.composer__harness-menu.searchable-picker__popover > [role="listbox"] {
+  max-height: none;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
@@ -167,7 +194,8 @@
   line-height: 1.2;
 }
 
-.composer__harness-menu .searchable-picker__subtitle {
+.composer__harness-menu
+  :is(.searchable-picker__subtitle, .searchable-picker__reason) {
   overflow: hidden;
   color: var(--composer-muted-text);
   font-size: var(--picker-harness-type-size);
@@ -185,14 +213,6 @@
 .composer__harness-menu .searchable-picker__selected-check {
   grid-column: 3;
   color: var(--composer-control-text);
-}
-
-.composer__harness-menu .searchable-picker__reason {
-  position: absolute;
-  width: var(--border-width);
-  height: var(--border-width);
-  overflow: hidden;
-  clip-path: inset(50%);
 }
 
 @media (forced-colors: active) {
@@ -220,7 +240,7 @@
 }
 
 .composer__harness-menu .searchable-picker__option > :is(svg, img) {
-  width: var(--picker-option-icon-size, var(--icon-size-lg));
-  height: var(--picker-option-icon-size, var(--icon-size-lg));
+  width: var(--picker-option-icon-size);
+  height: var(--picker-option-icon-size);
   flex: none;
 }

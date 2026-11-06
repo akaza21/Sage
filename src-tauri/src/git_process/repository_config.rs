@@ -46,7 +46,7 @@ use crate::{
     git_budget,
 };
 
-use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture};
+use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture, parallel_limits};
 
 mod discovery;
 mod fingerprint;
@@ -84,6 +84,8 @@ static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::
 pub(super) struct AdmittedRepository {
     git_dir: PathBuf,
     work_tree: PathBuf,
+    /// `-c` caps on the parallel jobs this repository's config asks for.
+    parallel: Vec<String>,
 }
 
 impl AdmittedRepository {
@@ -105,6 +107,7 @@ impl AdmittedRepository {
         Ok(Ok(Self {
             git_dir,
             work_tree: PathBuf::from(Component::CurDir.as_os_str()),
+            parallel: Vec::new(),
         }))
     }
 
@@ -114,6 +117,10 @@ impl AdmittedRepository {
 
     pub(super) fn work_tree(&self) -> &Path {
         &self.work_tree
+    }
+
+    pub(super) fn parallel_overrides(&self) -> &[String] {
+        &self.parallel
     }
 }
 
@@ -292,7 +299,7 @@ impl Probe {
         }
         let location = Location::parse(&location)?;
         let (mut watched, cacheable) = discovery_path(ancestors, &location.git_dir);
-        let repository = match AdmittedRepository::inside(root, &location)? {
+        let mut repository = match AdmittedRepository::inside(root, &location)? {
             Ok(repository) => repository,
             Err(layout) => {
                 return Ok(Self {
@@ -357,14 +364,20 @@ impl Probe {
             if listing.stdout_truncated {
                 Some(Refusal::Config(TOO_LARGE.to_owned()))
             } else {
-                listed_config_refusal(
+                let refusal = listed_config_refusal(
                     root,
                     authority,
                     &repository,
                     &listing.stdout,
                     refusal_message,
                 )
-                .await?
+                .await?;
+                // Only a repository that sets a parallel-job key pays for
+                // reading the values, once per changed config.
+                if refusal.is_none() && parallel_limits::lists_any(&listing.stdout) {
+                    repository.parallel = read_parallel_caps(root, authority, &repository).await;
+                }
+                refusal
             }
         };
         Ok(Self {
@@ -416,6 +429,24 @@ const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git
 /// named by `message`, or a Git path protection switched off. Turning
 /// `core.protectNTFS` or `core.protectHFS` off lets the index hold names the
 /// filesystem resolves to another entry, so only an explicit `true` passes.
+/// The caps the repository's parallel-job settings call for. A read that
+/// fails holds every key to one.
+async fn read_parallel_caps(
+    root: &Path,
+    authority: Option<&GitRootAuthority>,
+    repository: &AdmittedRepository,
+) -> Vec<String> {
+    let values = probe_git(
+        root,
+        authority,
+        Some(repository),
+        &parallel_limits::PROBE_ARGS,
+        StdoutCapture::Bytes(parallel_limits::MAX_PROBE_BYTES),
+    )
+    .await;
+    parallel_limits::from_probe(values.as_ref().ok())
+}
+
 async fn listed_config_refusal(
     root: &Path,
     authority: Option<&GitRootAuthority>,
