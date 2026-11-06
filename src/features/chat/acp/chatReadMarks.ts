@@ -17,8 +17,9 @@ let marks = new Map<string, number>();
 // view instead of being hidden by the rendered mark.
 let saved = new Map<string, number>();
 const writing = new Map<string, number>();
-// Chats marked unread before the stored marks loaded; their stored marks
-// are stale.
+// Chats marked unread whose delete the store may not have applied when the
+// stored marks were read; their stored marks are stale. Bounded like the
+// marks: insertion order evicts the oldest.
 let unreadBeforeLoad = new Set<string>();
 let restoring: Promise<void> | null = null;
 let restored = false;
@@ -131,13 +132,34 @@ export function markChatRead(chatId: string, readThrough: number) {
     });
 }
 
-/** Forgets the mark, so the chat's latest Turn shows as Unread. */
+/**
+ * Forgets the mark, so the chat's latest Turn shows as Unread. If the store
+ * refuses, the mark it still holds is shown again rather than an Unread the
+ * next start would contradict.
+ */
 export function markChatUnread(chatId: string) {
+  const previous = marks.get(chatId);
   saved.delete(chatId);
-  if (!restored) unreadBeforeLoad.add(chatId);
+  if (!restored) {
+    unreadBeforeLoad.delete(chatId);
+    unreadBeforeLoad.add(chatId);
+    while (unreadBeforeLoad.size > MAX_CHAT_READ_MARKS)
+      unreadBeforeLoad.delete(unreadBeforeLoad.values().next().value!);
+  }
   if (marks.delete(chatId)) emit();
   if (!isTauriRuntime()) return;
-  void invokeNative("chat_mark_unread", { chatId }).catch(() => {});
+  void invokeNative("chat_mark_unread", { chatId })
+    .then(() => {
+      // A snapshot read after the delete cannot hold the mark.
+      if (!restoring) unreadBeforeLoad.delete(chatId);
+    })
+    .catch(() => {
+      unreadBeforeLoad.delete(chatId);
+      // Nothing newer was recorded meanwhile: restore what the store holds.
+      if (previous === undefined || marks.has(chatId)) return;
+      remember(chatId, previous);
+      emit();
+    });
 }
 
 export function resetChatReadMarks() {

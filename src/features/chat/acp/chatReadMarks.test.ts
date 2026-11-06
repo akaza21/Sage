@@ -18,6 +18,10 @@ const store = vi.hoisted(() => ({
   writes: 0,
   // Resolves the stored snapshot when the test says so.
   holdLoad: null as Promise<void> | null,
+  failLoad: false,
+  failUnread: false,
+  // Keeps deletes from landing until the test says so.
+  holdUnread: null as Promise<void> | null,
 }));
 vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -26,6 +30,7 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
     args?: { mark?: { chatId: string; readThrough: number }; chatId?: string },
   ) => {
     if (command === "chat_read_marks") {
+      if (store.failLoad) throw new Error("settings store is locked");
       const snapshot = [...store.marks];
       if (store.holdLoad) await store.holdLoad;
       return snapshot
@@ -43,6 +48,8 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
       return { chatId, readThrough: store.marks.get(chatId) };
     }
     if (command === "chat_mark_unread" && args?.chatId) {
+      if (store.failUnread) throw new Error("settings store is busy");
+      if (store.holdUnread) await store.holdUnread;
       store.marks.delete(args.chatId);
       return null;
     }
@@ -56,6 +63,9 @@ beforeEach(() => {
   store.failWrites = false;
   store.writes = 0;
   store.holdLoad = null;
+  store.failLoad = false;
+  store.failUnread = false;
+  store.holdUnread = null;
   resetChatReadMarks();
 });
 
@@ -138,4 +148,37 @@ it("keeps a mark made while a full stored snapshot loads", async () => {
   // The oldest stored mark gave way; the most recent stored one stayed.
   expect(chatReadThrough("stored-0")).toBeUndefined();
   expect(chatReadThrough(`stored-${MAX_CHAT_READ_MARKS - 1}`)).toBe(1);
+});
+
+it("shows the stored mark again when Mark unread is refused", async () => {
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
+  store.failUnread = true;
+  markChatUnread("chat-a");
+  expect(chatReadThrough("chat-a")).toBeUndefined();
+  // The store still holds the mark, so the rail shows the chat read again.
+  await vi.waitFor(() => expect(chatReadThrough("chat-a")).toBe(1_000));
+  await reload();
+  expect(unread("chat-a", 1_000)).toBe(false);
+});
+
+it("bounds the Mark unread requests held while the stored marks fail to load", async () => {
+  store.marks.set("chat-0", 1);
+  store.marks.set("chat-1", 1);
+  store.failLoad = true;
+  await restoreChatReadMarks();
+  let release!: () => void;
+  store.holdUnread = new Promise((resolve) => (release = resolve));
+  // One request more than the bound: chat-0 first, chat-1 last.
+  markChatUnread("chat-0");
+  for (let index = 0; index < MAX_CHAT_READ_MARKS - 1; index += 1)
+    markChatUnread(`other-${index}`);
+  markChatUnread("chat-1");
+  store.failLoad = false;
+  // The snapshot predates the deletes still on their way to the store.
+  await restoreChatReadMarks();
+  release();
+  expect(chatReadThrough("chat-1")).toBeUndefined();
+  // Only the oldest request beyond the bound gives way.
+  expect(chatReadThrough("chat-0")).toBe(1);
 });

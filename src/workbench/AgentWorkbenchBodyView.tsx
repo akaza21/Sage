@@ -8,7 +8,6 @@ import { AgentArtifactPane } from "./AgentArtifactPane";
 import { AgentChatPanes } from "./AgentChatPanes";
 import { AgentToolsProvider } from "./AgentToolsProvider";
 import { LeftSidebar } from "./LeftSidebar";
-import { ViewedChatReadMark } from "./ViewedChatReadMark";
 import { WorkbenchSidebarSplitter } from "./WorkbenchSidebarSplitter";
 import { AgentNavigationPart } from "./agentNavigationLazy";
 import {
@@ -81,7 +80,6 @@ export default function AgentWorkbenchBodyView({
             } as CSSProperties
           }
         >
-          <ViewedChatReadMark visible={centerVisible} />
           <AgentHomeNavigationContext.Provider value={navigateHome}>
             {navigationCollapsed ? (
               <AgentNavigationPart

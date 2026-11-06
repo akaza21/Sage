@@ -16,10 +16,12 @@ import { usePinnedAgentChatOwner } from "../app/agentChatOwner";
 import { chatDisplayTitle } from "../domain/chatTitle";
 import { useChatsAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import {
+  markChatRead,
   markChatUnread,
   useChatReadMarks,
 } from "../features/chat/acp/chatReadMarks";
 import {
+  sessionRailLive,
   sessionRailStatusLabel,
   sessionRailUnreadVisible,
 } from "../features/chat/acp/sessionRail";
@@ -231,6 +233,13 @@ export function ProjectChatNavigation({
               onClick={() => {
                 clearAgentRailUnread(tab.id);
                 if (selected) {
+                  // Opening the chat acknowledges its finished Turn, even
+                  // when it is already on screen after "Mark unread".
+                  if (
+                    sessionRailStatusLabel(status) &&
+                    !sessionRailLive(status)
+                  )
+                    markChatRead(tab.id, tab.finishedAt ?? 0);
                   void activateTab(tab.id);
                   return;
                 }
