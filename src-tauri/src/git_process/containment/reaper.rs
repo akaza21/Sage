@@ -41,7 +41,7 @@ pub(super) fn handoff_reaper(
             {
                 // Close the job and the root handles before reporting the
                 // exit, so a confirmed exit means nothing here is still held.
-                drop(tree);
+                tree.close();
                 drop(root_authority);
                 exit_charge.confirm();
                 drop(active_reaper);

@@ -51,6 +51,7 @@ pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>
     let (mut walked, rest) = match start(target) {
         Start::Relative => (os_path(base), target),
         Start::Absolute(root, rest) => (root, rest),
+        #[cfg(windows)]
         Start::Refused => return None,
     };
     let mut prefixes = Vec::new();
@@ -72,7 +73,9 @@ enum Start<'a> {
     Relative,
     /// An absolute path: the root it starts at, and the rest.
     Absolute(PathBuf, &'a str),
-    /// A path Git and the filesystem calls here could start differently.
+    /// A path Git and the filesystem calls here could start differently;
+    /// only Windows has such starts (a current-drive root, say).
+    #[cfg(windows)]
     Refused,
 }
 

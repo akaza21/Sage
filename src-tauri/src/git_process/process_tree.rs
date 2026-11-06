@@ -55,6 +55,9 @@ impl ProcessTree {
     pub(super) fn is_empty(&self) -> bool {
         true
     }
+
+    /// Nothing is held here.
+    pub(super) fn close(self) {}
 }
 
 #[cfg(windows)]
@@ -107,6 +110,9 @@ mod windows {
         pub(in super::super) fn terminate(&self) -> bool {
             self.0.terminate().is_ok()
         }
+
+        /// Closes the job handle; kill-on-close ends anything still running.
+        pub(in super::super) fn close(self) {}
 
         /// True once job accounting shows no active process. A failed query
         /// proves nothing, so it counts as not empty.
