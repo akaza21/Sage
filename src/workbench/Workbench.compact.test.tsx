@@ -25,6 +25,7 @@ import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useSideChatState } from "./sideChatState";
+import { useAgentChangesState } from "./agentChangesState";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -79,6 +80,8 @@ beforeEach(() => {
     value: vi.fn(),
   });
   localStorage.clear();
+  // The Changes tab outlives a render, as it does across app remounts.
+  useAgentChangesState.getState().close();
   compactViewport = true;
   const listeners = new Set<() => void>();
   setCompactViewport = (compact) => {
@@ -241,10 +244,14 @@ describe("compact Workbench project tools", () => {
     );
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
+    // Opening the empty pane showed this Chat's (empty) review.
+    expect(
+      within(resources).getByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
     fireEvent.keyDown(resources, { key: "Escape" });
     expect(
       screen.getByRole("button", {
-        name: "Show files and preview · Waiting",
+        name: "Show files and preview · Ready · 1 resource",
       }),
     ).toBeVisible();
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
