@@ -22,6 +22,8 @@ const store = vi.hoisted(() => ({
   failUnread: false,
   // Keeps deletes from landing until the test says so.
   holdUnread: null as Promise<void> | null,
+  // Whether each next delete lands, in order; empty means it does.
+  unreadOutcomes: [] as boolean[],
   holdRead: null as Promise<void> | null,
 }));
 vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
@@ -50,8 +52,9 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
       return { chatId, readThrough: store.marks.get(chatId) };
     }
     if (command === "chat_mark_unread" && args?.chatId) {
-      if (store.failUnread) throw new Error("settings store is busy");
       if (store.holdUnread) await store.holdUnread;
+      if (store.failUnread || store.unreadOutcomes.shift() === false)
+        throw new Error("settings store is busy");
       store.marks.delete(args.chatId);
       return null;
     }
@@ -68,6 +71,7 @@ beforeEach(() => {
   store.failLoad = false;
   store.failUnread = false;
   store.holdUnread = null;
+  store.unreadOutcomes = [];
   store.holdRead = null;
   resetChatReadMarks();
 });
@@ -204,4 +208,40 @@ it("keeps a chat read when it is reopened before Mark unread reaches the store",
   expect(store.marks.get("chat-a")).toBe(1_000);
   await reload();
   expect(unread("chat-a", 1_000)).toBe(false);
+});
+
+it("shows the stored mark when Mark unread made while it loads is refused", async () => {
+  store.marks.set("chat-a", 1_000);
+  let releaseLoad!: () => void;
+  store.holdLoad = new Promise((resolve) => (releaseLoad = resolve));
+  let releaseDelete!: () => void;
+  store.holdUnread = new Promise((resolve) => (releaseDelete = resolve));
+  const loading = restoreChatReadMarks();
+  store.failUnread = true;
+  const request = markChatUnread("chat-a");
+  releaseLoad();
+  await loading;
+  // The pending delete hides the stored mark meanwhile.
+  expect(chatReadThrough("chat-a")).toBeUndefined();
+  releaseDelete();
+  await expect(request).resolves.toBe(false);
+  // The store still holds the mark, and the rail says so.
+  expect(chatReadThrough("chat-a")).toBe(1_000);
+  expect(store.marks.get("chat-a")).toBe(1_000);
+});
+
+it("keeps the newest Mark unread when an earlier one is refused", async () => {
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
+  store.unreadOutcomes = [false, true];
+  let release!: () => void;
+  store.holdUnread = new Promise((resolve) => (release = resolve));
+  const first = markChatUnread("chat-a");
+  const second = markChatUnread("chat-a");
+  release();
+  // The second request is the one the chat shows.
+  await expect(first).resolves.toBe(true);
+  await expect(second).resolves.toBe(true);
+  expect(chatReadThrough("chat-a")).toBeUndefined();
+  expect(store.marks.has("chat-a")).toBe(false);
 });
