@@ -5,13 +5,18 @@
 
 const DEFAULT_LIMIT = 300;
 
-/** A local root under either separator, case-insensitively. */
+/**
+ * A local root under either separator, case-insensitively. Each separator is
+ * matched once, not as a run, so a long run of slashes cannot make a match
+ * attempt backtrack across it; a path with a doubled separator still falls to
+ * the absolute path patterns below.
+ */
 function rootPattern(root) {
   const escaped = root
     .replace(/[\\/]+$/u, "")
     .split(/[\\/]+/u)
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join("[\\\\/]+");
+    .join("[\\\\/]");
   return new RegExp(`${escaped}(?=$|[\\\\/\\s"'\`:])`, "giu");
 }
 
@@ -36,10 +41,12 @@ const ABSOLUTE_PATHS = [
   // Drive paths: C:\..., c:/....
   [new RegExp(String.raw`(?<![\w/\\])[A-Za-z]:[\\/]${REST}`, "gu"), "<path>"],
   // POSIX paths of at least two segments, so "/" and "and/or" stay. A
-  // segment, the first included, can hold spaces.
+  // segment, the first included, can hold spaces. The lookahead asks for a
+  // non-space in the first segment without a second repetition over it, so
+  // a match attempt stays linear in the input.
   [
     new RegExp(
-      String.raw`${BOUNDARY}/[^/\r\n"\x60]*[^\s/"\x60][^/\r\n"\x60]*/${REST}`,
+      String.raw`${BOUNDARY}/(?=[ 	]*[^\s/"\x60])[^/\r\n"\x60]*/${REST}`,
       "gmu",
     ),
     "$1<path>",

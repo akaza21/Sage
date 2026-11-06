@@ -98,3 +98,23 @@ test("a tail cut by its keeper drops its partial first line", () => {
     "",
   );
 });
+
+// A regular expression with overlapping repetitions backtracks
+// quadratically; these inputs took seconds before and take milliseconds now.
+test("long single-segment and separator-run inputs redact in linear time", () => {
+  const size = 100_000;
+  for (const input of [
+    `failed: /${"a".repeat(size)}`,
+    `failed: /${" ".repeat(size)}`,
+    "/".repeat(size),
+    "\\".repeat(size),
+    ` //${"a".repeat(size)}`,
+    "/ ".repeat(size / 2),
+  ]) {
+    const started = performance.now();
+    sanitize(input, Number.POSITIVE_INFINITY);
+    redactedTail(sanitize, input, 1_000);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 500, `${input.slice(0, 12)}… took ${elapsed}ms`);
+  }
+});
