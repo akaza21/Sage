@@ -11,6 +11,8 @@ use uuid::Uuid;
 use super::*;
 use crate::error::RepositoryLayout;
 
+mod remote_helpers;
+
 static PROBES: LazyLock<Mutex<HashMap<PathBuf, usize>>> = LazyLock::new(Mutex::default);
 
 pub(super) fn record_probe(root: &Path) {

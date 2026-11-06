@@ -96,6 +96,9 @@ impl<'a> ConfigKey<'a> {
     /// files and conditions this check does not follow. Keys Sage overrides
     /// on every invocation (`core.hooksPath`, `core.fsmonitor`) are absent.
     fn runs_command(&self) -> bool {
+        if self.is_remote_helper_alias() {
+            return true;
+        }
         let scoped = self.subsection.is_some();
         match (self.section.as_slice(), self.name.as_slice()) {
             (b"include", _) | (b"includeif", _) => true,
@@ -113,17 +116,34 @@ impl<'a> ConfigKey<'a> {
                 | b"pager",
             ) => !scoped,
             (b"credential", b"helper") => true,
-            (b"remote", b"uploadpack" | b"receivepack") => scoped,
+            (b"remote", b"uploadpack" | b"receivepack" | b"vcs") => scoped,
             (b"sequence", b"editor") => !scoped,
             (b"gpg", b"program" | b"defaultkeycommand") => true,
             _ => false,
         }
     }
 
+    /// Even an admitted protocol can be forced through `ssh::url`, for
+    /// example. If `git-remote-ssh` is absent, Git falls back to this alias.
+    /// Other aliases cannot shadow the builtins Sage invokes.
+    fn is_remote_helper_alias(&self) -> bool {
+        self.section == b"alias"
+            && self
+                .subsection
+                .unwrap_or(&self.name)
+                .get(..7)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"remote-"))
+    }
+
     /// The key as shown to the user. Subsections are user-controlled (and a
     /// credential subsection can be a URL with a token), so only plain
     /// identifiers are echoed.
     fn display_name(&self) -> String {
+        // Alias names are repository-controlled command names, potentially
+        // very long or split across a subsection. Never echo them or values.
+        if self.is_remote_helper_alias() {
+            return "alias.remote-*".to_owned();
+        }
         let section = String::from_utf8_lossy(&self.section);
         let name = String::from_utf8_lossy(&self.name);
         match self.subsection.and_then(plain_identifier) {

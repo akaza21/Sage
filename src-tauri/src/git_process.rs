@@ -462,8 +462,6 @@ fn configured_command(
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
         .args(["-c", "gc.auto=0"])
-        .args(["-c", "protocol.ext.allow=never"])
-        .args(["-c", "protocol.file.allow=user"])
         .args(["-c", "safe.bareRepository=explicit"]);
     for setting in submodule_isolation::CONFIG {
         command.arg("-c").arg(setting);
@@ -485,6 +483,11 @@ fn configured_command(
     command
         .args(submodule_isolation::arguments(args))
         .env_clear()
+        // Git checks this allowlist before any protocol.*.allow config,
+        // including for forced helpers and rewritten URLs. Children inherit
+        // it. File access is admitted here; submodule_isolation prevents
+        // Git from entering unadmitted submodule repositories.
+        .env("GIT_ALLOW_PROTOCOL", "file:git:http:https:ssh")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_SYSTEM", "/dev/null")
