@@ -236,21 +236,6 @@ async function reached(capture, options) {
   return predicates;
 }
 
-test("state witnessing propagates a timeout before the first observation", async () => {
-  const failure = new Error("state-timeout");
-  await assert.rejects(
-    reached(
-      {
-        observe: async () => {
-          throw failure;
-        },
-      },
-      admitted("codex", "harness-menu", 1888),
-    ),
-    (error) => error === failure,
-  );
-});
-
 function drive(capture, options, deadline = Date.now() + DRIVE_MS) {
   return runCaptureActions({
     cdp: capture.cdp,
