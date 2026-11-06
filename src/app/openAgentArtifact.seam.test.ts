@@ -121,6 +121,27 @@ describe("openAgentArtifact", () => {
       )?.selected,
     ).toEqual({ kind: "tab", tabId: fileTab().id });
   });
+  it("reveals a resource over its Chat's sessionless Changes tab", async () => {
+    useAgentChangesState
+      .getState()
+      .show(
+        { projectId: ownerA.projectId, chatId: ownerA.chatId, sessionId: null },
+        1,
+      );
+    useWorkbenchStore.setState({
+      openFile: vi.fn(async () => {
+        useWorkbenchStore.setState({
+          tabs: [fileTab()],
+          activeTabId: fileTab().id,
+        });
+      }),
+    });
+    expect(
+      await openAgentArtifact({ owner: ownerA, target: "file", resource }),
+    ).toBe(true);
+    expect(useAgentChangesState.getState().selected).toBe(false);
+  });
+
   it("does not dismiss Changes for a rejected resource open", async () => {
     useAgentChangesState.getState().show(ownerA, 1);
     expect(

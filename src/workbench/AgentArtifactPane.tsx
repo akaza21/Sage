@@ -166,6 +166,7 @@ export function AgentArtifactPane({
     onExpandedChange,
     projectTransitioning ? null : (project?.id ?? null),
     focusedChatId,
+    focusedPageValid && focusedPage?.currentSessionId === null,
   );
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;
@@ -279,7 +280,7 @@ export function AgentArtifactPane({
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
-  useChangesOnExpand(expanded, !hasResources, focusedOwner, projectGeneration);
+  useChangesOnExpand(expanded, !hasResources, changes.owner, projectGeneration);
   useExpandOnNewArtifact({
     artifacts,
     previewOpen,
