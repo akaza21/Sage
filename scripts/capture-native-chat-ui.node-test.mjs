@@ -462,3 +462,35 @@ test(
     assert.equal(predicates.namedState, false);
   },
 );
+
+for (const hidden of ["display:none", "visibility:hidden"])
+  test(
+    `a meter with ${hidden} inside its laid-out slot fails the context-meter state`,
+    { timeout: OPEN_MS + SETTLE_MS * 2 },
+    async (t) => {
+      const options = admitted("codex", "context-meter", 1888);
+      const capture = await openCapture(
+        t,
+        "agent-composer-context-known",
+        options,
+      );
+      await settled(async () => {
+        const observation = await capture.observe();
+        return observation.meterFit === "shown" && observation.visible.meter;
+      }, "context meter shown");
+      // The slot keeps its column; only the progressbar inside it is hidden.
+      await capture.evaluate(
+        `(()=>{const style=document.createElement('style');style.textContent='.composer__context-slot [role="progressbar"]{${hidden}!important}';document.head.append(style);return true})()`,
+      );
+      await settled(
+        async () => (await capture.observe()).visible.meter === false,
+        "meter hidden inside its slot",
+      );
+      const observation = await capture.observe();
+      assert.equal(observation.meterFit, "shown");
+      assert.equal(
+        namedState(options, observation, capture.captureChat).namedState,
+        false,
+      );
+    },
+  );

@@ -411,9 +411,12 @@ export function namedState(options, observation, captureChat) {
       terminal && assistantRendered && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
     "access-menu": view.accessMenu,
-    // The capture witnesses the measured toolbar fit: the meter shown, or
-    // dropped where the fit needs its column (Codex reference 37).
-    "context-meter": ["shown", "dropped"].includes(observation.meterFit),
+    // The capture witnesses the measured toolbar fit: the meter shown and
+    // actually visible, or dropped where the fit needs its column (Codex
+    // reference 37). A laid-out slot alone does not prove a visible meter.
+    "context-meter":
+      (observation.meterFit === "shown" && view.meter) ||
+      observation.meterFit === "dropped",
     "responsive-wide":
       terminal && assistantRendered && observation.controls.send,
     "responsive-720":
