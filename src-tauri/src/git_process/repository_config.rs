@@ -48,10 +48,12 @@ use crate::{
 
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority, StdoutCapture};
 
+mod discovery;
 mod fingerprint;
 mod policy;
 mod submodules;
 
+use discovery::{Location, discovery_path};
 use fingerprint::{Fingerprint, watch};
 use policy::{path_protection_keys, path_protection_refusal, refusal_message};
 use submodules::Scan;
@@ -458,83 +460,6 @@ async fn probe_git(
         repository,
     )
     .await
-}
-
-/// Keeps the `.git` entries from the root up to the one Git used. The verdict
-/// is cacheable only when every entry below that one is missing, because an
-/// existing entry Git skipped could later become the repository it opens.
-fn discovery_path(
-    ancestors: Vec<(PathBuf, Fingerprint)>,
-    git_dir: &Path,
-) -> (Vec<(PathBuf, Fingerprint)>, bool) {
-    let mut watched = Vec::new();
-    for (entry, fingerprint) in ancestors {
-        let missing = fingerprint == Fingerprint::Missing;
-        let used = !missing && resolves_to(&entry, &fingerprint, git_dir);
-        watched.push((entry, fingerprint));
-        if used {
-            return (watched, true);
-        }
-        if !missing {
-            return (watched, false);
-        }
-    }
-    // Git opened a repository that no `.git` entry on the path names.
-    (watched, false)
-}
-
-fn resolves_to(entry: &Path, fingerprint: &Fingerprint, git_dir: &Path) -> bool {
-    let target = match fingerprint {
-        Fingerprint::Directory => entry.to_path_buf(),
-        Fingerprint::Contents(bytes) => match gitfile_target(entry, bytes) {
-            Some(target) => target,
-            None => return false,
-        },
-        _ => return false,
-    };
-    match (target.canonicalize(), git_dir.canonicalize()) {
-        (Ok(target), Ok(git_dir)) => target == git_dir,
-        _ => false,
-    }
-}
-
-/// The directory a `gitdir: <path>` file names, relative to the file.
-/// Read as Git's `read_gitfile` reads it (one trailing `\n`, then one `\r`,
-/// dropped; the exact `gitdir: ` prefix; the rest byte for byte). It only
-/// decides whether a verdict may be cached, and any doubt means it may not.
-fn gitfile_target(entry: &Path, bytes: &[u8]) -> Option<PathBuf> {
-    let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    let line = line.strip_suffix(b"\r").unwrap_or(line);
-    let target = std::str::from_utf8(line.strip_prefix(b"gitdir: ")?).ok()?;
-    let parent = entry.parent()?;
-    (!target.is_empty() && !target.chars().any(char::is_control)).then(|| parent.join(target))
-}
-
-struct Location {
-    git_dir: PathBuf,
-    common_dir: PathBuf,
-    work_tree: PathBuf,
-}
-
-impl Location {
-    fn parse(output: &GitOutput) -> AppResult<Self> {
-        let text = std::str::from_utf8(&output.stdout)
-            .map_err(|_| AppError::Git("Git repository path is not valid UTF-8".into()))?;
-        let mut lines = text
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(PathBuf::from);
-        match (lines.next(), lines.next(), lines.next()) {
-            (Some(git_dir), Some(common_dir), Some(work_tree)) => Ok(Self {
-                git_dir,
-                common_dir,
-                work_tree,
-            }),
-            _ => Err(AppError::Git(
-                "Git did not report the repository location".into(),
-            )),
-        }
-    }
 }
 
 #[cfg(test)]
