@@ -8,6 +8,7 @@ declare global {
     chatPerf: {
       mount: (mode: "cap" | "stress") => {
         mountMs: number;
+        componentRenders: number;
         commitCount: number;
         commitDurationMs: number;
         domNodes: number;
@@ -206,18 +207,20 @@ for (const mode of ["cap", "stress"] as const) {
     const ordered = [...stream.durations].sort((left, right) => left - right);
     const p95 = ordered[Math.ceil(ordered.length * 0.95) - 1];
     console.log(JSON.stringify({ mode, mount, streamP95Ms: p95, stream }));
+    // Mount cost is locked as render work, not wall-clock: hosted runners run
+    // the same mount 85-150 ms against 50-60 ms here with identical counts.
     expect(mount.commitCount).toBeLessThanOrEqual(6);
     expect(stream.commitCount).toBeLessThanOrEqual(32);
     if (mode === "cap") {
       expect(mount.renderedTurns).toBeLessThanOrEqual(40);
       expect(mount.domNodes).toBeLessThanOrEqual(3000);
-      expect(mount.mountMs).toBeLessThanOrEqual(150);
+      expect(mount.componentRenders).toBeLessThanOrEqual(364);
       expect(p95).toBeLessThanOrEqual(40);
       expect(stream.heapBytes).toBeLessThanOrEqual(40_000_000);
     } else {
       expect(mount.renderedTurns).toBeLessThanOrEqual(40);
       expect(mount.domNodes).toBeLessThanOrEqual(4000);
-      expect(mount.mountMs).toBeLessThanOrEqual(250);
+      expect(mount.componentRenders).toBeLessThanOrEqual(339);
       expect(p95).toBeLessThanOrEqual(50);
       expect(stream.heapBytes).toBeLessThanOrEqual(60_000_000);
     }

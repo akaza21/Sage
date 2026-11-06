@@ -234,7 +234,36 @@ jobs:
       - name: Provision Chromium for the win32 baselines
         run: npx playwright install chromium
       - name: Run the full Playwright suite
-        run: npm run test:ui -- --workers=2 --retries=0 --trace=retain-on-failure
+        run: |
+          # Sample the runner's socket table and nonpaged pool beside the suite,
+          # so a connection failure such as ERR_NO_BUFFER_SPACE names its cause.
+          New-Item -ItemType Directory -Force output | Out-Null
+          $samples = Join-Path $PWD output/tcp-samples.log
+          netsh int ipv4 show dynamicport tcp | Out-File -Append $samples
+          netsh int ipv4 show excludedportrange protocol=tcp | Out-File -Append $samples
+          $sampler = Start-Job -ArgumentList $samples, $env:SAGE_UI_PORT -ScriptBlock {
+            param($samples, $port)
+            while ($true) {
+              $all = Get-NetTCPConnection -ErrorAction SilentlyContinue
+              $states = ($all | Group-Object State | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ' '
+              $toUi = ($all | Where-Object RemotePort -eq $port).Count
+              $pool = (Get-Counter '\Memory\Pool Nonpaged Bytes' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
+              "$(Get-Date -Format o) $states toUi=$toUi nonpaged=$pool" | Out-File -Append $samples
+              Start-Sleep -Seconds 10
+            }
+          }
+          npm run test:ui -- --workers=2 --retries=0 --trace=retain-on-failure
+          $code = $LASTEXITCODE
+          Stop-Job $sampler
+          exit $code
+      - name: Upload Windows socket samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-windows-tcp
+          path: output/tcp-samples.log
+          retention-days: 3
+          if-no-files-found: ignore
       - name: Upload Windows Playwright failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

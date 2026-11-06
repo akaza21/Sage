@@ -4,6 +4,46 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat performance fixture</title>
+    <script>
+      // Count component renders per commit the way React DevTools does: a
+      // component rendered when it mounted or performed work, and a subtree
+      // whose child list is unchanged bailed out. Unlike wall-clock time,
+      // this work count does not depend on the machine's speed or load.
+      window.chatPerfRenders = 0;
+      const PERFORMED_WORK = 1;
+      const COMPONENT_TAGS = new Set([0, 1, 11, 14, 15]);
+      const countRendered = (next, prev) => {
+        let count =
+          COMPONENT_TAGS.has(next.tag) &&
+          (prev === null || (next.flags & PERFORMED_WORK) !== 0)
+            ? 1
+            : 0;
+        if (prev !== null && next.child === prev.child) return count;
+        for (let child = next.child; child; child = child.sibling)
+          count += countRendered(child, prev === null ? null : child.alternate);
+        return count;
+      };
+      const renderers = new Map();
+      window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+        supportsFiber: true,
+        renderers,
+        inject(renderer) {
+          const id = renderers.size + 1;
+          renderers.set(id, renderer);
+          return id;
+        },
+        checkDCE() {},
+        onScheduleFiberRoot() {},
+        onCommitFiberRoot(_id, root) {
+          window.chatPerfRenders += countRendered(
+            root.current,
+            root.current.alternate,
+          );
+        },
+        onCommitFiberUnmount() {},
+        onPostCommitFiberRoot() {},
+      };
+    </script>
   </head>
   <body>
     <div class="message-list" style="width: 760px; height: 700px">
@@ -193,12 +233,15 @@
         mount(mode) {
           current = makePage(mode);
           commits = [];
+          window.chatPerfRenders = 0;
           const start = performance.now();
           flushSync(render);
           const mountMs = performance.now() - start;
+          const componentRenders = window.chatPerfRenders;
           scroll.scrollTop = scroll.scrollHeight;
           return {
             mountMs,
+            componentRenders,
             commitCount: commits.length,
             commitDurationMs: commits.reduce(
               (sum, commit) => sum + commit.duration,
@@ -212,6 +255,7 @@
         stream(count) {
           const durations = [];
           let commitCount = 0;
+          window.chatPerfRenders = 0;
           for (let index = 0; index < count; index += 1) {
             const last = current.turns.at(-1);
             const revised = {
@@ -243,6 +287,7 @@
           }
           return {
             durations,
+            componentRenders: window.chatPerfRenders,
             commitCount,
             domNodes: document.querySelectorAll("*").length,
             heapBytes: performance.memory?.usedJSHeapSize ?? null,
