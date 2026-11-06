@@ -63,8 +63,11 @@
   position: relative;
 }
 
+/* The header's icon buttons: New chat (with the rail hidden) and resources. */
+.agent-task-header__pencil,
 .agent-task-header__resources > button {
   display: grid;
+  flex: none;
   width: 28px;
   height: 28px;
   place-items: center;
@@ -76,10 +79,16 @@
   cursor: pointer;
 }
 
+.agent-task-header__pencil:hover:not(:disabled),
 .agent-task-header__resources > button:hover,
 .agent-task-header__resources > button[aria-expanded="true"] {
   color: var(--color-text-primary);
   background: var(--agent-shell-selected);
+}
+
+.agent-task-header__pencil:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 .agent-task-header__resource-panel {

@@ -26,7 +26,7 @@ import type { TabStripProps } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 import { useAgentDesktopSidebarWidths } from "./useAgentDesktopSidebarWidths";
 import { useCompactWorkbenchLayout } from "./useCompactWorkbenchLayout";
-import { useEditorHistoryKeys } from "./useEditorHistoryKeys";
+import { useHistoryKeys } from "./useHistoryKeys";
 import { useRepositoryAutoRefresh } from "./useRepositoryAutoRefresh";
 import { useWorkbenchKeys, useTerminalDock } from "./useWorkbenchKeys";
 import "./workbench-window-mode.css";
@@ -136,7 +136,7 @@ export function Workbench() {
     toggleAgentNavigation,
     setWindowMode,
   });
-  useEditorHistoryKeys(windowMode === "editor");
+  useHistoryKeys(agentSettingsPage ? null : windowMode);
   useRepositoryAutoRefresh();
   useEffect(() => {
     writeWorkbenchLayout({

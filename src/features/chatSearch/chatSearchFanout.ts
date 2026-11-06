@@ -13,6 +13,7 @@ import type {
   WorkbenchTab,
 } from "../../domain/workbench";
 import { MAX_AGENT_RAIL_PROJECTS } from "../../domain/agentRailLimits";
+import { projectLabel } from "../../domain/project";
 import {
   CHAT_SEARCH_ALL_FOLDERS_ID,
   type ChatSearchFolderOption,
@@ -48,10 +49,7 @@ export function chatSearchFolderOptions(
     ) {
       continue;
     }
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectLabel(project.name);
     next.push({ id: project.id, name });
   }
   if (next.length === 0) return next;
