@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CdpError, connectCdp } from "./source-functional-native-ide-cdp.mjs";
+import { waitForState } from "./capture-native-chat-contract.mjs";
 
 class FakeWebSocket {
   static instances = [];
@@ -148,6 +149,55 @@ test("open deadline bounds only startup while the lifetime deadline caps command
     /journey-cdp-deadline/u,
   );
 });
+
+for (const [operationMs, connectionMs, enforcedMs] of [
+  [750, 5_000, 750],
+  [5_000, 750, 750],
+])
+  test(`CDP deadline reports the bound enforced for ${operationMs} ms operation and ${connectionMs} ms connection`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const now = Date.now();
+    const { client: cdp } = await client({ deadline: now + connectionMs });
+    const pending = cdp.evaluate("true", now + operationMs);
+    const rejected = assert.rejects(pending, (error) => {
+      assert.equal(error.message, "journey-cdp-deadline");
+      assert.equal(error.deadline, now + enforcedMs);
+      return true;
+    });
+    t.mock.timers.tick(enforcedMs);
+    await rejected;
+    await cdp.close(now + 10_000);
+  });
+
+for (const [bound, operationMs, expectedMessage] of [
+  ["equal to", 750, "state-timeout"],
+  ["later than", 5_000, "journey-cdp-deadline"],
+  ["earlier than", 500, "state-timeout"],
+])
+  test(`a CDP deadline ${bound} the state deadline yields ${expectedMessage}`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const now = Date.now();
+    const { client: cdp } = await client({ deadline: now + 60_000 });
+    let failure;
+    const waiting = waitForState(async () => {
+      try {
+        return await cdp.evaluate("true", now + operationMs);
+      } catch (error) {
+        failure = error;
+        throw error;
+      }
+    }, now + 750);
+    const rejected = assert.rejects(waiting, (error) => {
+      assert.equal(error.message, expectedMessage);
+      if (expectedMessage === "state-timeout")
+        assert.equal(error.cause, failure);
+      else assert.equal(error, failure);
+      return true;
+    });
+    t.mock.timers.tick(operationMs);
+    await rejected;
+    await cdp.close(now + 60_000);
+  });
 
 test("tolerates ambient discovery keys and accepts a legal remote description", async () => {
   const { client: cdp, socket } = await client({
