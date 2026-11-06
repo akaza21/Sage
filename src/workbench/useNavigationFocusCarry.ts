@@ -36,11 +36,26 @@ export function useNavigationFocusCarry(collapsed: boolean) {
     const previous = focused.current;
     if (!previous || previous.isConnected) return;
     focused.current = null;
-    if ((document.activeElement ?? document.body) !== document.body) return;
     const name = label(previous);
-    for (const control of document.querySelectorAll<HTMLElement>(
-      ".project-sidebar button",
-    ))
-      if (label(control) === name) return control.focus();
+    // Focus the same-named control, or keep waiting while the new rail is
+    // still loading. Give up once focus has gone anywhere else.
+    const settle = () => {
+      if ((document.activeElement ?? document.body) !== document.body)
+        return true;
+      for (const control of document.querySelectorAll<HTMLElement>(
+        ".project-sidebar button",
+      ))
+        if (label(control) === name) {
+          control.focus();
+          return true;
+        }
+      return false;
+    };
+    if (settle()) return;
+    const observer = new MutationObserver(() => {
+      if (settle()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [collapsed]);
 }
