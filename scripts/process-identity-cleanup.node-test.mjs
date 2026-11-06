@@ -536,6 +536,9 @@ try{
   });
 });
 
+// The copied image is started on the fixture's own console. Start-Process
+// would give it a new console, whose host opens the image while it starts and
+// can still hold it when cleanup deletes the copy.
 test("long and 8.3 short-name expected paths identify the same executable", (t) => {
   const node = process.execPath.replaceAll("'", "''");
   const observed = runPowerShellFixture(
@@ -551,7 +554,8 @@ try{
   if([IO.Path]::GetFileName($short) -eq [IO.Path]::GetFileName($long) -or [IO.Path]::GetFileName($otherShort) -eq [IO.Path]::GetFileName($otherLong)){
     [ordered]@{shortNameAvailable=$false;shortPath=$short}|ConvertTo-Json -Compress
   }else{
-    $child=Start-Process -FilePath $long -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+    $start=[Diagnostics.ProcessStartInfo]::new($long,'-e "setTimeout(()=>{},30000)"');$start.UseShellExecute=$false;
+    $child=[Diagnostics.Process]::Start($start);
     $longIdentity=Get-FootprintLaunchIdentity $child $long;
     $shortIdentity=Get-FootprintLaunchIdentity $child $short;
     $wrong=$null;try{[void](Get-FootprintLaunchIdentity $child $otherShort)}catch{$wrong=$_.Exception.Message};
