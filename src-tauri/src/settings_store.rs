@@ -13,6 +13,7 @@ mod browser_developer;
 mod browser_download_folder;
 mod browser_preferences;
 mod browser_site_permissions;
+mod chat_read_marks;
 mod editor_settings;
 mod side_chat;
 mod terminal_dock;
@@ -21,6 +22,7 @@ pub use agent_rail_view::AgentRailView;
 pub use browser_download_folder::DownloadFolderRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
+pub use chat_read_marks::ChatReadMark;
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +119,7 @@ impl SettingsStore {
             browser_preferences::migrate(&migration)?;
             browser_developer::migrate(&migration)?;
             agent_rail_view::migrate(&migration)?;
+            chat_read_marks::migrate(&migration)?;
             browser_download_folder::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
             terminal_dock::migrate(&migration)?;

@@ -60,6 +60,11 @@ export function admitAgentRailChat(
     ...(typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
       ? { updatedAt: value.updatedAt }
       : {}),
+    ...(typeof value.finishedAt === "number" &&
+    Number.isSafeInteger(value.finishedAt) &&
+    value.finishedAt > 0
+      ? { finishedAt: value.finishedAt }
+      : {}),
   };
 }
 
@@ -274,28 +279,6 @@ export function deriveAgentRailSections(
       groups.find((group) => group.truncated)?.id ??
       null,
   };
-}
-
-export function collectAgentRailPinIds(
-  groups: ReadonlyArray<AgentRailProjectGroup>,
-  currentProjectId: string | null,
-): string[] {
-  const ids: string[] = [];
-  const current = groups.find((group) => group.id === currentProjectId);
-  if (current) {
-    for (const chat of current.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  for (const group of groups) {
-    if (group.id === currentProjectId) continue;
-    for (const chat of group.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  return ids;
 }
 
 export type AgentChatMoveKind = "folder" | "local";

@@ -32,10 +32,23 @@ export function mirrorAgentRailStatus(page: AcpChatStatus) {
         metadataChanged ? turn.updatedAt : 0,
       )
     : tab.updatedAt;
-  if (!metadataChanged && updatedAt === tab.updatedAt) return;
+  // The latest Turn's finish time is the read watermark; a running Turn
+  // keeps the last one so the chat cannot turn Unread mid-run.
+  const finishedAt =
+    turn?.terminalAt != null
+      ? Math.max(tab.finishedAt ?? 0, turn.terminalAt)
+      : tab.finishedAt;
+  if (
+    !metadataChanged &&
+    updatedAt === tab.updatedAt &&
+    finishedAt === tab.finishedAt
+  )
+    return;
   useWorkbenchStore.setState({
     tabs: state.tabs.map((item) =>
-      item === tab ? { ...item, title: page.title, status, updatedAt } : item,
+      item === tab
+        ? { ...item, title: page.title, status, updatedAt, finishedAt }
+        : item,
     ),
   });
 }

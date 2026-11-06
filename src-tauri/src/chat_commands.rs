@@ -276,6 +276,7 @@ mod tests {
                 dirty: true,
                 status: None,
                 updated_at: None,
+                finished_at: None,
                 resource: Some(selected_resource.clone()),
                 repository: None,
                 diff_ref: None,

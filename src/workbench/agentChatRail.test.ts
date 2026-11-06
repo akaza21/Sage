@@ -6,7 +6,6 @@ import {
   MAX_AGENT_RAIL_PIN_IDS,
   MAX_AGENT_RAIL_RECENT_CHATS,
   agentChatMoveDestinations,
-  collectAgentRailPinIds,
   compareAgentRailChats,
   deriveAgentRailSections,
   groupAgentRailProjects,
@@ -350,7 +349,7 @@ describe("agent chat rail", () => {
     ]);
   });
 
-  it("caps foreign project chats and pins the current project first", () => {
+  it("caps foreign project chats and keeps the current project first", () => {
     const overflow = Array.from(
       { length: MAX_AGENT_RAIL_CHATS_PER_PROJECT + 2 },
       (_, index) => ({
@@ -384,12 +383,6 @@ describe("agent chat rail", () => {
     });
     expect(groups[0]?.chats).toHaveLength(MAX_AGENT_RAIL_CHATS_PER_PROJECT);
     expect(groups[0]?.truncated).toBe(true);
-    expect(collectAgentRailPinIds(groups, "local")).toEqual([
-      "chat:local",
-      ...overflow
-        .slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT)
-        .map((chat) => chat.id),
-    ]);
   });
 
   it("previews a foreign project's first chats in either order from what Rust sends", () => {
