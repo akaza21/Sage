@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentType,
   type KeyboardEvent,
 } from "react";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
@@ -25,7 +26,6 @@ import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
 import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
-import { AgentHarnessSettings } from "./AgentHarnessSettings";
 import {
   returnFocusToAgentSettingsOpener,
   useAgentSettingsState,
@@ -36,6 +36,24 @@ const loadBrowserSettings = () =>
   import("./AgentBrowserSettings").then(({ AgentBrowserSettings }) => ({
     default: AgentBrowserSettings,
   }));
+
+// The Harnesses page loads on demand, and Settings keeps the current page
+// on screen until it is ready rather than flashing a loading line. It is
+// fetched ahead when Settings goes idle, or when its section is pointed at.
+let HarnessSettings: ComponentType | null = null;
+let harnessRequest: Promise<ComponentType> | null = null;
+const loadHarnessSettings = () =>
+  (harnessRequest ??= import("./AgentHarnessSettings").then(
+    ({ AgentHarnessSettings }) => (HarnessSettings = AgentHarnessSettings),
+    (error: unknown) => {
+      harnessRequest = null;
+      throw error;
+    },
+  ));
+const prewarmHarnessSettings = () =>
+  void loadHarnessSettings().catch(() => undefined);
+const loadHarnessModule = () =>
+  loadHarnessSettings().then((Surface) => ({ default: Surface }));
 
 const loadExecution = () => import("./AgentSettingsExecution");
 // The panel has no per-setting search, so the whole Passwords page shows.
@@ -98,6 +116,47 @@ export function AgentSettingsSurface({
   const close = useAgentSettingsState((state) => state.close);
   const [query, setQuery] = useState("");
   const surfaceRef = useRef<HTMLElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  // The page on screen: a requested Harnesses page waits for its module.
+  const [, setHarnessReady] = useState(Boolean(HarnessSettings));
+  const [harnessFailed, setHarnessFailed] = useState(false);
+  const [shownPage, setShownPage] = useState(page);
+  // The element that had focus when a deferred Harnesses page was asked for.
+  const deferredFrom = useRef<Element | null>(null);
+  if (
+    page !== shownPage &&
+    (page !== "Harnesses" || HarnessSettings || harnessFailed)
+  )
+    setShownPage(page);
+  useEffect(() => {
+    if (page !== "Harnesses" || HarnessSettings) return;
+    deferredFrom.current = document.activeElement;
+    let active = true;
+    loadHarnessSettings().then(
+      () => active && setHarnessReady(true),
+      () => active && setHarnessFailed(true),
+    );
+    return () => {
+      active = false;
+    };
+  }, [page]);
+  useEffect(() => {
+    if (shownPage !== "Harnesses" || !deferredFrom.current) return;
+    const from = deferredFrom.current;
+    deferredFrom.current = null;
+    // Move into the page only if focus never left the section button that
+    // asked for it, so searching or moving on while it loads is kept.
+    if (document.activeElement !== from) return;
+    pageRef.current
+      ?.querySelector<HTMLElement>("button, input, select, textarea, a[href]")
+      ?.focus();
+  }, [shownPage]);
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? window.setTimeout;
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout;
+    const handle = idle(prewarmHarnessSettings);
+    return () => cancel(handle);
+  }, []);
   // Settings covers the Agent workspace without unmounting it, so closing
   // it hands focus back to whatever opened it.
   useEffect(() => {
@@ -166,6 +225,12 @@ export function AgentSettingsSurface({
                     type="button"
                     aria-current={page === item ? "page" : undefined}
                     onClick={() => open(item)}
+                    {...(item === "Harnesses"
+                      ? {
+                          onPointerEnter: prewarmHarnessSettings,
+                          onFocus: prewarmHarnessSettings,
+                        }
+                      : {})}
                   >
                     <Icon size={16} aria-hidden="true" />
                     {item}
@@ -188,7 +253,7 @@ export function AgentSettingsSurface({
           <header className="agent-settings__header">
             <span>Settings</span>
             <ChevronRight size={14} aria-hidden="true" />
-            <h2>{page}</h2>
+            <h2>{shownPage}</h2>
             <button
               type="button"
               className="icon-button"
@@ -201,25 +266,36 @@ export function AgentSettingsSurface({
           {/* Like the Editor workbench, pages sleep while the window is
               minimized, so they clear what they hold on suspend. */}
           <Activity mode={documentVisible ? "visible" : "hidden"}>
-            <div className="agent-settings__page" key={page}>
-              {page === "Appearance" ? <AgentAppearanceSettings /> : null}
-              {page === "Keybindings" ? (
+            <div className="agent-settings__page" key={shownPage} ref={pageRef}>
+              {shownPage === "Appearance" ? <AgentAppearanceSettings /> : null}
+              {shownPage === "Keybindings" ? (
                 <LazyModuleBoundary
                   label="Keybindings"
                   load={loadKeyboardSettings}
                   render={(KeyboardSettings) => <KeyboardSettings />}
                 />
               ) : null}
-              {page === "Harnesses" ? <AgentHarnessSettings /> : null}
-              {page === "Chats" ? <AgentChatSettings /> : null}
-              {page === "Browser" ? (
+              {shownPage === "Harnesses" ? (
+                HarnessSettings ? (
+                  <HarnessSettings />
+                ) : (
+                  // The load failed: this boundary shows the retry.
+                  <LazyModuleBoundary
+                    label="Harness settings"
+                    load={loadHarnessModule}
+                    render={(Surface) => <Surface />}
+                  />
+                )
+              ) : null}
+              {shownPage === "Chats" ? <AgentChatSettings /> : null}
+              {shownPage === "Browser" ? (
                 <LazyModuleBoundary
                   label="Browser settings"
                   load={loadBrowserSettings}
                   render={(AgentBrowserSettings) => <AgentBrowserSettings />}
                 />
               ) : null}
-              {page === "Passwords" ? (
+              {shownPage === "Passwords" ? (
                 <LazyModuleBoundary
                   label="Saved passwords"
                   load={loadSettingsPasswordsPage}
@@ -228,7 +304,9 @@ export function AgentSettingsSurface({
                   )}
                 />
               ) : null}
-              {page === "Archived chats" ? <AgentArchivedSettings /> : null}
+              {shownPage === "Archived chats" ? (
+                <AgentArchivedSettings />
+              ) : null}
             </div>
           </Activity>
         </div>

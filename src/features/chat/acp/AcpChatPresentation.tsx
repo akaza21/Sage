@@ -213,7 +213,6 @@ const Turn = memo(
                 fileReferenceOwner={fileReferenceOwner}
               />
             ) : null}
-            {!inherited && actions}
             {rootActivities(turn).map((activity) => (
               <HarnessActivity
                 key={activity.id}
@@ -269,6 +268,8 @@ const Turn = memo(
               </button>
             ) : null}
             <TurnFailure turn={turn} onRetry={onRetry} />
+            {/* The row closes the Turn, as the footer closes the latest one. */}
+            {!inherited && actions}
           </div>
         </section>
         {inherited && actions}

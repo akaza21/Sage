@@ -1,3 +1,5 @@
+import { Info } from "../../ui/leanIcons";
+
 /** Load-earlier control and the notices about history that is not shown. */
 export function AcpHistoryNotices({
   hasEarlier,
@@ -48,15 +50,17 @@ export function AcpHistoryNotices({
   );
 }
 
+/** A system note about the turn, styled apart from the agent's own prose. */
 export function WorkspaceTrackingNotice() {
   return (
     <p
-      className="acp-history-notice"
+      className="acp-system-notice"
       role="status"
       aria-label="Workspace tracking"
     >
+      <Info size={14} aria-hidden="true" />
       <span className="sr-only">System: </span>
-      Workspace change tracking is incomplete for this turn.
+      <span>Workspace change tracking is incomplete for this turn.</span>
     </p>
   );
 }

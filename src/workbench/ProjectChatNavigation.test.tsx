@@ -9,7 +9,12 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import {
+  chatReadThrough,
+  markChatRead,
+  markChatUnread,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
@@ -19,7 +24,7 @@ const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   resetAgentRailViewPrefs();
   useSideChatState.setState({ sides: [] });
   vi.restoreAllMocks();
@@ -489,6 +494,31 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
+});
+
+it("records the read again when the chat on screen is reopened after Mark unread", () => {
+  seedChats();
+  const finishedAt = Date.UTC(2026, 7, 26, 11, 0, 0);
+  useWorkbenchStore.setState({
+    activeTabId: "chat:b",
+    tabs: useWorkbenchStore
+      .getState()
+      .tabs.map((tab) => (tab.id === "chat:b" ? { ...tab, finishedAt } : tab)),
+  });
+  markChatRead("chat:b", finishedAt);
+  markChatUnread("chat:b");
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  // The chat stays on screen, so nothing else records the read.
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  );
+  expect(chatReadThrough("chat:b")).toBe(finishedAt);
 });
 
 it("ages a rail chat for its hover card the way Codex does", () => {

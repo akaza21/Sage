@@ -9,7 +9,7 @@ import { pinAgentChatOwner } from "../../../src/app/agentChatOwner";
 import { useWorkbenchStore } from "../../../src/app/store";
 import type { ProjectGeneration } from "../../../src/domain/acp";
 import { clearUnreadAcks } from "../../../src/features/chat/acp/chatUnread";
-import { clearSessionRailAcks } from "../../../src/features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../../../src/features/chat/acp/chatReadMarks";
 import {
   initialPage,
   JOURNEY_IDS,
@@ -23,7 +23,7 @@ import { journeySnapshot } from "./agentTurnJourneySnapshot";
 export async function createJourneyFixtureState(): Promise<FixtureState> {
   clearAcpProjectionRegistry();
   clearUnreadAcks();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   useAgentArtifactAdmissionStore.getState().clear();
   useAgentArtifactFollowStore.getState().clear();
   pinAgentChatOwner(null);

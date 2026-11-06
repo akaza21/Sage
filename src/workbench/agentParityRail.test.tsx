@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
@@ -22,7 +22,7 @@ afterEach(() => {
   cleanup();
   resetAgentRailInteractions();
   resetAgentRailViewPrefs();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   useWorkbenchStore.setState(initial, true);
   vi.restoreAllMocks();
 });

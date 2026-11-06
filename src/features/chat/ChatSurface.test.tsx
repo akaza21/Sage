@@ -2542,17 +2542,17 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Codex — not installed. Harness is not installed.",
+      "Codex — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
-      "Pi — not installed. Harness is not installed.",
+      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(options[3]).toHaveAccessibleName(
-      "Claude Code — not installed. Harness is not installed.",
+      "Claude Code — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(options[4]).toHaveAccessibleName(
-      "Oh My Pi — not installed. Harness is not installed.",
+      "Oh My Pi — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(
       options.slice(1).every((option) => option.hasAttribute("disabled")),
@@ -2615,7 +2615,7 @@ describe("ChatSurface ACP resource integration", () => {
     );
     expect(options[1]).toBeDisabled();
     expect(options[2]).toHaveAccessibleName(
-      "Pi — not installed. Harness is not installed.",
+      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(options[2]).toBeDisabled();
   });
@@ -2659,7 +2659,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(options[0]).toHaveTextContent(/^Simulator$/);
     expect(options[0]).toHaveAccessibleName("Simulator — test only");
     expect(options[1]).toHaveAccessibleName(
-      "Pi — not installed. Harness is not installed.",
+      "Pi — not installed. Install it, then refresh harness discovery in Settings.",
     );
     expect(options[1]).toBeDisabled();
   });

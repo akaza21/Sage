@@ -18,17 +18,31 @@ use crate::{
 };
 
 mod containment;
+mod parallel_limits;
+mod process_tree;
 mod readers;
+mod repository_config;
 mod root_authority;
+mod submodule_isolation;
+use process_tree::{GitChild, ProcessTree};
 use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+pub(crate) use repository_config::trust_for_test as trust_repository_config_for_test;
 pub(crate) use root_authority::GitRootAuthority;
 #[cfg(test)]
 pub(crate) use test_support::GitProcessTestHarness;
 
 const MAX_STDERR_BYTES: usize = 64 * 1024;
+/// Parent variables Git still needs after `env_clear`: the SSH agent socket for
+/// SSH remotes, and `SystemRoot`, without which Winsock cannot initialise.
+const INHERITED_ENV: &[&str] = &[
+    "SSH_AUTH_SOCK",
+    #[cfg(windows)]
+    "SystemRoot",
+];
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -62,6 +76,9 @@ pub(crate) struct GitProcessPolicy {
     spawned_hook: Option<GitSpawnHook>,
     #[cfg(test)]
     deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
+    /// A Git trace2 event target, to prove which repositories Git opened.
+    #[cfg(test)]
+    trace2_event: Option<std::path::PathBuf>,
 }
 
 impl GitProcessPolicy {
@@ -90,6 +107,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -118,6 +137,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -146,6 +167,8 @@ impl GitProcessPolicy {
             spawned_hook: None,
             #[cfg(test)]
             deadline_wait_gate: None,
+            #[cfg(test)]
+            trace2_event: None,
         }
     }
 
@@ -224,6 +247,42 @@ async fn run_inner(
     policy: GitProcessPolicy,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
+    let repository = repository_config::admit(root, root_authority.as_ref()).await?;
+    if repository.is_some()
+        && root_authority
+            .as_ref()
+            .is_some_and(|authority| !authority.anchors_repository())
+    {
+        // A `.git` that appeared after the root handle was taken.
+        return Err(AppError::InvalidRequest(
+            "workspace root changed before Git access".into(),
+        ));
+    }
+    run_admitted(
+        root,
+        args,
+        stdout_limit,
+        policy,
+        root_authority,
+        repository.as_ref(),
+    )
+    .await
+}
+
+/// Spawns Git without the repository-config admission check. Only the
+/// admission probes call this directly; every other caller goes through
+/// [`run_inner`]. `repository` pins Git to the repository admission inspected.
+async fn run_admitted(
+    root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+    policy: GitProcessPolicy,
+    root_authority: Option<GitRootAuthority>,
+    repository: Option<&repository_config::AdmittedRepository>,
+) -> AppResult<GitOutput> {
+    if let Some(root_authority) = &root_authority {
+        root_authority.ensure_names(root)?;
+    }
     #[cfg(test)]
     let registry = policy
         .containment_registry
@@ -237,12 +296,24 @@ async fn run_inner(
     let reaper_lease =
         containment::reserve_reaper_owner(Arc::clone(&registry), policy.admission_timeout).await?;
 
-    let mut command = configured_command(root, args, root_authority.as_ref());
+    let mut command = configured_command(root, args, root_authority.as_ref(), repository);
+    #[cfg(test)]
+    if let Some(trace) = &policy.trace2_event {
+        command.env("GIT_TRACE2_EVENT", trace);
+    }
     #[cfg(test)]
     if let Some(hook) = &policy.before_spawn_hook {
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    // Created suspended on Windows: it runs only once its whole tree is held.
+    let tree = match ProcessTree::contain(&child) {
+        Ok(tree) => tree,
+        Err(error) => {
+            let _ = child.start_kill();
+            return Err(AppError::Io(error));
+        }
+    };
     #[cfg(test)]
     if let (Some(hook), Some(pid)) = (&policy.spawned_hook, child.id()) {
         hook(pid);
@@ -251,7 +322,7 @@ async fn run_inner(
         Some(stdout) => stdout,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks::default(),
                 reaper_lease,
                 PostSpawnFailure {
@@ -269,7 +340,7 @@ async fn run_inner(
         Some(stderr) => stderr,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks {
                     stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
                     stderr: None,
@@ -295,7 +366,7 @@ async fn run_inner(
     #[cfg(test)]
     if policy.post_spawn_failure {
         return containment::cleanup_failure(
-            child,
+            GitChild { root: child, tree },
             readers,
             reaper_lease,
             PostSpawnFailure {
@@ -349,7 +420,7 @@ async fn run_inner(
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 failure,
@@ -361,7 +432,7 @@ async fn run_inner(
         }
         Err(_) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 PostSpawnFailure {
@@ -381,6 +452,7 @@ fn configured_command(
     root: &Path,
     args: &[&str],
     root_authority: Option<&GitRootAuthority>,
+    repository: Option<&repository_config::AdmittedRepository>,
 ) -> Command {
     let mut command = Command::new("git");
     command
@@ -389,15 +461,33 @@ fn configured_command(
         .args(["-c", "core.hooksPath=/dev/null"])
         .args(["-c", "core.fsmonitor=false"])
         .args(["-c", "maintenance.auto=false"])
-        .args(["-c", "gc.auto=0"]);
+        .args(["-c", "gc.auto=0"])
+        .args(["-c", "safe.bareRepository=explicit"]);
+    for setting in submodule_isolation::CONFIG {
+        command.arg("-c").arg(setting);
+    }
+    // The capped effective value of every setting that starts parallel
+    // children; see `parallel_limits`. Command-line config wins over every
+    // config file and reaches every Git child, submodules included.
+    for setting in repository
+        .into_iter()
+        .flat_map(repository_config::AdmittedRepository::parallel_overrides)
+    {
+        command.arg("-c").arg(setting);
+    }
     if let Some(root_authority) = root_authority {
         root_authority.bind_child(&mut command, root);
     } else {
         command.arg("-C").arg(root);
     }
     command
-        .args(args)
+        .args(submodule_isolation::arguments(args))
         .env_clear()
+        // Git checks this allowlist before any protocol.*.allow config,
+        // including for forced helpers and rewritten URLs. Children inherit
+        // it. File access is admitted here; submodule_isolation prevents
+        // Git from entering unadmitted submodule repositories.
+        .env("GIT_ALLOW_PROTOCOL", "file:git:http:https:ssh")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_SYSTEM", "/dev/null")
@@ -406,12 +496,24 @@ fn configured_command(
         .env("GIT_PAGER", "cat")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
+        .envs(
+            INHERITED_ENV
+                .iter()
+                .filter_map(|name| std::env::var_os(name).map(|value| (name, value))),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if let Some(repository) = repository {
+        // Explicit locations stop discovery, so Git cannot drift to another
+        // repository (an ancestor, say) between admission and this spawn.
+        command
+            .env("GIT_DIR", repository.git_dir())
+            .env("GIT_WORK_TREE", repository.work_tree());
+    }
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
+    command.creation_flags(CREATE_NO_WINDOW | process_tree::CREATION_FLAGS);
     command
 }
 

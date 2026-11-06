@@ -50,6 +50,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
         dirty: false,
         status: None,
         updated_at: None,
+        finished_at: None,
         resource: None,
         repository: None,
         diff_ref: None,

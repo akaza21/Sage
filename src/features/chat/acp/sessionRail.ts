@@ -1,16 +1,7 @@
 import type { SessionStatus } from "../../../domain/workbench";
 import { currentLocalBranchName } from "../../git/localBranches";
-import { createUnreadAcks, unreadDotVisible } from "./chatUnread";
 
-export const MAX_SESSION_RAIL_ACK_SLOTS = 64;
 export const MAX_SESSION_RAIL_GIT_CHARS = 24;
-
-export const {
-  pin: pinSessionRailIds,
-  ack: ackSessionRailUnread,
-  seen: seenSessionRailFingerprint,
-  clear: clearSessionRailAcks,
-} = createUnreadAcks(MAX_SESSION_RAIL_ACK_SLOTS);
 
 export function sessionRailRelativeTime(
   updatedAtMs: number,
@@ -78,24 +69,31 @@ export function sessionRailLive(status: SessionStatus | undefined): boolean {
   );
 }
 
-export function sessionRailFingerprint(
-  status: SessionStatus | undefined,
-  updatedAt?: number,
-): string {
-  const label = sessionRailStatusLabel(status);
-  return label && updatedAt ? `${label}:${updatedAt}` : label;
+/**
+ * Whether the chat's last Turn finished (Done or Failed). Only such a chat
+ * has a finish time to be read through, so only it can be marked read or
+ * unread.
+ */
+export function sessionRailFinished(status: SessionStatus | undefined) {
+  return status === "complete" || status === "failed";
 }
 
+/**
+ * A finished chat shows Unread until its latest Turn has been seen: the
+ * stored read mark (chatReadMarks) covers that Turn's finish time. Runtime
+ * bookkeeping, such as parking a session, never moves that time.
+ */
 export function sessionRailUnreadVisible(input: {
   focused: boolean;
   status: SessionStatus | undefined;
-  updatedAt?: number;
-  seenFingerprint: string | undefined;
+  finishedAt?: number;
+  readThrough: number | undefined;
 }): boolean {
-  return unreadDotVisible({
-    focused: input.focused,
-    live: sessionRailLive(input.status),
-    activityFingerprint: sessionRailFingerprint(input.status, input.updatedAt),
-    seenFingerprint: input.seenFingerprint,
-  });
+  if (input.focused) return false;
+  if (sessionRailLive(input.status)) return true;
+  if (!sessionRailFinished(input.status)) return false;
+  return (
+    input.readThrough === undefined ||
+    (input.finishedAt ?? 0) > input.readThrough
+  );
 }
