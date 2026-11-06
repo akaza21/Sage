@@ -359,7 +359,15 @@ export function validatePng(bytes, viewport) {
 }
 export async function waitForState(predicate, deadline) {
   while (Date.now() < deadline) {
-    if (await predicate()) return;
+    try {
+      if (await predicate()) return;
+    } catch (error) {
+      // Predicates can pass this state's deadline down to CDP. Expiry then
+      // belongs to this wait; an earlier CDP timeout remains a CDP failure.
+      if (error?.message === "journey-cdp-deadline" && Date.now() >= deadline)
+        throw new Error("state-timeout", { cause: error });
+      throw error;
+    }
     await new Promise((resolve) =>
       setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))),
     );
