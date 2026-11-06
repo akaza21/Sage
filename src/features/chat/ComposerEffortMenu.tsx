@@ -108,7 +108,10 @@ export default function ComposerEffortMenu({
         id={panelId}
         ariaLabel="Thinking level"
         role="dialog"
-        placement="above-start"
+        // Opened from its own toolbar trigger it lines up with that trigger's
+        // right edge, like the model menu; from the "+" menu it opens from
+        // the "+" button at the start of the row.
+        placement={anchorRef ? "above-start" : "above-end"}
         open={open}
         triggerRef={panelTriggerRef}
         onDismiss={onDismiss}

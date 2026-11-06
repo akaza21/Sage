@@ -1,5 +1,10 @@
 export type PermissionDecision =
-  "ask" | "allowOnce" | "allowAlways" | "allowForOriginSession" | "deny";
+  | "ask"
+  | "allowOnce"
+  | "allowAlways"
+  | "allowForOriginSession"
+  | "allowDeveloperMode"
+  | "deny";
 
 export type PermissionState =
   | "received"

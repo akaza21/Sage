@@ -143,7 +143,7 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) {
+      if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
@@ -241,7 +241,7 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) {
+      if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
@@ -290,7 +290,7 @@ describe("composer image input", () => {
     const { onAddImages } = renderComposer();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(screen.queryByText("Add images", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {

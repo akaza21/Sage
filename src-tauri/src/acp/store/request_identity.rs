@@ -138,7 +138,10 @@ pub(super) fn validate_payload(intent: &PermissionIntent) -> Result<(), StoreErr
     let payload = serde_json::from_str::<NormalizedPayload>(&intent.normalized_payload_json)
         .map_err(|_| StoreError::Corrupt("request payload"))?;
     if !matches!(payload, NormalizedPayload::PermissionRequest { .. })
-        || !matches!(intent.kind.as_str(), "permission" | "browserPermission")
+        || !matches!(
+            intent.kind.as_str(),
+            "permission" | "browserPermission" | "browserDeveloperPermission"
+        )
     {
         return Err(StoreError::Corrupt("request payload"));
     }

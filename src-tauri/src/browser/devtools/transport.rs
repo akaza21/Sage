@@ -4,6 +4,17 @@ use crate::acp::browser::BrowserFailure;
 
 use super::snapshot::DocumentStamp;
 
+/// Native transport envelope for Sage-built requests, independent of the
+/// smaller agent parameter allowance enforced by the browser contract.
+pub(super) const INTERNAL_REQUEST_BYTES: usize = 16_384;
+
+pub(super) fn admit_request(method: &str, params: &str) -> Result<(), BrowserFailure> {
+    if method.len() > 128 || params.len() > INTERNAL_REQUEST_BYTES {
+        return Err(BrowserFailure::Capacity);
+    }
+    Ok(())
+}
+
 /// A main-frame document that finished loading after an Agent navigation.
 pub(crate) struct Settled {
     pub url: String,
@@ -14,6 +25,13 @@ pub(crate) struct Settled {
 /// every parameter and parses every result; a transport only moves bytes and
 /// reports which document the page currently shows.
 pub(crate) trait CdpTransport {
+    /// Bitmap scale for the raw command's session, including its own device
+    /// override, excluding browser zoom and other sessions' overrides.
+    /// Unknown or changing capture settings fail closed.
+    fn screenshot_scale(&self, _timeout: Duration) -> Result<f64, BrowserFailure> {
+        Err(BrowserFailure::Unavailable)
+    }
+
     /// Issues one Agent command, under the dispatch permit when one is held.
     /// The result is the CDP `result` object as JSON, at most
     /// `max_result_bytes` long.
@@ -24,6 +42,27 @@ pub(crate) trait CdpTransport {
         max_result_bytes: usize,
         timeout: Duration,
     ) -> Result<String, BrowserFailure>;
+
+    /// Privileged calls use a grant-owned native session. Test transports
+    /// already isolate their target and may use their normal command lane.
+    fn raw(
+        &self,
+        method: &str,
+        params: &str,
+        max_result_bytes: usize,
+        timeout: Duration,
+    ) -> Result<String, BrowserFailure> {
+        self.call(method, params, max_result_bytes, timeout)
+    }
+
+    fn release_raw_objects(&self) {
+        let _ = self.observe(
+            "Runtime.releaseObjectGroup",
+            &crate::acp::browser::developer::release_params(),
+            4096,
+            Duration::from_secs(2),
+        );
+    }
 
     /// Reads page state without the dispatch permit: after an Agent command
     /// was issued, and for wait probes and page-context reads, which also

@@ -176,7 +176,8 @@ export type AcpItem =
         state: PermissionState;
         label: string;
         summary: string;
-        source?: "harness" | "browser";
+        /** `browserDeveloper` is a developer-mode card (ADR-0009b). */
+        source?: "harness" | "browser" | "browserDeveloper";
         offeredOptionKinds?: Array<
           "allow_once" | "allow_always" | "reject_once" | "reject_always"
         > | null;

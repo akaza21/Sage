@@ -209,3 +209,22 @@ it.each([
     ).toBeInTheDocument();
   },
 );
+
+it("shows a developer-mode call as page use with its CDP method in the detail", () => {
+  render(
+    <BrowserOperationItem
+      operation={{
+        ...browserOperationFixture,
+        operation: "cdp",
+        summary: "CDP Runtime.evaluate",
+        resultSummary: "CDP command completed",
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole("group", {
+      name: "Used page on example.com · Completed",
+    }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("CDP Runtime.evaluate")).toBeInTheDocument();
+});

@@ -229,7 +229,11 @@ export function safeItem(value: unknown): AcpItem | null {
               "allow_once" | "allow_always" | "reject_once" | "reject_always"
             >)
           : undefined;
-      const source = isOneOf(payload.source, ["harness", "browser"] as const)
+      const source = isOneOf(payload.source, [
+        "harness",
+        "browser",
+        "browserDeveloper",
+      ] as const)
         ? payload.source
         : undefined;
       return !isOneOf(value.toolState, [

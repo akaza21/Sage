@@ -353,6 +353,49 @@ describe("MenuPopover", () => {
     },
   );
 
+  it("opens an above-end menu above the trigger with their right edges aligned", () => {
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 768,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.getAttribute("role") === "dialog")
+          return new DOMRect(0, 0, 232, 90);
+        return new DOMRect(700, 600, 66, 28);
+      },
+    );
+    function AboveEndHarness() {
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={triggerRef}>Thinking level</button>
+          <MenuPopover
+            ariaLabel="Thinking level"
+            id="above-end"
+            open
+            role="dialog"
+            placement="above-end"
+            triggerRef={triggerRef}
+            onDismiss={() => {}}
+          >
+            <input aria-label="Level" />
+          </MenuPopover>
+        </>
+      );
+    }
+    render(<AboveEndHarness />);
+    // 766 - 232 = 534 keeps the right edge on the trigger's; 600 - 90 - 4.
+    expect(screen.getByRole("dialog", { name: "Thinking level" })).toHaveStyle({
+      left: "534px",
+      top: "506px",
+    });
+  });
+
   it("opens a below-start menu from the trigger's left edge toward the right", () => {
     Object.defineProperty(window, "innerHeight", {
       configurable: true,

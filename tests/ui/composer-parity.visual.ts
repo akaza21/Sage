@@ -117,7 +117,7 @@ for (const width of [1888, 720, 480]) {
         );
       });
     }
-    test("new-chat caption reflows and project scope attaches above the composer input", async ({
+    test("new-chat caption reflows and the project chip keeps its toolbar place", async ({
       page,
     }) => {
       await render(page, "Pi", "home");
@@ -128,16 +128,13 @@ for (const width of [1888, 720, 480]) {
         }),
       ).toBeVisible();
       await noClip(page, ".chat-home .searchable-picker__trigger-label");
-      const row = await page
-        .getByRole("group", { name: "Project scope" })
-        .boundingBox();
       const composer = page.locator("form.composer");
-      const box = await composer.locator(".composer__body").boundingBox();
-      expect(row!.y + row!.height).toBe(box!.y);
+      // The same toolbar chip as after the first turn; no separate row
+      // above the input that would move when the chat starts.
       await expect(
-        composer.getByRole("group", { name: "Project scope" }),
+        composer.locator(".composer__controls > .project-scope"),
       ).toHaveCount(1);
-      await expect(composer.locator(".project-scope")).toHaveCount(0);
+      await expect(composer.locator(".composer__slots")).toHaveText("");
       await expectCompactComposerTargets(composer);
     });
     test("Add descriptions are secondary lines and advertised modes are exclusive", async ({

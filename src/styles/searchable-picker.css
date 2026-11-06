@@ -99,11 +99,9 @@
   gap: var(--space-2);
 }
 
-.searchable-picker__option:has([data-harness-icon]) .searchable-picker__reason {
-  grid-column: 2;
-}
-
+/* An unavailable option's reason is its visible second line. */
 .searchable-picker__reason {
+  display: block;
   margin: 0;
 }
 

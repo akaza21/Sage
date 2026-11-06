@@ -52,6 +52,11 @@ export const PickerOption = memo(function PickerOption({
             {candidate.subtitle}
           </span>
         ) : null}
+        {candidate.disabledReason ? (
+          <span id={`${id}-reason`} className="searchable-picker__reason">
+            {candidate.disabledReason}
+          </span>
+        ) : null}
       </span>
       {selected && (logo || showSelectedCheck) ? (
         <Check
@@ -59,11 +64,6 @@ export const PickerOption = memo(function PickerOption({
           size={14}
           aria-hidden="true"
         />
-      ) : null}
-      {candidate.disabledReason ? (
-        <span id={`${id}-reason`} className="searchable-picker__reason">
-          {candidate.disabledReason}
-        </span>
       ) : null}
     </button>
   );

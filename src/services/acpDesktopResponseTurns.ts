@@ -46,6 +46,7 @@ function safeBrowserOperation(
     "screenshot",
     "readConsole",
     "readNetwork",
+    "cdp",
   ] as const);
   if (
     !projectId ||

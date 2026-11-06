@@ -207,11 +207,8 @@ for (const width of [1280, 960]) {
       await expect(control).toBeVisible();
       const geometry = await expectContentSizedTrigger(control, label);
       expect(geometry.labelVisible).toBe(true);
-      if (selector === ".composer__model-trigger") {
-        await expect(control).toHaveJSProperty("tagName", "SPAN");
-        await expect(control).not.toHaveAttribute("aria-haspopup");
-        expect(geometry.chevronVisible).toBe(false);
-      } else expect(geometry.chevronVisible).toBe(true);
+      // A single advertised model keeps the picker trigger and its chevron.
+      expect(geometry.chevronVisible).toBe(true);
     }
   });
 }
