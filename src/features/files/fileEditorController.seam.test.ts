@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { Text } from "@codemirror/state";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { EditorDocument } from "../../domain/workbench";
+import { createBrowserWorkbenchPorts } from "../../ports/browserWorkbenchPorts";
 import type { EditorPort } from "../../ports/workbenchPorts";
 import {
+  type ActiveEditorState,
   bindFileEditorController,
   type EditorStateBridge,
   getFileEditorController,
@@ -45,6 +44,10 @@ function fakeEditorPort(): EditorPort {
     watchEditorDocument: vi.fn(),
   } as EditorPort;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("file editor controller seam", () => {
   it("uses one shared controller to coordinate load, flush, save, and discard", async () => {
@@ -163,25 +166,88 @@ describe("file editor controller seam", () => {
     toString.mockRestore();
   });
 
-  it("keeps snapshot requests, bounded flushes, revisions, and dirty state in the controller", () => {
-    const controllerSource = readFileSync(
-      path.resolve(import.meta.dirname, "./fileEditorController.ts"),
-      "utf8",
-    );
-    const sliceSource = readFileSync(
-      path.resolve(import.meta.dirname, "../../app/editorSlice.ts"),
-      "utf8",
-    );
+  it("persists the latest edit, bounds a flush that never catches up, and saves the exact bytes", async () => {
+    const editor = createBrowserWorkbenchPorts().editor;
+    const resource = {
+      rootId: "root-controller-seam",
+      relativePath: "notes/bounded.txt",
+    };
+    const controller = bindFileEditorController(editor);
+    let activeEditor: ActiveEditorState | null = null;
+    const dirtyUpdates: boolean[] = [];
+    const bridge: EditorStateBridge = {
+      getActiveEditor: () => activeEditor,
+      setActiveEditor: (next, update) => {
+        activeEditor = next;
+        if (update?.dirty !== undefined) dirtyUpdates.push(update.dirty);
+      },
+    };
+    const ready = () => {
+      if (activeEditor?.phase !== "ready") throw new Error("not ready");
+      return activeEditor;
+    };
+    try {
+      const opened = await controller.load(resource, bridge);
+      const original = opened.buffer.content;
 
-    expect(controllerSource).toContain("BufferSnapshotRequest");
-    expect(controllerSource).toContain("MAX_SNAPSHOTS_PER_FLUSH");
-    expect(controllerSource).toContain("persistedRevision");
-    expect(sliceSource).toContain("getFileEditorController");
-    expect(sliceSource).not.toContain("bindFileEditorController");
-    expect(sliceSource).not.toContain("BufferSnapshotRequest");
-    expect(sliceSource).not.toContain("MAX_SNAPSHOTS_PER_FLUSH");
-    expect(sliceSource).not.toContain("snapshotEditorBuffer");
-    expect(sliceSource).not.toContain("persistedRevision");
-    expect(sliceSource).not.toContain("revision:");
+      // Two edits, one flush: only the latest text is persisted.
+      controller.updateContent(bridge, "first draft\n");
+      controller.updateContent(bridge, "second draft\n");
+      await controller.flush(bridge);
+      expect(ready()).toMatchObject({
+        revision: 2,
+        persistedRevision: 2,
+        persisting: false,
+      });
+      expect(dirtyUpdates.at(-1)).toBe(true);
+      const reopened = await editor.openEditorDocument(resource);
+      expect(reopened.buffer).toMatchObject({
+        content: "second draft\n",
+        revision: 2,
+      });
+      expect(reopened.dirty).toBe(true);
+      expect((await editor.readTextFile(resource)).content).toBe(original);
+
+      // A writer that edits again whenever a snapshot lands never lets the
+      // flush catch up: it stops with an error after a bounded number of
+      // snapshots instead of looping, and keeps the newest acknowledged text.
+      const persist = editor.snapshotEditorBuffer.bind(editor);
+      const typing = vi
+        .spyOn(editor, "snapshotEditorBuffer")
+        .mockImplementation(async (request) => {
+          const ack = await persist(request);
+          controller.updateContent(bridge, `typed after ${request.revision}\n`);
+          return ack;
+        });
+      controller.updateContent(bridge, "third draft\n");
+      await expect(controller.flush(bridge)).rejects.toThrow(/revision limit/);
+      typing.mockRestore();
+      const afterBound = ready();
+      expect(afterBound.revision).toBe(afterBound.persistedRevision + 1);
+      expect(afterBound.persisting).toBe(false);
+      expect((await editor.openEditorDocument(resource)).buffer).toMatchObject({
+        content: `typed after ${afterBound.persistedRevision - 1}\n`,
+        revision: afterBound.persistedRevision,
+      });
+
+      // Save flushes what is still pending, then writes exactly those bytes.
+      controller.updateContent(bridge, "saved bytes\n");
+      const result = await controller.save(bridge, () => true);
+      expect(result?.outcome).toBe("saved");
+      expect((await editor.readTextFile(resource)).content).toBe(
+        "saved bytes\n",
+      );
+      expect(ready()).toMatchObject({
+        content: "saved bytes\n",
+        saving: false,
+        persisting: false,
+      });
+      expect(ready().revision).toBe(ready().persistedRevision);
+      expect(ready().document.dirty).toBe(false);
+      expect(dirtyUpdates.at(-1)).toBe(false);
+      expect((await editor.openEditorDocument(resource)).dirty).toBe(false);
+    } finally {
+      await editor.discardEditorBuffer(resource);
+    }
   });
 });
