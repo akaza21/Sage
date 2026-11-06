@@ -244,14 +244,10 @@ describe("compact Workbench project tools", () => {
     );
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
-    // Opening the empty pane showed this Chat's (empty) review.
-    expect(
-      within(resources).getByRole("region", { name: "Chat changes" }),
-    ).toBeVisible();
     fireEvent.keyDown(resources, { key: "Escape" });
     expect(
       screen.getByRole("button", {
-        name: "Show files and preview · Ready · 1 resource",
+        name: "Show files and preview · Waiting",
       }),
     ).toBeVisible();
     expect(container.querySelector(".center-region")).not.toHaveAttribute(

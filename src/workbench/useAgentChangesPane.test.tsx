@@ -69,7 +69,7 @@ it("opens Changes once the owner loads after the pane expands", () => {
 it("opens a sessionless Chat's review and keeps it once a session starts", () => {
   const { result, rerender } = renderHook(
     ({ owner }) =>
-      useAgentChangesPane(owner, 1, true, undefined, "project", "chat"),
+      useAgentChangesPane(owner, 1, true, undefined, "project", "chat", true),
     { initialProps: { owner: null as AgentArtifactOwner | null } },
   );
   expect(result.current.owner).toEqual({

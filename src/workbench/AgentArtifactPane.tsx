@@ -166,6 +166,7 @@ export function AgentArtifactPane({
     onExpandedChange,
     projectTransitioning ? null : (project?.id ?? null),
     focusedChatId,
+    focusedPageValid && focusedPage?.currentSessionId === null,
   );
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;

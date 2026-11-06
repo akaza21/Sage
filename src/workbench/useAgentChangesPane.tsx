@@ -5,17 +5,22 @@ import { useAgentChangesState, type ChangesOwner } from "./agentChangesState";
 import { AgentChangesView, AgentChangesTab } from "./AgentChangesViews";
 
 /**
- * A Chat with no harness session yet still owns a (possibly empty) review, as
- * in the Codex desktop app, so Changes can open before a session starts. A
- * sessionless Changes tab stays with its Chat once a session begins.
+ * A Chat whose loaded projection confirms it has no harness session yet still
+ * owns a (possibly empty) review, as in the Codex desktop app, so Changes can
+ * open before a session starts. While the projection is loading or failed, a
+ * Chat's session is unknown, so it gets no owner and keeps its waiting state.
+ * A sessionless Changes tab stays with its Chat once a session starts.
  */
 export function changesOwnerFor(
   owner: AgentArtifactOwner | null,
   projectId: string | null,
   chatId: string | null,
+  sessionless: boolean,
 ): ChangesOwner | null {
   if (owner) return owner;
-  return projectId && chatId ? { projectId, chatId, sessionId: null } : null;
+  return sessionless && projectId && chatId
+    ? { projectId, chatId, sessionId: null }
+    : null;
 }
 
 export function useAgentChangesPane(
@@ -25,6 +30,8 @@ export function useAgentChangesPane(
   onExpandedChange: ((expanded: boolean) => void) | undefined,
   projectId: string | null,
   chatId: string | null,
+  /** The Chat's loaded projection confirms it has no session. */
+  sessionless = false,
 ) {
   const state = useAgentChangesState();
   const open =
@@ -59,7 +66,7 @@ export function useAgentChangesPane(
     ) : null,
     select: () => state.select(true),
     close: state.close,
-    owner: changesOwnerFor(owner, projectId, chatId),
+    owner: changesOwnerFor(owner, projectId, chatId, sessionless),
   };
 }
 

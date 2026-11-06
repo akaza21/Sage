@@ -2690,3 +2690,86 @@ describe("Agent artifact file chips", () => {
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 });
+
+describe("Agent artifact pane Changes ownership", () => {
+  const lateScope = {
+    projectId: "project-a" as SageProjectId,
+    projectGeneration: "0" as ProjectGeneration,
+    chatId: "chat-late" as SageChatId,
+  };
+  const pageFor = (sessionId: string | null) => {
+    const page = JSON.parse(
+      JSON.stringify(pageWithEdit()).replaceAll("chat-focused", "chat-late"),
+    ) as AcpChatPage & { currentSessionId: string | null };
+    page.currentSessionId = sessionId as AcpChatPage["currentSessionId"];
+    return page;
+  };
+  function focusLateChat() {
+    pinAcpProjectionIds(["chat-focused", "chat-late"]);
+    acpProjectionStoreFor("chat-late").getState().activateScope(lateScope);
+    pinAgentChatOwner("chat-late");
+    useWorkbenchStore.setState({
+      tabs: [
+        {
+          id: "chat-late",
+          kind: "chat",
+          title: "Late",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-late",
+    });
+  }
+  afterEach(() => {
+    useAgentChangesState.getState().close();
+    acpProjectionStoreFor("chat-late").getState().clear();
+  });
+
+  it("keeps a Chat with an unloaded projection waiting, then opens its session's Changes", async () => {
+    focusLateChat();
+    const { rerender } = render(<AgentArtifactPane expanded={false} />);
+    rerender(<AgentArtifactPane expanded />);
+    // The session is unknown until the projection loads: no invented review.
+    expect(
+      screen.getByRole("heading", { name: "Waiting for this Chat" }),
+    ).toBeVisible();
+    expect(useAgentChangesState.getState().owner).toBeNull();
+    act(() => {
+      acpProjectionStoreFor("chat-late")
+        .getState()
+        .applyAuthoritativePage(lateScope, pageFor("session-a"));
+    });
+    expect(useAgentChangesState.getState().owner).toEqual({
+      projectId: "project-a",
+      chatId: "chat-late",
+      sessionId: "session-a",
+    });
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+  });
+
+  it("opens an empty review once the projection confirms no session", async () => {
+    focusLateChat();
+    act(() => {
+      acpProjectionStoreFor("chat-late")
+        .getState()
+        .applyAuthoritativePage(lateScope, pageFor(null));
+    });
+    const { rerender } = render(<AgentArtifactPane expanded={false} />);
+    rerender(<AgentArtifactPane expanded />);
+    expect(useAgentChangesState.getState().owner).toEqual({
+      projectId: "project-a",
+      chatId: "chat-late",
+      sessionId: null,
+    });
+    expect(
+      await screen.findByRole("region", { name: "Chat changes" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Waiting for this Chat" }),
+    ).toBeNull();
+  });
+});
