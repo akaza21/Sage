@@ -65,9 +65,10 @@ export function assertPrivacy(value) {
     fail("privacy");
 }
 /**
- * Base states take every capture width. The composer hides its context meter
- * only once its toolbar fit compacts to the dense step (useComposerToolbarFit),
- * which the 480 window's chat column does not reach, so 480 is captured.
+ * Base states take every capture width. The context meter is the first thing
+ * the composer toolbar fit drops (useComposerToolbarFit), so whether a width
+ * shows it is not fixed here: the context-meter state witnesses the rendered
+ * fit, the meter shown or dropped where the measured row needs its column.
  */
 export function captureWidths(state) {
   return parityWidths(state);
