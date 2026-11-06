@@ -139,6 +139,81 @@ test.after(async () => {
   }
 });
 
+/** Boot outcomes other than the Workbench, each with the text it shows. */
+const BOOT_FAILURES = [
+  "main.launch-screen h1",
+  'section[role="alert"][aria-label="Workbench failed to load"]',
+];
+const BOOT_EVENT_LIMIT = 20;
+
+/**
+ * What the page reported while it booted (crashes, errors, failed loads) and
+ * the requests it is still waiting on.
+ */
+function recordBoot(page) {
+  const events = [];
+  const started = Date.now();
+  const note = (text) => {
+    if (events.length < BOOT_EVENT_LIMIT)
+      events.push(`+${Date.now() - started}ms ${text}`);
+  };
+  page.on("crash", () => note("renderer crashed"));
+  page.on("pageerror", (error) => note(`page error: ${error.message}`));
+  const pending = new Set();
+  page.on("request", (request) => pending.add(request));
+  page.on("requestfinished", (request) => pending.delete(request));
+  page.on("requestfailed", (request) => {
+    pending.delete(request);
+    note(`request failed: ${request.url()} ${request.failure()?.errorText}`);
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      note(`response ${response.status()}: ${response.url()}`);
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) note(`navigated: ${frame.url()}`);
+  });
+  return { events, pending };
+}
+
+/**
+ * Waits for the Workbench, and fails with what the page showed and reported
+ * when it boots to an error screen or not at all.
+ */
+async function bootWorkbench(page, { events, pending }) {
+  const workbench = page.locator("main.workbench");
+  const failure = page.locator(BOOT_FAILURES.join(", "));
+  try {
+    await workbench.or(failure).first().waitFor();
+  } catch (error) {
+    const shown = await page
+      .locator("body")
+      .innerText({ timeout: 1_000 })
+      .then((text) => text.trim().slice(0, 500))
+      .catch((reason) => `unreadable: ${reason.message}`);
+    const server = lane.server.output?.text.trim().slice(-1_000);
+    throw new Error(
+      [
+        "the Workbench did not boot",
+        `page shows: ${JSON.stringify(shown)}`,
+        ...events,
+        ...[...pending]
+          .slice(0, BOOT_EVENT_LIMIT)
+          .map((request) => `still loading: ${request.url()}`),
+        ...(server ? [`dev server output:\n${server}`] : []),
+      ].join("\n"),
+      { cause: error },
+    );
+  }
+  if (await workbench.count()) return;
+  throw new Error(
+    [
+      `the Workbench booted to: ${await failure.first().innerText()}`,
+      ...events,
+    ].join("\n"),
+  );
+}
+
 /**
  * Opens one owned page on the fixture Chat and attaches the capture CDP
  * client to it exactly as a native capture attaches to WebView2.
@@ -162,8 +237,9 @@ async function openCapture(t, scenario, options) {
     ),
   );
   const page = await context.newPage();
+  const boot = recordBoot(page);
   await page.goto(lane.url);
-  await page.locator("main.workbench").waitFor();
+  await bootWorkbench(page, boot);
   const target = await discoverOwnedTarget(
     async () => {
       let response;

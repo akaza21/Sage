@@ -147,8 +147,10 @@ export async function startDevServer(
       detached: process.platform !== "win32",
     },
   );
-  const server = { child, url: target };
   const output = captureOutput(child);
+  // The output tail stays readable, so a later failure can name what the
+  // server reported.
+  const server = { child, url: target, output };
   const pid = child.pid ?? null;
   try {
     await waitForServer(target, readyTimeoutMs);
