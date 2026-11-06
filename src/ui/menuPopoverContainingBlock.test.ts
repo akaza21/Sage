@@ -10,7 +10,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("keeps a composer popover attached to its trigger when a changed-files summary is present", () => {
+it("opens a composer popover above the changed-files summary instead of covering it", () => {
   document.body.innerHTML =
     '<section class="chat-surface"><div class="chat-dock"><div class="chat-edit-summary-zone">2 files changed</div><form class="composer"><button>Effort</button></form></div></section><div class="composer__effort-menu"></div>';
   const trigger = document.querySelector("button")!;
@@ -26,8 +26,8 @@ it("keeps a composer popover attached to its trigger when a changed-files summar
     },
   );
   const result = menuPopoverPosition(trigger, menu, trigger, 4, false);
-  expect(result.top).toBe(616);
-  expect(Number(result.top) + 100 + 4).toBe(720);
+  expect(result.top).toBe(511);
+  expect(Number(result.top) + 100 + 4).toBe(615);
 });
 
 function mount(style: Partial<CSSStyleDeclaration>) {

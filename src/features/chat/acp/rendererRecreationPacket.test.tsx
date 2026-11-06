@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useRef } from "react";
@@ -246,4 +249,41 @@ describe("renderer recreation frontend packet", () => {
     release();
     expect((0, eval)(RENDERER_RECREATION_PACKET_EVAL_SCRIPT)).toBeNull();
   });
+
+  it("native observer script reads the packet the mounted collector exposes", () => {
+    // The desktop shell evaluates its own copy of the observer script after a
+    // renderer reload; run that exact program against the real collector.
+    const nativeScript = nativeRendererRecreationPacketEvalScript();
+    mountedPacketHarness([page()], page());
+    expect((0, eval)(nativeScript)).toBeNull();
+
+    const release = mountRendererRecreationPacketCollector();
+    const packet = (0, eval)(nativeScript) as unknown;
+    expect(packet).toEqual({
+      schemaVersion: 1,
+      liveRegions: { polite: 1, assertive: 1 },
+      pagehideListeners: 1,
+      focusOutcome: "no-restoration-when-no-valid-envelope",
+      projectionSlots: 2,
+    });
+    expect(packet).toEqual(collectRendererRecreationPacket());
+
+    release();
+    expect((0, eval)(nativeScript)).toBeNull();
+  });
 });
+
+function nativeRendererRecreationPacketEvalScript(): string {
+  const source = readFileSync(
+    path.resolve(
+      __dirname,
+      "../../../../src-tauri/src/acp/service/renderer_recreation_orchestrator/main_window.rs",
+    ),
+    "utf8",
+  );
+  const script = /RENDERER_RECREATION_PACKET_EVAL: &str = r#"(.+?)"#;/s.exec(
+    source,
+  )?.[1];
+  if (!script) throw new Error("native renderer recreation eval script");
+  return script;
+}
