@@ -41,6 +41,7 @@ import { runCaptureActions } from "./capture-native-chat-drive.mjs";
 import { boundedEvaluate } from "./capture-native-chat-shared.mjs";
 import { settleDevServer, startDevServer } from "./lib/app-smoke-server.mjs";
 import { resolveUiPort } from "./lib/ui-test-port.mjs";
+import { createDiagnosticSanitizer } from "./lib/diagnostic-redaction.mjs";
 import { connectCdp } from "./source-functional-native-ide-cdp.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -147,35 +148,10 @@ const BOOT_EVENT_LIMIT = 20;
 const BOOT_TEXT_LIMIT = 300;
 const BOOT_SERVER_LIMIT = 1_000;
 
-/** Matches a local root under either separator, case-insensitively. */
-function rootPattern(root) {
-  const escaped = root
-    .replace(/[\\/]+$/u, "")
-    .split(/[\\/]/u)
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join("[\\\\/]");
-  return new RegExp(escaped, "giu");
-}
-const LOCAL_ROOTS = [
-  [rootPattern(repositoryRoot), "<repo>"],
-  [rootPattern(homedir()), "<home>"],
-];
-
-/**
- * Diagnostic text without local paths: the repository and home roots, Vite
- * /@fs/ URLs and any other absolute path are replaced, then the text is
- * bounded.
- */
-function sanitize(text, limit = BOOT_TEXT_LIMIT) {
-  let clean = String(text);
-  for (const [pattern, label] of LOCAL_ROOTS)
-    clean = clean.replace(pattern, label);
-  clean = clean
-    .replace(/\/@fs\/[^\s"'`)]+/gu, "/@fs/<path>")
-    .replace(/\b[A-Za-z]:[\\/][^\s"'`)]*/gu, "<path>")
-    .replace(/(^|[\s"'`(=])\/(?!@fs\/)[^\s"'`):]+\/[^\s"'`)]*/gmu, "$1<path>");
-  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
-}
+const sanitize = createDiagnosticSanitizer([
+  [repositoryRoot, "<repo>"],
+  [homedir(), "<home>"],
+]);
 
 /**
  * Records what the page reports until boot ends: crashes, errors, failed
@@ -188,7 +164,9 @@ function recordBoot(page) {
   const started = Date.now();
   const note = (text) => {
     if (events.length < BOOT_EVENT_LIMIT)
-      events.push(`+${Date.now() - started}ms ${sanitize(text)}`);
+      events.push(
+        `+${Date.now() - started}ms ${sanitize(text, BOOT_TEXT_LIMIT)}`,
+      );
   };
   const finish = (request) => {
     unfinished = Math.max(0, unfinished - 1);
@@ -227,7 +205,8 @@ function recordBoot(page) {
         headline,
         ...events,
         ...[...pending].map(
-          (request) => `still loading: ${sanitize(request.url())}`,
+          (request) =>
+            `still loading: ${sanitize(request.url(), BOOT_TEXT_LIMIT)}`,
         ),
         ...(unfinished > pending.size
           ? [`${unfinished - pending.size} more requests still loading`]
@@ -246,24 +225,30 @@ function recordBoot(page) {
 async function shownText(locator) {
   return locator
     .innerText({ timeout: 1_000 })
-    .then((text) => JSON.stringify(sanitize(text.trim())))
-    .catch((error) => `unreadable (${sanitize(error.message)})`);
+    .then((text) => JSON.stringify(sanitize(text.trim(), BOOT_TEXT_LIMIT)))
+    .catch(
+      (error) => `unreadable (${sanitize(error.message, BOOT_TEXT_LIMIT)})`,
+    );
 }
 
 /**
- * Waits for the Workbench, and fails with what the page showed and reported
- * when it boots to an error screen or not at all.
+ * Navigates to the app and waits for the Workbench, recording the page from
+ * before navigation until boot ends. A navigation that fails or a boot that
+ * reaches an error screen or never finishes fails with what the page showed
+ * and reported.
  */
-async function bootWorkbench(page, boot) {
+async function bootWorkbench(page) {
+  const boot = recordBoot(page);
   const workbench = page.locator("main.workbench");
   const failure = page.locator(BOOT_FAILURE).first();
   try {
     try {
+      await page.goto(lane.url);
       await workbench.or(failure).first().waitFor();
     } catch (error) {
       throw new Error(
         boot.report(
-          `the Workbench did not boot; the page shows ${await shownText(page.locator("body"))}`,
+          `the Workbench did not boot (${sanitize(error.message.split("\n")[0], BOOT_TEXT_LIMIT)}); the page shows ${await shownText(page.locator("body"))}`,
         ),
         { cause: error },
       );
@@ -300,9 +285,7 @@ async function openCapture(t, scenario, options) {
     ),
   );
   const page = await context.newPage();
-  const boot = recordBoot(page);
-  await page.goto(lane.url);
-  await bootWorkbench(page, boot);
+  await bootWorkbench(page);
   const target = await discoverOwnedTarget(
     async () => {
       let response;

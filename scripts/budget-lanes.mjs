@@ -56,6 +56,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "capture-native-chat-parity.node-test.mjs",
   "capture-native-chat-turn.node-test.mjs",
   "capture-native-editor-catalog.node-test.mjs",
+  "diagnostic-redaction.node-test.mjs",
   "capture-native-editor-dom.node-test.mjs",
   "capture-native-editor-drive.node-test.mjs",
   "capture-native-editor-capture.node-test.mjs",
@@ -539,6 +540,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "capture-native-chat-ui.node-test.mjs",
     reason:
       "Browser-dependent NC-4 capture conformance lane; drives the visual fixture Chats in an owned Vite server and bundled Playwright Chromium with the native capture CDP client, actions and named-state probe.",
+  },
+  {
+    file: "diagnostic-redaction.node-test.mjs",
+    reason:
+      "Portable input/output regressions for the path redaction that lane failure diagnostics pass through; string transforms only, with no process, browser or native capability.",
   },
   {
     file: "check-lanes.portable.node-test.mjs",
