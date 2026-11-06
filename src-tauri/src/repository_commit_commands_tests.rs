@@ -119,6 +119,9 @@ fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
 #[test]
 fn commit_and_post_commit_projection_never_launch_content_filters() {
     let fixture = TwoRootProject::new();
+    // Sage refuses repository filters outright; trusting the root here proves
+    // the commit and projection paths stay filter-free underneath that check.
+    crate::git_process::trust_repository_config_for_test(&fixture.root_a);
     fs::write(
         fixture.root_a.join(".gitattributes"),
         "*.txt filter=sentinel\n",

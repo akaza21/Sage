@@ -69,11 +69,8 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    #[cfg(unix)]
     #[test]
-    fn repository_textconv_drivers_cannot_launch_from_the_diff_view() {
-        use std::os::unix::fs::PermissionsExt;
-
+    fn diff_view_reports_repository_textconv_refusal_without_running_the_driver() {
         let root = std::env::temp_dir().join(format!("sage-git-textconv-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-q"]);
@@ -85,36 +82,48 @@ mod tests {
         git(&root, &["commit", "-q", "-m", "fixture"]);
         fs::write(root.join("notes.txt"), "new\n").unwrap();
         let sentinel = root.join("textconv-ran");
-        let driver = root.join("sentinel-textconv");
-        fs::write(
-            &driver,
-            format!(
-                "#!/bin/sh\necho ran > \"{}\"\ncat \"$1\"\n",
-                sentinel.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&driver, fs::Permissions::from_mode(0o755)).unwrap();
         git(
             &root,
             &[
                 "config",
                 "diff.sentinel.textconv",
-                &driver.display().to_string(),
+                "echo ran > textconv-ran; cat",
             ],
         );
 
+        // Plain Git runs the driver: the sentinel is a live execution witness.
+        git(&root, &["diff", "--", "notes.txt"]);
+        assert!(sentinel.exists());
+        fs::remove_file(&sentinel).unwrap();
+
         let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
-        let diff = tokio::runtime::Runtime::new()
-            .unwrap()
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let error = runtime
             .block_on(file_diff(
                 &workspace,
                 &workspace.resource("notes.txt").unwrap(),
             ))
-            .unwrap();
+            .unwrap_err();
 
+        assert!(matches!(
+            error,
+            crate::error::AppError::UnsafeRepositoryConfig(_)
+        ));
+        let message = error.to_string();
+        assert!(message.contains("Sage did not run Git here"), "{message}");
+        assert!(message.contains("diff.sentinel.textconv"), "{message}");
+        assert!(
+            message.contains("Remove them from the repository config, or use the terminal"),
+            "{message}"
+        );
+        let projection =
+            runtime.block_on(project_status(vec![("root-test".into(), Ok(workspace))]));
+        assert_eq!(projection.roots[0].state, "unavailable");
+        assert_eq!(
+            projection.roots[0].message.as_deref(),
+            Some(message.as_str())
+        );
         assert!(!sentinel.exists());
-        assert_eq!(diff.hunks.len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 

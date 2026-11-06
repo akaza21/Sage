@@ -176,7 +176,10 @@ mod tests {
     /// quietly skipping the wait. It leaves the repository folder, so a
     /// leftover filter outliving a killed add doesn't hold it as its working
     /// folder.
+    /// A slow clean filter keeps `git add` running past the deadline. Sage
+    /// refuses repository filters, so the fixture root is trusted explicitly.
     fn hold_staging_of_new_file(root: &Path) {
+        crate::git_process::trust_repository_config_for_test(root);
         git(
             root,
             &["config", "filter.sage-slow.clean", "cd / && sleep 2 && cat"],
@@ -494,8 +497,11 @@ mod tests {
         });
     }
 
-    #[test]
-    fn nonconvergent_reap_returns_containment_without_a_final_projection() {
+    /// Stages `new.txt` through a held clean filter, lets the deadline kill
+    /// the add, and proves the kill was complete: the background reaper
+    /// confirms the exit, the stage never lands, and nothing still holds the
+    /// repository open, so it can be deleted.
+    fn killed_stage_never_lands(command_timeout: Duration) {
         let _serial = crate::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
@@ -509,6 +515,7 @@ mod tests {
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
+            let harness = repository::GitProcessTestHarness::new();
 
             let error = mutate_git_file_inner_with_process_policy(
                 &state,
@@ -522,19 +529,26 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::nonconvergent_reap(Duration::ZERO),
+                harness.nonconvergent_reap_policy(command_timeout),
             )
             .await
             .unwrap_err();
 
-            assert!(matches!(
-                error,
-                AppError::GitContainment {
-                    state: crate::error::GitContainmentState::TerminatedUnreaped,
-                    ..
-                }
-            ));
-            std::thread::sleep(Duration::from_millis(200));
+            assert!(
+                matches!(
+                    error,
+                    AppError::GitContainment {
+                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        ..
+                    }
+                ),
+                "{error:?}"
+            );
+            // The reaper holds the root until every process the add started
+            // has exited and closed Git's pipes; wait for that, not a delay.
+            crate::test_wait::until("the reaper to confirm the killed add's exit", || {
+                harness.observation().unconfirmed_exits == 0
+            });
             let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
             let later = repository::status(&workspace).await.unwrap();
             assert_eq!(later.changes[0].index_status, "unchanged");
@@ -542,6 +556,20 @@ mod tests {
             drop(state);
             fs::remove_dir_all(base).unwrap();
         });
+    }
+
+    #[test]
+    fn nonconvergent_reap_returns_containment_without_a_final_projection() {
+        killed_stage_never_lands(Duration::ZERO);
+    }
+
+    /// With a deadline long enough for Git for Windows' launcher to start the
+    /// real Git and its filter, killing only the launcher let the real Git
+    /// finish the stage and kept the repository open. The whole tree must go.
+    #[cfg(windows)]
+    #[test]
+    fn a_killed_stage_takes_its_whole_process_tree_on_windows() {
+        killed_stage_never_lands(Duration::from_millis(700));
     }
 
     #[test]

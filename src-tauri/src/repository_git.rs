@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    error::{AppError, AppResult},
+    error::{AppError, AppResult, RepositoryLayout},
     git_budget, git_process,
 };
 
@@ -24,7 +24,12 @@ pub(crate) enum RepositoryBoundary {
 }
 
 pub(crate) async fn repository_boundary(root: &Path) -> AppResult<RepositoryBoundary> {
-    let output = run_git(root, &["rev-parse", "--show-toplevel"], 32 * 1024).await?;
+    let output = match run_git(root, &["rev-parse", "--show-toplevel"], 32 * 1024).await {
+        Err(AppError::RepositoryOutsideRoot(RepositoryLayout::NestedRoot)) => {
+            return Ok(RepositoryBoundary::Nested);
+        }
+        output => output?,
+    };
     repository_boundary_from_output(root, &output)
 }
 
