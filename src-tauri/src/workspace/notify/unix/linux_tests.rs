@@ -212,8 +212,8 @@ fn resync_rearms_before_a_client_recreates_then_writes() {
     let root = test_root("resync-order");
     fs::create_dir(root.join("src")).expect("create src");
     let prepared = linux::prepare(std::slice::from_ref(&root), true).expect("prepare tree watch");
-    // Queue an unnamed attribute event and the entire deletion before
-    // reading, so both kinds of resync are in the same inotify batch.
+    // Queue both parent and self attribute events and the entire deletion
+    // before reading. Neither attribute event may acknowledge a tree resync.
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(root.join("src"), fs::Permissions::from_mode(0o700))
         .expect("change src permissions");
@@ -251,6 +251,7 @@ fn resync_rearms_before_a_client_recreates_then_writes() {
     assert_eq!(
         written,
         vec![
+            ("src".to_string(), 3),
             ("src".to_string(), 3),
             overflow(),
             overflow(),

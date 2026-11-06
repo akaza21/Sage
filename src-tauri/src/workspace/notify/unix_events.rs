@@ -155,17 +155,18 @@ impl InotifyFolders {
             && (self.subfolders || mask & IN_WATCH_GONE != 0)
     }
 
-    /// Every watched subfolder has a watched parent. Use the parent's named
-    /// event for its attributes, deletion or movement, rather than publishing
+    /// Use the parent's named event for subfolder deletion or movement, avoiding
     /// multiple resyncs for one operation (possibly across reads). A client
     /// could otherwise recreate a folder after the first resync, mistake a
     /// queued deletion resync for its creation, and write before it is watched.
-    /// Keep self events for the root, ambiguous mappings, and unmounts.
-    fn reported_by_parent(&self, watch: i32, mask: u32, unnamed: bool) -> bool {
+    /// Keep self events for the root, ambiguous mappings, and unmounts. Attribute
+    /// changes also need self events: a mount root's namespace parent does not
+    /// receive them.
+    fn lifecycle_reported_by_parent(&self, watch: i32, mask: u32, unnamed: bool) -> bool {
         self.subfolders
             && unnamed
             && mask & (IN_UNMOUNT | IN_Q_OVERFLOW) == 0
-            && mask & (IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED) != 0
+            && mask & (IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED) != 0
             && matches!(self.by_watch.get(&watch), Some(Some(path)) if !path.is_empty())
     }
 }
@@ -231,7 +232,7 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
         }
         offset = name_end;
         let unnamed = name_len == 0 || buffer[name_start] == 0;
-        if folders.stale(wd, mask) || folders.reported_by_parent(wd, mask, unnamed) {
+        if folders.stale(wd, mask) || folders.lifecycle_reported_by_parent(wd, mask, unnamed) {
             continue;
         }
         if rewatch || folders.changes_tree(wd, mask) {
@@ -247,12 +248,16 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
                 .ok()
                 .filter(|name| !name.is_empty())
         };
+        let kind = unix_kind_from_inotify_mask(mask);
         let path = match folders.by_watch.get(&wd) {
             Some(Some(folder)) if folder.is_empty() => name.map(str::to_string),
+            // A known folder can report its own changes without a child name.
+            // Give these a path instead of a resync that could be mistaken for
+            // a later lifecycle acknowledgement when records span reads.
+            Some(Some(folder)) if unnamed && kind == UnixWatchKind::Changed => Some(folder.clone()),
             Some(Some(folder)) => name.map(|name| format!("{folder}/{name}")),
             _ => None,
         };
-        let kind = unix_kind_from_inotify_mask(mask);
         if let Ok(delivery) = unix_watch_delivery(path.as_deref(), kind) {
             deliveries.push(delivery);
         }
@@ -543,9 +548,9 @@ mod tests {
     }
 
     #[test]
-    fn inotify_subfolder_self_events_wait_for_the_parent_across_reads() {
+    fn inotify_subfolder_lifecycle_self_events_wait_for_the_parent_across_reads() {
         let folders = root_and_src_folders();
-        for mask in [IN_ATTRIB, IN_DELETE_SELF, IN_IGNORED, IN_MOVE_SELF] {
+        for mask in [IN_DELETE_SELF, IN_IGNORED, IN_MOVE_SELF] {
             assert_eq!(
                 unix_watch_deliveries_from_inotify_bytes(&inotify_record(2, mask, ""), &folders),
                 InotifyBatch {
@@ -569,6 +574,34 @@ mod tests {
             deliveries(&inotify_record(1, IN_ATTRIB, "src"), &folders),
             vec![("src".to_string(), 3)]
         );
+    }
+
+    #[test]
+    fn inotify_subfolder_attributes_are_reported_without_a_parent_event() {
+        let mut folders = root_and_src_folders();
+        folders.record(3, None);
+        // Mount roots receive only this self event when their attributes
+        // change: fsnotify_parent does not report to the namespace parent.
+        for mask in [IN_ATTRIB, IN_MODIFY] {
+            let padded = inotify_record(2, mask, "");
+            let mut bare = padded[..INOTIFY_EVENT_BYTES].to_vec();
+            bare[12..16].copy_from_slice(&0_u32.to_le_bytes());
+            for record in [padded, bare] {
+                assert_eq!(
+                    unix_watch_deliveries_from_inotify_bytes(&record, &folders),
+                    InotifyBatch {
+                        deliveries: vec![("src".to_string(), 3)],
+                        rewatch: false,
+                    }
+                );
+            }
+            for watch in [1, 3] {
+                assert_eq!(
+                    deliveries(&inotify_record(watch, mask, ""), &folders),
+                    vec![overflow()]
+                );
+            }
+        }
     }
 
     #[test]
