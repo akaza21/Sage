@@ -25,6 +25,7 @@ import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useSideChatState } from "./sideChatState";
+import { useAgentChangesState } from "./agentChangesState";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -79,6 +80,8 @@ beforeEach(() => {
     value: vi.fn(),
   });
   localStorage.clear();
+  // The Changes tab outlives a render, as it does across app remounts.
+  useAgentChangesState.getState().close();
   compactViewport = true;
   const listeners = new Set<() => void>();
   setCompactViewport = (compact) => {

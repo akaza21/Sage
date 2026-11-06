@@ -561,6 +561,15 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The user agent gives these a bare monospace, which WebKit on macOS maps
+   to Courier. 1em keeps the surrounding size. Code shows the characters as
+   typed: Cascadia Code would otherwise join -> and --> into arrows. */
+:where(code, kbd, samp, pre) {
+  font-family: var(--font-family-mono);
+  font-size: 1em;
+  font-variant-ligatures: none;
+}
+
 :where(
   a,
   button,

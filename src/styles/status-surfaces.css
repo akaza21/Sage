@@ -145,9 +145,11 @@
   user-select: none;
 }
 
+/* Groups keep their natural width so an overflowing bar scrolls instead of
+   painting one group over the next. */
 .status-bar__group {
   display: flex;
-  min-width: 0;
+  flex: none;
   height: 100%;
   align-items: center;
   gap: 12px;

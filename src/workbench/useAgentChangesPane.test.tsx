@@ -65,3 +65,27 @@ it("opens Changes once the owner loads after the pane expands", () => {
   rerender({ expanded: false, current: owner });
   expect(useAgentChangesState.getState().owner).toBeNull();
 });
+
+it("opens a sessionless Chat's review and keeps it once a session starts", () => {
+  const { result, rerender } = renderHook(
+    ({ owner }) =>
+      useAgentChangesPane(owner, 1, true, undefined, "project", "chat", true),
+    { initialProps: { owner: null as AgentArtifactOwner | null } },
+  );
+  expect(result.current.owner).toEqual({
+    projectId: "project",
+    chatId: "chat",
+    sessionId: null,
+  });
+  act(() => useAgentChangesState.getState().show(result.current.owner!, 1));
+  expect(result.current.selected).toBe(true);
+  rerender({
+    owner: {
+      projectId: "project",
+      chatId: "chat",
+      sessionId: "session",
+    } as AgentArtifactOwner,
+  });
+  expect(result.current.selected).toBe(true);
+  expect(result.current.owner?.sessionId).toBe("session");
+});

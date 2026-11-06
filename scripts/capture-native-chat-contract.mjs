@@ -362,7 +362,9 @@ export async function waitForState(predicate, deadline) {
     try {
       if (await predicate()) return;
     } catch (error) {
-      // Classify by the bound CDP enforced, not by when its failure arrived.
+      // CDP reports a deadline only to the operation that enforced it; later
+      // requests on that connection reject as terminated, with that cause.
+      // Classify by the enforced bound, not by when its failure arrived.
       if (
         error?.message === "journey-cdp-deadline" &&
         Number.isSafeInteger(error.deadline) &&

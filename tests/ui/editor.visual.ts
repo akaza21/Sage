@@ -11,6 +11,7 @@ import {
 import {
   expectFindContained,
   runEditorCanonicalTest,
+  settleEditorGutter,
 } from "./editorVisualHelpers";
 
 type PickerRect = {
@@ -656,6 +657,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(find.getByRole("status")).toContainText("matches");
     expect(await editorPlane.boundingBox()).toEqual(before);
     await expectFindContained(page);
+    await settleEditorGutter(page);
     await expect(workbench).toHaveScreenshot("editor-find.png");
 
     await page.setViewportSize({ width: 720, height: 560 });
