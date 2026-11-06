@@ -51,16 +51,24 @@ export function useAgentChangesPane(
   useLayoutEffect(() => {
     if (open && owner && state.owner?.sessionId === null) state.adopt(owner);
   }, [open, owner, state]);
-  const previousOwner = useRef(state.owner);
+  // An explicit open request expands a collapsed pane once this Chat can
+  // show it, so a request made while its projection loads waits for it. A
+  // request for another Chat, or one closed meanwhile, is dropped.
+  const handledRequest = useRef(state.request);
   useEffect(() => {
-    const previous = previousOwner.current;
-    previousOwner.current = state.owner;
-    // Adopting the started session is the same tab, not a new request.
-    const adopted =
-      previous?.sessionId === null && previous.chatId === state.owner?.chatId;
-    if (selected && !expanded && previous !== state.owner && !adopted)
-      onExpandedChange?.(true);
-  }, [selected, expanded, onExpandedChange, state.owner]);
+    if (handledRequest.current === state.request) return;
+    const forThisChat = state.selected && sameChat;
+    if (forThisChat && !selected) return;
+    handledRequest.current = state.request;
+    if (forThisChat && !expanded) onExpandedChange?.(true);
+  }, [
+    expanded,
+    onExpandedChange,
+    sameChat,
+    selected,
+    state.request,
+    state.selected,
+  ]);
   return {
     open,
     selected,

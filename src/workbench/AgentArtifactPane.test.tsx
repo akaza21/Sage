@@ -2782,6 +2782,70 @@ describe("Agent artifact pane Changes ownership", () => {
     ).toBeVisible();
   });
 
+  it("expands for every explicit Changes request on a sessionless Chat", () => {
+    focusLateChat();
+    act(() => {
+      acpProjectionStoreFor("chat-late")
+        .getState()
+        .applyAuthoritativePage(lateScope, pageFor(null));
+    });
+    const onExpandedChange = vi.fn();
+    const sessionless = () => ({
+      projectId: "project-a",
+      chatId: "chat-late",
+      sessionId: null,
+    });
+    const { rerender } = render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    act(() => useAgentChangesState.getState().show(sessionless(), 0));
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    rerender(
+      <AgentArtifactPane expanded onExpandedChange={onExpandedChange} />,
+    );
+    rerender(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    onExpandedChange.mockClear();
+    // Asking again after collapsing is a new request, not an adoption.
+    act(() => useAgentChangesState.getState().show(sessionless(), 0));
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("holds a Changes request made while the projection loads", () => {
+    focusLateChat();
+    const onExpandedChange = vi.fn();
+    render(
+      <AgentArtifactPane
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+      />,
+    );
+    act(() =>
+      useAgentChangesState.getState().show(
+        {
+          projectId: "project-a",
+          chatId: "chat-late",
+          sessionId: "session-a",
+        },
+        0,
+      ),
+    );
+    expect(onExpandedChange).not.toHaveBeenCalledWith(true);
+    act(() => {
+      acpProjectionStoreFor("chat-late")
+        .getState()
+        .applyAuthoritativePage(lateScope, pageFor("session-a"));
+    });
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
   it("does not reuse a sessionless tab while the projection is unloaded", () => {
     focusLateChat();
     act(() =>

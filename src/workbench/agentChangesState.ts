@@ -9,6 +9,8 @@ export const useAgentChangesState = create<{
   owner: ChangesOwner | null;
   generation: number;
   selected: boolean;
+  /** Counts explicit open requests; adopting a session is not one. */
+  request: number;
   show: (owner: ChangesOwner, generation: number) => void;
   /** Gives a sessionless Changes tab the session its Chat just started. */
   adopt: (owner: ChangesOwner) => void;
@@ -18,7 +20,14 @@ export const useAgentChangesState = create<{
   owner: null,
   generation: -1,
   selected: false,
-  show: (owner, generation) => set({ owner, generation, selected: true }),
+  request: 0,
+  show: (owner, generation) =>
+    set((state) => ({
+      owner,
+      generation,
+      selected: true,
+      request: state.request + 1,
+    })),
   adopt: (owner) =>
     set((state) =>
       state.owner?.sessionId === null &&
