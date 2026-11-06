@@ -197,3 +197,12 @@ fn memory_sample(label: &str) {
     #[cfg(not(target_os = "linux"))]
     let _ = label;
 }
+
+#[cfg(unix)]
+#[test]
+fn unix_backslashes_in_names_do_not_select_a_different_file() {
+    let f = Fixture::new();
+    f.file("a\\b", b"selected");
+    f.file("a/b", b"different");
+    assert_eq!(f.read("a\\b").0[0].bytes, b"selected");
+}

@@ -86,8 +86,11 @@ fn relative(root: &Path, path: &Path) -> Result<String, &'static str> {
         .strip_prefix(root)
         .map_err(|_| "Attachment left its selected root.")?
         .to_str()
-        .ok_or("Attachment path is not UTF-8.")?
-        .replace('\\', "/");
+        .ok_or("Attachment path is not UTF-8.")?;
+    #[cfg(windows)]
+    let value = value.replace('\\', "/");
+    #[cfg(not(windows))]
+    let value = value.to_owned();
     if value.len() > 4096 {
         return Err("Attachment path exceeds 4096 bytes.");
     }
