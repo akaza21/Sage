@@ -64,6 +64,15 @@ export function assertPrivacy(value) {
   )
     fail("privacy");
 }
+/**
+ * Base states take every capture width. The context meter is the first thing
+ * the composer toolbar fit drops (useComposerToolbarFit), so whether a width
+ * shows it is not fixed here: the context-meter state witnesses the rendered
+ * fit, the meter shown or dropped where the measured row needs its column.
+ */
+export function captureWidths(state) {
+  return parityWidths(state);
+}
 export function parseArgs(args) {
   const values = {};
   if (args.length !== 6) fail("arguments");
@@ -91,7 +100,7 @@ export function parseArgs(args) {
   if (responsiveWidth && responsiveWidth !== width)
     fail("responsive-width-mismatch");
   // A surface the product hides below a pane width is not captured there.
-  if (!parityWidths(state).includes(width)) fail("state-width-unsupported");
+  if (!captureWidths(state).includes(width)) fail("state-width-unsupported");
   return {
     harness,
     state,

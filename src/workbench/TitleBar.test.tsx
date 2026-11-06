@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -14,6 +15,7 @@ import { clearChatSearchFolderRequest } from "../features/chatSearch/chatSearchS
 import { LeftSidebar } from "./LeftSidebar";
 import { TitleBar } from "./TitleBar";
 import { useSideChatState } from "./sideChatState";
+import { resetAgentChatHistory } from "./agentChatHistory";
 
 const initialState = useWorkbenchStore.getState();
 
@@ -29,6 +31,7 @@ it("keeps brand artwork and the wordmark out of the title bar", () => {
 
 afterEach(() => {
   cleanup();
+  resetAgentChatHistory();
   clearChatSearchFolderRequest();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
@@ -109,21 +112,20 @@ describe("TitleBar center chrome", () => {
     ).toBeEnabled();
   });
 
-  it("shows the focused session title in Agent and Quick Open's Search files in Editor", () => {
+  it("shows Back and Forward in Agent, Quick Open's Search files in Editor, and no chat title (Codex)", () => {
     seedChats();
     const { rerender } = render(
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
-
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
+    const banner = screen.getByRole("banner");
+    // The chat header names the chat; the title bar does not repeat it.
+    expect(within(banner).queryByText("Review")).toBeNull();
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Search files" })).toBeNull();
 
-    useWorkbenchStore.setState({ activeTabId: "file:app" });
-    rerender(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
-
     rerender(<TitleBar mode="editor" onModeChange={vi.fn()} />);
-    expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Search files" }));
     expect(useQuickOpenStore.getState().open).toBe(true);
     useQuickOpenStore.setState({ open: false });
@@ -134,7 +136,7 @@ describe("TitleBar center chrome", () => {
     ).toBeNull();
   });
 
-  it("keeps the parent's window title while its side chat has focus (Codex s2/f0244)", () => {
+  it("offers Back once another chat is shown, and a side chat counts as its parent", () => {
     seedChats();
     const { tabs } = useWorkbenchStore.getState();
     useWorkbenchStore.setState({
@@ -148,16 +150,27 @@ describe("TitleBar center chrome", () => {
           pinned: false,
           dirty: false,
         },
+        {
+          id: "chat:c",
+          kind: "chat",
+          title: "Chat: Other",
+          position: 3,
+          pinned: false,
+          dirty: false,
+        },
       ],
-      activeTabId: "side-1",
     });
     useSideChatState.setState({
       sides: [{ id: "side-1", projectId: "project-a", parentChatId: "chat:b" }],
     });
     try {
       render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-      expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
-      expect(screen.queryByRole("heading", { name: "Side chat" })).toBeNull();
+      const back = screen.getByRole("button", { name: "Back" });
+      act(() => useWorkbenchStore.setState({ activeTabId: "side-1" }));
+      expect(back).toBeDisabled();
+      act(() => useWorkbenchStore.setState({ activeTabId: "chat:c" }));
+      expect(back).toBeEnabled();
+      expect(back).toHaveAttribute("title", "Back (Alt+Left)");
     } finally {
       useSideChatState.setState({ sides: [] });
     }
@@ -312,23 +325,5 @@ describe("TitleBar center chrome", () => {
         dialog,
       ]);
     }
-  });
-
-  it("hides an invalid session title instead of painting it", () => {
-    useWorkbenchStore.setState({
-      tabs: [
-        {
-          id: "chat:bad",
-          kind: "chat",
-          title: "Chat: bad\ntitle",
-          position: 0,
-          pinned: false,
-          dirty: false,
-        },
-      ],
-      activeTabId: "chat:bad",
-    });
-    render(<TitleBar mode="agent" onModeChange={vi.fn()} />);
-    expect(screen.queryByRole("heading")).toBeNull();
   });
 });

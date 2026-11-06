@@ -5,6 +5,10 @@
 
 use std::time::Instant;
 
+#[cfg(test)]
+#[path = "browser_shutdown_tests.rs"]
+mod tests;
+
 #[cfg(windows)]
 use tauri::Manager;
 
@@ -44,6 +48,7 @@ pub(super) fn complete_shutdown_close(
 
 impl super::AcpService {
     pub(super) fn close_agent_tabs_for_shutdown(&self, deadline: Instant) {
+        self.browser_attachments.retire_all();
         #[cfg(windows)]
         if let Some(app) = self.browser_app.lock().ok().and_then(|slot| slot.clone()) {
             close_agent_tabs_once_for_shutdown(

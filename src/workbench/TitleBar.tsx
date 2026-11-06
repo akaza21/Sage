@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
-import { useAgentChatFocus } from "../app/agentChatOwner";
-import { keymapBinding, matchesPlatformChord } from "../domain/keymapRegistry";
+import {
+  formatKeymapChords,
+  keymapBinding,
+  matchesPlatformChord,
+} from "../domain/keymapRegistry";
 import { requestChatSearchInFolder } from "../features/chatSearch/chatSearchScope";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import {
+  ArrowLeft,
+  ArrowRight,
   FileSearch,
   PanelLeftClose,
   PanelLeftOpen,
@@ -13,11 +18,14 @@ import {
   Settings,
 } from "../ui/leanIcons";
 import { shortcutLabel, usesMetaModifier } from "../ui/shortcutLabel";
-import { useRailChatId } from "./sideChatState";
-import { titleBarSessionTitle } from "./titleBarCenter";
 import {
-  collectChatTabIds,
-  focusedAgentChatId,
+  goBackToPreviousChat,
+  goForwardToNextChat,
+  noteAgentChatVisit,
+  useAgentChatHistory,
+} from "./agentChatHistory";
+import { useShownAgentChatId } from "./shownAgentChat";
+import {
   WORKBENCH_WINDOW_MODES,
   type WorkbenchWindowMode,
 } from "./workbenchWindowMode";
@@ -40,9 +48,6 @@ export function TitleBar({
   agentNavigationCollapsed?: boolean;
   onToggleAgentNavigation?: () => void;
 }) {
-  const tabs = useWorkbenchStore((state) => state.tabs);
-  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
-  const agentChatId = useAgentChatFocus();
   const project = useWorkbenchStore((state) => state.project);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -80,13 +85,18 @@ export function TitleBar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inert, chatSearchDisabled, isAgent, openChatSearch]);
-  // A side chat keeps its parent's window title.
-  const focusedId = useRailChatId(
-    focusedAgentChatId(collectChatTabIds(tabs), activeTabId, agentChatId),
-  );
-  const sessionTitle = isAgent
-    ? titleBarSessionTitle(tabs.find((tab) => tab.id === focusedId)?.title)
-    : null;
+  const focusedId = useShownAgentChatId();
+  const projectId = project?.id ?? null;
+  useEffect(() => {
+    if (!isAgent || !projectId || !focusedId || projectTransitioning) return;
+    noteAgentChatVisit({ projectId, chatId: focusedId });
+  }, [isAgent, projectId, focusedId, projectTransitioning]);
+  const canGoBack = useAgentChatHistory((state) => state.canGoBack);
+  const canGoForward = useAgentChatHistory((state) => state.canGoForward);
+  const apple = usesMetaModifier();
+  const chord = (id: string) => formatKeymapChords(keymapBinding(id), apple)[0];
+  const backLabel = `Back (${chord("navigateBack")})`;
+  const forwardLabel = `Forward (${chord("navigateForward")})`;
 
   return (
     <header
@@ -119,6 +129,30 @@ export function TitleBar({
             </label>
           ))}
         </div>
+        {isAgent ? (
+          <div className="title-bar__history">
+            <button
+              className="title-bar__chat-search"
+              type="button"
+              aria-label="Back"
+              title={backLabel}
+              disabled={!canGoBack || projectTransitioning}
+              onClick={() => void goBackToPreviousChat()}
+            >
+              <ArrowLeft size={16} aria-hidden="true" />
+            </button>
+            <button
+              className="title-bar__chat-search"
+              type="button"
+              aria-label="Forward"
+              title={forwardLabel}
+              disabled={!canGoForward || projectTransitioning}
+              onClick={() => void goForwardToNextChat()}
+            >
+              <ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
         {isAgent && onToggleAgentNavigation ? (
           <button
             className="title-bar__chat-search"
@@ -132,8 +166,8 @@ export function TitleBar({
           </button>
         ) : null}
       </div>
-      <div className="title-bar__center">
-        {!isAgent ? (
+      {isAgent ? null : (
+        <div className="title-bar__center">
           <button
             className="title-bar__search"
             type="button"
@@ -144,10 +178,8 @@ export function TitleBar({
             <FileSearch size={14} aria-hidden="true" />
             <span className="title-bar__search-label">Search files</span>
           </button>
-        ) : sessionTitle ? (
-          <h1 className="title-bar__session">{sessionTitle}</h1>
-        ) : null}
-      </div>
+        </div>
+      )}
       <div className="title-bar__end">
         {isAgent ? (
           <button

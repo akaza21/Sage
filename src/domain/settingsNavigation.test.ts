@@ -31,6 +31,9 @@ describe("settings navigation", () => {
     expect(matchingSettingsEntryIds("address bar", "browser")).toEqual(
       new Set(["browser.showFullUrl"]),
     );
+    expect(matchingSettingsEntryIds("cdp", "browser")).toEqual(
+      new Set(["browser.developerMode"]),
+    );
     expect(matchingSettingsEntryIds("cache", "browser")).toEqual(
       new Set(["browser.clearData"]),
     );

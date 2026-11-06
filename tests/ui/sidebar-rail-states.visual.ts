@@ -194,7 +194,7 @@ test.describe("Editor activity rail and tool-rail splitter states", () => {
 test.describe("Agent sidebar splitter states", () => {
   test.use({ viewport: { width: 1380, height: 880 } });
 
-  test("keeps the two-pixel rail and narrows only keyboard focus", async ({
+  test("draws the rail edge once and lights the splitter on hover, drag and focus", async ({
     page,
   }) => {
     await openScenario(page, "agent-single", "agent");
@@ -210,6 +210,7 @@ test.describe("Agent sidebar splitter states", () => {
     await expect(trailing).toBeVisible();
 
     const subtle = await resolveFill(page, scope, "var(--color-border-subtle)");
+    const unpainted = await resolveFill(page, scope, "transparent");
     const accent = await resolveFill(page, scope, "var(--color-accent)");
     const focusEdge = await resolveFill(
       page,
@@ -218,7 +219,11 @@ test.describe("Agent sidebar splitter states", () => {
     );
 
     await moveAway(page);
-    expect(await line(leading)).toMatchObject({ width: "2px", fill: subtle });
+    // The rail's border is the edge at rest; the splitter adds no second line.
+    expect(await line(leading)).toMatchObject({
+      width: "2px",
+      fill: unpainted,
+    });
     expect(await line(trailing)).toMatchObject({ width: "1px", fill: subtle });
     await hover(page, leading);
     expect(await line(leading)).toMatchObject({

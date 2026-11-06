@@ -1,5 +1,6 @@
 import { IDENTIFIER } from "./capture-native-chat-shared.mjs";
 import { richContentReadiness } from "./capture-native-chat-rich-content.mjs";
+import { contextMeterFit } from "./capture-native-chat-meter.mjs";
 import {
   paneSelector,
   ownedPaneNodes,
@@ -31,15 +32,66 @@ const COMPOSER_MENU = '[role="menu"][aria-label="Composer options menu"]';
 /** CP-30c chat-wide edit summary above the composer. */
 const FILES_EDITED = 'section[aria-label="Files edited in this chat"]';
 export const FILES_EDITED_HEADER = FILES_EDITED + " > button[aria-expanded]";
+/**
+ * Prepare and submit controls, matched by role and exact accessible name.
+ * Each click admits exactly one match (clickExpression), so a renamed or
+ * duplicated control fails closed instead of driving the wrong one.
+ */
+export const NEW_CHAT = 'button[aria-label="New chat"]';
+export const HARNESS_PICKER = 'button[aria-label="Harness"]';
+export const ACCESS_OPTIONS = 'button[aria-label="Access options"]';
+export const SEND_MESSAGE = 'button[aria-label="Send message"]';
+/** The effort trigger is named "Thinking level: <level>" (ComposerEffortControl). */
+export const EFFORT_TRIGGER =
+  'button[aria-haspopup="dialog"][aria-label^="Thinking level: "]';
+/** The usage meter: a progressbar inside the named Composer context container. */
+export const CONTEXT_METER =
+  '[aria-label="Composer context"] [role="progressbar"]';
+export const COMPOSER_TEXT =
+  "Inspect the fixed synthetic native replay example.";
+/** Types the replay prompt into the focused Chat's composer through React. */
+export const COMPOSER_FILL = `(()=>{const input=document.querySelector('.agent-chat-pane--focused textarea[aria-label="Message agent"]');if(!input || input.disabled)return false;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(input,${JSON.stringify(COMPOSER_TEXT)});input.dispatchEvent(new Event("input",{bubbles:true}));return true})()`;
+export function harnessOption(id) {
+  if (!IDENTIFIER.test(id)) throw new Error("harness-identity");
+  return '[role="option"][data-option-id="' + id + '"]';
+}
+/** An access mode inside the anchored Access mode menu, never another menu. */
+export function accessModeOption(mode) {
+  if (!IDENTIFIER.test(mode)) throw new Error("access-mode-identity");
+  return (
+    '[role="menu"][aria-label="Access mode"] [role="menuitemradio"][data-option-id="' +
+    mode +
+    '"]'
+  );
+}
 /** Kinds whose matching node must also carry this accessible name. */
 // Wave 5 names the plan session mode "Plan mode" (ComposerAddActions.tsx).
-export const NAMED_KINDS = Object.freeze({ planEntry: "Plan mode" });
+// The harness picker's listbox is aria-label="Harness" (SearchablePicker);
+// the model listbox is aria-labelledby its "Select model" title (ChatModelPicker).
+export const NAMED_KINDS = Object.freeze({
+  planEntry: "Plan mode",
+  harnessMenu: "Harness",
+  modelMenu: "Select model",
+});
+/**
+ * Accessible name in accname precedence: aria-labelledby, then aria-label,
+ * then text content. Self-contained: serialized into page expressions.
+ */
 export function accessibleName(element) {
-  return (
-    element.getAttribute("aria-label") ??
-    element.textContent ??
-    ""
-  ).trim();
+  const normalize = (text) => text.replace(/\s+/gu, " ").trim();
+  const labelledBy = (element.getAttribute("aria-labelledby") ?? "").trim();
+  if (labelledBy) {
+    const ids = labelledBy.split(/\s+/u);
+    if (ids.length > 4) throw new Error("capture-name-bound");
+    const labels = ids
+      .map((id) => element.ownerDocument.getElementById(id))
+      .filter(Boolean);
+    if (labels.length > 0)
+      return normalize(labels.map((label) => label.textContent).join(" "));
+  }
+  return normalize(
+    element.getAttribute("aria-label") ?? element.textContent ?? "",
+  );
 }
 export const HARNESS = Object.freeze({
   pi: { id: "pi", binding: "pi-rpc", protocol: "pi-rpc-0.83.0" },
@@ -152,7 +204,7 @@ export function observationFor(binding) {
   const hiddenByClosedDetails=${hiddenByClosedDetails.toString()};
   const visible=element=>Boolean(element && element.getClientRects().length && visibleRectangle(element.getBoundingClientRect(),{width:innerWidth,height:innerHeight}) && getComputedStyle(element).visibility !== "hidden" && !hiddenByClosedDetails(element));
   const has=selector=>queryAll(selector).some(visible);
-  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'${FILES_EDITED} [role="table"][aria-label="Inline saved diff"]',diffTab:'[aria-label="Agent artifact tabs"] [role="tab"][aria-label^="Diff "]',diffView:'[aria-label="Agent artifacts"] [role="table"][aria-label="Unified file diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission-prompt__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'.composer__model-menu',harnessMenu:'.composer__harness-menu',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'${COMPOSER_MENU}',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'${COMPOSER_MENU} [role="group"][aria-label="Session mode"] [role="menuitemradio"]',meter:'.composer__context [role="progressbar"]',...${JSON.stringify(PARITY_PANE_SELECTORS)}};
+  const selectors={thought:'.acp-thought',tool:'.acp-tool-card',rollup:'.acp-tool-rollup',files:'.chat-edit-summary-zone .acp-file-changes__header',editingFiles:'.acp-editing-files, .acp-tool-rollup[data-activity-kind="edit"][data-activity-state="inProgress"]',hunk:'${FILES_EDITED} [role="table"][aria-label="Inline saved diff"]',diffTab:'[aria-label="Agent artifact tabs"] [role="tab"][aria-label^="Diff "]',diffView:'[aria-label="Agent artifacts"] [role="table"][aria-label="Unified file diff"]',subagent:'.acp-subagent-row, [data-activity-kind="subagent"]',popover:'[role="dialog"][aria-label="Chat resources"]',subagentCounts:'[role="dialog"][aria-label="Chat resources"] [aria-label^="Recent subagents working"]',subagentEntries:'[role="dialog"][aria-label="Chat resources"] [aria-label="Subagents"] .agent-task-header__agent-list .agent-task-header__agent',child:'.subagent-surface__transcript .acp-message',plan:'.acp-plan',compaction:'.acp-compaction-notice',notice:'.acp-unknown',permission:'.acp-permission',pendingApproval:'.acp-permission-prompt__actions',error:'.acp-error',failure:'.acp-turn__failure',stopped:'.acp-turn__reason[role="status"]',answer:'.acp-markdown',table:'.acp-markdown table',code:'.acp-code-block',mermaid:'.acp-mermaid',image:'.acp-image',worked:'.chat-transcript-work[open]',expanded:'.acp-tool-rollup__items',jump:'.chat-follow-end',modelMenu:'[role="listbox"]',harnessMenu:'[role="listbox"]',effortMenu:'.composer__effort-menu[role="dialog"]',effortSlider:'.composer__effort-menu input[type="range"][aria-label="Thinking level"]',addMenu:'${COMPOSER_MENU}',access:'[aria-label="Access options"]',accessMenu:'[role="menu"][aria-label="Access mode"]',planEntry:'${COMPOSER_MENU} [role="group"][aria-label="Session mode"] [role="menuitemradio"]',meter:'${CONTEXT_METER}',...${JSON.stringify(PARITY_PANE_SELECTORS)}};
   const documentSelectors=${JSON.stringify(PARITY_DOCUMENT_SELECTORS)};
   const currentTurn=queryAll('.acp-turn').find(element=>turn?.id && element.dataset.turnId===turn.id);
   const turnKinds=new Set(['thought','tool','rollup','editingFiles','subagent','plan','compaction','notice','permission','error','failure','stopped','answer','table','code','mermaid','image','worked','expanded',...${JSON.stringify(PARITY_TURN_KINDS)}]);
@@ -172,12 +224,12 @@ export function observationFor(binding) {
     if(!visible(element))continue;
     elements.push({kind,text:raw.slice(0,128),x:rectangle.x,y:rectangle.y,width:rectangle.width,height:rectangle.height});
   }
-  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('button[aria-haspopup="dialog"][title="Select effort"]'),effortEnabled:has('button[aria-haspopup="dialog"][title="Select effort"]') && !query('button[aria-haspopup="dialog"][title="Select effort"]')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('.composer__context [role="progressbar"]')};
+  const controls={harness:has('button[aria-label="Harness"]'),model:has('button[aria-label="Model"]'),modelEnabled:has('button[aria-label="Model"]') && !query('button[aria-label="Model"]')?.disabled,effort:has('${EFFORT_TRIGGER}'),effortEnabled:has('${EFFORT_TRIGGER}') && !query('${EFFORT_TRIGGER}')?.disabled,add:has('button[aria-label="Composer options"]'),addEnabled:has('button[aria-label="Composer options"]') && !query('button[aria-label="Composer options"]')?.disabled,access:has('[aria-label="Access options"]'),accessEnabled:has('button[aria-label="Access options"]') && !query('button[aria-label="Access options"]')?.disabled,stop:has('button[aria-label="Cancel turn"]'),send:has('button[aria-label="Send message"]'),meter:has('${CONTEXT_METER}')};
   const assistantRendered=(${assistantTextRendered.toString()})(turn?.id,{querySelectorAll:queryAll},visible);
   const lazyFallbackVisible=(${hasVisibleLazyFallback.toString()})({querySelectorAll:queryAll},visible);
   const richContent=(${richContentReadiness.toString()})(currentTurn,visible,element=>getComputedStyle(element));
   const parity=(${parityObservation.toString()})(document,queryAll,visible,{sideParentChatId:sideChats?.useSideChatState.getState().sides.find(entry=>entry.id===chatId)?.parentChatId,forkedFrom:page?.forkedFrom});
-  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,...parity,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(allSelectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
+  return {chatId,projectId,projectionLoaded,singlePane,accessModes,dpr:devicePixelRatio,css:{width:innerWidth,height:innerHeight},selected,bindingId:session?.bindingId ?? harness?.bindingId ?? null,turnId:turn?.id ?? 'none',turnCount:turns.length,failedTurns:turns.filter(turn=>turn.state==='failed').length,state:turn?.state ?? 'none',assistantRendered,lazyFallbackVisible,...richContent,...parity,itemKinds:(turn?.items ?? []).slice(0,64).map(item=>item.kind),toolStates:(turn?.items ?? []).filter(item=>item.kind==='toolCall').slice(0,64).map(item=>item.toolState),permissionStates:(turn?.items ?? []).filter(item=>item.kind==='permissionRequest').slice(0,16).map(item=>item.payload.state),noticeKinds:(turn?.items ?? []).filter(item=>item.kind==='unsupported').slice(0,32).map(item=>item.payload.category),compactionStates:(turn?.items ?? []).filter(item=>item.kind==='compactionNotice').map(item=>item.lifecycle),visible:Object.fromEntries(Object.entries(allSelectors).map(([kind,selector])=>[kind,nodesFor(kind,selector).some(visible)])),elements,controls,meterFit:(${contextMeterFit.toString()})(query('form.composer')),overflow:{horizontal:document.documentElement.scrollWidth>innerWidth}};
 })()`;
 }
 
@@ -359,7 +411,12 @@ export function namedState(options, observation, captureChat) {
       terminal && assistantRendered && view.effortMenu && view.effortSlider,
     "add-menu": view.addMenu,
     "access-menu": view.accessMenu,
-    "context-meter": view.meter,
+    // The capture witnesses the measured toolbar fit: the meter shown and
+    // actually visible, or dropped where the fit needs its column (Codex
+    // reference 37). A laid-out slot alone does not prove a visible meter.
+    "context-meter":
+      (observation.meterFit === "shown" && view.meter) ||
+      observation.meterFit === "dropped",
     "responsive-wide":
       terminal && assistantRendered && observation.controls.send,
     "responsive-720":
@@ -373,10 +430,18 @@ export function namedState(options, observation, captureChat) {
   return predicates;
 }
 /** `chatId` also admits that Chat's owned artifact pane (Subagents, Diff). */
-export function clickExpression(selector, chatId = null) {
+function singleEnabledControl(selector, chatId) {
   if (chatId !== null && !/^[A-Za-z0-9:_-]{1,128}$/u.test(chatId))
     throw new Error("chat-identity");
-  return `(()=>{const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
+  return `const paneSelector=${paneSelector.toString()};const ownedPaneNodes=${ownedPaneNodes.toString()};const elements=ownedPaneNodes(document,${JSON.stringify(selector)},${JSON.stringify(chatId)});if(elements.length!==1 || elements[0].disabled)return false;`;
+}
+/** Clicks the single enabled owned match; false while none or several match. */
+export function clickExpression(selector, chatId = null) {
+  return `(()=>{${singleEnabledControl(selector, chatId)}elements[0].scrollIntoView({block:'center',inline:'nearest'});elements[0].click();return true})()`;
+}
+/** True exactly when clickExpression would click: one enabled owned match. */
+export function clickableExpression(selector, chatId = null) {
+  return `(()=>{${singleEnabledControl(selector, chatId)}return true})()`;
 }
 /** Opens the single matching disclosure summary; idempotent, true once open. */
 export function openExpression(selector) {
@@ -425,8 +490,7 @@ export function scopeToTurn(selector, turnId) {
 export function actionsFor(state, harness) {
   if (state === "subagents-popover")
     return ['button[aria-label="Show chat resources"]'];
-  if (state === "effort-menu")
-    return ['button[aria-haspopup="dialog"][title="Select effort"]'];
+  if (state === "effort-menu") return [EFFORT_TRIGGER];
   if (state === "turn-retry" && harness === "pi") return [];
   if (
     [
