@@ -1176,27 +1176,29 @@ describe("composer permission mode picker", () => {
     const onSelectModel = vi.fn();
     renderControls({ selectedHarnessId: "codex", onSelectModel });
     const trigger = screen.getByLabelText("Model", { exact: true });
+    // Each role query re-checks the visibility of all 200 options, so list
+    // them once and find a named option by its label within the list.
+    const option = (listbox: HTMLElement, name: string) => {
+      const found = within(listbox).getByText(name).closest('[role="option"]');
+      expect(found).toHaveAccessibleName(name);
+      expect(found).toBeVisible();
+      return found as HTMLElement;
+    };
     fireEvent.click(trigger);
-    await screen.findByRole("listbox", { name: "Select model" });
-    expect(screen.getAllByRole("option")).toHaveLength(200);
-    fireEvent.click(screen.getByRole("option", { name: "Default" }));
+    const listbox = await screen.findByRole("listbox", {
+      name: "Select model",
+    });
+    expect(within(listbox).getAllByRole("option")).toHaveLength(200);
+    fireEvent.click(option(listbox, "Default"));
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual-default");
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Default" }), {
-      key: "End",
-    });
-    expect(
-      screen.getByRole("option", { name: "Advertised model 199" }),
-    ).toHaveFocus();
-    expect(
-      screen.queryByRole("option", { name: "Advertised model 200" }),
-    ).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Showing first 200 models",
-    );
-    expect(
-      screen.getByRole("listbox", { name: "Select model" }),
-    ).not.toContainElement(screen.getByRole("status"));
+    const reopened = screen.getByRole("listbox", { name: "Select model" });
+    fireEvent.keyDown(option(reopened, "Default"), { key: "End" });
+    expect(option(reopened, "Advertised model 199")).toHaveFocus();
+    expect(within(reopened).queryByText("Advertised model 200")).toBeNull();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Showing first 200 models");
+    expect(reopened).not.toContainElement(status);
   });
 
   it("dismisses the model list on Tab and preserves its restored trigger focus", async () => {

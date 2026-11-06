@@ -5,10 +5,49 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { memo, type ComponentProps } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChatModelPicker } from "./ChatModelPicker";
+import type * as PickerOptionModule from "../../ui/PickerOption";
+
+const optionRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../ui/PickerOption", async (importOriginal) => {
+  const actual = await importOriginal<typeof PickerOptionModule>();
+  // Same memo comparison as the real option, counting the renders it admits.
+  const Counted = memo(function Counted(
+    props: ComponentProps<typeof actual.PickerOption>,
+  ) {
+    optionRenders.count += 1;
+    return <actual.PickerOption {...props} />;
+  });
+  return { ...actual, PickerOption: Counted };
+});
 
 afterEach(cleanup);
+
+it("re-renders only the options whose selection changed", () => {
+  const models = Array.from({ length: 50 }, (_, index) => ({
+    id: `model-${index}`,
+    name: `Model ${index}`,
+  }));
+  const onSelect = vi.fn();
+  const picker = (selectedId: string) => (
+    <ChatModelPicker
+      listboxId="models"
+      models={models}
+      selectedId={selectedId}
+      disabled={false}
+      onSelect={onSelect}
+    />
+  );
+  const view = render(picker("model-0"));
+  expect(optionRenders.count).toBe(50);
+  optionRenders.count = 0;
+  view.rerender(picker("model-0"));
+  expect(optionRenders.count).toBe(0);
+  view.rerender(picker("model-1"));
+  expect(optionRenders.count).toBe(2);
+});
 
 it("shows human names without changing the selected harness ID", () => {
   const onSelect = vi.fn();
