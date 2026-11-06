@@ -49,6 +49,10 @@ it("shares an in-flight prewarm across intent and idle requests", async () => {
 
   expect(screen.getAllByText("shared card")).toHaveLength(2);
   expect(screen.queryByText("loading card")).toBeNull();
+  // A later prewarm resolves from the finished import without importing
+  // again; a second import would never resolve.
+  await Part.preload();
+  expect(imports).toHaveLength(1);
   render(<Part part="Card" fallback={<p>loading card</p>} />);
   expect(screen.getAllByText("shared card")).toHaveLength(3);
   expect(screen.queryByText("loading card")).toBeNull();

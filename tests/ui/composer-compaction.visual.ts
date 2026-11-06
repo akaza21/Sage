@@ -1,7 +1,8 @@
 import { expect, test, type Locator } from "@playwright/test";
 import {
-  installComposerRowSettle,
+  expectComposerSweep,
   settledComposerFit,
+  sweepComposerToolbar,
 } from "./shared/composerGeometry";
 import {
   waitForAnimations,
@@ -311,23 +312,6 @@ for (const width of [1888, 720, 480]) {
   }
 }
 
-/**
- * Toolbar labels from lowest to highest priority. A label may compact only
- * after every lower-priority label that is present has compacted. The
- * context meter beside the send action goes right after the disabled effort
- * placeholder.
- */
-const LABEL_PRIORITY = [
-  ".composer__effort-picker:not([aria-controls]) .composer__effort-label",
-  ".composer__context-slot",
-  ".composer__capacity",
-  ".project-scope .searchable-picker__trigger-label",
-  ".composer__effort-picker[data-overflow-control] .composer__effort-label",
-  ".composer__access-text",
-  ".composer__harness .searchable-picker__trigger-label",
-  ".composer__model-label",
-];
-
 const toolbarStates = {
   "awaiting a session": {
     install: async () => {
@@ -408,113 +392,11 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
       await expect(
         composer.locator(".composer__effort-label").first(),
       ).toBeVisible();
-      await page.evaluate(installComposerRowSettle);
-      const sweep = await composer.evaluate(
-        async (element, { priority, from, to }) => {
-          const settle = (
-            window as Window & {
-              settleComposerRow?: (row: Element) => Promise<void>;
-            }
-          ).settleComposerRow!;
-          const controls = element.querySelector<HTMLElement>(
-            ".composer__controls",
-          )!;
-          const readableCharacter = (label: HTMLElement) => {
-            const probe = document.createElement("span");
-            probe.textContent = "0";
-            probe.style.font = getComputedStyle(label).font;
-            document.body.append(probe);
-            const width = probe.getBoundingClientRect().width;
-            probe.remove();
-            return width;
-          };
-          const results = [];
-          for (let width = from; width >= to; width -= 2) {
-            element.style.width = `${width}px`;
-            await settle(controls);
-            const labels = priority.map((selector) => {
-              const label = element.querySelector<HTMLElement>(selector);
-              const box = label?.getBoundingClientRect();
-              const shown = Boolean(box && box.width > 0);
-              const host = label?.closest(
-                "button, .composer__model-trigger, .composer__capacity, .composer__context-slot, label",
-              );
-              const hostBox = host?.getBoundingClientRect();
-              return {
-                present: Boolean(label),
-                shown,
-                // A label may shorten only to an ellipsis after a readable
-                // prefix of eight characters; it is never cut off by its control.
-                clipped:
-                  shown &&
-                  (box!.right > hostBox!.right + 0.5 ||
-                    box!.left < hostBox!.left - 0.5 ||
-                    (label!.scrollWidth > label!.clientWidth &&
-                      (getComputedStyle(label!).textOverflow !== "ellipsis" ||
-                        label!.clientWidth <
-                          8 * readableCharacter(label!) - 0.5))),
-              };
-            });
-            const edge =
-              controls.getBoundingClientRect().right -
-              Number.parseFloat(getComputedStyle(controls).paddingRight);
-            const overflow = [...controls.children].some(
-              (child) =>
-                !["absolute", "fixed"].includes(
-                  getComputedStyle(child).position,
-                ) && child.getBoundingClientRect().right > edge + 0.5,
-            );
-            // The model name gives way to its icon only when the row cannot fit
-            // it whole or truncated: undoing either step must overflow the row.
-            const fit = controls.getAttribute("data-fit") ?? "";
-            const steps = fit.split(" ");
-            const fitsBefore = (step: string) => {
-              controls.setAttribute(
-                "data-fit",
-                steps.slice(0, steps.indexOf(step)).join(" "),
-              );
-              const right = controls.getBoundingClientRect().right + 0.5;
-              return ![...controls.children].some(
-                (child) => child.getBoundingClientRect().right > right,
-              );
-            };
-            const modelHiddenThoughItFits =
-              steps.includes("model") &&
-              (fitsBefore("model-shrink") || fitsBefore("model"));
-            controls.setAttribute("data-fit", fit);
-            // With every control label shown, the meter is hidden only if
-            // giving its column back would overflow the measured row.
-            const slot = element.querySelector<HTMLElement>(
-              ".composer__context-slot",
-            );
-            let meterHiddenThoughItFits = false;
-            if (
-              slot &&
-              slot.getBoundingClientRect().width === 0 &&
-              labels
-                .slice(priority.indexOf(".composer__context-slot") + 1)
-                .every((label) => !label.present || label.shown)
-            ) {
-              slot.style.display = "block";
-              const right = controls.getBoundingClientRect().right + 0.5;
-              meterHiddenThoughItFits = ![...controls.children].some(
-                (child) => child.getBoundingClientRect().right > right,
-              );
-              slot.style.display = "";
-            }
-            results.push({
-              width,
-              labels,
-              overflow,
-              modelHiddenThoughItFits,
-              meterHiddenThoughItFits,
-            });
-          }
-          element.style.width = "";
-          return results;
-        },
-        { priority: LABEL_PRIORITY, from, to },
+      const widths = Array.from(
+        { length: (from - to) / 2 + 1 },
+        (_, index) => from - index * 2,
       );
+      const sweep = await sweepComposerToolbar(composer, widths);
 
       // The widest composer shows every label whole.
       if (from === SWEEP_RANGES[0][0])
@@ -523,35 +405,7 @@ for (const [state, { install, ready }] of Object.entries(toolbarStates)) {
             .filter((label) => label.present)
             .map(() => ({ present: true, shown: true, clipped: false })),
         );
-      let previous = sweep[0];
-      for (const step of sweep) {
-        const at = `at ${step.width}px`;
-        expect(step.overflow, `controls overflow ${at}`).toBe(false);
-        expect(
-          step.modelHiddenThoughItFits,
-          `model name hidden though it fits ${at}`,
-        ).toBe(false);
-        expect(
-          step.meterHiddenThoughItFits,
-          `context meter hidden though it fits ${at}`,
-        ).toBe(false);
-        step.labels.forEach((label, index) => {
-          expect(label.clipped, `${LABEL_PRIORITY[index]} clipped ${at}`).toBe(
-            false,
-          );
-          if (!label.shown) return;
-          for (const higher of step.labels.slice(index + 1))
-            expect(
-              !higher.present || higher.shown,
-              `${LABEL_PRIORITY[index]} outlasts a higher-priority label ${at}`,
-            ).toBe(true);
-          expect(
-            previous.labels[index].shown || !previous.labels[index].present,
-            `${LABEL_PRIORITY[index]} reappears while narrowing ${at}`,
-          ).toBe(true);
-        });
-        previous = step;
-      }
+      expectComposerSweep(sweep);
     });
 }
 
