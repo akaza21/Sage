@@ -231,10 +231,25 @@ async function reached(capture, options) {
       return predicates.namedState;
     }, Date.now() + SETTLE_MS);
   } catch (error) {
-    if (error.message !== "state-timeout") throw error;
+    if (error.message !== "state-timeout" || !predicates) throw error;
   }
   return predicates;
 }
+
+test("state witnessing propagates a timeout before the first observation", async () => {
+  const failure = new Error("state-timeout");
+  await assert.rejects(
+    reached(
+      {
+        observe: async () => {
+          throw failure;
+        },
+      },
+      admitted("codex", "harness-menu", 1888),
+    ),
+    (error) => error === failure,
+  );
+});
 
 function drive(capture, options, deadline = Date.now() + DRIVE_MS) {
   return runCaptureActions({
@@ -396,7 +411,17 @@ for (const [drift, mutation] of [
         drive(capture, options, Date.now() + 2_000),
         /state-timeout/u,
       );
-      assert.equal((await reached(capture, options)).namedState, false);
+      // Drive may terminate its CDP connection mid-request. Playwright's
+      // independent connection still witnesses the same page and predicate;
+      // lack of an observation must never count as evidence of failure closed.
+      const witness = {
+        ...capture,
+        observe: () =>
+          capture.page.evaluate(
+            observationFor(HARNESS[options.harness].binding),
+          ),
+      };
+      assert.equal((await reached(witness, options)).namedState, false);
     },
   );
 

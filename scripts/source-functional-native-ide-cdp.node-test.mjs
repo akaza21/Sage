@@ -199,6 +199,56 @@ for (const [bound, operationMs, expectedMessage] of [
     await cdp.close(now + 60_000);
   });
 
+test("a terminated connection cannot turn an earlier request deadline into a new state timeout", async () => {
+  const { client: cdp, socket } = await client({
+    deadline: Date.now() + 60_000,
+  });
+  // Keep the close handshake pending: termination must be observable both
+  // before and after the socket reports that it has closed.
+  socket.autoClose = false;
+  let original;
+  await assert.rejects(cdp.evaluate("true", Date.now() + 25), (error) => {
+    assert.equal(error.message, "journey-cdp-deadline");
+    original = error;
+    return true;
+  });
+  try {
+    for (const closed of [false, true]) {
+      if (closed) socket.emit("close");
+      const deadline = Date.now() + 1_000;
+      await assert.rejects(
+        waitForState(() => cdp.evaluate("true", deadline), deadline),
+        (error) => {
+          assert.equal(error.message, "journey-cdp-terminated");
+          assert.equal(error.cause, original);
+          return true;
+        },
+      );
+    }
+  } finally {
+    socket.emit("close");
+    await cdp.close(Date.now() + 1_000);
+  }
+});
+
+test("a request timed out by the current wait's deadline becomes a state timeout with real timers", async () => {
+  const { client: cdp } = await client({ deadline: Date.now() + 60_000 });
+  const deadline = Date.now() + 50;
+  try {
+    await assert.rejects(
+      waitForState(() => cdp.evaluate("true", deadline), deadline),
+      (error) => {
+        assert.equal(error.message, "state-timeout");
+        assert.equal(error.cause.message, "journey-cdp-deadline");
+        assert.equal(error.cause.deadline, deadline);
+        return true;
+      },
+    );
+  } finally {
+    await cdp.close(Date.now() + 1_000);
+  }
+});
+
 test("tolerates ambient discovery keys and accepts a legal remote description", async () => {
   const { client: cdp, socket } = await client({
     target: target({ browserContextId: "ambient-from-json" }),
@@ -272,10 +322,11 @@ test("rejects invalid targets, values, frames, responses, and native errors", as
   const second = cdp.evaluate("1", Date.now() + 1_000);
   socket.emit("message", { data: "{" });
   await assert.rejects(second, /journey-cdp-frame-invalid/u);
-  await assert.rejects(
-    cdp.evaluate("1", Date.now() + 1_000),
-    /journey-cdp-frame-invalid/u,
-  );
+  await assert.rejects(cdp.evaluate("1", Date.now() + 1_000), (error) => {
+    assert.equal(error.message, "journey-cdp-terminated");
+    assert.equal(error.cause.message, "journey-cdp-frame-invalid");
+    return true;
+  });
   const { client: oversizedCdp, socket: oversizedSocket } = await client();
   const oversizedPending = oversizedCdp.evaluate("1", Date.now() + 1_000);
   oversizedSocket.emit("message", {
@@ -408,10 +459,11 @@ test("reports close and socket errors", async () => {
   const pending = cdp.evaluate("1", Date.now() + 1_000);
   socket.emit("error");
   await assert.rejects(pending, CdpError);
-  await assert.rejects(
-    cdp.evaluate("1", Date.now() + 1_000),
-    /journey-cdp-websocket-error/u,
-  );
+  await assert.rejects(cdp.evaluate("1", Date.now() + 1_000), (error) => {
+    assert.equal(error.message, "journey-cdp-terminated");
+    assert.equal(error.cause.message, "journey-cdp-websocket-error");
+    return true;
+  });
 
   const { client: closeCdp, socket: closeSocket } = await client();
   const closePending = closeCdp.evaluate("1", Date.now() + 1_000);
