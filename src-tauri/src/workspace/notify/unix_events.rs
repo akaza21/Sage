@@ -147,9 +147,26 @@ impl InotifyFolders {
                 || (mask & IN_WATCH_GONE != 0 && self.by_watch.contains_key(&watch)))
     }
 
-    /// The tail of a watch this notifier already removed.
+    /// The tail of a watch this notifier already removed. Its preceding
+    /// rewatch/resync covered these records, including directory events.
     fn stale(&self, watch: i32, mask: u32) -> bool {
-        mask & IN_WATCH_GONE != 0 && !self.by_watch.contains_key(&watch)
+        mask & IN_Q_OVERFLOW == 0
+            && !self.by_watch.contains_key(&watch)
+            && (self.subfolders || mask & IN_WATCH_GONE != 0)
+    }
+
+    /// Every watched subfolder has a watched parent. Use the parent's named
+    /// event for its attributes, deletion or movement, rather than publishing
+    /// multiple resyncs for one operation (possibly across reads). A client
+    /// could otherwise recreate a folder after the first resync, mistake a
+    /// queued deletion resync for its creation, and write before it is watched.
+    /// Keep self events for the root, ambiguous mappings, and unmounts.
+    fn reported_by_parent(&self, watch: i32, mask: u32, unnamed: bool) -> bool {
+        self.subfolders
+            && unnamed
+            && mask & (IN_UNMOUNT | IN_Q_OVERFLOW) == 0
+            && mask & (IN_ATTRIB | IN_DELETE_SELF | IN_MOVE_SELF | IN_IGNORED) != 0
+            && matches!(self.by_watch.get(&watch), Some(Some(path)) if !path.is_empty())
     }
 }
 
@@ -213,11 +230,12 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
             break;
         }
         offset = name_end;
-        if rewatch || folders.changes_tree(wd, mask) {
-            rewatch = true;
+        let unnamed = name_len == 0 || buffer[name_start] == 0;
+        if folders.stale(wd, mask) || folders.reported_by_parent(wd, mask, unnamed) {
             continue;
         }
-        if folders.stale(wd, mask) {
+        if rewatch || folders.changes_tree(wd, mask) {
+            rewatch = true;
             continue;
         }
         let name = if name_len == 0 {
@@ -240,6 +258,9 @@ pub(super) fn unix_watch_deliveries_from_inotify_bytes(
         }
     }
     if rewatch {
+        // A tree resync also covers any earlier ambiguous-path notice in
+        // this read. Publish one acknowledgement of the rebuilt tree.
+        deliveries.retain(|(_, action)| *action != OVERFLOW_NOTIFY_ACTION);
         deliveries.push((OVERFLOW_RELATIVE_PATH.to_string(), OVERFLOW_NOTIFY_ACTION));
     }
     InotifyBatch {
@@ -466,15 +487,18 @@ mod tests {
     }
 
     #[test]
-    fn inotify_bytes_resync_for_unknown_or_unnamed_watch_folder() {
+    fn inotify_bytes_fold_ambiguous_paths_into_the_queue_loss_resync() {
         let mut folders = root_and_src_folders();
         folders.record(3, None);
         let mut buffer = inotify_record(7, IN_CREATE, "main.ts");
         buffer.extend(inotify_record(3, IN_CREATE, "main.ts"));
         buffer.extend(inotify_record(2, IN_Q_OVERFLOW, "main.ts"));
         assert_eq!(
-            deliveries(&buffer, &folders),
-            vec![overflow(), overflow(), overflow()]
+            unix_watch_deliveries_from_inotify_bytes(&buffer, &folders),
+            InotifyBatch {
+                deliveries: vec![overflow()],
+                rewatch: true,
+            }
         );
     }
 
@@ -488,18 +512,23 @@ mod tests {
 
     #[test]
     fn inotify_folder_tree_changes_ask_for_rewatch_and_fold_into_one_resync() {
-        let folders = root_and_src_folders();
+        let mut folders = root_and_src_folders();
+        folders.record(3, None);
         for (watch, mask, name) in [
             (1, IN_ISDIR | IN_MOVED_FROM, "src"),
             (1, IN_ISDIR | IN_MOVED_TO, "lib"),
             (1, IN_ISDIR | IN_CREATE, "new"),
             (1, IN_ISDIR | IN_DELETE, "src"),
-            (2, IN_MOVE_SELF, ""),
-            (2, IN_DELETE_SELF, ""),
-            (2, IN_IGNORED, ""),
+            (1, IN_MOVE_SELF, ""),
+            (1, IN_DELETE_SELF, ""),
+            (1, IN_IGNORED, ""),
             (2, IN_UNMOUNT, ""),
+            (3, IN_MOVE_SELF, ""),
+            (3, IN_DELETE_SELF, ""),
+            (3, IN_IGNORED, ""),
         ] {
             let mut buffer = inotify_record(2, IN_MODIFY, "before.ts");
+            buffer.extend(inotify_record(3, IN_MODIFY, "ambiguous.ts"));
             buffer.extend(inotify_record(watch, mask, name));
             buffer.extend(inotify_record(2, IN_MODIFY, "after.ts"));
             assert_eq!(
@@ -514,11 +543,43 @@ mod tests {
     }
 
     #[test]
+    fn inotify_subfolder_self_events_wait_for_the_parent_across_reads() {
+        let folders = root_and_src_folders();
+        for mask in [IN_ATTRIB, IN_DELETE_SELF, IN_IGNORED, IN_MOVE_SELF] {
+            assert_eq!(
+                unix_watch_deliveries_from_inotify_bytes(&inotify_record(2, mask, ""), &folders),
+                InotifyBatch {
+                    deliveries: Vec::new(),
+                    rewatch: false
+                },
+                "mask {mask:#x}"
+            );
+        }
+        assert_eq!(
+            unix_watch_deliveries_from_inotify_bytes(
+                &inotify_record(1, IN_ISDIR | IN_DELETE, "src"),
+                &folders
+            ),
+            InotifyBatch {
+                deliveries: vec![overflow()],
+                rewatch: true
+            }
+        );
+        assert_eq!(
+            deliveries(&inotify_record(1, IN_ATTRIB, "src"), &folders),
+            vec![("src".to_string(), 3)]
+        );
+    }
+
+    #[test]
     fn inotify_tail_of_a_removed_watch_is_dropped() {
         let mut buffer = inotify_record(9, IN_MOVE_SELF, "");
         buffer.extend(inotify_record(9, IN_DELETE_SELF, ""));
         buffer.extend(inotify_record(9, IN_UNMOUNT, ""));
         buffer.extend(inotify_record(9, IN_IGNORED, ""));
+        buffer.extend(inotify_record(9, IN_ATTRIB, ""));
+        buffer.extend(inotify_record(9, IN_ISDIR | IN_DELETE, "old"));
+        buffer.extend(inotify_record(9, IN_CREATE, "outside.ts"));
         assert_eq!(
             unix_watch_deliveries_from_inotify_bytes(&buffer, &root_and_src_folders()),
             InotifyBatch {
