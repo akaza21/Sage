@@ -170,7 +170,7 @@ fn assert_current_structure(connection: &Connection) {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .expect("migration count"),
-        20
+        21
     );
     assert_eq!(
         connection
