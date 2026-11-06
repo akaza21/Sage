@@ -2,7 +2,6 @@ import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
-import { Folder } from "../../ui/leanIcons";
 import "../../styles/queued-messages.css";
 import { BoundChatGoalControl } from "./BoundChatGoalControl";
 import { ChatHarnessControls } from "./ChatHarnessControls";
@@ -72,7 +71,6 @@ export function ChatComposerRegion({
   disabledReason,
   onRetryLoad,
   project,
-  projectScopeName = null,
   usage,
   goal,
   onSubmit,
@@ -140,16 +138,6 @@ export function ChatComposerRegion({
         }}
       >
         <div className="composer__slots">
-          {projectScopeName ? (
-            <div
-              className="composer__scope"
-              role="group"
-              aria-label="Project scope"
-            >
-              <Folder size={14} aria-hidden="true" />
-              <span>{projectScopeName}</span>
-            </div>
-          ) : null}
           {otherContext.length < attachedContext.length ? (
             <TranscriptPart
               part="ComposerAnnotations"

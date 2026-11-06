@@ -317,7 +317,9 @@ test("keeps the split chip nonshrinking after the later composer styles load", a
     });
   });
   for (const composer of [page.locator("form.composer").first()]) {
-    await composer.evaluate((element) => (element.style.width = "400px"));
+    await composer.evaluate((element) => (element.style.width = "440px"));
+    // At this width every other label is an icon and the chip is the last
+    // toolbar control before it moves into the options menu.
     await settledComposerFit(composer);
     const chip = composer.locator(".project-scope");
     const trigger = chip.getByRole("button");
@@ -366,7 +368,7 @@ test("reserves clickable icon targets while allowing the harness to shrink", asy
   await expectResponsiveToolbar(composer);
 });
 
-test("uses the same nonshrinking icon-only chip below 400px and in split panes", async ({
+test("uses the same nonshrinking icon-only chip in narrow and split composers", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
@@ -387,11 +389,11 @@ test("uses the same nonshrinking icon-only chip below 400px and in split panes",
       });
     });
     for (const composer of [page.locator("form.composer").first()]) {
-      await composer.evaluate((element) => (element.style.width = "400px"));
+      await composer.evaluate((element) => (element.style.width = "440px"));
       await settledComposerFit(composer);
       if (scenario === "agent-single") {
         await composer.evaluate((element) => {
-          element.style.width = "400px";
+          element.style.width = "440px";
         });
       }
       const chip = composer.locator(".project-scope");

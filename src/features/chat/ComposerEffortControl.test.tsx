@@ -82,22 +82,23 @@ function effort(
 }
 
 describe("Advertised composer effort", () => {
-  it("shows a sole advertised model as a label while keeping its effort editable", async () => {
+  it("keeps a sole advertised model as a picker beside its editable effort", async () => {
     const { rerender, Host } = controls(
       effort("effort", ["low", "medium"], "medium"),
     );
     rerender(<Host singleton />);
-    expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
-    const label = screen.getByLabelText("Model", { selector: "span" });
-    expect(label).toHaveTextContent("Actual model");
-    expect(label).not.toHaveAttribute("tabindex");
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toBeEnabled();
+    expect(model).toHaveTextContent("Actual model");
+    fireEvent.click(model);
+    const option = await screen.findByRole("option", { name: /Actual model/ });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.keyDown(option, { key: "Escape" });
     fireEvent.click(
       screen.getByRole("button", { name: "Thinking level: Medium" }),
     );
     expect(await screen.findByRole("slider")).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: "Select model: Actual model" }),
-    ).toBeNull();
   });
   it("distinguishes model and thinking controls when only their icons fit", async () => {
     controls(effort("effort", ["low", "high"], "high"));

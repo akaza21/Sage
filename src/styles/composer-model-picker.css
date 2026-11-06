@@ -54,10 +54,6 @@
   overflow: hidden;
 }
 
-span.composer__model-trigger {
-  cursor: default;
-}
-
 .composer__effort-menu.menu-popover {
   display: flex;
   flex-direction: column;
