@@ -6,6 +6,9 @@ import { settleRendering } from "./shared/visualBrowserPrimitives";
 declare global {
   interface Window {
     chatPerf: {
+      warmUp: (mode: "cap" | "stress") => void;
+      unmount: () => void;
+      calibrate: () => number;
       mount: (mode: "cap" | "stress") => {
         mountMs: number;
         componentRenders: number;
@@ -41,6 +44,57 @@ function capSubagentGroup(page: Page, turn: number) {
         exact: true,
       }),
     });
+}
+
+const RENDERER_COST_METRICS = [
+  "TaskDuration",
+  "ScriptDuration",
+  "LayoutDuration",
+  "RecalcStyleDuration",
+] as const;
+type RendererCost = Record<(typeof RENDERER_COST_METRICS)[number], number>;
+
+// Renderer main-thread cost of one action, in milliseconds of thread CPU time
+// (CDP Performance with threadTicks), so host scheduling and other processes
+// do not inflate it the way wall-clock time is inflated on shared runners.
+async function measureRendererCost<T>(page: Page, action: () => Promise<T>) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Performance.enable", { timeDomain: "threadTicks" });
+    const read = async () => {
+      const { metrics } = await cdp.send("Performance.getMetrics");
+      const values = new Map(metrics.map(({ name, value }) => [name, value]));
+      return Object.fromEntries(
+        RENDERER_COST_METRICS.map((name) => [name, values.get(name) ?? NaN]),
+      ) as RendererCost;
+    };
+    const before = await read();
+    const result = await action();
+    const after = await read();
+    const costMs = Object.fromEntries(
+      RENDERER_COST_METRICS.map((name) => [
+        name,
+        (after[name] - before[name]) * 1000,
+      ]),
+    ) as RendererCost;
+    return { result, costMs };
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// Median renderer cost of the fixture's fixed calibration workload, after
+// one untimed run compiles it.
+async function calibrationUnitMs(page: Page) {
+  await page.evaluate(() => window.chatPerf.calibrate());
+  const samples: number[] = [];
+  for (let run = 0; run < 3; run += 1) {
+    const { costMs } = await measureRendererCost(page, () =>
+      page.evaluate(() => window.chatPerf.calibrate()),
+    );
+    samples.push(costMs.TaskDuration);
+  }
+  return samples.sort((left, right) => left - right)[1];
 }
 
 async function settleTurnContent(page: Page) {
@@ -192,10 +246,15 @@ for (const mode of ["cap", "stress"] as const) {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/tests/ui/fixtures/chat-performance.html");
     await page.waitForFunction(() => Boolean(window.chatPerf));
-    const mount = await page.evaluate(
-      (kind) => window.chatPerf.mount(kind),
-      mode,
+    await page.evaluate((kind) => window.chatPerf.warmUp(kind), mode);
+    await settleTurnContent(page);
+    await page.evaluate(() => window.chatPerf.unmount());
+    await settleRendering(page);
+    const unitMs = await calibrationUnitMs(page);
+    const cost = await measureRendererCost(page, () =>
+      page.evaluate((kind) => window.chatPerf.mount(kind), mode),
     );
+    const mount = cost.result;
     if (mode === "cap")
       await expect(
         page
@@ -206,21 +265,40 @@ for (const mode of ["cap", "stress"] as const) {
     const stream = await page.evaluate(() => window.chatPerf.stream(30));
     const ordered = [...stream.durations].sort((left, right) => left - right);
     const p95 = ordered[Math.ceil(ordered.length * 0.95) - 1];
-    console.log(JSON.stringify({ mode, mount, streamP95Ms: p95, stream }));
-    // Mount cost is locked as render work, not wall-clock: hosted runners run
-    // the same mount 85-150 ms against 50-60 ms here with identical counts.
+    console.log(
+      JSON.stringify({
+        mode,
+        mount,
+        mountCostMs: cost.costMs,
+        unitMs,
+        mountUnits: cost.costMs.TaskDuration / unitMs,
+        streamP95Ms: p95,
+        stream,
+      }),
+    );
+    // Mount cost is locked two ways. Render work: the warm mount's component
+    // renders are deterministic (cap 516, stress 448). Time: the warm mount's
+    // renderer task time in thread ticks, divided by this page's calibration
+    // unit, so the budget follows the machine's speed but not its load.
+    // Warm measurements, 10 runs each:
+    //   laptop: cap 2.13-2.58 units (46.6-54.1 ms, unit 20.2-22.4 ms);
+    //           stress 1.96-2.33 units (45.5-51.7 ms, unit 21.9-24.9 ms).
+    // The budgets carry about 25% margin over the slowest run. An injected
+    // 50 ms synchronous loop in the mount adds about 2.3 units and fails both.
     expect(mount.commitCount).toBeLessThanOrEqual(6);
     expect(stream.commitCount).toBeLessThanOrEqual(32);
     if (mode === "cap") {
       expect(mount.renderedTurns).toBeLessThanOrEqual(40);
       expect(mount.domNodes).toBeLessThanOrEqual(3000);
-      expect(mount.componentRenders).toBeLessThanOrEqual(364);
+      expect(mount.componentRenders).toBeLessThanOrEqual(516);
+      expect(cost.costMs.TaskDuration / unitMs).toBeLessThanOrEqual(3.2);
       expect(p95).toBeLessThanOrEqual(40);
       expect(stream.heapBytes).toBeLessThanOrEqual(40_000_000);
     } else {
       expect(mount.renderedTurns).toBeLessThanOrEqual(40);
       expect(mount.domNodes).toBeLessThanOrEqual(4000);
-      expect(mount.componentRenders).toBeLessThanOrEqual(339);
+      expect(mount.componentRenders).toBeLessThanOrEqual(448);
+      expect(cost.costMs.TaskDuration / unitMs).toBeLessThanOrEqual(2.9);
       expect(p95).toBeLessThanOrEqual(50);
       expect(stream.heapBytes).toBeLessThanOrEqual(60_000_000);
     }
