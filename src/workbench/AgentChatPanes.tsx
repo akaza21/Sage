@@ -36,6 +36,7 @@ import type * as SplitterChunk from "./AgentChatSplitter";
 import { canShowAgentChatSplit } from "./agentChatSplit";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 import { useRetainedHarnessBrowse } from "./useRetainedHarnessBrowse";
+import { useNotificationVisibility } from "./useTurnNotifications";
 import { ViewedChatReadMark } from "./ViewedChatReadMark";
 import { collectChatTabIds, focusedAgentChatId } from "./workbenchWindowMode";
 
@@ -124,6 +125,7 @@ export function AgentChatPanes({
           : [],
     [compact, narrow, focusedId, side, splitRequested],
   );
+  useNotificationVisibility(displayedIds, visible && !projectTransitioning);
   pinAcpProjectionIds(displayedIds);
   pinUnreadAckIds(displayedIds);
 

@@ -39,6 +39,7 @@ mod image_artifacts;
 mod image_attachment;
 mod ipc_commands;
 mod launch_profile;
+mod notifications;
 mod persistence;
 mod preview_lifecycle;
 mod project_commands;
@@ -160,6 +161,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(notifications::init())
         .plugin(window_memory::init())
         .plugin(window_viewport::init())
         .setup(|app| {

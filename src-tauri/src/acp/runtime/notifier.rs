@@ -13,6 +13,9 @@ pub(crate) type NotificationSinkFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), NotificationError>> + Send + 'a>>;
 
 pub(crate) trait NotificationSink: Send + Sync + 'static {
+    /// Observes every committed change, including background chats suppressed
+    /// by disposable projection routing. Must not wait for platform I/O.
+    fn observe_committed(&self, _event: &ProjectionChangedV1) {}
     fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a>;
 }
 
@@ -143,6 +146,7 @@ impl ProjectionNotifier {
         if event.projection_revision == ProjectionRevision::ZERO {
             return Err(PublishError::InvalidRevision);
         }
+        self.inner.sink.observe_committed(&event);
         let key = ProjectionKey::from_event(&event);
         let mut notify = false;
         let outcome = {

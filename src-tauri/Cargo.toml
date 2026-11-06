@@ -54,6 +54,8 @@ getrandom = "=0.3.4"
 zeroize = "=1.9.1"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+# XDG/macOS turn notices. Rust-only; four bounded waits, no WebView permission.
+notify-rust = { version = "=4.18.2", default-features = false, features = ["z"] }
 libc = "=0.2.189"
 
 # macOS only: the system Trash (NSFileManager). Both crates are already in the
@@ -83,6 +85,9 @@ windows = { version = "=0.61.3", default-features = false, features = [
   "Win32_System_WinRT",
   "Foundation",
   "Media_SpeechRecognition",
+  # Native turn toasts reuse this dependency, including Action Center clicks.
+  "UI_Notifications",
+  "Data_Xml_Dom",
   "Security_Credentials_UI",
 ] }
 windows-core = { version = "=0.61.2", default-features = false, features = ["std"] }

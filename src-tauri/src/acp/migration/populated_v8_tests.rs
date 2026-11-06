@@ -163,7 +163,7 @@ fn assert_populated_rows(connection: &Connection) {
 fn assert_current_structure(connection: &Connection) {
     assert_eq!(
         fingerprint::classify_connection(connection).expect("classification"),
-        SchemaClass::CurrentV20
+        SchemaClass::CurrentV21
     );
     assert_eq!(
         connection
