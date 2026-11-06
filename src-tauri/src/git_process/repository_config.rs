@@ -206,6 +206,9 @@ impl Probe {
         let (mut watched, cacheable) = discovery_path(ancestors, &location.git_dir);
         let layout = match layout::resolve(root, &location)? {
             Ok(layout) => layout,
+            // A layout refusal can rest on files these fingerprints do not
+            // cover (`core.worktree`, a stray pointer file), so it is never
+            // cached: the next call probes again and sees the repair.
             Err(layout) => {
                 return Ok(Self {
                     admission: Admission {
@@ -214,7 +217,7 @@ impl Probe {
                         repository: None,
                         accounted: 0,
                     },
-                    cacheable,
+                    cacheable: false,
                 });
             }
         };

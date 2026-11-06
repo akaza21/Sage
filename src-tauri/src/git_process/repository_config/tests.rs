@@ -1149,3 +1149,48 @@ fn a_retained_submodule_git_dir_without_a_checkout_is_never_opened() {
     assert!(!root.join(".git/modules/sub/FETCH_HEAD").exists());
     assert!(!sentinel.exists());
 }
+
+/// A layout refusal is never served from the cache: once the cause is
+/// repaired, the next call probes again and is admitted.
+#[test]
+fn a_repaired_layout_refusal_is_admitted_on_the_next_call() {
+    let scratch = Scratch::new();
+    // `core.worktree` pointing elsewhere makes the root no longer the top level.
+    let root = scratch.repository("worktree-elsewhere");
+    let elsewhere = scratch.directory("elsewhere");
+    git(
+        &root,
+        &[
+            "config",
+            "core.worktree",
+            &plain(&elsewhere).replace('\\', "/"),
+        ],
+    );
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(_))
+    ));
+    git(&root, &["config", "--unset", "core.worktree"]);
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+
+    // A stray `gitdir` pointer file in the root's own `.git` directory.
+    let root = scratch.repository("stray-pointer");
+    let pointer = root.join(".git").join("gitdir");
+    fs::write(&pointer, ".\n").unwrap();
+    assert!(matches!(
+        sage_git(&root, &["status", "--porcelain"]),
+        Err(AppError::RepositoryOutsideRoot(
+            RepositoryLayout::ExternalGitDir
+        ))
+    ));
+    fs::remove_file(&pointer).unwrap();
+    assert!(
+        sage_git(&root, &["status", "--porcelain"])
+            .unwrap()
+            .succeeded()
+    );
+}
