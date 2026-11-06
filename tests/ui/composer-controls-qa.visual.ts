@@ -123,8 +123,14 @@ for (const width of [1888, 720]) {
         .poll(async () => {
           const anchor = (await trigger.boundingBox())!;
           const box = (await panel.boundingBox())!;
+          // Opening upward, the panel sits on the changed-files summary's top
+          // edge rather than covering it.
+          const edits = await page
+            .locator(".chat-edit-summary-zone:not(:empty)")
+            .boundingBox();
+          const aboveEdge = edits ? Math.min(edits.y, anchor.y) : anchor.y;
           return Math.min(
-            Math.abs(box.y + box.height - anchor.y),
+            Math.abs(box.y + box.height - aboveEdge),
             Math.abs(box.y - anchor.y - anchor.height),
           );
         })
