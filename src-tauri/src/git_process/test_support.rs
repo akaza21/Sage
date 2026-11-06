@@ -302,6 +302,15 @@ impl GitProcessTestHarness {
         }
     }
 
+    /// [`GitProcessPolicy::nonconvergent_reap`] charged to this harness, so a
+    /// test can observe when the background reaper confirms the exit.
+    pub(crate) fn nonconvergent_reap_policy(&self, command_timeout: Duration) -> GitProcessPolicy {
+        GitProcessPolicy {
+            containment_registry: Some(Arc::clone(&self.registry)),
+            ..GitProcessPolicy::nonconvergent_reap(command_timeout)
+        }
+    }
+
     pub(crate) fn observation(&self) -> GitContainmentTestObservation {
         let (unconfirmed_exits, quarantined_owners, active_reapers, available_reaper_permits) =
             self.registry.observation();

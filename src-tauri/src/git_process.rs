@@ -18,8 +18,10 @@ use crate::{
 };
 
 mod containment;
+mod process_tree;
 mod readers;
 mod root_authority;
+use process_tree::{GitChild, ProcessTree};
 use readers::{ReaderTask, ReaderTasks};
 #[cfg(test)]
 mod test_support;
@@ -243,6 +245,14 @@ async fn run_inner(
         hook();
     }
     let mut child = command.spawn().map_err(AppError::Io)?;
+    // Created suspended on Windows: it runs only once its whole tree is held.
+    let tree = match ProcessTree::contain(&child) {
+        Ok(tree) => tree,
+        Err(error) => {
+            let _ = child.start_kill();
+            return Err(AppError::Io(error));
+        }
+    };
     #[cfg(test)]
     if let (Some(hook), Some(pid)) = (&policy.spawned_hook, child.id()) {
         hook(pid);
@@ -251,7 +261,7 @@ async fn run_inner(
         Some(stdout) => stdout,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks::default(),
                 reaper_lease,
                 PostSpawnFailure {
@@ -269,7 +279,7 @@ async fn run_inner(
         Some(stderr) => stderr,
         None => {
             return containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 ReaderTasks {
                     stdout: Some(tokio::spawn(read_bounded(stdout, stdout_limit))),
                     stderr: None,
@@ -295,7 +305,7 @@ async fn run_inner(
     #[cfg(test)]
     if policy.post_spawn_failure {
         return containment::cleanup_failure(
-            child,
+            GitChild { root: child, tree },
             readers,
             reaper_lease,
             PostSpawnFailure {
@@ -349,7 +359,7 @@ async fn run_inner(
         Ok(Ok(output)) => Ok(output),
         Ok(Err(failure)) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 failure,
@@ -361,7 +371,7 @@ async fn run_inner(
         }
         Err(_) => {
             containment::cleanup_failure(
-                child,
+                GitChild { root: child, tree },
                 readers,
                 reaper_lease,
                 PostSpawnFailure {
@@ -411,7 +421,7 @@ fn configured_command(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
+    command.creation_flags(CREATE_NO_WINDOW | process_tree::CREATION_FLAGS);
     command
 }
 
