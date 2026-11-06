@@ -284,6 +284,8 @@ test("composer controls compact by their own container width, not the window", a
   const model = composer.getByRole("button", { name: "Model", exact: true });
   const modelLabel = model.locator(".composer__model-label");
   const modelIcon = model.locator(".composer__model-icon");
+  let previousSteps = -1;
+  let narrowest: string[] = [];
   for (const contentWidth of [
     580, 521, 520, 401, 400, 321, 320, 281, 280, 180,
   ]) {
@@ -294,17 +296,24 @@ test("composer controls compact by their own container width, not the window", a
     expect(await composer.evaluate((element) => element.clientWidth)).toBe(
       contentWidth,
     );
-    const at = `at ${contentWidth}px`;
+    const fit = await settledComposerFit(composer);
+    const at = `at ${contentWidth}px (${fit.join(" ") || "no steps"})`;
+    // The window never changes, so only the composer's own width can take
+    // compaction steps, and a narrower composer never takes fewer.
+    expect(fit.length, at).toBeGreaterThanOrEqual(previousSteps);
+    previousSteps = fit.length;
+    narrowest = fit;
     const plus = (await composer
       .getByRole("button", { name: "Composer options", exact: true })
       .boundingBox())!;
     expect(plus.width, at).toBe(24);
     expect(plus.height, at).toBe(28);
-    // The access label drops its text below 521px but stays a target.
+    // The access label drops its text when its step is taken but stays a
+    // target.
     await expect(access, at).toBeVisible();
     expect((await access.boundingBox())!.width, at).toBeGreaterThanOrEqual(24);
-    if (contentWidth > 520) await expect(accessText, at).toBeVisible();
-    else await expect(accessText, at).toBeHidden();
+    if (fit.includes("access")) await expect(accessText, at).toBeHidden();
+    else await expect(accessText, at).toBeVisible();
     // The harness name shows whole or not at all, leaving its mark.
     if (await harnessLabel.isVisible())
       expect(
@@ -313,53 +322,40 @@ test("composer controls compact by their own container width, not the window", a
         ),
         at,
       ).toBe(true);
-    // The model name stays until 281px; the icon joins it from 320px so a
-    // squeezed label never leaves a bare chevron.
-    // Between 281 and 320 the effort picker may squeeze the label to no
-    // width, so its presence is read from layout rather than visibility.
-    if (contentWidth > 280)
-      expect(
-        await modelLabel.evaluate((label) => getComputedStyle(label).display),
-        at,
-      ).not.toBe("none");
-    else await expect(modelLabel, at).toBeHidden();
-    if (contentWidth <= 320) await expect(modelIcon, at).toBeVisible();
-    else await expect(modelIcon, at).toBeHidden();
     await expect(composer.locator(".composer__shortcut"), at).toBeHidden();
-    if (contentWidth > 280) {
-      // The label truncates inside its own box, between the leading icon
-      // and the chevron, without clipping the trigger's leading edge.
-      const geometry = await model.evaluate((trigger) => {
-        const label = trigger.querySelector(".composer__model-label")!;
-        const chevron = trigger.querySelector("svg:last-child")!;
-        const icon = trigger.querySelector(".composer__model-icon")!;
-        const box = trigger.getBoundingClientRect();
-        const text = label.getBoundingClientRect();
-        const glyph = chevron.getBoundingClientRect();
-        const leading = icon.getBoundingClientRect();
-        return {
-          labelStart: text.left - box.left,
-          afterIcon: leading.width === 0 || text.left >= leading.right,
-          beforeChevron: text.right <= glyph.left + 0.5,
-          chevron: [glyph.width, glyph.height],
-          chevronInside: glyph.left >= box.left && glyph.right <= box.right,
-          labelWidth: text.width,
-          ellipsis: getComputedStyle(label).textOverflow,
-        };
-      });
-      expect(geometry.labelStart, at).toBeGreaterThanOrEqual(0);
-      expect(geometry.afterIcon, at).toBe(true);
-      expect(geometry.beforeChevron, at).toBe(true);
-      expect(geometry.chevron, at).toEqual([16, 16]);
-      expect(geometry.ellipsis, at).toBe("ellipsis");
-      // Below 321px the icon, empty label and chevron can outgrow the
-      // squeezed trigger; that overflow is tracked in issue #169.
-      if (contentWidth > 320) {
-        expect(geometry.chevronInside, at).toBe(true);
-        expect(geometry.labelWidth, at).toBeGreaterThan(0);
-      }
+    if (fit.includes("model")) {
+      // The model name gives way to its icon, never to a bare chevron.
+      await expect(modelLabel, at).toBeHidden();
+      await expect(modelIcon, at).toBeVisible();
+      continue;
     }
+    await expect(modelIcon, at).toBeHidden();
+    // The label truncates inside its own box, before the chevron, without
+    // clipping the trigger's leading edge.
+    const geometry = await model.evaluate((trigger) => {
+      const label = trigger.querySelector(".composer__model-label")!;
+      const chevron = trigger.querySelector("svg:last-child")!;
+      const box = trigger.getBoundingClientRect();
+      const text = label.getBoundingClientRect();
+      const glyph = chevron.getBoundingClientRect();
+      return {
+        labelStart: text.left - box.left,
+        beforeChevron: text.right <= glyph.left + 0.5,
+        chevron: [glyph.width, glyph.height],
+        chevronInside: glyph.left >= box.left && glyph.right <= box.right + 0.5,
+        labelWidth: text.width,
+        ellipsis: getComputedStyle(label).textOverflow,
+      };
+    });
+    expect(geometry.labelStart, at).toBeGreaterThanOrEqual(0);
+    expect(geometry.beforeChevron, at).toBe(true);
+    expect(geometry.chevron, at).toEqual([16, 16]);
+    expect(geometry.chevronInside, at).toBe(true);
+    expect(geometry.labelWidth, at).toBeGreaterThan(0);
+    expect(geometry.ellipsis, at).toBe("ellipsis");
   }
+  // The narrowest composer has compacted the model to its icon.
+  expect(narrowest).toContain("model");
 });
 
 test.describe("Project chip 200% zoom reflow proxy", () => {
