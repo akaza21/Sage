@@ -4,6 +4,7 @@ mod config_delivery;
 mod followups;
 mod pump_contract;
 mod regressions;
+mod slash_commands;
 mod store_ingress;
 
 use super::*;

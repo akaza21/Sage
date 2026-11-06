@@ -5,6 +5,7 @@ impl RuntimeSlot {
         let mut state = self.lock();
         self.config.clear_all();
         self.goal.clear_all();
+        self.commands.clear_all();
         let retained = match &*state {
             State::Primed { owner, host }
             | State::Claimed { owner, host }

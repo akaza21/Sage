@@ -23,6 +23,7 @@ pub(super) enum RequestKind {
     SetModel,
     RefreshState,
     ThinkingLevels,
+    Commands,
     SetThinkingLevel,
     NewSession,
     Prompt,
@@ -90,6 +91,9 @@ pub(crate) struct PiRuntime {
     pub(super) available_models: Vec<ModelSummary>,
     pub(super) current_thinking: Option<String>,
     pub(super) available_thinking: Vec<String>,
+    commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
+    commands_pending: bool,
+    commands_discovered: bool,
     pub(super) thinking_request_session: Option<ExternalId>,
     pub(super) thinking_request_owner: Option<(SageAgentSessionId, RuntimeEpoch)>,
     pub(super) thinking_request_command: Option<String>,
@@ -176,6 +180,9 @@ impl PiRuntime {
             available_models: Vec::new(),
             current_thinking: None,
             available_thinking: Vec::new(),
+            commands: std::sync::Arc::default(),
+            commands_pending: false,
+            commands_discovered: false,
             thinking_request_session: None,
             thinking_request_owner: None,
             thinking_request_command: None,
@@ -187,6 +194,23 @@ impl PiRuntime {
 }
 
 impl HarnessAdapter for PiRuntime {
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        std::sync::Arc::clone(&self.commands)
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        if self.poisoned
+            || self.external_session.is_none()
+            || self.active_turn.is_some()
+            || self.commands_pending
+            || self.commands_discovered
+        {
+            return Ok(None);
+        }
+        let egress = self.begin_one(Operation::GetCommands, RequestKind::Commands)?;
+        self.commands_pending = true;
+        self.commands_discovered = true;
+        Ok(Some(egress))
+    }
     fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
         self.model_session_config()
     }
@@ -240,6 +264,15 @@ impl HarnessAdapter for PiRuntime {
                 if self.external_session.is_none() || self.active_turn.is_some() {
                     return Err(AdapterRuntimeError::Operation);
                 }
+                let extension_command = prompt.command_revision.is_some()
+                    && self.commands.snapshot().commands.iter().any(|c| {
+                        c.extension
+                            && prompt
+                                .as_str()
+                                .strip_prefix('/')
+                                .and_then(|s| s.split_whitespace().next())
+                                == Some(c.name.as_str())
+                    });
                 let external_id =
                     ExternalId::new("piTurnId", client_message_id.as_str().to_owned())
                         .map_err(|_| AdapterRuntimeError::Operation)?;
@@ -250,6 +283,12 @@ impl HarnessAdapter for PiRuntime {
                     },
                     RequestKind::Prompt,
                 )?;
+                if extension_command {
+                    self.translator
+                        .mark_extension_command()
+                        .map_err(support::map_pi)?;
+                }
+                self.commands_discovered = false;
                 self.active_turn = Some(TurnIntent {
                     external_id,
                     client_message_id,

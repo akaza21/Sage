@@ -57,6 +57,15 @@ pub(crate) enum AdapterRuntimeError {
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
+    fn receive_command_update(&mut self, _frame: &Frame) -> Result<(), AdapterRuntimeError> {
+        Ok(())
+    }
+    fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        crate::acp::slash_commands::CommandState::unsupported()
+    }
     fn model_config_hydration(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Ok(None)
     }

@@ -31,6 +31,9 @@ impl PiTranslator {
             }
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
+        if !response.success && kind == PendingKind::Commands {
+            return Ok(vec![AdapterOutput::Commands(serde_json::json!([]))]);
+        }
         if !response.success {
             if kind == PendingKind::SetThinkingLevel {
                 self.pending_thinking = None;
@@ -79,6 +82,9 @@ impl PiTranslator {
             PendingKind::SetModel => Ok(vec![AdapterOutput::ModelSelected(
                 self::payload::parse_model(&response.data)?,
             )]),
+            PendingKind::Commands => Ok(vec![AdapterOutput::Commands(
+                response.data["commands"].clone(),
+            )]),
             PendingKind::ThinkingLevels => Ok(vec![AdapterOutput::ThinkingLevels(
                 self::payload::parse_thinking_levels(&response.data)?,
             )]),
@@ -104,10 +110,19 @@ impl PiTranslator {
                 if active.terminal.is_some() {
                     return Ok(vec![AdapterOutput::LateIgnored]);
                 }
+                if active.extension_command {
+                    if active.event_phase == EventPhase::PromptAccepted {
+                        return self.finish_turn(TerminalOutcome::Completed);
+                    }
+                    return Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }]);
+                }
                 if active.event_phase != EventPhase::PromptIssued {
                     return Err(AdapterError::EventSequence);
                 }
                 active.event_phase = EventPhase::PromptAccepted;
+                if response.data.get("disposition").and_then(Value::as_str) == Some("handled") {
+                    return self.finish_turn(TerminalOutcome::Completed);
+                }
                 Ok(vec![AdapterOutput::CommandAccepted { command: "prompt" }])
             }
             PendingKind::Abort => Ok(vec![AdapterOutput::CommandAccepted { command: "abort" }]),

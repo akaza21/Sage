@@ -61,6 +61,26 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn receive_command_update(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<(), AdapterRuntimeError> {
+        self.adapter.receive_command_update(frame)
+    }
+
+    pub(crate) fn validate_command_prompt(
+        &self,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(revision) = prompt.command_revision {
+            self.adapter
+                .available_commands()
+                .validate(revision, prompt.as_str())
+                .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn hydrate_model_config(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
@@ -186,7 +206,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
                 } if catalog.is_none() => {
                     catalog = Some((models, next_cursor));
                 }
-                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate => {}
+                AdapterEvent::IgnoredLate
+                | AdapterEvent::IgnoredDuplicate
+                | AdapterEvent::Absorbed => {}
                 _ => return Err(AdapterPumpError::Frame),
             }
         }

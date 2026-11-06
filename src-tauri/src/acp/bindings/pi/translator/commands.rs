@@ -9,6 +9,12 @@ use crate::acp::bindings::pi::{
 };
 
 impl PiTranslator {
+    pub(crate) fn mark_extension_command(&mut self) -> Result<(), AdapterError> {
+        let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+        active.extension_command = true;
+        active.event_phase = EventPhase::PromptAccepted;
+        Ok(())
+    }
     pub(crate) fn reject_before_write(&mut self, command_id: &str) -> Result<(), AdapterError> {
         let kind = *self
             .pending
@@ -46,6 +52,7 @@ impl PiTranslator {
             PendingKind::State
             | PendingKind::Models
             | PendingKind::SetModel
+            | PendingKind::Commands
             | PendingKind::ThinkingLevels
             | PendingKind::SetThinkingLevel
             | PendingKind::NewSession
@@ -80,6 +87,7 @@ impl PiTranslator {
         self.active = Some(ActiveTurn {
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
+            extension_command: false,
             event_phase: EventPhase::PromptIssued,
             abort_requested: false,
             authority_denied: false,

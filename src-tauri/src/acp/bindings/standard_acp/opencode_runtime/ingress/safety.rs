@@ -44,6 +44,15 @@ impl OpenCodeRuntime {
                 Vec::new(),
             );
         }
+        if let Some(active) = self.active.as_mut()
+            && crate::acp::bindings::standard_acp::surface::update_commands(
+                &value,
+                active.external_id.as_str(),
+                &mut active.commands,
+            )?
+        {
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        }
         let turn_request_id = self
             .active
             .as_ref()

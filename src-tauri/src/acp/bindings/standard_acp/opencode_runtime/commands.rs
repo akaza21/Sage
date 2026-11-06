@@ -40,6 +40,24 @@ pub(crate) fn scoped_permission_id(
 }
 
 impl HarnessAdapter for OpenCodeRuntime {
+    fn receive_command_update(&mut self, frame: &Frame) -> Result<(), AdapterRuntimeError> {
+        let value =
+            serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
+        super::super::surface::update_commands(
+            &value,
+            active.external_id.as_str(),
+            &mut active.commands,
+        )
+        .map(|_| ())
+    }
+    fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
+        self.active
+            .as_ref()
+            .map_or_else(std::sync::Arc::default, |a| {
+                std::sync::Arc::clone(&a.commands)
+            })
+    }
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.capabilities.clone()
     }

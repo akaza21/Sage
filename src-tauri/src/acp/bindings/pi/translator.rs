@@ -37,6 +37,7 @@ enum PendingKind {
     Models,
     SetModel,
     ThinkingLevels,
+    Commands,
     SetThinkingLevel,
     NewSession,
     Prompt,
@@ -58,6 +59,7 @@ impl PendingKind {
             Self::State => "get_state",
             Self::Models => "get_available_models",
             Self::SetModel => "set_model",
+            Self::Commands => "get_commands",
             Self::ThinkingLevels => "get_available_thinking_levels",
             Self::SetThinkingLevel => "set_thinking_level",
             Self::NewSession => "new_session",
@@ -73,6 +75,7 @@ impl PendingKind {
 struct ActiveTurn {
     turn_key: String,
     prompt_command_id: String,
+    extension_command: bool,
     event_phase: EventPhase,
     abort_requested: bool,
     authority_denied: bool,
@@ -182,6 +185,7 @@ impl PiTranslator {
                 fields.insert("modelId".into(), Value::String(id));
                 self.one(PendingKind::SetModel, fields)
             }
+            Operation::GetCommands => self.one(PendingKind::Commands, Map::new()),
             Operation::GetThinkingLevels => self.one(PendingKind::ThinkingLevels, Map::new()),
             Operation::SetThinkingLevel { level } => {
                 if self.pending_thinking.is_some() || !valid_thinking_level(&level) {
