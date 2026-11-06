@@ -6,8 +6,10 @@ import {
 
 test.use({
   deviceScaleFactor: 1,
-  // Keep rounded-card edge coverage repeatable for exact DPR 1 captures.
-  launchOptions: { args: ["--disable-gpu"] },
+  // Keep rounded-card edge coverage repeatable for exact DPR 1 captures:
+  // raster on the CPU, and re-raster whole tiles, so a repaint elsewhere in
+  // a tile cannot re-blend the pane's anti-aliased corner differently.
+  launchOptions: { args: ["--disable-gpu", "--disable-partial-raster"] },
 });
 const pixelExact = { maxDiffPixels: 0, maxDiffPixelRatio: 0, threshold: 0 };
 
