@@ -15,12 +15,15 @@ pub fn get_notification_preference(
 #[tauri::command]
 pub fn set_notification_preference(
     state: State<'_, AppState>,
+    notifications: State<'_, Notifications>,
     value: NotificationPreference,
 ) -> Result<NotificationPreference, String> {
-    state
+    let value = state
         .settings
         .set_notification_preference(value)
-        .map_err(|_| "notification preference could not be saved".into())
+        .map_err(|_| "notification preference could not be saved".to_owned())?;
+    notifications.apply(&state.database.connection(), value);
+    Ok(value)
 }
 #[tauri::command]
 pub fn begin_notification_visibility(state: State<'_, Notifications>) -> u64 {

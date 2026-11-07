@@ -171,13 +171,81 @@ fn bounded_receipt_resource_probe() {
     );
 }
 
+fn request(connection: &Connection, id: &str, state: &str) {
+    connection
+        .execute(
+            "INSERT INTO server_requests VALUES (?1,'project','chat','session','turn',?2,'permission')",
+            [id, state],
+        )
+        .unwrap();
+}
+
 #[test]
 fn pending_permission_notifies_a_running_turn_but_automatic_denial_does_not() {
     let connection = fixture();
-    connection.execute_batch("INSERT INTO server_requests VALUES ('request','project','chat','session','turn','received','permission');").unwrap();
+    request(&connection, "request", "received");
     assert_eq!(claim(&connection, &notice()).unwrap()[0].1, Event::Approval);
     assert!(claim(&connection, &notice()).unwrap().is_empty());
     let denied = fixture();
     denied.execute_batch("BEGIN; INSERT INTO server_requests VALUES ('request','project','chat','session','turn','received','permission'); UPDATE server_requests SET state='resolvedDeclined'; COMMIT;").unwrap();
     assert!(claim(&denied, &notice()).unwrap().is_empty());
+}
+
+#[test]
+fn every_permission_request_in_a_turn_notifies_once() {
+    let connection = fixture();
+    request(&connection, "first", "received");
+    assert_eq!(claim(&connection, &notice()).unwrap()[0].1, Event::Approval);
+    connection
+        .execute(
+            "UPDATE server_requests SET state='resolvedAllowed' WHERE id='first'",
+            [],
+        )
+        .unwrap();
+    request(&connection, "second", "asked");
+    let second = claim(&connection, &notice()).unwrap();
+    assert_eq!(
+        second.iter().map(|(_, event)| *event).collect::<Vec<_>>(),
+        vec![Event::Approval]
+    );
+    assert!(claim(&connection, &notice()).unwrap().is_empty());
+    transition(&connection, "waitingApproval");
+    assert!(
+        claim(&connection, &notice()).unwrap().is_empty(),
+        "a Turn state alone never announces an approval"
+    );
+}
+
+#[test]
+fn approval_receipts_are_released_with_their_request() {
+    let connection = fixture();
+    request(&connection, "first", "received");
+    request(&connection, "second", "received");
+    connection
+        .execute("DELETE FROM server_requests WHERE id='first'", [])
+        .unwrap();
+    let count = |connection: &Connection| {
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM turn_notification_receipts",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(count(&connection), 1);
+    connection
+        .execute("DELETE FROM server_requests", [])
+        .unwrap();
+    assert_eq!(count(&connection), 0);
+}
+
+#[test]
+fn retired_receipts_are_never_announced() {
+    let connection = fixture();
+    request(&connection, "request", "received");
+    transition(&connection, "completed");
+    assert_eq!(retire_pending(&connection).unwrap(), 2);
+    assert!(claim(&connection, &notice()).unwrap().is_empty());
+    assert_eq!(retire_pending(&connection).unwrap(), 0);
 }

@@ -1,5 +1,7 @@
 //! Turn notices observe committed truth independently of WebView projections.
 //! Four platform waits, no work queue/history; two hashed visible chat IDs.
+//! Only commits that may admit a notice reach `observe`, and the preference
+//! is cached here, so streamed content never touches notice storage.
 mod commands;
 mod platform;
 mod receipts;
@@ -12,7 +14,7 @@ pub use commands::*;
 use receipts::Event;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicI64, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
 };
 use tauri::{Emitter, Manager};
 
@@ -21,6 +23,9 @@ const OPEN_EVENT: &str = "sage-notification-open-chat";
 
 #[derive(Default)]
 pub(crate) struct Notifications {
+    /// Mirrors the durable preference; written only by `start` and the
+    /// preference command, so publications never read settings.
+    enabled: AtomicBool,
     visibility: Mutex<visibility::Visibility>,
     in_flight: Arc<AtomicUsize>,
     pending_open: AtomicI64,
@@ -59,23 +64,58 @@ pub(crate) fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         }).build()
 }
 
+/// Loads the preference once the app state exists and retires receipts left
+/// by an earlier run, so a notice never describes another process's event.
+pub(crate) fn start(app: &tauri::AppHandle) {
+    let (Some(state), Some(notifications)) = (
+        app.try_state::<AppState>(),
+        app.try_state::<Notifications>(),
+    ) else {
+        return;
+    };
+    if receipts::retire_pending(&state.database.connection()).is_err() {
+        tracing::warn!("stale turn notification receipts could not be retired");
+    }
+    let enabled = state.settings.notification_preference().ok()
+        == Some(NotificationPreference::BackgroundTurns);
+    notifications.enabled.store(enabled, Ordering::Release);
+}
+
+impl Notifications {
+    /// Applies a saved preference. Turning notices on publishes the flag before
+    /// retiring receipts admitted while they were off, so none is lost or
+    /// replayed from before the switch.
+    fn apply(&self, connection: &rusqlite::Connection, value: NotificationPreference) {
+        let enabled = value == NotificationPreference::BackgroundTurns;
+        if self.enabled.swap(enabled, Ordering::AcqRel) || !enabled {
+            return;
+        }
+        if receipts::retire_pending(connection).is_err() {
+            tracing::warn!("turn notification receipts could not be retired");
+        }
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled.load(Ordering::Acquire)
+    }
+}
+
 pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
+    let Some(notifications) = app.try_state::<Notifications>() else {
+        return;
+    };
+    if !notifications.enabled() {
+        return;
+    }
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
     // Synchronous receipt admission, outside the journal's committed transaction.
     // Never retry an uncertain OS delivery; dispatch failure cannot fail a Turn.
-    let claims = receipts::claim(&state.database.connection(), notice);
-    let Ok(claims) = claims else {
+    let Ok(claims) = receipts::claim(&state.database.connection(), notice) else {
         tracing::warn!("turn notification receipt failed");
         return;
     };
-    if state.settings.notification_preference().ok()
-        != Some(NotificationPreference::BackgroundTurns)
-    {
-        return;
-    }
-    let notifications = app.state::<Notifications>();
     for (id, event) in claims {
         let Some(permit) = Permit::acquire(&notifications.in_flight) else {
             continue;
@@ -85,14 +125,13 @@ pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
 }
 
 fn should_show(app: &tauri::AppHandle, id: i64) -> bool {
+    let notifications = app.state::<Notifications>();
+    if !notifications.enabled() {
+        return false;
+    }
     let Some(state) = app.try_state::<AppState>() else {
         return false;
     };
-    if state.settings.notification_preference().ok()
-        != Some(NotificationPreference::BackgroundTurns)
-    {
-        return false;
-    }
     let Ok(Some(target)) = receipts::target(&state.database.connection(), id) else {
         return false;
     };
@@ -101,7 +140,7 @@ fn should_show(app: &tauri::AppHandle, id: i64) -> bool {
     };
     let focused = window.is_focused().unwrap_or(true);
     let visible = window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false);
-    !app.state::<Notifications>()
+    !notifications
         .visibility
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

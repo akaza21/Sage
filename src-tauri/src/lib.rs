@@ -262,6 +262,7 @@ pub fn run() {
             #[cfg(not(all(windows, feature = "acp-fixture")))]
             let state = AppState::try_new_desktop(database, settings, app.handle().clone())?;
             app.manage(state);
+            notifications::start(app.handle());
             #[cfg_attr(not(windows), allow(clippy::default_constructed_unit_structs))]
             app.manage(voice_input::VoiceInputState::default());
             let main_window_config = app

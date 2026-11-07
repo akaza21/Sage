@@ -14,6 +14,7 @@ use super::notifier::{
     NotificationError, NotificationRecovery, NotificationSink, NotificationSinkFuture,
     ProjectionNotifier, PublishOutcome,
 };
+use super::projection_publisher::TurnNotice;
 
 struct GateSink {
     committed: Arc<AtomicBool>,
@@ -450,10 +451,10 @@ fn interleaved_chats_keep_their_own_child_only_routing() {
 }
 
 #[tokio::test]
-async fn background_turn_events_are_observed_before_projection_suppression() {
+async fn only_possible_turn_notices_are_observed_even_when_projection_is_suppressed() {
     struct Observer(AtomicUsize);
     impl NotificationSink for Observer {
-        fn observe_committed(&self, _: &ProjectionChangedV1) {
+        fn observe_turn_notice(&self, _: &ProjectionChangedV1) {
             self.0.fetch_add(1, Ordering::SeqCst);
         }
         fn publish<'a>(&'a self, _: ProjectionChangedV1) -> NotificationSinkFuture<'a> {
@@ -466,6 +467,16 @@ async fn background_turn_events_are_observed_before_projection_suppression() {
     assert_eq!(
         notifier
             .publish_committed(event("background", "chat", "session", 1))
+            .unwrap(),
+        PublishOutcome::SuppressedInactive
+    );
+    assert_eq!(sink.0.load(Ordering::SeqCst), 0, "streamed content");
+    assert_eq!(
+        notifier
+            .publish_committed_with(
+                event("background", "chat", "session", 2),
+                TurnNotice::Possible
+            )
             .unwrap(),
         PublishOutcome::SuppressedInactive
     );

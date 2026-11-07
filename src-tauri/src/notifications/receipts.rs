@@ -23,17 +23,17 @@ impl Event {
 /// At most four indexed receipt rows per publication. The journal creates
 /// receipts atomically with the exact event, so delayed projection publication
 /// cannot miss a completion followed by another Turn or an approval resolution.
-/// Claims precede dispatch even when off/visible: refreshes must not replay them.
+/// Claims precede dispatch even while the chat is visible, so refreshes never
+/// replay them. An approval is announced only while its request is pending.
 pub(super) fn claim(
     connection: &Connection,
     notice: &ProjectionChangedV1,
 ) -> AppResult<Vec<(i64, Event)>> {
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare_cached(
         "SELECT r.id,r.kind,
-           (r.kind<>'approval' OR t.state='waitingApproval' OR EXISTS(
-             SELECT 1 FROM server_requests q WHERE q.project_id=t.project_id
-             AND q.chat_id=t.chat_id AND q.session_id=t.session_id AND q.turn_id=t.id
-             AND q.state IN ('received','asked') AND q.kind IN ('permission','browserPermission')
+           (r.request_id IS NULL OR EXISTS(
+             SELECT 1 FROM server_requests q
+             WHERE q.id=r.request_id AND q.state IN ('received','asked')
            )) FROM turn_notification_receipts r
          JOIN turns t ON t.id=r.turn_id
          WHERE r.session_id=?1 AND r.claimed=0 AND t.project_id=?2 AND r.chat_id=?3
@@ -73,6 +73,16 @@ pub(super) fn claim(
         }
     }
     Ok(claimed)
+}
+
+/// Marks every unclaimed receipt as handled without announcing it. Used when
+/// the process starts and when notices are turned on, so a notice only ever
+/// describes an event observed while notices were on in this process.
+pub(super) fn retire_pending(connection: &Connection) -> AppResult<usize> {
+    Ok(connection.execute(
+        "UPDATE turn_notification_receipts SET claimed=1 WHERE claimed=0",
+        [],
+    )?)
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

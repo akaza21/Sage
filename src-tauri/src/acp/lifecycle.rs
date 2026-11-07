@@ -155,6 +155,11 @@ impl TurnState {
                 | Self::DeliveryUnknown
         )
     }
+    /// Outcomes Sage may announce natively. Migration 021 admits a notice
+    /// receipt for exactly these states; a user cancel or interrupt is silent.
+    pub fn is_notified_outcome(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::DeliveryUnknown)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

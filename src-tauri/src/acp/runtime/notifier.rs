@@ -7,15 +7,17 @@ use std::{
 
 use tokio::{sync::Notify, task::JoinHandle};
 
+use super::TurnNotice;
 use crate::acp::{contract::ProjectionRevision, intent::ProjectionChangedV1};
 
 pub(crate) type NotificationSinkFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), NotificationError>> + Send + 'a>>;
 
 pub(crate) trait NotificationSink: Send + Sync + 'static {
-    /// Observes every committed change, including background chats suppressed
-    /// by disposable projection routing. Must not wait for platform I/O.
-    fn observe_committed(&self, _event: &ProjectionChangedV1) {}
+    /// Observes a committed change that may have admitted a turn notice,
+    /// including background chats suppressed by disposable projection
+    /// routing. Must not wait for platform I/O.
+    fn observe_turn_notice(&self, _event: &ProjectionChangedV1) {}
     fn publish<'a>(&'a self, event: ProjectionChangedV1) -> NotificationSinkFuture<'a>;
 }
 
@@ -143,10 +145,22 @@ impl ProjectionNotifier {
         &self,
         event: ProjectionChangedV1,
     ) -> Result<PublishOutcome, PublishError> {
+        self.publish_committed_with(event, TurnNotice::None)
+    }
+
+    /// Like `publish_committed`; a commit that may have admitted a turn
+    /// notice is observed first, whatever the projection routing decides.
+    pub(crate) fn publish_committed_with(
+        &self,
+        event: ProjectionChangedV1,
+        turn_notice: TurnNotice,
+    ) -> Result<PublishOutcome, PublishError> {
         if event.projection_revision == ProjectionRevision::ZERO {
             return Err(PublishError::InvalidRevision);
         }
-        self.inner.sink.observe_committed(&event);
+        if turn_notice == TurnNotice::Possible {
+            self.inner.sink.observe_turn_notice(&event);
+        }
         let key = ProjectionKey::from_event(&event);
         let mut notify = false;
         let outcome = {
