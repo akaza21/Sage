@@ -46,14 +46,30 @@ type RailChatRow = (
     Option<i64>,
 );
 
-/// The finish time of the chat aliased `c`'s latest Turn, from its latest
-/// session that has one; NULL while that Turn runs or the chat has none.
-pub(crate) const CHAT_FINISHED_AT: &str = "(SELECT t.terminal_at FROM turns t
+/// A column of the chat aliased `c`'s latest Turn, from its latest session
+/// that has one. Every read of "the chat's latest Turn" goes through this, so
+/// the rail and the attention query agree on which Turn that is.
+macro_rules! chat_latest_turn {
+    ($column:literal) => {
+        concat!(
+            "(SELECT t.",
+            $column,
+            " FROM turns t
            WHERE t.session_id = (SELECT s.id FROM agent_sessions s
              WHERE s.project_id = c.project_id AND s.chat_id = c.id
                AND EXISTS(SELECT 1 FROM turns present WHERE present.session_id = s.id)
              ORDER BY s.ordinal DESC, s.id DESC LIMIT 1)
-           ORDER BY t.ordinal DESC, t.id DESC LIMIT 1)";
+           ORDER BY t.ordinal DESC, t.id DESC LIMIT 1)"
+        )
+    };
+}
+
+/// The finish time of the chat aliased `c`'s latest Turn; NULL while that
+/// Turn runs or the chat has none.
+pub(crate) const CHAT_FINISHED_AT: &str = chat_latest_turn!("terminal_at");
+
+/// The id of the chat aliased `c`'s latest Turn; NULL when it has none.
+pub(crate) const CHAT_LATEST_TURN_ID: &str = chat_latest_turn!("id");
 
 fn rail_chat_columns() -> String {
     format!(
