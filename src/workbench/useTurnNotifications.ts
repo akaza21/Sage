@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { openNotifiedChat } from "../app/openChat";
 import { useWorkbenchStore } from "../app/store";
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { nativeNotificationPort } from "../ports/nativeNotificationPort";
@@ -30,7 +31,7 @@ export function useNotificationNavigation(enterAgent: () => void) {
       nativeNotificationPort,
       () => !useWorkbenchStore.getState().projectTransitioning,
       async ({ projectId, chatId }) => {
-        await useWorkbenchStore.getState().openRailChat(projectId, chatId);
+        await openNotifiedChat(projectId, chatId);
         const current = useWorkbenchStore.getState();
         if (
           current.project?.id !== projectId ||

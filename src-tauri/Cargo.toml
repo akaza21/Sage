@@ -54,15 +54,20 @@ getrandom = "=0.3.4"
 zeroize = "=1.9.1"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-# XDG/macOS turn notices. Rust-only; four bounded waits, no WebView permission.
-notify-rust = { version = "=4.18.2", default-features = false, features = ["d"] }
 libc = "=0.2.189"
+
+# XDG turn notices over the session bus. Already in the lock through tao;
+# no new crate or system library.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "=0.9.12"
 
 # macOS only: the system Trash (NSFileManager). Both crates are already in the
 # lock through Tauri and wry; this adds two Foundation binding features.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.4"
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSError", "NSFileManager", "NSString", "NSURL"] }
+# macOS turn notices (NSUserNotificationCenter), sent without waiting.
+notify-rust = { version = "=4.18.2", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.38.2"

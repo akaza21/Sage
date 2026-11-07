@@ -1,5 +1,6 @@
 //! Turn notices observe committed truth independently of WebView projections.
-//! Four platform waits, no work queue/history; two hashed visible chat IDs.
+//! Four dispatch slots that end once a notice is shown, no work queue or
+//! history, and two hashed visible chat IDs.
 //! Only commits that may admit a notice reach `observe`, and the preference
 //! is cached here, so streamed content never touches notice storage.
 mod commands;
@@ -28,6 +29,9 @@ pub(crate) struct Notifications {
     enabled: AtomicBool,
     visibility: Mutex<visibility::Visibility>,
     in_flight: Arc<AtomicUsize>,
+    /// Shown XDG notices still listening for a click; see `platform::xdg`.
+    #[cfg(target_os = "linux")]
+    click_routes: Arc<AtomicUsize>,
     pending_open: AtomicI64,
     #[cfg(windows)]
     toasts: Mutex<Vec<platform::ActiveToast>>,
@@ -118,6 +122,8 @@ pub(crate) fn observe(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
     };
     for (id, event) in claims {
         let Some(permit) = Permit::acquire(&notifications.in_flight) else {
+            // The receipt stays claimed: a notice is never replayed late.
+            tracing::warn!("turn notification skipped: every dispatch slot is busy");
             continue;
         };
         platform::dispatch(app.clone(), id, event, permit);

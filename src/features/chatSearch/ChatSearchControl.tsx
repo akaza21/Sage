@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 
+import { chatPlacement, openChat } from "../../app/openChat";
 import { useWorkbenchStore } from "../../app/store";
 import { boundedError } from "../../domain/errors";
 import { ModalDialog } from "../../ui/ModalDialog";
@@ -16,7 +17,6 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
   admitChatSearchFolder,
-  chatSearchAttachment,
   chatSearchFolderOptions,
   matchesChatSearchScope,
   runScopedChatSearch,
@@ -79,9 +79,6 @@ export function ChatSearchControl({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  const activateChat = useWorkbenchStore((state) => state.activateChat);
-  const openRailChat = useWorkbenchStore((state) => state.openRailChat);
-  const restoreChat = useWorkbenchStore((state) => state.restoreChat);
   const projects = useWorkbenchStore((state) => state.projects);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<ChatSearchScope | null>(null);
@@ -225,7 +222,7 @@ export function ChatSearchControl({
       return;
     }
     const state = useWorkbenchStore.getState();
-    const { attached, archived } = chatSearchAttachment(
+    const { attached, archived } = chatPlacement(
       state,
       result.projectId,
       result.chatId,
@@ -241,15 +238,10 @@ export function ChatSearchControl({
       return;
     }
     close(false);
-    if (result.attached) {
-      if (result.projectId === state.project?.id) {
-        await activateChat(result.chatId);
-      } else {
-        await openRailChat(result.projectId, result.chatId);
-      }
-      return;
-    }
-    await restoreChat(result.chatId, result.projectId);
+    await openChat(result.projectId, result.chatId, {
+      attached: result.attached,
+      revealRestored: false,
+    });
   };
 
   const chooseFolder = useCallback(
