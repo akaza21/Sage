@@ -929,77 +929,90 @@ describe("last confirmed model label", () => {
     );
   });
 
-  it.each(["Codex", "Claude Code", "Pi"])(
-    "lists %s's sole confirmed model as selected without a catalog and keeps effort and its model link",
-    async (name) => {
-      useWorkbenchStore.setState({
-        selectedHarnessId: "access-test",
-        models: [],
-        harnesses: [
-          {
-            ...useWorkbenchStore.getState().harnesses[0]!,
-            name,
-          },
-        ],
-      });
-      const sessionConfig = decodeSessionConfig({
+  it("lists a sole confirmed model as selected without a catalog and keeps effort and its model link", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [],
+    });
+    const sessionConfig = decodeSessionConfig({
+      sageAgentSessionId: "session-1",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: null,
+      confirmedModel: { id: "gpt-6-astra", name: "GPT-6 Astra" },
+      configOptions: [
+        {
+          id: "effort",
+          name: "Effort",
+          category: "effort",
+          type: "select",
+          currentValue: "high",
+          options: [
+            { value: "low", name: "Low" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ],
+    });
+    const onSelectModel = vi.fn();
+    const onSetSessionConfigOption = vi.fn();
+    renderControls({ sessionConfig, onSelectModel, onSetSessionConfigOption });
+    const trigger = screen.getByLabelText("Model", { exact: true });
+    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+    expect(trigger).toBeEnabled();
+    fireEvent.click(trigger);
+    const listbox = await screen.findByRole("listbox", {
+      name: "Select model",
+    });
+    const option = within(listbox).getByRole("option");
+    expect(option).toHaveAccessibleName("GPT-6 Astra");
+    expect(option).toHaveAttribute("aria-selected", "true");
+    // With no requested model, choosing the confirmed one only closes the menu.
+    fireEvent.click(option);
+    expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+    const effort = screen.getByRole("button", {
+      name: "Thinking level: High",
+    });
+    expect(effort).toBeEnabled();
+    fireEvent.click(effort);
+    expect(await screen.findByRole("slider")).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Select model: GPT-6 Astra" }),
+    ).toBeVisible();
+    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  it("requests a substituted confirmed model when the user explicitly chooses it", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [
+        { id: "requested", name: "Requested model" },
+        { id: "actual", name: "Actual model" },
+      ],
+    });
+    const onSelectModel = vi.fn();
+    renderControls({
+      selectedModelId: "requested",
+      sessionModelId: "requested",
+      onSelectModel,
+      sessionConfig: decodeSessionConfig({
         sageAgentSessionId: "session-1",
         runtimeEpoch: "1",
         configRevision: "1",
         modes: null,
-        confirmedModel: { id: "gpt-6-astra", name: "GPT-6 Astra" },
-        configOptions: [
-          {
-            id: "effort",
-            name: "Effort",
-            category: "effort",
-            type: "select",
-            currentValue: "high",
-            options: [
-              { value: "low", name: "Low" },
-              { value: "high", name: "High" },
-            ],
-          },
-        ],
-      });
-      const onSelectModel = vi.fn();
-      const onSetSessionConfigOption = vi.fn();
-      renderControls({
-        sessionConfig,
-        onSelectModel,
-        onSetSessionConfigOption,
-      });
-      const trigger = screen.getByLabelText("Model", { exact: true });
-      expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
-      expect(trigger).toBeEnabled();
-      fireEvent.click(trigger);
-      const listbox = await screen.findByRole("listbox", {
-        name: "Select model",
-      });
-      const option = within(listbox).getByRole("option");
-      expect(option).toHaveAccessibleName("GPT-6 Astra");
-      expect(option).toHaveAttribute("aria-selected", "true");
-      // Choosing the model that is already current only closes the menu.
-      fireEvent.click(option);
-      expect(
-        screen.queryByRole("listbox", { name: "Select model" }),
-      ).toBeNull();
-      expect(trigger).toHaveFocus();
-      expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
-      const effort = screen.getByRole("button", {
-        name: "Thinking level: High",
-      });
-      expect(effort).toBeEnabled();
-      fireEvent.click(effort);
-      expect(await screen.findByRole("slider")).toBeEnabled();
-      expect(
-        screen.getByRole("button", { name: "Select model: GPT-6 Astra" }),
-      ).toBeVisible();
-      expect(onSelectModel).not.toHaveBeenCalled();
-      expect(onSetSessionConfigOption).not.toHaveBeenCalled();
-    },
-  );
-
+        configOptions: [],
+        confirmedModel: { id: "actual" },
+      }),
+    });
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Actual model" }),
+    );
+    expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual");
+  });
   it.each(["before a first turn", "after choosing another catalog model"])(
     "shows effort as unavailable until the selected model's session advertises levels, %s",
     (order) => {

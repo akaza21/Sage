@@ -6,9 +6,10 @@ import type {
 import type { ComposerModelChoice } from "./ChatModelPicker";
 
 /**
- * The models the picker lists when the session has no model select. A session
- * that confirms its model while the harness advertises no catalog has exactly
- * one model, so the picker lists that model as selected instead of disabling.
+ * The models the picker lists when the session has no model select. While no
+ * catalog is available (none advertised, still loading, or a cache miss), a
+ * session's confirmed model is the one known choice, so the picker lists it
+ * as selected instead of disabling.
  */
 export function useComposerModelCatalog(
   models: readonly ComposerModelChoice[],
