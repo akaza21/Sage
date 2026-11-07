@@ -8,7 +8,7 @@
 //! change. Both the marks and the computed results are bounded and owned by
 //! Rust; the WebView only renders them.
 
-use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
+use std::{collections::BTreeMap, path::Path};
 
 /// Same cap as the WebView's Git changes list.
 pub(crate) const MAX_TURN_WORKSPACE_CHANGES: usize = 300;
@@ -129,16 +129,13 @@ fn parse_mark(
             break;
         }
         let status = String::from_utf8_lossy(&record[..2]).into_owned();
-        let metadata = anchor.metadata(Path::new(path))?;
+        let entry = anchor.entry_status(Path::new(path))?;
         entries.insert(
             path.to_owned(),
             Fingerprint {
                 status,
-                len: metadata.as_ref().map(std::fs::Metadata::len),
-                modified_nanos: metadata
-                    .and_then(|metadata| metadata.modified().ok())
-                    .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                    .and_then(|elapsed| u64::try_from(elapsed.as_nanos()).ok()),
+                len: entry.map(|entry| entry.len),
+                modified_nanos: entry.and_then(|entry| entry.modified_nanos),
             },
         );
     }
