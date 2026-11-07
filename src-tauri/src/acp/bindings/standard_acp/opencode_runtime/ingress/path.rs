@@ -2,6 +2,8 @@ use std::path::{Component, Path};
 
 use serde_json::Value;
 
+use crate::workspace::directory_skip::windows_reserved_device_name;
+
 pub(super) fn workspace_edit_target(request: &Value, root: &Path) -> bool {
     let Some(tool) = request.pointer("/params/toolCall") else {
         return false;
@@ -152,26 +154,6 @@ fn admissible_filename(filename: &str) -> bool {
         return false;
     }
     !windows_reserved_device_name(filename)
-}
-
-fn windows_reserved_device_name(filename: &str) -> bool {
-    let stem = filename.split('.').next().unwrap_or(filename).trim_end();
-    let upper = stem.to_ascii_uppercase();
-    if matches!(
-        upper.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$" | "CONIN$" | "CONOUT$"
-    ) {
-        return true;
-    }
-    let suffix = upper
-        .strip_prefix("COM")
-        .or_else(|| upper.strip_prefix("LPT"));
-    suffix.is_some_and(|suffix| {
-        matches!(
-            suffix,
-            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-        )
-    })
 }
 
 #[cfg(windows)]

@@ -22,6 +22,15 @@ impl PiRuntime {
         );
         let thinking_reply = matches!(&record, Ok(crate::acp::bindings::pi::decode::Record::Response(response))
             if Some(&response.id) == self.thinking_request_command.as_ref() && response.command == "get_available_thinking_levels");
+        if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
+            && kind == "extension_ui_request"
+            && value
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|title| title.starts_with("sage.pi."))
+        {
+            return self.ingest_bridge(value, frame, resources);
+        }
         let outputs = match record.and_then(|record| self.ingest_record(record)) {
             Ok(outputs) => outputs,
             Err(error) => {

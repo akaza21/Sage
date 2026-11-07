@@ -62,7 +62,9 @@ pub fn is_native_replay_case(case: &str) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) use wire::child_opened_wire_for_test;
+pub(crate) use wire::{
+    child_opened_wire_for_test, pi_bridge_calls_for_test, run_pi_bridge_call_for_test,
+};
 
 #[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_lists_models(case: &str) -> bool {
@@ -74,6 +76,21 @@ pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
     generated_cases::JOURNEY_CASES
         .iter()
         .any(|entry| entry.id == case && entry.id.starts_with(&format!("{protocol}-")))
+}
+
+/// A Pi replay case that drives tool calls through the bundled Sage bridge
+/// extension, so its child stands in for a Pi with that extension installed.
+#[cfg(all(windows, debug_assertions))]
+pub(crate) fn native_case_uses_pi_bridge(case: &str) -> bool {
+    generated_cases::JOURNEY_CASES
+        .iter()
+        .filter(|entry| entry.id == case && entry.id.starts_with("pi-"))
+        .filter_map(|entry| serde_json::from_str::<Vec<serde_json::Value>>(entry.steps_json).ok())
+        .any(|steps| {
+            steps
+                .iter()
+                .any(|step| step["op"] == "awaitClient" && step["kind"] == "piBridgeTool")
+        })
 }
 
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<i32, FixtureError> {

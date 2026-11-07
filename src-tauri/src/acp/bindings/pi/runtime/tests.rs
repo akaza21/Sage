@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+mod bridge;
 mod config_delivery;
 mod extension_lifecycle;
 mod followups;

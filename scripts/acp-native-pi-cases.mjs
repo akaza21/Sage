@@ -370,3 +370,85 @@ export function piIdleConfigJourney() {
     ],
   };
 }
+
+/**
+ * Tool calls replayed through the bundled Sage bridge extension. Each
+ * piBridgeTool step plays one Pi tool call: the child emits the extension's
+ * sage.pi.prepare.v1 / sage.pi.commit.v1 dialogs and blocks on Sage's replies,
+ * so Approve and Deny run through the real approval card and write path. The
+ * Turn must run with workspace-write access; read-only Turns refuse every
+ * prepare. Paths target the seeded disposable project (src/example.ts). A
+ * replay step fails the case if Sage approves it, and a step with
+ * expectRefusal fails it unless Sage answers with exactly that refusal.
+ */
+export function piBridgeJourneys() {
+  const call = (index, tool, args, extra = {}) => ({
+    op: "awaitClient",
+    kind: "piBridgeTool",
+    toolCallId: `fixture-bridge-${extra.toolIndex ?? index}`,
+    tool,
+    args,
+    prepareId: `fixture-prepare-${index}`,
+    commitId: `fixture-commit-${index}`,
+    ...(extra.replay ? { replay: true } : {}),
+    ...(extra.expectRefusal ? { expectRefusal: extra.expectRefusal } : {}),
+  });
+  const journeys = {
+    "write-new": [
+      call(1, "write", {
+        path: "src/bridge-note.txt",
+        content: "Created through the Sage bridge.\n",
+      }),
+    ],
+    "edit-existing": [
+      call(1, "edit", {
+        path: "src/example.ts",
+        oldText: "example = 1",
+        newText: "example = 2",
+      }),
+    ],
+    "git-config-refused": [
+      call(1, "write", {
+        path: ".git/config",
+        content: "[core]\n\tfsmonitor = synthetic\n",
+      }),
+    ],
+    "device-name-refused": [
+      call(1, "write", { path: "nul.txt", content: "Never written.\n" }),
+    ],
+    "replay-refused": [
+      call(1, "write", {
+        path: "src/bridge-replay.txt",
+        content: "First approved write.\n",
+      }),
+      call(
+        2,
+        "write",
+        { path: "src/bridge-replay.txt", content: "Replayed write.\n" },
+        {
+          toolIndex: 1,
+          replay: true,
+          expectRefusal: "Sage refused: this tool call was already handled",
+        },
+      ),
+    ],
+  };
+  return Object.entries(journeys).map(([name, calls]) => {
+    const { start, update, finish } = assistantStream();
+    return {
+      id: "pi-bridge-" + name,
+      steps: [
+        wait("piInitialize"),
+        wait("piModels"),
+        wait("piNew"),
+        wait("piPrompt"),
+        wait("piThinkingLevels"),
+        ...start(),
+        update("text_delta", "Synthetic bridge edit."),
+        ...calls,
+        ...finish("stop", "Synthetic bridge edit."),
+        wait("piIdle"),
+      ],
+    };
+  });
+}
