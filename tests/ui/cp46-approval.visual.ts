@@ -465,8 +465,17 @@ test("a harness question replaces the composer with its questions, gated until a
   await expect(first).toBeFocused();
   const submit = card.getByRole("button", { name: /Submit/ });
   await expect(submit).toBeDisabled();
-  await first.check();
+  // Pick an option with the keyboard, then Tab through the Other field: the
+  // option stays chosen (focus alone never switches the answer to Other).
+  await page.keyboard.press("ArrowDown");
+  const chosen = card.getByRole("radio", { name: /Tests and code/ });
+  await expect(chosen).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(card.getByLabel("Other answer: Scope")).toBeFocused();
+  await page.keyboard.press("Tab");
   const token = card.getByLabel("Answer: Token");
+  await expect(token).toBeFocused();
+  await expect(chosen).toBeChecked();
   await expect(token).toHaveAttribute("type", "password");
   await token.fill("staging-secret");
   await expect(submit).toBeEnabled();

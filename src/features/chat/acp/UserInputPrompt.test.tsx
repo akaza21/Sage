@@ -203,4 +203,53 @@ describe("UserInputPrompt", () => {
     vi.advanceTimersByTime(1_000);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("keeps a chosen option when focus only passes through the Other field", () => {
+    render(
+      <PermissionPrompt
+        items={[questionRequest({ questions: [questions.questions[0]!] })]}
+      />,
+    );
+    const option = screen.getByRole("radio", { name: /Everything/ });
+    fireEvent.click(option);
+    const other = screen.getByLabelText("Other answer: Scope");
+    fireEvent.focus(other);
+    fireEvent.blur(other);
+    expect(option).toBeChecked();
+    expect(submit()).toBeEnabled();
+    fireEvent.input(other, { target: { value: "Only docs" } });
+    expect(screen.getByRole("radio", { name: "Other" })).toBeChecked();
+  });
+
+  it("explains a free-text answer over the byte limit and keeps Submit off", () => {
+    render(
+      <PermissionPrompt
+        items={[questionRequest({ questions: [questions.questions[0]!] })]}
+      />,
+    );
+    const other = screen.getByLabelText("Other answer: Scope");
+    // 1,500 CJK characters fit maxLength but are 4,500 UTF-8 bytes.
+    fireEvent.input(other, { target: { value: "字".repeat(1_500) } });
+    expect(other).toHaveAttribute("aria-invalid", "true");
+    expect(other).toHaveAccessibleDescription(
+      "Too long to send: answers are limited to 4,096 bytes.",
+    );
+    expect(submit()).toBeDisabled();
+    fireEvent.input(other, { target: { value: "字".repeat(1_000) } });
+    expect(screen.queryByText(/Too long to send/)).toBeNull();
+    expect(submit()).toBeEnabled();
+  });
+
+  it("lets a key held inside the card repeat in its fields, but not one held from outside", () => {
+    render(<PermissionPrompt items={[questionRequest(questions)]} />);
+    const field = screen.getByLabelText("Answer: Token");
+    // A repeat whose keydown came before the card is swallowed.
+    expect(fireEvent.keyDown(field, { key: "ArrowLeft", repeat: true })).toBe(
+      false,
+    );
+    expect(fireEvent.keyDown(field, { key: "Backspace" })).toBe(true);
+    expect(fireEvent.keyDown(field, { key: "Backspace", repeat: true })).toBe(
+      true,
+    );
+  });
 });

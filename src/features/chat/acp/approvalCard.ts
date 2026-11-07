@@ -39,14 +39,17 @@ export function parkFocus(card: HTMLElement | null) {
 
 /**
  * Keys that began outside the card (a held Enter from the composer, a stray
- * keyup) are swallowed, so they never answer a request.
+ * keyup) are swallowed, so they never answer a request. A card of buttons
+ * swallows every auto-repeat, so a held key answers at most once. With
+ * `ownRepeats`, a key pressed down inside the card repeats normally (a held
+ * Backspace or arrow in a text field), while a repeat of a key held since
+ * before the card arrived is still swallowed.
  */
-export function useCardKeyGuard() {
+export function useCardKeyGuard({ ownRepeats = false } = {}) {
   const pressed = useRef(new Set<string>());
   return {
     onKeyDownCapture(event: KeyboardEvent) {
-      // Auto-repeat belongs to a key that went down before this card.
-      if (event.repeat) {
+      if (event.repeat && !(ownRepeats && pressed.current.has(event.key))) {
         event.preventDefault();
         event.stopPropagation();
         return;

@@ -29,8 +29,15 @@ const OTHER = -1;
 const admitsText = (question: UserInputQuestion) =>
   !question.options || question.allowsOther || question.secret;
 
-const textAnswerable = (text: string) =>
-  text.trim() !== "" && utf8ByteLength(text) <= MAX_ANSWER_BYTES;
+/** Whether a field's free text can be sent as an answer. */
+type TextState = "empty" | "ok" | "tooLong";
+
+const textState = (text: string): TextState =>
+  utf8ByteLength(text) > MAX_ANSWER_BYTES
+    ? "tooLong"
+    : text.trim() === ""
+      ? "empty"
+      : "ok";
 
 /**
  * One choice per question: a listed option's index, `OTHER` for free text,
@@ -94,12 +101,15 @@ export function UserInputPrompt({
   const questions = userInput.questions.slice(0, USER_INPUT_MAX_QUESTIONS);
   const formId = useId();
   const sectionRef = useRef<HTMLElement>(null);
-  const keyGuard = useCardKeyGuard();
+  // Held keys pressed inside the card repeat, so editing fields behave.
+  const keyGuard = useCardKeyGuard({ ownRepeats: true });
   // Text stays in the (uncontrolled) inputs; React state keeps only whether
   // each one holds an answer, so a secret never enters state or the DOM text.
   const textRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [choices, setChoices] = useState(() => initialChoices(questions));
-  const [texts, setTexts] = useState(() => questions.map(() => false));
+  const [texts, setTexts] = useState(() =>
+    questions.map((): TextState => "empty"),
+  );
   const [announce, setAnnounce] = useState(false);
   /** The decision in flight, or one that failed to send (`false`). */
   const [sent, setSent] = useState<boolean | null>(null);
@@ -140,7 +150,9 @@ export function UserInputPrompt({
   const complete = questions.every(
     (question, index) =>
       optionOf(question, index) ||
-      (choices[index] === OTHER && admitsText(question) && texts[index]),
+      (choices[index] === OTHER &&
+        admitsText(question) &&
+        texts[index] === "ok"),
   );
   /** Read at submit time: free text lives only in its input. */
   const answers = () =>
@@ -222,32 +234,48 @@ export function UserInputPrompt({
       >
         {questions.map((question, index) => {
           const name = `${formId}-${index}`;
+          const tooLongId = `${name}-too-long`;
+          const tooLong = texts[index] === "tooLong";
           const textField = admitsText(question) ? (
-            <input
-              ref={(input) => {
-                textRefs.current[index] = input;
-              }}
-              className="acp-user-input__text"
-              type={question.secret ? "password" : "text"}
-              aria-label={
-                question.options
-                  ? `Other answer: ${question.header || question.question}`
-                  : `Answer: ${question.header || question.question}`
-              }
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={MAX_ANSWER_BYTES}
-              disabled={pending}
-              onFocus={() => {
-                if (question.options) choose(index, OTHER);
-              }}
-              onInput={(event) => {
-                const ok = textAnswerable(event.currentTarget.value);
-                setTexts((current) =>
-                  current.map((value, at) => (at === index ? ok : value)),
-                );
-              }}
-            />
+            <>
+              <input
+                ref={(input) => {
+                  textRefs.current[index] = input;
+                }}
+                className="acp-user-input__text"
+                type={question.secret ? "password" : "text"}
+                aria-label={
+                  question.options
+                    ? `Other answer: ${question.header || question.question}`
+                    : `Answer: ${question.header || question.question}`
+                }
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={MAX_ANSWER_BYTES}
+                disabled={pending}
+                aria-invalid={tooLong || undefined}
+                aria-describedby={tooLong ? tooLongId : undefined}
+                // Focus alone (Tab passing through) never changes the answer;
+                // a click in the field or typed text chooses "Other".
+                onClick={() => {
+                  if (question.options) choose(index, OTHER);
+                }}
+                onInput={(event) => {
+                  const { value } = event.currentTarget;
+                  const state = textState(value);
+                  setTexts((current) =>
+                    current.map((old, at) => (at === index ? state : old)),
+                  );
+                  if (question.options && value !== "") choose(index, OTHER);
+                }}
+              />
+              {tooLong ? (
+                <p id={tooLongId} className="acp-user-input__too-long">
+                  Too long to send: answers are limited to{" "}
+                  {MAX_ANSWER_BYTES.toLocaleString("en-US")} bytes.
+                </p>
+              ) : null}
+            </>
           ) : null;
           return (
             <fieldset
