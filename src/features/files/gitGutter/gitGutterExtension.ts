@@ -42,7 +42,7 @@ import type {
   GutterWorkerResult,
 } from "./gutterWorkerClient";
 
-/** AD-7: the diff waits for this long a pause in typing. */
+/** The diff waits for this long a pause in typing. */
 export const GUTTER_IDLE_MS = 250;
 
 export interface GutterPool {

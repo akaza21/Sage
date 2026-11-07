@@ -385,7 +385,7 @@
   border-left-color: var(--resource-document-caret);
 }
 
-/* EP-03 editing marks. The extra .cm-editor outranks CodeMirror's injected
+/* Editing marks. The extra .cm-editor outranks CodeMirror's injected
    base theme, which would otherwise paint its light-mode colours. */
 .editor-input .cm-editor .cm-matchingBracket {
   outline: 1px solid var(--resource-document-bracket-match-border);
@@ -561,7 +561,7 @@
   }
 }
 
-/* Change markers against the staged text (EP-14), as VS Code's gutter draws
+/* Change markers against the staged text, as VS Code's gutter draws
    them: a bar for added and changed lines, a wedge where lines were deleted. */
 .editor-input .git-gutter .cm-gutterElement {
   position: relative;

@@ -1,6 +1,5 @@
-//! The editor settings catalogue (EDIT-0005 AD-2). One closed registry lists
-//! each key with its type, default, range and owning ticket, and the values
-//! live as versioned key/value rows. `src/domain/editorSettingsCatalogue.ts`
+//! The editor settings catalogue. One closed registry lists each key with its
+//! type, default and range, and the values live as versioned key/value rows. `src/domain/editorSettingsCatalogue.ts`
 //! mirrors the registry, and a parity test keeps the two equal, so adding a
 //! setting is one entry on each side and never a schema change.
 
@@ -93,13 +92,6 @@ pub struct SettingSpec {
     pub key: &'static str,
     pub kind: SettingKind,
     pub default: SettingValue,
-    /// The ticket that owns the setting, recorded here only; the parity test
-    /// requires every entry to name one.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "documents ownership for the parity test")
-    )]
-    pub ticket: &'static str,
 }
 
 pub const EDITOR_SETTINGS: &[SettingSpec] = &[
@@ -111,25 +103,21 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &[12, 13, 14, 16],
         },
         default: SettingValue::Int(13),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.lineNumbers",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.wordWrap",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(false),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.renderWhitespace",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(false),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.tabSize",
@@ -139,31 +127,26 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &[2, 4, 8],
         },
         default: SettingValue::Int(2),
-        ticket: "EP-02",
     },
     SettingSpec {
         key: "editor.matchBrackets",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.autoClosingBrackets",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.folding",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.occurrencesHighlight",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "editor.multiCursorModifier",
@@ -171,13 +154,11 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &["alt", "ctrlCmd"],
         },
         default: SettingValue::Text("alt"),
-        ticket: "EP-03",
     },
     SettingSpec {
         key: "search.useIgnoreFiles",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "explorer.showIgnored",
@@ -185,7 +166,6 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             choices: &["dimmed", "hidden"],
         },
         default: SettingValue::Text("dimmed"),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "files.exclude",
@@ -198,25 +178,21 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
             "**/.DS_Store",
             "**/Thumbs.db",
         ]),
-        ticket: "EP-06",
     },
     SettingSpec {
         key: "git.autoRefresh",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-12",
     },
     SettingSpec {
         key: "git.decorations",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-13",
     },
     SettingSpec {
         key: "editor.gitGutter",
         kind: SettingKind::Bool,
         default: SettingValue::Bool(true),
-        ticket: "EP-14",
     },
 ];
 
@@ -470,11 +446,6 @@ mod tests {
                     .iter()
                     .any(|prefix| spec.key.starts_with(prefix)),
                 "{}",
-                spec.key
-            );
-            assert!(
-                spec.ticket.len() == 5 && spec.ticket.starts_with("EP-"),
-                "{} has no owning ticket",
                 spec.key
             );
             let default = EditorValue::from(spec.default);
