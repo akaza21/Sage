@@ -108,6 +108,9 @@ impl HarnessAdapter for OpenCodeRuntime {
                     crate::acp::runtime::permissions::PermissionDecision::Ask => {
                         return Err(AdapterRuntimeError::Operation);
                     }
+                    crate::acp::runtime::permissions::PermissionDecision::Answer(_) => {
+                        return Err(AdapterRuntimeError::UnsupportedCommand);
+                    }
                 };
                 let external =
                     crate::acp::intent::ExternalId::new("permissionRequest", request_id.as_str())

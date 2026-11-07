@@ -21,6 +21,7 @@ use crate::acp::{
 };
 
 mod activity;
+mod auto_resolution;
 mod batch_journal;
 mod cancel;
 mod coalescer;
@@ -162,7 +163,11 @@ struct StdoutPreambleWindow {
 struct PendingPermission {
     intent: PermissionIntent,
     written: bool,
-    decision: Option<crate::acp::runtime::permissions::PermissionDecision>,
+    /// The terminal state this request settles in once its reply is
+    /// written; `None` until the user (or auto-resolution) decides.
+    settles_as: Option<ServerRequestState>,
+    /// When a question request resolves itself without answers.
+    auto_resolve_at_millis: Option<i64>,
 }
 
 pub(crate) struct AdapterPumpAdmission {

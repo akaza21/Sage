@@ -6,6 +6,7 @@ fn permission(id: &str) -> AdapterEvent {
         item_id: identity_one(&format!("item-{id}")),
         external_request_id: ExternalId::new("permissionRequest", id).expect("request"),
         payload: NormalizedPayload::PermissionRequest {
+            user_input: None,
             category: crate::acp::intent::ToolCategory::Other,
             summary: SafeText::new("summary", "permission").expect("summary"),
             offered_option_kinds: None,

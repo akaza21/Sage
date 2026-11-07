@@ -13,7 +13,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .try_reserve_exact(permission_limit)
             .map_err(|_| AdapterPumpError::BatchCapacity)?;
         for event in &durable {
-            if let DurableAdapterEvent::PermissionRequest { intent, .. } = event {
+            if let DurableAdapterEvent::PermissionRequest { intent, now_millis } = event {
                 if self
                     .pending_permissions
                     .len()
@@ -23,7 +23,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     self.teardown = true;
                     return Err(AdapterPumpError::TeardownRequired);
                 }
-                new_permissions.push(intent.clone());
+                new_permissions.push((intent.clone(), auto_resolve_at(intent, *now_millis)));
             }
         }
         let terminal = durable.iter().rev().find_map(|event| match event {
@@ -63,11 +63,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
 
         let permission_wait_path = !new_permissions.is_empty();
-        for intent in new_permissions {
+        for (intent, auto_resolve_at_millis) in new_permissions {
             self.pending_permissions.push(PendingPermission {
                 intent,
                 written: false,
-                decision: None,
+                settles_as: None,
+                auto_resolve_at_millis,
             });
         }
         let mut egress_error = None;
@@ -140,4 +141,20 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             ProjectionPublishStatus::Published | ProjectionPublishStatus::Coalesced => Ok(()),
         }
     }
+}
+
+/// The instant a question request resolves itself, measured from when it
+/// was received; `None` for approvals and questions without a window.
+fn auto_resolve_at(intent: &PermissionIntent, received_millis: i64) -> Option<i64> {
+    let payload =
+        serde_json::from_str::<NormalizedPayload>(&intent.normalized_payload_json).ok()?;
+    let NormalizedPayload::PermissionRequest {
+        user_input: Some(request),
+        ..
+    } = payload
+    else {
+        return None;
+    };
+    let window = i64::try_from(request.auto_resolution_window_ms()?).ok()?;
+    Some(received_millis.saturating_add(window))
 }

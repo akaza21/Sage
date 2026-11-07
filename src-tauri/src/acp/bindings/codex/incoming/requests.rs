@@ -11,7 +11,7 @@ use crate::acp::{
 
 use super::super::CODEX_BROWSE_TOOL_NAME;
 use super::super::state::{
-    CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestParams,
+    CodexAdapter, ExternalKind, PermissionRegistration, PermissionRequestParams, USER_INPUT_METHOD,
 };
 use super::{
     DenyResponse, IncomingEvent, IngressDisposition, IngressError, record_unprojected,
@@ -28,10 +28,15 @@ pub(super) fn server_request(
         return dynamic_tool_call(adapter, object, params);
     }
     let id = object.get("id").ok_or(IngressError::Malformed)?;
+    if method == "currentTime/read" {
+        return current_time(id);
+    }
+    if method == USER_INPUT_METHOD {
+        return user_input::request(adapter, object, params);
+    }
     let Some(category) = approval_category(method) else {
         return unsupported_request(id, method);
     };
-    let request_id = request_id_text(id)?;
     let thread = text(params, "threadId", 512)?;
     let turn = text(params, "turnId", 512)?;
     let item = text(params, "itemId", 512)?;
@@ -44,12 +49,73 @@ pub(super) fn server_request(
     };
     let bytes = reply(id, "result", result)?;
     let offered = offered_approval_kinds(method, params);
+    let operation = match method {
+        "item/commandExecution/requestApproval" => {
+            SafeText::new("permissionSummary", "Run a command").expect("fixed summary")
+        }
+        "item/fileChange/requestApproval" => {
+            SafeText::new("permissionSummary", "Change files").expect("fixed summary")
+        }
+        _ => SafeText::new("permissionSummary", "Request additional permissions")
+            .expect("fixed summary"),
+    };
+    let allow_always = offered.contains(&crate::acp::intent::PermissionOptionKind::AllowAlways);
+    let payload = NormalizedPayload::PermissionRequest {
+        category,
+        summary: operation,
+        offered_option_kinds: Some(
+            crate::acp::contract::BoundedVec::new("permissionOptionKinds", offered)
+                .expect("fixed permission choices"),
+        ),
+        reason: approval_reason(params),
+        user_input: None,
+    };
+    project_server_request(
+        adapter,
+        PendingServerRequest {
+            object,
+            method,
+            allow_always,
+            turn,
+            item,
+            bytes,
+            payload,
+        },
+    )
+}
+
+/// One harness server request that waits for the user, with the native
+/// reply that declines it (sent on cancel, interrupt or auto-resolution).
+struct PendingServerRequest<'a> {
+    object: &'a Map<String, Value>,
+    method: &'a str,
+    allow_always: bool,
+    turn: &'a str,
+    item: &'a str,
+    bytes: Vec<u8>,
+    payload: NormalizedPayload,
+}
+
+fn project_server_request(
+    adapter: &mut CodexAdapter,
+    request: PendingServerRequest<'_>,
+) -> Result<IngressDisposition, IngressError> {
+    let PendingServerRequest {
+        object,
+        method,
+        allow_always,
+        turn,
+        item,
+        bytes,
+        payload,
+    } = request;
+    let request_id = request_id_text(object.get("id").ok_or(IngressError::Malformed)?)?;
     let external_request = match adapter
         .register_permission_request(PermissionRequestParams {
             request_id: &request_id,
             fingerprint: request_fingerprint(object),
             method,
-            allow_always: offered.contains(&crate::acp::intent::PermissionOptionKind::AllowAlways),
+            allow_always,
             turn_id: turn,
             item_id: item,
             response: &bytes,
@@ -66,20 +132,6 @@ pub(super) fn server_request(
             });
         }
     };
-    let denial = DenyResponse {
-        external_request,
-        bytes,
-    };
-    let operation = match method {
-        "item/commandExecution/requestApproval" => {
-            SafeText::new("permissionSummary", "Run a command").expect("fixed summary")
-        }
-        "item/fileChange/requestApproval" => {
-            SafeText::new("permissionSummary", "Change files").expect("fixed summary")
-        }
-        _ => SafeText::new("permissionSummary", "Request additional permissions")
-            .expect("fixed summary"),
-    };
     let event = IncomingEvent::Permission {
         turn_id: adapter
             .scoped_id(ExternalKind::Turn, turn)
@@ -87,19 +139,26 @@ pub(super) fn server_request(
         item_id: adapter
             .scoped_in_turn(ExternalKind::Item, turn, item)
             .map_err(identity)?,
-        payload: NormalizedPayload::PermissionRequest {
-            category,
-            summary: operation,
-            offered_option_kinds: Some(
-                crate::acp::contract::BoundedVec::new("permissionOptionKinds", offered)
-                    .expect("fixed permission choices"),
-            ),
-            reason: approval_reason(params),
-        },
-        denial: Box::new(denial),
+        payload,
+        denial: Box::new(DenyResponse {
+            external_request,
+            bytes,
+        }),
     };
     Ok(event.into())
 }
+
+/// `currentTime/read`: Sage's clock as whole Unix seconds.
+fn current_time(id: &Value) -> Result<IngressDisposition, IngressError> {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| IngressError::Malformed)?
+        .as_secs();
+    let bytes = reply(id, "result", json!({"currentTimeAt": seconds}))?;
+    Ok(IncomingEvent::HostToolReply { bytes }.into())
+}
+
+mod user_input;
 
 fn offered_approval_kinds(
     method: &str,

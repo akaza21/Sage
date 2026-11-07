@@ -12,6 +12,7 @@ mod errors;
 mod goal;
 mod permission_resolution;
 mod permissions;
+pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
 mod session;
 mod turn_errors;

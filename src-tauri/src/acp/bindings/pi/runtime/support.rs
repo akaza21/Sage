@@ -334,6 +334,7 @@ impl PiRuntime {
                         item_id,
                         external_request_id: id,
                         payload: NormalizedPayload::PermissionRequest {
+                            user_input: None,
                             category: ToolCategory::Other,
                             summary: SafeText::new(
                                 "permissionSummary",
