@@ -1,6 +1,7 @@
 use super::*;
 use crate::acp::intent::session_event::{
-    SessionActivityState, SessionNoticeLevel, SessionScopedEvent, SessionSurface,
+    SESSION_NOTICES_MAX, SessionActivityState, SessionNoticeLevel, SessionScopedEvent,
+    SessionSurface,
     fixtures::{activity as activity_fixture, notice as notice_fixture, title},
 };
 
@@ -99,6 +100,37 @@ fn storage_is_one_bounded_row_per_session() {
     assert_eq!(stored.notices.len(), 16);
     assert_eq!(stored.notices[0].text.as_str(), "notice 24");
     assert_eq!(stored.notices[15].text.as_str(), "notice 39");
+}
+
+#[test]
+fn escape_heavy_notices_evict_old_rows_instead_of_failing_the_batch() {
+    let mut fixture = fixture();
+    // Each control byte serializes as six JSON bytes, so sixteen full
+    // notices would be far over the row cap.
+    let text = |index: usize| format!("{}{index:02}", "\u{1}".repeat(1020));
+    for index in 0..SESSION_NOTICES_MAX {
+        let result = apply_adapter_inbound_batch(
+            &mut fixture.connection,
+            batch(&fixture.owner, vec![session(notice(&text(index)), 6)]),
+        )
+        .unwrap();
+        assert_eq!(result.disposition, MutationDisposition::Applied);
+    }
+    let bytes: i64 = fixture
+        .connection
+        .query_row(
+            "SELECT length(CAST(surface_json AS BLOB)) FROM acp_session_surfaces",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let stored = surface(&fixture);
+    assert!(bytes <= 65_536);
+    assert!(stored.notices.len() < SESSION_NOTICES_MAX);
+    assert_eq!(
+        stored.notices.last().unwrap().text.as_str(),
+        text(SESSION_NOTICES_MAX - 1)
+    );
 }
 
 #[test]

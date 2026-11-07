@@ -85,6 +85,27 @@ pub(crate) struct SessionPumpIntent {
 }
 
 impl SessionPumpIntent {
+    /// Owner of the session-scoped facts this pump commits.
+    pub(crate) fn session_scope(&self) -> SessionScope {
+        SessionScope {
+            project_id: self.project_id.clone(),
+            chat_id: self.chat_id.clone(),
+            session_id: self.session_id.clone(),
+            runtime_epoch: self.runtime_epoch,
+            binding_digest: hex(&self.binding_digest),
+        }
+    }
+
+    /// Whether an adapter identity names exactly this session and epoch.
+    pub(crate) fn owns(&self, id: &crate::acp::bindings::adapter::AdapterIdentity) -> bool {
+        id.is_exact_session(
+            &self.binding_digest,
+            self.runtime_epoch,
+            &self.session_id,
+            &self.external_session_id,
+        )
+    }
+
     pub(crate) fn bind_turn(self, active_turn: ActiveTurnIntent) -> PumpIntent {
         PumpIntent {
             binding_digest: self.binding_digest,

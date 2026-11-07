@@ -7,7 +7,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::{
     contract::EntityRevision,
-    intent::session_event::{SessionScopedEvent, SessionSurface},
+    intent::session_event::{SessionScopedEvent, SessionSurface, SurfaceChange},
 };
 
 use super::{AdapterStoreOwner, StoreError, facts};
@@ -36,14 +36,10 @@ pub(super) fn apply_in(
     let stored = read(transaction, project, chat, session)?;
     let revision = stored.as_ref().map(|(_, revision)| *revision);
     let mut surface = stored.map(|(surface, _)| surface).unwrap_or_default();
-    if !surface.apply(owner.runtime_epoch.get(), &command.event) {
+    let Some(change) = surface.apply(owner.runtime_epoch.get(), &command.event) else {
         return Ok(false);
-    }
-    let json = serde_json::to_string(&surface)
-        .map_err(|_| StoreError::Corrupt("session surface serialization"))?;
-    if json.len() > SURFACE_BYTES_MAX {
-        return Err(StoreError::PayloadTooLarge);
-    }
+    };
+    let json = bounded_json(&mut surface)?;
     let next = match revision {
         Some(revision) => revision.next().map_err(|_| StoreError::CounterExhausted)?,
         None => EntityRevision::ZERO,
@@ -65,10 +61,9 @@ pub(super) fn apply_in(
             command.now_millis
         ],
     )?;
-    let publish = if command.event.is_send_neutral() {
-        facts::publish_send_neutral_projection
-    } else {
-        facts::publish_projection
+    let publish = match change {
+        SurfaceChange::SendNeutral => facts::publish_send_neutral_projection,
+        SurfaceChange::SendRelevant => facts::publish_projection,
     };
     publish(
         transaction,
@@ -79,6 +74,22 @@ pub(super) fn apply_in(
         command.now_millis,
     )?;
     Ok(true)
+}
+
+/// Serializes the surface within the row cap. Each field is byte-capped,
+/// but JSON escaping can still push a full surface over it, so the oldest
+/// display rows give way instead of the whole adapter batch failing.
+fn bounded_json(surface: &mut SessionSurface) -> Result<String, StoreError> {
+    loop {
+        let json = serde_json::to_string(surface)
+            .map_err(|_| StoreError::Corrupt("session surface serialization"))?;
+        if json.len() <= SURFACE_BYTES_MAX {
+            return Ok(json);
+        }
+        if !surface.evict_oldest() {
+            return Err(StoreError::PayloadTooLarge);
+        }
+    }
 }
 
 /// Reads one session's stored surface and its row revision.

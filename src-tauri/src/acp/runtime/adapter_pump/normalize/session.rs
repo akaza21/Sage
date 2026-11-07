@@ -27,8 +27,10 @@ where
     R: super::ResourceMapper,
 {
     /// Queues the session events buffered before this first Turn, so they
-    /// commit durably with its first batch. The buffer is bounded far below
-    /// one journal transaction; a refused push drops the buffered events.
+    /// commit durably with its first batch. A durable write needs a Turn
+    /// owner, so events from an epoch that never starts a Turn stay
+    /// display-only and are not kept. The buffer is bounded far below one
+    /// journal transaction; a refused push drops the events and is logged.
     pub(crate) fn seed_session_events(
         &mut self,
         mut events: crate::acp::intent::session_event::PendingSessionEvents,
@@ -40,8 +42,12 @@ where
             .filter_map(|event| session_fact(self.session_scope(), event, now_millis).ok())
             .collect::<Vec<_>>();
         let bytes = facts.iter().map(|fact| fact.payload_bytes).sum::<usize>();
-        if !facts.is_empty() {
-            let _ = self.pending.push(facts, bytes, now_millis);
+        let count = facts.len();
+        if count > 0 && self.pending.push(facts, bytes, now_millis).is_err() {
+            tracing::warn!(
+                count,
+                "dropped session events buffered before the first turn"
+            );
         }
     }
 }

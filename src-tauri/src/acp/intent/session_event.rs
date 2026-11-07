@@ -147,6 +147,13 @@ impl PendingSessionEvents {
     }
 }
 
+/// How a surface change affects a racing send; the more disruptive wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum SurfaceChange {
+    SendNeutral,
+    SendRelevant,
+}
+
 /// Bounded per-session state that session-scoped events fold into. The
 /// title and notices are durable history. The model and activities describe
 /// one live runtime epoch and reset when a new epoch reports.
@@ -166,22 +173,58 @@ impl SessionSurface {
         self.notices.len() <= SESSION_NOTICES_MAX && self.activities.len() <= SESSION_ACTIVITIES_MAX
     }
 
-    /// Applies one event and reports whether anything changed.
-    pub(crate) fn apply(&mut self, runtime_epoch: u64, event: &SessionScopedEvent) -> bool {
-        let mut changed = false;
+    /// Applies one event and reports what changed, or `None` if nothing did. A new epoch's first event
+    /// also resets the live model and activities; dropping a model is a
+    /// send-relevant change whatever the event's own kind.
+    pub(crate) fn apply(
+        &mut self,
+        runtime_epoch: u64,
+        event: &SessionScopedEvent,
+    ) -> Option<SurfaceChange> {
+        let mut change = None;
         if self.live_epoch != runtime_epoch {
-            changed = self.model_id.is_some() || !self.activities.is_empty();
+            if self.model_id.take().is_some() {
+                change = Some(SurfaceChange::SendRelevant);
+            } else if !self.activities.is_empty() {
+                change = Some(SurfaceChange::SendNeutral);
+            }
             self.live_epoch = runtime_epoch;
-            self.model_id = None;
             self.activities.clear();
         }
-        changed |= match event {
+        let changed = match event {
             SessionScopedEvent::Title { title } => replace(&mut self.title, title),
             SessionScopedEvent::TurnModel { model_id } => replace(&mut self.model_id, model_id),
             SessionScopedEvent::Notice(notice) => self.push_notice(notice),
             SessionScopedEvent::Activity(activity) => self.upsert_activity(activity),
         };
-        changed
+        if changed {
+            change = change.max(Some(if event.is_send_neutral() {
+                SurfaceChange::SendNeutral
+            } else {
+                SurfaceChange::SendRelevant
+            }));
+        }
+        change
+    }
+
+    /// Drops the least valuable display row: the oldest notice, then the
+    /// oldest finished activity, then the oldest running one. Returns false
+    /// when nothing is left to drop.
+    pub(crate) fn evict_oldest(&mut self) -> bool {
+        if !self.notices.is_empty() {
+            self.notices.remove(0);
+            return true;
+        }
+        if self.activities.is_empty() {
+            return false;
+        }
+        let evicted = self
+            .activities
+            .iter()
+            .position(|row| row.state.is_terminal())
+            .unwrap_or(0);
+        self.activities.remove(evicted);
+        true
     }
 
     fn push_notice(&mut self, notice: &SessionNotice) -> bool {
