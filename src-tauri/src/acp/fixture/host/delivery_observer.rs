@@ -143,6 +143,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
             project_generation: ProjectGeneration::ZERO,
             chat_id: chat_id.clone(),
             projection_revision: ready.projection_revision,
+            intent_revision: ready.projection_revision,
             session_id: Some(started.session_id.clone()),
             runtime_epoch: Some(epoch),
             turn_id: None,
@@ -344,6 +345,7 @@ fn capabilities() -> CapabilitySnapshotV1 {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
         config_count: 0,
     }
 }

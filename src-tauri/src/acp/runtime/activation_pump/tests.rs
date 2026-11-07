@@ -15,6 +15,9 @@ use super::*;
 #[path = "tests/model_catalog.rs"]
 mod model_catalog;
 
+#[path = "tests/session_events.rs"]
+mod session_events;
+
 #[path = "tests/initialization.rs"]
 mod initialization;
 
@@ -959,6 +962,7 @@ fn capabilities(prompt: bool, cancel: bool) -> CapabilitySnapshotV1 {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 128,
+        prompt_resources: false,
         config_count: 0,
     }
 }

@@ -15,6 +15,7 @@ mod browser_preferences;
 mod browser_site_permissions;
 mod chat_read_marks;
 mod editor_settings;
+mod new_chat_defaults;
 mod side_chat;
 mod terminal_dock;
 pub use access::SessionAccessModes;
@@ -26,6 +27,7 @@ pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
 pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
 pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
+pub use new_chat_defaults::NewChatDefaults;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,6 +127,7 @@ impl SettingsStore {
             browser_download_folder::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
             terminal_dock::migrate(&migration)?;
+            new_chat_defaults::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

@@ -31,7 +31,7 @@ use egress::queue;
 pub(crate) use egress::write_idle_cancellations;
 mod error;
 mod events;
-pub(crate) use events::{DurableAdapterEvent, TurnScope};
+pub(crate) use events::{DurableAdapterEvent, SessionScope, TurnScope};
 mod ingress;
 mod normalize;
 mod payload;
@@ -85,6 +85,27 @@ pub(crate) struct SessionPumpIntent {
 }
 
 impl SessionPumpIntent {
+    /// Owner of the session-scoped facts this pump commits.
+    pub(crate) fn session_scope(&self) -> SessionScope {
+        SessionScope {
+            project_id: self.project_id.clone(),
+            chat_id: self.chat_id.clone(),
+            session_id: self.session_id.clone(),
+            runtime_epoch: self.runtime_epoch,
+            binding_digest: hex(&self.binding_digest),
+        }
+    }
+
+    /// Whether an adapter identity names exactly this session and epoch.
+    pub(crate) fn owns(&self, id: &crate::acp::bindings::adapter::AdapterIdentity) -> bool {
+        id.is_exact_session(
+            &self.binding_digest,
+            self.runtime_epoch,
+            &self.session_id,
+            &self.external_session_id,
+        )
+    }
+
     pub(crate) fn bind_turn(self, active_turn: ActiveTurnIntent) -> PumpIntent {
         PumpIntent {
             binding_digest: self.binding_digest,
@@ -276,12 +297,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     }
 
     fn exact_session(&self, id: &crate::acp::bindings::adapter::AdapterIdentity) -> bool {
-        id.binding_digest == self.intent.binding_digest
-            && id.runtime_epoch == self.intent.runtime_epoch
-            && id.session_id == self.intent.session_id
-            && id.external_id == self.intent.external_session_id
-            && id.turn_id.is_none()
-            && id.turn_client_message_id.is_none()
+        id.is_exact_session(
+            &self.intent.binding_digest,
+            self.intent.runtime_epoch,
+            &self.intent.session_id,
+            &self.intent.external_session_id,
+        )
     }
 
     fn exact_turn(&mut self, id: &crate::acp::bindings::adapter::AdapterIdentity) -> bool {
@@ -312,6 +333,16 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             session_id: self.intent.session_id.clone(),
             runtime_epoch: self.intent.runtime_epoch,
             turn_id: self.intent.active_turn.turn_id.clone(),
+            binding_digest: hex(&self.intent.binding_digest),
+        }
+    }
+
+    fn session_scope(&self) -> SessionScope {
+        SessionScope {
+            project_id: self.intent.project_id.clone(),
+            chat_id: self.intent.chat_id.clone(),
+            session_id: self.intent.session_id.clone(),
+            runtime_epoch: self.intent.runtime_epoch,
             binding_digest: hex(&self.intent.binding_digest),
         }
     }

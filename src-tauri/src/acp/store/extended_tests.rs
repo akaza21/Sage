@@ -48,6 +48,17 @@ pub(super) fn setup() -> Connection {
             "../../../migrations/010_acp_file_change_snapshots.sql"
         ))
         .unwrap();
+    // The handmade sessions table lacks the owner key v21 references.
+    connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX fixture_session_owner ON agent_sessions(project_id,chat_id,id);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/021_acp_session_scope.sql"
+        ))
+        .unwrap();
     connection
         .execute_batch(
             "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
@@ -88,6 +99,7 @@ pub(super) fn capabilities() -> String {
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 1,
+        prompt_resources: false,
         config_count: 0,
     })
     .unwrap()

@@ -41,6 +41,7 @@ pub(super) fn capabilities(
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: true,
         config_count: 0,
     })
 }

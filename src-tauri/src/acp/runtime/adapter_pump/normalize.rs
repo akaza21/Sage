@@ -6,8 +6,12 @@ use super::{
 use sha2::{Digest, Sha256};
 
 mod critical;
+mod session;
 mod terminal_reason;
+mod validate;
 pub(super) use critical::control_critical;
+pub(super) use session::session_fact;
+pub(super) use validate::{validate_batch, validate_deny_pairs};
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
     fn synthetic_item_id(&mut self) -> Result<ExternalId, AdapterPumpError> {
@@ -284,6 +288,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     external_request_id.as_str().len(),
                 )))
             }
+            // Session-scoped facts need only the exact session identity. They
+            // are admitted with no Turn identity and after a Turn terminal;
+            // every turn-scoped rule above is unchanged.
+            AdapterEvent::Session { id, event } if self.exact_session(&id) => {
+                Ok(Some(session_fact(self.session_scope(), event, now_millis)?))
+            }
             AdapterEvent::Error(payload) | AdapterEvent::Unsupported(payload)
                 if terminal.is_none() =>
             {
@@ -297,6 +307,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             | AdapterEvent::FilePair { .. }
             | AdapterEvent::ActivityItem(_)
             | AdapterEvent::Usage { .. }
+            | AdapterEvent::Session { .. }
             | AdapterEvent::PermissionRequest { .. }
             | AdapterEvent::PermissionResolved { .. }
             | AdapterEvent::Error(_)
@@ -352,53 +363,4 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.teardown = true;
         Err(AdapterPumpError::Frame)
     }
-}
-
-pub(super) fn validate_batch(
-    events: &[AdapterEvent],
-    egress: &[AdapterEgress],
-    actual_bytes: usize,
-) -> Result<(), AdapterPumpError> {
-    if events.len() > LIMITS.queues.journal_facts_per_transaction as usize
-        || egress.len() > LIMITS.queues.egress_control_frames_inside_total as usize
-    {
-        return Err(AdapterPumpError::BatchCapacity);
-    }
-    let bytes = egress
-        .iter()
-        .try_fold(0_usize, |sum, value| {
-            sum.checked_add(value.frame().wire_len())
-        })
-        .ok_or(AdapterPumpError::BatchCapacity)?;
-    let maximum = (LIMITS.queues.journal_bytes_per_transaction as usize)
-        .checked_add(LIMITS.queues.egress_control_bytes_inside_total as usize)
-        .ok_or(AdapterPumpError::BatchCapacity)?;
-    if bytes > LIMITS.queues.egress_control_bytes_inside_total as usize
-        || actual_bytes < bytes
-        || actual_bytes > maximum
-    {
-        return Err(AdapterPumpError::BatchCapacity);
-    }
-    Ok(())
-}
-
-pub(super) fn validate_deny_pairs(
-    durable: &[NormalizedFact],
-    egress: &[AdapterEgress],
-) -> Result<(), AdapterPumpError> {
-    for fact in durable {
-        let DurableAdapterEvent::PermissionDeny { intent, .. } = &fact.event else {
-            continue;
-        };
-        let matches = egress
-            .iter()
-            .filter(|value| {
-                value.token().deny_request() == Some((intent.external_request_id.as_str(), false))
-            })
-            .count();
-        if matches != 1 {
-            return Err(AdapterPumpError::TeardownRequired);
-        }
-    }
-    Ok(())
 }

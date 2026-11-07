@@ -38,6 +38,7 @@ import {
   harnessPickerCandidates,
   useComposerPopovers,
 } from "./useChatHarnessSelection";
+import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 interface Props {
@@ -133,10 +134,13 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
-  const selectedSessionConfig =
-    sessionHarnessId === selectedHarnessId && sessionModelId === selectedModelId
-      ? sessionConfig
-      : null;
+  // Effort levels are known only once a session runs the selected harness and
+  // model; until then effort shows as unavailable, however the selection and
+  // the session were reached.
+  const sessionOwnsSelection =
+    sessionHarnessId === selectedHarnessId &&
+    sessionModelId === selectedModelId;
+  const selectedSessionConfig = sessionOwnsSelection ? sessionConfig : null;
   const configOptions = sessionConfigControls(selectedSessionConfig);
   const findOption = (category: string) =>
     configOptions.find(
@@ -174,19 +178,25 @@ export function ChatHarnessControls({
   const effortName =
     composerOptionLabel(effortOption) ?? confirmedEffort ?? inheriting?.effort;
   const effortLabel = effortName ? capitalizeLabel(effortName) : null;
-  const modelChoices = hasSessionModel ? modelOption : models;
-  const currentModelId = hasSessionModel
-    ? modelOption.currentValue
-    : (selectedSessionConfig?.confirmedModel?.id ?? selectedModelId);
+  const {
+    choices: modelChoices,
+    currentId: currentModelId,
+    unchangedId: unchangedModelId,
+  } = useComposerModelSelection(
+    modelOption,
+    models,
+    selectedSessionConfig,
+    confirmedModelLabel,
+    selectedModelId,
+  );
   const contextWindow = formatContextWindow(
     models.find((model) => model.id === currentModelId)?.contextWindow,
   );
   const chooseModel = (modelId: string) => {
-    if (hasSessionModel) {
+    const changed = modelId !== unchangedModelId;
+    if (changed && modelOption?.type === "select")
       void onSetSessionConfigOption(modelOption.id, { value: modelId });
-    } else {
-      onSelectModel(modelId);
-    }
+    else if (changed) onSelectModel(modelId);
     dismiss();
     modelTrigger.current?.focus();
   };
@@ -303,7 +313,7 @@ export function ChatHarnessControls({
           contextWindow={contextWindow}
           effortOption={effortOption}
           awaitingSession={
-            sessionHarnessId === null &&
+            !sessionOwnsSelection &&
             selectedHarnessId !== null &&
             availableBinding
           }

@@ -29,6 +29,7 @@ mod residency;
 mod send;
 mod session_close;
 mod session_duplicates;
+mod session_surface;
 mod sessions;
 mod snapshots;
 mod state;
@@ -94,6 +95,7 @@ pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
+pub(crate) use session_surface::SessionEventCommand;
 pub(crate) use sessions::{
     ActivateSessionCommand, CloseSessionCommand, SessionMutation, StartSessionCommand,
     activate_session, start_session,

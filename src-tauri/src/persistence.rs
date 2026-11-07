@@ -210,7 +210,7 @@ mod tests {
         let project_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migration_count, 20);
+        assert_eq!(migration_count, 21);
         assert_eq!(project_count, 0);
     }
 

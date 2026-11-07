@@ -15,6 +15,7 @@ use super::{
 
 mod activity;
 mod command;
+mod session_event;
 mod terminal_reason;
 
 #[cfg(test)]
@@ -124,7 +125,6 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
             {
                 return Err(PumpJournalError::Rejected);
             }
-            #[cfg(feature = "acp-fixture")]
             let applied = result.disposition == crate::acp::store::MutationDisposition::Applied;
             let child_projection_epoch = result.child_projection_epoch;
             let cursor = result.into_turn_cursor();
@@ -143,7 +143,8 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                 );
             }
             Ok(JournalReceipt::committed(projection_revision, cursor)
-                .with_child_projection_epoch(child_projection_epoch))
+                .with_child_projection_epoch(child_projection_epoch)
+                .with_applied(applied))
         })
     }
 
@@ -284,6 +285,10 @@ impl JournalRejectionContext {
                         external_item_id: child_turn_id.as_str().to_owned(),
                     })
                 }
+                DurableAdapterEvent::Session { .. } => Some(JournalRejectionItem {
+                    kind: "session",
+                    external_item_id: "session-scoped".to_owned(),
+                }),
                 DurableAdapterEvent::Turn { .. } => None,
             })
             .collect();

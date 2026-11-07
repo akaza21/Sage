@@ -476,6 +476,26 @@ mod tests {
         advertise_build: bool,
         current_mode: &str,
     ) -> crate::acp::bindings::runtime::NativeRuntime {
+        configured_runtime(
+            root,
+            epoch,
+            label,
+            version,
+            advertise_build,
+            current_mode,
+            false,
+        )
+    }
+
+    fn configured_runtime(
+        root: &TempRoot,
+        epoch: u64,
+        label: &str,
+        version: &str,
+        advertise_build: bool,
+        current_mode: &str,
+        resources: bool,
+    ) -> crate::acp::bindings::runtime::NativeRuntime {
         let project_root = ProjectRootAuthority::for_test(
             SageProjectId::parse(format!("project-{label}")).expect("project"),
             ProjectGeneration::ZERO,
@@ -507,11 +527,13 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
+        let mut initialize_response = inbound.next().expect("initialize response");
+        if resources {
+            initialize_response["result"]["agentCapabilities"]["promptCapabilities"] =
+                serde_json::json!({"embeddedContext":true});
+        }
         runtime
-            .ingest(
-                &frame(inbound.next().expect("initialize response")),
-                &Mapper,
-            )
+            .ingest(&frame(initialize_response), &Mapper)
             .expect("initialize response");
         let session = runtime
             .command(AdapterCommand::NewSession {
@@ -536,6 +558,43 @@ mod tests {
             .ingest(&frame(session_response), &Mapper)
             .expect("session response");
         runtime
+    }
+
+    #[test]
+    fn advertised_prompt_files_reach_the_opencode_wire_as_resources() {
+        use crate::acp::attached_context::files::{Resource, Resources};
+        let root =
+            TempRoot(temp_root().join(format!("sage-opencode-files-{}", uuid::Uuid::new_v4())));
+        std::fs::create_dir_all(&root.0).unwrap();
+        let mut runtime = configured_runtime(
+            &root,
+            1,
+            "files",
+            OPENCODE_OBSERVED_VERSION,
+            true,
+            "build",
+            true,
+        );
+        assert!(runtime.capabilities().unwrap().prompt_resources);
+        let mut prompt = Prompt::new("prompt", "Inspect this file").unwrap();
+        prompt.resources = Resources(Arc::new(vec![Resource {
+            id: "file-1".into(),
+            name: "one.txt".into(),
+            bytes: b"resource content".to_vec(),
+        }]));
+        let egress = runtime
+            .command(AdapterCommand::Prompt {
+                prompt,
+                client_message_id: RequiredText::new("client", "file-message").unwrap(),
+                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            })
+            .unwrap();
+        let value = egress_value(&egress);
+        assert_eq!(value["method"], "session/prompt");
+        assert_eq!(
+            value["params"]["prompt"][1]["resource"]["text"],
+            "resource content"
+        );
     }
 
     fn inbound_smoke_frames() -> Vec<Value> {
