@@ -365,10 +365,12 @@ fn the_fold_keeps_the_usage_ledger_and_activity_parents_consistent() {
 fn the_folded_history_projects_one_tool_call_per_tool() {
     let mut connection = seeded();
     schema_upgrade::apply_v11(&mut connection).unwrap();
-    // The page reads the v16 child-epoch table; this history predates it.
+    // The page reads the v16 child-epoch and v21 session-surface tables;
+    // this history predates both.
     connection
         .execute_batch(
-            "CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,updated_at INTEGER);",
+            "CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,updated_at INTEGER);
+             CREATE TABLE acp_session_surfaces(session_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,surface_json TEXT,revision INTEGER,updated_at INTEGER);",
         )
         .unwrap();
     let page = load_chat_page(

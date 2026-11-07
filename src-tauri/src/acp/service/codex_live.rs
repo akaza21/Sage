@@ -57,6 +57,8 @@ mod steer;
 
 #[cfg(all(test, windows))]
 mod journey_tests;
+#[cfg(test)]
+mod send_race_tests;
 
 pub(super) use recovery::PendingCodexRecovery;
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::intent::session_event::PendingSessionEvents;
 
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
@@ -43,6 +44,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
         let mut nonfatal_refusal = None;
+        // Session events in one chunk coalesce into one commit and at most
+        // one projection notice, so a burst of progress costs one write.
+        let mut session_events = PendingSessionEvents::default();
         loop {
             if let Some(id) = self.idle_decoder.take_oversize_id() {
                 self.adapter
@@ -137,6 +141,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         .map_err(AdapterPumpError::Journal)?;
                                     self.publish_child_epoch(&receipt);
                                 }
+                                AdapterEvent::Session { id, event } => {
+                                    // A foreign identity is dropped, as the Turn pump drops it.
+                                    if self.session_intent.owns(&id) {
+                                        session_events.push(event);
+                                    }
+                                }
                                 AdapterEvent::IgnoredLate
                                 | AdapterEvent::IgnoredDuplicate
                                 | AdapterEvent::Absorbed => {}
@@ -159,8 +169,52 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .drain_pending()
                 .map_err(|_| AdapterPumpError::Frame)?;
         }
+        self.commit_session_events(session_events, chunk.len(), now_millis)
+            .await?;
         nonfatal_refusal.map_or(Ok(()), Err)
     }
+
+    /// Commits the session-scoped facts that arrived after the Turn terminal.
+    /// The same exact-session rule as the Turn pump applies; a foreign
+    /// identity is dropped, as the Turn pump drops it.
+    async fn commit_session_events(
+        &mut self,
+        mut events: PendingSessionEvents,
+        chunk_bytes: usize,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        let events = events.take();
+        if events.is_empty() {
+            return Ok(());
+        }
+        let scope = self.session_intent.session_scope();
+        let facts = events
+            .into_iter()
+            .map(|event| {
+                super::normalize::session_fact(scope.clone(), event, now_millis)
+                    .map(|fact| fact.event)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let receipt = self
+            .journal
+            .commit(facts, chunk_bytes.max(1))
+            .await
+            .map_err(AdapterPumpError::Journal)?;
+        if !receipt.applied() {
+            return Ok(());
+        }
+        let _ = self
+            .publisher
+            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                project_id: self.session_intent.project_id.clone(),
+                chat_id: self.session_intent.chat_id.clone(),
+                session_id: self.session_intent.session_id.clone(),
+                projection_revision: receipt.projection_revision,
+                child_projection_epoch: 0,
+            });
+        Ok(())
+    }
+
     /// Publishes an idle child change through the projection-changed event.
     /// Only the child epoch moves; the projection revision is unchanged, so
     /// a user action keyed to it stays current. A dropped notice is

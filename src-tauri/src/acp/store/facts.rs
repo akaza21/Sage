@@ -142,6 +142,39 @@ pub(crate) fn publish_projection(
     )?,"session projection")
 }
 
+/// Publishes a projection change that leaves a racing send current. Every
+/// projection change advances `chats.intent_revision` (a schema trigger), so
+/// a send-neutral writer restores the prior value in the same transaction.
+pub(crate) fn publish_send_neutral_projection(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+    session_id: &str,
+    revision: ProjectionRevision,
+    now_millis: i64,
+) -> Result<(), StoreError> {
+    let intent: i64 = transaction.query_row(
+        "SELECT intent_revision FROM chats WHERE project_id=?1 AND id=?2",
+        params![project_id, chat_id],
+        |row| row.get(0),
+    )?;
+    publish_projection(
+        transaction,
+        project_id,
+        chat_id,
+        session_id,
+        revision,
+        now_millis,
+    )?;
+    ensure_one(
+        transaction.execute(
+            "UPDATE chats SET intent_revision=?3 WHERE project_id=?1 AND id=?2",
+            params![project_id, chat_id, intent],
+        )?,
+        "chat intent",
+    )
+}
+
 pub(crate) fn ensure_fact_capacity(
     transaction: &Transaction<'_>,
     session_id: &str,

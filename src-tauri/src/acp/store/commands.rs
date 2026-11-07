@@ -224,19 +224,12 @@ fn validate_prepare_owner(
     transaction: &Transaction<'_>,
     command: &PrepareTurnCommand,
 ) -> Result<(), StoreError> {
-    let revision: i64 = transaction
-        .query_row(
-            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
-            params![command.project_id.as_str(), command.chat_id.as_str()],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if projection_from_i64(revision)? != command.expected_projection_revision {
-        return Err(StoreError::Conflict {
-            resource: "projectionRevision",
-        });
-    }
+    super::sessions::validate_chat_revision(
+        transaction,
+        &command.project_id,
+        &command.chat_id,
+        command.expected_projection_revision,
+    )?;
     let owner: Option<(String, String)> = transaction
         .query_row(
             "SELECT s.state,s.residency FROM agent_sessions s

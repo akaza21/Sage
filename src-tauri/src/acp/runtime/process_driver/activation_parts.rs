@@ -290,6 +290,8 @@ where
             owner,
             clock,
         } = parts;
+        let mut parts = parts;
+        let pending_session_events = parts.take_pending_session_events();
         let (adapter, activation_journal, resources, session) = parts.into_parts();
         let (lease, handoff) = match activation_journal.into_handoff() {
             Ok(value) => value,
@@ -301,7 +303,8 @@ where
                             *activation_journal,
                             resources,
                             session,
-                        ),
+                        )
+                        .with_pending_session_events(pending_session_events),
                         idle_decoder: IncrementalFrameDecoder::new(),
                         transport,
                         control,
@@ -368,7 +371,7 @@ where
             Some(observation) => adapter_journal.with_characterization_observation(observation),
             None => adapter_journal,
         };
-        let pump = AdapterPump::from_admission(
+        let mut pump = AdapterPump::from_admission(
             adapter,
             adapter_journal,
             resources,
@@ -376,6 +379,7 @@ where
             pump_intent,
             pump_admission,
         );
+        pump.seed_session_events(pending_session_events, clock.now_millis());
         Ok(PreparedDriverTurn {
             driver: ProcessAdapterDriver::from_admission(
                 pump,

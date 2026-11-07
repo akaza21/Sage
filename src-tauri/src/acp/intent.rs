@@ -8,6 +8,7 @@ pub use super::{ipc::*, limits::COMMAND_RESOURCE_LIMIT};
 mod capability;
 mod error_kind;
 mod file_change;
+pub(crate) mod session_event;
 mod tool_category;
 mod tool_execution;
 pub mod user_input;

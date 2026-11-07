@@ -175,6 +175,15 @@ impl PendingIngress {
                         && candidate.turn_id == scope.turn_id
                 ).then_some(index));
             }
+            // A later title, model or activity state supersedes a pending one,
+            // so a burst of progress updates retains one fact per activity.
+            DurableAdapterEvent::Session { event, .. } => {
+                return self.facts.iter().rposition(|pending| {
+                    matches!(&pending.fact.event, DurableAdapterEvent::Session {
+                        event: candidate, ..
+                    } if candidate.superseded_by(event))
+                });
+            }
             // Child identity is an immutable fact. A later ordinary Item
             // update with the same external key must not replace it.
             DurableAdapterEvent::ChildThreadItem { .. } => return None,

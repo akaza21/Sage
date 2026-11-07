@@ -148,6 +148,7 @@ async fn run_catalog_page_crossing_turn(
                 project_generation: ProjectGeneration::ZERO,
                 chat_id: fixture.chat_id.clone(),
                 projection_revision: fixture.ready_projection_revision,
+                intent_revision: fixture.ready_projection_revision,
                 session_id: Some(fixture.started.session_id.clone()),
                 runtime_epoch: Some(fixture.epoch),
                 turn_id: None,

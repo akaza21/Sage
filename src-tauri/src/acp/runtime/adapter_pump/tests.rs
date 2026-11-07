@@ -2514,3 +2514,6 @@ mod codex_server_request_tests;
 #[cfg(feature = "acp-fixture")]
 #[path = "codex_user_input_journey_tests.rs"]
 mod codex_user_input_journey_tests;
+
+#[path = "session_event_tests.rs"]
+mod session_event_tests;
