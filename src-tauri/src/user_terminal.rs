@@ -258,7 +258,7 @@ impl TerminalSessionPort {
             .map_err(|_| TerminalError::InvalidScope)?;
         root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
         let output = TerminalOutputSink::new();
-        let (mut process, cleanup_unknown) =
+        let (mut process, mut cleanup_unknown) =
             match self.factory.spawn(&root, columns, rows, output.clone()) {
                 Ok(process) => (process, false),
                 Err(TerminalSpawnFailure::Clean(error)) => return Err(error),
@@ -268,9 +268,12 @@ impl TerminalSessionPort {
         let revision = TerminalRevision(1);
         let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
         if self.shutdowns.load(Ordering::SeqCst) != shutdowns {
-            drop(sessions);
-            process.terminate()?;
-            return Err(TerminalError::Ended);
+            if process.terminate().is_ok() {
+                return Err(TerminalError::Ended);
+            }
+            // Kept, like a session `terminate_matching` could not end, so the
+            // next shutdown retries it.
+            cleanup_unknown = true;
         }
         sessions.insert(
             id,
