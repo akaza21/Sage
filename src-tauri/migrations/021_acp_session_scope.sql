@@ -12,6 +12,10 @@ CREATE TABLE acp_session_surfaces (
     REFERENCES agent_sessions(project_id, chat_id, id) ON DELETE CASCADE
 ) STRICT;
 
+-- Serves the owner-scoped surface reads and the cascade from agent_sessions.
+CREATE INDEX idx_acp_session_surfaces_owner
+  ON acp_session_surfaces(project_id, chat_id, session_id);
+
 -- The projection revision of the chat's latest send-relevant change. A send
 -- built on any projection at or after it is still current. Existing chats
 -- start at their projection revision, so they behave exactly as before.

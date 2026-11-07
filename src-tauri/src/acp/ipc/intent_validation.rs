@@ -14,11 +14,22 @@ pub struct IntentSnapshot {
     pub project_generation: ProjectGeneration,
     pub chat_id: SageChatId,
     pub projection_revision: ProjectionRevision,
+    /// Projection revision of the chat's latest send-relevant change. Views
+    /// at or after it are still current; later changes are session-neutral.
+    pub intent_revision: ProjectionRevision,
     pub session_id: Option<SageAgentSessionId>,
     pub runtime_epoch: Option<RuntimeEpoch>,
     pub turn_id: Option<SageTurnId>,
     pub turn_state: Option<TurnState>,
     pub turn_revision: Option<EntityRevision>,
+}
+
+impl IntentSnapshot {
+    /// Whether an intent built on the `expected` view is still current: no
+    /// send-relevant change landed after it, and it is not ahead of the chat.
+    pub fn admits_projection(&self, expected: ProjectionRevision) -> bool {
+        (self.intent_revision..=self.projection_revision).contains(&expected)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -61,7 +72,7 @@ pub fn validate_base_intent(
     if chat_id != &snapshot.chat_id {
         return Err(IntentError::ForeignChat);
     }
-    if expected_projection_revision != snapshot.projection_revision {
+    if !snapshot.admits_projection(expected_projection_revision) {
         return Err(IntentError::StaleProjectionRevision);
     }
     Ok(())

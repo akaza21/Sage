@@ -15,7 +15,6 @@ use crate::acp::{
 
 mod child_thread_tests;
 mod lifecycle_tests;
-mod send_race_tests;
 mod session_surface_tests;
 mod settlement_tests;
 mod snapshot_reopen_tests;

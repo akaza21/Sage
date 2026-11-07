@@ -163,6 +163,7 @@ fn snapshot(turn_id: Option<SageTurnId>) -> IntentSnapshot {
         project_generation: command.project_generation,
         chat_id: command.chat_id,
         projection_revision: command.expected_projection_revision,
+        intent_revision: command.expected_projection_revision,
         session_id: Some(command.session_id),
         runtime_epoch: Some(command.runtime_epoch),
         turn_id,

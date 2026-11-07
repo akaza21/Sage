@@ -224,22 +224,12 @@ fn validate_prepare_owner(
     transaction: &Transaction<'_>,
     command: &PrepareTurnCommand,
 ) -> Result<(), StoreError> {
-    let (intent, current): (i64, i64) = transaction
-        .query_row(
-            "SELECT intent_revision,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
-            params![command.project_id.as_str(), command.chat_id.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?
-        .ok_or(StoreError::Conflict { resource: "chat" })?;
-    // The send stays current across session-neutral changes (notices,
-    // titles, activity rows) but not across the latest send-relevant one.
-    let expected = command.expected_projection_revision;
-    if !(projection_from_i64(intent)?..=projection_from_i64(current)?).contains(&expected) {
-        return Err(StoreError::Conflict {
-            resource: "projectionRevision",
-        });
-    }
+    super::sessions::validate_chat_revision(
+        transaction,
+        &command.project_id,
+        &command.chat_id,
+        command.expected_projection_revision,
+    )?;
     let owner: Option<(String, String)> = transaction
         .query_row(
             "SELECT s.state,s.residency FROM agent_sessions s
