@@ -31,107 +31,121 @@ export const createChatArchiveSlice: StateCreator<
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
 
-  return {
-    archiveChat: async (chatId, projectId) => {
-      const initial = currentProjectLayout(get());
-      const sourceProjectId = projectId ?? initial?.projectId;
-      const attachedChats = initial?.tabs.filter((tab) => tab.kind === "chat");
-      const foreign =
-        typeof sourceProjectId === "string" &&
-        sourceProjectId !== initial?.projectId;
-      const foreignChats =
-        get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
-        [];
+  const archive = async (
+    chatId: string,
+    projectId?: string,
+  ): Promise<boolean> => {
+    const initial = currentProjectLayout(get());
+    const sourceProjectId = projectId ?? initial?.projectId;
+    const attachedChats = initial?.tabs.filter((tab) => tab.kind === "chat");
+    const foreign =
+      typeof sourceProjectId === "string" &&
+      sourceProjectId !== initial?.projectId;
+    const foreignChats =
+      get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
+      [];
+    if (
+      !initial ||
+      !sourceProjectId ||
+      get().projectTransitioning ||
+      (!foreign &&
+        (!attachedChats?.some((tab) => tab.id === chatId) ||
+          attachedChats.length <= 1)) ||
+      (foreign &&
+        (!foreignChats.some((chat) => chat.id === chatId) ||
+          foreignChats.length <= 1))
+    ) {
       if (
-        !initial ||
-        !sourceProjectId ||
-        get().projectTransitioning ||
-        (!foreign &&
-          (!attachedChats?.some((tab) => tab.id === chatId) ||
-            attachedChats.length <= 1)) ||
-        (foreign &&
-          (!foreignChats.some((chat) => chat.id === chatId) ||
-            foreignChats.length <= 1))
+        (!foreign && attachedChats?.length === 1) ||
+        (foreign && foreignChats.length === 1)
       ) {
-        if (
-          (!foreign && attachedChats?.length === 1) ||
-          (foreign && foreignChats.length === 1)
-        ) {
-          set({ error: "The last attached Chat cannot be archived" });
-        }
-        return false;
+        set({ error: "The last attached Chat cannot be archived" });
       }
-      set({ projectTransitioning: true, error: null });
-      try {
-        await get().flushActiveEditor();
-      } catch (error) {
-        set({
-          projectTransitioning: false,
-          error: `Chat archive blocked by editor snapshot failure: ${errorMessage(error)}`,
-        });
-        return false;
-      }
-      const current = currentProjectLayout(get());
-      if (
-        !current ||
-        (!foreign && !current.tabs.some((tab) => tab.id === chatId))
-      ) {
-        set({
-          projectTransitioning: false,
-          error: "Chat archive target disappeared before mutation",
-        });
-        return false;
-      }
-      if (foreign) {
-        const expectedTransitionEpoch = get().nativeTransitionEpoch;
-        return commitIdentityChatResult({
-          set,
-          get,
-          applyProjection,
-          loadAuthoritativeProjection,
-          failedMessage: "native Chat archive did not commit",
-          invoke: () =>
-            chat.archiveChat(
-              {
-                projectId: sourceProjectId,
-                chatId,
-                currentLayout: current,
-              },
-              expectedTransitionEpoch,
-            ),
-        });
-      }
-      let requested: ProjectLayoutRequest;
-      try {
-        requested = archiveChatLayout(current, chatId);
-      } catch (error) {
-        set({ projectTransitioning: false, error: errorMessage(error) });
-        return false;
-      }
+      return false;
+    }
+    set({ projectTransitioning: true, error: null });
+    try {
+      await get().flushActiveEditor();
+    } catch (error) {
+      set({
+        projectTransitioning: false,
+        error: `Chat archive blocked by editor snapshot failure: ${errorMessage(error)}`,
+      });
+      return false;
+    }
+    const current = currentProjectLayout(get());
+    if (
+      !current ||
+      (!foreign && !current.tabs.some((tab) => tab.id === chatId))
+    ) {
+      set({
+        projectTransitioning: false,
+        error: "Chat archive target disappeared before mutation",
+      });
+      return false;
+    }
+    if (foreign) {
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
-      const classify = (snapshot: BootstrapSnapshot): ProjectionOutcome => {
-        const isArchived = snapshot.archivedChats.some(
-          (chat) => chat.id === chatId,
-        );
-        if (isArchived && matchesExactLayout(snapshot, requested)) {
-          return "committed";
-        }
-        if (!isArchived && matchesExactLayout(snapshot, current)) {
-          return "unchanged";
-        }
-        return "diverged";
-      };
-      const outcome = await runChatTransition({
-        action: "archive",
-        expectedTransitionEpoch,
+      return commitIdentityChatResult({
+        set,
+        get,
+        applyProjection,
+        loadAuthoritativeProjection,
+        failedMessage: "native Chat archive did not commit",
         invoke: () =>
           chat.archiveChat(
-            { projectId: current.projectId, chatId, currentLayout: current },
+            {
+              projectId: sourceProjectId,
+              chatId,
+              currentLayout: current,
+            },
             expectedTransitionEpoch,
           ),
-        classify,
       });
-      return outcome === "committed";
+    }
+    let requested: ProjectLayoutRequest;
+    try {
+      requested = archiveChatLayout(current, chatId);
+    } catch (error) {
+      set({ projectTransitioning: false, error: errorMessage(error) });
+      return false;
+    }
+    const expectedTransitionEpoch = get().nativeTransitionEpoch;
+    const classify = (snapshot: BootstrapSnapshot): ProjectionOutcome => {
+      const isArchived = snapshot.archivedChats.some(
+        (chat) => chat.id === chatId,
+      );
+      if (isArchived && matchesExactLayout(snapshot, requested)) {
+        return "committed";
+      }
+      if (!isArchived && matchesExactLayout(snapshot, current)) {
+        return "unchanged";
+      }
+      return "diverged";
+    };
+    const outcome = await runChatTransition({
+      action: "archive",
+      expectedTransitionEpoch,
+      invoke: () =>
+        chat.archiveChat(
+          { projectId: current.projectId, chatId, currentLayout: current },
+          expectedTransitionEpoch,
+        ),
+      classify,
+    });
+    return outcome === "committed";
+  };
+
+  return {
+    archiveChat: async (chatId, projectId) => {
+      const committed = await archive(chatId, projectId);
+      // The store dropped the chat's read mark with the archive. The rail's
+      // read marks load with the rail, outside the initial bundle.
+      if (committed)
+        await import("../features/chat/acp/chatReadMarks").then((marks) =>
+          marks.forgetChatReadMark(chatId),
+        );
+      return committed;
     },
 
     restoreChat: async (chatId, projectId) => {

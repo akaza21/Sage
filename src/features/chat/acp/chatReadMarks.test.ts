@@ -27,6 +27,11 @@ const store = vi.hoisted(() => ({
   // Whether each next delete lands, in order; empty means it does.
   unreadOutcomes: [] as boolean[],
   holdRead: null as Promise<void> | null,
+  sequence: 0,
+  // Chats a read evicts, by the chat read; the store reports them.
+  evicts: new Map<string, string[]>(),
+  // Holds a read's answer, by chat, after the store has applied it.
+  holdAnswer: new Map<string, Promise<void>>(),
 }));
 vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -51,7 +56,17 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
         chatId,
         Math.max(store.marks.get(chatId) ?? 0, readThrough),
       );
-      return { chatId, readThrough: store.marks.get(chatId) };
+      const evicted = store.evicts.get(chatId) ?? [];
+      for (const pruned of evicted) store.marks.delete(pruned);
+      const answer = {
+        chatId,
+        readThrough: store.marks.get(chatId),
+        evicted,
+        sequence: (store.sequence += 1),
+      };
+      const hold = store.holdAnswer.get(chatId);
+      if (hold) await hold;
+      return answer;
     }
     if (command === "chat_mark_unread" && args?.chatId) {
       if (store.holdUnread) await store.holdUnread;
@@ -75,6 +90,9 @@ beforeEach(() => {
   store.holdUnread = null;
   store.unreadOutcomes = [];
   store.holdRead = null;
+  store.sequence = 0;
+  store.evicts.clear();
+  store.holdAnswer.clear();
   resetChatReadMarks();
 });
 
@@ -264,4 +282,22 @@ it("loads the stored marks again after a failed load while the rail is mounted",
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("drops a mark the store evicted even when that chat's own answer arrives later", async () => {
+  let release!: () => void;
+  store.holdAnswer.set("chat-a", new Promise((resolve) => (release = resolve)));
+  // The store applies chat-a's read, then chat-b's read evicts chat-a, but
+  // chat-b's answer reaches the rail first.
+  markChatRead("chat-a", 1_000);
+  await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
+  store.evicts.set("chat-b", ["chat-a"]);
+  markChatRead("chat-b", 2_000);
+  await vi.waitFor(() => expect(store.marks.has("chat-a")).toBe(false));
+  release();
+  await vi.waitFor(() => expect(chatReadThrough("chat-b")).toBe(2_000));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(chatReadThrough("chat-a")).toBeUndefined();
+  await reload();
+  expect(chatReadThrough("chat-a")).toBeUndefined();
 });

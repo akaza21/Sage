@@ -13,7 +13,8 @@ import { invokeNative, isTauriRuntime } from "../../../ports/nativeInvoke";
  * otherwise the acknowledged state. A refused request is simply dropped, so
  * the rail falls back to what the store holds.
  */
-export const MAX_CHAT_READ_MARKS = 512;
+/** The store's bound: every chat the rail can show (MAX_RAIL_CHATS in Rust). */
+export const MAX_CHAT_READ_MARKS = 1072;
 
 /** A chat's read state: its mark, or `null` for no mark. */
 type ReadState = number | null;
@@ -45,6 +46,10 @@ let marks = new Map<string, number>();
 let known = new Map<string, number>();
 let absent = new Set<string>();
 const lanes = new Map<string, Lane>();
+// The store's write order at which each chat's mark last changed, from read
+// answers. Answers for different chats can arrive out of order, so a change
+// older than the one recorded is ignored. Bounded like `known` and `absent`.
+let sequences = new Map<string, number>();
 // Bumped on reset, so answers to an earlier session's requests are ignored.
 let epoch = 0;
 let restoring: Promise<void> | null = null;
@@ -53,7 +58,7 @@ let restored = false;
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
 let loadFailures = 0;
-// A read the store applies prunes its oldest mark, which a snapshot taken
+// A read the store applies may evict a mark, which a snapshot taken
 // meanwhile still lists. Snapshots are only trusted when no read was in
 // flight while they were taken; otherwise they are taken again once the
 // reads land.
@@ -67,26 +72,41 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-/** Records an acknowledged state; returns chats whose mark was evicted. */
-function record(chatId: string, state: ReadState): string[] {
+/**
+ * Records an acknowledged state. The store alone decides which marks it
+ * evicts and reports them with each read (see `drain`), so `known` mirrors
+ * it and stays within the bound; the trim below only guards memory against
+ * an answer that breaks that contract.
+ */
+function record(chatId: string, state: ReadState) {
   if (state === null) {
     known.delete(chatId);
     absent.delete(chatId);
     absent.add(chatId);
     if (absent.size > MAX_CHAT_READ_MARKS)
       absent.delete(absent.values().next().value!);
-    return [];
+    return;
   }
   absent.delete(chatId);
   known.delete(chatId);
   known.set(chatId, state);
-  const evicted: string[] = [];
-  while (known.size > MAX_CHAT_READ_MARKS) {
-    const oldest = known.keys().next().value!;
-    known.delete(oldest);
-    evicted.push(oldest);
-  }
-  return evicted;
+  if (known.size > MAX_CHAT_READ_MARKS)
+    known.delete(known.keys().next().value!);
+}
+
+/**
+ * Whether a change the store made at `sequence` is newer than what the rail
+ * holds for the chat; records it if so. An answer without one is taken.
+ */
+function newer(chatId: string, sequence: number | undefined): boolean {
+  if (sequence === undefined) return true;
+  const seen = sequences.get(chatId);
+  if (seen !== undefined && seen >= sequence) return false;
+  sequences.delete(chatId);
+  sequences.set(chatId, sequence);
+  if (sequences.size > 2 * MAX_CHAT_READ_MARKS)
+    sequences.delete(sequences.keys().next().value!);
+  return true;
 }
 
 function acknowledged(chatId: string): ReadState | undefined {
@@ -96,8 +116,7 @@ function acknowledged(chatId: string): ReadState | undefined {
 }
 
 function acknowledge(chatId: string, state: ReadState) {
-  // The store prunes its oldest marks the same way.
-  for (const evicted of record(chatId, state)) project(evicted);
+  record(chatId, state);
   project(chatId);
 }
 
@@ -124,6 +143,27 @@ function reproject() {
     else marks.set(chatId, pending.state);
   }
   emit();
+}
+
+/** The chats a read's answer says the store evicted, bounded like the marks. */
+function admitEvicted(answer: unknown): string[] {
+  if (typeof answer !== "object" || answer === null) return [];
+  const { evicted } = answer as Record<string, unknown>;
+  if (!Array.isArray(evicted)) return [];
+  return evicted
+    .slice(0, MAX_CHAT_READ_MARKS)
+    .filter(
+      (chatId): chatId is string =>
+        typeof chatId === "string" && chatId.length > 0,
+    );
+}
+
+function admitSequence(answer: unknown): number | undefined {
+  if (typeof answer !== "object" || answer === null) return undefined;
+  const { sequence } = answer as Record<string, unknown>;
+  return typeof sequence === "number" && Number.isSafeInteger(sequence)
+    ? sequence
+    : undefined;
 }
 
 function admitMark(mark: unknown): [string, number] | null {
@@ -242,7 +282,7 @@ async function drain(chatId: string, lane: Lane, started: number) {
       if (current.state === null) {
         await invokeNative("chat_mark_unread", { chatId });
         if (started !== epoch) return;
-        evicted = record(chatId, null);
+        record(chatId, null);
       } else {
         readsInFlight += 1;
         readsSent += 1;
@@ -255,8 +295,16 @@ async function drain(chatId: string, lane: Lane, started: number) {
           if (started === epoch) readsInFlight -= 1;
         }
         if (started !== epoch) return;
-        // The store keeps the later mark; take the one it reports.
-        evicted = record(chatId, admitMark(answer)?.[1] ?? current.state);
+        // The store keeps the later mark; take the one it reports, and drop
+        // the marks it evicted to make room, unless a later write already
+        // told the rail otherwise.
+        const sequence = admitSequence(answer);
+        evicted = admitEvicted(answer).filter(
+          (pruned) => pruned !== chatId && newer(pruned, sequence),
+        );
+        for (const pruned of evicted) record(pruned, null);
+        if (newer(chatId, sequence))
+          record(chatId, admitMark(answer)?.[1] ?? current.state);
       }
     } catch {
       if (started !== epoch) return;
@@ -264,7 +312,6 @@ async function drain(chatId: string, lane: Lane, started: number) {
     }
     lane.inFlight = null;
     if (!lane.next) lanes.delete(chatId);
-    // The store prunes its oldest marks the same way.
     for (const pruned of evicted) project(pruned);
     project(chatId);
     if (reloadWanted && readsInFlight === 0 && !restoring) {
@@ -293,11 +340,21 @@ export function markChatUnread(chatId: string): Promise<boolean> {
   return request(chatId, null);
 }
 
+/**
+ * The store dropped the chat's mark on its own, as archiving a chat does.
+ * A restored chat then starts without one.
+ */
+export function forgetChatReadMark(chatId: string) {
+  record(chatId, null);
+  project(chatId);
+}
+
 export function resetChatReadMarks() {
   epoch += 1;
   marks = new Map();
   known = new Map();
   absent = new Set();
+  sequences = new Map();
   lanes.clear();
   restoring = null;
   restored = false;

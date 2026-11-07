@@ -197,6 +197,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         settings_commands::chat_read_marks::chat_read_marks,
         settings_commands::chat_read_marks::chat_mark_read,
         settings_commands::chat_read_marks::chat_mark_unread,
+        settings_commands::chat_read_marks::chat_attention,
         settings_commands::browser_preferences::browser_preferences,
         settings_commands::browser_preferences::browser_set_preferences,
         settings_commands::browser_developer::browser_developer_mode,
