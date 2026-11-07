@@ -623,7 +623,7 @@ describe("documentSyntaxHighlightStyle after a dependency drift", () => {
   });
 });
 
-describe("CodeMirrorEditorRuntime focus across a save", () => {
+describe("CodeMirrorEditorRuntime read-only editor", () => {
   const props = (disabled: boolean) => ({
     ariaLabel: "Edit notes.md",
     path: "notes.md",
@@ -633,46 +633,121 @@ describe("CodeMirrorEditorRuntime focus across a save", () => {
     onChange: vi.fn(),
   });
 
-  it("gives focus back when a save that disabled the focused editor ends", () => {
-    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    view.focus();
+  function mountReadOnly() {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const onChange = vi.fn();
+    const runtime = createCodeMirrorEditorRuntime({
+      parent,
+      ...props(true),
+      onChange,
+    });
+    const view = EditorView.findFromDOM(
+      parent.querySelector<HTMLElement>(".cm-content")!,
+    )!;
+    return { onChange, runtime, view };
+  }
+
+  /** jsdom has no DataTransfer; CodeMirror reads and writes plain text only. */
+  function transfer(text = "") {
+    const data = new Map<string, string>(text ? [["text/plain", text]] : []);
+    return {
+      files: [],
+      types: [...data.keys()],
+      clearData: () => data.clear(),
+      getData: (type: string) => data.get(type) ?? "",
+      setData: (type: string, value: string) => void data.set(type, value),
+    };
+  }
+
+  const press = (view: EditorView, key: string, init: KeyboardEventInit = {}) =>
+    runScopeHandlers(
+      view,
+      new KeyboardEvent("keydown", { key, ...init }),
+      "editor",
+    );
+
+  it("stays focusable and announces itself read-only", () => {
+    const { runtime, view } = mountReadOnly();
+    expect(view.contentDOM).toHaveAttribute("contenteditable", "true");
+    expect(view.contentDOM).toHaveAttribute("aria-readonly", "true");
+    view.contentDOM.focus();
     expect(view.hasFocus).toBe(true);
-    runtime.update(props(true));
-    // The browser drops focus from content that stops being editable.
-    view.contentDOM.blur();
-    expect(view.hasFocus).toBe(false);
-    runtime.update(props(false));
-    expect(view.hasFocus).toBe(true);
+    runtime.destroy();
   });
 
-  it("leaves focus alone when the user moved it or the editor was not focused", () => {
-    const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    const elsewhere = document.createElement("button");
-    document.body.append(elsewhere);
+  it("moves the caret and selects without changing the document", () => {
+    const { onChange, runtime, view } = mountReadOnly();
     view.focus();
-    runtime.update(props(true));
-    elsewhere.focus();
-    runtime.update(props(false));
-    expect(document.activeElement).toBe(elsewhere);
+    press(view, "ArrowRight");
+    press(view, "ArrowRight");
+    expect(view.state.selection.main.head).toBe(2);
+    press(view, "ArrowRight", { shiftKey: true });
+    expect(runtime.selection()).toEqual({ start: 2, end: 3 });
+    expect(view.state.sliceDoc(2, 3)).toBe("l");
 
-    elsewhere.blur();
-    runtime.update(props(true));
-    runtime.update(props(false));
-    expect(view.hasFocus).toBe(false);
-    elsewhere.remove();
+    press(view, "Backspace");
+    press(view, "Delete");
+    press(view, "Enter");
+    expect(view.state.doc.toString()).toBe("hello");
+    expect(onChange).not.toHaveBeenCalled();
+    runtime.destroy();
   });
 
-  it("leaves focus on the page after a click elsewhere that does not take it", () => {
+  it("refuses typing, paste, cut, drop and undo", () => {
+    const { onChange, runtime, view } = mountReadOnly();
+    view.focus();
+    runtime.setSelection(0, 5);
+
+    view.contentDOM.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: "x",
+        inputType: "insertText",
+      }),
+    );
+    view.contentDOM.querySelector(".cm-line")!.append("x");
+    (view as unknown as { observer: { flush: () => void } }).observer.flush();
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.assign(paste, { clipboardData: transfer("pasted") });
+    view.contentDOM.dispatchEvent(paste);
+    const cut = new Event("cut", { bubbles: true, cancelable: true });
+    Object.assign(cut, { clipboardData: transfer() });
+    view.contentDOM.dispatchEvent(cut);
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.assign(drop, { dataTransfer: transfer("dropped") });
+    view.contentDOM.dispatchEvent(drop);
+    expect(undo(view)).toBe(false);
+
+    expect(view.state.doc.toString()).toBe("hello");
+    expect(onChange).not.toHaveBeenCalled();
+    runtime.destroy();
+  });
+
+  it("copies the selection", () => {
+    const { runtime, view } = mountReadOnly();
+    view.focus();
+    runtime.setSelection(1, 4);
+    const data = transfer();
+    const copy = new Event("copy", { bubbles: true, cancelable: true });
+    Object.assign(copy, { clipboardData: data });
+    view.contentDOM.dispatchEvent(copy);
+    expect(data.getData("text/plain")).toBe("ell");
+    runtime.destroy();
+  });
+
+  it("keeps focus while a save briefly locks the editor", () => {
     const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
-    const elsewhere = document.createElement("button");
-    document.body.append(elsewhere);
     view.focus();
     runtime.update(props(true));
-    view.contentDOM.blur();
-    // WKWebView leaves focus on the page when a button is clicked.
-    elsewhere.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    // Content that stayed editable does not lose the browser's focus.
+    expect(view.contentDOM).toHaveAttribute("contenteditable", "true");
+    expect(view.hasFocus).toBe(true);
     runtime.update(props(false));
-    expect(view.hasFocus).toBe(false);
-    elsewhere.remove();
+    expect(view.contentDOM).toHaveAttribute("aria-readonly", "false");
+    expect(view.hasFocus).toBe(true);
+    runtime.destroy();
   });
 });

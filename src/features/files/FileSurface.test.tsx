@@ -213,9 +213,13 @@ describe("FileSurface durability cadence", () => {
         })),
       );
     setSaving(true);
-    // A browser drops focus from content that stops being editable.
-    act(() => view.contentDOM.blur());
+    // The save locks the document but leaves the content editable, so the
+    // browser keeps focus on it.
+    expect(editor).toHaveAttribute("aria-readonly", "true");
+    expect(editor).toHaveAttribute("contenteditable", "true");
+    expect(view.hasFocus).toBe(true);
     setSaving(false);
+    expect(editor).toHaveAttribute("aria-readonly", "false");
     expect(view.hasFocus).toBe(true);
   });
 

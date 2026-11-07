@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+import { isEditableTextTarget } from "../../ui/editableTextTarget";
 import {
   browserShortcutFor,
   type BrowserShortcut,
@@ -14,12 +15,7 @@ export function dispatchBrowserChromeShortcut(
   dispatch: (action: BrowserShortcut) => void,
 ): void {
   if (!(event.target instanceof Node) || !root.contains(event.target)) return;
-  if (
-    event.key === "Escape" &&
-    event.target instanceof HTMLElement &&
-    event.target.matches("input, textarea, [contenteditable=true]")
-  )
-    return;
+  if (event.key === "Escape" && isEditableTextTarget(event.target)) return;
   const action = browserShortcutFor(event, loading);
   if (!action) return;
   event.preventDefault();
