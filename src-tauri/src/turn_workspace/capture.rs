@@ -25,10 +25,19 @@ pub(crate) enum BaselineCapture {
 
 pub(crate) async fn capture_baseline(root: &Path) -> BaselineCapture {
     if Directory::root(root).is_none() {
+        eprintln!("DIAG root open failed {root:?}");
         return BaselineCapture::Failed;
     }
-    tokio::time::timeout(CAPTURE_DEADLINE, async {
-        match repository_boundary(root).await {
+    let started = Instant::now();
+    let r = tokio::time::timeout(CAPTURE_DEADLINE, async {
+        let b = repository_boundary(root).await;
+        eprintln!(
+            "DIAG boundary {:?} after {:?} permits {}",
+            b.as_ref().map(|b| matches!(b, RepositoryBoundary::Exact)),
+            started.elapsed(),
+            SNAPSHOTS.available_permits()
+        );
+        match b {
             Ok(RepositoryBoundary::Exact) => capture_known_repository(root, MAX_WORKSPACE_FILES)
                 .await
                 .map_or(BaselineCapture::Failed, |mark| {
@@ -44,8 +53,13 @@ pub(crate) async fn capture_baseline(root: &Path) -> BaselineCapture {
             Err(_) => BaselineCapture::Failed,
         }
     })
-    .await
-    .unwrap_or(BaselineCapture::Failed)
+    .await;
+    eprintln!(
+        "DIAG baseline timed_out={} after {:?}",
+        r.is_err(),
+        started.elapsed()
+    );
+    r.unwrap_or(BaselineCapture::Failed)
 }
 
 #[cfg(test)]
@@ -115,14 +129,20 @@ pub(super) async fn capture_with_limit(root: &Path, limit: u64) -> Option<Worksp
 }
 
 async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMark> {
-    let _permit = SNAPSHOTS.try_acquire().ok()?;
+    let Ok(_permit) = SNAPSHOTS.try_acquire() else {
+        eprintln!("DIAG no snapshot permit");
+        return None;
+    };
     let deadline = Instant::now() + CAPTURE_DEADLINE;
     let anchor = Directory::root(root)?;
     let identity = anchor.identity()?;
     if root.canonicalize().ok()?.as_path() != root {
+        eprintln!("DIAG canonical mismatch");
         return None;
     }
-    let head = history::read_head(root).await?;
+    let head = history::read_head(root).await;
+    eprintln!("DIAG head {head:?} at {:?}", deadline.elapsed());
+    let head = head?;
     let index = run_git(
         root,
         &[
@@ -144,6 +164,7 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     .await
     .ok()?;
     if !index.succeeded() || index.stdout_truncated {
+        eprintln!("DIAG ls-files failed");
         return None;
     }
     for (seen, path) in index
@@ -179,9 +200,16 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     .await
     .ok()?;
     if !status.succeeded() || status.stdout_truncated {
+        eprintln!("DIAG status failed");
         return None;
     }
-    let mut mark = parse_mark(&anchor, &status.stdout, false)?;
+    let mark = parse_mark(&anchor, &status.stdout, false);
+    eprintln!(
+        "DIAG parsed {} past_deadline={:?}",
+        mark.is_some(),
+        Instant::now().checked_duration_since(deadline)
+    );
+    let mut mark = mark?;
     mark.head = Some(head);
     let current = Directory::root(root)?;
     mark.root_identity = Some(identity);
