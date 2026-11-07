@@ -34,6 +34,12 @@ impl Drop for Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_capabilities(|_| {}).await
+    }
+
+    async fn with_capabilities(
+        adjust: impl FnOnce(&mut crate::acp::intent::CapabilitySnapshotV1),
+    ) -> Self {
         let (state, project, chat, root) = state_with_admitted_codex_project();
         let project_id = SageProjectId::parse(project).unwrap();
         let chat_id = SageChatId::parse(chat).unwrap();
@@ -77,10 +83,11 @@ impl Fixture {
                     artifact_digest: binding.artifact_digest().to_owned(),
                     external_session_id: ExternalId::new("external", "thread-command-route")
                         .unwrap(),
-                    capabilities_json: serde_json::to_string(
-                        &binding.capability_ceiling().unwrap(),
-                    )
-                    .unwrap(),
+                    capabilities_json: {
+                        let mut capabilities = binding.capability_ceiling().unwrap();
+                        adjust(&mut capabilities);
+                        serde_json::to_string(&capabilities).unwrap()
+                    },
                     now_millis: 3,
                 },
             )
@@ -613,16 +620,46 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
 fn staged_files_are_consumed_after_admitted_dispatch() {
     use crate::acp::attached_context::files::{Resource, Resources};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let fixture = Fixture::new().await;
+        // Durable session capabilities are immutable after activation, so the
+        // session is activated with embedded-resource support from the start.
+        let fixture =
+            Fixture::with_capabilities(|capabilities| capabilities.prompt_resources = true).await;
         let (calls, _) = fixture.install_host();
-        fixture.state.database.connection().execute(
-            "UPDATE agent_sessions SET capabilities_json=json_set(capabilities_json,'$.promptResources',json('true')) WHERE id=?1",
-            [fixture.owner.session_id.as_str()],
-        ).unwrap();
-        let resources = Resources(Arc::new(vec![Resource { id:"file-1".into(), name:"test.txt".into(), bytes:b"context".to_vec() }]));
-        fixture.state.acp.file_stages.lock().unwrap().stage(fixture.owner.project_id.as_str(),fixture.owner.chat_id.as_str(),None,resources).unwrap();
-        acp::send_acp_turn_inner(&fixture.state,fixture.request(false)).await.unwrap();
+        let resources = Resources(Arc::new(vec![Resource {
+            id: "file-1".into(),
+            name: "test.txt".into(),
+            bytes: b"context".to_vec(),
+        }]));
+        fixture
+            .state
+            .acp
+            .file_stages
+            .lock()
+            .unwrap()
+            .stage(
+                fixture.owner.project_id.as_str(),
+                fixture.owner.chat_id.as_str(),
+                None,
+                resources,
+            )
+            .unwrap();
+        acp::send_acp_turn_inner(&fixture.state, fixture.request(false))
+            .await
+            .unwrap();
         assert!(!calls.lock().unwrap().is_empty());
-        assert!(fixture.state.acp.file_stages.lock().unwrap().get(fixture.owner.project_id.as_str(),fixture.owner.chat_id.as_str()).0.is_empty());
+        assert!(
+            fixture
+                .state
+                .acp
+                .file_stages
+                .lock()
+                .unwrap()
+                .get(
+                    fixture.owner.project_id.as_str(),
+                    fixture.owner.chat_id.as_str()
+                )
+                .0
+                .is_empty()
+        );
     });
 }
