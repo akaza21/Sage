@@ -271,6 +271,41 @@ describe("safeAcpMutationResponse", () => {
       ).not.toHaveProperty("forkedFromTurnId");
   });
 
+  it("carries the current session's surface and drops an unsafe one", () => {
+    const sessionSurface = {
+      sessionId: "session-0",
+      title: "Fix the sidebar",
+      notices: [{ level: "warning", text: "config deprecated" }],
+      modelId: "rerouted",
+      activities: [
+        {
+          key: "a".repeat(64),
+          kind: "backgroundTask",
+          label: "npm test",
+          state: "running",
+          progress: "12 of 40",
+        },
+      ],
+      revision: "3",
+    };
+    expect(
+      safeAcpMutationResponse(mutation({ sessionSurface }))?.projection
+        .sessionSurface,
+    ).toEqual(sessionSurface);
+    const notice = { level: "info", text: "n" };
+    for (const unsafe of [
+      { ...sessionSurface, sessionId: "session-other" },
+      { ...sessionSurface, notices: Array(17).fill(notice) },
+      { ...sessionSurface, notices: [{ level: "debug", text: "n" }] },
+      { ...sessionSurface, title: "x".repeat(257) },
+      { ...sessionSurface, activities: [{ key: "task-7", kind: "k" }] },
+    ])
+      expect(
+        safeAcpMutationResponse(mutation({ sessionSurface: unsafe }))
+          ?.projection,
+      ).not.toHaveProperty("sessionSurface");
+  });
+
   it("accepts a child-epoch projection notice as an ordinary page wake-up", () => {
     const notice = {
       projectId: "project-0",

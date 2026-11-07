@@ -2,6 +2,8 @@ use serde::Serialize;
 
 mod browser_operation;
 pub use browser_operation::BrowserOperationProjection;
+mod session_surface;
+pub use session_surface::SessionSurfaceProjection;
 
 use super::{
     contract::*,
@@ -398,6 +400,10 @@ pub struct AcpChatPage {
     /// `store::child_transcript::child_projection_epoch`).
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) child_projection_epoch: u64,
+    /// Session-scoped state (title, notices, live model and activities) of
+    /// the current session only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_surface: Option<SessionSurfaceProjection>,
 }
 
 fn is_zero(value: &u64) -> bool {

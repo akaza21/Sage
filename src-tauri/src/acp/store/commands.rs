@@ -224,15 +224,18 @@ fn validate_prepare_owner(
     transaction: &Transaction<'_>,
     command: &PrepareTurnCommand,
 ) -> Result<(), StoreError> {
-    let revision: i64 = transaction
+    let (intent, current): (i64, i64) = transaction
         .query_row(
-            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            "SELECT intent_revision,projection_revision FROM chats WHERE project_id=?1 AND id=?2",
             params![command.project_id.as_str(), command.chat_id.as_str()],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
         .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if projection_from_i64(revision)? != command.expected_projection_revision {
+    // The send stays current across session-neutral changes (notices,
+    // titles, activity rows) but not across the latest send-relevant one.
+    let expected = command.expected_projection_revision;
+    if !(projection_from_i64(intent)?..=projection_from_i64(current)?).contains(&expected) {
         return Err(StoreError::Conflict {
             resource: "projectionRevision",
         });

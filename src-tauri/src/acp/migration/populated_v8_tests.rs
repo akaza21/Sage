@@ -163,14 +163,14 @@ fn assert_populated_rows(connection: &Connection) {
 fn assert_current_structure(connection: &Connection) {
     assert_eq!(
         fingerprint::classify_connection(connection).expect("classification"),
-        SchemaClass::CurrentV20
+        SchemaClass::CurrentV21
     );
     assert_eq!(
         connection
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .expect("migration count"),
-        20
+        21
     );
     assert_eq!(
         connection

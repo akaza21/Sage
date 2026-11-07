@@ -15,6 +15,9 @@ use super::*;
 #[path = "tests/model_catalog.rs"]
 mod model_catalog;
 
+#[path = "tests/session_events.rs"]
+mod session_events;
+
 #[path = "tests/initialization.rs"]
 mod initialization;
 
